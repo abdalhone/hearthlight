@@ -146,6 +146,9 @@ Entities in payloads are live objects (never serialize them). **Payload shapes:*
 | `stance_changed` | `{stance, previous}` | behavior |
 | `job_started` / `job_progress` / `job_done` / `job_failed` | `{actor, job, progress?, result?, reason?}` | behavior |
 | `quest` | `{id, stage, title, text}` | quest plugin |
+| `npc_topic` | `{npc, topic, player}` (the player asked a villager about a topic) | npc |
+| `trade` | `{npc, itemId, qty, price, bought: bool}` | ui |
+| `hit_stop` | — (combat sets `game.hitStop = max(game.hitStop, seconds)` directly; the world freezes, rendering continues) | — |
 | `player_sleep` / `player_wake` | `{bed}` / `{day, reflection}` | game |
 | `ui_open` / `ui_close` | `{panel}` | ui |
 
@@ -171,7 +174,10 @@ Sprite names (each art module registers its own; others draw by these names):
 - Characters (characters agent): drawn only through `drawCharacter(ctx, atlas, key, anim, dir,
   time, x, y, opts)` from `src/art/characters_art.js`. Keys: `player`, `lyra`, every NPC id, and
   every species `spriteKey`. Anims: `idle walk attack cast hurt down work sit sleep`.
-  Dirs: `down up left right`. `portrait(atlas, key) → canvas` (≈32 × 32) for the UI.
+  Dirs: `down up left right`. `portrait(atlas, key, expression = 'neutral') → canvas`
+  (48 × 48 head-and-shoulders, more detail than the walking sprite) for the UI; expressions
+  `neutral happy sad angry surprised worried love sleepy` (at least Lyra has all of them;
+  others may return neutral).
 - Items (combat agent): `icon:<itemId>` 16 × 16 for every item in `entities/items.js`, plus
   `icon:unknown`. `itemIcon(atlas, id) → canvas` for the DOM UI.
 - FX (render agent): `fx:slash`, `fx:bolt`, `fx:arrow`, `fx:spark`, `fx:heal`, icons for
@@ -311,11 +317,17 @@ Profile schema (`NPC_PROFILES` entries):
   likes: ['iron_ore', ...], dislikes: [...], greetings: [...], lines: { day: [...], night: [...], rain: [...] },
   knows: { otherNpcId: 'what they think of them' }, shop?: { sells: [{id, price}], buys: {itemId: price} } }
 ```
-`npc.profile`, `npc.role`, `npc.activity` (current schedule activity), `getDialogue(player) →
-{ lines: [string], options: [{id, label}] }`, `chooseOption(id, player) → { lines, options?, close? }`
+`npc.profile`, `npc.role`, `npc.activity` (current schedule activity), `npc.opinionOfPlayer`
+(0..100), `getDialogue(player) → { lines: [string], options: [{id, label}] }`,
+`chooseOption(id, player) → { lines, options?, close?, open?: 'gift'|'shop' }`
 (options include talk, give a gift, trade for shops, ask about Lyra / Maren / the village,
-goodbye). NPCs follow schedules with the pathfinder, open doors, sleep at night, flee from
-monsters (guards fight), greet the player, and react to Lyra.
+goodbye; asking about a topic emits `npc_topic {npc, topic, player}` — e.g. topic `maren`),
+`receiveGift(itemId, giver) → { lines, liked: -1|0|1 }` (the UI removed the item already),
+`say(text, {kind})` (bubble + `speech` event), `hears(speaker, text)` (optional reaction).
+Shops: `profile.shop = { sells: [{id, price}], buys: { itemId: price } }`; the UI performs
+trades with the `coin` item and emits `item_gained`. NPCs follow schedules with the
+pathfinder, open doors, sleep at night, flee from monsters (guards fight), greet the player,
+and react to Lyra.
 
 ### Creatures (`src/entities/monsters.js`, `src/entities/spawner.js`)
 `SPECIES` table and `spawnCreature(game, species, x, y, opts) → Creature` (`.species`).
@@ -325,6 +337,9 @@ follows; `cat` is never hostile), `bat` (monster, flying, ruins/night), `skeleto
 ruins), `bandit` (bandit, sword), `bandit_archer` (bandit, arrows), `bandit_chief` (bandit,
 tougher, at the camp). Each: hp, atk, def, speed, xp, drops `[[itemId, chance, qty?]]`,
 aggro radius, AI: idle/wander → notice → chase/attack (or flee) → leash back home.
+Every creature instance exposes `creature.drops` (that list) and `creature.xpValue`, which
+`combat.kill` uses for loot and experience, plus `creature.species`, `creature.home {x, y}`,
+`creature.aggroRadius`, and `creature.threat` (0..3, how dangerous it is, for Lyra's targeting).
 `Spawner(game, zones)` keeps zones populated (out of the player's view, respecting `night`).
 
 ### Combat (`src/entities/combat.js`)
@@ -440,6 +455,24 @@ impression memory), entering places (curiosity, place knowledge), night/rain (mo
 doors, jobs done (pride), being revived ("you came back for me": large trust gain, importance 9).
 Throttle: a burst of identical events makes one memory, not ten.
 
+**Spontaneous thoughts**: every ≈ 25–45 s of play the mind may produce a thought from what is
+around her (place, weather, people, needs, goals, a recalled memory). It is stored in
+`thoughts`, emitted as `thought`, and — only when `settings.showThoughts` is on and no speech
+bubble is showing — displayed with `game.bubbles.thought(owner, text)` at most once per ≈ 30 s.
+
+**Quest arc (quest plugin).** Stages of quest id `maren`, each emitting
+`quest {id: 'maren', stage, title, text}` and exposing `questPlugin.objective(ctx) → string`:
+0 `settle` "Settle into Hearthvale — meet the villagers." → after Lyra has met 3 villagers or
+day 2 begins, Lyra asks for help: 1 `ask_aveline` "Ask Sister Aveline about Maren." (done on
+`npc_topic {npc: aveline, topic: 'maren'}` or Lyra talking to Aveline about Maren) →
+2 `find_key` "The ruins gate is locked. The bandits northeast may have the key." (done on
+`item_gained ruins_key` by the player or Lyra) → 3 `enter_ruins` "Search the Sunken Ruins."
+(done on `enter_location sunken_ruins`) → 4 `find_journal` "Find a sign of Maren deep in the
+ruins." (done on `item_gained maren_journal`) → 5 `read_journal` "Let Lyra read the journal."
+(the `read_journal` action, or automatically when the player gives it to her) → 6 `waygate`
+"Maren went north through the old waygate. To be continued…" (quest complete; Lyra's goals
+update; a big emotional memory, importance 10).
+
 ## 10. Behavior (`src/ai/behavior/*`, `src/entities/companion.js`)
 
 `new Behavior(game, actor)`; it is Lyra's controller (`update(actor, dt)`). Public interface:
@@ -518,6 +551,23 @@ Interface: see the header of `src/ai/plugins/registry.js`. Registered in
 Each plugin also supplies `intents` for the offline brain and `promptContext` for Claude
 (e.g. relationships: who is nearby and what she thinks of them; memory: recalled memories for
 the player's message; quest: current objective). Keep every `promptContext` under ≈ 900 chars.
+
+**Intent shape** (read by the brain's offline NLU, which tries plugin intents in registration
+order on each clause of the player's message, then its own built-in intents):
+```js
+{
+  id: 'rel.opinion',                                   // unique, '<plugin>.<name>'
+  patterns: [/\bwhat do you think (?:of|about) (?<who>[\w' -]+)/i],
+  command: false,       // true = an order (runs at once, before Claude is asked)
+  confidence: 0.85,     // 0..1, default 0.85
+  actions(m, ctx) { return [{ name: 'follow', args: { target: 'player', value: null, amount: null } }]; },  // optional
+  answer(m, ctx, results) { return "Bram? Gruff as a bear, kind as one too."; },                           // optional
+}
+```
+`m` is the RegExp match (named groups encouraged). `results` = the `{ ok, message }` list from
+the actions just run (so the answer can report a refusal). `answer` returns Lyra's line in her
+voice, or `null` to let the brain compose one. Patterns must be specific enough not to fire on
+unrelated chat.
 
 ## 12. Action catalogue
 

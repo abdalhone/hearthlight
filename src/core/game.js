@@ -57,6 +57,7 @@ export class Game {
     this.time = 0; // real seconds since boot; drives animations
     this.state = 'boot'; // boot | title | playing | sleeping
     this.paused = false; // set by the UI while a pause/settings menu is open
+    this.hitStop = 0; // seconds of frozen action after a heavy hit (combat sets it; world freezes, UI keeps running)
     this.flags = {}; // story flags: { journal_found: true, ... }
 
     root.innerHTML = '';
@@ -248,7 +249,10 @@ export class Game {
   update(dt) {
     this.time += dt;
     this.input.update(dt);
-    if (this.state === 'playing' && !this.paused) {
+    if (this.state === 'playing' && !this.paused && this.hitStop > 0) {
+      this.hitStop = Math.max(0, this.hitStop - dt);
+      this.camera.update(dt);
+    } else if (this.state === 'playing' && !this.paused) {
       this.clock.update(dt);
       this.entities.update(dt);
       this.objects.update(dt);
