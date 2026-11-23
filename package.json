@@ -1,0 +1,17 @@
+{
+  "name": "hearthlight",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Hearthlight: a pixel-art browser RPG with Lyra, an AI companion with her own mind, memory and relationships.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/serve.mjs",
+    "test": "node --test \"tests/**/*.test.mjs\"",
+    "smoke": "node scripts/build.mjs && node scripts/smoke.mjs",
+    "check": "npm test && npm run smoke"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}
