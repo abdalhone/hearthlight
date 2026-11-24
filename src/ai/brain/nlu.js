@@ -11,8 +11,16 @@
 // wood?" -> "chop some wood").
 
 import { resolveItemId } from '../../entities/items.js';
+import { companionshipOf } from './her_state.js';
 
 export const COMMAND_THRESHOLD = 0.8;
+
+// Actions whose `amount` means nothing, so a coin offer can ride on it (DESIGN §16.4).
+export const AMOUNT_FREE = new Set([
+  'follow', 'stay', 'come_here', 'goto', 'set_combat_mode', 'attack', 'retreat', 'patrol', 'explore', 'free_will', 'emote',
+  'sit', 'open_door', 'close_door', 'pick_up', 'interact', 'sleep', 'talk_to', 'rejoin', 'read_journal', 'stop_job', 'use_item',
+  'wait_outside', 'flee',
+]);
 
 // ------------------------------------------------------------------ normalizing
 
@@ -157,7 +165,8 @@ export function coreForm(norm) {
 const NUMBER_WORDS = {
   a: 1, an: 1, one: 1, single: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
   eleven: 11, twelve: 12, fifteen: 15, twenty: 20, couple: 2, few: 3, several: 4, dozen: 12, bunch: 6,
-  lots: 10, lot: 10, plenty: 10, many: 8, handful: 4, pair: 2,
+  lots: 10, lot: 10, plenty: 10, many: 8, handful: 4, pair: 2, thirty: 30, forty: 40, fifty: 50, hundred: 100,
+  'a hundred': 100, 'one hundred': 100,
 };
 
 // "5", "five", "a few", "a couple of", "a dozen" -> number; "some"/"any" -> null.
@@ -168,6 +177,65 @@ export function parseNumber(word) {
   if (w in NUMBER_WORDS) return NUMBER_WORDS[w];
   if (/^(?:a|an)$/.test(String(word).trim())) return 1;
   return null;
+}
+
+// ------------------------------------------------------------------ coin offers
+
+const OFFER_N = '(\\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|(?:a |one )?hundred|a few|a couple(?: of)?|some)';
+const COIN = '(?:gold coins?|gold pieces?|silver coins?|coins?|gold|silver|crowns?)';
+const LEAD = "^\\s*(?:(?:ok(?:ay)?|look|listen|fine|alright|all right|hey|so|well|lyra)[,!.]?\\s+)*";
+const ILL = "(?:i(?:'ll| will| can| could|'d| would| shall)?|let me|how about (?:i|we))";
+const LINK = "(?:to|if you(?:'ll| will)?|for|and you|so (?:that )?you(?:'ll| will| can)?|in exchange for|if)\\s+(?:you\\s+)?";
+const OFFER_PATTERNS = [
+  // "I'll pay you 10 coins to chop wood" / "I'll give you 5 gold if you follow me"
+  { re: new RegExp(`${LEAD}${ILL}\\s+(?:pay|give|offer|tip|hand)\\s+you\\s+(?:${OFFER_N}\\s+)?${COIN}\\s+${LINK}`, 'i'), where: 'head' },
+  // "I'll pay you to guard Pip"
+  { re: new RegExp(`${LEAD}${ILL}\\s+pay\\s+you\\s+(?:well\\s+)?${LINK}`, 'i'), where: 'head' },
+  // "10 coins to chop wood" / "20 gold if you come"
+  { re: new RegExp(`${LEAD}${OFFER_N}\\s+${COIN}\\s+(?:to|if you(?:'ll| will)?|for)\\s+`, 'i'), where: 'head' },
+  // "here's 10 coins, now chop wood"
+  { re: new RegExp(`${LEAD}here(?:'s| is| are)\\s+${OFFER_N}\\s+${COIN}[,.!]?\\s*(?:now\\s+|so\\s+|to\\s+|go\\s+)?`, 'i'), where: 'head', paid: true },
+  // "we'll split it, so help me" / "half is yours if you ..."
+  { re: new RegExp(`${LEAD}(?:we(?:'ll| will| can)? split (?:it|the loot|the take|the coins?)(?: fifty[- ]fifty| evenly| down the middle)?|half (?:of it )?is yours)[,.!]?\\s+(?:if you\\s+|so\\s+|now\\s+)?`, 'i'), where: 'head', share: true },
+  // "chop wood and I'll pay you 10 coins" / "chop wood for 10 coins"
+  { re: new RegExp(`[,\\s]+(?:and\\s+)?(?:(?:i(?:'ll| will)\\s+(?:pay|give)\\s+you)|for)\\s+${OFFER_N}\\s+${COIN}(?:\\s+(?:for it|for that|for your trouble))?\\s*[.!?]*$`, 'i'), where: 'tail' },
+  // "chop wood and I'll pay you"
+  { re: /[,\s]+(?:and\s+)?i(?:'ll| will)\s+(?:pay you|pay|make it worth your while|reward you)(?:\s+(?:for it|well|for your trouble))?\s*[.!?]*$/i, where: 'tail' },
+  // "chop wood, you can keep half"
+  { re: /[,\s]+(?:and\s+)?(?:you can keep half|half (?:of it )?is yours|we(?:'ll| will| can)? split (?:it|the loot|the take|the coins?|everything|whatever we (?:get|find))(?: with you)?(?: fifty[- ]fifty| evenly| down the middle)?|i(?:'ll| will) split it with you|you get half|you can have half)\s*[.!?]*$/i, where: 'tail', share: true },
+  // the whole message is an offer: "I'll pay you 10 coins", "how about 20 gold?", "10 coins?"
+  { re: new RegExp(`${LEAD}(?:(?:${ILL}\\s+)?(?:pay|give|offer|tip)\\s+you|how about|what about|what if i (?:paid|gave) you|for)\\s+(?:${OFFER_N}\\s+)?${COIN}(?:\\s+(?:for it|for that|then|instead|now))?\\s*[.!?]*$`, 'i'), where: 'all' },
+  { re: new RegExp(`${LEAD}${ILL}\\s+pay\\s+you(?:\\s+(?:for it|for that|well|then))?\\s*[.!?]*$`, 'i'), where: 'all' },
+  { re: new RegExp(`^\\s*${OFFER_N}\\s+${COIN}\\s*[?!.]*$`, 'i'), where: 'all' },
+];
+
+function offerAmount(m) {
+  for (let i = 1; i < m.length; i++) {
+    if (!m[i]) continue;
+    const n = parseNumber(m[i].trim().replace(/^(?:a|one) hundred$/, 'hundred'));
+    if (n != null) return Math.max(1, Math.min(9999, Math.round(n)));
+  }
+  return null;
+}
+
+// Find a coin offer or a fair-share offer in a message. Returns { offer, rest }:
+// offer = { coins, share, paid, text } or null; rest = the message without the offer.
+export function detectOffer(text) {
+  const src = String(text ?? '');
+  const flat = src.replace(/[‘’ʼ`´]/g, "'");
+  for (const p of OFFER_PATTERNS) {
+    const m = p.re.exec(flat);
+    if (!m) continue;
+    let rest;
+    if (p.where === 'head') rest = src.slice(m.index + m[0].length);
+    else if (p.where === 'tail') rest = src.slice(0, m.index);
+    else rest = '';
+    rest = rest.replace(/^[\s,.;:!-]+/, '').trim();
+    if (p.where === 'head' && !rest) continue;
+    const coins = p.share ? null : offerAmount(m);
+    return { offer: { coins, share: !!p.share, paid: !!p.paid, text: m[0].trim() }, rest };
+  }
+  return { offer: null, rest: src };
 }
 
 const QTY_HEAD =
@@ -355,6 +423,36 @@ export const BUILTIN_INTENTS = [
   },
 
   // ------------------------------------------------------- commands
+  {
+    // "come back" means rejoin only while she lives apart from the player.
+    id: 'cmd.rejoin', kind: 'command', command: true, confidence: 0.88,
+    patterns: [
+      /^(?:come back(?: to me| with me| home)?|please come back|will you come back(?: to me)?|come with me again|travel with me again|travel together again|join me again|rejoin me|rejoin|let us travel together again|be my companion again|i want you back|walk with me again|can we start over|let us start over|can we try again|let us try again|come home)$/,
+    ],
+    slots(m, c, env) {
+      const apart = env.companionship === 'apart' || env.companionship === 'left';
+      const explicit = /\bagain\b|rejoin|start over|want you back|companion/.test(c.core);
+      return apart || explicit ? { apart } : null;
+    },
+    acts: (s) => [s.apart ? act('rejoin') : act('follow', 'player')],
+  },
+  {
+    id: 'cmd.part_ways', kind: 'command', command: true, confidence: 0.86,
+    patterns: [
+      /^(?:let us|we should|we could|maybe we should|i think we should) (?:split up|part ways|go our (?:own|separate) ways|spend (?:some )?time apart|take a break from each other)(?: for (?:a while|now|today|a bit|a few days))?$/,
+      /^(?:go (?:live|have) your own (?:life|day)|go your own way|you should go your own way|i want to be alone for a while|i need (?:some )?time alone|take (?:the|a) day for yourself|go do your own thing for (?:a while|today|now))$/,
+    ],
+    acts: () => [act('leave_player', null, 'apart')],
+  },
+  {
+    id: 'cmd.promise', kind: 'command', command: true, confidence: 0.85,
+    patterns: [/^i (?:promise|give you my word)(?: you)?(?: that)?\s+(?<text>.{3,})$/],
+    slots: (m) => {
+      const text = m.groups.text.replace(/^(?:i will|to|i am going to)\s+/, '').trim();
+      return text.length >= 3 ? { text } : null;
+    },
+    acts: (s) => [act('promise', 'player', s.text)],
+  },
   {
     id: 'cmd.follow_close', kind: 'command', command: true, confidence: 0.9,
     patterns: [
@@ -744,6 +842,28 @@ export const BUILTIN_INTENTS = [
 
   // ------------------------------------------------------- questions
   {
+    id: 'ask.plan', kind: 'question', confidence: 0.86,
+    patterns: [/^(?:what (?:is|are) your plans?(?: for (?:today|tonight|the day|this morning|this afternoon|this evening))?|what are you (?:doing|up to|planning) (?:today|tonight|this morning|this afternoon|this evening|later)|what will you do (?:today|tonight|later)|do you have (?:any )?plans(?: today| for today| tonight)?|what is on your (?:agenda|schedule)(?: today)?|where are you (?:going|headed) (?:today|tonight|later)|what is your day like)$/],
+  },
+  {
+    id: 'ask.fear_me', kind: 'question', confidence: 0.87,
+    patterns: [/^(?:are you (?:still )?(?:afraid|scared|frightened) of me|do you fear me|do i (?:scare|frighten) you|am i scaring you)$/],
+  },
+  {
+    id: 'ask.trust_me', kind: 'question', confidence: 0.87,
+    patterns: [/^(?:do you (?:still )?trust me|can you trust me|do you believe me|are we (?:still )?(?:ok|okay|good|alright|all right))$/],
+  },
+  {
+    id: 'ask.why_left', kind: 'question', confidence: 0.86,
+    patterns: [/^(?:why did you (?:leave|go|walk away)(?: me)?|why are you (?:leaving|avoiding me|so distant|keeping your distance|angry with me|upset with me|mad at me|acting like this)|why do you keep (?:watching|avoiding) me|what did i do(?: wrong)?|are you (?:angry|mad|upset) (?:at|with) me)$/],
+  },
+  {
+    // Only means something right after she said no.
+    id: 'ask.why_refused', kind: 'question', confidence: 0.86,
+    patterns: [/^(?:why not|why|why no|why will you not|why would you not|why did you (?:refuse|say no)|why are you refusing|what is wrong with that|why can you not|how come|but why)$/],
+    slots: (m, c, env) => (env.recentRefusal ? {} : null),
+  },
+  {
     id: 'ask.feelings', kind: 'question', confidence: 0.88,
     patterns: [
       /^(?:how (?:are|is) (?:you|lyra)(?: (?:doing|feeling|holding up|keeping|today|now|tonight|lately|these days|after that))*|how do you feel(?: now| today)?|how (?:is it going|are things|have you been|is life|are you holding up|is everything)|is (?:something|anything|everything) (?:wrong|okay|alright|ok)|what is (?:wrong|the matter|bothering you|eating you|up with you)|feeling (?:ok|okay|alright|better|good)|what is up|whats up|wassup|you good|you alright|you okay|you ok|how are we doing)$/,
@@ -905,7 +1025,14 @@ export const BUILTIN_INTENTS = [
       /^(?:i am glad (?:you are here|you are with me|i met you|we met)|i am lucky to have you|glad to have you|you are the best|best companion ever|you are my (?:best )?friend|we are (?:friends|a team|partners|a good team)|i trust you)$/,
     ],
   },
-  { id: 'social.apology', kind: 'social', confidence: 0.86, patterns: [/^(?:sorry|so sorry|i am sorry|i am so sorry|i apologi[sz]e|my bad|forgive me|i did not mean (?:it|that)|i was wrong|my apologies|apologies|oops|i am sorry for (?:what i said|that|earlier|being rude|being mean))(?: lyra)?$/] },
+  {
+    id: 'social.apology', kind: 'social', confidence: 0.86,
+    patterns: [
+      /^(?:sorry|so sorry|i am sorry|i am so sorry|i apologi[sz]e|my bad|forgive me|i did not mean (?:it|that)|i was wrong|my apologies|apologies|oops|i am sorry for (?:what i said|that|earlier|being rude|being mean))(?: lyra)?$/,
+      /^(?:i am (?:so |really |truly |very |deeply )?sorry(?: for .{1,60})?|please forgive me|forgive me(?: please)?|can you forgive me|will you forgive me|it was an accident|that was an accident|i did not mean to(?: .{1,50})?|it will not happen again|i will never do (?:it|that) again|i messed up|i was wrong(?: .{1,50})?|i regret (?:it|that|what i did))$/,
+    ],
+    slots: (m, c) => ({ accident: /accident|did not mean/.test(c.core), vow: /never|not happen again/.test(c.core) }),
+  },
   { id: 'social.joke', kind: 'social', confidence: 0.86, patterns: [/\b(?:tell (?:me |us )?(?:a |another )?joke|know any jokes|make me laugh|say something funny|another joke|got any jokes|cheer me up|be funny)\b/, /^joke$/] },
   { id: 'social.story', kind: 'social', confidence: 0.85, patterns: [/\b(?:tell (?:me |us )?(?:a |another )?story|story time|know any stories|tell me something interesting|entertain me|tell me a tale|tell me about the old days)\b/] },
   { id: 'social.song', kind: 'social', confidence: 0.85, patterns: [/^(?:sing(?: me)?(?: a song| something| for me| us a song)?|can you sing|do you sing|hum something|hum a tune|play (?:a song|some music)|sing again)$/] },
@@ -1071,7 +1198,8 @@ function headAddress(text, names) {
 export function parseMessage(text, env = {}) {
   const names = (env.names && env.names.length ? env.names : ['lyra']).map((n) => String(n).toLowerCase());
   const head = headAddress(text, names);
-  const pieces = splitClauses(head.text);
+  const { offer, rest } = detectOffer(head.text);
+  const pieces = splitClauses(rest);
   const clauses = [];
   let greeted = head.greeted;
   let prev = null;
@@ -1104,6 +1232,10 @@ export function parseMessage(text, env = {}) {
     clauses.push(clause);
     prev = clause;
   }
+  // A coin offer rides on every request whose amount means nothing (DESIGN §16.4).
+  if (offer?.coins) {
+    for (const cl of clauses) for (const a of cl.intent?.actions || []) if (AMOUNT_FREE.has(a.name) && a.args.amount == null) a.args.amount = offer.coins;
+  }
   if (!clauses.length && greeted) {
     clauses.push({ text: String(text), norm: normalize(text), core: 'hi', question: false, forMe: false, intent: { id: 'social.greet', source: 'builtin', kind: 'social', command: false, confidence: 0.85, match: null, slots: {}, actions: [], answer: null } });
   }
@@ -1113,6 +1245,7 @@ export function parseMessage(text, env = {}) {
     clauses,
     commands,
     greeted,
+    offer,
     isQuestion: clauses.some((cl) => cl.question),
     understood: clauses.length > 0 && clauses.every((cl) => !!cl.intent),
   };
@@ -1148,6 +1281,8 @@ export function nluEnv(game) {
     directiveType: companion?.behavior?.directive?.type || null,
     knownNames,
     names,
+    companionship: companionshipOf(game),
+    recentRefusal: !!game?.brain?.recentRefusal?.(),
     onError: (intent, err) => console.error(`[nlu] intent ${intent?.id} failed`, err),
   };
 }
