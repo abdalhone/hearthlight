@@ -537,6 +537,7 @@ const WET = {
   puddleRim: rgb('#1d1b26'),
   mud: rgb('#2a1d18'),
 };
+const PUDDLE = 0.75; // puddle threshold on the noise field (about a tenth of a road)
 const lumOf = (c) => (R(c) * 0.3 + G(c) * 0.55 + B(c) * 0.15) / 255;
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
@@ -558,16 +559,15 @@ function wetten(art, c, m, wx, wy, raw = c, below = raw) {
     return k > 0.02 ? mixc(o, k > 0.7 ? WET.spec : WET.sheen, Math.min(0.9, k)) : o;
   }
   if (m === T.DIRT || m === T.SAND || m === T.FARMLAND) {
-    const p = puddleAt(art, wx, wy);
     let o = mixc(shade(c, m === T.SAND ? 0.74 : 0.62), WET.mud, 0.12);
-    if (p > 0.64) {
+    if (m === T.SAND) return sh > 0.7 ? mixc(o, WET.sheen, clamp01((sh - 0.7) * 2) * 0.3) : o;
+    const p = puddleAt(art, wx, wy);
+    if (p > PUDDLE) {
       // Puddle: a dark rim on the far (upper) side, the sky mirrored inside, a lit near lip.
-      if (p < 0.665) return mixc(o, WET.puddleRim, 0.55);
-      const up = puddleAt(art, wx, wy - 2);
-      if (up <= 0.64) return mixc(WET.puddle, WET.puddleRim, 0.35);
-      const dn = puddleAt(art, wx, wy + 1);
-      if (dn <= 0.64) return mixc(WET.puddleSky, WET.spec, 0.4);
-      return mixc(WET.puddle, WET.puddleSky, clamp01(0.15 + (sh - 0.35) * 0.9));
+      if (p < PUDDLE + 0.02) return mixc(o, WET.puddleRim, 0.55);
+      if (puddleAt(art, wx, wy - 2) <= PUDDLE) return mixc(WET.puddle, WET.puddleRim, 0.35);
+      if (puddleAt(art, wx, wy + 1) <= PUDDLE) return mixc(WET.puddleSky, WET.spec, 0.4);
+      return mixc(WET.puddle, WET.puddleSky, clamp01(0.15 + (sh - 0.35) * 0.9 + (p - PUDDLE) * 0.6));
     }
     if (sh > 0.7) o = mixc(o, WET.sheen, clamp01((sh - 0.7) * 2) * 0.35);
     return o;
@@ -579,8 +579,23 @@ function wetten(art, c, m, wx, wy, raw = c, below = raw) {
   return o;
 }
 
+// Puddles: two bilinear samples of the noise, one sheared, so they are smooth-shored
+// blobs that turn up anywhere along a road instead of in rows that repeat every 256 px.
+function bilinear(P, fx, fy) {
+  const ix = Math.floor(fx);
+  const iy = Math.floor(fy);
+  const ax = fx - ix;
+  const ay = fy - iy;
+  const a = P[((iy & 63) << 6) | (ix & 63)];
+  const b = P[((iy & 63) << 6) | ((ix + 1) & 63)];
+  const c = P[(((iy + 1) & 63) << 6) | (ix & 63)];
+  const d = P[(((iy + 1) & 63) << 6) | ((ix + 1) & 63)];
+  return a + (b - a) * ax + (c - a) * ay + (a - b - c + d) * ax * ay;
+}
+
 function puddleAt(art, wx, wy) {
-  return art.puddle[(((wy >> 2) & 63) << 6) | ((wx >> 2) & 63)];
+  const P = art.puddle;
+  return bilinear(P, wx / 4, (wy + wx * 0.37) / 4) * 0.72 + bilinear(P, (wx + wy * 0.5) / 6 + 11, wy / 5 + 23) * 0.28;
 }
 
 // Village cobbles are not new: moss creeps into the joints near the lawns, and some
