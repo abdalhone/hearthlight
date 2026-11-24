@@ -1661,6 +1661,12 @@ export function glyphBitmap(kind, id) {
       }
     }
   }
+  // Strokes two pixels wide (down and right): bold enough to read at a glance.
+  const thin = bm.slice();
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (thin[y * 16 + x]) {
+    if (x + 1 < 16) bm[y * 16 + x + 1] = 1;
+    if (y + 1 < 16) bm[(y + 1) * 16 + x] = 1;
+  }
   bitmapCache.set(key, bm);
   void kind;
   return bm;
