@@ -921,13 +921,16 @@ class WorldBuilder {
   }
 
   // Street lamps in the order Hobb walks them at dusk (LORE §5: the square first, then
-  // the lanes, and Lamplight Lane last, ending at his own door).
+  // the lanes, and Lamplight Lane last, ending at his own door). One walk with no
+  // doubling back: the square, the west street, round by the pond and Weavers' Row, the
+  // south lane to the Wayhouse road, up the east street, the north road under the wood,
+  // then home along Lamplight Lane to the far lamps.
   villageLamps() {
     const route = [
       ['town_square', [[74, 54], [89, 54], [89, 66], [82, 66]]],
-      ['hearthvale', [[93, 62], [107, 58], [66, 58], [52, 62], [77, 37], [82, 37]]],
-      ['hearthvale', [[67, 70], [90, 70], [55, 73], [83, 81], [102, 82]]],
+      ['hearthvale', [[66, 58], [52, 62], [55, 73], [67, 70]]],
       ['weavers_row', [[66, 82], [73, 82]]],
+      ['hearthvale', [[83, 81], [90, 70], [102, 82], [107, 58], [93, 62], [77, 37], [82, 37]]],
       ['lamplight_lane', [[95, 47], [99, 47]]],
       ['lamplight_lane', [[109, 47], [109, 50]], true],
     ];

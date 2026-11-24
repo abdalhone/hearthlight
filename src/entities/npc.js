@@ -297,6 +297,8 @@ export class NPC extends Actor {
     r.lamp = null;
     r.lampIdx = 0;
     r.lampPhase = null;
+    r.roundDone = false;
+    this.speedMul = 1;
     if (!spot || this.distToPoint(spot.x, spot.y) < 4) {
       this.arrive();
       return;
@@ -850,6 +852,8 @@ export class NPC extends Actor {
   performLamps(dt, tick) {
     const r = this.r;
     const g = this.game;
+    // Slow everywhere else, brisk on his round: forty-one years and never late.
+    this.speedMul = r.roundDone ? 1 : 1.3;
     const route = this.lampRoute();
     const seen = this.visibleToPlayer(48);
     if (!r.lamp) {
@@ -866,7 +870,7 @@ export class NPC extends Actor {
         if (!r.roundDone) {
           r.roundDone = true;
           const spot = this.spotFor({ activity: 'socialize', at: 'lamplight_lane', near: ['bench'], pose: 'sit' });
-          r.entry = { ...r.entry, activity: 'socialize', at: 'lamplight_lane', near: ['bench'], pose: 'sit' };
+          r.entry = { ...r.entry, activity: 'socialize', at: 'lamplight_lane', near: ['bench'], pose: 'sit', doing: 'on the bench with Wenna, the lamps all lit' };
           this.activity = 'socialize';
           r.spot = spot;
           if (spot) {
@@ -888,7 +892,7 @@ export class NPC extends Actor {
         this.x = spot.x;
         this.y = spot.y;
       } else if (this.distToPoint(spot.x, spot.y) > 4) {
-        this.walkTo(spot, 0.95);
+        this.walkTo(spot, 1);
         return;
       }
     }

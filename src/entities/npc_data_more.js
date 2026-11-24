@@ -61,10 +61,10 @@ export const MORE_PROFILES = [
       { from: 7, to: 12, activity: 'work', at: 'chandlery', near: ['dipping_vat', 'vat', 'candle_rack', 'table'], doing: 'dipping candles from Wenna\'s wax' },
       { from: 12, to: 13, activity: 'eat', at: 'chandlery', doing: 'midday meal, and Lyra if she comes' },
       { from: 13, to: 16.5, activity: 'rest', at: 'chandlery', doing: 'resting his eyes in his chair' },
-      { from: 16.5, to: 17.75, activity: 'socialize', at: 'lamplight_lane', near: ['bench'], pose: 'sit', doing: 'on the bench with Wenna' },
-      { from: 17.75, to: 19.75, activity: 'lamps', at: 'town_square', doing: 'the lamp-round' },
-      { from: 19.75, to: 20.5, activity: 'socialize', at: 'lamplight_lane', near: ['bench'], pose: 'sit', doing: 'holding Wenna\'s hand on the bench' },
-      { from: 20.5, to: 23, activity: 'socialize', at: 'ember_kettle', near: ['table', 'chair'], pose: 'sit', doing: 'playing stones with Corran' },
+      { from: 16.5, to: 17.25, activity: 'socialize', at: 'lamplight_lane', near: ['bench'], pose: 'sit', doing: 'on the bench with Wenna' },
+      // The whole round, square to the far lamps; done early, he sits with Wenna (npc.js).
+      { from: 17.25, to: 21.5, activity: 'lamps', at: 'town_square', doing: 'the lamp-round' },
+      { from: 21.5, to: 23, activity: 'socialize', at: 'ember_kettle', near: ['table', 'chair'], pose: 'sit', doing: 'playing stones with Corran' },
     ],
     facts: [
       { id: 'hobb_lamps', text: 'Hobb has lit every lamp in Hearthvale for forty-one years and has never once been late. He is late for everything else.', minFamiliarity: 0, topic: 'work' },

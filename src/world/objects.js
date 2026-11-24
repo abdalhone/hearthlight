@@ -1311,7 +1311,7 @@ export class Fire extends WorldObject {
 //   lamp.needsLighting() -> on the round, still dark, and dusk has come
 // Nobody has to light them: whatever is still dark at LAMP_HOURS.selfLight lights itself
 // (Hobb may be downed), and every lamp goes out at dawn. Chapel candles never go out.
-export const LAMP_HOURS = { dusk: 17.5, selfLight: 21, out: 6, roundStart: 18.25, roundStep: 0.07 };
+export const LAMP_HOURS = { dusk: 17.25, selfLight: 21.5, out: 6, roundStart: 18.25, roundStep: 0.07 };
 
 export class Lamp extends WorldObject {
   constructor(game, o = {}) {

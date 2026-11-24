@@ -236,8 +236,8 @@ test('village lamps: a round in order, lit by hand or by themselves at full dark
   };
   step(19.5);
   assert.equal(round.filter((l) => l.state.lit).length, 1, 'waiting for Hobb');
-  step(21.5);
-  assert.ok(round.every((l) => l.state.lit), 'nobody lit them: they lit themselves at 21:00');
+  step(LAMP_HOURS.selfLight + 0.1);
+  assert.ok(round.every((l) => l.state.lit), 'nobody lit them: they lit themselves at full dark');
   // Dawn: all out.
   step(8);
   assert.ok(round.every((l) => !l.state.lit), 'out at dawn');
