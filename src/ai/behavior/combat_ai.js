@@ -247,20 +247,23 @@ export class CombatAI {
     }
 
     // Attacks: dagger up close when cornered (or the foe is a shooter), else a bolt.
-    if (d < 22 && (this.cornered > 0.2 || ranged || d < 13)) {
+    // Fighting for her life (opts.fierce) she strikes with the staff whenever they close
+    // in, harder, and her bolts come quicker.
+    const fierce = !!opts.fierce;
+    if (d < 22 && (this.cornered > 0.2 || ranged || d < 13 || fierce)) {
       st.stop();
       if (this.daggerCd <= 0) {
         a.faceToward(target.x, target.y);
-        const ok = safe('combat.melee', () => g.combat?.melee?.(a, { target }), false);
-        this.daggerCd = ok ? DAGGER_COOLDOWN : 0.25;
+        const ok = safe('combat.melee', () => g.combat?.melee?.(a, fierce ? { target, damageMul: 1.3, knockback: 90 } : { target }), false);
+        this.daggerCd = ok ? DAGGER_COOLDOWN * (fierce ? 1.2 : 1) : 0.25;
         if (ok) b.noteAttack(target);
       }
       return;
     }
-    if (this.boltCd <= 0 && los && d <= 170) this.shoot(target, d);
+    if (this.boltCd <= 0 && los && d <= 170) this.shoot(target, d, fierce);
   }
 
-  shoot(target, d) {
+  shoot(target, d, fierce = false) {
     const b = this.b;
     const g = b.game;
     const a = b.actor;
@@ -277,8 +280,8 @@ export class CombatAI {
       return false;
     }
     a.faceToward(target.x, target.y);
-    const pr = safe('combat.shoot', () => g.combat?.shoot?.(a, ax, ay, 'bolt', { target }), null);
-    this.boltCd = pr ? BOLT_COOLDOWN : 0.35;
+    const pr = safe('combat.shoot', () => g.combat?.shoot?.(a, ax, ay, 'bolt', fierce ? { target, damageMul: 1.25 } : { target }), null);
+    this.boltCd = pr ? BOLT_COOLDOWN * (fierce ? 0.8 : 1) : 0.35;
     if (pr) b.noteAttack(target);
     return !!pr;
   }

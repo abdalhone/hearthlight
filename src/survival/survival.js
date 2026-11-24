@@ -433,7 +433,9 @@ export class Survival {
     const ox = from?.x ?? F.x;
     const oy = from?.y ?? F.y;
     const lyra = g.companion;
-    if (lyra && canRespond(this, lyra)) {
+    // She holds back from the one she just fought down (DESIGN §16.6): she sends for Mira
+    // and the watch instead, and comes herself only if nobody does (behavior relents).
+    if (lyra && canRespond(this, lyra) && !safe(() => !!lyra.behavior?.holdsBackFrom?.(F), false)) {
       const cs = companionshipOf(lyra);
       const ears = cs === 'left' || cs === 'gone' ? LYRA_HEARS_APART : LYRA_HEARS;
       const d = Math.min(dist(lyra, F), Math.hypot(lyra.x - ox, lyra.y - oy));

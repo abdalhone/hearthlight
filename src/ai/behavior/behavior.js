@@ -47,6 +47,14 @@ export const HEAL_COOLDOWN = 12;
 export const LOW_HP = 0.35;
 const SUPPORT_HP = 0.5;
 const PLAYER_IDLE_LIFE = 6; // seconds the player stands still before her idle life starts
+// She fights back (DESIGN §16.6, r8): with everything she has, until they fall.
+const FIGHT_BIND_CD = 9; // the Stillring comes round faster when she fights for her life
+const FIGHT_HELP_GAP = 12; // she shouts for the watch again this often while nobody comes
+const FIGHT_LET_GO = 6; // seconds out of reach (they ran) before she lets them go
+const FIGHT_FAR = 18 * TILE;
+const FIGHT_HIT_STOP = 0.32; // the blow that drops them
+const AFTER_STAND = 3.2 * TILE; // where she stands while they lie there
+const AFTER_MAX = 150; // seconds she keeps watch over the fallen
 const FOLLOW_DEFAULT = Object.freeze({ type: 'follow', target: 'player', distance: 'normal' });
 
 const STANCE_WORDS = {
@@ -143,6 +151,8 @@ export class Behavior {
     this.deliberateHits = [0, 0, 0, 0].map(() => -99); // ring of times the player hit her on purpose
     this.hitI = 0;
     this.autoSD = null; // { prev, until } while self-defense was switched on by being attacked
+    this.fightBack = null; // { target, t, ... } while she fights someone until they fall (§16.6)
+    this.afterFight = null; // { target, t, ... } while they lie where she put them
     this.riskT = 0;
     this.riskSaidAt = -99;
     this.tendT = 2;
@@ -164,7 +174,10 @@ export class Behavior {
     bus.on('damage', (p) => this.onDamage(p));
     bus.on('attack', (p) => this.onAttack(p));
     bus.on('death', (p) => this.onDeath(p));
-    bus.on('downed', (p) => p?.entity === this.actor && this.onDowned());
+    bus.on('downed', (p) => {
+      if (p?.entity === this.actor) this.onDowned();
+      else if (this.fightBack && p?.entity === this.fightBack.target) this.onFoeDropped(p.by);
+    });
     bus.on('revived', (p) => p?.entity === this.actor && this.onRevived(p.by));
     bus.on('player_wake', () => this.onPlayerWake());
     bus.on('player_sleep', () => this.onPlayerSleep());
@@ -223,6 +236,263 @@ export class Behavior {
     if (recent >= 2 || s === 'left' || s === 'gone') this.enterSelfDefense();
   }
 
+  // ------------------------------------------------------------------ fighting back
+
+  // DESIGN §16.6 (r8; the author: "she can fight me until I die"): someone came at her
+  // meaning it — the player, again and again — and her mind chose to stand rather than
+  // run. She turns and fights with everything she has: the Stillring to hold them, bolts,
+  // staff strikes when they close in, cover and her own healing when she is hurt, and she
+  // shouts for the watch until someone comes. It ends when they fall (she never finishes
+  // them; §27 takes it from there), when they run out of reach, or when she breaks off.
+  startFightBack(target, opts = {}) {
+    const g = this.game;
+    const a = this.actor;
+    if (!target || target.type !== 'actor' || !isActorAlive(target) || a.downed) return { ok: false };
+    if (this.fightBack?.target === target) return { ok: true, already: true };
+    this.cancelTask();
+    this.idle.reset();
+    this.disengaging = null;
+    this.retreatT = 0;
+    this.afterFight = null;
+    this.steering.reset();
+    if (this.stance !== 'self_defense') this.setStance('self_defense');
+    this.autoSD = null;
+    this.fightBack = { target, t: 0, farT: 0, helpT: opts.calledHelp ? FIGHT_HELP_GAP : 0, lineT: 5 + rand() * 3, coverT: 0, coverCd: 4, cover: null, hurtSaid: false, askedBreak: false, lastStand: !!opts.lastStand, reason: opts.reason || 'attacked', downedBy: null };
+    this.focusTarget = target;
+    this.target = target;
+    a.faceToward(target.x, target.y);
+    safe('bubbles.icon', () => g.bubbles?.icon?.(a, 'anger'));
+    // The Stillring first, if they are in reach: hold them, then turn on them.
+    this.bindCd = 0;
+    const bound = this.bind(target);
+    this.bindCd = bound.ok ? FIGHT_BIND_CD : 0.6;
+    // What she says as she turns comes a beat after whatever she just said.
+    if (opts.say !== false) this.fightBack.pendingLine = { at: this.t + (bound.ok ? 1.6 : 0.8), text: opts.line || say.fightBackStart() };
+    safe('bus.emit', () => g.bus?.emit?.('lyra_fight', { phase: 'start', target, reason: this.fightBack.reason }));
+    return { ok: true };
+  }
+
+  fightingBack(e = null) {
+    return !!this.fightBack && (!e || this.fightBack.target === e);
+  }
+
+  // Survival asks before sending her to the one she just fought down (§27): she holds
+  // back and sends for Mira and the watch, until she relents.
+  holdsBackFrom(fallen) {
+    if (fallen && this.fightBack?.target === fallen) return true;
+    const af = this.afterFight;
+    return !!af && !af.relented && af.target === fallen;
+  }
+
+  endFightBack(reason = 'over') {
+    const fb = this.fightBack;
+    if (!fb) return;
+    const g = this.game;
+    const T = fb.target;
+    this.fightBack = null;
+    this.focusTarget = null;
+    this.target = null;
+    this.steering.reset();
+    const fallen = reason === 'fallen';
+    if (fallen) this.afterFight = { target: T, t: 0, said: !!fb.droppedSaid, fetched: false, relented: false, byHer: fb.downedBy === this.actor };
+    else if (reason === 'fled') this.say(say.fightBackLetGo(), { force: true, kind: 'shout' });
+    // Her stance comes back down once nobody is left to fight; her mind decides the rest.
+    this.autoSD = { prev: 'defend', until: this.t + (fallen ? 4 : 10), quiet: fallen };
+    safe('bus.emit', () => g.bus?.emit?.('lyra_fight', { phase: 'end', target: T, reason, byHer: fb.downedBy === this.actor, seconds: Math.round(fb.t) }));
+  }
+
+  // The fight-back blow that drops them: a beat of stillness, then her words.
+  onFoeDropped(by) {
+    const fb = this.fightBack;
+    if (!fb) return;
+    const g = this.game;
+    const a = this.actor;
+    const src = by && by.type === 'projectile' ? by.owner : by;
+    fb.downedBy = src || null;
+    if (src === a) {
+      g.hitStop = Math.max(g.hitStop || 0, FIGHT_HIT_STOP);
+      safe('camera.shake', () => g.camera?.shake?.(3, 0.3));
+      safe('lighting.flash', () => g.lighting?.flash?.({ x: fb.target.x, y: fb.target.y - 8, r: 70, color: '#cbbcff', intensity: 1, duration: 0.5 }));
+    }
+    fb.droppedSaid = this.say(say.fightBackDropped(), { force: true, kind: 'say' });
+  }
+
+  fightBackStep(dt) {
+    const fb = this.fightBack;
+    const g = this.game;
+    const a = this.actor;
+    const T = fb.target;
+    fb.t += dt;
+    if (!T || T.removed || T.dead) {
+      this.endFightBack('gone');
+      return false;
+    }
+    const fallen = !!(T.downed || safe('survival.isFallen', () => g.survival?.isFallen?.(T), false));
+    if (fallen) {
+      this.endFightBack('fallen');
+      return false;
+    }
+    const d = dist(a.x, a.y, T.x, T.y);
+    fb.farT = d > FIGHT_FAR ? fb.farT + dt : 0;
+    if (fb.farT > FIGHT_LET_GO) {
+      this.endFightBack('fled');
+      return false;
+    }
+    const frac = a.maxHp > 0 ? a.hp / a.maxHp : 1;
+    // Badly hurt mid-fight, she weighs it again: break off and run, or a last stand.
+    if (frac < 0.25 && !fb.askedBreak) {
+      fb.askedBreak = true;
+      const choice = safe('autonomy.fightOrFlee', () => a.mind?.autonomy?.fightOrFlee?.('hurt', { midFight: true }), 'fight');
+      if (choice === 'flee') {
+        if (this.fightBack) this.endFightBack('broke');
+        return false;
+      }
+      fb.lastStand = true;
+      if (!fb.hurtSaid) fb.hurtSaid = this.say(say.fightBackHurt(), { force: true, kind: 'say' });
+    }
+    // She shouts for the watch until someone comes (her mind's call carries her reasons).
+    fb.helpT -= dt;
+    if (fb.helpT <= 0) {
+      fb.helpT = FIGHT_HELP_GAP;
+      safe('autonomy.callForHelp', () => a.mind?.autonomy?.callForHelp?.(T, { reason: 'attacked', severity: 3 }));
+    }
+    // Hurt: a potion, or her own lumencraft from behind cover.
+    if (frac < 0.4 && this.potionCd <= 0 && a.inventory?.has?.('potion')) {
+      this.potionCd = 6;
+      if (this.consume('potion')) return true;
+    }
+    if (this.coverStep(dt, fb, T, d, frac)) return true;
+    // The Stillring first: hold them, then strike.
+    if (this.bindCd <= 0 && d < BIND_RANGE && !(T.rootTime > 0.4)) {
+      const r = this.bind(T);
+      if (r.ok) {
+        this.bindCd = FIGHT_BIND_CD;
+        return true;
+      }
+      this.bindCd = 0.8;
+    }
+    if (fb.pendingLine && this.t >= fb.pendingLine.at) {
+      this.say(fb.pendingLine.text, { force: true, kind: 'shout', target: T });
+      fb.pendingLine = null;
+    }
+    fb.lineT -= dt;
+    if (fb.lineT <= 0) {
+      fb.lineT = 7 + rand() * 5;
+      this.say(say.fightBackMid(), { kind: 'shout', target: T });
+    }
+    this.target = T;
+    this.focusTarget = T;
+    this.combatAI.fight(T, dt, { fierce: true, stayOut: false });
+    return true;
+  }
+
+  // Cover (hurt, and they are out of reach of a staff): a spot a few steps away where a
+  // wall or a trunk stands between them; she heals there, then comes back out.
+  coverStep(dt, fb, T, d, frac) {
+    const g = this.game;
+    const a = this.actor;
+    fb.coverCd -= dt;
+    if (fb.cover) {
+      fb.coverT += dt;
+      const c = fb.cover;
+      const arrived = this.steering.moveTo(c.x, c.y, dt, { arrive: 6, run: 1.35 }) === 'arrived';
+      if (arrived) {
+        this.steering.stop();
+        a.faceToward(T.x, T.y);
+        if (this.healCd <= 0) {
+          const amt = this.castHeal(a);
+          this.healCd = amt != null ? HEAL_COOLDOWN * 0.7 : 2;
+        }
+      }
+      const exposed = lineOfSight(g, a.x, a.y - 8, T.x, T.y - 8) && arrived;
+      if (fb.coverT > 3.5 || d < 34 || (exposed && fb.coverT > 1)) {
+        fb.cover = null;
+        fb.coverCd = 9;
+      }
+      return !!fb.cover;
+    }
+    if (fb.coverCd > 0 || frac >= 0.5 || d < 48 || this.healCd > 0) return false;
+    const spot = this.findCover(T);
+    fb.coverCd = spot ? 9 : 3;
+    if (!spot) return false;
+    fb.cover = spot;
+    fb.coverT = 0;
+    this.say(say.fightBackCover(), { kind: 'say' });
+    return true;
+  }
+
+  findCover(T) {
+    const g = this.game;
+    const a = this.actor;
+    let best = null;
+    let bestS = -Infinity;
+    for (let k = 0; k < 16; k++) {
+      const ang = (k / 16) * Math.PI * 2;
+      for (const r of [22, 36, 50]) {
+        const x = a.x + Math.cos(ang) * r;
+        const y = a.y + Math.sin(ang) * r;
+        if (!walkable(g, tileOf(x), tileOf(y), a)) continue;
+        if (lineOfSight(g, x, y - 8, T.x, T.y - 8)) continue;
+        if (!lineOfSight(g, a.x, a.y - 4, x, y - 4)) continue;
+        const away = dist(x, y, T.x, T.y) - dist(a.x, a.y, T.x, T.y);
+        const s = away * 0.5 - r * 0.4;
+        if (s > bestS) {
+          bestS = s;
+          best = { x, y };
+        }
+      }
+    }
+    return best;
+  }
+
+  // After the fight (§27 takes the fall): she stands off, says it is over, and sends for
+  // Mira and the watch. She never finishes them. If nobody comes and their time runs
+  // short, she comes herself (LORE §7: she never leaves a living person to die when she
+  // could carry them).
+  afterFightStep(dt) {
+    const af = this.afterFight;
+    const g = this.game;
+    const a = this.actor;
+    const T = af.target;
+    af.t += dt;
+    const sv = g.survival;
+    const rec = safe('survival.falls', () => sv?.falls?.get?.(T), null);
+    if (!T || T.removed || T.dead || !rec || af.t > AFTER_MAX || af.relented) {
+      this.afterFight = null;
+      return false;
+    }
+    if (!af.said && af.t > 0.9) af.said = this.say(say.fightBackDropped(), { force: true, kind: 'say' }) || true;
+    if (!af.fetched && af.t > 2.6) {
+      af.fetched = true;
+      this.say(say.fightBackFetch(), { force: true, kind: 'shout' });
+      // Her shout carries further than a fallen stranger's call.
+      safe('survival.alert', () => sv?.alert?.(rec, 460, { from: a }));
+      safe('bus.emit', () => g.bus?.emit?.('lyra_fight', { phase: 'fetch', target: T }));
+    }
+    // Nobody else has come, and their time is running short: she relents.
+    const others = [...(rec.responders || [])].some((e) => e !== a);
+    if (af.fetched && !others && !rec.carrier && rec.left < rec.window * 0.45) {
+      af.relented = true;
+      this.say(say.fightBackRelent(), { force: true, kind: 'say' });
+      safe('survival.assignJob', () => sv?.assignJob?.(a, rec, 'lyra'));
+      safe('bus.emit', () => g.bus?.emit?.('lyra_fight', { phase: 'relent', target: T }));
+      this.afterFight = null;
+      return false;
+    }
+    // Keep a few steps off, facing them.
+    const d = dist(a.x, a.y, T.x, T.y);
+    if (d < AFTER_STAND - 8) {
+      const ux = (a.x - T.x) / (d || 1);
+      const uy = (a.y - T.y) / (d || 1);
+      if (walkable(g, tileOf(a.x + ux * 12), tileOf(a.y + uy * 12), a)) this.steering.setIntent(ux, uy, 0.8, 1);
+      else this.steering.stop();
+    } else if (d > AFTER_STAND * 2.5) {
+      this.steering.moveTo(T.x, T.y, dt, { arrive: AFTER_STAND });
+    } else this.steering.stop();
+    a.faceToward(T.x, T.y);
+    return true;
+  }
+
   hostileWithin(r) {
     const g = this.game;
     const a = this.actor;
@@ -257,7 +527,7 @@ export class Behavior {
     this.autoSD = null;
     this.setStance(sd.prev || 'defend');
     const p = this.game.player;
-    if (p && dist(this.actor.x, this.actor.y, p.x, p.y) < 10 * TILE) this.say(say.selfDefenseOver());
+    if (!sd.quiet && p && dist(this.actor.x, this.actor.y, p.x, p.y) < 10 * TILE) this.say(say.selfDefenseOver());
   }
 
   // Is she fighting `e` because `e` attacked her? (For combat's friendly-fire rules.)
@@ -478,10 +748,14 @@ export class Behavior {
       this.steering.stop();
       return;
     }
+    // Fighting for her life (§16.6): nothing else until they fall, run, or she breaks off.
+    if (this.fightBack && this.fightBackStep(dt)) return;
     // Someone fell (§27): she comes, whatever is between them (LORE §7: she never leaves a
     // living person to die when she could carry them), or she lies abed at Mira's. While
     // something is still standing over them, her own fighting sense runs instead.
     if (this.game.survival?.stepActor?.(a, dt)) return;
+    // The one she fought lies where she put them: she keeps her distance and sends for help.
+    if (this.afterFight && this.afterFightStep(dt)) return;
     if (this.survival(dt)) return;
     if (this.preserve(dt)) return;
     if (this.support(dt)) return;

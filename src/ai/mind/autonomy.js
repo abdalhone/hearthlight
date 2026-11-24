@@ -38,6 +38,7 @@ const START_PURSE = 8; // a ranger's pocket money on the first morning
 const LEFT_TILES = 10; // how far she keeps from the player once she has left them
 const GONE_TILES = 12; // gone: further still, and she crosses the lane to keep it
 const HELP_GAP = 8; // seconds between calls for help, unless things get worse
+const ACCIDENT_GAP = 30; // stray clips within this count as one (a fight's worth)
 // What she shouts when she calls someone (LORE §7, "Lyra's people").
 const CALL_NAMES = { hobb: 'Da', wenna: 'Mam', sabeth: 'Beth', hess: 'Hess', wys: 'Wys', rowan: 'Rowan' };
 // Who she would not call into a fight: children, and the frail.
@@ -49,6 +50,7 @@ const CAUSES = {
   start: { reason: 'I chose to travel with you. I owe you for the wolves, and I’m curious about you.' },
   hit: { reason: 'You struck me with your sword, on purpose.', memo: '{P} struck me with their sword, on purpose. I am keeping my distance now.' },
   hit_again: { reason: 'You struck me with your sword. Twice. I don’t stay with someone who does that.', memo: '{P} struck me again. I bound them with light and got clear. I am done traveling with them.' },
+  lethal: { reason: 'You came at me to do me harm, again and again. I stood my ground.', memo: '{P} came at me again and again, meaning it. I fought them until they fell. I want nothing more to do with them, ever.' },
   hit_weave: { reason: 'You turned a weave on me, on purpose.', memo: '{P} turned a weave on me, on purpose. I am keeping my distance now.' },
   hit_again_weave: { reason: 'You turned your weaves on me. Twice. I don’t stay with someone who does that.', memo: '{P} turned a weave on me again. I bound them with light and got clear. I am done traveling with them.' },
   villager: { reason: 'You attacked {target}.', memo: '{P} attacked {target}. I never thought I would have to watch them like that.' },
@@ -79,6 +81,8 @@ const CAUSES = {
 // Gone (DESIGN §19.7, LORE §7 "Boundaries"): she cuts the player out of her life and keeps
 // her own. Hearthvale is her home; the road to Saltmere is something she thinks about.
 const FAREWELL_DIARY = {
+  lethal:
+    'Day {day}. {P} came at me — again and again, and they meant it. I didn’t run. I fought with everything Maren ever taught me, until they went down in the dirt, and then I stood there shaking and shouted for Mira. I didn’t finish it. I never would. I’ve handed back the Wayhouse key, and I’m {home}. This is my village, and I was here first.',
   downed:
     'Day {day}. I’m writing this {where} with my head still ringing. {P} struck me down — the same hands that stood beside me against the wolves on the King’s Road. I keep trying to make it mean something else. It doesn’t. Maren always said a lamp is for the lost and fire is for the wicked, and that you learn which is which by watching what people do when they think it costs them nothing. I watched. I’ve given the Wayhouse key back to Alder. When I see {P} coming, I’ll cross the lane. This is my village. I was here first.',
   villager:
@@ -556,6 +560,9 @@ export class Autonomy {
         case 'stance_changed':
           if (payload.stance !== 'attack') this.orderFight.attackMode = false;
           return undefined;
+        case 'lyra_fight':
+          if (payload.phase === 'end') return this._onFightEnd(payload);
+          return undefined;
         case 'game_start':
           if (!payload.loaded && !this.calibrated) this._calibrate();
           this.calibrated = true;
@@ -616,7 +623,15 @@ export class Autonomy {
     h.recordedT = now;
     const accident = ev.accident ? true : ev.deliberate ? false : first && this._hostileNear(this.lyra(), 48);
     h.lastWith = weave ? 'weave' : 'sword';
-    this.recordDeed(accident ? 'hit_lyra_accident' : 'hit_lyra', weave ? { with: 'weave' } : {});
+    if (accident) {
+      // A fight's worth of stray clips is one small wrong, not a dozen (LORE §7: she lets
+      // the small ones go): only the first in ACCIDENT_GAP goes on her ledger.
+      if (now - (h.accidentT ?? NEG_INF) < ACCIDENT_GAP) return;
+      h.accidentT = now;
+      this.recordDeed('hit_lyra_accident', weave ? { with: 'weave', text: 'Caught me with a weave meant for something else.' } : {});
+      return;
+    }
+    this.recordDeed('hit_lyra', weave ? { with: 'weave', text: 'Turned a weave on me, and meant it.' } : {});
   }
 
   _npcRec(id) {
@@ -919,6 +934,7 @@ export class Autonomy {
     const worthBefore = this.worthTrack.avg ?? this.worth().net;
     const entry = { t: Math.round(now * 10) / 10, day: this.day(), deed, severity: Math.round(severity * 100) / 100, text, victimId };
     if (opts.with) entry.with = String(opts.with);
+    if (opts.outcome) entry.outcome = String(opts.outcome);
     this.ledger.push(entry);
     this._trimLedger();
 
@@ -1035,6 +1051,12 @@ export class Autonomy {
         return `${P} was kind to ${victim}. ${entry.text}`;
       case 'reckless_order':
         return `${P} sent me into a fight that nearly killed me.`;
+      case 'lethal_attack':
+        return entry.outcome === 'fled'
+          ? `${P} came at me again and again, meaning it. I stood and fought, and they ran.`
+          : entry.outcome === 'broke'
+            ? `${P} came at me again and again, meaning it. I fought until I couldn't, then ran for my people.`
+            : `${P} came at me again and again, meaning it. I fought back until they fell — then I sent for Mira. I didn't finish it.`;
       case 'hit_lyra_accident':
         return entry.with === 'weave' ? `${P} caught me with a weave meant for something else. An accident, I think.` : `${P} caught me with their sword in the fight. An accident, I think.`;
       case 'hit_lyra':
@@ -1152,17 +1174,27 @@ export class Autonomy {
     const twoDays = 2 * this.daySeconds();
     switch (deed) {
       case 'hit_lyra': {
+        // Already fighting back: one more blow is part of the fight she chose.
+        if (this.behavior()?.fightingBack?.(this.player())) return;
         const hitsBefore = this.ledger.filter((e) => e.deed === 'hit_lyra' && now - e.t <= twoDays).length - 1;
-        if (st === 'left' && this._violenceCount(twoDays) >= 3) {
-          this._goGone('violence', 'to_gone_violence', vars);
-          this.callForHelp(this.player(), { reason: 'attacked', severity: 3, run: true });
-          return;
-        }
-        // A second blow ends it, and so does a first one when staying was already barely worth it.
+        // A second blow ends it, and so does a first one when staying was already barely
+        // worth it. Coming at her again is meaning it (DESIGN §16.6, r8): she weighs, once,
+        // whether to stand and fight until they fall, or to run to her people.
         if (hitsBefore >= 1 || info.worthBefore < WORTH.wary || st === 'left') {
+          const fight = this.fightWorth().fight;
+          // She says why, once, plainly (LORE §7); then she acts.
           if (st !== 'left') this.setCompanionship('left', '', { cause: this.hit.lastWith === 'weave' ? 'hit_again_weave' : 'hit_again', lineKey: 'to_left_hit' });
-          else this.say(this.line('to_left_hit'), { force: true });
-          this._bindAndRun();
+          if (fight) {
+            this.fightOrFlee('hit_again');
+            return;
+          }
+          if (st === 'left' && this._violenceCount(twoDays) >= 3) {
+            this._goGone('violence', 'to_gone_violence', vars);
+            this.callForHelp(this.player(), { reason: 'attacked', severity: 3, run: true });
+            return;
+          }
+          if (st === 'left') this.say(this.line('to_left_hit'), { force: true });
+          this.fightOrFlee('hit_again', { decided: 'flee' });
           // Her village answers when she calls (DESIGN §19.7).
           this.callForHelp(this.player(), { reason: 'attacked', severity: st === 'left' ? 3 : 2 });
           return;
@@ -1245,6 +1277,90 @@ export class Autonomy {
         return;
       default:
         return;
+    }
+  }
+
+  // ------------------------------------------------------------------ fight or flee
+
+  // DESIGN §16.6 (r8; the author: "she can fight me until I die — something cooler"):
+  // the stranger came at her again, meaning it. She weighs it by her state — how hurt she
+  // is, her fear and her anger, how badly she is outmatched, whether help is near, her
+  // nature — and either stands and fights with everything she has until they fall
+  // (behavior's fight-back; the watch and Hess answer her call), or binds them if they are
+  // close and runs to her people (today's way). LORE §7: she never threatens; she
+  // defends herself. { fight, risk, will, mine, theirs, power, fear, anger, helpNear }
+  fightWorth() {
+    const l = this.lyra();
+    const p = this.player();
+    const mine = l?.maxHp ? clamp(l.hp / l.maxHp, 0, 1) : 1;
+    const theirs = p?.maxHp ? clamp(p.hp / p.maxHp, 0, 1) : 1;
+    const theirAtk = num(p?.attackPower, num(p?.atk, 6));
+    const myAtk = Math.max(1, num(l?.attackPower, num(l?.atk, 7)));
+    // How badly she is outmatched: their strength left against hers.
+    const power = (theirAtk * (0.4 + 0.6 * theirs)) / (myAtk * (0.4 + 0.6 * mine));
+    const fear = this.stats().fear;
+    const anger = clamp(num(this.mind?.emotions?.anger, 0), 0, 1);
+    const P = this.personality();
+    const helpNear = !!l && this._helpersNear(l, 24 * TILE, p).length > 0;
+    const risk = (1 - mine) * 2.6 + Math.max(0, power - 1) * 1.1 + Math.max(0, fear - 55) / 22 + (num(P.neuroticism, 0.4) - 0.4) * 1.5;
+    const will = 1.1 + anger * 0.8 + (helpNear ? 0.5 : 0) + (num(P.extraversion, 0.65) - 0.5) * 0.6 + (mine > 0.8 ? 0.3 : 0);
+    const r2 = (v) => Math.round(v * 100) / 100;
+    return { fight: will > risk, risk: r2(risk), will: r2(will), mine: r2(mine), theirs: r2(theirs), power: r2(power), fear: Math.round(fear), anger: r2(anger), helpNear };
+  }
+
+  // Act on it. Returns 'fight' or 'flee'. opts: { midFight (she is already fighting and
+  // badly hurt: a last stand, or she breaks off), decided ('fight'|'flee' to skip weighing) }.
+  fightOrFlee(reason = 'attacked', opts = {}) {
+    const w = this.fightWorth();
+    const choice = opts.decided || (w.fight ? 'fight' : 'flee');
+    const p = this.player();
+    const l = this.lyra();
+    this.lastFightChoice = { t: this.now(), reason, choice, ...w };
+    try {
+      this.game?.bus?.emit?.('lyra_fight', { phase: 'decide', choice, reason, worth: w, target: p });
+    } catch (err) {
+      console.error('[autonomy] fight event failed', err);
+    }
+    if (choice === 'fight') {
+      if (opts.midFight) return 'fight';
+      // Going at her like that is assault in Hearthvale: the watch and Hess answer her call.
+      try {
+        this.game?.combat?.markWanted?.(p, l, 'assault');
+      } catch (err) {
+        console.error('[autonomy] could not tell the watch', err);
+      }
+      this.fight = { t: this.now(), reason };
+      this.behavior()?.startFightBack?.(p, { reason });
+      this.callForHelp(p, { reason: 'attacked', severity: 3 });
+      return 'fight';
+    }
+    if (opts.midFight) {
+      this.fight = this.fight || { t: this.now(), reason };
+      this.fight.broke = true;
+      this.behavior()?.endFightBack?.('broke');
+      this.callForHelp(p, { reason: 'hurt', severity: 3, run: true });
+    }
+    this._bindAndRun();
+    return 'flee';
+  }
+
+  // The fight she chose is over (behavior's 'lyra_fight' end): what it leaves behind.
+  _onFightEnd(p) {
+    const f = this.fight;
+    if (!f || f.done) return;
+    f.done = true;
+    const outcome = p.reason === 'fallen' ? 'fallen' : p.reason === 'fled' ? 'fled' : p.reason === 'broke' || f.broke ? 'broke' : p.reason || 'over';
+    // She cuts them out of her life (quietly: she has said what she had to), then it is
+    // written down: her memory, her diary, and the village's talk.
+    if (this.companionship !== 'gone') this.setCompanionship('gone', '', { cause: 'lethal', goneReason: 'lethal', silent: true });
+    this.recordDeed('lethal_attack', { outcome, with: this.hit.lastWith });
+    // The village tells it the way it ended.
+    try {
+      const v = this.game?.village;
+      const P = this.player();
+      if (outcome === 'fallen' && v?.addRumor) v.addRumor('lyra_fought_down', { victim: 'lyra', witnesses: ['lyra', ...(v.witnessesNear?.(P?.x ?? 0, P?.y ?? 0, 240) || [])], source: 'lyra', about: 'lyra' });
+    } catch (err) {
+      console.error('[autonomy] fight rumor failed', err);
     }
   }
 

@@ -14,6 +14,8 @@ const CAP = 40;
 // What each notable event becomes. `you` is the same news said to the player's face.
 export const RUMOR_KINDS = {
   downed_lyra: { text: '{stranger} knocked {lyra} senseless', you: 'you knocked Lyra senseless', valence: -1, severity: 1, victim: 'lyra' },
+  lethal_attack: { text: '{stranger} went at {lyra} again and again, meaning harm', you: 'you went at Lyra meaning harm', valence: -1, severity: 1, victim: 'lyra' },
+  lyra_fought_down: { text: '{lyra} stood her ground against {stranger} and put them in the dirt', you: 'Lyra put you in the dirt', valence: -0.6, severity: 0.9, victim: 'lyra', about: 'lyra' },
   hit_lyra: { text: '{stranger} struck {lyra} with a blade', you: 'you struck Lyra', valence: -0.85, severity: 0.85, victim: 'lyra' },
   abandoned_downed: { text: '{stranger} left {lyra} lying hurt in the dirt', you: 'you left Lyra lying hurt', valence: -0.7, severity: 0.7, victim: 'lyra' },
   downed_villager: { text: '{stranger} beat {v} senseless', you: 'you beat {v} senseless', valence: -1, severity: 0.95 },
