@@ -26,6 +26,7 @@ import { Mind } from '../src/ai/mind/mind.js';
 import { DEFAULT_SOUL, LYRA_PEOPLE, PLAYER_REL_START } from '../src/ai/mind/soul.js';
 import { availableFacts, factHiddenFrom } from '../src/ai/mind/conversation.js';
 import { MAREN_JOURNAL, MAREN_TESTIMONY, marenAnswer } from '../src/ai/mind/maren.js';
+import { firstPerson, toListener } from '../src/ai/mind/voice.js';
 import { T } from '../src/ai/mind/autonomy_data.js';
 import { STORY, BOOK_CHAPTERS, STORY_VILLAGERS } from '../src/lore/story.js';
 import { Lorebook } from '../src/lore/lorebook.js';
@@ -336,5 +337,16 @@ test('offline, she keeps her pride, her secrets and her home; the stranger is "y
     const a = await ask(q);
     for (const re of want) assert.match(a, re, `"${q}" -> ${a}`);
     for (const re of never) assert.doesNotMatch(a, re, `"${q}" -> ${a}`);
+  }
+});
+
+test('every story text she may tell reads right in her mouth: Lyra is I, the stranger is you (story.js header)', () => {
+  for (const kind of ['world', 'timeline', 'places', 'people']) {
+    for (const e of STORY[kind]) {
+      const said = toListener(firstPerson(e.text, 'Lyra'), { aboutPlayer: (e.tags || []).includes('player') });
+      assert.doesNotMatch(said, /\bme (?!included\b)(?:[a-z]+ed|came|went|took|saw|heard|paid|made|can|could|will|would|lights?)\b|\bI (?:as|a)\b/, `${kind}:${e.id} -> ${said}`);
+      assert.doesNotMatch(said, /\bthe stranger\b/i, `${kind}:${e.id} -> ${said}`);
+      assert.doesNotMatch(said.replace(/'Lyra'/g, ''), /\bLyra\b/, `${kind}:${e.id} -> ${said}`);
+    }
   }
 });

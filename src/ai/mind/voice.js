@@ -432,13 +432,19 @@ function firstPersonVerb(v) {
 }
 export function firstPerson(text, name = 'Lyra') {
   const n = String(name || 'Lyra').replace(/[.*+?^${}()|[\]\\]/g, '');
+  // Her name in quotes is a name ("lamplighters call it 'Lyra'"), not her.
+  const bare = `(?<!['"\u2018\u201c])\\b${n}`;
+  const NOT_VERB = '(?!(?:as|us|plus|thus|less|unless|across|perhaps|included)\\b)';
   return String(text || '')
     .replace(new RegExp(`\\b${n} Ambrel\\b`, 'g'), n)
-    .replace(new RegExp(`\\b${n}'s\\b`, 'g'), 'my')
-    .replace(new RegExp(`\\b${n} and ([A-Z][a-z]+)\\b`, 'g'), '$1 and I')
-    .replace(new RegExp(`\\b${n} (has|is|was|does|goes|[a-z]+s)\\b`, 'g'), (m, v) => `I ${firstPersonVerb(v)}`)
-    .replace(new RegExp(`(^|[.!?]\\s+)${n}\\b`, 'g'), '$1I')
-    .replace(new RegExp(`\\b${n}\\b`, 'g'), 'me')
+    .replace(new RegExp(`${bare}'s\\b`, 'g'), 'my')
+    .replace(new RegExp(`${bare} and ([A-Z][a-z]+)\\b`, 'g'), '$1 and I')
+    .replace(new RegExp(`${bare} ${NOT_VERB}(has|is|was|does|goes|[a-z]+s)\\b`, 'g'), (m, v) => `I ${firstPersonVerb(v)}`)
+    // "Lyra climbed", "Lyra heard", "Lyra can": the past and the modals keep their form
+    // (but "everyone born here, Lyra included" is "me included").
+    .replace(new RegExp(`${bare} ${NOT_VERB}(can|could|will|would|should|must|might|may|did|had|[a-z]+ed|came|went|took|saw|lit|found|heard|knew|left|got|paid|made|said|told|sat|ran|fell|bit|kept|felt|held|met|put|stood|thought|wrote|gave|brought|bought|caught|lent|spent|swore|wore|chose|rode|won|lost)\\b`, 'g'), 'I $1')
+    .replace(new RegExp(`(^|[.!?]\\s+)${n}\\b(?!['"\u2019\u201d])`, 'g'), '$1I')
+    .replace(new RegExp(`${bare}\\b(?!['"\u2019\u201d])`, 'g'), 'me')
     .replace(/(^|[.!?]\s+)(my|me)\b/g, (m, a, w) => `${a}${w === 'my' ? 'My' : 'Me'}`);
 }
 
