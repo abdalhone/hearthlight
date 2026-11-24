@@ -320,7 +320,18 @@ export class Renderer {
       ctx.globalCompositeOperation = 'source-over';
     }
 
-    // 5c. Health bars over whoever was just hurt (screen space: they read at night).
+    // 6. Text and markers.
+    try {
+      g.bubbles?.draw(ctx, this, { numbers: false });
+    } catch (err) {
+      this._report('bubbles', err);
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+
+    // 7. Hits read over everything in the world, speech included (in a fight everyone
+    // shouts): health bars over whoever was just hurt, then the damage numbers.
     try {
       this.healthBars.draw(ctx, this, dt);
     } catch (err) {
@@ -328,12 +339,10 @@ export class Renderer {
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
-
-    // 6. Text and markers.
     try {
-      g.bubbles?.draw(ctx, this);
+      if (g.bubbles?.drawNumbers) g.bubbles.drawNumbers(ctx, this);
     } catch (err) {
-      this._report('bubbles', err);
+      this._report('numbers', err);
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;

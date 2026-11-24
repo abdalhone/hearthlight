@@ -566,3 +566,47 @@ test('damage numbers read on any ground: essence tints are lifted toward white',
   assert.equal(readableFill('#ffffff'), '#ffffff');
   assert.ok(numberStyle('damage', '9').scale >= 1.25, 'damage numbers are big');
 });
+
+test('a crowd all shouting at once: a small screen shows Lyra, the player and the nearest few', () => {
+  const g = bubbleGame();
+  const player = { id: 'player', x: 0, y: 0 };
+  const lyra = { id: 'lyra', name: 'Lyra', x: 20, y: 0 };
+  g.player = player;
+  g.companion = lyra;
+  const b = new Bubbles(g);
+  const crowd = [];
+  for (let i = 0; i < 9; i++) crowd.push({ id: `v${i}`, name: `V${i}`, x: -60 + (i % 3) * 50, y: -40 + Math.floor(i / 3) * 40, profile: {} });
+  // Farthest first, so newest-first ordering alone would keep the wrong ones.
+  for (const v of crowd.slice().reverse()) b.say(v, 'Guards! Help!', { kind: 'shout' });
+  b.say(lyra, 'Stay back!', { kind: 'shout' });
+  b.say(player, 'Hey.');
+  const ctx = { measureText: (s) => ({ width: String(s).length * 7 }) };
+  const layout = (W, H) => {
+    ctx.canvas = { width: W, height: H };
+    const r = { scale: 3, dpr: 1, ox: -W / 6, oy: -H / 6, subX: 0, subY: 0 };
+    b._dpr = 1;
+    b._metrics(r);
+    b._layoutBubbles(ctx, r, W, H);
+    return b._vis.map((x) => x.entity.id);
+  };
+  const phone = layout(844, 340);
+  assert.ok(phone.length <= 4, `a sideways phone shows few bubbles (${phone.length})`);
+  assert.ok(phone.includes('lyra') && phone.includes('player'), 'hers and the player’s first');
+  const others = phone.filter((id) => id !== 'lyra' && id !== 'player');
+  const dist = (id) => {
+    const v = crowd.find((c) => c.id === id);
+    return Math.hypot(v.x, v.y);
+  };
+  const nearest = crowd.map((c) => c.id).sort((a, c) => dist(a) - dist(c));
+  for (const id of others) assert.ok(nearest.slice(0, others.length + 1).includes(id), `${id} is among the nearest`);
+  // None of them covers the player or Lyra.
+  const bodies = b._fixed.filter((o) => o === b._bodyRects[0] || o === b._bodyRects[1]);
+  assert.equal(bodies.length, 2);
+  for (const v of b._vis) {
+    const L = v.layout;
+    for (const o of bodies) assert.ok(!(L.x < o.x + o.w && L.x + L.w > o.x && L.y < o.y + o.h && L.y + L.h > o.y), `${v.entity.id}'s bubble covers someone in the party`);
+  }
+  const desk = layout(1280, 720);
+  assert.ok(desk.length > phone.length, 'a big screen shows more');
+  assert.equal(b.items.length, 11, 'nobody’s words are lost, only not drawn');
+});

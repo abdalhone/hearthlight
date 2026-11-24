@@ -432,7 +432,10 @@ export class Bubbles {
     return out;
   }
 
-  draw(ctx, r) {
+  // Name tags, speech bubbles, icons and the companion marker, then the floating numbers
+  // on top (a hit must read even while everyone is shouting). opts.numbers false leaves
+  // the numbers for drawNumbers (the renderer puts health bars between the two).
+  draw(ctx, r, opts = {}) {
     if (!r) return;
     this._dpr = r.dpr || 1;
     this._metrics(r);
@@ -443,11 +446,25 @@ export class Bubbles {
     ctx.textBaseline = 'middle';
     const playing = this.game?.state === 'playing' || this.game?.state === 'sleeping';
     if (playing) this._drawNameTags(ctx, r);
-    this._drawNumbers(ctx, r, W, H);
     this._layoutBubbles(ctx, r, W, H);
     for (let i = 0; i < this._vis.length; i++) this._drawBubble(ctx, this._vis[i], r);
     this._drawIcons(ctx, r, W, H);
     if (playing) this._drawCompanionMarker(ctx, r, W, H);
+    if (opts.numbers !== false) this.drawNumbers(ctx, r);
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  // The floating numbers alone (damage, heals, xp), over everything else in the world.
+  drawNumbers(ctx, r) {
+    if (!r) return;
+    this._dpr = r.dpr || 1;
+    this._metrics(r);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.imageSmoothingEnabled = false;
+    ctx.textBaseline = 'middle';
+    this._drawNumbers(ctx, r, ctx.canvas.width, ctx.canvas.height);
     ctx.globalAlpha = 1;
     ctx.textAlign = 'left';
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -547,11 +564,15 @@ export class Bubbles {
       vis.push(b);
     }
     vis.sort(byPriority);
-    // The HUD boxes go first and never move; the bubbles find room around them.
+    this._crowd(vis, r, W, H);
+    // The HUD boxes go first and never move, then the player and Lyra themselves (a
+    // bubble pushed around by a crowd must not hide the two people the scene is about);
+    // the bubbles find room around them.
     const rects = this._rects;
-    const nk = vis.length ? ko.length : 0;
+    const fixed = vis.length ? this._partyBodies(r, W, H, ko) : ko;
+    const nk = vis.length ? fixed.length : 0;
     rects.length = nk + vis.length;
-    for (let i = 0; i < nk; i++) rects[i] = ko[i];
+    for (let i = 0; i < nk; i++) rects[i] = fixed[i];
     for (let i = 0; i < vis.length; i++) rects[nk + i] = vis[i].layout;
     stackRects(rects, rects.length, 2 * u, margin, H, W, nk);
     // A bubble that slid sideways keeps its tail over the speaker.
@@ -561,6 +582,50 @@ export class Bubbles {
       const hi = L.x + L.w - 7 * u;
       L.tailX = lo <= hi ? Math.min(hi, Math.max(lo, L.ax)) : L.x + L.w / 2;
     }
+  }
+
+  // The keep-outs plus the player's and Lyra's bodies on screen (device px), as fixed rects.
+  _partyBodies(r, W, H, ko) {
+    const out = this._fixed || (this._fixed = []);
+    out.length = 0;
+    for (let i = 0; i < ko.length; i++) out.push(ko[i]);
+    const pool = this._bodyRects || (this._bodyRects = [{ fixed: true }, { fixed: true }]);
+    const g = this.game;
+    const party = [g?.player, g?.companion];
+    for (let k = 0; k < 2; k++) {
+      const e = party[k];
+      if (!e || e.removed || e.hidden || !Number.isFinite(e.x)) continue;
+      const ax = this._dx(r, e.x);
+      const top = this._dy(r, e.y - headHeight(e) - (e.z || 0));
+      const foot = this._dy(r, e.y) + 2 * r.scale;
+      if (ax < -8 || ax > W + 8 || foot < 0 || top > H) continue;
+      const o = pool[k];
+      o.x = ax - 6 * r.scale;
+      o.y = top;
+      o.w = 12 * r.scale;
+      o.h = Math.max(0, foot - top);
+      out.push(o);
+    }
+    return out;
+  }
+
+  // A crowd all shouting at once (a fight in the square: the whole village calls out)
+  // would bury the screen, and the people it is about, under bubbles. A small screen
+  // shows only as many as it has room for: Lyra's, the player's, then those nearest the
+  // player; the rest still speak (their words age and go) but are not drawn.
+  _crowd(vis, r, W, H) {
+    const dpr = this._dpr || 1;
+    const cap = Math.max(3, Math.min(7, Math.round((W / dpr) * (H / dpr) / 90000)));
+    if (vis.length <= cap) return;
+    const p = this.game?.player;
+    const px = p ? p.x : r.ox + W / 2 / r.scale;
+    const py = p ? p.y : r.oy + H / 2 / r.scale;
+    const rank = (b) => (b.entity.id === COMPANION_ID ? -2 : b.entity.id === PLAYER_ID ? -1 : Math.hypot(b.entity.x - px, b.entity.y - py));
+    const keep = vis.slice().sort((a, b) => rank(a) - rank(b)).slice(0, cap);
+    const kept = new Set(keep);
+    let n = 0;
+    for (let i = 0; i < vis.length; i++) if (kept.has(vis[i])) vis[n++] = vis[i];
+    vis.length = n;
   }
 
   _drawBubble(ctx, b, r) {

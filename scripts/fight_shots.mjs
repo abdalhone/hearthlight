@@ -135,6 +135,14 @@ async function hits(size) {
     window.__slime.dead = true;
     g.magic.cooldowns?.fill?.(0);
     g.magic.mana.cur = g.magic.mana.max;
+    // Villagers who came to look at the slime stand back (a weave hits whoever is in its
+    // way: this scene is about Lyra), and she stands where she was put.
+    for (const e of g.entities.all()) {
+      if (e === p || e === l || e.type !== 'actor' || !e.profile) continue;
+      if (Math.hypot(e.x - p.x, e.y - p.y) < 140) e.x = p.x - 180 - Math.random() * 40;
+    }
+    window.__hitLog = [];
+    g.bus.on('spell_hit', (e) => window.__hitLog?.push(e.target?.id || e.target?.species || '?'));
     l.invuln = 0;
     const hp = l.hp;
     const dx = l.x - p.x;
@@ -143,10 +151,11 @@ async function hits(size) {
     const r = g.magic.cast(p, 0, { x: p.x + (dx / d) * 140, y: p.y - 7 + (dy / d) * 140, auto: false });
     return { ok: r.ok, friendly: !!r.cast?.friendly, hp };
   });
-  await page.waitForTimeout(260);
+  await page.waitForTimeout(320);
   await page.screenshot({ path: `${out}/${label}-3-lyra.png` });
   const after = await page.evaluate(() => window.__game.companion.hp);
-  const row = { label, cast: r1, shown, lyra: { ...lyraHit, after }, errors };
+  const hitWho = await page.evaluate(() => window.__hitLog || []);
+  const row = { label, cast: r1, shown, lyra: { ...lyraHit, after, hit: hitWho }, errors };
   console.log(JSON.stringify(row));
   if (!r1.ok || !shown.bars.length || shown.slime >= 40 || !lyraHit.friendly || !(after < lyraHit.hp) || errors.length) failures.push(label);
   await context.close();
