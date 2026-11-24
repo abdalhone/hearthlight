@@ -78,7 +78,7 @@ export const MISSIONS = [
     ],
     // Raw violet is what they already weave; naming it is part of the lesson.
     rewards: [M('essence', 'raw'), M('shape', 'strike'), { xp: 10 }],
-    tip: { desk: 'Press B to open your Spellbook: put Strike on a weave slot, then cast it with 1–4.', touch: 'Open your Spellbook (the book button) and put Strike on a weave button.' },
+    tip: { desk: 'Press B to open your Spellbook: put Strike on a weave slot, then cast it with 1–4.', touch: 'Open your Spellbook (Menu → Spellbook, or tap + New on your weave buttons) and put Strike on a weave button.' },
     lyra: { done: 'Wicks and ashes. Nobody can do that.' },
   },
 

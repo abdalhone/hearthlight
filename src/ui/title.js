@@ -194,6 +194,18 @@ export class TitleScreen {
     if (prev) this.ui.closeModal(prev, true);
     const panel = makePanel({ id: 'howto', title: 'How to play', subtitle: 'Hearthvale, Lyra, and you', iconName: 'hand', cls: 'panel-wide' });
     let target = null;
+    // The magic lessons, again: they point at the real buttons as they become relevant.
+    const coach = this.ui.coach;
+    let lessons = null;
+    if (coach) {
+      const replay = h('button', { type: 'button', class: 'btn btn-ember how-replay', text: 'Replay the magic lessons' });
+      replay.addEventListener('click', () => {
+        coach.replay();
+        setText(replay, this.game.state === 'playing' ? 'They start when you are back in the world' : 'They start in your next game');
+        replay.disabled = true;
+      });
+      lessons = h('section', { class: 'box how how-lessons' }, h('h3', { text: 'Magic, step by step' }), h('p', { text: 'Short lessons that point at the real buttons: casting, aiming, mana, your weave buttons, and making weaves in the Spellbook.' }), replay);
+    }
     for (const sec of HOW_TO_PLAY) {
       const box = h('section', { class: `box how how-${sec.id}`, 'data-section': sec.id }, h('h3', { text: sec.title }));
       if (sec.controls) box.append(...this.controlsBlock());
@@ -205,6 +217,7 @@ export class TitleScreen {
       }
       if (sec.id === section) target = box;
       panel.body.append(box);
+      if (lessons && sec.id === 'controls') panel.body.append(lessons);
     }
     this.ui.openModal(panel);
     if (target && target !== panel.body.firstElementChild) requestAnimationFrame(() => (panel.body.scrollTop = target.offsetTop - panel.body.offsetTop));

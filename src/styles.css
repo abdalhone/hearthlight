@@ -8322,3 +8322,327 @@ input[type='range']::-moz-range-thumb {
     grid-row: 2;
   }
 }
+
+/* ---------- the Spellbook: your weaves, then steps 1–4, one scroll ---------- */
+
+.sb-slots {
+  flex: none;
+}
+.sb-tabs-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 4px;
+}
+.sb-tabs-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-s);
+  color: var(--ember);
+}
+.sb-tabs-help {
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+}
+.panel-spellbook .sb-tabs {
+  flex-direction: row;
+  overflow-x: auto;
+  overflow-y: visible;
+  gap: 8px;
+  padding: 4px 4px 8px;
+}
+.panel-spellbook .sb-tab {
+  width: auto;
+  min-width: 64px;
+  max-width: 96px;
+  height: 58px;
+  padding: 4px 6px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.panel-spellbook .sb-tab-glyph {
+  width: calc(var(--gw, 11) * 2px);
+  height: calc(var(--gh, 11) * 2px);
+}
+.sb-tab-name {
+  max-width: 100%;
+  font-family: var(--font-display);
+  font-size: 11px;
+  line-height: 1.1;
+  color: var(--parch-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sb-tab.empty .sb-tab-name,
+.sb-tab.empty .sb-tab-plus {
+  color: var(--ember);
+}
+.sb-tab.empty {
+  --bc: var(--ember-deep);
+}
+.sb-tab-plus {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.sb-sec-title {
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sb-step {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  background: var(--arcane-deep);
+  color: #fff;
+  font-size: 12px;
+  letter-spacing: 0;
+  box-shadow: 0 0 0 2px var(--arcane);
+}
+.sb-sec-name {
+  font-size: var(--fs-m);
+  color: var(--parch);
+  letter-spacing: 0.02em;
+}
+.sb-sec-help {
+  font-family: var(--font-body);
+  font-size: var(--fs-xs);
+  letter-spacing: 0;
+  color: var(--parch-dim);
+}
+.sb-sec-title .sb-count {
+  margin-left: auto;
+}
+.sb-sec {
+  padding: 8px;
+  margin-bottom: 8px;
+  background: rgba(10, 9, 25, 0.25);
+}
+/* The step to take next glows. */
+.sb-sec.sb-next {
+  box-shadow:
+    0 0 0 2px var(--ember),
+    0 0 18px rgba(255, 176, 71, 0.25);
+}
+.sb-sec.sb-next .sb-step {
+  background: var(--ember);
+  color: #2a1606;
+  box-shadow: 0 0 0 2px var(--ember-hot);
+}
+.sb-next-line {
+  margin: 4px 0 6px;
+  padding: 6px 8px;
+  font-size: var(--fs-s);
+  color: var(--ember-hot);
+  background: rgba(255, 176, 71, 0.1);
+  box-shadow: inset 2px 0 0 var(--ember);
+}
+.sb-next-line[hidden] {
+  display: none;
+}
+.sb-more {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--line-dim);
+  color: var(--parch-dim);
+}
+.sb-more-n {
+  font-family: var(--font-display);
+  font-size: var(--fs-l);
+  line-height: 1;
+  color: var(--parch-2);
+}
+.sb-foot-note.is-saved {
+  color: var(--heal);
+}
+.sb-done {
+  min-width: 96px;
+}
+
+/* Bigger tiles under a thumb. */
+.is-touch .panel-spellbook .sb-grid {
+  grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
+  gap: 8px;
+}
+.is-touch .panel-spellbook .sb-tile {
+  min-height: 66px;
+}
+.is-touch .panel-spellbook .sb-copy-btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* A phone: the whole book is one scroll (no box scrolls inside another). */
+@media (max-width: 640px), (max-height: 520px) {
+  .panel-spellbook .panel-body {
+    display: block;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 8px 10px 12px;
+  }
+  .panel-spellbook .sb-main {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+  }
+  .panel-spellbook .sb-col,
+  .panel-spellbook .sb-build-col,
+  .panel-spellbook .sb-preview-col {
+    overflow: visible;
+    min-height: 0;
+  }
+  .panel-spellbook .sb-stats {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .panel-spellbook .sb-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+  }
+  .panel-spellbook .sb-stat-label {
+    font-size: 10px;
+  }
+  .panel-spellbook .sb-foot-note {
+    font-size: var(--fs-xs);
+  }
+}
+/* Sideways: the preview card stays in view on the left while the steps scroll on the
+   right, under the row of your weaves. */
+@media (max-height: 520px) and (min-width: 600px) {
+  .panel-spellbook .sb-main {
+    display: grid;
+    grid-template-columns: 250px minmax(0, 1fr);
+    align-items: start;
+  }
+  .panel-spellbook .sb-preview-col {
+    position: sticky;
+    top: 0;
+    gap: 6px;
+  }
+  .panel-spellbook .sb-canvas {
+    aspect-ratio: 200 / 64;
+  }
+  .panel-spellbook .sb-tabs {
+    padding-bottom: 4px;
+  }
+  .panel-spellbook .sb-tab {
+    height: 50px;
+  }
+  .panel-spellbook .sb-tabs-head {
+    display: none;
+  }
+}
+@media (max-width: 640px) {
+  .panel-spellbook .sb-canvas {
+    aspect-ratio: 200 / 66;
+  }
+}
+.sb-actions:has(.sb-clear[hidden]):has(.sb-copy:empty) {
+  display: none;
+}
+
+/* ---------- the magic lessons (src/ui/coach.js) ---------- */
+
+.layer-coach {
+  z-index: 8;
+}
+.coach {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.coach[hidden] {
+  display: none;
+}
+.coach-ring {
+  position: absolute;
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 3px var(--ember-hot),
+    0 0 0 6px rgba(255, 176, 71, 0.35),
+    0 0 0 9999px rgba(6, 5, 16, 0.38);
+  animation: coach-pulse 1.4s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes coach-pulse {
+  50% {
+    box-shadow:
+      0 0 0 3px var(--ember-hot),
+      0 0 0 10px rgba(255, 176, 71, 0.15),
+      0 0 0 9999px rgba(6, 5, 16, 0.38);
+  }
+}
+.coach-card {
+  --bc: var(--ember);
+  position: absolute;
+  max-width: calc(100% - 20px);
+  padding: 10px 12px;
+  background-color: rgb(28, 24, 62);
+  background-image: var(--texture);
+  background-size: 4px 4px;
+  box-shadow:
+    0 -2px 0 0 var(--bc),
+    0 2px 0 0 var(--bc),
+    -2px 0 0 0 var(--bc),
+    2px 0 0 0 var(--bc),
+    0 10px 30px rgba(4, 3, 14, 0.7);
+  pointer-events: auto;
+  animation: panel-in 0.2s var(--ease);
+}
+.coach-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+.coach-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ember);
+}
+.coach-step {
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+}
+.coach-text {
+  margin: 0 0 8px;
+  font-size: var(--fs-m);
+  line-height: 1.3;
+  color: var(--parch);
+}
+.coach-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.coach-btns .btn {
+  min-height: 40px;
+}
+.coach-skip {
+  margin-right: auto;
+}
+.coach-skip[hidden] {
+  display: none;
+}
+.reduce-motion .coach-ring {
+  animation: none;
+}
+.how-replay {
+  min-height: 44px;
+}
+.coach-btns .btn {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}

@@ -1,10 +1,12 @@
-// The Spellbook (DESIGN.md §22.4): where weaves are made. Pick a slot; choose a shape,
-// up to N essences and up to M twists from what has been found (the rest show as dark
-// silhouettes that say where they are found); see the compiled plan — its name, what it
-// does, its cost, cooldown, damage and reach — and a live preview of the stranger
-// casting it at a training dummy. Every valid change is saved to the slot at once;
-// rename, clear, or copy it to another slot. Opens with B, the book button or the pause
-// menu; finger-sized and readable on a phone either way up.
+// The Spellbook (DESIGN.md §22.4): where weaves are made. Pick one of your weaves (or
+// an empty slot: "New"); then the steps — 1 a shape, 2 essences (what it is made of),
+// 3 twists (how it behaves), 4 a price (optional) — from what has been found. What is
+// still to find folds into one "N more to find" tile that opens to dark silhouettes,
+// each saying where it is found. See the compiled plan — its name, what it does, its
+// cost, cooldown, damage and reach — and a live preview of the stranger casting it at a
+// training dummy. Every valid change is saved to the slot at once (the footer says
+// so); rename, clear, or copy it to another slot. Opens from the menu, an empty weave
+// button or B; finger-sized and readable on a phone either way up, one scroll.
 
 import { h, button, setText, toggleClass, clear } from './dom.js';
 import { makePanel } from './modal.js';
@@ -17,6 +19,15 @@ import { ensureStatsStyle, PRICE_GLYPH, PRICE_HINTS } from './stats_style.js';
 const SEEN_KEY = 'hearthlight.spellbook.seen';
 
 const INPUT_LABEL = { quick: 'Tap', hold: 'Hold', charge: 'Charge' };
+
+// The steps, in order: what each part of a weave is, in a few words.
+export const SB_STEPS = {
+  shapes: { n: 1, title: 'Shape', help: 'How it flies or lands. Pick one.' },
+  essences: { n: 2, title: 'Essences', help: 'What it is made of: fire, frost…' },
+  twists: { n: 3, title: 'Twists', help: 'How it behaves: faster, bouncing…' },
+  prices: { n: 4, title: 'Price', help: 'Optional: more power, at a cost.' },
+};
+const SINGULAR = { shapes: 'shape', essences: 'essence', twists: 'twist', prices: 'price' };
 const INPUT_NOTE = { quick: 'Tap to cast', hold: 'Hold to keep it flowing', charge: 'Hold to charge, let go to cast' };
 
 function readSeen() {
@@ -74,6 +85,7 @@ export class Spellbook {
     this.seen = typeof window !== 'undefined' ? readSeen() : new Set();
     this.fresh = new Set(); // unlocked since last time: a "new" mark this visit
     this.savedT = 0;
+    this.showLocked = {}; // kind -> the "more to find" tiles are open
   }
 
   isOpen() {
@@ -107,7 +119,7 @@ export class Spellbook {
       return;
     }
     ensureStatsStyle();
-    const panel = makePanel({ id: 'spellbook', title: 'Spellbook', subtitle: 'Shape, essences and twists: weave them into something of your own', cls: 'panel-wide panel-spellbook' });
+    const panel = makePanel({ id: 'spellbook', title: 'Spellbook', subtitle: 'Make a weave: a shape, essences and twists', cls: 'panel-wide panel-spellbook' });
     const ic = h('img', { class: 'px-icon panel-icon', alt: '', 'aria-hidden': 'true', src: spellbookIconUrl() });
     ic.style.setProperty('--iw', '9');
     ic.style.setProperty('--ih', '9');
@@ -163,7 +175,8 @@ export class Spellbook {
 
   build() {
     const p = this.panel;
-    this.tabs = h('div', { class: 'sb-tabs', role: 'tablist', 'aria-label': 'Weave slots' });
+    this.tabs = h('div', { class: 'sb-tabs', role: 'tablist', 'aria-label': 'Your weaves' });
+    this.tabsHead = h('div', { class: 'sb-tabs-head' }, h('span', { class: 'sb-tabs-title', text: 'Your weaves' }), h('span', { class: 'sb-tabs-help', text: 'Tap one to change it' }));
     this.canvas = h('canvas', { class: 'sb-canvas', 'aria-label': 'A live preview: the weave cast at a training dummy' });
     this.preview = new WeavePreview(this.canvas, this.game);
     this.nameEl = h('h3', { class: 'sb-name' });
@@ -173,28 +186,40 @@ export class Spellbook {
     this.descEl = h('p', { class: 'sb-desc' });
     this.statsEl = h('div', { class: 'sb-stats' });
     this.noteEl = h('p', { class: 'sb-note', role: 'status', 'aria-live': 'polite' });
+    // What to do next, for an empty slot or a half-made weave.
+    this.nextEl = h('p', { class: 'sb-next-line', hidden: true });
     this.clearBtn = button('Clear slot', { cls: 'btn-ghost btn-small sb-clear', onClick: () => this.clearSlot() });
     this.copyWrap = h('div', { class: 'sb-copy' });
     const actions = h('div', { class: 'sb-actions' }, this.clearBtn, this.copyWrap);
-    const card = h('div', { class: 'sb-card' }, this.nameRow, this.descEl, this.statsEl, this.noteEl, actions);
+    const card = h('div', { class: 'sb-card' }, this.nameRow, this.descEl, this.nextEl, this.statsEl, this.noteEl, actions);
     this.previewCol = h('section', { class: 'sb-col sb-preview-col' }, h('div', { class: 'sb-stage' }, this.canvas), card);
 
     this.sections = {};
-    const sec = (kind, title) => {
+    const sec = (kind) => {
+      const step = SB_STEPS[kind];
       const count = h('span', { class: 'sb-count num' });
-      const grid = h('div', { class: 'sb-grid', role: 'group', 'aria-label': title });
+      const grid = h('div', { class: 'sb-grid', role: 'group', 'aria-label': step.title });
       const hint = h('p', { class: 'sb-hint', hidden: true });
-      const el = h('section', { class: `sb-sec sb-sec-${kind}` }, h('h4', { class: 'sb-sec-title' }, h('span', { text: title }), count), grid, hint);
+      const head = h(
+        'h4',
+        { class: 'sb-sec-title' },
+        h('span', { class: 'sb-step num', 'aria-hidden': 'true', text: String(step.n) }),
+        h('span', { class: 'sb-sec-name', text: step.title }),
+        h('span', { class: 'sb-sec-help', text: step.help }),
+        count,
+      );
+      const el = h('section', { class: `sb-sec sb-sec-${kind}`, 'data-step': String(step.n) }, head, grid, hint);
       this.sections[kind] = { el, grid, count, hint };
       return el;
     };
-    this.buildCol = h('section', { class: 'sb-col sb-build-col' }, sec('shapes', 'Shape'), sec('essences', 'Essences'), sec('twists', 'Twists'), sec('prices', 'Price'));
+    this.buildCol = h('section', { class: 'sb-col sb-build-col' }, sec('shapes'), sec('essences'), sec('twists'), sec('prices'));
     this.priceLineEl = h('p', { class: 'sb-price-line', hidden: true });
     this.descEl.after(this.priceLineEl);
-    p.body.append(this.tabs, h('div', { class: 'sb-main' }, this.previewCol, this.buildCol));
+    p.body.append(h('div', { class: 'sb-slots' }, this.tabsHead, this.tabs), h('div', { class: 'sb-main' }, this.previewCol, this.buildCol));
 
-    const done = button('Done', { cls: 'btn-ember', onClick: () => this.close() });
-    p.foot.append(h('span', { class: 'sb-foot-note', text: 'Changes are saved as you make them.' }), h('span', { class: 'sb-spacer' }), done);
+    const done = button('Done', { cls: 'btn-ember sb-done', onClick: () => this.close() });
+    this.footNote = h('span', { class: 'sb-foot-note', role: 'status' });
+    p.foot.append(this.footNote, h('span', { class: 'sb-spacer' }), done);
   }
 
   render() {
@@ -204,19 +229,20 @@ export class Spellbook {
     const n = w.slotCount();
     // Slot tabs
     clear(this.tabs);
-    for (let i = 0; i < 6; i++) {
-      const locked = i >= n;
-      const rec = locked ? null : w.slotInfo(i);
-      const t = h('button', { type: 'button', class: 'sb-tab', role: 'tab', 'aria-selected': i === this.slot ? 'true' : 'false', disabled: locked, title: locked ? 'Not yet: a sixth sense for weaving comes later' : rec.weave ? rec.name : `Weave ${i + 1}: empty` });
-      if (locked) t.append(h('span', { class: 'sb-lock', 'aria-hidden': 'true' }));
-      else if (rec.weave) t.append(glyph(shapeIconUrl(rec.weave.shape, rec.palette), 'shapes', rec.weave.shape, 'sb-tab-glyph'));
+    for (let i = 0; i < n; i++) {
+      const rec = w.slotInfo(i);
+      const t = h('button', { type: 'button', class: 'sb-tab', role: 'tab', 'aria-selected': i === this.slot ? 'true' : 'false', title: rec.weave ? rec.name : `Weave ${i + 1}: empty — tap to make a weave here`, 'data-slot': String(i) });
+      if (rec.weave) t.append(glyph(shapeIconUrl(rec.weave.shape, rec.palette), 'shapes', rec.weave.shape, 'sb-tab-glyph'));
       else t.append(h('span', { class: 'sb-tab-plus', text: '+' }));
-      t.append(h('span', { class: 'sb-tab-num num', text: String(i + 1) }));
-      if (!locked) t.addEventListener('click', () => this.pickSlot(i));
-      toggleClass(t, 'empty', !locked && !rec.weave);
+      t.append(h('span', { class: 'sb-tab-num num', text: String(i + 1) }), h('span', { class: 'sb-tab-name', text: rec.weave ? rec.name : 'New' }));
+      t.addEventListener('click', () => this.pickSlot(i));
+      toggleClass(t, 'empty', !rec.weave);
       this.tabs.append(t);
     }
-    this.panel.setTitle('Spellbook', `Weave ${this.slot + 1}${n ? ` of ${n}` : ''} · ${w.slotInfo(this.slot).weave ? 'saved in this slot' : 'empty'}`);
+    const saved = !!w.slotInfo(this.slot).weave;
+    this.panel.setTitle('Spellbook', `Weave ${this.slot + 1}${n ? ` of ${n}` : ''} · ${saved ? 'saved, on your weave buttons' : 'empty'}`);
+    setText(this.footNote, saved ? `✓ Weave ${this.slot + 1} is saved: it is on your weave buttons.` : 'Every change is saved at once.');
+    toggleClass(this.footNote, 'is-saved', saved);
 
     // The plan
     const plan = d.shape ? w.compile(d) : null;
@@ -226,11 +252,20 @@ export class Spellbook {
     setText(this.nameEl, name);
     this.renameBtn.hidden = !d.shape;
     let desc = '';
-    if (!d.shape) desc = 'Pick a shape to start a weave. Then add essences for what it is made of and twists for how it behaves.';
+    if (!d.shape) desc = 'This slot is empty. Make a weave in a few taps:';
     else if (ok) desc = plan.description || plan.desc || `${w.info('shapes', d.shape).desc}`;
     else desc = plan?.reason || "That can't be woven.";
     setText(this.descEl, desc);
     toggleClass(this.descEl, 'bad', !!d.shape && !ok);
+    // The next step, spelled out; the step it points at glows.
+    const next = !d.shape ? 'shapes' : ok && !d.essences.length && this.anyUnlocked('essences') ? 'essences' : null;
+    let nextText = '';
+    if (!d.shape) nextText = '① Pick a shape below. ② Add an essence. ③ Add a twist if you like. Each change is saved at once.';
+    else if (next === 'essences') nextText = 'Next: ② add an essence (below) to give it an element, or keep it raw.';
+    setText(this.nextEl, nextText);
+    this.nextEl.hidden = !nextText;
+    for (const k of Object.keys(this.sections)) toggleClass(this.sections[k].el, 'sb-next', k === next);
+    toggleClass(this.panel.el, 'sb-empty-slot', !d.shape);
     this.renderStats(ok ? plan : null, d);
     setText(this.noteEl, this.note);
     this.noteEl.dataset.kind = this.noteKind || '';
@@ -245,9 +280,10 @@ export class Spellbook {
 
     // Footer: clear, copy to another slot
     this.clearBtn.disabled = !w.weaveAt(this.slot);
+    this.clearBtn.hidden = !w.weaveAt(this.slot);
     clear(this.copyWrap);
     if (d.shape && ok && n > 1) {
-      this.copyWrap.append(h('span', { class: 'sb-copy-label', text: 'Copy to' }));
+      this.copyWrap.append(h('span', { class: 'sb-copy-label', text: 'Copy to weave' }));
       for (let i = 0; i < n; i++) {
         if (i === this.slot) continue;
         const b = h('button', { type: 'button', class: 'btn btn-small sb-copy-btn num', text: String(i + 1), title: `Copy this weave into slot ${i + 1}` });
@@ -282,9 +318,15 @@ export class Spellbook {
     const chosen = kind === 'shapes' ? (d.shape ? [d.shape] : []) : d[kind];
     if (kind === 'shapes') setText(s.count, '');
     else setText(s.count, `${chosen.length} / ${limit}`);
+    let lockedN = 0;
+    const open = !!this.showLocked[kind];
     for (const id of w.ids(kind)) {
       if (kind === 'essences' && id === 'raw') continue;
       const unlocked = w.isUnlocked(kind, id);
+      if (!unlocked) {
+        lockedN++;
+        if (!open) continue;
+      }
       const info = w.info(kind, id);
       const on = chosen.includes(id);
       let src;
@@ -308,12 +350,35 @@ export class Spellbook {
       t.addEventListener('click', () => this.tap(kind, id, unlocked));
       s.grid.append(t);
     }
+    if (lockedN) s.grid.append(this.moreTile(kind, lockedN, open));
     const hint = this.hint && this.hint.kind === kind ? this.hint : null;
-    s.hint.hidden = !hint;
-    if (hint) {
-      clear(s.hint);
-      s.hint.append(h('b', { text: `${w.info(kind, hint.id).name}: ` }), document.createTextNode(hint.text));
-    }
+    const none = !hint && !this.anyUnlocked(kind) && !open;
+    s.hint.hidden = !hint && !none;
+    clear(s.hint);
+    if (hint) s.hint.append(h('b', { text: `${w.info(kind, hint.id).name}: ` }), document.createTextNode(hint.text));
+    else if (none) s.hint.append(document.createTextNode(`None found yet. People in Hearthvale teach ${kind} to those who help them; tap the tile to see what is out there.`));
+  }
+
+  // "11 more to find": one tile for everything not found yet; a tap shows them (as dark
+  // silhouettes, each saying where it is found) or folds them away again.
+  moreTile(kind, n, open) {
+    const t = h(
+      'button',
+      { type: 'button', class: 'sb-tile sb-more', 'aria-expanded': open ? 'true' : 'false', title: open ? 'Hide what is still to find' : `Show the ${n} ${n === 1 ? SINGULAR[kind] : kind} still to find` },
+      h('span', { class: 'sb-more-n num', text: open ? '–' : String(n) }),
+      h('span', { class: 'sb-tile-name', text: open ? 'Hide' : 'more to find' }),
+    );
+    t.addEventListener('click', () => {
+      this.showLocked[kind] = !open;
+      if (open && this.hint?.kind === kind) this.hint = null;
+      this.render();
+    });
+    return t;
+  }
+
+  anyUnlocked(kind) {
+    const w = this.weaving;
+    return w.ids(kind).some((id) => id !== 'raw' && w.isUnlocked(kind, id));
   }
 
   // The prices row: a red glyph per price; the chosen one's cost in words below.
@@ -326,9 +391,15 @@ export class Spellbook {
     s.el.hidden = !ids.length;
     const chosen = d.prices || [];
     setText(s.count, `${chosen.length} / ${this.priceLimit()}`);
+    let lockedN = 0;
+    const open = !!this.showLocked.prices;
     for (const id of ids) {
       const def = this.priceDef(id);
       const unlocked = this.priceUnlocked(id);
+      if (!unlocked) {
+        lockedN++;
+        if (!open) continue;
+      }
       const on = chosen.includes(id);
       const glyphEl = h('span', { class: 'sb-price-glyph', 'aria-hidden': 'true', text: PRICE_GLYPH[id] || '◆' });
       glyphEl.style.setProperty('--pc', def?.color || '#ff5a5a');
@@ -344,6 +415,7 @@ export class Spellbook {
       t.addEventListener('click', () => this.tapPrice(id, unlocked));
       s.grid.append(t);
     }
+    if (lockedN) s.grid.append(this.moreTile('prices', lockedN, open));
     const hint = this.hint && this.hint.kind === 'prices' ? this.hint : null;
     s.hint.hidden = !hint && any;
     clear(s.hint);
@@ -457,6 +529,7 @@ export class Spellbook {
     else {
       this.say(`Saved to slot ${this.slot + 1}.`, 'good');
       this.game.audio?.play?.('ui_click', { volume: 0.7 });
+      this.ui.coach?.event?.('saved');
     }
     this.render();
   }

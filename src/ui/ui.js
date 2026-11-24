@@ -7,6 +7,7 @@ import { isTextTarget } from '../core/input.js';
 import { Hud } from './hud.js';
 import { Chat } from './chat.js';
 import { Toasts } from './toast.js';
+import { Coach } from './coach.js';
 import { MindPanel } from './mind_panel.js';
 import { DialogPanel } from './dialog.js';
 import { InventoryPanel, ChestPanel } from './inventory.js';
@@ -100,6 +101,7 @@ export class UI {
     this.touch = new TouchControls(this);
     this.village = new VillageUI(this);
     this.lifeView = new VillageLifePanel(this); // "Hearthvale today" (DESIGN §28)
+    this.coach = new Coach(this); // the magic lessons
     this.fader = new Fader();
     this.vignette = new Vignette();
     this.modalLayer = h('div', { class: 'modal-layer', hidden: true });
@@ -129,6 +131,7 @@ export class UI {
       h('div', { class: 'layer layer-hud' }, this.hud.el),
       h('div', { class: 'layer layer-chat' }, this.chat.mount()),
       h('div', { class: 'layer layer-toasts' }, this.toasts.el),
+      h('div', { class: 'layer layer-coach' }, this.coach.build()),
       h('div', { class: 'layer layer-title' }, this.title.build()),
       h('div', { class: 'layer layer-modal' }, this.modalLayer),
       h('div', { class: 'layer layer-fade' }, this.fader.el),
@@ -139,6 +142,7 @@ export class UI {
     this.bindDom();
     this.bindBus();
     this.village.bind();
+    this.coach.bind();
     this.watchKeyboard();
 
     const rt = g.runtime;
@@ -985,6 +989,7 @@ export class UI {
     this.village.update(dt);
     this.lifeView?.update(dt);
     this.toasts.update(dt);
+    this.coach?.update(dt);
     this.dialog.update(dt);
     this.mind.update(dt);
     this.settings.update(dt);
