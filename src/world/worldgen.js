@@ -1013,6 +1013,41 @@ class WorldBuilder {
     this.must({ objType: 'sign', id: 'sign_dock', tx: shore - 2, ty: 53, title: SIGNS.dock.title, text: SIGNS.dock.text, name: 'Dock sign' });
     this.decor('barrel', shore - 2, 49);
     this.lakeCenterTile = { x: shore - 2, y: 51 };
+    this.bankTrees();
+  }
+
+  // Trees along the north banks of the lake and the village pond, so the still water
+  // has something to mirror. A loose, uneven line: gaps, mixed oaks and pines.
+  bankTrees() {
+    const L = this.lake;
+    const plant = (x, y, kind) => {
+      const g = this.get(x, y);
+      if (g !== T.GRASS && g !== T.TALL_GRASS && g !== T.SAND) return false;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (this.inb(x + dx, y + dy) && this.trunk[(y + dy) * W + x + dx]) return false;
+      // Never on a path or right against the water's edge.
+      if (this.map.isWater(x, y + 1) || this.map.isWater(x - 1, y) || this.map.isWater(x + 1, y)) return false;
+      const o = this.put({ objType: 'tree', tx: x, ty: y, kind, v: Math.floor(this.hash(x, y, 91) * (kind === 'pine' ? 2 : 3)) });
+      if (o) this.trunk[y * W + x] = 1;
+      return !!o;
+    };
+    for (let x = Math.ceil(L.cx - L.rx + 4); x <= Math.floor(L.cx + L.rx - 2); x++) {
+      if (this.hash(x, 0, 92) < 0.45) continue;
+      let top = -1;
+      for (let y = Math.floor(L.cy - L.ry - 3); y < L.cy; y++) {
+        if (this.map.isWater(x, y)) {
+          top = y;
+          break;
+        }
+      }
+      if (top < 0) continue;
+      const back = this.hash(x, top, 93) < 0.5 ? 2 : 3;
+      plant(x, top - back, this.hash(x, top, 94) < 0.35 ? 'pine' : 'oak');
+    }
+    for (const [x, y] of [
+      [60, 74],
+      [64, 74],
+    ])
+      plant(x, y, 'oak');
   }
 
   forestLandmarks() {

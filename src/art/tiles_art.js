@@ -1,5 +1,5 @@
 import { TILE } from '../core/constants.js';
-import { T, DECO } from '../world/tiles.js';
+import { T, DECO, tileDef } from '../world/tiles.js';
 import { PixelBuf, rgb, mixc, shade, tileNoise, bayer, ih, R, G, B, pack } from './world_pixbuf.js';
 import { buildTextures, lut } from './world_textures.js';
 import { buildDecos } from './world_decos.js';
@@ -8,9 +8,11 @@ import { paintFacadeTile, paintBuildingWallTile } from './world_buildings.js';
 // The ground of Hearthvale, painted per 16×16-tile chunk into cached canvases.
 //
 // How a chunk is painted (all in typed arrays, no canvas calls until the end):
-//  1. Material field: soft terrains (grass, dirt, sand, water...) are domain-warped
-//     by a smooth noise field, so their borders curve organically instead of
-//     following the tile grid. Built surfaces (walls, floors, bridges) stay crisp.
+//  1. Material field: each soft pixel (grass, dirt, sand, water...) takes the material
+//     with the most bilinear weight among the four nearest tile centers, sampled at a
+//     domain-warped position. Staircases of tiles become diagonal shores and rounded
+//     corners, and the two-scale warp makes every border curve organically instead of
+//     following the grid. Built surfaces (walls, floors, bridges) stay crisp.
 //  2. Shading: each soft pixel samples its tileable texture, is lit by a cheap
 //     emboss on the material heights (grass banks over paths, cobbles under grass,
 //     contact shadows under walls), and tinted by low-frequency noise.
@@ -26,13 +28,15 @@ import { paintFacadeTile, paintBuildingWallTile } from './world_buildings.js';
 
 export const CHUNK = 16;
 const CPX = CHUNK * TILE; // 256
-const MG = 8; // margin around the chunk for neighbour lookups
+const MG = 16; // margin around the chunk for neighbour lookups and shore distances
 const SW = CPX + MG * 2;
 
 const SOFT = new Uint8Array(64);
+const PRIO = new Float32Array(64); // breaks near-ties: which terrain spills over which
 const HEIGHT = new Float32Array(64);
 const AMP = new Float32Array(64);
 const TALLM = new Uint8Array(64);
+const DITHERV = new Uint8Array(64); // texture variants blend by dither (organic ground only)
 const TEXKEY = [];
 const isWater = (m) => m === T.WATER || m === T.DEEP_WATER;
 (() => {
@@ -51,10 +55,12 @@ const isWater = (m) => m === T.WATER || m === T.DEEP_WATER;
   };
   for (const [id, [key, h, amp]] of Object.entries(soft)) {
     SOFT[id] = 1;
+    PRIO[id] = (tileDef(Number(id)).prio || 0) * 0.004;
     HEIGHT[id] = h;
     AMP[id] = amp;
     TEXKEY[id] = key;
   }
+  for (const id of [T.GRASS, T.TALL_GRASS, T.FOREST, T.DIRT]) DITHERV[id] = 1;
   for (const id of [T.WALL, T.RUIN_WALL, T.ROCK, T.PALISADE]) {
     HEIGHT[id] = 9;
     TALLM[id] = 1;
@@ -138,14 +144,18 @@ function buildWaterFrames(rng) {
 // Builds everything the chunk painter needs. Pure data except the water canvases,
 // which are made only when `withCanvas` (the browser).
 export function buildTileArt(rng, { withCanvas = true } = {}) {
+  // Two scales of warp: broad meanders plus a finer wobble, so long straight tile
+  // borders never survive as straight lines.
   const N = 256;
-  const wx = tileNoise(N, 8, rng.fork(1), 3);
-  const wy = tileNoise(N, 8, rng.fork(2), 3);
+  const wx = tileNoise(N, 8, rng.fork(1), 2);
+  const wy = tileNoise(N, 8, rng.fork(2), 2);
+  const wx2 = tileNoise(N, 32, rng.fork(11), 2);
+  const wy2 = tileNoise(N, 32, rng.fork(12), 2);
   const warpX = new Int8Array(N * N);
   const warpY = new Int8Array(N * N);
   for (let i = 0; i < N * N; i++) {
-    warpX[i] = Math.round((wx[i] - 0.5) * 15);
-    warpY[i] = Math.round((wy[i] - 0.5) * 13);
+    warpX[i] = Math.round((wx[i] - 0.5) * 17 + (wx2[i] - 0.5) * 8);
+    warpY[i] = Math.round((wy[i] - 0.5) * 14 + (wy2[i] - 0.5) * 7);
   }
   const lf = tileNoise(128, 4, rng.fork(3), 3); // tint and variant fields, sampled at 1/4 px
   const lf2 = tileNoise(128, 8, rng.fork(4), 2);
@@ -238,7 +248,8 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
   const warpY = art.warpY;
   let anyWater = false;
 
-  // 1. Materials (domain-warped soft terrain).
+  // 1. Materials: bilinear majority of the soft tiles around a warped sample point.
+  const tAt = (x, y) => ground[(y < 0 ? 0 : y >= H ? H - 1 : y) * W + (x < 0 ? 0 : x >= W ? W - 1 : x)];
   for (let j = 0; j < SW; j++) {
     const wy = y0 - MG + j;
     const ty = wy >> 4;
@@ -250,12 +261,34 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
       if (SOFT[g]) {
         const wi = ((wy & 255) << 8) | (wx & 255);
         const a = AMP[g];
-        const sx = (wx + Math.round(warpX[wi] * a)) >> 4;
-        const sy = (wy + Math.round(warpY[wi] * a)) >> 4;
-        if (sx >= 0 && sy >= 0 && sx < W && sy < H) {
-          const s = ground[sy * W + sx];
-          if (SOFT[s]) m = s;
+        // Sample point relative to tile centers.
+        const fx = wx + Math.round(warpX[wi] * a) - 8;
+        const fy = wy + Math.round(warpY[wi] * a) - 8;
+        const ix = fx >> 4;
+        const iy = fy >> 4;
+        const ax = ((fx & 15) + 0.5) / 16;
+        const ay = ((fy & 15) + 0.5) / 16;
+        const m0 = tAt(ix, iy);
+        const m1 = tAt(ix + 1, iy);
+        const m2 = tAt(ix, iy + 1);
+        const m3 = tAt(ix + 1, iy + 1);
+        const k0 = (1 - ax) * (1 - ay);
+        const k1 = ax * (1 - ay);
+        const k2 = (1 - ax) * ay;
+        const k3 = ax * ay;
+        let best = 0;
+        let bw = -1;
+        // Weight of each soft candidate = sum of the corners that share its material.
+        for (let c = 0; c < 4; c++) {
+          const mc = c === 0 ? m0 : c === 1 ? m1 : c === 2 ? m2 : m3;
+          if (!SOFT[mc] || mc === best) continue;
+          const wgt = (m0 === mc ? k0 : 0) + (m1 === mc ? k1 : 0) + (m2 === mc ? k2 : 0) + (m3 === mc ? k3 : 0) + PRIO[mc];
+          if (wgt > bw) {
+            bw = wgt;
+            best = mc;
+          }
         }
+        if (best) m = best;
       }
       mat[j * SW + i] = m;
       if (isWater(m)) anyWater = true;
@@ -295,7 +328,7 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
       }
     }
   }
-  const depth = anyWater ? map.waterDepth() : null;
+  const depth = anyWater ? (map.waterDepthSmooth ? map.waterDepthSmooth() : map.waterDepth()) : null;
 
   // 2. Soft pixels.
   const tex = art.tex;
@@ -329,8 +362,11 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
       const L = (((wy >> 2) & 127) << 7) | ((wx >> 2) & 127);
       const variants = tex[TEXKEY[m]];
       let v = 0;
-      if (variants.length > 1) v = Math.max(0, Math.min(variants.length - 1, Math.floor((lf2[L] + (bayer(wx, wy) - 0.5) * 0.18) * variants.length)));
-      let c = variants[v].data[((wy & 63) << 6) | (wx & 63)];
+      // Organic textures dissolve into each other; stone keeps one unbroken layout.
+      if (variants.length > 1 && DITHERV[m]) v = Math.max(0, Math.min(variants.length - 1, Math.floor((lf2[L] + (bayer(wx, wy) - 0.5) * 0.18) * variants.length)));
+      const td = variants[v].data;
+      const raw = td[((wy & 63) << 6) | (wx & 63)];
+      let c = raw;
       let f = 0.93 + lf[L] * 0.14;
       // Emboss by material height: lit rims, shadowed lips, contact shadows.
       const h = HEIGHT[m];
@@ -349,7 +385,7 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
       }
       if (TALLM[mat[k - 1]] || TALLM[mat[k - 2]]) f *= 0.86;
       c = shade(c, f);
-      if (wet) c = wetten(art, c, m, wx, wy);
+      if (wet) c = wetten(art, c, m, wx, wy, raw, td[(((wy + 1) & 63) << 6) | (wx & 63)]);
       od[ly * CPX + lx] = c;
     }
   }
@@ -437,6 +473,20 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
   return { buf: out, foamA, foamB, foamX, foamY, hasWater: !!waterBox, waterBox, mask: waterBox ? mask : null };
 }
 
+function skyAt(sky, wx, wy) {
+  const fx = wx / 8;
+  const fy = wy / 8;
+  const ix = Math.floor(fx);
+  const iy = Math.floor(fy);
+  const ax = fx - ix;
+  const ay = fy - iy;
+  const a = sky[((iy & 63) << 6) | (ix & 63)];
+  const b = sky[((iy & 63) << 6) | ((ix + 1) & 63)];
+  const c = sky[(((iy + 1) & 63) << 6) | (ix & 63)];
+  const d = sky[(((iy + 1) & 63) << 6) | ((ix + 1) & 63)];
+  return a + (b - a) * ax + (c - a) * ay + (a - b - c + d) * ax * ay;
+}
+
 // Translucent water color over the animated pattern: depth, sky, the dark mirror of the bank.
 function waterTint(art, depth, W, H, wx, wy, wdist, run) {
   // Bilinear tile depth (0 = land) for smooth shallows.
@@ -463,8 +513,8 @@ function waterTint(art, depth, W, H, wx, wy, wdist, run) {
     c = mixc(c, C.refl, r * 0.85);
     a = a + (0.72 - a) * r * r;
   }
-  // Clouds reflected in open water.
-  const s = art.sky[(((wy >> 3) & 63) << 6) | ((wx >> 3) & 63)];
+  // Clouds reflected in open water (bilinear, so they drift in soft shapes, not blocks).
+  const s = skyAt(art.sky, wx, wy);
   if (s > 0.58 && run >= 12) {
     const k = Math.min(1, (s - 0.58) * 2.2);
     c = mixc(c, C.sky, k * 0.5);
@@ -475,31 +525,63 @@ function waterTint(art, depth, W, H, wx, wy, wdist, run) {
   return ((c & 0x00ffffff) | (Math.round(a * 255) << 24)) >>> 0;
 }
 
-// Rain: darker, richer ground with glossy streaks and puddles on paths and stone.
-function wetten(art, c, m, wx, wy) {
-  const lum = (R(c) * 0.3 + G(c) * 0.55 + B(c) * 0.15) / 255;
-  let o = shade(c, 0.7);
-  const st = art.streak[((wy & 63) << 6) | ((wx >> 2) & 63)];
+// Rain: darker, richer ground. Stone gets a sharp sky-blue gloss on the lit rim of
+// every cobble, brightest inside broad sheens; packed earth darkens and gathers
+// puddles that mirror the grey sky; grass deepens and glints. `raw` is the unshaded
+// texture pixel and `below` the one under it, so a stone's top edge can be found.
+const WET = {
+  spec: rgb('#d6e4f4'),
+  sheen: rgb('#7f97b8'),
+  deep: rgb('#121828'),
+  puddle: rgb('#33496a'),
+  puddleSky: rgb('#a9bdd6'),
+  puddleRim: rgb('#1d1b26'),
+  mud: rgb('#2a1d18'),
+};
+const lumOf = (c) => (R(c) * 0.3 + G(c) * 0.55 + B(c) * 0.15) / 255;
+const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+function wetten(art, c, m, wx, wy, raw = c, below = raw) {
+  // Broad soft sheens, stretched along x like the sky lying on a wet street.
+  const sh = art.streak[(((wy >> 1) & 63) << 6) | ((wx >> 2) & 63)];
   if (m === T.COBBLE || m === T.RUIN_FLOOR || m === T.GRAVEL) {
-    // Wet stone tops shine; the mortar stays dark.
-    if (lum > 0.36) o = mixc(o, C.wetSky, Math.min(0.5, (lum - 0.36) * 1.6 + (st > 0.7 ? 0.18 : 0)));
-    return o;
+    // Every stone top turns glossy; the lit upper-left rims flash nearly white inside
+    // the sheens; the joints stay dark, which is what makes the stones read as wet.
+    const l = lumOf(raw);
+    const rim = l - lumOf(below);
+    let o = mixc(shade(c, 0.62), WET.deep, 0.12);
+    const gloss = clamp01((l - 0.3) * 2.6);
+    // Broad sheens: long soft bands where the grey sky lies on the stones.
+    const band = clamp01((sh - 0.5) * 2.4);
+    if (band > 0 && gloss > 0.1) o = mixc(o, WET.sheen, band * 0.38 * Math.min(1, gloss * 2));
+    let k = gloss * gloss * (0.3 + 0.7 * sh);
+    if (rim > 0.03) k = Math.max(k, clamp01(rim * 6) * (0.45 + 0.55 * sh));
+    return k > 0.02 ? mixc(o, k > 0.7 ? WET.spec : WET.sheen, Math.min(0.9, k)) : o;
   }
   if (m === T.DIRT || m === T.SAND || m === T.FARMLAND) {
-    const p = art.puddle[(((wy >> 2) & 63) << 6) | ((wx >> 2) & 63)];
-    if (p > 0.66) {
-      if (p < 0.69) return mixc(o, C.puddleRim, 0.5);
-      return mixc(C.puddle, C.wetSky, st > 0.6 ? 0.55 : 0.15);
+    const p = puddleAt(art, wx, wy);
+    let o = mixc(shade(c, m === T.SAND ? 0.74 : 0.62), WET.mud, 0.12);
+    if (p > 0.64) {
+      // Puddle: a dark rim on the far (upper) side, the sky mirrored inside, a lit near lip.
+      if (p < 0.665) return mixc(o, WET.puddleRim, 0.55);
+      const up = puddleAt(art, wx, wy - 2);
+      if (up <= 0.64) return mixc(WET.puddle, WET.puddleRim, 0.35);
+      const dn = puddleAt(art, wx, wy + 1);
+      if (dn <= 0.64) return mixc(WET.puddleSky, WET.spec, 0.4);
+      return mixc(WET.puddle, WET.puddleSky, clamp01(0.15 + (sh - 0.35) * 0.9));
     }
-    if (st > 0.78) o = mixc(o, C.wetSky, 0.3);
+    if (sh > 0.7) o = mixc(o, WET.sheen, clamp01((sh - 0.7) * 2) * 0.35);
     return o;
   }
-  // Grass and forest: darker and a little more saturated, the odd glint on a blade.
-  o = shade(c, 0.86);
-  const g = G(o);
-  o = pack(R(o) * 0.9, Math.min(255, g * 1.04), B(o) * 0.95) >>> 0;
-  if (st > 0.88 && lum > 0.4) o = mixc(o, C.wetSky, 0.3);
+  // Grass and forest: darker and a little more saturated, the odd glint on a blade tip.
+  let o = shade(c, 0.8);
+  o = pack(R(o) * 0.88, Math.min(255, G(o) * 1.05), B(o) * 0.96) >>> 0;
+  if (sh > 0.82 && lumOf(raw) > 0.5) o = mixc(o, WET.spec, 0.35);
   return o;
+}
+
+function puddleAt(art, wx, wy) {
+  return art.puddle[(((wy >> 2) & 63) << 6) | ((wx >> 2) & 63)];
 }
 
 function fillTile(out, lx, ly, c) {
@@ -708,7 +790,7 @@ function paintRuinWall(art, out, lx, ly, map, tx, ty, id, wet) {
         if (fy < drip && ih(wx >> 1, ty, 413) > 0.45) c = mixc(c, rgb(fy < drip - 2 ? '#4f7a3a' : '#3a5c30'), 0.7);
         if (y === 15) c = shade(c, 0.6);
       }
-      if (wet) c = mixc(shade(c, 0.78), C.wetSky, y < capH && y < 2 ? 0.2 : 0.05);
+      if (wet) c = mixc(shade(c, 0.66), WET.spec, y < capH && y < 2 ? 0.22 : 0.04);
       out.data[(ly + y) * CPX + lx + x] = c;
     }
   }
@@ -757,7 +839,7 @@ function paintRock(art, out, lx, ly, map, tx, ty, wet) {
         if (!e && x > 12) f *= 0.72;
         c = shade(mixc(base, ROCK_LUT[40], 0.35), f);
       }
-      if (wet) c = mixc(shade(c, 0.75), C.wetSky, !s && y >= 9 ? 0.04 : 0.16);
+      if (wet) c = mixc(shade(c, 0.66), WET.spec, !s && y >= 9 ? 0.04 : 0.18);
       out.data[(ly + y) * CPX + lx + x] = c;
     }
   }
@@ -820,7 +902,7 @@ function paintRubble(art, out, lx, ly, map, tx, ty, wet) {
         const i = (ly + y) * CPX + lx + x;
         if (d <= 1) {
           let c = pickL(RUIN_LUT, tone - (nx + ny) * 0.18 + (d > 0.7 ? -0.08 : 0));
-          if (wet) c = mixc(shade(c, 0.78), C.wetSky, nx + ny < -0.6 ? 0.3 : 0.05);
+          if (wet) c = mixc(shade(c, 0.66), WET.spec, nx + ny < -0.6 ? 0.4 : 0.04);
           out.data[i] = c;
         } else if (d < 1.8 && nx + ny > 0.5) out.data[i] = shade(out.data[i], 0.7);
       }
@@ -860,7 +942,7 @@ function paintPlanks(art, out, lx, ly, map, tx, ty, g, wet) {
           c = pickL(BRIDGE_RAIL, x % 3 === 0 ? 0.6 : 0.32);
         }
       }
-      if (wet) c = mixc(shade(c, 0.74), C.wetSky, (wx >> 2) % 3 === 0 && y % 4 === 0 ? 0.25 : 0.04);
+      if (wet) c = mixc(shade(c, 0.64), WET.spec, (wx >> 2) % 3 === 0 && y % 4 === 0 ? 0.3 : 0.03);
       out.data[(ly + y) * CPX + lx + x] = c;
     }
   }
@@ -984,13 +1066,13 @@ export function bakeReflections(chunk, map, objects) {
   sc.setTransform(1, 0, 0, 1, 0, 0);
   sc.globalAlpha = 1;
   sc.globalCompositeOperation = 'source-atop';
-  sc.fillStyle = 'rgba(16, 44, 72, 0.55)';
+  sc.fillStyle = 'rgba(18, 48, 66, 0.5)';
   sc.fillRect(0, 0, CPX, CPX);
   sc.globalCompositeOperation = 'destination-in';
   sc.drawImage(chunk.mask, 0, 0);
   sc.globalCompositeOperation = 'source-over';
   const ctx = chunk.canvas.getContext('2d');
-  ctx.globalAlpha = 0.62;
+  ctx.globalAlpha = 0.55;
   for (let y = wb.y; y < wb.y + wb.h; y += 2) {
     const dx = Math.round(Math.sin((y0 + y) * 0.41) * 0.9 + Math.sin((y0 + y) * 0.13) * 0.6);
     ctx.drawImage(scratch.canvas, 0, y, CPX, 2, dx, y, CPX, 2);

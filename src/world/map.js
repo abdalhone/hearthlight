@@ -150,6 +150,47 @@ export class TileMap {
     return d;
   }
 
+  // The same distance as a smooth float field (8-way chamfer), for rendering: shallows
+  // shade into deeps in soft rounded bands instead of diamonds.
+  waterDepthSmooth() {
+    if (this._depthS && this._depthSV === this.version) return this._depthS;
+    const { w, h } = this;
+    const d = new Float32Array(w * h);
+    const D2 = Math.SQRT2;
+    for (let i = 0; i < w * h; i++) d[i] = WATERY[this.ground[i]] ? 12 : 0;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (!d[i]) continue;
+        let v = d[i];
+        if (x > 0) v = Math.min(v, d[i - 1] + 1);
+        if (y > 0) {
+          v = Math.min(v, d[i - w] + 1);
+          if (x > 0) v = Math.min(v, d[i - w - 1] + D2);
+          if (x < w - 1) v = Math.min(v, d[i - w + 1] + D2);
+        }
+        d[i] = v;
+      }
+    }
+    for (let y = h - 1; y >= 0; y--) {
+      for (let x = w - 1; x >= 0; x--) {
+        const i = y * w + x;
+        if (!d[i]) continue;
+        let v = d[i];
+        if (x < w - 1) v = Math.min(v, d[i + 1] + 1);
+        if (y < h - 1) {
+          v = Math.min(v, d[i + w] + 1);
+          if (x < w - 1) v = Math.min(v, d[i + w + 1] + D2);
+          if (x > 0) v = Math.min(v, d[i + w - 1] + D2);
+        }
+        d[i] = v;
+      }
+    }
+    this._depthS = d;
+    this._depthSV = this.version;
+    return d;
+  }
+
   // ---- render cache management ----
 
   // Blends and baked shadows reach a couple of tiles over chunk borders; mirrored

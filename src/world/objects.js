@@ -128,6 +128,37 @@ export class WorldObject {
     return l;
   }
 
+  // In the rain the wet ground mirrors a light: a short streak of dim glow below the
+  // object's base. Returns the light alone when dry, indoors or under a roof.
+  _wetReflection(l, drop) {
+    const map = this.game?.map;
+    const wet = map?.wetness || 0;
+    if (!l || wet < 0.12 || this._underRoof()) return l;
+    const list = this._refl || (this._refl = [null, { x: 0, y: 0, r: 0, color: '#ffffff', intensity: 0, flicker: 0, glow: 1.5 }, { x: 0, y: 0, r: 0, color: '#ffffff', intensity: 0, flicker: 0, glow: 1.5 }]);
+    list[0] = l;
+    const near = list[1];
+    const far = list[2];
+    near.x = far.x = l.x;
+    near.y = this.y + drop * 0.35;
+    far.y = this.y + drop * 0.75;
+    near.r = Math.max(10, l.r * 0.24);
+    far.r = Math.max(8, l.r * 0.17);
+    near.color = far.color = l.color;
+    near.flicker = far.flicker = l.flicker;
+    near.glow = 1.9;
+    far.glow = 1.6;
+    near.intensity = l.intensity * 0.78 * wet;
+    far.intensity = l.intensity * 0.55 * wet;
+    return list;
+  }
+
+  // Inside a building's walls (its facade, where windows hang, is outdoors).
+  _underRoof() {
+    const b = this.game?.map?.buildingAt?.(this.tx, this.ty);
+    const it = b?.interior;
+    return !!it && this.tx >= it.x && this.ty >= it.y && this.tx < it.x + it.w && this.ty < it.y + it.h;
+  }
+
   canInteract(actor) {
     return false;
   }
@@ -397,15 +428,28 @@ class Harvestable extends WorldObject {
     return { done: false, progress: p };
   }
 
+  // Yields use the game's seeded RNG; without one (tools, tests) a per-object hash
+  // sequence keeps harvests deterministic.
+  _rand() {
+    const rng = this.game?.rng;
+    if (rng?.next) return rng.next();
+    this._seq = (this._seq ?? Math.floor(this.phase * 1e6)) + 1;
+    let h = Math.imul(this._seq ^ 0x9e3779b9, 0x85ebca6b);
+    h ^= h >>> 13;
+    h = Math.imul(h, 0xc2b2ae35);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+
   _roll(min, max) {
     const rng = this.game?.rng;
     if (rng?.int) return rng.int(min, max);
-    return min + Math.floor(Math.random() * (max - min + 1));
+    return min + Math.floor(this._rand() * (max - min + 1));
   }
 
   _chance(p) {
     const rng = this.game?.rng;
-    return rng?.chance ? rng.chance(p) : Math.random() < p;
+    return rng?.chance ? rng.chance(p) : this._rand() < p;
   }
 
   _harvest(actor) {
@@ -1063,7 +1107,8 @@ export class Fire extends WorldObject {
   getLight(time) {
     const f = 0.86 + 0.08 * Math.sin(time * 11 + this.phase * 9) + 0.06 * Math.sin(time * 23.7 + this.phase * 4);
     const r = this.objType === 'hearth' ? 66 : 84;
-    return this._setLight(this.x, this.y - 8, r, '#ff9a3c', f, 0.35);
+    const l = this._setLight(this.x, this.y - 8, r, '#ff9a3c', f, 0.35);
+    return this.objType === 'campfire' ? this._wetReflection(l, 12) : l;
   }
 
   update(dt) {
@@ -1152,7 +1197,7 @@ export class Lamp extends WorldObject {
     const dark = this.alwaysLit ? Math.max(0.55, this._darkness()) : Math.min(1, (this._darkness() - 0.3) / 0.4);
     const f = 0.92 + 0.08 * Math.sin(time * 7 + this.phase * 13);
     if (this.kind === 'candles') return this._setLight(this.x, this.y - 10, 42, '#ffc26b', 0.75 * f * dark, 0.3);
-    return this._setLight(this.x, this.y - 26, 64, '#ffcf7a', 0.9 * f * dark, 0.15);
+    return this._wetReflection(this._setLight(this.x, this.y - 26, 64, '#ffcf7a', 0.9 * f * dark, 0.15), 30);
   }
 
   draw(ctx, ox, oy, time) {
@@ -1204,7 +1249,7 @@ export class Window extends WorldObject {
     const dark = this._darkness();
     if (dark < 0.25) return null;
     const f = 0.9 + 0.1 * Math.sin(time * 3 + this.phase * 20);
-    return this._setLight(this.x, this.y - 18, 30, '#ffc46b', Math.min(1, (dark - 0.25) * 1.6) * 0.7 * f, 0.12);
+    return this._wetReflection(this._setLight(this.x, this.y - 18, 30, '#ffc46b', Math.min(1, (dark - 0.25) * 1.6) * 0.7 * f, 0.12), 20);
   }
 
   draw(ctx, ox, oy, time) {
@@ -1214,7 +1259,10 @@ export class Window extends WorldObject {
     const sy = Math.round(this.y - oy);
     atlas.draw(ctx, this.sprite, 0, sx, sy) || atlas.draw(ctx, 'prop:window', 0, sx, sy);
     const dark = this._darkness();
-    if (dark > 0.25) atlas.draw(ctx, 'prop:window:lit', 0, sx, sy, { alpha: Math.min(1, (dark - 0.25) * 1.8) });
+    if (dark > 0.25) {
+      const lit = atlas.has(`${this.sprite}:lit`) ? `${this.sprite}:lit` : 'prop:window:lit';
+      atlas.draw(ctx, lit, 0, sx, sy, { alpha: Math.min(1, (dark - 0.25) * 1.8) });
+    }
   }
 }
 
