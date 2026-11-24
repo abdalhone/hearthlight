@@ -255,8 +255,9 @@ export class SettingsPanel {
   reinitBrain() {
     const g = this.game;
     safe(() => g.brain?.init?.());
-    // 'Always' needs the API key provider; it falls back when that is gone.
-    if (g.settings?.villageAi === 'always' && safe(() => g.brain?.providers?.currentId?.(), null) !== 'api') g.setSetting('villageAi', 'player');
+    // 'Always' needs Claude (claude.ai or a key); it falls back when neither is there.
+    const pid = safe(() => g.brain?.providers?.currentId?.(), null);
+    if (g.settings?.villageAi === 'always' && pid !== 'api' && pid !== 'claude.ai') g.setSetting('villageAi', 'player');
     if (this.villageAiEl?.isConnected) this.villageAiEl.replaceWith(this.villageAiRow());
     this.refreshDeps();
     this.refreshStatus();
@@ -565,19 +566,25 @@ export class SettingsPanel {
   }
 
   // 'player' (default): villagers reach Claude only when you talk to them or listen in.
-  // 'always': ambient talk near you too, which needs your own API key (never claude.ai).
+  // 'always': also in the background when something in their day goes wrong (DESIGN §28),
+  // through claude.ai or a key; with a key, ambient talk near you as well (§19.3).
   villageAiRow() {
     const g = this.game;
     const s = g.settings;
     const current = s.villageAi === 'always' ? 'always' : 'player';
-    const apiReady = safe(() => g.brain?.providers?.currentId?.(), null) === 'api' || (!!g.apiKey && s.brain === 'apikey');
+    const pid = safe(() => g.brain?.providers?.currentId?.(), null);
+    const apiReady = pid === 'api' || (!!g.apiKey && s.brain === 'apikey');
+    const claudeReady = apiReady || pid === 'claude.ai';
     const choices = h('div', { class: 'choice-list set-row set-radio', 'data-setting': 'villageAi', role: 'radiogroup', 'aria-label': 'When villagers think with Claude' });
+    const always = !claudeReady
+      ? 'Needs Claude: play on claude.ai, or set "Her mind" to your own API key.'
+      : `Also in the background, when something in their day goes wrong (someone missing, a shop shut): Claude works out what they do next, a few villagers per call, at most one call every 30 seconds.${apiReady ? ' Villagers near you also talk among themselves with Claude, at most once every 45 seconds. Uses your API key.' : ' Uses your claude.ai account.'} Their own reasoning takes over whenever Claude is busy or unavailable.`;
     const opts = [
-      ['player', 'When you talk to them', 'Only when you speak to someone or listen in; otherwise their own words.'],
-      ['always', 'Always, near you', apiReady ? 'They also talk among themselves with Claude, at most once every 45 seconds. Uses your API key.' : 'Needs your own API key (her mind set to your API key). Never on claude.ai.'],
+      ['player', 'When you talk to them', 'Only when you say something to someone or listen in. Everything else, including how they deal with a bad day, comes from their own reasoning.'],
+      ['always', 'Always', always],
     ];
     for (const [id, label, note] of opts) {
-      const disabled = id === 'always' && !apiReady;
+      const disabled = id === 'always' && !claudeReady;
       const input = h('input', { type: 'radio', name: 'villageAi', value: id, checked: current === id, disabled });
       input.addEventListener('change', () => {
         if (input.checked) this.set('villageAi', id);

@@ -14,6 +14,7 @@ import { SettingsPanel } from './settings_panel.js';
 import { TitleScreen } from './title.js';
 import { TouchControls } from './touch.js';
 import { VillageUI } from './village_ui.js';
+import { VillageLifePanel } from './village_life_view.js';
 import { buildPause, buildSign, buildDiary, Fader, Vignette } from './overlays.js';
 import { makeConfirm } from './modal.js';
 import { COMMANDS, JOBS, REJOIN, pickAck } from './content.js';
@@ -98,6 +99,7 @@ export class UI {
     this.title = new TitleScreen(this);
     this.touch = new TouchControls(this);
     this.village = new VillageUI(this);
+    this.lifeView = new VillageLifePanel(this); // "Hearthvale today" (DESIGN §28)
     this.fader = new Fader();
     this.vignette = new Vignette();
     this.modalLayer = h('div', { class: 'modal-layer', hidden: true });
@@ -176,6 +178,15 @@ export class UI {
         if (e.code === 'KeyL' && !isTextTarget(t) && this.village.handleKey(e)) {
           e.preventDefault();
           e.stopPropagation();
+        }
+        // V: Hearthvale today, the village's day and its troubles (§28).
+        if (e.code === 'KeyV' && !e.ctrlKey && !e.metaKey && !e.altKey && !isTextTarget(t) && this.game.state === 'playing') {
+          const top = this.top();
+          if (!top || top === this.lifeView.panel) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.openVillageLife();
+          }
         }
       },
       true,
@@ -472,6 +483,15 @@ export class UI {
 
   top() {
     return this.stack[this.stack.length - 1] || null;
+  }
+
+  // Hearthvale today: who is missing, who has a problem, everyone's errands (§28).
+  openVillageLife() {
+    try {
+      this.lifeView?.toggle();
+    } catch (err) {
+      console.warn('[ui] village view failed', err);
+    }
   }
 
   openModal(panel) {
@@ -879,6 +899,7 @@ export class UI {
     this.hud.update(dt);
     this.chat.update(dt);
     this.village.update(dt);
+    this.lifeView?.update(dt);
     this.toasts.update(dt);
     this.dialog.update(dt);
     this.mind.update(dt);

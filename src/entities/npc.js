@@ -191,9 +191,16 @@ export class NPC extends Actor {
     return D.firstName(this);
   }
 
+  // Gone from the village's life (DESIGN §28/§29, village_life.markGone): out of every
+  // routine, conversation and sighting until they come back.
+  isAlive() {
+    return !this.absent && super.isAlive();
+  }
+
   // ------------------------------------------------------------ main loop
 
   update(dt) {
+    if (this.absent) return;
     super.update(dt);
     if (this.slipT > 0) {
       this.slipT -= dt;
@@ -265,6 +272,15 @@ export class NPC extends Actor {
     const w = clock?.weather;
     const raining = !!w && w.type === 'rain' && (w.intensity ?? 1) > 0.3;
     e = adjustForWeather(e, { raining, night: !!clock?.isNight, home: p.home, isIndoor: (id) => !!g.locations?.get?.(id)?.indoor });
+    // An errand, a search, minding someone's shop (DESIGN §28): the village's day bends theirs.
+    if (this.shakenDay !== (clock?.day ?? 1) && g.villageLife?.entryFor) {
+      try {
+        const o = g.villageLife.entryFor(this, e, hour);
+        if (o) e = o;
+      } catch (err) {
+        console.warn('[npc] village life entry failed', err);
+      }
+    }
     return e;
   }
 
@@ -280,7 +296,7 @@ export class NPC extends Actor {
     const r = this.r;
     if (tick || !r.key) {
       const e = this.currentEntry();
-      const key = `${e.activity}@${e.at}`;
+      const key = e.vl ? `vl:${e.vl}` : `${e.activity}@${e.at}`;
       if (key !== r.key) this.beginEntry(e, key);
     }
     r.t += dt;
@@ -474,6 +490,7 @@ export class NPC extends Actor {
   // Where to stand for an activity: a bed, a workbench, a seat, the altar, a crop,
   // or a free floor tile inside the place.
   spotFor(e, reroll = false) {
+    if (e.spot && !reroll) return e.spot;
     const loc = this.locFor(e.at);
     if (!loc) return { x: this.anchor.x + (reroll ? (rand(this.game) - 0.5) * 32 : 0), y: this.anchor.y };
     const id = this.profile.id;
@@ -517,7 +534,10 @@ export class NPC extends Actor {
           const objs = this.objectsIn(loc, types);
           if (objs.length) {
             const o = objs[(Math.floor(this.jitter * 7) + salt + (e.activity === 'farm' ? Math.floor(rand(this.game) * objs.length) : 0)) % objs.length];
-            return this.besideObject(o);
+            // An object hemmed in on every side: work on the floor nearby, never "work"
+            // from wherever they happened to be standing (Aveline stayed at the Kettle).
+            const sp = this.besideObject(o);
+            if (sp) return sp;
           }
         }
         return this.floorSpot(loc, 3 + salt);
@@ -661,6 +681,8 @@ export class NPC extends Actor {
         return;
       case 'lamps':
         return this.performLamps(dt, tick);
+      case 'errand':
+        return this.performErrand(dt, tick);
       case 'pray':
         if (r.sub === 'kneel') {
           this.setState('sit', 0.5);
@@ -737,6 +759,16 @@ export class NPC extends Actor {
       }
       if (r.spot?.face) this.faceDir(r.spot.face);
       this.nextSub('work', 2.4 + rand(g) * 3);
+    }
+  }
+
+  // On an errand (DESIGN §28): at the counter, at someone's elbow, or waiting for someone.
+  performErrand(dt, tick) {
+    const look = this.r.entry?.lookAt;
+    if (tick && look && Number.isFinite(look.x) && !look.removed) this.faceToward(look.x, look.y);
+    else if (tick && !look && this.r.subT > this.r.subDur) {
+      this.faceDir(DIR_CYCLE[Math.floor(rand(this.game) * 4)]);
+      this.nextSub('idle', 1.5 + rand(this.game) * 2.5);
     }
   }
 
@@ -1966,11 +1998,38 @@ export class NPC extends Actor {
   }
 
   getDialogue(player) {
-    return D.getDialogue(this, player);
+    return this.withLifeOptions(D.getDialogue(this, player));
   }
 
   chooseOption(id, player) {
-    return D.chooseOption(this, id, player);
+    const key = String(id || '');
+    // Their day (DESIGN §28): "What's wrong?", "Have you seen Garrick?", answering their question.
+    if (key.startsWith('life:')) {
+      let r = null;
+      try {
+        r = this.game.villageLife?.dialogOption?.(this, key) || null;
+      } catch (err) {
+        console.warn('[npc] village life option failed', err);
+      }
+      if (r?.lines?.length) {
+        const back = D.chooseOption(this, '__back', player);
+        return this.withLifeOptions({ lines: r.lines, options: back.options });
+      }
+    }
+    return this.withLifeOptions(D.chooseOption(this, id, player));
+  }
+
+  withLifeOptions(d) {
+    if (!d || !Array.isArray(d.options) || d.close) return d;
+    let extra = [];
+    try {
+      extra = this.game.villageLife?.dialogOptions?.(this) || [];
+    } catch {
+      extra = [];
+    }
+    if (!extra.length) return d;
+    const ids = new Set(d.options.map((o) => o.id));
+    return { ...d, options: [...extra.filter((o) => !ids.has(o.id)), ...d.options] };
   }
 
   receiveGift(itemId, giver) {
@@ -1985,7 +2044,7 @@ export class NPC extends Actor {
 
   canInteract(actor) {
     if (this.carriedBy) return false;
-    return !!actor && actor === this.game.player && !this.dead && !this.removed;
+    return !!actor && actor === this.game.player && !this.dead && !this.removed && !this.absent;
   }
 
   interactLabel() {

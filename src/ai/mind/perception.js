@@ -1380,7 +1380,7 @@ export class Perception {
     m.notice(`person:${e.id}`, { source: 'person', amount: 0.5, label: rel.name, reminisce: false });
     if (p?.thought) m.addThought(p.thought, 'meeting', { show: true });
     m.relationships._emit(rel, { met: true }, 'seen today');
-    if (emit) this.game?.bus?.emit?.('npc_meet', { a: this.owner, b: e });
+    if (emit) this.game?.bus?.emit?.('npc_meet', { a: this.owner, b: e, known: true });
     return rel;
   }
 

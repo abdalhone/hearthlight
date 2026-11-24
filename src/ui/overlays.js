@@ -49,6 +49,7 @@ export function pauseItems(game, ui) {
   if (spellbookReady(game, ui)) items.push({ id: 'spellbook', group: 'go', label: 'Spellbook', hint: 'Your weaves and slots', key: 'B', run: () => ui.openSpellbook() });
   if (typeof ui?.openMissions === 'function') items.push({ id: 'missions', group: 'go', label: 'Missions', hint: 'What you took on', key: '', run: () => ui.openMissions('active') });
   items.push({ id: 'lyra', group: 'go', label: name, hint: 'Her mind and memories', key: 'Tab', run: () => ui.openMind?.(ui.mind?.tab || 'now') });
+  if (game?.villageLife && typeof ui?.openVillageLife === 'function') items.push({ id: 'village', group: 'go', label: 'Hearthvale today', hint: "Who is doing what, and what has gone wrong", key: '', run: () => ui.openVillageLife() });
   const character = characterOpener(ui);
   if (character) items.push({ id: 'character', group: 'go', label: 'Character', hint: 'Your stats and gear', key: '', run: character });
   const book = bookAction(game, ui) || (() => openCodex(ui));

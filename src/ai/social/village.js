@@ -326,7 +326,8 @@ export class Village {
       a,
       b,
       topic: ex.topic || 'small',
-      summary: summarize(a, b, ex.topic, { names: (x) => this.name(x), rumorText }),
+      // The teller first: news told back the other way round is still "B told A".
+      summary: opts.summary || (rumor && ex.teller === b ? summarize(b, a, ex.topic, { names: (x) => this.name(x), rumorText }) : summarize(a, b, ex.topic, { names: (x) => this.name(x), rumorText })),
       lines: lines.map((l) => ({ speaker: l.speaker, text: l.text })),
       effects: { [`${a}>${b}`]: effects.ab, [`${b}>${a}`]: effects.ba, rumor: rumor?.id || undefined },
       source: opts.source || 'local',
@@ -1077,6 +1078,19 @@ export class Village {
     }
   }
 
+  // ------------------------------------------------------------------ the absent (DESIGN §28/§29)
+
+  // Someone leaves the village's life: out of every routine; their errands fail and the
+  // village notices, asks, searches and, by nightfall, says they are missing.
+  // opts: { cause, seen: bool | [witness ids], at: { place, heading } | placeId, keepBody }
+  markGone(id, opts = {}) {
+    return this.game?.villageLife?.markGone?.(id, opts) ?? null;
+  }
+
+  markBack(id) {
+    return this.game?.villageLife?.markBack?.(id) ?? false;
+  }
+
   // ------------------------------------------------------------------ the player talking
 
   recentPlayerLines(npcId) {
@@ -1243,6 +1257,9 @@ export class Village {
     let standing = '';
     if (st.grievance?.fresh) standing = `You have heard the player ${st.grievance.kind.replace(/_/g, ' ')}${st.grievance.victim ? ` (${this.name(st.grievance.victim)})` : ''}. ${st.grievance.grave ? 'You love the one they hurt; you are cold and angry with them, and amends move you only a little.' : 'You are wary of them.'}`;
     if (this.barred('ember_kettle') && ['elda', 'rowan', 'wys'].includes(id)) standing += ' The player is barred from the Ember Kettle for now.';
+    // Their real day (DESIGN §28): an errand gone wrong, someone missing.
+    const life = safe(() => g?.villageLife?.situation?.(id), null);
+    if (life) standing += ` Right now, in your own words: "${life}" (This is what is wrong today; say so if asked, and do not invent more.)`;
     const lyra = g?.companion;
     const lyraState = safe(() => lyra?.mind?.companionship, null);
     const loc = safe(() => g?.locations?.at?.(e.x, e.y));
