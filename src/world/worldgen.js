@@ -6,6 +6,11 @@ import { ObjectManager, makeObject } from './objects.js';
 import { LocationIndex } from './locations.js';
 import { LOCATION_INFO, NOTICE_BOARD, SIGNS, LOOKS, BED_TEXT } from './world_content.js';
 
+// Places of healing (DESIGN §27).
+const SICKBED_TEXT = "A sickroom cot: clean linen, a basin, a bundle of silverleaf hung to dry above it. Mira keeps two of these for whoever the village carries in.";
+const INFIRMARY_TEXT = "The chapel's infirmary cot, under the shelves of old herbals. Sister Aveline sat beside it in the Border Wars, she says, more nights than she slept.";
+const CELL_TEXT = "The guardhouse cell: a straw-stuffed cot behind a door that has not locked properly in years. Rowan keeps it swept anyway.";
+
 // The world of Hearthvale, laid out by hand. The seed only shapes organic detail:
 // shorelines, forest edges, tree scatter, flowers and grass variety.
 //
@@ -676,6 +681,8 @@ class WorldBuilder {
       this.decor('pew', 0, 0, { footprint: { x: 84, y: row, w: 3, h: 1 }, name: 'Pew' });
       this.decor('pew', 0, 0, { footprint: { x: 90, y: row, w: 3, h: 1 }, name: 'Pew' });
     }
+    // The infirmary cot by the shelves, for whoever is carried in when Mira's are full (§27).
+    this.must({ objType: 'bed', id: 'infirmary_cot', footprint: { x: 92, y: 44, w: 1, h: 2 }, owner: 'infirmary', cot: true, variant: 'plain', name: 'Infirmary cot', text: INFIRMARY_TEXT, words: ['infirmary', 'cot'] });
   }
 
   // --- Gale's Goods --- the shop at the front, Garrick's back room behind a partition.
@@ -692,17 +699,25 @@ class WorldBuilder {
     this.decor('barrel', 56, 56);
   }
 
-  // --- Fennick's Herbs --- the shop in front, Mira's little room behind.
+  // --- Fennick's Herbs --- the shop in front; behind it Mira's little room and the
+  // village's sickroom, two cots where the hurt are tended (DESIGN §27).
   herbalist() {
     this.building({ id: 'herbalist', x: 45, y: 50, w: 8, h: 9, door: 48, roof: { style: 'moss', chimneys: [50] }, sign: 'herbalist', windowStyle: 'flowers' });
-    this.partition(this.row(46, 51, 53), [[48, 53]]);
+    this.partition([...this.row(46, 51, 53), ...this.col(48, 51, 52)], [
+      [47, 53],
+      [50, 53],
+    ]);
     this.bed('mira', 46, 51);
     this.look('shelf', 47, 51, 'potionShelf', { variant: 'herbs' });
-    this.decor('pot', 51, 51, { variant: 'plant' });
+    for (const [id, x] of [
+      ['sickbed_1', 49],
+      ['sickbed_2', 51],
+    ])
+      this.must({ objType: 'bed', id, footprint: { x, y: 51, w: 1, h: 2 }, owner: 'sickroom', cot: true, variant: 'plain', name: 'Sickroom cot', text: SICKBED_TEXT, words: ['sickroom', 'cot', 'sickbed'] });
     this.look('cauldron', 50, 55, 'cauldron');
     this.look('shelf', 46, 54, 'potionShelf', { variant: 'potions' });
-    this.look('shelf', 47, 54, 'potionShelf', { variant: 'herbs' });
     this.look('shelf', 51, 54, 'potionShelf', { variant: 'potions' });
+    this.look('shelf', 51, 55, 'potionShelf', { variant: 'herbs' });
     this.decor('table', 0, 0, { footprint: { x: 46, y: 56, w: 2, h: 1 }, variant: 'herbs' });
     this.decor('pot', 51, 56, { variant: 'plant' });
     // Mira's herb garden behind the shop.
@@ -740,6 +755,8 @@ class WorldBuilder {
     this.decor('rack', 57, 64, { name: 'Weapon rack' });
     this.decor('rack', 58, 64, { name: 'Weapon rack' });
     this.look('table', 0, 0, 'mapTable', { footprint: { x: 59, y: 66, w: 2, h: 1 }, variant: 'map' });
+    // The cell nobody has used in years (LORE §10): where the watch carries someone wanted (§27).
+    this.must({ objType: 'bed', id: 'cell_cot', footprint: { x: 61, y: 64, w: 1, h: 2 }, owner: 'cell', cot: true, variant: 'plain', name: 'Cell cot', text: CELL_TEXT, words: ['cell', 'cot'] });
     this.decor('barrel', 57, 68);
     this.look('dummy', 67, 67, 'dummy', { name: 'Training dummy' });
     this.decor('banner', 66, 63, { name: 'Guard banner' });
