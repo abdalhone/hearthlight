@@ -655,6 +655,8 @@ export function refusesTrade(m, npc) {
 // A grieving villager's first words are about their grief.
 export function decorateDialogue(m, npc, d) {
   if (!d || !Array.isArray(d.lines) || !d.lines.length) return d;
+  // To the one who did it, they do not open their grief.
+  if (toneFor(m, npc)) return d;
   const mo = m.life?.mourning?.[npc.id];
   if (!mo || !m.knownDead(mo.about)) return d;
   const rec = m.dead[mo.about];
@@ -671,7 +673,7 @@ export function dialogOptions(m, npc) {
   // Turning yourself in to the watch.
   if ((npc.id === 'rowan' || npc.id === 'wys' || (!alive(m, 'rowan') && !alive(m, 'wys') && npc.id === 'alder')) && m.isWanted() && m.game?.player?.crime?.kind === 'murder') out.push({ id: 'murder:surrender', label: 'Give yourself up' });
   for (const c of Object.values(m.cases)) {
-    if (c.lead === npc.id && c.state === 'open' && c.suspicion >= 0.15 && !m.session) out.push({ id: `murder:ask:${c.about}`, label: `About ${m.name(c.about)}…` });
+    if (c.lead === npc.id && c.state === 'open' && c.suspicion >= 0.15 && !m.session && !m.isWanted()) out.push({ id: `murder:ask:${c.about}`, label: `About ${m.name(c.about)}…` });
   }
   return out;
 }

@@ -2329,6 +2329,8 @@ export class VillageLife {
     const t = this.now();
     const own = this.sight.lastSeen('lyra', about);
     const c = this.cases.get(about);
+    // Found dead (DESIGN §29): she knows, and that is all she says.
+    if (c?.status === 'dead') return this.line('lyra', 'grief', { about });
     let line;
     if (own && t - own.t < 900 * 1.5) {
       const vars = { about, when: whenPhrase(own.t, t), placeId: own.place };
