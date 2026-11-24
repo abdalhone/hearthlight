@@ -1217,3 +1217,91 @@ the player; the morning card shows *While you slept*; the Mind panel's People ta
 eighteen and shows who she is close to and how the village feels about the player; "You &
 her" shows the `worth()` breakdown; memories and knowledge show the *edited* mark and the
 earlier version. All of this works on a phone. Nights get darker per §18.
+
+### 19.7 Her village protects her (the author, after playtesting)
+
+"I tried to kill her, but then she just left and disappeared from the village. No, it's her
+village. She should be able to ask help for other people. They can come and help her."
+
+- Hearthvale is Lyra's home. **She never leaves the map or vanishes** — not when hurt, not
+  in `left`, not in `gone`. `gone` now means she has cut the player out of her life: she
+  lives with her parents at the chandlery (or her room at the Kettle), keeps her distance,
+  won't talk beyond a word, and the village stands with her. (LORE §7's table changes to
+  match: the road to Saltmere is something she *thinks about*, never a despawn.)
+- **Calling for help.** When she is attacked, badly hurt, or afraid for her life, she shouts
+  for help (a real line, by name when someone is near: "Rowan! Hess!") and runs toward
+  people. The mind/behavior emit `call_for_help { victim, attacker, x, y, severity }`.
+- **The village answers** (characters, in `npc.js`, on `call_for_help` and on any attack on
+  a villager): guards (Rowan, Wys) and Hess come running and fight the attacker; Mira, her
+  parents, Elda or Aveline come to tend her (heal, help her up, walk her home); others shout,
+  shield children, fetch the watch, or flee. A villager who was downed can call for help too.
+- **Consequences** (social + autonomy): the attack becomes a rumor that spreads fast;
+  opinions of the player fall across the village (most among those who love her); shops
+  may refuse the player; the watch may confront or bar the player from the Kettle for a
+  time; amends are possible but slow. Her parents' and friends' opinions of the player
+  matter to her own weighing.
+
+### 19.8 Beds, and ground that feels real (the author, after playtesting)
+
+- **Everyone sleeps in a bed in their own home.** Nobody sleeps on a floor: not in the
+  chapel, the forge, the shop or the inn's common room. Every villager (all eighteen) and
+  Lyra have a bed whose `owner` is their id, in their home (a back room, a loft, a cell, an
+  upstairs room). If a bed is ever missing, they walk home and sit by the hearth instead of
+  lying on the floor.
+- **Sleeping looks right.** Anyone in a bed lies in it the way the bed is oriented (head on
+  the pillow, blanket over the body), never sideways across it.
+- **Ground reads true.** Anything drawn as raised (a terrace, a rock band, a cliff face, a
+  retaining wall, a steep bank) is solid along its face and climbable only by stairs, steps
+  or a ramp drawn as such; anything walkable must look walkable. No walking up walls.
+
+## 20. Story and cutscenes (`src/story/*`)
+
+The author: "you put lore but without a cutscene. I have no idea what is the role lore. Make
+me some lore." The lore must reach the player in the game, not only in a file.
+
+- **Cutscene engine** (`src/story/cutscene.js`): letterboxed scenes that play scripts made of
+  steps — illustrated full-screen panels (procedurally painted pixel art with parallax,
+  light and particles: falling snow, brightfall, embers, fog), in-world camera moves over the
+  real map, actors walking/turning/emoting, narration, dialogue with portraits and names,
+  sound, music swells, and voiced lines (§21). Tap/click/Space advances; hold or a Skip
+  button skips; it pauses the game; text is drawn at full resolution; it fits a phone in
+  portrait and landscape.
+- **The prologue** (plays on New Game, skippable, replayable from the title screen and the
+  menu): Halcyre and the broken Song, the Drift, the warded villages, Hearthvale and its
+  Wellstone, Lyra's birth under the Brightfall to old Hobb and Wenna, Maren going into the
+  Sunken Ruins, Lyra and Hess climbing the Hollowcrown, the melted circle in the snow and
+  the stranger in it, the carry down, eighty-one days of sleep — and the player waking in the
+  Wayhouse with Lyra there. It ends in play.
+- **Story scenes in play**, triggered by places, people and trust: meeting Hobb and Wenna
+  (Wenna wants to touch your face), Lyra telling the night of the lamps, the Weeping Cut
+  (only at high trust, at the quarry), Maren's thread (Aveline's account, the ruins gate,
+  the journal), and the chapel candles leaning toward the stranger. Each plays once,
+  respects Lyra's state (she won't tell secrets to someone she doesn't trust), and is
+  remembered by her mind.
+- **The Book of Halcyre** (menu): the lore as an illustrated in-game book — the world, magic,
+  dungeons, Hearthvale, its people, and the story so far — chapters unlocked as the player
+  learns them (from story.js and what the player has heard), so the player always knows what
+  the lore is and why it matters.
+
+## 21. Voices (`src/audio/voice*.js`, `scripts/voice/*`)
+
+The author asked for voices made with Kokoro (an open-weight text-to-speech model) — "very
+cool" voices, cutscenes with voices, and Lyra talking in that voice.
+
+- **Pre-rendered voices.** A build-time pipeline (`scripts/voice/`, Python, `kokoro-onnx`
+  with model files from the kokoro-onnx GitHub releases, cached outside the repo; ffmpeg)
+  renders every fixed line — the prologue and story scenes, the narrator, Lyra's scripted
+  lines and barks, and each villager's greetings, "how are you", farewells, gift reactions
+  and day/night/rain lines — into small compressed clips (`assets/voice/<key>.mp3`, mono, a
+  manifest mapping normalized text → clip and duration). Each character has a distinct cast
+  voice (Kokoro voice or blend, speed, gentle pitch/EQ shaping for age and character). The
+  build copies clips next to the page (`dist/voice/…`) and they are published as artifact
+  files.
+- **Playback** (`src/audio/voice.js`): when a character says a line that has a clip, it plays
+  in sync with the speech bubble (music ducks); clips load on demand and are cached;
+  settings control volume and on/off per group (Lyra, villagers, narrator).
+- **Lyra's live voice.** For lines with no clip (Claude's replies, generated offline lines):
+  optional in-browser Kokoro ("Kokoro voice for everything she says", one-time ~90 MB
+  download of the int8 model, published as artifact files), when it runs in that browser;
+  otherwise claude.ai's voice where offered (desktop), otherwise the browser's own voice if
+  the player enables it, otherwise silence with the text on screen. Never block the game.
