@@ -482,3 +482,7 @@ def voice_distance(a: dict, b: dict) -> float:
     else:
         st = 0.0
     return float(m + 0.6 * st)
+
+
+def normalize_words(text: str) -> list[str]:
+    return re.findall(r"[A-Za-z']+", tts_text(text))

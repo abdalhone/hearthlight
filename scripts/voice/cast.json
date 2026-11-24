@@ -357,6 +357,40 @@
           ]
         ]
       }
+    },
+    "varek": {
+      "name": "Varek One-Eye",
+      "voice": {
+        "am_echo": 0.5,
+        "am_onyx": 0.5
+      },
+      "lang": "en-us",
+      "speed": 0.95,
+      "fx": {
+        "highpass": 60,
+        "eq": [
+          [
+            2800,
+            2.5,
+            1.0
+          ]
+        ]
+      }
+    },
+    "lyra_young": {
+      "name": "Lyra at eleven (in memory)",
+      "group": "lyra",
+      "voice": {
+        "af_heart": 0.75,
+        "af_bella": 0.25
+      },
+      "lang": "en-us",
+      "speed": 1.08,
+      "fx": {
+        "pitch": 4.5,
+        "size": 1.5,
+        "highpass": 120
+      }
     }
   }
 }

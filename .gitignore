@@ -9,3 +9,4 @@ screenshots/
 assets/voice/_sample/
 scripts/voice/__pycache__/
 *.pyc
+scripts/voice/lines.json
