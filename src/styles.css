@@ -8090,7 +8090,7 @@ input[type='range']::-moz-range-thumb {
 }
 /* A phone held sideways: panels leave a strip of the world on each side, so a tap
    beside them (which closes them) is easy to find. */
-@media (max-height: 520px) and (min-width: 700px) {
+@media (max-height: 520px) and (min-width: 600px) {
   .modal-layer {
     padding-left: calc(var(--sa-l) + 44px);
     padding-right: calc(var(--sa-r) + 44px);
@@ -8953,4 +8953,12 @@ input[type='range']::-moz-range-thumb {
     padding-top: 8px;
     padding-bottom: 8px;
   }
+}
+
+/* Asking Lyra lives in her Mind panel now (a tap on her portrait), on every screen:
+   the HUD keeps only what play needs every second. Alt+1–5 still ask from the keyboard. */
+.hud .cmdbar,
+.hud .orders,
+.hud .jobs-menu {
+  display: none !important;
 }

@@ -242,7 +242,8 @@ class Journal {
     if (!ms || !panel) return;
     const j = ms.journal();
     panel.setTitle('Missions', `${j.counts.done} of ${j.counts.total} done`);
-    const n = { active: j.active.length, available: j.available.length + j.board.length, done: j.completed.length };
+    // The story's thread shows among the active cards, so it counts there too.
+    const n = { active: j.active.length + (j.story ? 1 : 0), available: j.available.length + j.board.length, done: j.completed.length };
     for (const [k, b] of Object.entries(this.tabBtns)) {
       b.classList.toggle('active', k === this.tab);
       b.setAttribute('aria-selected', String(k === this.tab));
@@ -272,7 +273,7 @@ class Journal {
             { class: 'mj-row' },
             icon('flame', 'mj-ico'),
             h('div', { class: 'mj-head' }, h('div', { class: 'mj-kicker', text: "Maren's thread" }), h('h3', { class: 'mj-title', text: s.title })),
-            h('div', { class: 'mj-side' }, tracked ? h('span', { class: 'mj-pill', text: 'On your HUD' }) : button('Track', { cls: 'btn-small', onClick: () => this.track('story') })),
+            h('div', { class: 'mj-side' }, tracked ? h('span', { class: 'mj-pill', text: 'On screen' }) : button('Track', { cls: 'btn-small', onClick: () => this.track('story') })),
           ),
           h('p', { class: 'mj-now', text: s.text }),
         ),
@@ -356,7 +357,7 @@ class Journal {
     el.append(h('div', { class: 'mj-rewards' }, ...c.rewards.map((r) => this.chip(r))));
     const actions = h('div', { class: 'mj-actions' });
     if (active) {
-      if (c.tracked) actions.append(h('span', { class: 'mj-pill', text: 'On your HUD' }));
+      if (c.tracked) actions.append(h('span', { class: 'mj-pill', text: 'On screen' }));
       else actions.append(button('Track', { cls: 'btn-small', onClick: () => this.track(c.id) }));
       actions.append(button('Set aside', { cls: 'btn-small btn-ghost', onClick: () => this.abandon(c) }));
     } else if (offer && c.canAccept) {

@@ -135,7 +135,7 @@ export class ForgeView {
     const G = g.gear;
     const list = this.owned();
     if (!list.length) {
-      this.listEl.append(h('p', { class: 'chs-empty', text: 'Bram works blades and armor. Buy or forge one first; then bring it here with ore and crystals.' }));
+      this.listEl.append(h('p', { class: 'chs-empty', text: 'Bram works blades and armor. Your old sword is too plain to work: buy or forge a piece first (Forge new), then bring it here with ore and crystals.' }));
       return;
     }
     for (const { id, worn } of list) {

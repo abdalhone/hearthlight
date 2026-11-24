@@ -176,7 +176,8 @@ export class CharacterView {
       const rar = def ? def.rarity : 'common';
       r.b.className = `chs-slot ${id ? `rar-bd-${rar}` : 'empty'} ${this.slot === s ? 'on' : ''}`.trim();
       r.img.src = itemIconUrl(this.game, id || EMPTY_ICON[s]);
-      setText(r.name, def ? def.name : '—');
+      // Everyone starts with the old blade they woke with: plain, no bonus, not gear.
+      setText(r.name, def ? def.name : s === 'weapon' ? 'Old sword' : '—');
       r.name.className = `chs-slot-name ${def ? `rar-${rar}` : ''}`.trim();
       const lv = id ? G.level(id) : 0;
       setText(r.up, lv ? `+${lv}` : '');

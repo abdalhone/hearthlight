@@ -83,6 +83,11 @@ async function run([W, H]) {
       return { x: r.left, y: r.top, w: r.width, h: r.height, cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
     }, sel);
   const tapSel = async (sel, label = sel) => {
+    await page.evaluate((sel) => {
+      const e = [...document.querySelectorAll(sel)].pop();
+      const r = e?.getBoundingClientRect();
+      if (r && (r.bottom > innerHeight || r.top < 0)) e.scrollIntoView({ block: 'center' });
+    }, sel);
     const b = await box(sel);
     if (!check(!!b, `${tag}: ${label} is on screen to tap`)) return false;
     await tap(b.cx, b.cy);
@@ -423,6 +428,7 @@ async function run([W, H]) {
   await fits('Settings: Controls');
   const how = await page.evaluate(() => {
     const b = [...document.querySelectorAll('.panel-settings button')].find((x) => /how to play/i.test(x.textContent));
+    b?.scrollIntoView({ block: 'center' });
     const r = b?.getBoundingClientRect();
     return r ? [r.left + r.width / 2, r.top + r.height / 2] : null;
   });

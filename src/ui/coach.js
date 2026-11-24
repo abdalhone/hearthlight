@@ -69,11 +69,21 @@ export function placeCard(target, card, view, pad = 10, gap = 14) {
     y = below;
     side = 'below';
   } else {
-    // Neither fits whole: beside it, on the roomier half of the screen.
-    side = target.x + target.w / 2 > view.w / 2 ? 'left' : 'right';
-    y = Math.max(pad, Math.min(view.h - pad - card.h, target.y + target.h / 2 - card.h / 2));
-    const wx = side === 'left' ? target.x - gap - w : target.x + target.w + gap;
-    x = Math.max(pad, Math.min(view.w - pad - w, wx));
+    // Neither fits whole: beside it, on the roomier side, as narrow as that side is
+    // (never over the thing it points at); with no room either side, at the screen's
+    // edge farther from it.
+    const roomL = target.x - gap - pad;
+    const roomR = view.w - pad - (target.x + target.w + gap);
+    side = roomL >= roomR ? 'left' : 'right';
+    const room = Math.max(roomL, roomR);
+    if (room >= 180) {
+      const bw = Math.min(w, room);
+      y = Math.max(pad, Math.min(view.h - pad - card.h, target.y + target.h / 2 - card.h / 2));
+      x = side === 'left' ? target.x - gap - bw : target.x + target.w + gap;
+      return { x: Math.round(x), y: Math.round(Math.max(pad, y)), w: Math.round(bw), side };
+    }
+    side = target.y + target.h / 2 > view.h / 2 ? 'top' : 'bottom';
+    y = side === 'top' ? pad : view.h - pad - card.h;
   }
   return { x: Math.round(x), y: Math.round(Math.max(pad, y)), w, side };
 }
@@ -404,9 +414,16 @@ export class Coach {
     } else this.ring.style.display = 'none';
     const cw = Math.min(330, rb.width - 20);
     this.card.style.width = `${cw}px`;
-    const ch = this.card.offsetHeight || 120;
+    let ch = this.card.offsetHeight || 120;
     const tbox = r ? { x: r.left - rb.left - pad, y: r.top - rb.top - pad, w: r.width + pad * 2, h: r.height + pad * 2 } : null;
-    const at = placeCard(tbox, { w: cw, h: ch }, { w: rb.width, h: rb.height });
+    let at = placeCard(tbox, { w: cw, h: ch }, { w: rb.width, h: rb.height });
+    if (at.w !== cw) {
+      // A narrower card beside the target: measure its new height and place it again.
+      this.card.style.width = `${at.w}px`;
+      ch = this.card.offsetHeight || ch;
+      at = placeCard(tbox, { w: at.w, h: ch }, { w: rb.width, h: rb.height });
+    }
+    this.card.style.width = `${at.w}px`;
     this.card.style.left = `${at.x}px`;
     this.card.style.top = `${at.y}px`;
     this.card.dataset.side = at.side;

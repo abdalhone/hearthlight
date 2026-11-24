@@ -98,17 +98,18 @@ export const CONTROLS = [
   { id: 'move', what: 'Move', keys: 'WASD or the arrow keys', pad: 'Left stick or d-pad', touch: 'Put your left thumb down anywhere on the left side and slide' },
   { id: 'sword', what: 'Sword', keys: 'Left click (toward the mouse), J or Space', pad: 'A', touch: 'The sword button; drag it to aim the swing' },
   { id: 'dodge', what: 'Dodge roll', keys: 'K or Shift', pad: 'B', touch: 'The swirl button beside the sword' },
-  { id: 'weave', what: 'Cast a weave', keys: '1 – 6 toward the mouse; hold for beams and charges', pad: 'RT, aimed with the right stick', touch: 'Drag from a weave button to aim, let go to cast, drag back onto it to cancel; a tap casts at the nearest foe' },
-  { id: 'choose', what: 'Choose a weave', keys: 'Mouse wheel, Q / R or a click on its slot; right click casts it', pad: 'LT / RB', touch: null },
-  { id: 'spellbook', what: 'Spellbook', keys: 'B', pad: 'Start, then Spellbook', touch: 'The book button, top right' },
-  { id: 'interact', what: 'Talk to someone, open, pick up', keys: 'E', pad: 'X', touch: 'The hand button, when there is something to use' },
+  { id: 'weave', what: 'Cast a weave', keys: '1 – 6 toward the mouse; hold for beams and charges', pad: 'RT, aimed with the right stick', touch: 'Tap a weave button to cast at the nearest foe; drag from it to aim, let go to cast, drag back onto it to cancel' },
+  { id: 'choose', what: 'Choose a weave', keys: 'Mouse wheel, Q / R or a click on its slot; right click casts it', pad: 'LT / RB', touch: 'No choosing: every round button is one weave (its name under it, its mana on its corner)' },
+  { id: 'spellbook', what: 'Spellbook', keys: 'B', pad: 'Start, then Spellbook', touch: 'Menu → Spellbook, or the + New weave button' },
+  { id: 'interact', what: 'Talk to someone, open, pick up', keys: 'E', pad: 'X', touch: 'The round button above the sword: it says what it does (Talk, Open…)' },
   { id: 'listen', what: 'Listen in', keys: 'L', pad: null, touch: 'Tap “Listen in” when two villagers talk nearby' },
-  { id: 'talk', what: 'Chat with Lyra or anyone near', keys: 'T or Enter', pad: 'Y', touch: 'The speech button, top right' },
-  { id: 'ask', what: 'Ask Lyra for help', keys: 'Alt + 1 – 5, or the Ask Lyra bar', pad: null, touch: 'The ✦ button beside her portrait' },
-  { id: 'mind', what: "Lyra's mind", keys: 'Tab or M, or a click on her card', pad: 'Back', touch: 'Tap her card' },
-  { id: 'inventory', what: 'Inventory', keys: 'I', pad: 'LB', touch: 'The bag button, top right' },
+  { id: 'talk', what: 'Chat with Lyra or anyone near', keys: 'T or Enter', pad: 'Y', touch: 'The Talk button above the sword, when nothing else is near' },
+  { id: 'ask', what: 'Ask Lyra for help', keys: 'Alt + 1 – 5, or Ask in her Mind', pad: null, touch: 'Tap her portrait: the Ask row is at the top' },
+  { id: 'mind', what: "Lyra's mind", keys: 'Tab or M, or a click on her portrait', pad: 'Back', touch: 'Tap her portrait' },
+  { id: 'inventory', what: 'Inventory', keys: 'I', pad: 'LB', touch: 'Menu → Bag' },
   { id: 'help', what: 'Call for help when you fall', keys: 'E or H', pad: 'X', touch: 'The Call for help button' },
-  { id: 'menu', what: 'Menu (pause)', keys: 'Esc', pad: 'Start', touch: 'The pause button, top right' },
+  { id: 'menu', what: 'Menu (pause)', keys: 'Esc', pad: 'Start', touch: 'The Menu button, top right' },
+  { id: 'close', what: 'Close a panel', keys: 'Esc, the ✕, or a click beside it', pad: 'B', touch: 'The ✕, a tap beside it, or your phone’s back gesture' },
 ];
 
 // The rows of CONTROLS one device can use, as [what, how].
@@ -125,7 +126,7 @@ export const HOW_TO_PLAY = [
     id: 'weaving',
     title: 'Weaving',
     text:
-      'You can do something no one in Hearthvale can: shape raw Drift with your hands. The village calls it weaving. A weave is a shape (how it leaves your hands), up to two essences (what it is made of: fire, frost, storm…) and up to two twists (how it behaves: split, bounce, homing…). You start with a small bolt of raw weave; every new shape, essence and twist is found through people who need a hand and the great foes around the valley. Make and name weaves in the Spellbook and put them in your slots. On a phone, hold it sideways for fights.',
+      'You can do something no one in Hearthvale can: shape raw Drift with your hands. The village calls it weaving. A weave is a shape (how it leaves your hands), up to two essences (what it is made of: fire, frost, storm…) and up to two twists (how it behaves: split, bounce, homing…). You start with a small bolt of raw weave; every new shape, essence and twist is found through people who need a hand and the great foes around the valley. Make and name weaves in the Spellbook (Menu → Spellbook): 1 pick a shape, 2 add essences, 3 add twists; every change is saved onto your weave buttons at once. A cast costs mana, the blue bar, which fills again by itself.',
   },
   {
     id: 'lyra',
