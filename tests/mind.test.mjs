@@ -152,27 +152,39 @@ test('the Mind has the full §9 interface and starts as herself', () => {
   assert.equal(s.name, 'Lyra');
   assert.equal(s.age, 24);
   assert.equal(s.pronouns, 'she/her');
-  assert.match(s.origin, /Glasswater Isles/);
+  assert.equal(s.fullName, 'Lyra Ambrel');
+  assert.match(s.origin, /Hearthvale/);
   assert.match(s.backstory, /Maren Ashgrove/);
-  assert.match(s.backstory, /Cal/);
-  assert.match(s.backstory, /her own reasons|her choice/i, 'she travels with the player by her own choice');
+  assert.match(s.backstory, /Hobb/);
+  assert.match(s.backstory, /Weeping Cut/);
+  assert.match(s.backstory, /her own reasons|her choice|by choice/i, 'she travels with the player by her own choice');
+  assert.ok(!/Glasswater|Kettlewake|Tidewell|\bCal\b/.test(JSON.stringify(s).replace("Maren's home", '')), 'the retired origin is gone');
   for (const k of ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism']) assert.ok(s.personality[k] >= 0 && s.personality[k] <= 1);
   assert.ok(s.values.some((v) => /her own|own road/i.test(v)), 'her life is her own');
   assert.ok(s.likes.some((v) => /moonpetal/.test(v)) && s.likes.some((v) => /honey cake/.test(v)));
   assert.ok(s.fears.some((v) => /water/.test(v)));
-  assert.ok(s.secrets.some((x) => /Cal/.test(x.text)));
+  assert.ok(s.secrets.some((x) => /Bryn/.test(x.text)), "her secret: Bryn's leg");
+  assert.ok(s.limits.some((x) => /home/.test(x) && /chandlery/.test(x)), 'Hearthvale is her home (DESIGN §19.7)');
 
-  // The player: a debt, a little trust, curiosity (DESIGN §9, §16).
+  // The player: the stranger she carried down, a little trust, curiosity (LORE §7, §8).
   const p = mind.relationships.get('player');
-  assert.deepEqual([p.affinity, p.trust, p.respect, p.familiarity, p.fear], [25, 20, 25, 15, 0]);
+  assert.deepEqual([p.affinity, p.trust, p.respect, p.familiarity, p.fear], [20, 32, 25, 30, 0]);
   assert.ok(p.opinion.length > 40);
   assert.equal(bondOf(p).label, 'Acquaintance');
+  // Her people: all eighteen, as she has known them all her life (LORE §7, "Lyra's people").
+  for (const id of ['hobb', 'wenna', 'sabeth', 'hess', 'elda', 'mira', 'bram', 'pip', 'rowan', 'tobias', 'aveline', 'garrick', 'alder', 'petra', 'tilly', 'tansy', 'corran', 'wys', 'bryn']) {
+    const r = mind.relationships.get(id);
+    assert.ok(r && r.familiarity >= 60 && r.opinion, `she knows ${id}`);
+  }
+  assert.deepEqual(['affinity', 'trust', 'familiarity'].map((k) => mind.relationships.get('hobb')[k]), [90, 85, 100]);
+  assert.ok(mind.relationships.get('hobb').tags.includes('family'));
   // Maren: the mother she chose, absent.
   const maren = mind.relationships.get('maren');
   assert.ok(maren.absent && maren.tags.includes('mentor') && maren.affinity >= 90);
   // First memories, pinned; goals from her soul; lore she knows.
   assert.ok(mind.memory.all().some((m) => /wolf pack/.test(m.text) && m.importance >= 9 && m.pinned));
-  assert.ok(mind.memory.all().some((m) => /Little lamp/.test(m.text)), "Maren's letter, word for word");
+  assert.ok(mind.memory.all().some((m) => /little lamp/.test(m.text)), "'little lamp', in the stranger's sleep");
+  assert.ok(mind.memory.all().some((m) => /Crown Ring/.test(m.text)), 'the finding on the Hollowcrown');
   assert.equal(mind.goals.find((g) => g.id === 'find_maren').source, 'soul');
   assert.ok(mind.knowsLore('waygates'));
   assert.ok(mind.life.length >= 8 && mind.life[0].age === 0);
@@ -282,10 +294,12 @@ test('relationship math: clamps, rounding, history, notes, opinions and events',
   assert.equal(rels.get('Bram'), r, 'by first name');
   assert.equal(rels.get('bram ironhand'), r, 'by full name');
 
+  // She has known Bram all her life (LORE §7): his numbers start from hers.
+  const respect0 = r.respect;
   rels.adjust('bram', { affinity: 250, trust: -80, respect: 12.345, fear: 5 }, 'Mended my dagger');
   assert.equal(r.affinity, 100);
   assert.equal(r.trust, 0);
-  assert.equal(r.respect, 27.3);
+  assert.equal(r.respect, Math.min(100, Math.round((respect0 + 12.345) * 10) / 10));
   assert.equal(r.fear, 5);
   rels.adjust('bram', { affinity: -400 });
   assert.equal(r.affinity, -100);
@@ -350,9 +364,9 @@ test('recall: relevance beats recency, and "the blacksmith" finds Bram', () => {
   assert.ok(mind.recall('', { limit: 3 }).length === 3);
   assert.ok(mind.recall('today').every((m) => m.day === game.clock.day));
   // Other stores on request: her past, her knowledge.
-  const life = mind.recall('my little brother Cal', { stores: ['life'] });
+  const life = mind.recall('Bryn and the Weeping Cut', { stores: ['life'] });
   assert.equal(life[0].store, 'life');
-  assert.ok(life.some((h) => h.id === 'cal_dies'));
+  assert.ok(life.some((h) => h.id === 'went_into_the_cut'));
   const know = mind.recall('waygates', { stores: ['knowledge'] });
   assert.equal(know[0].ref.loreId, 'waygates');
   // Theories stay theories.
@@ -410,7 +424,7 @@ test('recallContext stays under budget, grouped, with ids that resolve', () => {
   assert.ok(full.text.length <= 3500 && full.text.length > 300);
   assert.match(full.text, /Memories:/);
   assert.match(full.text, /wol(f|ves)/i);
-  assert.match(full.text, /wolf pack/, "her first memory of the wolves is not buried under a hundred small ones");
+  assert.match(full.text, /wolf pack|Wolves on the King's Road/, "her first memory of the wolves is not buried under a hundred small ones");
   assert.match(full.text, /What she knows:/);
   assert.ok(new Set(full.items.map((i) => i.id)).size === full.items.length, 'deduped');
   assert.ok(mind.recallContext('').text.length <= 3500);
@@ -419,7 +433,8 @@ test('recallContext stays under budget, grouped, with ids that resolve', () => {
   assert.ok(d.memories.length >= 1 && d.text.length <= 900);
   assert.equal(mind.dossier('nobody we know'), null);
   const lore = mind.loreLookup('Maren');
-  assert.equal(lore.entries[0].subject, 'Maren Ashgrove');
+  assert.match(lore.entries[0].subject, /Maren/);
+  assert.ok(lore.entries.some((e) => e.subject === 'Maren Ashgrove'));
 });
 
 test('life memories are never pruned and the save stays under 150 KB', () => {
@@ -540,24 +555,37 @@ test('perception: being hit, the player hitting her, heals and gifts', () => {
   assert.ok(mind.memory.all().some((m) => /came back for me/.test(m.text) && m.importance >= 9));
 });
 
-test('first impressions: she meets people within ~56 px and in sight', () => {
+test('she sees people within ~56 px and in sight: her own people as old friends, strangers as first impressions', () => {
   const { game, mind, lyra } = makeGame();
   const metEvents = [];
   game.bus.on('npc_meet', (p) => metEvents.push(p.b.id));
   const far = game.entities.add(villager(game, 'elda', lyra.x + 200, lyra.y));
   const near = game.entities.add(villager(game, 'aveline', lyra.x + 40, lyra.y));
+  const memories0 = mind.memory.all().length;
   run(game, 1);
   assert.deepEqual(metEvents, ['aveline']);
+  // Aveline: known all her life (LORE §7), so a familiar face, a passing thought, no "first impression".
   const rel = mind.relationships.get('aveline');
-  assert.ok(rel.firstMet != null && rel.opinion.length > 20);
-  assert.ok(mind.memory.all().some((m) => m.about.includes('aveline') && /Aveline/.test(m.text)));
+  assert.ok(rel.firstMet != null && rel.opinion.length > 20 && rel.familiarity >= 70);
+  assert.ok(rel.lastSeen != null);
   assert.ok(mind.thoughts.some((t) => t.source === 'meeting'));
-  assert.equal(mind.relationships.get('elda'), null, 'too far to meet');
+  assert.ok(!mind.memory.all().slice(memories0).some((m) => /first impression|met .*Aveline/i.test(m.text)), 'no new first-meeting memory for someone she has known all her life');
+  assert.equal(mind.relationships.get('elda').lastSeen ?? null, null, 'too far to see');
   far.x = lyra.x + 30;
   run(game, 1);
   assert.deepEqual(metEvents, ['aveline', 'elda']);
   run(game, 2);
   assert.equal(metEvents.length, 2, 'only once');
+  // Someone she has never met (Owlsend's Ketty Brask, say) gets a real first impression.
+  const profile = { ...NPC_PROFILES.find((p) => p.id === 'garrick'), id: 'ketty', name: 'Ketty Brask', role: 'wardrunner' };
+  const ketty = new Actor(game, { id: 'ketty', name: 'Ketty Brask', faction: 'villager', x: lyra.x + 20, y: lyra.y, maxHp: 30 });
+  ketty.profile = profile;
+  ketty.role = profile.role;
+  ketty.say = () => {};
+  game.entities.add(ketty);
+  run(game, 1);
+  assert.ok(metEvents.includes('ketty'));
+  assert.ok(mind.memory.all().some((m) => m.about.includes('ketty')), 'a first impression is remembered');
   assert.ok(near);
 });
 
@@ -630,8 +658,12 @@ test('quest arc: every stage, its event, objective and journal', () => {
   assert.ok(mind.goals.find((g) => g.id === 'find_maren').done);
   assert.ok(mind.goals.some((g) => g.id === 'follow_maren' && !g.done));
   assert.ok(mind.memory.all().some((m) => m.importance === 10 && /journal/.test(m.text)));
-  assert.ok(mind.knowledge.some((k) => /Pale Reach/.test(k.text)), 'she learned what the journal says');
-  assert.ok(questPlugin.journalText().includes('Little lamp'));
+  assert.ok(mind.knowledge.some((k) => /Crown Ring/.test(k.text) && /the Pale/.test(k.text)), 'she learned what the journal says');
+  // The journal tells what LORE §9.2 says, and no more: "Little lamp" is the letter in Elda's strongbox.
+  const journal = questPlugin.journalText();
+  assert.ok(journal.includes('where the Song lets go') && journal.includes('If someone comes out, I hope whoever it is is kind.'));
+  assert.ok(/stones of this verse are failing/.test(journal) && /past the Ring into the Pale/.test(journal));
+  assert.ok(!/Little lamp|Keeper|sing the old thing/i.test(journal));
   assert.ok(game.flags.journal_read);
   // Stages never go backwards, and the save keeps them.
   game.bus.emit('npc_topic', { npc: aveline, topic: 'maren', player });
@@ -893,14 +925,16 @@ test('every promptContext stays under 900 characters, even in a full mind', () =
   for (const id of ['relationships', 'memory', 'feelings', 'quest']) assert.ok(ids.includes(id), `${id} has a prompt section`);
 });
 
-test('reset brings back the woman who walked into Hearthvale', () => {
+test('reset brings back the woman the game began with', () => {
   const { game, mind } = makeGame();
   mind.remember('Something that happened later.', { importance: 5 });
   mind.relationships.adjust('player', { affinity: 30 });
+  mind.relationships.adjust('hobb', { affinity: -50 });
   const soulName = mind.soul.name;
   mind.reset();
   assert.ok(!mind.memory.all().some((m) => /happened later/.test(m.text)));
-  assert.equal(mind.relationships.get('player').affinity, 25);
+  assert.equal(mind.relationships.get('player').affinity, 20);
+  assert.equal(mind.relationships.get('hobb').affinity, 90, 'her people as she knew them');
   assert.equal(mind.soul.name, soulName);
   assert.ok(mind.autonomy);
   run(game, 1);
