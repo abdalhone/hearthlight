@@ -16,6 +16,26 @@ const PLACE_EVERY = 0.1;
 // HUD pieces the stack must never cover (the chat is handled on its own).
 const HUD_SELECTOR = '.hud .card, .hud-btn, .lyra-fold, .quest-line, .listen-prompt, .interact-prompt, .cmdbar, .orders-btn, .tbtn, .jobs-menu, .fps';
 
+// Where an element's words actually are (a block heading is wider than its text).
+function textBox(el) {
+  if (!el) return null;
+  let box = null;
+  try {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (!n.nodeValue.trim()) continue;
+      range.selectNodeContents(n);
+      const b = range.getBoundingClientRect();
+      if (!b.width) continue;
+      box = box ? { left: Math.min(box.left, b.left), top: Math.min(box.top, b.top), right: Math.max(box.right, b.right), bottom: Math.max(box.bottom, b.bottom) } : { left: b.left, top: b.top, right: b.right, bottom: b.bottom };
+    }
+  } catch {
+    return el.getBoundingClientRect();
+  }
+  return box ? { ...box, width: box.right - box.left, height: box.bottom - box.top } : null;
+}
+
 export class Toasts {
   constructor(ui) {
     this.ui = ui;
@@ -132,11 +152,10 @@ export class Toasts {
     this.el.classList.remove('placed');
   }
 
-  // Phones with a panel open. 'one-up': only the newest notice shows, in the
-  // stylesheet's place above a short panel. 'on-head': no room above the panel (her
-  // mind, the inventory, any panel held sideways), so the newest notice becomes an
-  // opaque banner laid over the panel's title row, from its left edge to the close
-  // button. `box` is { x, y, w, h } relative to the UI root. null: the stylesheet's way.
+  // A panel is open. 'one-up': only the newest notice shows, in the stylesheet's place.
+  // 'on-head': the newest notice becomes an opaque banner laid over the panel's title
+  // row, from its left edge to the close button. `box` is { x, y, w, h } relative to
+  // the UI root. null: the stylesheet's way.
   setPanelMode(mode, box = null) {
     const st = this.el.style;
     if (!mode) {
@@ -162,15 +181,16 @@ export class Toasts {
     st.setProperty('--head-h', `${Math.round(box.h)}px`);
   }
 
-  // Notices while a panel is open. Desktop and roomy screens keep the stylesheet's
-  // place along the top edge; on a phone the stack shows whole above the panel when it
-  // fits, else only the newest notice does, else it becomes the title-row banner.
+  // Notices while a panel is open. The whole stack shows above the panel when it fits
+  // (a short panel), else only the newest notice does. With no room above, a desktop
+  // keeps that notice in the stylesheet's place on the panel's top edge if it covers
+  // neither the title nor the close button; otherwise (and always on a phone) it
+  // becomes the banner over the title row.
   placeOverPanel() {
     const ui = this.ui;
     const root = ui.root;
     const top = ui.top?.();
-    const small = this.maxVisible() === MAX_VISIBLE_SMALL;
-    if (!small || !top?.el || !top.head || !root) {
+    if (!top?.el || !top.head || !root) {
       this.unplace();
       return;
     }
@@ -181,12 +201,16 @@ export class Toasts {
     if (room >= this.el.offsetHeight) return;
     const live = this.items.filter((t) => !t.leaving);
     const newest = live[live.length - 1];
-    if (newest && room >= newest.el.offsetHeight + 8) {
-      this.setPanelMode('one-up');
-      return;
+    if (!newest) return;
+    this.setPanelMode('one-up');
+    if (room >= newest.el.offsetHeight + 8) return;
+    const cr = top.closeBtn?.getBoundingClientRect?.();
+    if (this.maxVisible() !== MAX_VISIBLE_SMALL) {
+      const nr = newest.el.getBoundingClientRect();
+      const hit = (a, b) => !!a && !!b && b.width > 0 && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      if (!hit(nr, cr) && !hit(nr, textBox(top.head.querySelector('.panel-heading')))) return;
     }
     const hr = top.head.getBoundingClientRect();
-    const cr = top.closeBtn?.getBoundingClientRect?.();
     const x = hr.left - rb.left + 4;
     const right = cr && cr.width ? cr.left - rb.left - 6 : hr.right - rb.left - 4;
     this.setPanelMode('on-head', { x, y: hr.top - rb.top + 4, w: Math.max(120, right - x), h: Math.max(32, hr.height - 8) });

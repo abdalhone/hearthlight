@@ -5084,10 +5084,35 @@ input[type='range']::-moz-range-thumb {
   }
 }
 
-/* A phone held sideways: a smaller place name, so the corner stays slim. */
+/* A phone held sideways: a smaller place name, so the corner stays slim, and the quest
+   on one short line between the cards and the corner (tap it to read all of it). */
 @media (max-height: 520px) {
   .place-name {
     font-size: var(--fs-m);
+  }
+  .quest-line {
+    position: relative;
+    min-height: 28px;
+    padding: 4px 8px;
+    font-size: var(--fs-xs);
+    cursor: pointer;
+  }
+  .quest-text {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .quest-line.full .quest-text {
+    white-space: normal;
+  }
+  .quest-line::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -6px;
+    bottom: -6px;
   }
 }
 
