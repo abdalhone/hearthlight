@@ -16,6 +16,8 @@ const ACCEPT = 0.12;
 const BARGAIN = 0;
 const COUNTER = -0.18;
 
+const BUSY_WORDS = { work: 'she has paid work', lead: 'she is following a lead on Maren', visit: 'she is visiting a friend' };
+
 const JOB_WORDS = {
   chop_wood: 'chopping wood',
   gather_herbs: 'gathering herbs',
@@ -133,11 +135,17 @@ export function analyzeRequest(a, req = {}) {
 
   // Gone and left: she is no longer anyone's to ask.
   if (v.state === 'gone') {
-    veto('refuse', 'no_gone', 'She has left for good.');
+    veto('refuse', 'no_gone', 'she has left for good');
     return finish(a, out, v, worst);
   }
-  if (v.state === 'left' && action !== 'rejoin') {
-    veto('refuse', 'no_left', 'She broke off with you; she takes no requests from you now.');
+  if (v.state === 'left' && action !== 'rejoin' && category !== 'talk') {
+    veto('refuse', 'no_left', 'she broke off with you and takes no requests from you now');
+    return finish(a, out, v, worst);
+  }
+  // Words between them (a promise, a note, a feeling): never an imposition.
+  if (category === 'talk') {
+    out.score = 1;
+    out.lineKey = 'ok_generic';
     return finish(a, out, v, worst);
   }
 
@@ -152,11 +160,15 @@ export function analyzeRequest(a, req = {}) {
   if (v.state === 'wary' && category !== 'move' && category !== 'safe' && category !== 'trivial' && category !== 'stance') add(-0.08, 'she is wary of you', 'no_trust');
   if (v.anger > 0.5) add(-0.1, 'she is angry', 'no_angry');
 
-  // Pay: coin offered with the request.
-  let pay = Number(req.pay ?? raw.pay);
+  // Pay: coin offered with the request (req.pay, args.pay, args.offer as a number or as the
+  // brain's { coins, share, paid }, a coin amount on an action whose amount means nothing,
+  // or an offer she heard a moment ago).
+  const offer = raw.offer && typeof raw.offer === 'object' ? raw.offer : null;
+  let pay = Number(req.pay ?? raw.pay ?? (offer ? offer.coins : raw.offer));
   if (!(pay > 0) && AMOUNT_IS_PAY.has(action) && args.amount > 0 && !(action === 'set_combat_mode' && args.amount < 1)) pay = args.amount;
   if (!(pay > 0)) pay = a.pendingOfferAmount();
   out.pay = pay > 0 ? Math.round(pay) : 0;
+  out.share = !!offer?.share;
 
   // Asking again within 60 s of a refusal (without sweetening the deal).
   const prev = a.lastRefusal(out.key);
@@ -196,7 +208,7 @@ export function analyzeRequest(a, req = {}) {
       weighWork(a, v, out, add, veto, { args });
       break;
     case 'work_stop':
-      if ((v.state === 'apart' || v.state === 'left') && v.block?.activity === 'work' && v.directiveType === 'job') veto('refuse', 'no_stop_my_work', 'this is her own paid work');
+      if ((v.state === 'apart' || v.state === 'left') && v.block?.type === 'work' && v.directiveType === 'job') veto('refuse', 'no_stop_my_work', 'this is her own paid work');
       else add(0.5, null);
       out.lineKey = 'ok_generic';
       break;
@@ -240,11 +252,14 @@ export function analyzeRequest(a, req = {}) {
       add(0.05, null);
   }
 
-  // What's in it for her: coin.
+  // What's in it for her: coin, or a fair share of what comes of it.
   if (out.pay > 0 && !out.veto) {
     const w = coinWeight(out.pay, v.purse);
     add(w, `${out.pay} coins offered`);
     out.vars.coins = out.pay;
+  } else if (out.share && !out.veto && (category === 'work' || category === 'combat')) {
+    add(0.15, 'a fair share offered');
+    if (category === 'work' && !out.conditionKind) out.conditionKind = 'share';
   }
   // Apart: she is living her own life; errands are favors.
   if (v.state === 'apart' && (category === 'work' || category === 'combat' || category === 'social' || category === 'plan')) add(-0.12, 'she is living her own life today', 'no_apart_errand');
@@ -320,6 +335,11 @@ function weighCombat(a, v, out, add, veto, { action, args, target, place }) {
     else add(-0.15, 'she is starving', 'counter_eat');
   }
 
+  // Fighting at someone's word means trusting their judgment with her life.
+  if (v.trust < T.waryTrust) {
+    veto('refuse', 'no_trust', 'she doesn’t trust your judgment with her life');
+    return;
+  }
   // Wary: no risky requests at all.
   if (v.state === 'wary') {
     const counter = action === 'set_combat_mode' ? { name: 'set_combat_mode', args: { value: 'defend' } } : null;
@@ -380,7 +400,7 @@ function weighWork(a, v, out, add, veto, { args }) {
   if (deliver === 'keep') add(0.12, 'she keeps what she gathers');
   else if (deliver === 'chest') add(0.03, null);
   else add(-0.03, null);
-  if (v.block?.activity === 'work' && v.block.job === job) add(0.15, 'she meant to do that anyway');
+  if (v.block?.type === 'work' && v.block.job === job) add(0.15, 'she meant to do that anyway');
   if (v.hour >= 21 || v.hour < 5.5) add(-0.12, 'it’s late', 'no_tired');
   // Work far out at night carries the place's risk.
   if (v.isNight && (job === 'mine_ore' || job === 'fish' || job === 'chop_wood' || job === 'forage')) {
@@ -531,11 +551,11 @@ function weighCompanionship(a, v, out, add, veto, { action, args }) {
     return;
   }
   const b = v.block;
-  const busy = b && (b.activity === 'work' || b.activity === 'lead' || b.activity === 'visit') && b.with !== 'player';
+  const busy = b && (b.type === 'work' || b.type === 'lead' || b.type === 'visit') && b.company !== 'player';
   add(0.25, 'she enjoys your company');
   if (busy) {
-    const promised = b.activity === 'work' && v.purse < 25;
-    add(promised ? -0.4 : -0.2, `she is busy (${b.activity})`, 'no_busy');
+    const promised = b.type === 'work' && v.purse < 25;
+    add(promised ? -0.4 : -0.2, BUSY_WORDS[b.type] || 'she is busy', 'no_busy');
     out.vars.npc = a.npcName(b.npc) || 'someone';
     out.vars.time = hourLabel(b.to);
     out.counterFallback = { name: 'set_plan', args: { value: `rejoin at ${b.to}` }, key: 'counter_later' };
@@ -547,7 +567,7 @@ function weighPlan(a, v, out, add, veto, { args }) {
   const text = String(args.value || '').toLowerCase();
   const b = v.block;
   if (/maren|aveline|ruins|journal|waygate/.test(text)) add(0.3, 'it’s for Maren');
-  if (b?.activity === 'work' && v.purse < 15) add(-0.2, 'she needs the coin', 'no_busy');
+  if (b?.type === 'work' && v.purse < 15) add(-0.2, 'she needs the coin', 'no_busy');
   add(0.05, null);
   out.lineKey = 'ok_plan';
   out.vars.npc = a.npcName(b?.npc) || 'someone';

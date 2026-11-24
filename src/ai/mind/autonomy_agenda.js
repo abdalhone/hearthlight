@@ -1,11 +1,17 @@
 import { BASE_GOALS, COIN_JOBS, T } from './autonomy_data.js';
 
 // Lyra's own day (DESIGN §16.1). planDay() turns her goals, needs, purse, feelings
-// about the player, the weather and the Maren trail into blocks of the day:
-//   { from, to, activity, at, why, with, job?, npc?, pay?, amount?, bed?, kind? }
-// activity: 'travel' (with the player) | 'work' (a job for coin) | 'eat' | 'visit' |
-//           'lead' (follow a Maren lead) | 'study' | 'free' | 'rest' | 'sleep'
-// with:     'player' (she travels with them) | 'invite' (her own errand; they may come) | 'alone'
+// about the player, the weather and the Maren trail into blocks of the day. One block:
+//   { from, to, type, activity, at, why, company, with?, job?, jobId?, npc?, deliverTo?,
+//     label?, pay?, amount?, bed? }
+// type      what it is to her: 'travel' (with the player) | 'work' (a job for coin) | 'eat' |
+//           'visit' | 'lead' (a Maren lead) | 'study' | 'stars' | 'moonpetals' | 'hearth' |
+//           'rest' | 'sleep'
+// activity  the same in words ("gather herbs for Mira"): what the UI, the prompt and
+//           behavior's own_life read (own_life classifies the words; `job` wins for work)
+// company   'player' (she travels with them) | 'invite' (her own errand; they may come) | 'alone'
+// with      the person the block is with, as own_life reads it: 'player', or a villager id
+// deliverTo the villager who buys the work (own_life hands the haul to them)
 // Hours run 0..24; the sleep block ends at 31 (7 AM the next day).
 
 export const QUEST_STAGES = ['settle', 'ask_aveline', 'find_key', 'enter_ruins', 'find_journal', 'read_journal', 'waygate'];
@@ -41,6 +47,7 @@ export function weighGoals(v) {
   if (v.state === 'left' || v.state === 'apart') by.belong.weight += 0.1;
   if ((v.valence ?? 0) < 0) by.small_joys.weight += 0.15;
   if ((v.openness ?? 0.85) > 0.7) by.grow_magic.weight += 0.05;
+  if ((v.energy ?? 0.8) < 0.25 || (v.hunger ?? 0.7) < 0.25) by.survive.weight += 0.05;
   for (const g of out) g.weight = Math.round(Math.max(0.05, Math.min(1.2, g.weight)) * 100) / 100;
   return out.sort((a, b) => b.weight - a.weight);
 }
@@ -54,6 +61,7 @@ export function chooseJob(v, salt = 0) {
     let s = j.pref * (1 - 0.18 * dangerOf(j.at));
     if (j.id === v.lastJobId) s *= 0.55;
     if (j.job === 'fish' && (v.neuroticism ?? 0.4) > 0.55) s *= 0.6; // deep water
+    if (v.weather === 'rain' && j.job !== 'farm' && j.job !== 'gather_herbs') s *= 0.85;
     s *= 0.75 + 0.5 * dayRand(v.day ?? 1, salt + j.id.length * 31 + j.rate);
     if (s > bestScore) {
       bestScore = s;
@@ -71,27 +79,63 @@ function leadFor(stage, joinable) {
       return { at: 'chapel', npc: 'aveline', why: 'Sister Aveline knew Maren. I need to ask her.' };
     case 2:
       return joinable
-        ? { at: 'bandit_camp', with: 'player', why: 'The bandits have the ruins key. Not a walk I take alone.' }
+        ? { at: 'bandit_camp', company: 'player', why: 'The bandits have the ruins key. Not a walk I take alone.' }
         : { at: 'guardhouse', npc: 'rowan', why: 'Rowan knows the bandits’ habits. I want that key.' };
     case 3:
     case 4:
       return joinable
-        ? { at: 'sunken_ruins', with: 'player', why: 'Maren went into the ruins. So will I — with you.' }
-        : { at: 'player_home', activity: 'study', why: 'Reading up on Lanternwright ruins before I go in.' };
+        ? { at: 'sunken_ruins', company: 'player', why: 'Maren went into the ruins. So will I — with you.' }
+        : { at: 'player_home', type: 'study', why: 'Reading up on Lanternwright ruins before I go in.' };
     case 5:
-      return { at: 'player_home', activity: 'study', why: 'Maren’s journal. Every page.' };
+      return { at: 'player_home', type: 'study', why: 'Maren’s journal. Every page.' };
     default:
       return { at: 'town_square', why: 'Asking travelers about the north road and the old waygate.' };
   }
 }
 
-function block(from, to, activity, at, why, extra = {}) {
-  return { from, to, activity, at, why, with: 'alone', ...extra };
+const ACTIVITY_WORDS = {
+  travel: () => 'travel with you',
+  eat: () => 'supper at the Kettle',
+  visit: (x) => `visit ${x.npcName || 'a friend'}`,
+  lead: () => 'follow a lead about Maren',
+  study: () => 'practice my spells',
+  stars: () => 'stargaze',
+  moonpetals: () => 'gather moonpetals',
+  hearth: () => 'rest by the fire',
+  rest: () => 'rest',
+  sleep: () => 'sleep',
+  free: () => 'wander',
+};
+
+// A block, with its `activity` words and own_life's `with` filled in from its type.
+export function makeBlock(from, to, type, at, why, extra = {}) {
+  const b = { from, to, type, activity: '', at: at || null, why, company: 'alone', ...extra };
+  if (!b.activity) b.activity = type === 'work' ? b.label || 'work' : (ACTIVITY_WORDS[type] || ACTIVITY_WORDS.free)(b);
+  if (type === 'travel') b.with = 'player';
+  else if ((type === 'visit' || type === 'lead') && b.npc) b.with = b.npc;
+  else delete b.with;
+  delete b.npcName;
+  return b;
 }
+
+function workBlock(from, to, job, why, extra = {}) {
+  return makeBlock(from, to, 'work', job.at, why, {
+    job: job.job,
+    jobId: job.id,
+    label: job.label,
+    npc: job.npc,
+    deliverTo: job.npc,
+    amount: job.amount,
+    pay: job.rate * job.amount,
+    ...extra,
+  });
+}
+
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 // v: { day, fromHour, state, apartReason, apartDay, trust, affinity, fear, purse, energy,
 //      hunger, weather, questStage, openness, extraversion, neuroticism, sleepAt, lastJobId,
-//      friend: {id, name}|null, dangerOf(locId) }
+//      friend: {id, name, at}|null, dangerOf(locId) }
 export function buildPlan(v) {
   const day = v.day ?? 1;
   const state = v.state || 'together';
@@ -110,67 +154,48 @@ export function buildPlan(v) {
 
   // Morning: honest work for coin, a Maren lead, practice, or the road with the player.
   const job = chooseJob(v, 3);
-  const workBlock = (from, to) =>
-    block(from, to, 'work', job.at, `${job.label.charAt(0).toUpperCase() + job.label.slice(1)}: ${job.rate} coins a bundle${needCoin ? ', and my purse is light' : ''}.`, {
-      with: invite,
-      job: job.job,
-      jobId: job.id,
-      label: job.label,
-      npc: job.npc,
-      deliverAt: job.deliverAt,
-      amount: job.amount,
-      pay: job.rate * job.amount,
-    });
   if (day === 1 && joinable) {
-    out.push(block(7, 13, 'travel', null, 'Settling in, and meeting the neighbors together.', { with: 'player' }));
+    out.push(makeBlock(7, 13, 'travel', null, 'Settling in, and meeting the neighbors together.', { company: 'player' }));
   } else {
-    if (!joinable || needCoin || (state === 'wary' && r < 0.6) || r < (bond ? 0.2 : 0.45)) out.push(workBlock(7, 10));
-    else if (stage === 1) out.push(block(7, 10, 'lead', 'chapel', 'Sister Aveline knew Maren. I need to ask her.', { npc: 'aveline', with: invite }));
-    else if ((v.openness ?? 0.85) > 0.6 && r > 0.8) out.push(block(7, 10, 'study', 'player_home', 'Maren would scold me for skipping practice.', { with: 'alone' }));
-    else out.push(block(7, 10, 'travel', null, 'A morning on the road with you.', { with: 'player' }));
+    if (!joinable || needCoin || (state === 'wary' && r < 0.6) || r < (bond ? 0.2 : 0.45)) {
+      out.push(workBlock(7, 10, job, `${cap(job.label)}: ${job.rate} coins a bundle${needCoin ? ', and my purse is light' : ''}.`, { company: invite }));
+    } else if (stage === 1) out.push(makeBlock(7, 10, 'lead', 'chapel', 'Sister Aveline knew Maren. I need to ask her.', { npc: 'aveline', company: invite }));
+    else if ((v.openness ?? 0.85) > 0.6 && r > 0.8) out.push(makeBlock(7, 10, 'study', 'player_home', 'Maren would scold me for skipping practice.'));
+    else out.push(makeBlock(7, 10, 'travel', null, 'A morning on the road with you.', { company: 'player' }));
     // Late morning.
-    if (joinable) out.push(block(10, 13, 'travel', null, stage >= 2 ? 'The trail to Maren runs through dangerous places. Better with two.' : 'Whatever you are up to — I am curious.', { with: 'player' }));
+    if (joinable) out.push(makeBlock(10, 13, 'travel', null, stage >= 2 ? 'The trail to Maren runs through dangerous places. Better with two.' : 'Whatever you are up to — I am curious.', { company: 'player' }));
     else if (needCoin) {
       const j2 = chooseJob({ ...v, lastJobId: job.id }, 11);
-      out.push(
-        block(10, 13, 'work', j2.at, `${j2.label.charAt(0).toUpperCase() + j2.label.slice(1)}. Coin doesn’t earn itself.`, {
-          job: j2.job,
-          jobId: j2.id,
-          label: j2.label,
-          npc: j2.npc,
-          deliverAt: j2.deliverAt,
-          amount: j2.amount,
-          pay: j2.rate * j2.amount,
-        }),
-      );
-    } else if (v.friend) out.push(block(10, 13, 'visit', v.friend.at || 'town_square', `I like ${v.friend.name}. I want to see them.`, { npc: v.friend.id }));
-    else out.push(block(10, 13, 'study', 'town_square', 'Practicing wards where the light is good.'));
+      out.push(workBlock(10, 13, j2, `${cap(j2.label)}. Coin doesn’t earn itself.`));
+    } else if (v.friend) out.push(makeBlock(10, 13, 'visit', v.friend.at || 'town_square', `I like ${v.friend.name}. I want to see them.`, { npc: v.friend.id, npcName: v.friend.name }));
+    else out.push(makeBlock(10, 13, 'study', 'town_square', 'Practicing wards where the light is good.'));
   }
 
   // Afternoon: the Maren trail.
   const lead = leadFor(stage, joinable);
-  if (joinable) out.push(block(13, 18, 'travel', lead.with === 'player' ? lead.at : null, lead.with === 'player' ? lead.why : 'Out with you, keeping an ear open for Maren.', { with: 'player' }));
-  else out.push(block(13, 18, lead.activity || 'lead', lead.at, lead.why, { npc: lead.npc || null }));
+  if (joinable) {
+    const withPlayer = lead.company === 'player';
+    out.push(makeBlock(13, 18, 'travel', withPlayer ? lead.at : null, withPlayer ? lead.why : 'Out with you, keeping an ear open for Maren.', { company: 'player' }));
+  } else out.push(makeBlock(13, 18, lead.type || 'lead', lead.at, lead.why, lead.npc ? { npc: lead.npc } : {}));
 
   // Supper at the Ember Kettle.
   const supperWhy = (v.hunger ?? 0.6) < 0.35 ? 'Supper. I’m starving.' : 'Elda’s stew. I’ve earned it.';
-  out.push(block(18, 19.5, 'eat', 'ember_kettle', supperWhy, { with: together ? 'invite' : 'alone' }));
+  out.push(makeBlock(18, 19.5, 'eat', 'ember_kettle', supperWhy, { company: together ? 'invite' : 'alone' }));
 
   // Evening: her free time.
   const raining = v.weather === 'rain';
   const sleepEarly = (v.energy ?? 0.8) < 0.3;
   const eveEnd = sleepEarly ? 21 : bond && (v.energy ?? 0.8) >= 0.5 ? 23 : 22;
-  if (joinable && bond && (v.energy ?? 0.8) >= 0.45 && !raining) out.push(block(19.5, eveEnd, 'travel', null, 'An evening with you. I’d like that.', { with: 'player' }));
-  else if (raining) out.push(block(19.5, eveEnd, 'free', 'ember_kettle', 'Rain on the roof and the hearth going. Perfect.', { kind: 'rain', with: together ? 'invite' : 'alone' }));
-  else if (joinable && r > 0.5) out.push(block(19.5, eveEnd, 'free', 'whisperwood', 'The moonpetals open at night. Not a walk I take alone.', { kind: 'moonpetals', with: 'invite' }));
-  else out.push(block(19.5, eveEnd, 'free', 'south_meadow', 'Clear sky. I’m going to name every star I know.', { kind: 'stars', with: together && bond ? 'invite' : 'alone' }));
+  if (joinable && bond && (v.energy ?? 0.8) >= 0.45 && !raining) out.push(makeBlock(19.5, eveEnd, 'travel', null, 'An evening with you. I’d like that.', { company: 'player' }));
+  else if (raining) out.push(makeBlock(19.5, eveEnd, 'hearth', 'ember_kettle', 'Rain on the roof and the hearth going. Perfect.', { company: together ? 'invite' : 'alone' }));
+  else if (joinable && r > 0.5) out.push(makeBlock(19.5, eveEnd, 'moonpetals', 'whisperwood', 'The moonpetals open at night. Not a walk I take alone.', { company: 'invite' }));
+  else out.push(makeBlock(19.5, eveEnd, 'stars', 'south_meadow', 'Clear sky. I’m going to name every star I know.', { company: together && bond ? 'invite' : 'alone' }));
 
   // Sleep, in the cottage while she trusts the player, otherwise a room at the inn.
   const bed = v.sleepAt || sleepSpot(v.trust ?? 30, v.fear ?? 0);
   out.push(
-    block(eveEnd, 31, 'sleep', bed === 'lyra_bed' ? 'player_home' : 'ember_kettle', bed === 'lyra_bed' ? 'My own bed, in the cottage.' : 'My room at the Kettle — I sleep better with a bolt on the door.', {
+    makeBlock(eveEnd, 31, 'sleep', bed === 'lyra_bed' ? 'player_home' : 'ember_kettle', bed === 'lyra_bed' ? 'My own bed, in the cottage.' : 'My room at the Kettle — I sleep better with a bolt on the door.', {
       bed,
-      with: 'alone',
     }),
   );
 
@@ -206,21 +231,24 @@ export function hourLabel(h) {
   return `${h12}${m ? `:${String(m).padStart(2, '0')}` : ''} ${ampm}`;
 }
 
-const ACTIVITY_TEXT = {
+const DESCRIBE = {
   travel: (b) => (b.at ? `with you, out toward ${b.place || b.at}` : 'on the road with you'),
-  work: (b) => `${b.label || 'working'}${b.npcName ? ` for ${b.npcName}` : ''}`,
+  work: (b) => `${b.label || 'working'}`,
   eat: () => 'supper at the Ember Kettle',
   visit: (b) => `visiting ${b.npcName || 'a friend'}`,
   lead: (b) => `following a lead on Maren at ${b.place || b.at}`,
   study: () => 'practicing my spells',
-  free: (b) => (b.kind === 'stars' ? 'stargazing in the meadow' : b.kind === 'moonpetals' ? 'looking for moonpetals' : b.kind === 'rain' ? 'by the fire at the Kettle' : 'some time to myself'),
+  stars: () => 'stargazing in the meadow',
+  moonpetals: () => 'looking for moonpetals in the Whisperwood',
+  hearth: () => 'by the fire at the Kettle',
   rest: () => 'resting',
   sleep: (b) => (b.bed === 'lyra_bed' ? 'bed, in the cottage' : 'bed, at the inn'),
+  free: () => 'some time to myself',
 };
 
-// "this morning gather herbs for Mira; this afternoon with you; supper at the Kettle..."
+// "gather herbs for Mira", "supper at the Ember Kettle", "bed, at the inn"...
 export function describeBlock(b, names = {}) {
   if (!b) return '';
-  const fn = ACTIVITY_TEXT[b.activity] || (() => b.activity);
+  const fn = DESCRIBE[b.type] || (() => String(b.activity || 'my own business'));
   return fn({ ...b, ...names });
 }
