@@ -3,7 +3,7 @@
 // real fetch, real MP3 decoding, the priority rules and music ducking, through the same
 // calls the game makes. Run after `npm run build`.
 //
-//   node scripts/voice/browser_check.mjs [--mobile]
+//   node scripts/voice/browser_check.mjs [--mobile] [--live]
 import { createRequire } from 'node:module';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
@@ -80,11 +80,34 @@ const result = await page.evaluate(
   { villager, lyra, narrator },
 );
 console.log(JSON.stringify(result, null, 1));
+
+// --live: her live Kokoro voice inside the game (needs `npm run build -- --kokoro`).
+let liveOk = true;
+if (process.argv.includes('--live')) {
+  const live = await page.evaluate(async () => {
+    const g = window.__game;
+    // Measure even on a slow machine: the real limit would stand the voice down here.
+    window.__HEARTHLIGHT_VOICES__.maxRtf = 10;
+    const t0 = performance.now();
+    g.setSetting('kokoroLive', true);
+    const lv = g.brain.voice.live;
+    while (lv.state === 'loading' || lv.state === 'off') await new Promise((r) => setTimeout(r, 100));
+    const out = { state: lv.state, error: lv.error, loadMs: Math.round(performance.now() - t0), info: lv.engine?.info, status: lv.statusText() };
+    if (lv.state !== 'ready') return out;
+    const s = performance.now();
+    const r = await g.brain.voice.speakLive("Wicks and ashes, you walked right past the lamp again, didn't you?", { kind: 'reply' });
+    out.reply = { ...r, ms: Math.round(performance.now() - s), sentenceMs: lv.engine.timings.slice(-3).map(Math.round) };
+    out.liveStats = g.voice.stats.live;
+    return out;
+  });
+  console.log('live:', JSON.stringify(live, null, 1));
+  liveOk = live.state === 'ready' && live.reply?.ok && live.liveStats >= 1;
+}
 await browser.close();
 server.close();
 const ok =
   result.villager.ok && result.lyra.ok && result.duckedWhileSpeaking && result.duckReleased && result.villagerOverNarrator.reason === 'busy' &&
-  result.narrator.reason === 'stopped' && result.unknown.reason === 'no_clip' && result.cached.ok && !errors.length;
+  result.narrator.reason === 'stopped' && result.unknown.reason === 'no_clip' && result.cached.ok && liveOk && !errors.length;
 if (errors.length) console.log('page errors:', errors);
 console.log(ok ? 'VOICE CHECK PASSED' : 'VOICE CHECK FAILED');
 process.exit(ok ? 0 : 1);

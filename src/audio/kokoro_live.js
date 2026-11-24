@@ -9,6 +9,19 @@
 // While it downloads, or anywhere it cannot run, her lines fall through to the next voice.
 
 export const KOKORO_BASE = 'kokoro/';
+// Slower than this (seconds of work per second of speech) and she would lag behind her
+// own words: the live voice stands down on that device and the next voice speaks.
+export const MAX_RTF = 1.0;
+
+function pageConfig() {
+  try {
+    return (typeof window !== 'undefined' && window.__HEARTHLIGHT_VOICES__) || null;
+  } catch {
+    return null;
+  }
+}
+
+const pageLive = () => pageConfig()?.live || null;
 
 function resolveUrl(rel) {
   try {
@@ -19,9 +32,10 @@ function resolveUrl(rel) {
 }
 
 export class LiveKokoro {
-  constructor(game, { base = KOKORO_BASE, importer = null } = {}) {
+  constructor(game, { base = null, importer = null } = {}) {
     this.game = game;
-    this.base = base;
+    // Only offered when the build published it (npm run build -- --kokoro).
+    this.base = base || pageLive();
     this.state = 'off'; // off | loading | ready | failed
     this.progress = 0;
     this.label = '';
@@ -31,7 +45,13 @@ export class LiveKokoro {
     this._import = importer || ((url) => import(url));
   }
 
+  // The build published the live voice next to this page.
+  available() {
+    return !!this.base;
+  }
+
   supported() {
+    if (!this.available()) return false;
     if (typeof window === 'undefined' || typeof WebAssembly !== 'object') return false;
     return !!(window.AudioContext || window.webkitAudioContext) && typeof fetch === 'function';
   }
@@ -43,7 +63,9 @@ export class LiveKokoro {
       case 'ready':
         return 'Her live voice is ready.';
       case 'failed':
-        return this.error === 'unsupported' ? 'This browser cannot run her live voice.' : `Her live voice could not start here${this.error ? ` (${this.error})` : ''}.`;
+        if (this.error === 'unsupported') return 'This browser cannot run her live voice.';
+        if (this.error === 'slow') return `This device is too slow for her live voice (${this.rtf?.toFixed(1)}x real time); her recorded lines still play.`;
+        return `Her live voice could not start here${this.error ? ` (${this.error})` : ''}.`;
       default:
         return this.supported() ? 'Off. Her recorded lines still play.' : 'This browser cannot run her live voice.';
     }
@@ -83,6 +105,12 @@ export class LiveKokoro {
         }),
       )
       .then((engine) => {
+        this.rtf = Number(engine?.info?.rtf) || null;
+        const limit = Number(pageConfig()?.maxRtf) || MAX_RTF;
+        if (this.rtf && this.rtf > limit) {
+          engine.dispose?.();
+          throw new Error('slow');
+        }
         this.engine = engine;
         this.state = 'ready';
         this.progress = 1;
@@ -93,10 +121,10 @@ export class LiveKokoro {
       .catch((err) => {
         this.state = 'failed';
         this.error = String(err?.message || err || 'failed').slice(0, 80);
-        this._p = null; // the player may try again later
+        if (this.error !== 'slow') this._p = null; // the player may try again later
         this._notify();
         console.warn('[voice] live Kokoro unavailable:', err);
-        if (!quiet) this.game?.ui?.toast?.("Lyra's live voice could not start in this browser; her recorded lines still play.", 'warn');
+        if (!quiet) this.game?.ui?.toast?.(this.statusText(), 'warn');
         return null;
       });
     return this._p;

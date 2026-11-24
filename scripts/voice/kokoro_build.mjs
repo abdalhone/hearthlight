@@ -71,6 +71,8 @@ export async function buildKokoro({ root, out, speaker = 'lyra', log = console.l
     styleBytes: statSync(path.join(out, styleFile)).size,
     speed: meta.speed,
     lang: meta.lang,
+    runtime: 'ort-wasm-simd-threaded.wasm',
+    runtimeBytes: statSync(path.join(out, 'ort-wasm-simd-threaded.wasm')).size,
   };
   writeFileSync(path.join(out, 'model.json'), JSON.stringify(doc, null, 1));
   const total = [...parts, styleFile, 'engine.js', 'worker.js', 'ort-wasm-simd-threaded.wasm'].reduce((n, f) => n + statSync(path.join(out, f)).size, 0);

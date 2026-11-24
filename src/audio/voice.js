@@ -61,10 +61,23 @@ export function readManifest(json) {
 
 const done = (reason, ok = false) => Promise.resolve({ ok, reason });
 
+// What the build put next to the page: { manifest: 'voice/manifest.json', live: 'kokoro/' | null }
+// (a one-line tag written by scripts/build.mjs). Without it there are no clips to ask for.
+export function pageVoices() {
+  try {
+    return (typeof window !== 'undefined' && window.__HEARTHLIGHT_VOICES__) || null;
+  } catch {
+    return null;
+  }
+}
+
 export class VoicePlayer {
   constructor(game, opts = {}) {
     this.game = game;
-    this.base = opts.base ?? 'voice/';
+    this.config = opts.config ?? pageVoices();
+    const url = opts.manifestUrl ?? this.config?.manifest ?? (opts.fetch ? 'voice/manifest.json' : null);
+    this.manifestUrl = url;
+    this.base = opts.base ?? (url ? url.slice(0, url.lastIndexOf('/') + 1) : 'voice/');
     this._fetch = opts.fetch || null;
     this._ctx = opts.ctx || null;
     this._now = opts.now || null;
@@ -79,7 +92,7 @@ export class VoicePlayer {
     this.out = null;
     this._duckTimer = null;
     this._token = 0;
-    this.stats = { played: 0, noClip: 0, late: 0, busy: 0, failed: 0 };
+    this.stats = { played: 0, noClip: 0, late: 0, busy: 0, failed: 0, live: 0 };
     this._bind();
   }
 
@@ -133,7 +146,7 @@ export class VoicePlayer {
     this._manifestP = Promise.resolve()
       .then(() => {
         const f = this._fetch || (typeof fetch === 'function' ? fetch : null);
-        return f ? f(`${this.base}manifest.json`) : null;
+        return f && this.manifestUrl ? f(this.manifestUrl) : null;
       })
       .then((r) => (r && r.ok !== false ? r.json() : null))
       .catch(() => null)
@@ -453,7 +466,10 @@ export class VoicePlayer {
           at += buf.duration;
           sources.push(src);
           last = src;
-          if (sources.length === 1) this._duck(true);
+          if (sources.length === 1) {
+            this.stats.live++;
+            this._duck(true);
+          }
         }
       } catch (err) {
         console.warn('[voice] live voice failed', err);

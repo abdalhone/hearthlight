@@ -232,10 +232,11 @@ export class SettingsPanel {
       this.toggleRow('Villagers', 'voiceVillagers'),
       this.toggleRow('Narrator', 'voiceNarrator'),
       h('p', { class: 'muted small', text: 'Lines without a recording (her replies from Claude, made-up lines) can still be spoken:' }),
-      this.toggleRow('Kokoro voice for everything she says — downloads about 90 MB once', 'kokoroLive'),
     );
     const live = g.brain?.voice?.live;
-    if (live) {
+    this.liveEl = null;
+    if (live?.available?.()) {
+      voiceSec.append(this.toggleRow('Kokoro voice for everything she says — downloads about 90 MB once', 'kokoroLive'));
       this.liveEl = h('p', { class: 'muted small voice-live-status', role: 'status', text: live.statusText() });
       voiceSec.append(this.liveEl);
     }

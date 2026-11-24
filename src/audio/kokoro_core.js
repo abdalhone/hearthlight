@@ -65,7 +65,7 @@ export function defaultSpeed() {
 export async function load(base, onProgress = () => {}, { threads } = {}) {
   const t0 = performance.now();
   meta = await (await fetch(new URL('model.json', base))).json();
-  const total = meta.size + meta.styleBytes;
+  const total = meta.size + meta.styleBytes + (meta.runtimeBytes || 0);
   let got = 0;
   const tick = (n) => {
     got += n;
@@ -80,20 +80,28 @@ export async function load(base, onProgress = () => {}, { threads } = {}) {
   }
   if (off !== meta.size) throw new Error('model parts are incomplete');
   styles = new Float32Array(await cachedBytes(new URL(meta.style, base).href, tick));
+  // The runtime too comes through Cache Storage, and as bytes: no streaming compile that
+  // depends on the host's MIME type for .wasm.
+  if (meta.runtime) ort.env.wasm.wasmBinary = await cachedBytes(new URL(meta.runtime, base).href, tick);
   const tFetch = performance.now();
   ort.env.wasm.wasmPaths = base;
   // Threads need SharedArrayBuffer, which only a cross-origin-isolated page has.
   ort.env.wasm.numThreads = threads || (self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1);
   ort.env.wasm.proxy = false;
   session = await ort.InferenceSession.create(model, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
-  // A first run warms the kernels so her first real line is not the slow one.
+  // A first run warms the kernels so her first real line is not the slow one; the second
+  // measures how fast this device is (seconds of work per second of speech).
   await synth('Hello.', meta.speed || 1, () => {});
   const tWarm = performance.now();
+  let samples = 0;
+  await synth('Mind the lamps on the way home tonight.', meta.speed || 1, (a) => (samples += a.length));
+  const rtf = (performance.now() - tWarm) / 1000 / Math.max(0.1, samples / 24000);
   const info = {
     fetchMs: Math.round(tFetch - t0),
     initMs: Math.round(tWarm - tFetch),
     threads: ort.env.wasm.numThreads,
     isolated: !!self.crossOriginIsolated,
+    rtf: Math.round(rtf * 1000) / 1000,
   };
   onProgress(1, 'ready');
   return info;
@@ -148,7 +156,7 @@ async function runOnce(tokens, speed) {
 }
 
 export async function synth(text, speed, onChunk, isCancelled = () => false) {
-  for (const sentence of splitSentences(text)) {
+  for (const sentence of splitSentences(text, { firstClause: true })) {
     if (isCancelled()) return;
     const t = performance.now();
     const ph = await phonemize(sentence, espeak, 'en-us');

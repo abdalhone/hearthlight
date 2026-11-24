@@ -330,3 +330,40 @@ test('the brain voice tries each voice in order and never blocks', async () => {
   assert.equal(groupOf('lyra_young'), 'lyra');
   assert.equal(groupEnabled({}, 'narrator'), true);
 });
+
+// ------------------------------------------------------------------ live Kokoro text pipeline
+
+test("the live voice's phonemes match kokoro-onnx's for her lines", async () => {
+  const { phonemize, tokenize, splitSentences, styleFor, VOCAB } = await import('../src/audio/kokoro_text.js');
+  const { phonemize: espeak } = await import('phonemizer');
+  // Reference phonemes from kokoro-onnx 0.6.1 (scripts/voice/voicelib.py Synth.phonemes).
+  const ref = {
+    "Wicks and ashes! You walked straight past the lamp again, didn't you?": 'wˈɪks ænd ˈæʃᵻz! juː wˈɔːkt stɹˈeɪt pˈæst ðə lˈæmp ɐɡˈɛn, dˈɪdnt juː?',
+    'Hmph. You again.': 'hˈʌmf. juː ɐɡˈɛn.',
+    "Mm. Wind's wrong.": 'ˈmmm. wˈɪndz ɹˈɔŋ.',
+    'Bandits. Of course it\'s bandits.': 'bˈændɪts. ʌv kˈɔːɹs ɪts bˈændɪts.',
+  };
+  for (const [text, want] of Object.entries(ref)) assert.equal(await phonemize(text, espeak), want, text);
+  const ids = tokenize('hˈʌmf.');
+  assert.deepEqual(ids, [...'hˈʌmf.'].map((c) => VOCAB[c]));
+  assert.deepEqual(splitSentences("Hi. Wicks and ashes! You walked past the lamp, didn't you?"), ['Hi. Wicks and ashes!', "You walked past the lamp, didn't you?"]);
+  assert.deepEqual(splitSentences("Wicks and ashes, you walked right past the lamp again, didn't you?", { firstClause: true }), [
+    'Wicks and ashes,',
+    "you walked right past the lamp again, didn't you?",
+  ]);
+  const long = `${'word '.repeat(80)}end.`;
+  assert.ok(splitSentences(long).every((s) => s.length <= 220));
+  const styles = new Float32Array(510 * 256).map((_, i) => Math.floor(i / 256));
+  assert.equal(styleFor(styles, 5)[0], 4);
+  assert.equal(styleFor(styles, 9999)[0], 509);
+});
+
+test('the live voice is offered only where the build published it', async () => {
+  const { LiveKokoro } = await import('../src/audio/kokoro_live.js');
+  const lk = new LiveKokoro({ settings: { kokoroLive: true } });
+  assert.equal(lk.available(), false);
+  assert.equal(lk.supported(), false);
+  assert.equal((await lk.speak('Hello there, love.')).reason, 'unavailable');
+  const lk2 = new LiveKokoro({ settings: {} }, { base: 'kokoro/' });
+  assert.equal(lk2.available(), true);
+});

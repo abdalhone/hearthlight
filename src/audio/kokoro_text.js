@@ -104,7 +104,9 @@ export function tokenize(phonemes) {
 // Sentences to synthesize one by one, so the first plays while the next is made. Very
 // short sentences ride with the next one (Kokoro sounds rushed on two-word inputs); a
 // long one is cut at a comma or a space so it stays within the model's context.
-export function splitSentences(text, { minWords = 3, maxChars = 220 } = {}) {
+// With `firstClause`, a long first sentence is cut at its first comma so her first words
+// come sooner.
+export function splitSentences(text, { minWords = 3, maxChars = 220, firstClause = false } = {}) {
   const s = speechText(text);
   if (!s) return [];
   const raw = s.match(/[^.!?…]+(?:[.!?…]+["'”)\]]*|$)/g) || [s];
@@ -122,6 +124,10 @@ export function splitSentences(text, { minWords = 3, maxChars = 220 } = {}) {
   if (carry) {
     if (out.length && out[out.length - 1].length + carry.length < maxChars) out[out.length - 1] += ` ${carry}`;
     else out.push(carry);
+  }
+  if (firstClause && out.length && out[0].split(/\s+/).length > 7) {
+    const m = out[0].match(/^((?:\S+\s+){2,}?\S+[,;:—])\s+(.+)$/);
+    if (m && m[2].split(/\s+/).length >= 3) out.splice(0, 1, m[1], m[2]);
   }
   return out;
 }
