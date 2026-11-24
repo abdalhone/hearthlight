@@ -1,11 +1,15 @@
-// NPC conversations (DESIGN.md §7, §14): portrait, name, role, typed-out lines and
-// options; gifts through an inventory picker; shops with buy and sell lists.
+// NPC conversations (DESIGN.md §7, §14, §19.6): portrait, name, role, typed-out lines
+// and options; gifts through an inventory picker; shops with buy and sell lists; and a
+// "Say something…" field (with the mic when dictation exists) that lets the player say
+// anything to anyone through village.playerSays.
 
 import { h, button, clear, setText, toggleClass } from './dom.js';
 import { makePanel } from './modal.js';
 import { portraitUrl, itemIconUrl } from './art.js';
 import { itemDef, itemName } from '../entities/items.js';
 import { fmtInt, isGiftable, sortItems, voicePitch, capitalize } from './format.js';
+import { TalkSession, villageOf, firstName, SAY_MAX } from './village_view.js';
+import { FieldDictation } from './dictation.js';
 
 const CHARS_PER_SECOND = 52;
 
@@ -33,6 +37,9 @@ export class DialogPanel {
     this.mode = 'talk'; // talk | gift | shop
     this.blipAcc = 0;
     this.mood = 'neutral';
+    this.talk = null; // TalkSession while the village can answer free text
+    this.waiting = false;
+    this.dict = null;
   }
 
   isOpen() {
@@ -51,9 +58,12 @@ export class DialogPanel {
     this.moreEl = h('span', { class: 'dlg-more', text: '▼', hidden: true });
     this.optionsEl = h('div', { class: 'dlg-options' });
     this.extraEl = h('div', { class: 'dlg-extra' });
-    const textBox = h('div', { class: 'dlg-box' }, this.textEl, this.moreEl);
+    this.youEl = h('p', { class: 'dlg-you', hidden: true });
+    this.dotsEl = h('span', { class: 'dots dlg-dots', hidden: true, 'aria-label': `${firstName(npc.name) || 'They'} is thinking` }, h('i'), h('i'), h('i'));
+    const textBox = h('div', { class: 'dlg-box' }, this.textEl, this.dotsEl, this.moreEl);
     textBox.addEventListener('click', () => this.advance());
-    panel.body.append(h('div', { class: 'dlg' }, h('span', { class: 'portrait-frame dlg-portrait' }, this.portrait), h('div', { class: 'dlg-main' }, textBox, this.extraEl, this.optionsEl)));
+    panel.body.append(h('div', { class: 'dlg' }, h('span', { class: 'portrait-frame dlg-portrait' }, this.portrait), h('div', { class: 'dlg-main' }, this.youEl, textBox, this.extraEl, this.optionsEl)));
+    this.buildSay(npc);
     panel.onClose = () => this.onClosed();
     this.ui.openModal(panel);
     const d = safe(() => npc.getDialogue(this.game.player), null) || { lines: [`${npc.name || 'They'} nods at you.`], options: [{ id: 'bye', label: 'Goodbye' }] };
@@ -66,9 +76,132 @@ export class DialogPanel {
   }
 
   onClosed() {
+    this.dict?.detach();
+    this.dict = null;
+    if (this.talk) this.talk.onLate = null;
+    this.talk = null;
+    this.waiting = false;
+    this.sayField = null;
+    this.ui.root.classList.remove('dlg-typing');
     this.panel = null;
     this.npc = null;
     this.typing = false;
+  }
+
+  // ---------- saying anything (§19.3 playerSays) ----------
+
+  // The field sits in the panel's footer, outside the scrolling body, so it stays on
+  // screen (above a phone's keyboard) however long the conversation runs.
+  buildSay(npc) {
+    const village = villageOf(this.game);
+    this.talk = null;
+    this.sayField = null;
+    if (typeof village?.playerSays !== 'function') return;
+    this.talk = new TalkSession({ village, npc });
+    this.talk.onLate = (reply) => {
+      if (this.isOpen() && this.npc === npc) this.showReply(reply);
+    };
+    const who = firstName(npc.name) || 'them';
+    const field = h('input', {
+      class: 'field dlg-say-field',
+      type: 'text',
+      maxlength: String(SAY_MAX),
+      autocomplete: 'off',
+      enterkeyhint: 'send',
+      spellcheck: 'true',
+      'aria-label': `Say something to ${who}`,
+      placeholder: this.ui.isTouch ? 'Say something…' : 'Say something… (T)',
+    });
+    field.addEventListener('focus', () => this.setTypingClass(true));
+    field.addEventListener('blur', () => this.setTypingClass(false));
+    field.addEventListener('keydown', (e) => {
+      // The world's keys stay quiet while typing; Enter sends.
+      e.stopPropagation();
+      if (e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        this.submitSay();
+      }
+    });
+    const mic = button('', { icon: 'mic', cls: 'btn-icon dlg-mic', title: `Speak to ${who}` });
+    this.sendBtn = button('', { icon: 'send', cls: 'btn-icon btn-ember dlg-send', title: 'Say it (Enter)', onClick: () => this.submitSay() });
+    this.sayField = field;
+    this.dict = new FieldDictation(this.ui, { field, mic, owner: 'dialog', idleTitle: `Speak to ${who}` });
+    this.dict.attach(this.game.runtime?.dictation || null);
+    this.panel.foot.classList.add('dlg-say');
+    this.panel.foot.append(field, mic, this.sendBtn);
+  }
+
+  attachDictation(dict) {
+    this.dict?.attach(dict || null);
+  }
+
+  setTypingClass(on) {
+    // Phones fold the options away while the keyboard is up, so the reply stays in view.
+    this.ui.root.classList.toggle('dlg-typing', !!on && this.ui.isTouch);
+  }
+
+  submitSay() {
+    const field = this.sayField;
+    if (!field || !this.talk) return;
+    const text = field.value.replace(/\s+/g, ' ').trim();
+    if (!text) {
+      field.focus({ preventScroll: true });
+      return;
+    }
+    if (this.waiting) return;
+    this.dict?.reset();
+    field.value = '';
+    field.classList.remove('provisional');
+    this.game.audio?.play('ui_click');
+    this.echoPlayer(text);
+    this.setWaiting(true);
+    const npc = this.npc;
+    this.talk.send(text).then((reply) => {
+      if (!this.isOpen() || this.npc !== npc) return;
+      this.setWaiting(false);
+      if (reply) this.showReply(reply);
+    });
+  }
+
+  echoPlayer(text) {
+    const name = this.game.settings?.playerName || 'You';
+    clear(this.youEl);
+    this.youEl.append(h('span', { class: 'dlg-you-name', text: name }), h('span', { class: 'dlg-you-text', text: `“${text}”` }));
+    this.youEl.hidden = false;
+  }
+
+  setWaiting(on) {
+    this.waiting = !!on;
+    if (!this.panel) return;
+    if (this.sendBtn) this.sendBtn.disabled = this.waiting;
+    this.dotsEl.hidden = !this.waiting;
+    toggleClass(this.panel.el, 'is-waiting', this.waiting);
+    if (this.waiting) {
+      this.typing = false;
+      setText(this.textEl, '');
+      this.moreEl.hidden = true;
+      clear(this.optionsEl);
+      if (this.mode !== 'talk') {
+        this.mode = 'talk';
+        clear(this.extraEl);
+      }
+    }
+  }
+
+  showReply(reply) {
+    if (!reply?.lines?.length) return;
+    if (reply.expr) this.setExpression(reply.expr);
+    this.mode = 'talk';
+    clear(this.extraEl);
+    const opts = reply.options?.length ? reply.options : this.talkOptions();
+    this.play(reply.lines, opts);
+  }
+
+  // The villager's own options for this moment, as the dialog would offer them now.
+  talkOptions() {
+    const fresh = safe(() => this.npc?.chooseOption?.('__back', this.game.player)?.options, null);
+    const list = Array.isArray(fresh) && fresh.length ? fresh : this.options;
+    return list.length ? list : [{ id: 'bye', label: 'Goodbye' }];
   }
 
   setExpression(expr) {
@@ -91,6 +224,7 @@ export class DialogPanel {
     this.shown = 0;
     this.typing = true;
     this.blipAcc = 0;
+    if (this.dotsEl) this.dotsEl.hidden = true;
     setText(this.textEl, '');
     this.moreEl.hidden = true;
     clear(this.optionsEl);
@@ -126,13 +260,21 @@ export class DialogPanel {
       b.addEventListener('click', () => this.choose(o.id));
       this.optionsEl.append(b);
     });
+    // Keyboard players land on the first option, unless they are typing in
+    // "Say something…" (the options must not steal the caret mid-word).
     const first = this.optionsEl.querySelector('button');
-    if (first && !this.ui.isTouch) first.focus({ preventScroll: true });
+    const typing = !!this.sayField && document.activeElement === this.sayField;
+    if (first && !this.ui.isTouch && !typing) first.focus({ preventScroll: true });
   }
 
   // Number keys pick options; Enter / Space / E advance the text.
   handleKey(e) {
     if (!this.isOpen()) return false;
+    // T (talk) or / puts the caret in "Say something…".
+    if (this.sayField && (e.code === 'KeyT' || e.key === '/') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      this.sayField.focus({ preventScroll: true });
+      return true;
+    }
     if (/^Digit[1-9]$|^Numpad[1-9]$/.test(e.code) && !this.typing && this.mode === 'talk' && this.lineIdx >= this.lines.length - 1) {
       const i = Number(e.code.slice(-1)) - 1;
       const o = this.options[i];

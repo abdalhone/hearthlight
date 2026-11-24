@@ -186,9 +186,11 @@ function hitsPlaced(rects, i, x, y, w, h, gap) {
 // attached. Optional `maxBottom` / `minTop` keep a bubble above (or below) its
 // speaker's head. With no free spot it climbs upward. Mutates x/y in place and
 // returns how many rects moved.
-export function stackRects(rects, count = rects.length, gap = 4, margin = 0, screenH = Infinity, screenW = Infinity) {
+// The first `fixed` rects are obstacles that never move (HUD boxes); they are not
+// checked against each other.
+export function stackRects(rects, count = rects.length, gap = 4, margin = 0, screenH = Infinity, screenW = Infinity, fixed = 0) {
   let moved = 0;
-  for (let i = 1; i < count; i++) {
+  for (let i = Math.max(1, fixed); i < count; i++) {
     const r = rects[i];
     let collides = false;
     for (let j = 0; j < i; j++) if (overlaps(r, rects[j], gap)) collides = true;
@@ -222,6 +224,39 @@ export function stackRects(rects, count = rects.length, gap = 4, margin = 0, scr
       r.y = bestY;
       moved++;
       continue;
+    }
+    // Hemmed in (a crowd under the HUD): any free spot near the rects in the way,
+    // above or below its speaker, before climbing blindly over everything (the
+    // caller draws a leader line to a bubble that moved off its speaker).
+    if (fixed > 0) {
+      const xs = [r.x];
+      const ys = [r.y];
+      const body = r.body; // the speaker, whom the bubble must not cover either
+      if (body) ys.push(body.y + body.h + gap, body.y - gap - r.h);
+      for (let j = 0; j < i; j++) {
+        const o = rects[j];
+        xs.push(o.x + o.w + gap, o.x - gap - r.w);
+        ys.push(o.y - gap - r.h, o.y + o.h + gap);
+      }
+      for (const x of xs) {
+        for (const y of ys) {
+          if (x < margin || y < margin || x + r.w > screenW - margin || y + r.h > screenH - margin) continue;
+          if (body && x < body.x + body.w && x + r.w > body.x && y < body.y + body.h && y + r.h > body.y) continue;
+          if (hitsPlaced(rects, i, x, y, r.w, r.h, gap)) continue;
+          const cost = Math.abs(x - r.x) + Math.abs(y - r.y) * 1.6;
+          if (cost < bestCost) {
+            bestCost = cost;
+            bestX = x;
+            bestY = y;
+          }
+        }
+      }
+      if (bestCost < Infinity) {
+        r.x = bestX;
+        r.y = bestY;
+        moved++;
+        continue;
+      }
     }
     const startY = r.y;
     for (let pass = 0; pass < 10; pass++) {
@@ -336,9 +371,9 @@ export function luminance(r, g, b) {
 // Ambient light (a multiply color, 255 = untouched) through the day.
 // Warm golden morning, neutral noon, orange then pink dusk, deep blue night.
 export const AMBIENT_KEYS = [
-  [0, [46, 54, 104]],
-  [4.6, [46, 54, 104]],
-  [5.4, [92, 80, 132]],
+  [0, [18, 23, 56]],
+  [4.4, [18, 23, 56]],
+  [5.4, [86, 76, 128]],
   [6.2, [214, 150, 132]],
   [7.0, [255, 204, 152]],
   [8.6, [255, 236, 208]],
@@ -347,10 +382,10 @@ export const AMBIENT_KEYS = [
   [17.2, [255, 232, 196]],
   [18.3, [255, 186, 140]],
   [19.2, [218, 138, 152]],
-  [20.0, [130, 104, 162]],
-  [20.8, [70, 72, 128]],
-  [21.6, [46, 54, 104]],
-  [24, [46, 54, 104]],
+  [20.0, [124, 100, 158]],
+  [20.8, [58, 62, 118]],
+  [21.8, [18, 23, 56]],
+  [24, [18, 23, 56]],
 ];
 
 const RAIN_TINT = [0.66, 0.73, 0.86];
@@ -358,7 +393,7 @@ const CLOUD_TINT = [0.86, 0.88, 0.94];
 const FOG_TINT = [0.9, 0.93, 0.97];
 const INDOOR_TINT = [0.9, 0.81, 0.69];
 const INDOOR_FLOOR = [58, 46, 50];
-const MOONLIGHT = [14, 14, 18];
+const MOONLIGHT = [10, 11, 16];
 const LIGHTNING = [236, 240, 255];
 const _k = [0, 0, 0];
 

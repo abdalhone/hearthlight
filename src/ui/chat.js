@@ -413,7 +413,7 @@ export class Chat {
     if (last && used && !last.memories?.length) this.attachMemories(last, used);
   }
 
-  // Once she is gone there is no one to talk to; the log stays to read.
+  // Once she has cut the player off she will not talk; the log stays to read.
   setGone(on) {
     const gone = !!on;
     if (gone === this.gone && this.mounted && this.field.disabled === gone) return;
@@ -425,7 +425,7 @@ export class Chat {
     this.sendBtn.disabled = gone;
     this.mic.disabled = gone;
     this.chips.hidden = gone;
-    this.field.placeholder = gone ? `${name} won't speak to you.` : `Say something to ${name}…`;
+    this.field.placeholder = gone ? `${name} won't talk to you.` : `Say something to ${name}…`;
     toggleClass(this.el, 'is-gone', gone);
   }
 
@@ -449,12 +449,14 @@ export class Chat {
     try {
       this.dictOffs.push(
         this.dict.onPartial((e) => {
+          if (!this.ownsDictation()) return;
           this.dictPartial = e?.text || '';
           this.showDictation();
         }),
       );
       this.dictOffs.push(
         this.dict.onFinal((e) => {
+          if (!this.ownsDictation()) return;
           let t = e?.text || '';
           if (!this.dictCommitted) t = t.replace(/^\s+/, '');
           this.dictCommitted += t;
@@ -464,7 +466,9 @@ export class Chat {
       );
       this.dictOffs.push(
         this.dict.onState((e) => {
+          if (!this.ownsDictation()) return;
           this.dictState = e?.state || 'idle';
+          if (this.dictState === 'idle' && this.ui.dictOwner === 'chat') this.ui.dictOwner = null;
           toggleClass(this.mic, 'listening', this.dictState === 'listening' || this.dictState === 'starting');
           this.mic.title = this.dictState === 'idle' ? 'Speak to Lyra' : 'Stop listening';
           if (this.dictState === 'idle') {
@@ -479,6 +483,14 @@ export class Chat {
       console.warn('[chat] dictation setup failed', err);
       this.mic.hidden = true;
     }
+  }
+
+  // The mic is shared with villagers' dialogs: the chat only follows dictation it started.
+  // With no owner recorded, only a session the chat is still following counts (an
+  // 'idle' that ends a villager's session must not rewrite the chat's field).
+  ownsDictation() {
+    const o = this.ui.dictOwner;
+    return o === 'chat' || (!o && this.dictState !== 'idle');
   }
 
   showDictation() {
@@ -499,10 +511,11 @@ export class Chat {
     } catch {
       active = this.dictState !== 'idle';
     }
-    if (active) {
+    if (active && this.ownsDictation()) {
       this.stopDictation();
       return;
     }
+    this.ui.dictOwner = 'chat';
     this.dictCommitted = this.field.value;
     this.dictPartial = '';
     let p;
@@ -527,6 +540,7 @@ export class Chat {
   }
 
   handleDictationError(err) {
+    if (this.ui.dictOwner === 'chat') this.ui.dictOwner = null;
     const code = err?.code || 'upstream_error';
     const ui = this.ui;
     if (code === 'unavailable') {

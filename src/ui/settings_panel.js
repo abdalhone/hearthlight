@@ -112,7 +112,11 @@ export class SettingsPanel {
   }
 
   reinitBrain() {
-    safe(() => this.game.brain?.init?.());
+    const g = this.game;
+    safe(() => g.brain?.init?.());
+    // 'Always' needs the API key provider; it falls back when that is gone.
+    if (g.settings?.villageAi === 'always' && safe(() => g.brain?.providers?.currentId?.(), null) !== 'api') g.setSetting('villageAi', 'player');
+    if (this.villageAiEl?.isConnected) this.villageAiEl.replaceWith(this.villageAiRow());
     this.refreshStatus();
     this.ui.title?.refreshMindLine?.();
   }
@@ -215,6 +219,9 @@ export class SettingsPanel {
       ),
     );
 
+    // --- Villagers' minds (§19.3) ---
+    mindSec.append(this.villageAiRow());
+
     // --- Voice ---
     const voiceSec = h('section', { class: 'box' }, h('h3', { text: 'Voice' }));
     voiceSec.append(this.toggleRow('Lyra speaks her replies aloud', 'voice'));
@@ -267,6 +274,32 @@ export class SettingsPanel {
     if (g.state === 'playing') this.panel.foot.append(button('Quit to title', { cls: 'btn-danger btn-small', onClick: () => this.ui.quitToTitle() }));
     this.panel.foot.append(button('Done', { cls: 'btn-ember', onClick: () => this.close() }));
     this.refreshStatus();
+  }
+
+  // 'player' (default): villagers reach Claude only when you talk to them or listen in.
+  // 'always': ambient talk near you too, which needs your own API key (never claude.ai).
+  villageAiRow() {
+    const g = this.game;
+    const s = g.settings;
+    const current = s.villageAi === 'always' ? 'always' : 'player';
+    const apiReady = safe(() => g.brain?.providers?.currentId?.(), null) === 'api' || (!!g.apiKey && s.brain === 'apikey');
+    const wrap = h('div', { class: 'village-ai' }, h('span', { class: 'form-label', text: 'Villagers think with Claude' }));
+    const choices = h('div', { class: 'choice-list', role: 'radiogroup', 'aria-label': 'When villagers think with Claude' });
+    const opts = [
+      ['player', 'When you talk to them', 'Only when you say something to someone or listen in. Everything else uses their own words.'],
+      ['always', 'Always, near you', apiReady ? 'Villagers near you also talk among themselves with Claude, at most once every 45 seconds. Uses your API key.' : 'Needs your own API key (set "Her mind" to your API key). Never used on claude.ai.'],
+    ];
+    for (const [id, label, note] of opts) {
+      const disabled = id === 'always' && !apiReady;
+      const input = h('input', { type: 'radio', name: 'villageAi', value: id, checked: current === id, disabled });
+      input.addEventListener('change', () => {
+        if (input.checked) this.set('villageAi', id);
+      });
+      choices.append(h('label', { class: `choice${disabled ? ' is-disabled' : ''}` }, input, h('span', { class: 'choice-text' }, h('span', { class: 'choice-label', text: label }), h('span', { class: 'choice-note', text: note }))));
+    }
+    wrap.append(choices);
+    this.villageAiEl = wrap;
+    return wrap;
   }
 
   toggleRow(label, key) {

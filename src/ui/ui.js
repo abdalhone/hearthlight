@@ -13,6 +13,7 @@ import { InventoryPanel, ChestPanel } from './inventory.js';
 import { SettingsPanel } from './settings_panel.js';
 import { TitleScreen } from './title.js';
 import { TouchControls } from './touch.js';
+import { VillageUI } from './village_ui.js';
 import { buildPause, buildSign, buildDiary, Fader, Vignette } from './overlays.js';
 import { makeConfirm } from './modal.js';
 import { COMMANDS, JOBS, REJOIN, pickAck } from './content.js';
@@ -48,7 +49,7 @@ const STATE_LINES = {
   wary: (n) => `${n} is wary of you now.`,
   apart: (n) => `${n} is going her own way for now.`,
   left: (n) => `${n} has left you.`,
-  gone: (n) => `${n} has cut you out of her life.`,
+  gone: (n) => `${n} has cut you out of her life. She is home with her own people now.`,
 };
 
 export class UI {
@@ -96,6 +97,7 @@ export class UI {
     this.settings = new SettingsPanel(this);
     this.title = new TitleScreen(this);
     this.touch = new TouchControls(this);
+    this.village = new VillageUI(this);
     this.fader = new Fader();
     this.vignette = new Vignette();
     this.modalLayer = h('div', { class: 'modal-layer', hidden: true });
@@ -129,10 +131,13 @@ export class UI {
     this.setTouch(isTouchDevice());
     this.bindDom();
     this.bindBus();
+    this.village.bind();
+    this.watchKeyboard();
 
     const rt = g.runtime;
     const onCaps = () => {
       this.chat.attachDictation(rt?.dictation || null);
+      if (this.dialog.isOpen()) this.dialog.attachDictation(rt?.dictation || null);
       if (this.settings.isOpen()) this.settings.render();
       this.chat.refreshHeader();
     };
@@ -163,6 +168,12 @@ export class UI {
           }
         }
         if (this.dialog.isOpen() && this.top() === this.dialog.panel && !isTextTarget(t) && this.dialog.handleKey(e)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        // L listens in on a conversation nearby (§19.3).
+        if (e.code === 'KeyL' && !isTextTarget(t) && this.village.handleKey(e)) {
           e.preventDefault();
           e.stopPropagation();
         }
@@ -212,6 +223,31 @@ export class UI {
     } catch {
       /* older browsers */
     }
+  }
+
+  // A phone's on-screen keyboard covers the bottom of the page without resizing it.
+  // --kb (on the UI root) says how much it covers, so panels and the chat can rise
+  // above it while a text field has focus.
+  watchKeyboard() {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = this.root;
+    let last = -1;
+    const apply = () => {
+      const typing = isTextTarget(document.activeElement);
+      const kb = typing ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
+      const open = kb > 80;
+      const v = open ? kb : 0;
+      if (v === last) return;
+      last = v;
+      root.style.setProperty('--kb', `${v}px`);
+      root.classList.toggle('kb-open', open);
+    };
+    vv.addEventListener('resize', apply);
+    vv.addEventListener('scroll', apply);
+    window.addEventListener('focusin', () => requestAnimationFrame(apply));
+    window.addEventListener('focusout', () => setTimeout(apply, 60));
+    apply();
   }
 
   bindBus() {
@@ -272,6 +308,21 @@ export class UI {
 
     bus.on('downed', ({ entity }) => {
       if (isLyra(entity)) this.toast(`${lyraName()} is down! Reach her and press ${this.isTouch ? 'the hand button' : 'E'} to help her up.`, 'warn');
+    });
+    // Her village protects her (§19.7): a cry for help is news the player should see,
+    // once per person while it lasts.
+    const helpAt = new Map();
+    bus.on('call_for_help', (p) => {
+      const v = p?.victim;
+      const ent = v && typeof v === 'object' ? v : safe(() => g.entities?.get?.(v));
+      const id = ent?.id || (typeof v === 'string' ? v : '');
+      if (!id || isPlayer(ent)) return;
+      const now = g.time || 0;
+      if (now - (helpAt.get(id) ?? -99) < 15) return;
+      helpAt.set(id, now);
+      const name = isLyra(ent) || id === 'lyra' ? lyraName() : String(ent?.name || id).split(' ')[0];
+      const byYou = isPlayer(p?.attacker) || p?.attacker === 'player';
+      this.toast(byYou ? `${name} is shouting for help, and the village is coming.` : `${name} is shouting for help!`, 'warn', { key: `help:${id}` });
     });
     bus.on('revived', ({ entity, by }) => {
       if (isLyra(entity)) this.toast(isPlayer(by) ? `You helped ${lyraName()} back to her feet.` : `${lyraName()} is back on her feet.`, 'good');
@@ -363,6 +414,8 @@ export class UI {
       }
     });
     bus.on('memory_added', () => this.mind?.markDirty('memories'));
+    // The village's social life changes what the People tab shows (§19.3).
+    for (const ev of ['village_talk', 'rumor', 'bond_changed']) bus.on(ev, () => this.mind?.markDirty('people'));
     bus.on('settings_changed', ({ key }) => {
       if (key === 'reduceMotion') this.applyMotion();
       if (key === 'companionName' || key === 'brain') {
@@ -390,7 +443,7 @@ export class UI {
     if (!this.chat.messages.length) {
       const intro =
         state === 'gone'
-          ? `${name} has cut you out of her life. She still lives in Hearthvale, and she will not speak to you.`
+          ? `${name} has cut you out of her life. She is still in Hearthvale, with her own people, but she won't talk to you beyond a word.`
           : `${name} travels with you because she chooses to. Talk to her about anything, or ask her for help in plain words; she decides what she does.`;
       this.chat.addMessage({ from: 'system', text: intro });
     }
@@ -579,7 +632,8 @@ export class UI {
     const now = Date.now();
     if (this.stack.some((p) => p.id === 'diary') || (this.lastDiary && this.lastDiary.text === text && now - this.lastDiary.at < 120000)) return;
     this.lastDiary = { text, at: now };
-    const panel = buildDiary(this, entry);
+    const panel = buildDiary(this, entry, this.village?.section());
+    panel.onClose = () => this.village?.diaryClosed();
     this.openModal(panel);
     this.game.audio?.play('sleep', { volume: 0.5 });
   }
@@ -818,6 +872,7 @@ export class UI {
     }
     this.hud.update(dt);
     this.chat.update(dt);
+    this.village.update(dt);
     this.toasts.update(dt);
     this.dialog.update(dt);
     this.mind.update(dt);

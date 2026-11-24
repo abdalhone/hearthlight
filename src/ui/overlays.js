@@ -4,6 +4,7 @@
 import { h, button, setStyle, toggleClass } from './dom.js';
 import { makePanel } from './modal.js';
 import { dayLabel } from './format.js';
+import { storyEntries, runEntry } from './story_menu.js';
 
 export function buildPause(ui) {
   const g = ui.game;
@@ -29,6 +30,17 @@ export function buildPause(ui) {
       ui.closeModal(panel, true);
       ui.openInventory();
     } }),
+  );
+  // The Prologue and The Book of Halcyre, when this build has the story (§20).
+  for (const entry of storyEntries(g, ui)) {
+    menu.append(
+      button(entry.label, { icon: entry.icon, cls: `pause-${entry.id}`, title: entry.hint, onClick: () => {
+        ui.closeModal(panel, true);
+        runEntry(entry, ui);
+      } }),
+    );
+  }
+  menu.append(
     button('Settings', { icon: 'gear', onClick: () => ui.openSettings() }),
     button('Save game', { icon: 'scroll', onClick: () => g.save?.save?.('manual') }),
     button('Quit to title', { cls: 'btn-ghost', onClick: () => ui.quitToTitle() }),
@@ -43,13 +55,15 @@ export function buildSign(title, text) {
   return panel;
 }
 
-export function buildDiary(ui, entry) {
+// `extra`: the morning's "While you slept" block, shown above her page when given.
+export function buildDiary(ui, entry, extra = null) {
   const g = ui.game;
   const name = g.settings?.companionName || g.companion?.name || 'Lyra';
   const panel = makePanel({ id: 'diary', title: `${name}'s diary`, subtitle: dayLabel(entry?.day, (g.clock?.day || 0) + 1), iconName: 'book', cls: 'panel-small panel-diary' });
   const page = h('article', { class: 'diary-page' });
   for (const para of String(entry?.text || '').split(/\n{2,}/)) if (para.trim()) page.append(h('p', { text: para.trim() }));
   page.append(h('p', { class: 'diary-sign', text: `— ${name}` }));
+  if (extra) panel.body.append(extra);
   panel.body.append(h('p', { class: 'muted small', text: 'She left her diary open while you slept. You probably should not read it. You read it anyway.' }), page);
   panel.foot.append(button('Close the diary', { cls: 'btn-ember', onClick: () => ui.closeModal(panel) }));
   return panel;

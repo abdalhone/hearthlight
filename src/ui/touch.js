@@ -35,7 +35,8 @@ export class TouchControls {
       ['talk', 'talk', 'Talk', false],
     ];
     for (const [action, ic, label, hold] of defs) {
-      const b = h('button', { type: 'button', class: `tbtn tbtn-${action}`, 'aria-label': label }, icon(ic), h('span', { class: 'tbtn-label', text: label }));
+      // "Interact" does not fit under a phone's thumb button: idle, it reads "Use".
+      const b = h('button', { type: 'button', class: `tbtn tbtn-${action}`, 'aria-label': label }, icon(ic), h('span', { class: 'tbtn-label', text: action === 'interact' ? 'Use' : label }));
       if (hold) {
         b.addEventListener('pointerdown', (e) => {
           e.preventDefault();
@@ -137,6 +138,7 @@ export class TouchControls {
     const b = this.buttons.interact;
     if (!b) return;
     toggleClass(b, 'ready', !!label);
-    setText(b.lastChild, label ? label.split(' ')[0] : 'Interact');
+    setText(b.lastChild, label ? label.split(' ')[0] : 'Use');
+    b.setAttribute('aria-label', label || 'Interact');
   }
 }

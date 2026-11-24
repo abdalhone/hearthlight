@@ -232,6 +232,25 @@ export const ICONS = {
     '....k....',
     '..kkkkk..',
   ],
+  // Two people talking: the "Listen in" prompt.
+  convo: [
+    'kkkkkkk....',
+    'kwwwwwk....',
+    'kwwwkkkkkkk',
+    'kwwwkaaaaak',
+    'kkwkkaaaaAk',
+    '.kk.kaaaAAk',
+    '....kkkkAkk',
+    '........kk.',
+  ],
+  people: [
+    '..kk..kk.',
+    '.kwwkkddk',
+    '.kwwkkddk',
+    '..kk..kk.',
+    '.kwwkkddk',
+    'kwwwkdddk',
+  ],
   send: [
     'kk.......',
     'kwkk.....',

@@ -204,15 +204,16 @@ export class Lighting {
     return s;
   }
 
-  // In the light map a light only restores brightness, slightly tinted; its color
-  // comes mostly from the additive glow, so warm light on green grass reads warm
-  // instead of olive.
+  // In the light map a light restores the ground's own color, tinted by the light;
+  // the rest of its color comes from the additive glow. A warm light (a lamp, a fire)
+  // restores less green and blue than it shows, the way flame light does, so a lamp
+  // pool on grass reads amber-olive and on stone reads amber, never lime.
   mapSprite(color) {
     const key = color || DEFAULT_COLOR;
     let s = this._soft.get(key);
     if (s) return s;
     if (this._soft.size > 96) this._soft.clear();
-    s = this.sprite(lighten(key.startsWith('#') ? key : DEFAULT_COLOR, 0.3));
+    s = this.sprite(warmMapColor(lighten(key.startsWith('#') ? key : DEFAULT_COLOR, 0.04)));
     this._soft.set(key, s);
     return s;
   }
@@ -251,8 +252,8 @@ export class Lighting {
       this.liftmap.width = w;
       this.liftmap.height = h;
       const g = this.qctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.1, w / 2, h / 2, Math.hypot(w, h) * 0.55);
-      g.addColorStop(0, '#0e1538');
-      g.addColorStop(0.6, '#0b1130');
+      g.addColorStop(0, '#0c1334');
+      g.addColorStop(0.6, '#090e29');
       g.addColorStop(1, '#03050f');
       this._liftGradient = g;
     }
@@ -316,12 +317,15 @@ export class Lighting {
       l.fillRect(0, 0, lm.width, lm.height);
       l.globalCompositeOperation = 'lighter';
       l.imageSmoothingEnabled = true;
+      const mapK = 1 - 0.22 * Math.max(0, Math.min(1, (amb.darkness - 0.4) / 0.4)) * (1 - this.indoor);
       for (let i = 0; i < n; i++) {
         const a = fk[i];
         if (a < 0.01) continue;
         const li = this.lights[i];
         const rr = fr[i];
-        l.globalAlpha = a > 1 ? 1 : a;
+        // At night a light restores most, not all, of the day: the pool stays a pool
+        // and its warmth (the glow below) wins over green grass.
+        l.globalAlpha = (a > 1 ? 1 : a) * mapK;
         l.drawImage(this.mapSprite(li.color), (li.x - ox - rr) / D, (li.y - oy - rr) / D, (2 * rr) / D, (2 * rr) / D);
       }
       if (vignette > 0.01) {
@@ -395,6 +399,14 @@ export class Lighting {
     ctx.globalCompositeOperation = 'source-over';
     ctx.imageSmoothingEnabled = false;
   }
+}
+
+// Flame-warm lights (red well above blue) multiply the scene through a deeper amber.
+export function warmMapColor(c) {
+  const [r, g, b] = parseColor(c);
+  if (r < b + 40) return c;
+  const hex = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+  return `#${hex(r)}${hex(g * 0.8)}${hex(b * 0.66)}`;
 }
 
 const _rgb = [255, 255, 255];

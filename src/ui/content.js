@@ -70,14 +70,20 @@ export const HOW_TO_PLAY = [
       ['Move', 'WASD or arrow keys · left stick · touch the left half of the screen'],
       ['Attack', 'J or Space · A button · the sword button'],
       ['Dodge roll', 'K or Shift · B button · the swirl button (a moment of safety)'],
-      ['Interact', 'E · X button · the hand button: talk, open doors and chests, read signs'],
+      ['Interact', 'E · X button · the hand button: talk to villagers, open doors and chests, read signs'],
+      ['Listen in', 'L · tap "Listen in" when two villagers are talking nearby'],
       ['Pause', 'Esc · Start button · the pause icon'],
     ],
   },
   {
     title: 'Lyra lives for herself',
     text:
-      'Lyra travels with you because she chooses to: she owes you for the wolves on the King\'s Road, she is curious about you, and two are safer than one while she looks for her mentor. She has her own plans, her own coin and her own limits. She weighs everything you ask, and she watches what you do. Treat her well and she will trust you. Hurt her, frighten her or harm the people she cares about, and she will stop you, run, or leave, and she may never come back.',
+      'Lyra and Hess carried you down off the Hollowcrown; you slept eighty-one days. When you woke, Lyra took the hearthwatch for reasons of her own: the stipend, a second blade for the ruins, and whatever ties you to Maren, the teacher who walked into the Sunken Ruins and never came back. She travels with you because she chooses to, while it is good for her. She weighs everything you ask, and she watches what you do. Treat her well and she will trust you. Hurt her, frighten her or harm the people she loves, and she will stop you, run to her people or shout for help. Hearthvale is her home: she never leaves it, and the village stands with her.',
+  },
+  {
+    title: 'The village',
+    text:
+      'Of the hundred and fifty people in Hearthvale, eighteen are yours to know, and they live their own lives: they work, eat at the Kettle, talk to each other, gossip, and remember what you do. Walk up to anyone and press E (or tap the hand) to talk; type anything into "Say something…" and they answer in their own way. When two of them are talking nearby, press L or tap "Listen in". In the morning, "While you slept" tells you what went on in the village overnight.',
   },
   {
     title: 'Talking with her',
@@ -103,7 +109,7 @@ export const HOW_TO_PLAY = [
   {
     title: 'Days and nights',
     text:
-      'A day lasts about fifteen minutes. Wolves grow bolder at night and moonpetals only open after dark. Sleep in your cottage bed after 6 PM to skip to morning; Lyra writes in her diary while you rest, and the game saves. She sleeps in the cottage only while she trusts you; otherwise she rents a room at the Ember Kettle.',
+      'A day lasts about fifteen minutes. Wolves grow bolder at night and moonpetals only open after dark. Sleep in your bed after 6 PM to skip to morning; Lyra writes in her diary while you rest, and the game saves. She sleeps in the spare bed only while she trusts you; otherwise she keeps her old room at the Ember Kettle.',
   },
   {
     title: 'Saving',
@@ -122,7 +128,8 @@ export const CONTROLS_SUMMARY = [
   ['WASD / Arrows', 'Move'],
   ['J / Space', 'Attack'],
   ['K / Shift', 'Dodge'],
-  ['E', 'Interact'],
+  ['E', 'Interact / talk to villagers'],
+  ['L', 'Listen in'],
   ['T / Enter', 'Talk to Lyra'],
   ['Tab / M', "Lyra's mind"],
   ['I', 'Inventory'],

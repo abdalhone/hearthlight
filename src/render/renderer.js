@@ -376,7 +376,9 @@ export class Renderer {
       const p = g.player;
       if (p && !p.removed && !p.light) {
         if (p.inventory?.has?.('lantern')) L.addLight(p.x, p.y - 10, 88, '#ffc46a', 0.85 * k, 0.12, 0.8);
-        else L.addLight(p.x, p.y - 8, 46, '#aab4ff', 0.22 * k, 0, 0.15);
+        // Deep nights (§18) keep the player readable: a soft pool of cool moonlight
+        // that also catches whoever stands close by.
+        else L.addLight(p.x, p.y - 8, 60, '#aab4ff', 0.4 * k, 0, 0.12);
       }
       const c = g.companion;
       if (c && !c.removed && !c.light && !c.downed) L.addLight(c.x, c.y - 10, 30, '#a995ff', 0.32 * k, 0.05, 0.5);

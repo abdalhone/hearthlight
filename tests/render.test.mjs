@@ -226,7 +226,7 @@ test('ambient light follows the day: neutral noon, golden morning, pink dusk, de
   const dusk = ambientAt(19.2);
   assert.ok(dusk.r > dusk.g && dusk.b > dusk.g, 'pink dusk');
   const night = ambientAt(0, { moon: 0 });
-  assert.ok(night.darkness >= 0.7 && night.darkness <= 0.82, `night darkness ${night.darkness}`);
+  assert.ok(night.darkness >= 0.82 && night.darkness <= 0.94, `night darkness ${night.darkness}`);
   assert.ok(night.b > night.r * 1.6, 'nights are blue');
   const moonlit = ambientAt(0, { moon: 1 });
   assert.ok(moonlit.darkness < night.darkness, 'clear moonlight is a little lighter');
