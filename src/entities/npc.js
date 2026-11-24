@@ -1993,7 +1993,10 @@ export class NPC extends Actor {
     const g = this.game;
     if (this.downed) {
       // A potion, or carry them to Mira's (§27); the old hand up without game.survival.
-      if (g.survival?.interactDowned?.(this, actor)) return;
+      if (g.survival) {
+        g.survival.interactDowned?.(this, actor);
+        return;
+      }
       return this.helpUp(actor);
     }
     if (this.mode === 'flee' && this.fleeFrom === actor) {

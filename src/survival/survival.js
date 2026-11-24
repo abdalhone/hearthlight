@@ -81,6 +81,12 @@ export class Survival {
     this.fast = false; // tests: skip real-time waits
     this._quiet = false;
     this._drawables = [];
+    // What Lyra's mind is told while someone lies bleeding (her prompt, through a plugin).
+    try {
+      game.plugins?.register?.({ id: 'survival', name: 'Someone fell', description: 'Falls, rescues and the sickroom (DESIGN §27)', promptContext: () => this.promptContext() });
+    } catch {
+      /* plugins are optional */
+    }
     const bus = game.bus;
     if (bus?.on) {
       bus.on('downed', (p) => this.onDowned(p));
@@ -225,7 +231,8 @@ export class Survival {
     const g = this.game;
     const rec = this.falls.get(F);
     let bed = null;
-    if (job?.role === 'arrest' || rec?.wanted) bed = safe(() => g.objects?.get?.(CELL_BED));
+    // The watch takes someone wanted to the cell; Lyra and the rest take them to Mira's.
+    if (job?.role === 'arrest' || (rec?.wanted && job?.rescuer?.isGuard)) bed = safe(() => g.objects?.get?.(CELL_BED));
     if (!bed) {
       const from = job?.rescuer || F;
       let best = null;
@@ -536,8 +543,8 @@ export class Survival {
     if (player.inventory?.has?.('potion')) {
       player.inventory.remove('potion', 1);
       try {
-        g.bus?.emit?.('item_used', { actor: player, itemId: 'potion', target });
         g.audio?.play?.('heal', { x: target.x, y: target.y });
+        g.particles?.emit?.('heal', target.x, target.y - 8, { count: 10, color: '#9ff0b8', speed: 24, life: 0.8 });
       } catch {
         /* cosmetic */
       }
@@ -629,7 +636,7 @@ export class Survival {
     g.bus?.emit?.('delivered', { carrier, entity: F, bed });
     if (isPlayer(this, F)) {
       this.rescuedBy(carrier, rec);
-      tendPlayer(this, carrier, bed, { arrested: !!rec?.wanted || job?.role === 'arrest' });
+      tendPlayer(this, carrier, bed, { arrested: job?.role === 'arrest' || (!!rec?.wanted && !!carrier.isGuard) });
       return true;
     }
     const grave = !!rec?.grave;
@@ -1023,6 +1030,24 @@ export class Survival {
   onPlayerWake() {
     // A night's sleep is longer than any short rest in a cot.
     for (const [a, p] of [...this.patients]) if (p.kind !== 'grave') releasePatient(this, a);
+  }
+
+  promptContext() {
+    const g = this.game;
+    const P = g.player;
+    const L = g.companion;
+    const out = [];
+    const name = P?.name && P.name !== 'Traveler' ? P.name : 'The stranger';
+    const rec = P && this.falls.get(P);
+    if (rec) {
+      const who = rec.carrier ? ` ${rec.carrier === L ? 'You are' : `${rec.carrier.name} is`} carrying them to Mira's.` : '';
+      out.push(`${name} is lying on the ground in ${rec.place}, bleeding out: about ${Math.max(0, Math.ceil(rec.left))} seconds before they die.${who}${hasKeptFlame(g) ? ' A kept flame burns for them at the chapel.' : ' No flame is kept for them: if they die, they are gone.'}`);
+    }
+    const mine = L && this.patients.get(L);
+    if (mine) out.push(`You are lying in a cot at Mira's, mending${mine.savedBy === PLAYER_ID ? `; ${name.toLowerCase() === 'the stranger' ? 'the stranger' : name} carried you here` : ''}.`);
+    const weak = this.activeConditions().map((c) => CONDITIONS[c.id].label.toLowerCase());
+    if (weak.length && !rec) out.push(`${name} is ${weak.join(' and ')} after a bad fall.`);
+    return out.join(' ');
   }
 
   // Draw list for the renderer: everyone being carried, over their carrier's shoulders.

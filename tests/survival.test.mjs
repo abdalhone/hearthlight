@@ -472,6 +472,22 @@ test('edge cases: water pulls you to the bank; hostiles stop at a fallen body; b
   assert.equal(g3.survival.jobs.size, 0, 'nobody');
 });
 
+test('at night far from the village, Lyra may be the only one who can come', () => {
+  const g = makeGame({ hour: 23 });
+  const P = g.player;
+  const wood = at(g, 'moonpetal_glade');
+  placeAt(g, P, wood.x, wood.y);
+  lyraStays(g, wood.x + 700, wood.y + 200);
+  step(g, 0.3);
+  fell(g);
+  step(g, 1);
+  g.input.press('interact');
+  step(g, 0.1);
+  const coming = [...g.survival.jobs.keys()];
+  assert.deepEqual(coming.map((a) => a.id), ['lyra'], 'the village is asleep and far away; she is not');
+  assert.match(g.survival.promptContext(), /bleeding out/);
+});
+
 test('a save made while bleeding out keeps the fall; reloading does not escape it', () => {
   const g = makeGame({ hour: 14 });
   alone(g);

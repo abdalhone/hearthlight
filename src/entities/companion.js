@@ -185,7 +185,10 @@ export class Companion extends Actor {
   interact(actor) {
     if (this.downed) {
       // A potion, or her weight on your shoulders (§27); the old free hand up without it.
-      if (this.game.survival?.interactDowned?.(this, actor)) return;
+      if (this.game.survival) {
+        this.game.survival.interactDowned?.(this, actor);
+        return;
+      }
       this.reviveBy(actor, PLAYER_REVIVE_HP);
       return;
     }
