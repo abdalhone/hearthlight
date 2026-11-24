@@ -870,13 +870,21 @@ function drawStrike(R, b, L) {
     c.globalAlpha = (1 - k) * (i === 0 ? 0.95 : 0.5 - i * 0.12);
     ring(c, x, y - 5, rr, i === 0 ? P.core : P.glow, i === 0 ? 2 : 1, 0.7, ang - arc * (1 - i * 0.15), ang + arc * (1 - i * 0.15));
   }
-  // The fist, with speed lines, then its flash.
-  if (k < 0.55) {
-    c.globalAlpha = 1 - k / 0.55;
+  // The flash at the knuckles first, then the fist over it (so the fist reads), with
+  // speed lines behind it; the fist holds a moment, then fades.
+  if (k < 0.3) {
+    const s = (1 - k / 0.3) * b.r * 1.2;
+    c.globalAlpha = 0.85;
+    line(c, fx + ux * 6 - s, fy, fx + ux * 6 + s, fy, P.core, 1);
+    line(c, fx + ux * 6, fy - s * 0.8, fx + ux * 6, fy + s * 0.8, P.core, 1);
+  }
+  if (k < 0.65) {
+    const fa = k < 0.4 ? 1 : 1 - (k - 0.4) / 0.25;
+    c.globalAlpha = fa;
     for (let i = -1; i <= 1; i++) {
       const ox = -uy * i * 3;
       const oy = ux * i * 3;
-      line(c, fx - ux * 6 + ox, fy - uy * 5 + oy, fx - ux * 12 + ox, fy - uy * 10 + oy, P.spark, 1);
+      line(c, fx - ux * 6 + ox, fy - uy * 5 + oy, fx - ux * 13 + ox, fy - uy * 10 + oy, i ? P.glow : P.spark, 1);
     }
     const s = fistSprite(P);
     c.save();
@@ -889,16 +897,10 @@ function drawStrike(R, b, L) {
     c.drawImage(s, -6, -5);
     c.restore();
   }
-  if (k < 0.3) {
-    const s = (1 - k / 0.3) * b.r * 1.4;
-    c.globalAlpha = 1;
-    line(c, fx + ux * 4 - s, fy, fx + ux * 4 + s, fy, P.core, 1);
-    line(c, fx + ux * 4, fy - s * 0.8, fx + ux * 4, fy + s * 0.8, P.core, 1);
-  }
   c.globalAlpha = 1;
   const g = R.g;
   if (g) {
-    if (k < 0.4) halo(g, fx + ux * 3, fy, b.r * 2.4, L.halo, 0.9 * (1 - k / 0.4), R.bounds);
+    if (k < 0.4) halo(g, fx + ux * 3, fy, b.r * 2.2, L.halo, 0.55 * (1 - k / 0.4), R.bounds);
     g.globalAlpha = 1 - k;
     ring(g, x, y - 5, b.cur, P.core, 1, 0.7, ang - arc, ang + arc);
     g.globalAlpha = 1;

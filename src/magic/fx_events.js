@@ -401,7 +401,7 @@ const H = {
     const x = p.x;
     const y = p.y;
     if (b.kind === 'strike') {
-      star(fx, x, y, 10, P.core, L.halo, 0.2, 8);
+      star(fx, x, y, 6, P.core, L.halo, 0.16, 8);
       ring(fx, x, y, 2, (p.r || 12) * 1.6, P.core, P.glow, 0.25, 2, 4);
       burstStyles(fx, L.debris, x, y, 8, 8, 1.3, b.angle, 1.4);
       fx.shake(1.2, 0.1);
