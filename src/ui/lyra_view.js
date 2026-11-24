@@ -5,7 +5,7 @@
 // Mind data is written by other modules in parallel: every reader tolerates missing
 // or oddly shaped fields.
 
-import { DAY_SECONDS } from '../core/constants.js';
+import { DAY_SECONDS, TILE } from '../core/constants.js';
 import { listFrom, truncate, capitalize } from './format.js';
 
 // ---------- companionship (§16.3) ----------
@@ -57,6 +57,34 @@ export function barMode(state) {
   return 'full';
 }
 
+// Whether the player can hand her something right now: she has to be there, awake
+// and within arm's reach of a short walk (`maxTiles`). Her own requests (asking her to
+// hand something over) need no reach: she walks over herself if she agrees.
+export const HAND_REACH_TILES = 6;
+
+export function handReach(game, maxTiles = HAND_REACH_TILES) {
+  const c = game?.companion;
+  const p = game?.player;
+  if (companionshipOf(game) === 'gone' || !c || c.removed) return { ok: false, why: 'gone', tiles: null };
+  if (!p) return { ok: false, why: 'none', tiles: null };
+  if (c.downed) return { ok: false, why: 'downed', tiles: null };
+  const dx = Number(c.x) - Number(p.x);
+  const dy = Number(c.y) - Number(p.y);
+  const tiles = Math.hypot(dx, dy) / TILE;
+  if (!Number.isFinite(tiles)) return { ok: false, why: 'none', tiles: null };
+  if (tiles > maxTiles) return { ok: false, why: 'far', tiles: Math.round(tiles) };
+  return { ok: true, why: '', tiles: Math.round(tiles) };
+}
+
+// The line under her pack when nothing can be handed over.
+export function reachNote(r, name = 'Lyra') {
+  if (!r || r.ok) return '';
+  if (r.why === 'gone') return `${name} is gone. Nothing of yours can reach her now.`;
+  if (r.why === 'downed') return `${name} is knocked out. Help her up first.`;
+  if (r.why === 'far') return `${name} is ${r.tiles} paces away. Walk over to her to hand anything across.`;
+  return '';
+}
+
 // The reason she gave for her current state, wherever the mind keeps it.
 export function companionshipReason(mind) {
   const a = safeGet(() => mind?.autonomy) || {};
@@ -88,8 +116,37 @@ export function requestAnswer(r, { kind = '', fallback = '', pick = () => '', he
     bubble = false;
   } else line = String((ok ? fallback || pick(kind) : pick(refused ? 'refused' : 'failed')) || '');
   const c = refused ? verdict?.counter : null;
-  const counter = c && c.name ? { label: 'All right, your way', name: String(c.name), args: c.args && typeof c.args === 'object' ? c.args : {} } : null;
+  const counter = c && c.name ? { label: counterLabel(c), name: String(c.name), args: c.args && typeof c.args === 'object' ? c.args : {} } : null;
   return { ok, refused, line, bubble, kind: refused ? 'refusal' : ok ? 'answer' : 'problem', counter, decision: verdict?.decision || (ok ? 'accept' : null) };
+}
+
+// The button under a refusal that takes her counter-offer, in the player's words.
+const COUNTER_WORDS = {
+  sit: 'Rest, then',
+  sleep: 'Get some sleep, then',
+  use_item: 'Eat something first',
+  follow: 'Walk with me, then',
+  come_here: 'Come here, then',
+  stay: 'Wait here, then',
+  wait: 'Wait a moment, then',
+  wait_outside: 'Wait outside, then',
+  retreat: 'Fall back, then',
+  free_will: 'Do as you like, then',
+  guard: 'Keep watch, then',
+  stop_job: 'Leave the work, then',
+};
+const COUNTER_STANCE = { attack: 'Fight, then', defend: 'Just defend us, then', passive: 'Stay out of it, then' };
+
+export function counterLabel(c) {
+  const name = String(c?.name || '');
+  const value = c?.args?.value != null ? String(c.args.value) : '';
+  if (name === 'set_combat_mode' && COUNTER_STANCE[value]) return COUNTER_STANCE[value];
+  if (name === 'start_job' && value) {
+    const amount = Number(c.args.amount);
+    const what = value.replace(/_/g, ' ');
+    return `${capitalize(what)}${Number.isFinite(amount) && amount > 0 ? ` (${amount})` : ''} instead`;
+  }
+  return COUNTER_WORDS[name] || 'All right, your way';
 }
 
 // Her standing plan in words, for the Now tab ("Plan: her own day").
@@ -113,6 +170,38 @@ const DIRECTIVE_WORDS = {
 export function directiveWords(type) {
   if (!type) return 'taking things as they come';
   return DIRECTIVE_WORDS[type] || String(type).replace(/_/g, ' ');
+}
+
+// ---------- right now (Now tab) ----------
+
+const EMOTION_ADJ = { joy: 'glad', sadness: 'sad', fear: 'afraid', anger: 'angry', trust: 'trusting', surprise: 'surprised', affection: 'affectionate', curiosity: 'curious', pride: 'proud', embarrassment: 'embarrassed' };
+
+// "a", "a and b", "a, b and c".
+export function joinWords(list) {
+  const l = (list || []).map((x) => String(x).trim()).filter(Boolean);
+  if (l.length <= 1) return l[0] || '';
+  return `${l.slice(0, -1).join(', ')} and ${l[l.length - 1]}`;
+}
+
+// How she is right now, in a few plain sentences, from mind.summary().
+export function nowParagraph(sum, { name = 'Lyra' } = {}) {
+  if (!sum || typeof sum !== 'object') return '';
+  const out = [];
+  const label = sum.mood && typeof sum.mood === 'object' && sum.mood.label ? String(sum.mood.label) : '';
+  const adj = (Array.isArray(sum.emotions) ? sum.emotions : [])
+    .filter((e) => e && Number(e.value) >= 0.35 && EMOTION_ADJ[e.name])
+    .map((e) => EMOTION_ADJ[e.name])
+    .filter((a) => a !== label)
+    .slice(0, 2);
+  const feels = [label, ...adj].filter(Boolean);
+  if (feels.length) out.push(`${name} feels ${joinWords(feels)}.`);
+  const status = String(sum.status || '').trim();
+  if (status) out.push(`Right now she is ${status}.`);
+  if (typeof sum.pressingText === 'string' && sum.pressingText.trim()) out.push(`She is ${sum.pressingText.trim()}.`);
+  const onMind = (Array.isArray(sum.onMind) ? sum.onMind : []).filter((x) => typeof x === 'string' && x.trim()).slice(0, 3);
+  if (onMind.length) out.push(`On her mind: ${joinWords(onMind)}.`);
+  else if (typeof sum.goal === 'string' && sum.goal.trim()) out.push(`On her mind: ${sum.goal.trim().replace(/[.!]$/, '')}.`);
+  return out.join(' ');
 }
 
 // ---------- the player in her eyes (§16.2) ----------
@@ -226,11 +315,15 @@ export function hourLabel(hour, exact = false) {
   return exact || m ? `${h12}:${String(m).padStart(2, '0')} ${ampm}` : `${h12} ${ampm}`;
 }
 
+// The in-game day of an entry; 0 for anything from before the game began (her seeded
+// memories carry day 0 and a time before the first morning).
 export function dayOf(entry) {
   const d = num(entry?.day, null);
-  if (d !== null && d > 0) return Math.floor(d);
+  if (d !== null) return d > 0 ? Math.floor(d) : 0;
   const t = num(entry?.t, null);
-  return t === null ? 0 : Math.floor(t / DAY_SECONDS) + 1;
+  if (t === null) return 0;
+  const day = Math.floor(t / DAY_SECONDS) + 1;
+  return day > 0 ? day : 0;
 }
 
 // "Today · 3:40 PM", "Yesterday · 9:05 AM", "Day 2 · 9:05 AM".

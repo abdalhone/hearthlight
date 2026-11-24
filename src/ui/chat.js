@@ -208,7 +208,7 @@ export class Chat {
     const g = this.game;
     const row = h('div', { class: `msg msg-${m.from}${m.kind ? ` msg-${m.kind}` : ''}` });
     if (m.from === 'npc' && m.name) row.append(h('span', { class: 'msg-name', text: m.name }));
-    if (m.kind === 'initiative') row.append(h('span', { class: 'msg-kicker', text: `${g.settings?.companionName || 'Lyra'}, unprompted` }));
+    if (m.kind === 'initiative') row.append(h('span', { class: 'msg-kicker', text: `${g.settings?.companionName || 'Lyra'}, of her own accord` }));
     if (m.kind === 'refusal') row.append(h('span', { class: 'msg-kicker', text: 'She said no' }));
     row.append(h('span', { class: 'msg-text', text: m.text }));
     if (m.note) row.append(h('span', { class: 'msg-note', text: `“${m.note}”` }));
@@ -266,7 +266,11 @@ export class Chat {
         const hit = safeFind(this.game.companion?.mind || null, ref.id);
         clear(detail);
         const text = hit?.text || ref.text || ref.label || 'She keeps this one to herself.';
-        const where = [STORE_LABELS[hit?.store || ref.store] || '', hit?.day ? `Day ${hit.day}` : ''].filter(Boolean).join(' · ');
+        const store = hit?.store || ref.store;
+        // Only lived moments have a day; what she knows and her past do not.
+        const episodic = store === 'memory' || store === 'episode';
+        const when = episodic && hit ? (hit.day > 0 ? `Day ${hit.day}` : 'before you met') : '';
+        const where = [STORE_LABELS[store] || '', when].filter(Boolean).join(' · ');
         if (hit?.title && hit.title !== text) detail.append(h('strong', { class: 'mem-title', text: hit.title }));
         detail.append(h('span', { class: 'mem-text', text }));
         if (where) detail.append(h('span', { class: 'mem-where', text: where }));

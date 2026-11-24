@@ -169,8 +169,10 @@ export class DialogPanel {
     if (id === '__back') {
       this.mode = 'talk';
       clear(this.extraEl);
-      const d = safe(() => npc.getDialogue(this.game.player), null);
-      this.play(['Anything else?'], d?.options || this.options);
+      // The villager decides what is still on offer (a shop may close to a wanted player).
+      const r = safe(() => npc.chooseOption('__back', this.game.player), null);
+      const opts = r?.options?.length ? r.options : safe(() => npc.getDialogue(this.game.player)?.options, null) || this.options;
+      this.play(r?.lines?.length ? r.lines : ['Anything else?'], opts);
       return;
     }
     const r = safe(() => npc.chooseOption(id, this.game.player), null) || { lines: ['…'], close: false };
@@ -226,8 +228,8 @@ export class DialogPanel {
     clear(this.extraEl);
     this.extraEl.append(h('div', { class: `gift-result liked-${liked}`, text: liked > 0 ? '♥ They loved it' : liked < 0 ? '✗ Not to their taste' : '· A polite thank-you' }));
     this.mode = 'talk';
-    const d = safe(() => npc.getDialogue(p), null);
-    this.play(r.lines?.length ? r.lines : ['Thank you.'], d?.options || this.options);
+    const back = safe(() => npc.chooseOption('__back', p), null);
+    this.play(r.lines?.length ? r.lines : ['Thank you.'], back?.options?.length ? back.options : this.options);
   }
 
   // ---------- shop ----------

@@ -18,6 +18,7 @@ import { makeConfirm } from './modal.js';
 import { COMMANDS, JOBS, REJOIN, pickAck } from './content.js';
 import { itemIconUrl } from './art.js';
 import { itemName } from '../entities/items.js';
+import { normalizeArgs } from '../ai/brain/actions.js';
 import { gainText, frac, truncate } from './format.js';
 import { companionshipOf, companionshipLabel, companionshipReason, deedLabel, requestAnswer } from './lyra_view.js';
 
@@ -276,14 +277,16 @@ export class UI {
       if (isLyra(entity)) this.toast(isPlayer(by) ? `You helped ${lyraName()} back to her feet.` : `${lyraName()} is back on her feet.`, 'good');
     });
 
+    // Work she took on for you is news; her own work, on her own day, is her business.
     bus.on('job_done', (p) => {
-      if (!isLyra(p?.actor)) return;
+      if (!isLyra(p?.actor) || p.own) return;
       const name = this.jobLabel(p.job);
       this.toast(`${lyraName()} finished: ${name.toLowerCase()}.`, 'lyra');
     });
     bus.on('job_failed', (p) => {
-      if (!isLyra(p?.actor)) return;
-      if (p.reason) this.toast(String(p.reason), 'lyra');
+      // A job stopped on purpose (asked, or for something else) needs no notice.
+      if (!isLyra(p?.actor) || p.own || p.stopped) return;
+      if (p.reason) this.toast(String(p.reason), 'lyra', { title: `${lyraName()} gave up on ${this.jobLabel(p.job).toLowerCase()}` });
     });
 
     bus.on('player_wake', (p) => {
@@ -600,8 +603,12 @@ export class UI {
     if (!mind) return false;
     try {
       if (typeof mind.reset === 'function') mind.reset();
-      else if (this.mindSnapshot) mind.deserialize(JSON.parse(this.mindSnapshot));
-      else return false;
+      else if (this.mindSnapshot) {
+        mind.deserialize(JSON.parse(this.mindSnapshot));
+        // A fresh mind saves no soul (it is the default one): restore that too.
+        if (typeof mind.resetSoul === 'function') mind.resetSoul();
+        else if (this.soulSnapshot) mind.soul = clone(this.soulSnapshot);
+      } else return false;
     } catch (err) {
       console.warn('[ui] mind reset failed', err);
       return false;
@@ -670,11 +677,28 @@ export class UI {
   askBack() {
     const g = this.game;
     if (!g.companion || companionshipOf(g) === 'gone') return;
-    if (safe(() => g.actions?.has?.(REJOIN.action), false)) this.ask(REJOIN.action, {}, 'rejoin');
-    else {
-      this.chat.open(false);
-      this.chat.send(REJOIN.fallbackMessage);
+    if (safe(() => g.actions?.has?.(REJOIN.action), false)) {
+      this.ask(REJOIN.action, {}, 'rejoin');
+      return;
     }
+    // Without the action, her own will still answers: she weighs it, then decides.
+    const will = g.companion.mind?.autonomy;
+    if (typeof will?.rejoin === 'function') {
+      this.heard = [];
+      let r;
+      try {
+        const verdict = safe(() => g.companion.mind.evaluateRequest?.({ action: REJOIN.action, args: normalizeArgs({}), source: 'player' }), null);
+        if (verdict?.decision && !ACCEPTED.has(verdict.decision)) r = { ok: false, refused: true, verdict, message: verdict.message || '' };
+        else r = safe(() => will.rejoin({ asked: true }), null) || { ok: false, message: '' };
+      } finally {
+        this.heardNow = this.heard;
+        this.heard = null;
+      }
+      this.showAnswer(r, 'rejoin', '', this.heardNow);
+      return;
+    }
+    this.chat.open(false);
+    this.chat.send(REJOIN.fallbackMessage);
   }
 
   // Run one request as the player and show her answer. Returns the action result.
@@ -687,13 +711,37 @@ export class UI {
     this.heard = [];
     let r;
     try {
-      r = safe(() => g.actions.run(action, args, 'player'), null) || { ok: false, message: '' };
+      const weighed = this.weighWithoutGate(action, args);
+      if (weighed?.refused) r = weighed.result;
+      else {
+        r = safe(() => g.actions.run(action, args, 'player'), null) || { ok: false, message: '' };
+        // Her conditions ("half the wood is mine") belong with the answer.
+        if (weighed?.verdict && r.verdict === undefined) r.verdict = weighed.verdict;
+      }
     } finally {
       this.heardNow = this.heard;
       this.heard = null;
     }
     this.showAnswer(r, kind, fallback, this.heardNow);
     return r;
+  }
+
+  // Every order is a request (§16.4). When no consent gate is installed on the action
+  // registry, the UI puts the request to her mind itself, so a "no" still means no.
+  weighWithoutGate(action, args) {
+    const g = this.game;
+    const acts = g.actions;
+    if (!acts || acts.consentGate || !safe(() => acts.has(action), false) || safe(() => acts.get?.(action)?.ungated, false)) return null;
+    const mind = g.companion?.mind;
+    if (typeof mind?.evaluateRequest !== 'function') return null;
+    const norm = normalizeArgs(args);
+    const verdict = safe(() => mind.evaluateRequest({ action, args: norm, source: 'player' }), null);
+    if (!verdict || typeof verdict !== 'object' || !verdict.decision) return null;
+    if (ACCEPTED.has(verdict.decision)) return { refused: false, verdict };
+    const result = { ok: false, refused: true, verdict, message: verdict.message || '' };
+    // "Why not?" and a coin offer in the chat refer back to this.
+    safe(() => g.brain?.noteRefusal?.(action, norm, result));
+    return { refused: true, verdict, result };
   }
 
   // Her answer to a request, in her own voice: the gate's or the action's words, or a
@@ -763,11 +811,17 @@ export class UI {
     const g = this.game;
     if (this.hotkeyGrace > 0) this.hotkeyGrace -= dt;
     if (g.state === 'playing') this.handleHotkeys();
+    else if (this.stack.length && g.input?.uiPressed('menu')) {
+      // On the title screen Esc closes Settings and How to play too.
+      g.input.consume('menu');
+      this.closeTop();
+    }
     this.hud.update(dt);
     this.chat.update(dt);
     this.toasts.update(dt);
     this.dialog.update(dt);
     this.mind.update(dt);
+    this.settings.update(dt);
 
     if (this.invDirty) {
       this.invDirty = false;

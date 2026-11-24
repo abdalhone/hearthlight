@@ -86,7 +86,15 @@ import {
   requestAnswer,
   directiveWords,
   DEED_LABELS,
+  dayOf,
+  handReach,
+  reachNote,
+  counterLabel,
+  nowParagraph,
+  joinWords,
 } from '../src/ui/lyra_view.js';
+import { personArtKey, ABSENT_LOOKS } from '../src/ui/art.js';
+import { UI } from '../src/ui/ui.js';
 import { SCALES, scaleNote, chordNotes, isChordStep, nextMelodyStep, TRACKS } from '../src/ui/music.js';
 import { SFX_NAMES } from '../src/ui/sfx.js';
 import { spatialize, chooseTrack, Audio } from '../src/core/audio.js';
@@ -710,4 +718,98 @@ test('her farewell comes from her own last diary words', () => {
   assert.equal(farewellText(mind, { lyra_gone: { farewell: 'Goodbye, traveler.' } }), 'Goodbye, traveler.');
   assert.equal(farewellText({}), '');
   assert.equal(farewellText(null, { lyra_gone: true }), '');
+});
+
+// ---------- round 2: asking, reaching her, faces ----------
+
+test('without a consent gate the UI still puts every request to her', () => {
+  const calls = [];
+  const refusal = { decision: 'counter', message: 'Rest first. Then we will see.', counter: { name: 'sit', args: {} }, reasons: ['she is exhausted'] };
+  const make = (verdict, { gate = null, ungated = false } = {}) => {
+    const noted = [];
+    const game = {
+      actions: { consentGate: gate, has: (n) => n !== 'nope', get: () => ({ ungated }) },
+      companion: { mind: { evaluateRequest: (req) => (calls.push(req), verdict) } },
+      brain: { noteRefusal: (...a) => noted.push(a) },
+    };
+    return { ui: Object.assign(Object.create(UI.prototype), { game }), noted };
+  };
+  let { ui, noted } = make(refusal);
+  const w = ui.weighWithoutGate('start_job', { value: 'chop_wood', amount: '5' });
+  assert.equal(w.refused, true);
+  assert.deepEqual(w.result, { ok: false, refused: true, verdict: refusal, message: 'Rest first. Then we will see.' });
+  assert.deepEqual(calls.at(-1), { action: 'start_job', args: { target: null, value: 'chop_wood', amount: 5 }, source: 'player' }, 'args are normalized like the registry does');
+  assert.equal(noted.length, 1, 'the brain remembers the refusal for "why not?"');
+  ({ ui } = make({ decision: 'accept_conditional', message: 'Half is mine.' }));
+  assert.deepEqual(ui.weighWithoutGate('start_job', {}), { refused: false, verdict: { decision: 'accept_conditional', message: 'Half is mine.' } });
+  const n = calls.length;
+  assert.equal(make(refusal, { gate: () => null }).ui.weighWithoutGate('follow', {}), null, 'an installed gate does the weighing');
+  assert.equal(make(refusal, { ungated: true }).ui.weighWithoutGate('remember', {}), null, 'things that ask nothing of her are not weighed');
+  assert.equal(make(refusal).ui.weighWithoutGate('nope', {}), null, 'unknown actions are left to the registry');
+  assert.equal(calls.length, n);
+});
+
+test('handing her things needs her near, awake and still here', () => {
+  const at = (dx, extra = {}) => ({ player: { x: 100, y: 100 }, companion: { x: 100 + dx, y: 100, mind: { companionship: 'together' }, ...extra }, flags: {} });
+  assert.deepEqual(handReach(at(32)), { ok: true, why: '', tiles: 2 });
+  assert.equal(handReach(at(16 * 7)).why, 'far');
+  assert.equal(handReach(at(16 * 7)).tiles, 7);
+  assert.equal(handReach(at(8, { downed: true })).why, 'downed');
+  assert.equal(handReach({ ...at(8), flags: { lyra_gone: { day: 3 } } }).why, 'gone');
+  assert.equal(handReach({ player: { x: 0, y: 0 } }).why, 'gone');
+  assert.equal(handReach(at(16 * 9), 10).ok, true, 'the reach is adjustable');
+  assert.equal(reachNote({ ok: true }), '');
+  assert.match(reachNote({ ok: false, why: 'far', tiles: 9 }, 'Lyra'), /9 paces away/);
+  assert.match(reachNote({ ok: false, why: 'gone' }, 'Lyra'), /gone/);
+  assert.match(reachNote({ ok: false, why: 'downed' }, 'Lyra'), /Help her up/);
+});
+
+test('counter-offers read as what the player agrees to', () => {
+  assert.equal(counterLabel({ name: 'sit' }), 'Rest, then');
+  assert.equal(counterLabel({ name: 'set_combat_mode', args: { value: 'defend' } }), 'Just defend us, then');
+  assert.equal(counterLabel({ name: 'start_job', args: { value: 'gather_herbs', amount: 3 } }), 'Gather herbs (3) instead');
+  assert.equal(counterLabel({ name: 'start_job', args: { value: 'fish' } }), 'Fish instead');
+  assert.equal(counterLabel({ name: 'goto', args: { target: 'x' } }), 'All right, your way');
+  assert.equal(counterLabel(null), 'All right, your way');
+  const a = requestAnswer({ ok: false, refused: true, verdict: { decision: 'counter', message: 'Rest first.', counter: { name: 'sit', args: {} } } }, { pick: () => '' });
+  assert.equal(a.counter.label, 'Rest, then');
+});
+
+test('days: the game starts on day 1; her seeded past is before you met', () => {
+  const DAY = 900;
+  assert.equal(dayOf({ day: 3 }), 3);
+  assert.equal(dayOf({ day: 0, t: -2 * DAY }), 0, 'seeded memories carry day 0');
+  assert.equal(dayOf({ t: -DAY * 1.5 }), 0, 'a time before the first morning');
+  assert.equal(dayOf({ t: DAY * 1.2 }), 2);
+  assert.equal(dayOf({}), 0);
+  assert.equal(dayOf(null), 0);
+});
+
+test('faces in the People tab: species for creatures, painted absent people, initials otherwise', () => {
+  const game = { entities: { get: (id) => ({ bram: { id: 'bram', spriteKey: 'bram' }, wolf_3: { id: 'wolf_3', species: 'wolf' } })[id] || null } };
+  assert.equal(personArtKey(game, { id: 'bram' }), 'bram');
+  assert.equal(personArtKey(game, { id: 'wolf_3', species: 'wolf' }), 'wolf');
+  assert.equal(personArtKey(game, { id: 'wolf_9' }), null, 'a creature long gone, without a species, gets an initial');
+  assert.equal(personArtKey(game, { id: 'maren' }), 'maren');
+  assert.ok(ABSENT_LOOKS.maren.hair, 'Maren is painted from how the story describes her');
+  assert.equal(personArtKey(game, { id: 'player' }), 'player');
+  assert.equal(personArtKey(game, { id: 'bandits', kind: 'group' }), null);
+  assert.equal(personArtKey(game, { id: 'tobias', npc: true }), 'tobias');
+  assert.equal(personArtKey(game, null), null);
+});
+
+test('the Now tab says how she is in plain words', () => {
+  assert.equal(joinWords(['a']), 'a');
+  assert.equal(joinWords(['a', 'b', 'c']), 'a, b and c');
+  const sum = {
+    mood: { label: 'content' },
+    emotions: [{ name: 'curiosity', value: 0.5 }, { name: 'trust', value: 0.4 }, { name: 'fear', value: 0.1 }],
+    status: 'following you',
+    pressingText: 'a bit peckish',
+    onMind: ['Maren Ashgrove', "King's Road"],
+  };
+  assert.equal(nowParagraph(sum, { name: 'Lyra' }), "Lyra feels content, curious and trusting. Right now she is following you. She is a bit peckish. On her mind: Maren Ashgrove and King's Road.");
+  assert.equal(nowParagraph({ goal: 'Find Maren.' }), 'On her mind: Find Maren.');
+  assert.equal(nowParagraph(null), '');
+  assert.equal(nowParagraph({ emotions: 'odd', onMind: [null, 3] }), '');
 });
