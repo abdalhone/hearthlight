@@ -1465,3 +1465,58 @@ The built game still carries the old placeholder Lyra: Lyra Tidewell of Kettlewa
 | `src/ai/behavior/own_life.js` 40 | "Even rangers eat." | "Even mages eat." ("Arcane ranger" as her class is retired: she is a lumencrafter. A casual "ranger" elsewhere may stay, since Hess taught her to track and she rides guard.) |
 
 **Kept on purpose.** The wolf fight on the King's Road two days ago, Lyra's rented room at the Ember Kettle (`lyra_inn_bed`), the Maren quest arc ending at the journal and "Maren went north through the old waygate", the locked `ruins_gate` and the bandits' `ruins_key`, Varek One-Eye's name and axe, and all eight villagers' looks, roles and voices.
+
+---
+
+## 13. The Weave
+
+*What the stranger does with their hands, what Hearthvale makes of it, and what the village is afraid of. The game's magic system (DESIGN §22) is built on this section; the errands that teach it are in `src/missions/data.js`.*
+
+### What weaving is
+
+Every craft in Section 2 reaches the loose magic of Halcyre by a side door. A lumencrafter spends her own warmth. A greenwitch waits for the herb to wake. A forgesinger listens to iron. A wardwright marries a stone that someone else made. Nobody alive takes the Drift itself in their hands, because nobody alive knows how.
+
+The Lanternwrights did. Their script, carved on ruins, waystones and the Crown Ring, is not only writing. Maren believed each letter was a **glyph**: a shape that tells loose power what to be, the way a mould tells wax. The Song was written in glyphs, and so were the wardstones. Somewhere between the Age of Lanterns and the Hearth Years, the craft of writing glyphs onto the air with bare hands was lost. The old stories call it **the Weave**, and Hearthvale, which had never needed the word, has taken it back: what the stranger does is **weaving**.
+
+A weave has three parts, and the village has learned to name them the way it names weather.
+
+- **The shape** is how it leaves the hands: thrown, held, set down, struck, rung out in a ring. It is the glyph itself, the mould. The stranger woke knowing one shape, a thrown spark, and learns the others the way a child learns letters: by being shown, or by seeing what a thing does and finding the mark for it.
+- **The essence** is what the weave is made of. Plain weave burns violet, the colour of the Drift when nothing is in it. Everything else is drawn in from the world: from candle-flame, cold lake air, quarry stone, the hum of an old stone, the quickening in a herb. An essence is taken from a place or a thing the stranger has been close to, and some things give theirs up only when they are beaten.
+- **The twist** is how it behaves once it is out: splitting, circling, coming back twice, finding its mark. These are the small marks Maren saw in the margins of the old carvings and never understood.
+
+A weave costs the weaver something, which the village calls *spending your light*. It is not warmth, as with lumencraft (Lyra checks; the stranger's lips never go blue), and it comes back with rest. What it is, nobody knows.
+
+### Why the stranger can do it
+
+Nobody in Hearthvale knows, and the stranger does not remember. This is what people have to go on:
+
+- They were found in the Crown Ring, a Lanternwright working, lying warm in a circle of melted snow (Section 8).
+- The first glyphs anyone saw in their light looked like the carvings on the ruins wall, and like the words they spoke in their sleep, which Aveline said sounded like singing.
+- The chapel flames lean toward them. The Wellstone hummed when they were carried past it. Mirror Lake went still under them.
+- Their sword rings like the ruins' stone.
+
+What people say: *drift-touched*, said with a warding sign; *a Lanternwright come back*, said by Pip, with delight; *a mage from somewhere the maps don't go*, said by Garrick, with a price in mind; *a weapon somebody left for us to find*, said by Wys, to anyone. Lyra's view is that a person is what they do, and she is watching what they do. The truth of it belongs to Section 9.1, and no one in the village knows it.
+
+### How Hearthvale talks about each piece
+
+The village names things by what they are like. These are the words the errands use, and what villagers call each piece when they see it.
+
+**Shapes.** The *spark* (the thrown bolt the stranger woke with; Lyra's word, because hers are sparks too). The *strike*: a punch with the weave behind it. The *flare*: a burst in the face of whatever is in front, which Tansy says is the only way to scare a boar. The *lob*, thrown like a sling-stone. The *lamp-beam*, held like a lantern for someone on the road. The *ring*, which leans out from the weaver the way the altar flames lean in. The *lantern*, a slow light that hangs in the air (Garrick wants to sell it). The *familiar*, a small companion made of whatever is woven into it (Pip wants to name it). The *ward-mark*, a glyph set on the ground that waits, which Alder calls "hearthcraft, near enough". *Brightfall*, light falling on one spot like snow on a still night. The *line*: a barrier, *here and not past here*. And the *wardrun*, a blink across open ground, the way the old wardrunners in Hess's stories crossed ground they could not walk.
+
+**Essences.** *Violet* (the weave with nothing in it). *Light*: candle-light, the oldest thing the village keeps, given at the chapel altar. *Iron*: forgesung iron, which bites turned things like cloth; Bram teaches it by making the stranger listen to ore cooling. *Green*: the quickening in silverleaf and moonpetal; Mira's patience. *Song*: a hum like the Wellstone's, given back by Wenna's hives when she sings to them. *Frost*: the cold that comes off Mirror Lake after dark. *Storm*: glimmer, crackling and blue. *Stone*: quarry stone that remembers being a hill. Then the five that come only out of a fight: the *fire that never goes out*, from the camp-fire of the bandits' hill; the *wind* off the Crownfells, from the grey leader of the wolves; *venom*, from what lives in the quarry pools; *water* that has stopped being still, from Mirror Lake; and *dark*.
+
+**Twists.** *Many* ("why hit once?", Tilly's), *piercing* (Rowan's: through, not around), *seeking* (Hess's: let it smell them out), *echoing* (the hive answering a song), *great* (everything in that lake is bigger than it looks), *circling* (moths round a lamp, Hobb's), *lingering* (it stays and grows where it lands, Mira's), *spinning* (Pip's Spinny One, which he invented), *sharing* (Elda's: a spoon for them, a spoon for you), *bursting* (Tilly again: everything's better with a boom), *gathered* (Lyra's: hold it, let it gather). And the bosses' marks: *volley*, *swift*, *splitting*, *skipping* and *chaining*.
+
+### What Lyra makes of it
+
+Lyra notices first, because she is the only one in the valley who knows what making light costs. The first time she sees the stranger weave, she asks them to do it again, slowly. Her feelings are her own and she says them plainly: curiosity, a little envy (she cannot do it, and she has spent thirteen years on her own craft), and pleasure in watching something new. She teaches what she can: Maren's habits of breath and patience, and in time, if she trusts them, the held light of her lumencraft, done their way instead of hers. She is moved that the stranger can do what she does differently, and she does not hide it.
+
+She does not like **dark**. It feels to her like the gravelight in the Sunken Ruins, a light that is borrowed from something that wants it back. She says so once, and remembers it each time she sees it.
+
+### What people fear
+
+- **That it is gravelight.** The one magic every Moot forbids (Section 2) is light out of nowhere, and so, from a distance, is weaving. When the stranger weaves dark, the village talks.
+- **That it thins the ward.** Violence inside the bell-reach thins it (Section 1). A weave thrown about the square, near people, with nothing to fight, frightens them, and frightened villages remember.
+- **That it was sent.** A stranger off a mountain who writes the Lanternwrights' letters on the air is either the best or the worst thing to come into Hearthvale in three hundred years. Most people have decided to find out which by watching.
+
+What changes minds is the same as for anyone: what the stranger does with it. A weave that pulls a wolf off Tobias's sheep, lights Hobb's far lamps, or clears Corran's shore is talked about warmly in the Kettle by nightfall. A weave that frightens Pip, or comes too close to a neighbour, is talked about too.

@@ -130,8 +130,10 @@ class Markers {
     for (const mk of this.list) {
       const e = mk.entity;
       if (e && (e.removed || e.dead)) continue;
-      const wx = e ? e.x : mk.x;
-      const wy = e ? e.y - (e.profile || e.id === 'lyra' ? 34 : 18) : mk.object ? mk.y - 30 : mk.y;
+      // Over the head; beside it while they are talking, so the mark never sits in a bubble.
+      const talking = !!e && safe(() => g.bubbles?.hasBubble?.(e), false);
+      const wx = e ? e.x + (talking ? 15 : 0) : mk.x;
+      const wy = e ? e.y - (talking ? 22 : e.profile || e.id === 'lyra' ? 40 : 18) : mk.object ? mk.y - 30 : mk.y;
       const p = g.renderer.worldToCss(wx, wy);
       const inside = p.x > 8 && p.y > 8 && p.x < W - 8 && p.y < H - 8;
       if (!inside) {
@@ -212,7 +214,7 @@ class Journal {
     this.tabBtns = {};
     for (const t of [
       ['active', 'Active'],
-      ['available', 'To find'],
+      ['available', 'New'],
       ['done', 'Done'],
     ]) {
       const b = h('button', { type: 'button', class: 'tab', role: 'tab', text: t[1], onclick: () => this.show(t[0]) });
@@ -244,7 +246,7 @@ class Journal {
     for (const [k, b] of Object.entries(this.tabBtns)) {
       b.classList.toggle('active', k === this.tab);
       b.setAttribute('aria-selected', String(k === this.tab));
-      const label = { active: 'Active', available: 'To find', done: 'Done' }[k];
+      const label = { active: 'Active', available: 'New', done: 'Done' }[k];
       b.textContent = n[k] ? `${label} · ${n[k]}` : label;
     }
     const body = panel.body;
