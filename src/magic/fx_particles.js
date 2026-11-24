@@ -133,6 +133,8 @@ export class FxParticles {
     this._drag = new Float32Array(STYLES.length);
     this._puffs = new Map();
     this.glowN = 0;
+    // Emission scale 0..1 set by the fx layer each step (crowds and slow frames shed less).
+    this.scale = 1;
   }
 
   get count() {
@@ -151,8 +153,8 @@ export class FxParticles {
   // (stochastic rounding, so small emitters still emit on average).
   budget(n) {
     const l = this.n / this.cap;
-    let k = n;
-    if (l > 0.55) k = n * Math.max(0, 1 - (l - 0.55) / 0.4);
+    let k = n * this.scale;
+    if (l > 0.45) k *= Math.max(0, 1 - (l - 0.45) / 0.5);
     const f = Math.floor(k);
     return f + (Math.random() < k - f ? 1 : 0);
   }
@@ -294,7 +296,7 @@ export class FxParticles {
     const h = g.canvas?.height ?? 4096;
     for (let i = 0; i < this.n; i++) {
       const S = STYLES[this.style[i]];
-      if (!S.glow) continue;
+      if (!S.glow || this.age[i] > this.life[i] * 0.7) continue;
       const sx = Math.round(this.x[i] - ox + (S.sway ? Math.sin(this.age[i] * 5 + this.seed[i] * 20) * S.sway : 0));
       const sy = Math.round(this.y[i] - oy - this.z[i]);
       if (sx < -8 || sy < -8 || sx > w + 8 || sy > h + 8) continue;

@@ -23,8 +23,12 @@ import { handleEvent } from './fx_events.js';
 // sfx.js (synthesized sound). Everything keys off registry data, so a new essence,
 // shape, twist or status shows and sounds right without code here.
 
-const MAX_FX_LIGHTS = 44;
+const MAX_FX_LIGHTS = 40;
 const VIEW_MARGIN = 90;
+// Past this many bodies in view each sheds proportionally less, so a screen full of
+// weaves keeps about the particle count of a busy fight, not a multiple of it.
+const CROWD = 14;
+const now = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
 
 const PATCH_PART = { embers: 'flame', puddle: 'drop', glaze: 'twinkle', crackle: 'zap', cracks: 'dust', gusts: 'gust', brambles: 'leaf', ooze: 'bubble', sigil: 'mote', shadow: 'wisp', filings: 'filing', chord: 'note', arcane: 'mote' };
 const WALL_PART = { flame: 'flame', water: 'drop', ice: 'snow', arcane: 'mote', storm: 'zap', stone: 'dust', wind: 'gust', thorns: 'leaf', poison: 'bubble', light: 'mote', shadow: 'wisp', iron: 'filing', song: 'note' };
@@ -39,7 +43,7 @@ export class MagicFx {
     this.game = game;
     this.sfx = true; // the Weave plays its own sounds (combat stays quiet on weave hits)
     this.sound = new MagicSfx(game);
-    this.parts = new FxParticles(opts.particles ?? 1000);
+    this.parts = new FxParticles(opts.particles ?? 720);
     this.effects = new Effects(opts.effects ?? 220);
     this.statusFx = new StatusFx(this);
     this.bounds = new Bounds();
@@ -62,6 +66,12 @@ export class MagicFx {
     this._pendingDash = null;
     this._warned = new Set();
     this.stats = { bodies: 0, drawn: 0 };
+    // Quality 0.35..1: eased down when frames run long while many weaves are up (fewer
+    // particles and lights), back up when there is time to spare.
+    this.q = 1;
+    this._ft = 16.7;
+    this._frameAt = 0;
+    this._viewN = 0;
     this._decalL = { halo: '#ffffff', accent: '#ffffff' };
     try {
       game.bus?.on?.('damage', (p) => {
@@ -134,18 +144,23 @@ export class MagicFx {
     const x1 = (cam?.x ?? 1e9) + (cam?.vw ?? 2e9) + VIEW_MARGIN;
     const y1 = (cam?.y ?? 1e9) + (cam?.vh ?? 2e9) + VIEW_MARGIN;
     const list = magic.bodies;
+    const crowd = this._viewN > CROWD ? CROWD / this._viewN : 1;
+    this.parts.scale = this.q * crowd;
+    let seen = 0;
     for (let i = 0; i < list.length; i++) {
       const b = list[i];
       if (!b.active || b.delay > 0 || !b.plan) continue;
       const fs = b.fxState || (b.fxState = { acc: 0, acc2: 0, k: 0, sx: b.x, sy: b.y, lunge: 0 });
       if (fs.lunge > 0) fs.lunge = Math.max(0, fs.lunge - dt * 2);
       if (b.x < x0 || b.x > x1 || b.y < y0 || b.y > y1) continue;
+      seen++;
       try {
         this._emitBody(b, fs, dt);
       } catch (err) {
         this.warn(`emit ${b.kind}`, err);
       }
     }
+    this._viewN = seen;
     this.parts.update(dt);
     this.effects.update(dt);
     try {
@@ -319,6 +334,7 @@ export class MagicFx {
     R.time = time;
     if (Number.isFinite(fr) && fr === this._frame) return;
     this._frame = Number.isFinite(fr) ? fr : this._frame - 1;
+    this._pace();
     this._ensureGlow(w, h);
     const g = this.gctx;
     g.globalAlpha = 1;
@@ -328,6 +344,17 @@ export class MagicFx {
     this.bounds.reset();
     R.g = g;
     R.dark = this.game.lighting?.ambient?.darkness ?? 0;
+  }
+
+  // Once a frame: how long frames take, and the quality that follows from it.
+  _pace() {
+    const t = now();
+    const d = t - this._frameAt;
+    this._frameAt = t;
+    if (!(d > 0 && d < 250)) return;
+    this._ft += (d - this._ft) * 0.08;
+    if (this._ft > 19.5 && this.stats.bodies > 24) this.q = Math.max(0.35, this.q - 0.015);
+    else if (this._ft < 17.6 || this.stats.bodies < 12) this.q = Math.min(1, this.q + 0.005);
   }
 
   _inView(b, R) {
@@ -495,8 +522,9 @@ export class MagicFx {
     const y0 = (cam?.y ?? -1e9) - 140;
     const x1 = (cam?.x ?? 1e9) + (cam?.vw ?? 2e9) + 140;
     const y1 = (cam?.y ?? 1e9) + (cam?.vh ?? 2e9) + 140;
+    const max = Math.round(MAX_FX_LIGHTS * (0.45 + 0.55 * this.q));
     const push = (x, y, r, color, intensity, flick = 0.15) => {
-      if (n >= MAX_FX_LIGHTS || !(r > 1) || !(intensity > 0.02) || !(x > x0 && x < x1 && y > y0 && y < y1)) return;
+      if (n >= max || !(r > 1) || !(intensity > 0.02) || !(x > x0 && x < x1 && y > y0 && y < y1)) return;
       const l = pool[n++];
       l.x = x;
       l.y = y;
@@ -508,7 +536,7 @@ export class MagicFx {
       out.push(l);
     };
     const list = magic?.bodies || [];
-    for (let i = 0; i < list.length && n < MAX_FX_LIGHTS; i++) {
+    for (let i = 0; i < list.length && n < max; i++) {
       const b = list[i];
       if (!b.active || b.delay > 0 || !b.plan) continue;
       const L = planLook(b.plan);
@@ -587,19 +615,23 @@ export class MagicFx {
     const sy = r.subY || 0;
     const dark = this.game.lighting?.ambient?.darkness ?? 0;
     const prevOp = ctx.globalCompositeOperation;
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.imageSmoothingEnabled = false;
-    ctx.globalAlpha = Math.min(1, 0.4 + 0.6 * dark);
-    ctx.drawImage(this.glow, x0, y0, w, h, x0 * s - sx, y0 * s - sy, w * s, h * s);
-    // Bloom: the glow buffer halved twice with smoothing, then stretched back softly.
+    const crispA = Math.min(1, 0.4 + 0.6 * dark);
+    // Bloom: the glow buffer halved twice with smoothing, then stretched back softly into
+    // the glow buffer itself (all at world resolution, so it is cheap), and the sum is
+    // added to the screen in one pass: crisp cores, soft halo, one full-size composite.
     const b1 = this.b1ctx;
     const b2 = this.b2ctx;
+    let bx0 = x0;
+    let by0 = y0;
+    let bx1 = x1;
+    let by1 = y1;
     if (b1 && b2) {
       const hx0 = Math.floor(x0 / 2);
       const hy0 = Math.floor(y0 / 2);
       const hw = Math.ceil(w / 2) + 1;
       const hh = Math.ceil(h / 2) + 1;
       b1.globalCompositeOperation = 'source-over';
+      b1.globalAlpha = 1;
       b1.clearRect(hx0, hy0, hw, hh);
       b1.imageSmoothingEnabled = true;
       b1.drawImage(this.glow, hx0 * 2, hy0 * 2, hw * 2, hh * 2, hx0, hy0, hw, hh);
@@ -608,14 +640,29 @@ export class MagicFx {
       const qw = Math.ceil(hw / 2) + 1;
       const qh = Math.ceil(hh / 2) + 1;
       b2.globalCompositeOperation = 'source-over';
+      b2.globalAlpha = 1;
       b2.clearRect(qx0, qy0, qw, qh);
       b2.imageSmoothingEnabled = true;
       b2.drawImage(this.b1, qx0 * 2, qy0 * 2, qw * 2, qh * 2, qx0, qy0, qw, qh);
-      ctx.imageSmoothingEnabled = true;
-      ctx.globalAlpha = Math.min(1, 0.3 + 0.55 * dark);
-      const S4 = s * 4;
-      ctx.drawImage(this.b2, qx0, qy0, qw, qh, qx0 * S4 - sx - S4 * 0.5, qy0 * S4 - sy - S4 * 0.5, qw * S4 + S4, qh * S4 + S4);
+      const g = this.gctx;
+      g.globalCompositeOperation = 'lighter';
+      g.imageSmoothingEnabled = true;
+      g.globalAlpha = Math.min(1, (0.3 + 0.55 * dark) / crispA);
+      g.drawImage(this.b2, qx0, qy0, qw, qh, qx0 * 4 - 2, qy0 * 4 - 2, qw * 4 + 4, qh * 4 + 4);
+      g.imageSmoothingEnabled = false;
+      g.globalAlpha = 1;
+      bx0 = Math.max(0, qx0 * 4 - 2);
+      by0 = Math.max(0, qy0 * 4 - 2);
+      bx1 = Math.min(W, qx0 * 4 + qw * 4 + 2);
+      by1 = Math.min(H, qy0 * 4 + qh * 4 + 2);
+      // (The next frame's _begin clears the whole glow buffer, bloom and all.)
     }
+    const bw = bx1 - bx0;
+    const bh = by1 - by0;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.imageSmoothingEnabled = false;
+    ctx.globalAlpha = crispA;
+    if (bw > 0 && bh > 0) ctx.drawImage(this.glow, bx0, by0, bw, bh, bx0 * s - sx, by0 * s - sy, bw * s, bh * s);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = prevOp || 'source-over';
     ctx.imageSmoothingEnabled = false;
