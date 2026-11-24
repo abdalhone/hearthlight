@@ -326,6 +326,13 @@ export class VoicePlayer {
 
   _output(ctx) {
     if (this.out && this.out.context === ctx) return this.out;
+    // iPhone: WebAudio is silenced by the ring/silent switch unless the page asks for
+    // playback (Safari 16.4+). A voice the player turned on should be heard.
+    try {
+      if (typeof navigator !== 'undefined' && navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback';
+    } catch {
+      /* not offered here */
+    }
     this.out = ctx.createGain();
     const master = this.game?.audio?.master;
     this.out.connect(master && master.context === ctx ? master : ctx.destination);
