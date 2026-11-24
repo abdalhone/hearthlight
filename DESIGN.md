@@ -1408,9 +1408,13 @@ registry entry, and it works with every other entry automatically.
   **accident**: half damage, no status, no crime, no claim of self-defense, and Lyra and the
   village weigh it as one (a fight's worth of stray clips is one small wrong). A quick tap
   auto-aims only at foes. Hits read: big outlined damage numbers (essence tints lifted until
-  they read on any ground), a white blink, and a small health bar over whoever was hurt
-  (`src/render/health_bars.js`: red over creatures and bosses, a quieter green over villagers
-  and Lyra, never the player; it fades three seconds after the last hit).
+  they read on any ground), a white blink, and a small health bar under whoever was hurt
+  (`src/render/health_bars.js`: at the feet, since the numbers rise over the head; red under
+  creatures and bosses, a quieter green under villagers and Lyra, never the player; it fades
+  three seconds after the last hit). Numbers and bars are drawn over speech; a small screen
+  draws only as many speech bubbles as it has room for (Lyra's, the player's, then the
+  nearest), and bubbles keep off the player, Lyra and foes just hit (`src/render/bubbles.js`),
+  so a fight in a shouting crowd still reads.
 
 ### 22.2 Runtime contract (`src/magic/magic.js`, `game.magic`)
 
