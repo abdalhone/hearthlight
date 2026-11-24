@@ -33,6 +33,7 @@ export class ActionRegistry {
       run: def.run,
       plugin: pluginId,
       hidden: !!def.hidden, // hidden actions are not offered to Claude
+      ungated: !!def.ungated, // true for things that are not requests of her (e.g. remember, express)
     });
   }
 
@@ -52,13 +53,34 @@ export class ActionRegistry {
     return this.list().map((d) => d.name);
   }
 
-  // source: 'player' (HUD/hotkey), 'local' (offline brain), 'claude', 'self' (her own autonomy)
+  // Lyra decides for herself. Anything the PLAYER asks of her (source 'player') passes
+  // this gate first; the mind installs it (see DESIGN.md §16). gate(name, args, source) ->
+  // null to allow, or a verdict { decision, reasons, message, condition, counter }.
+  setConsentGate(fn) {
+    this.consentGate = typeof fn === 'function' ? fn : null;
+  }
+
+  // source: 'player'  - the player asked (HUD, hotkeys, or a command parsed from their message): gated
+  //         'claude'  - Lyra's own decision, reached through Claude: not gated
+  //         'self'    - Lyra's own autonomy (her plans, fear, self-preservation): not gated
+  //         'local'   - internal/offline effects that are not requests: not gated
   run(name, args = {}, source = 'local') {
     const def = this.defs.get(name);
     const norm = normalizeArgs(args);
     let result;
+    let verdict = null;
+    if (def && source === 'player' && this.consentGate && !def.ungated) {
+      try {
+        verdict = this.consentGate(name, norm, source) || null;
+      } catch (err) {
+        console.error('[actions] consent gate failed', err);
+        verdict = null;
+      }
+    }
     if (!def) {
       result = { ok: false, message: `I don't know how to "${name}".` };
+    } else if (verdict && verdict.decision !== 'accept' && verdict.decision !== 'accept_conditional') {
+      result = { ok: false, refused: true, verdict, message: verdict.message || '' };
     } else {
       try {
         const ctx = this.game.plugins.ctx;
@@ -69,7 +91,17 @@ export class ActionRegistry {
         result = { ok: false, message: `Something went wrong doing "${name}".` };
       }
     }
-    const entry = { name, args: norm, source, ok: !!result.ok, message: result.message || '', t: this.game.clock?.t ?? 0 };
+    if (verdict && result.verdict === undefined) result.verdict = verdict;
+    const entry = {
+      name,
+      args: norm,
+      source,
+      ok: !!result.ok,
+      refused: !!result.refused,
+      decision: verdict?.decision || null,
+      message: result.message || '',
+      t: this.game.clock?.t ?? 0,
+    };
     this.history.push(entry);
     if (this.history.length > 60) this.history.shift();
     this.game.bus.emit('companion_action', entry);
