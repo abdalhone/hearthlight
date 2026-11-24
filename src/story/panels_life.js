@@ -47,7 +47,7 @@ const brightfall = {
         const line = ridgeLine(L, 45, { base: L.cy + 10 * u, amp: 8 * u, freq: 0.012, oct: 3 });
         fillBelow(b, line, (x, y, d) => rampSmooth(['#141c36', '#1c2644', '#26324f', '#34436a'], clamp(0.3 + (d < 3 ? 0.4 : 0) + (fbm(x * 0.03, y * 0.08, 46, 3) - 0.5) * 0.3 - d * 0.01), x, y, 3));
         // Whisperwood's edge, snow on every tier.
-        treeline(b, L, R, line, { density: 0.6, hMin: 8 * u, hMax: 20 * u, colors: { dark: '#0b1124', mid: '#132038', lit: '#2a3f5e' }, snow: '#c9d8f4', lightSide: -1 });
+        treeline(b, L, R, line, { density: 0.42, hMin: 9 * u, hMax: 22 * u, colors: { dark: '#0b1124', mid: '#111c34', lit: '#22344e' }, snow: '#7d8fba', lightSide: -1 });
       },
     },
     {

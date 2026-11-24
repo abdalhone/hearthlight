@@ -152,6 +152,7 @@ export class StoryDirector {
   afterScene(sc, result) {
     const g = this.game;
     if (sc.unlock) this.unlock(sc.unlock);
+    g.bus?.emit?.('story_scene', { id: sc.id, skipped: !!result?.skipped });
     const mind = g.companion?.mind;
     if (!mind || !sc.memory) return;
     if (sc.memory.onlyIfNear && !lyraState(g).near) return;
@@ -248,7 +249,27 @@ export class StoryDirector {
 
   update(dt) {
     this.player.update(dt);
-    if (!this.isPlaying()) this.triggers.update(dt);
+    if (this.isPlaying()) return;
+    this.triggers.update(dt);
+    this.metTimer = (this.metTimer ?? 1) - dt;
+    if (this.metTimer <= 0) {
+      this.metTimer = 1;
+      this.noticeMeetings();
+    }
+  }
+
+  // Standing close to a villager is meeting them: their page opens in the book.
+  noticeMeetings() {
+    const g = this.game;
+    const p = g.player;
+    if (g.state !== 'playing' || !p || !g.entities?.all) return;
+    const met = (this.data.met = this.data.met || {});
+    for (const e of g.entities.all()) {
+      if (!e?.profile || met[e.id] || e.removed) continue;
+      if (Math.hypot(e.x - p.x, e.y - p.y) > 44) continue;
+      met[e.id] = g.clock?.day ?? 1;
+      g.bus?.emit?.('npc_met', { id: e.id, npc: e });
+    }
   }
 
   render() {

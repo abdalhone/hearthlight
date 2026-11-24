@@ -13,7 +13,9 @@ const SHORT = 180;
 // grid (bigger pixels) so the game's own sprites fill the frame like a close-up.
 export function panelMetrics(devW, devH, short = SHORT) {
   const shortDev = Math.max(1, Math.min(devW, devH));
-  const s = Math.max(1, Math.round(shortDev / (short || SHORT)));
+  // A phone held upright is narrow already: close-ups keep the normal grid there.
+  const eff = devH > devW * 1.1 ? Math.max(short || SHORT, SHORT) : short || SHORT;
+  const s = Math.max(1, Math.round(shortDev / eff));
   const vw = Math.ceil(devW / s);
   const vh = Math.ceil(devH / s);
   return { s, vw, vh };
