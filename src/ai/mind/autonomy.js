@@ -1269,14 +1269,18 @@ export class Autonomy {
     if (!l) return null;
     const now = this.now();
     const sev = clamp(Math.round(num(severity, 1)), 1, 3);
-    if (now - this._helpT < HELP_GAP && sev <= this._helpSev) return null;
-    this._helpT = now;
-    this._helpSev = sev;
     const awake = !l.downed && l.state !== 'sleep';
-    const helpers = awake ? this._helpersNear(l, 16 * TILE, attacker) : [];
-    const called = helpers.slice(0, 2);
     const atk = attacker && typeof attacker === 'object' ? attacker : null;
     const atkId = atk ? (this.isPlayer(atk) ? PLAYER_ID : atk.id ?? null) : typeof attacker === 'string' ? attacker : null;
+    if (now - this._helpT < HELP_GAP && sev <= this._helpSev) {
+      // She has only just shouted; she does not shout again, but she still runs.
+      if (run && awake && atk && this.behavior()?.directive?.type !== 'flee') this._act('flee', { target: atkId, value: this._runTo(atk) });
+      return null;
+    }
+    this._helpT = now;
+    this._helpSev = sev;
+    const helpers = awake ? this._helpersNear(l, 16 * TILE, attacker) : [];
+    const called = helpers.slice(0, 2);
     const payload = { victim: 'lyra', attacker: atkId, x: Math.round(l.x), y: Math.round(l.y), severity: sev, reason, names: called.map((h) => h.id), victimEntity: l, attackerEntity: atk, t: now };
     try {
       this.game?.bus?.emit?.('call_for_help', payload);

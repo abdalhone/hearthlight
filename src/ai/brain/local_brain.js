@@ -190,6 +190,12 @@ export class LocalBrain {
       const own = matchBuiltinClause(clause, env);
       if (own && WILL_QUESTIONS.has(own.id) && HANDLERS[own.id]) it = own;
     }
+    // "I'm sorry. I was wrong. It won't happen again." is one apology, and gets one answer,
+    // whichever bank (hers or the plugin's) each sentence of it matched.
+    if (it && APOLOGY_INTENTS.has(it.id)) {
+      if (reply._apologyAnswered) return null;
+      reply._apologyAnswered = true;
+    }
     // Gone or broken off: she does not chat like a companion. Requests still get her refusal,
     // and a few things (an apology, "why did you leave?") still reach her.
     if (state === 'left' && !(it && (it.actions?.length || LEFT_HEARS.has(it.id)))) {
@@ -650,6 +656,8 @@ export class LocalBrain {
 
 // Her own questions, answered from her will even when a plugin matched the words first.
 const WILL_QUESTIONS = new Set(['ask.trust_me', 'ask.fear_me', 'ask.plan', 'ask.why_left', 'ask.why_refused']);
+
+const APOLOGY_INTENTS = new Set(['social.apology', 'autonomy.apology']);
 
 // What still reaches her when she has left the player.
 const LEFT_HEARS = new Set(['ask.decline', 'social.apology', 'social.greet', 'social.farewell', 'social.insult', 'ask.why_left', 'ask.trust_me', 'ask.fear_me', 'ask.why_refused', 'counter.take', 'counter.decline']);
@@ -1214,12 +1222,20 @@ const HANDLERS = {
     if (this.apologies.length >= 3) {
       believed = false;
       situation = 'apology_repeat';
-    } else if (state === 'left') {
-      believed = rel.trust >= 35 && rel.fear <= 30;
-      situation = believed ? 'apology_believed_left' : 'apology_reject';
-    } else if (state === 'wary') {
-      believed = rel.trust >= 20 && rel.fear <= 45;
-      situation = believed ? 'apology_wary' : 'apology_reject';
+    } else if (state === 'left' || state === 'wary') {
+      // Her will weighed these same words a moment ago (autonomy.receiveApology, which is
+      // what amends rest on): what she says agrees with what she decided.
+      let heard = null;
+      try {
+        heard = g.companion?.mind?.autonomy?.heardNow?.()?.apology || null;
+      } catch {
+        heard = null;
+      }
+      if (heard && typeof heard.believed === 'boolean' && !heard.nothing) believed = heard.believed;
+      else believed = state === 'left' ? rel.trust >= 35 && rel.fear <= 30 : rel.trust >= 20 && rel.fear <= 45;
+      situation = believed ? (state === 'left' ? 'apology_believed_left' : 'apology_wary') : 'apology_reject';
+      // One answer to the whole message: no cold "I'm not answering" tacked on after it.
+      reply._coldSaid = true;
     } else {
       // An accident she can forgive easily; a real hurt needs trust behind the words.
       believed = s.accident ? worst > -3 || rel.trust >= 25 : rel.trust >= 15 || worst > -2;

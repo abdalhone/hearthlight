@@ -87,6 +87,13 @@ function lowerStart(text) {
   return COMMON_START.test(text) ? text[0].toLowerCase() + text.slice(1) : text;
 }
 
+// A note rather than a sentence ("First time at the mill."): set off after the time of day.
+const FRAGMENT_START = /^(?:First|Back|Finally|Another|Still|Just|Nearly|Almost|No|Not)\b/;
+function whenSaid(part, text) {
+  if (FRAGMENT_START.test(text)) return `${part}: ${text[0].toLowerCase()}${text.slice(1)}`;
+  return `${part} ${lowerStart(text)}`;
+}
+
 const EMOTION_REFLECTIONS = {
   joy: ["That made me happier than I'll admit out loud.", 'I laughed. Properly laughed.'],
   sadness: ["That one still sits heavy in me.", 'I miss things I can\'t name when that happens.'],
@@ -234,8 +241,8 @@ export function composeDiary(game, memories = [], { day, rnd = Math.random } = {
   top.forEach((m, i) => {
     let text = sentence(privateVoice(String(m.text).trim(), playerName));
     const part = partOf(m.t);
-    if (part && part !== lastPart && !TIME_START.test(text)) text = `${part} ${lowerStart(text)}`;
-    else if (i > 0 && !TIME_START.test(text) && part === lastPart) text = `${pick(['Later', 'After that', 'Then'], rnd)} ${lowerStart(text)}`;
+    if (part && part !== lastPart && !TIME_START.test(text)) text = whenSaid(part, text);
+    else if (i > 0 && !TIME_START.test(text) && part === lastPart) text = whenSaid(pick(['Later', 'After that', 'Then'], rnd), text);
     lastPart = part || lastPart;
     parts.push(text);
     const refl = EMOTION_REFLECTIONS[m.emotion];
