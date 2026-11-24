@@ -1,6 +1,6 @@
 import { TILE } from '../core/constants.js';
-import { tileDef, SOLID, WATERY, WALLISH, T } from './tiles.js';
-import { paintChunk, CHUNK } from '../art/tiles_art.js';
+import { tileDef, SOLID, WATERY, WALLISH } from './tiles.js';
+import { paintChunk, bakeReflections, CHUNK } from '../art/tiles_art.js';
 import { paintRoof, roofGeometry } from '../art/world_buildings.js';
 
 // The tile map: ground, decorations, buildings, collision queries and the cached
@@ -8,14 +8,23 @@ import { paintRoof, roofGeometry } from '../art/world_buildings.js';
 //
 // Rendering strategy (phones must hold 60 fps):
 //  - Static ground is painted once per 16×16-tile chunk into an offscreen canvas,
-//    lazily on first need, and kept in a small LRU cache.
-//  - Water is the only animated ground: chunk canvases leave water transparent, and
-//    each frame only the visible water tiles are drawn underneath from a looping sheet.
+//    lazily on first need (one chunk per frame at most once the view is covered),
+//    and kept in a small LRU cache.
+//  - Water is the only animated ground. Chunk canvases keep water translucent (depth,
+//    sky and bank reflections, mirrored trees); under them each frame one pattern
+//    fill per chunk lays down the looping water sheet, crossfading between frames.
+//    Two shore-foam layers pulse in counter-phase on top.
+//  - Rain soaks the ground: a wet version of each visible chunk is painted once (one
+//    per frame, never per frame again) and crossfaded in as the wetness rises; the
+//    ground dries slowly after the rain stops and the wet canvases are then freed.
 //  - Roofs are cached per building and drawn after everything else with a fade.
 
-const MAX_CHUNKS = 40;
-const WATER_FPS = 6;
+const MAX_CHUNKS = 36;
+const WATER_FPS = 4;
 const LOCATION_DEBOUNCE = 0.25;
+const SOAK_RATE = 1 / 7; // wetness per second while it rains (scaled by intensity)
+const DRY_RATE = 1 / 70; // puddles linger after the rain
+const FREE_WET_AFTER = 20; // seconds of dry weather before wet canvases are freed
 
 export class TileMap {
   constructor(w, h, game = null) {
@@ -27,10 +36,14 @@ export class TileMap {
     this.buildings = []; // { id, name, x, y, w, h (tiles, outer footprint incl. walls), doorTiles: [{tx,ty}], material, roof, rug }
     this.bIndex = new Int16Array(w * h).fill(-1);
     this.version = 0; // bumps on any tile change (pathfinder rebuilds its grid)
+    this.exits = null; // where the King's Road leaves the map (set by worldgen)
+    this.wetness = 0; // 0 dry .. 1 soaked (rain)
+    this._dryFor = 0;
     this._chunks = new Map();
     this._depth = null;
     this._renderTime = 0;
     this._builtThisFrame = 0;
+    this._patterns = null;
     this._loc = new Map();
     this._smokeT = 0;
   }
@@ -62,7 +75,11 @@ export class TileMap {
   }
 
   setDeco(tx, ty, id) {
-    if (this.inBounds(tx, ty)) this.deco[ty * this.w + tx] = id;
+    if (!this.inBounds(tx, ty)) return;
+    const i = ty * this.w + tx;
+    if (this.deco[i] === id) return;
+    this.deco[i] = id;
+    if (this._chunks.size) this.invalidateTile(tx, ty);
   }
 
   addBuilding(b) {
@@ -135,16 +152,17 @@ export class TileMap {
 
   // ---- render cache management ----
 
+  // Blends and baked shadows reach a couple of tiles over chunk borders; mirrored
+  // trees reach a few tiles down into the water below them.
   invalidateTile(tx, ty) {
-    // Blends and baked shadows reach a couple of tiles over chunk borders.
     const cs = CHUNK;
-    const keys = new Set();
-    for (let dy = -2; dy <= 2; dy += 2) for (let dx = -2; dx <= 2; dx += 2) {
-      const cx = Math.floor((tx + dx) / cs);
-      const cy = Math.floor((ty + dy) / cs);
-      keys.add(cy * 1000 + cx);
+    for (let dy = -2; dy <= 4; dy += 2) {
+      for (let dx = -2; dx <= 2; dx += 2) {
+        const cx = Math.floor((tx + dx) / cs);
+        const cy = Math.floor((ty + dy) / cs);
+        this._chunks.delete(cy * 1000 + cx);
+      }
     }
-    for (const k of keys) this._chunks.delete(k);
   }
 
   invalidateAll() {
@@ -163,7 +181,18 @@ export class TileMap {
       return c;
     }
     c = paintChunk(art, this, cx, cy, this._shadowCasters(cx, cy));
+    c.cx = cx;
+    c.cy = cy;
     c.used = this._renderTime;
+    c.wetCanvas = null;
+    if (c.mask) {
+      try {
+        bakeReflections(c, this, this.game?.objects);
+      } catch (err) {
+        console.error('[map] water reflections failed', err);
+      }
+      c.mask = null;
+    }
     this._chunks.set(key, c);
     this._builtThisFrame++;
     if (this._chunks.size > MAX_CHUNKS) {
@@ -173,6 +202,12 @@ export class TileMap {
       if (oldK != null && oldK !== key) this._chunks.delete(oldK);
     }
     return c;
+  }
+
+  // The rain-soaked twin of a chunk: land only (water stays from the dry canvas).
+  _soak(c, art) {
+    c.wetCanvas = paintChunk(art, this, c.cx, c.cy, this._shadowCasters(c.cx, c.cy), true).canvas;
+    this._builtThisFrame++;
   }
 
   // Objects whose soft shadows are baked into a chunk.
@@ -193,6 +228,17 @@ export class TileMap {
     return out;
   }
 
+  // One repeating pattern per water frame, made for the context that draws them.
+  _waterPatterns(ctx, art) {
+    const p = this._patterns;
+    if (p && p.ctx === ctx) return p.list;
+    if (!art.water || typeof ctx.createPattern !== 'function') return null;
+    const list = art.water.map((c) => ctx.createPattern(c, 'repeat'));
+    if (list.some((x) => !x)) return null;
+    this._patterns = { ctx, list };
+    return list;
+  }
+
   // Draw ground + deco for the view. (ox, oy) = camera top-left in world px.
   drawGround(ctx, ox, oy, vw, vh, time) {
     this._renderTime = time;
@@ -207,35 +253,57 @@ export class TileMap {
     const cy0 = Math.max(0, Math.floor(oy / span));
     const cx1 = Math.min(Math.ceil(this.w / CHUNK) - 1, Math.floor((ox + vw - 1) / span));
     const cy1 = Math.min(Math.ceil(this.h / CHUNK) - 1, Math.floor((oy + vh - 1) / span));
-    const frame = Math.floor(time * WATER_FPS) % art.waterFrames;
-    const sheet = art.water[frame];
-    const foamFrame = Math.floor(time * 4) % art.foamFrames;
-    const vx0 = Math.floor(ox / TILE) - 1;
-    const vy0 = Math.floor(oy / TILE) - 1;
-    const vx1 = Math.floor((ox + vw) / TILE) + 1;
-    const vy1 = Math.floor((oy + vh) / TILE) + 1;
+    const water = this._waterPatterns(ctx, art);
+    const n = art.waterFrames;
+    const wf = (time * WATER_FPS) % n;
+    const f0 = Math.floor(wf);
+    const f1 = (f0 + 1) % n;
+    const fk = wf - f0;
+    const pulse = Math.sin(time * 1.6);
+    const wet = this.wetness;
+    const alpha0 = ctx.globalAlpha;
     for (let cy = cy0; cy <= cy1; cy++) {
       for (let cx = cx0; cx <= cx1; cx++) {
         const c = this._chunk(cx, cy, art);
-        const wl = c.water;
-        if (wl.length) {
-          const fm = c.foam;
-          for (let k = 0; k < wl.length; k++) {
-            const i = wl[k];
-            const tx = i % this.w;
-            const ty = (i / this.w) | 0;
-            if (tx < vx0 || tx > vx1 || ty < vy0 || ty > vy1) continue;
-            const sx = tx * TILE - ox;
-            const sy = ty * TILE - oy;
-            ctx.drawImage(sheet, (tx * TILE) & 63, (ty * TILE) & 63, TILE, TILE, sx, sy, TILE, TILE);
-            const m = fm[k];
-            if (m) {
-              const fs = art.foam[foamFrame];
-              for (let b = 0; b < 8; b++) if (m & (1 << b)) ctx.drawImage(fs, b * TILE, 0, TILE, TILE, sx, sy, TILE, TILE);
+        const X = cx * span - ox;
+        const Y = cy * span - oy;
+        const wb = c.waterBox;
+        if (wb && water) {
+          // Clip the fill to the part of the water box on screen.
+          const x0 = Math.max(X + wb.x, 0);
+          const y0 = Math.max(Y + wb.y, 0);
+          const x1 = Math.min(X + wb.x + wb.w, vw);
+          const y1 = Math.min(Y + wb.y + wb.h, vh);
+          if (x1 > x0 && y1 > y0) {
+            // Patterns repeat from the canvas origin; shift them so the water sticks to the world.
+            ctx.translate(-ox, -oy);
+            ctx.fillStyle = water[f0];
+            ctx.fillRect(x0 + ox, y0 + oy, x1 - x0, y1 - y0);
+            if (fk > 0.04) {
+              ctx.globalAlpha = alpha0 * fk;
+              ctx.fillStyle = water[f1];
+              ctx.fillRect(x0 + ox, y0 + oy, x1 - x0, y1 - y0);
+              ctx.globalAlpha = alpha0;
             }
+            ctx.translate(ox, oy);
           }
         }
-        ctx.drawImage(c.canvas, cx * span - ox, cy * span - oy);
+        ctx.drawImage(c.canvas, X, Y);
+        if (wet > 0.01) {
+          if (!c.wetCanvas && this._builtThisFrame === 0) this._soak(c, art);
+          if (c.wetCanvas) {
+            ctx.globalAlpha = alpha0 * Math.min(1, wet);
+            ctx.drawImage(c.wetCanvas, X, Y);
+            ctx.globalAlpha = alpha0;
+          }
+        }
+        if (c.foamA) {
+          ctx.globalAlpha = alpha0 * (0.62 + 0.38 * pulse);
+          ctx.drawImage(c.foamA, X + c.foamX, Y + c.foamY);
+          ctx.globalAlpha = alpha0 * (0.5 - 0.42 * pulse);
+          ctx.drawImage(c.foamB, X + c.foamX, Y + c.foamY);
+          ctx.globalAlpha = alpha0;
+        }
       }
     }
   }
@@ -253,12 +321,21 @@ export class TileMap {
     }
   }
 
-  // Build one missing chunk near the camera per idle step, so walking rarely waits.
+  // Paint ahead between frames: soak a visible chunk while it rains, otherwise build
+  // one missing chunk around the camera, so walking rarely waits.
   _warmup() {
     const art = this._art();
     const cam = this.game?.camera;
     if (!art || !cam || this._builtThisFrame > 0 || typeof document === 'undefined') return;
     const span = CHUNK * TILE;
+    if (this.wetness > 0.01) {
+      for (const c of this._chunks.values()) {
+        if (!c.wetCanvas && this._renderTime - c.used < 0.5) {
+          this._soak(c, art);
+          return;
+        }
+      }
+    }
     const cx0 = Math.max(0, Math.floor((cam.x - span) / span));
     const cy0 = Math.max(0, Math.floor((cam.y - span) / span));
     const cx1 = Math.min(Math.ceil(this.w / CHUNK) - 1, Math.floor((cam.x + cam.vw + span) / span));
@@ -270,6 +347,25 @@ export class TileMap {
         this._chunk(cx, cy, art);
         return;
       }
+    }
+  }
+
+  // Rain soaks the ground quickly; it dries slowly once the sky clears.
+  _updateWetness(dt) {
+    const w = this.game?.clock?.weather;
+    const raining = w?.type === 'rain';
+    if (raining) {
+      const k = Math.max(0.3, Math.min(1, w.intensity ?? 1));
+      this.wetness = Math.min(1, this.wetness + dt * SOAK_RATE * k);
+      this._dryFor = 0;
+      return;
+    }
+    if (this.wetness > 0) this.wetness = Math.max(0, this.wetness - dt * DRY_RATE);
+    if (this.wetness > 0) return;
+    this._dryFor += dt;
+    if (this._dryFor > FREE_WET_AFTER) {
+      this._dryFor = -Infinity; // freed; nothing to do until the next rain
+      for (const c of this._chunks.values()) c.wetCanvas = null;
     }
   }
 
@@ -319,6 +415,7 @@ export class TileMap {
       this._track(g.player, dt);
       this._track(g.companion, dt);
     }
+    this._updateWetness(dt);
     this._chimneys(dt);
     this._warmup();
   }

@@ -16,10 +16,13 @@ import { paintFacadeTile, paintBuildingWallTile } from './world_buildings.js';
 //     contact shadows under walls), and tinted by low-frequency noise.
 //  3. Water is left translucent: the animated water pattern is drawn underneath each
 //     frame, and the chunk adds depth (light shallows, dark deeps), sky glints and
-//     the dark mirror of the banks. Shore foam lives in two small layers the map
-//     pulses in counter-phase.
+//     the dark mirror of the banks. In the browser the trees, rocks and posts on the
+//     banks are then mirrored into it (bakeReflections). Shore foam lives in two
+//     small layers the map pulses in counter-phase.
 //  4. Built tiles, ground decorations, then soft object shadows.
-// A second, wet version of a chunk (rain) is painted on demand and crossfaded in.
+// A second, wet version of a chunk (rain) is painted on demand and crossfaded in. It
+// holds only the land: darker, richer ground, glossy streaks on cobbles and stone,
+// puddles on paths. Its water pixels stay empty so the dry chunk's water shows.
 
 export const CHUNK = 16;
 const CPX = CHUNK * TILE; // 256
@@ -69,6 +72,8 @@ const isWater = (m) => m === T.WATER || m === T.DEEP_WATER;
 // Water
 
 const WATER_FRAMES = 12;
+const RUN_MAX = 60; // rows of open water below a bank, capped
+const REFLECT_RUN = 46; // mirrored objects fade out this far below the bank
 const WATER_LUT = lut(['#173257', '#1f4675', '#285d93', '#3274ab', '#4a8fc2', '#73b2da', '#b5ddf2', '#eef9ff']);
 
 // Seamless 64×64 animated water: gentle interfering swells plus twinkling ripple glints.
@@ -215,7 +220,11 @@ function underMaterial(map, tx, ty, fallback) {
   return fallback;
 }
 
-// Paint chunk (cx, cy). Returns { buf, foamA, foamB, foamX, foamY, hasWater } with PixelBufs.
+// Paint chunk (cx, cy). Returns { buf, foamA, foamB, foamX, foamY, hasWater, waterBox, mask }
+// with PixelBufs. waterBox = { x, y, w, h } (chunk px) around every translucent water
+// pixel, or null; mask = the water pixels, opaque near the banks and fading with
+// distance from them (where mirrored objects may show). The wet variant has no foam,
+// mask or water pixels.
 export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
   const x0 = cx * CPX;
   const y0 = cy * CPX;
@@ -277,11 +286,11 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
     }
     run = new Uint8Array(SW * SW);
     for (let i = 0; i < SW; i++) {
-      let r = 30;
+      let r = RUN_MAX;
       for (let j = 0; j < SW; j++) {
         const k = j * SW + i;
         if (!isWater(mat[k])) r = 0;
-        else if (r < 30) r++;
+        else if (r < RUN_MAX) r++;
         run[k] = r;
       }
     }
@@ -292,6 +301,11 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
   const tex = art.tex;
   const lf = art.lf;
   const lf2 = art.lf2;
+  let wbx0 = CPX;
+  let wby0 = CPX;
+  let wbx1 = -1;
+  let wby1 = -1;
+  const mask = anyWater && !wet ? new PixelBuf(CPX, CPX) : null;
   for (let ly = 0; ly < CPX; ly++) {
     const wy = y0 + ly;
     const j = ly + MG;
@@ -302,7 +316,14 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
       const m = mat[k];
       if (!SOFT[m]) continue;
       if (isWater(m)) {
+        if (wet) continue;
         od[ly * CPX + lx] = waterTint(art, depth, W, H, wx, wy, wd[k], run[k]);
+        if (lx < wbx0) wbx0 = lx;
+        if (lx > wbx1) wbx1 = lx;
+        if (ly < wby0) wby0 = ly;
+        if (ly > wby1) wby1 = ly;
+        const r = run[k];
+        if (r < REFLECT_RUN) mask.data[ly * CPX + lx] = Math.round(255 * (1 - r / REFLECT_RUN)) << 24;
         continue;
       }
       const L = (((wy >> 2) & 127) << 7) | ((wx >> 2) & 127);
@@ -372,7 +393,7 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
   let foamB = null;
   let foamX = 0;
   let foamY = 0;
-  if (anyWater) {
+  if (anyWater && !wet) {
     let bx0 = CPX;
     let by0 = CPX;
     let bx1 = -1;
@@ -411,7 +432,9 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
       }
     }
   }
-  return { buf: out, foamA, foamB, foamX, foamY, hasWater: anyWater };
+  // Built tiles (the dock, bridge) may have covered every water pixel of a margin hit.
+  const waterBox = wbx1 >= 0 ? { x: wbx0, y: wby0, w: wbx1 - wbx0 + 1, h: wby1 - wby0 + 1 } : null;
+  return { buf: out, foamA, foamB, foamX, foamY, hasWater: !!waterBox, waterBox, mask: waterBox ? mask : null };
 }
 
 // Translucent water color over the animated pattern: depth, sky, the dark mirror of the bank.
@@ -901,7 +924,77 @@ export function paintChunk(art, map, cx, cy, shadows, wet = false) {
     foamX: r.foamX,
     foamY: r.foamY,
     hasWater: r.hasWater,
+    waterBox: r.waterBox,
+    mask: r.mask ? r.mask.toCanvas() : null,
     wet,
     used: 0,
   };
+}
+
+// Mirror the trees, rocks, posts and tents standing on the banks into the still water
+// of a freshly painted chunk (browser only; `chunk` comes from paintChunk). Objects are
+// drawn upside down about their own base line into a scratch canvas, tinted toward the
+// deep water color, cut to the chunk's water mask (which fades with distance from the
+// bank) and laid onto the chunk in thin, slightly offset rows, like a breeze on a pond.
+const NO_REFLECTION = new Set(['window', 'door', 'fishing_spot', 'journal', 'crop', 'herb', 'moonpetal']);
+let scratch = null;
+
+export function bakeReflections(chunk, map, objects) {
+  if (!chunk.mask || !objects?._eachInRect || typeof document === 'undefined') return 0;
+  const x0 = chunk.cx * CPX;
+  const y0 = chunk.cy * CPX;
+  const wb = chunk.waterBox;
+  const list = [];
+  // Only objects whose mirror image can reach this chunk's water.
+  objects._eachInRect(x0 - 32, y0 + wb.y - 72, x0 + CPX + 32, y0 + wb.y + wb.h, (o) => {
+    if (o.removed || o.hidden || NO_REFLECTION.has(o.objType)) return;
+    if (o.y > y0 + wb.y + wb.h || o.y < y0 + wb.y - 72) return;
+    if (map.buildingAt(o.tx, o.ty)) return;
+    let near = false;
+    for (let d = 1; d <= 4 && !near; d++) near = map.isWater(o.tx, o.ty + d) || map.isWater(o.tx - 1, o.ty + d) || map.isWater(o.tx + 1, o.ty + d);
+    if (near) list.push(o);
+  });
+  if (!list.length) return 0;
+  if (!scratch) {
+    const c = document.createElement('canvas');
+    c.width = CPX;
+    c.height = CPX;
+    scratch = { canvas: c, ctx: c.getContext('2d') };
+  }
+  const sc = scratch.ctx;
+  sc.setTransform(1, 0, 0, 1, 0, 0);
+  sc.globalCompositeOperation = 'source-over';
+  sc.globalAlpha = 1;
+  sc.clearRect(0, 0, CPX, CPX);
+  list.sort((a, b) => b.y - a.y); // nearer the water draws last (in front)
+  for (const o of list) {
+    // Keep animation bookkeeping (tree fades) untouched by this off-screen draw.
+    const fade = o._fade;
+    const lastT = o._lastT;
+    if (o._fade != null) o._fade = 1;
+    sc.setTransform(1, 0, 0, -1, 0, 2 * (o.y - y0) + 2);
+    try {
+      o.draw(sc, x0, y0, 0);
+    } catch {
+      /* one odd prop never spoils the water */
+    }
+    if (fade != null) o._fade = fade;
+    if (lastT != null) o._lastT = lastT;
+  }
+  sc.setTransform(1, 0, 0, 1, 0, 0);
+  sc.globalAlpha = 1;
+  sc.globalCompositeOperation = 'source-atop';
+  sc.fillStyle = 'rgba(16, 44, 72, 0.55)';
+  sc.fillRect(0, 0, CPX, CPX);
+  sc.globalCompositeOperation = 'destination-in';
+  sc.drawImage(chunk.mask, 0, 0);
+  sc.globalCompositeOperation = 'source-over';
+  const ctx = chunk.canvas.getContext('2d');
+  ctx.globalAlpha = 0.62;
+  for (let y = wb.y; y < wb.y + wb.h; y += 2) {
+    const dx = Math.round(Math.sin((y0 + y) * 0.41) * 0.9 + Math.sin((y0 + y) * 0.13) * 0.6);
+    ctx.drawImage(scratch.canvas, 0, y, CPX, 2, dx, y, CPX, 2);
+  }
+  ctx.globalAlpha = 1;
+  return list.length;
 }
