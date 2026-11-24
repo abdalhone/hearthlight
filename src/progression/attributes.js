@@ -58,6 +58,9 @@ export const LEVEL_GROWTH = Object.freeze({
   lyra: { add: { maxHp: 8, atk: 1, def: 0.15 } },
 });
 
+// Foes grow bolder as the stranger grows (damage dealt, per player level past the first).
+export const THREAT = Object.freeze({ factions: ['monster', 'bandit', 'undead'], perLevel: 0.05, cap: 0.5 });
+
 // The chapel's respec (Sister Aveline): a price in coin that grows with the level.
 export function respecCost(level) {
   const lv = Math.max(1, Math.floor(level || 1));

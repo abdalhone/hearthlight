@@ -364,6 +364,21 @@ test('save and load keep points, gear, upgrades, buffs and active prices', () =>
   assert.equal(old.gear.equipped.weapon, 'iron_sword');
 });
 
+test('the wilds grow bolder as the stranger grows: foes hit harder, never friends or bosses', () => {
+  const g = arena();
+  const P = g.player;
+  const wolf = g.foes[0];
+  assert.equal(g.stats.get(wolf, 'dmgDealt'), 1);
+  g.combat.giveXp(P, xpToNext(1) + xpToNext(2) + xpToNext(3) + xpToNext(4));
+  assert.equal(P.level, 5);
+  assert.ok(Math.abs(g.stats.get(wolf, 'dmgDealt') - 1.2) < 1e-9);
+  assert.equal(g.stats.get(g.companion, 'dmgDealt'), 1);
+  assert.equal(g.stats.get(g.villager, 'dmgDealt'), 1);
+  wolf.boss = true;
+  g.stats.touch();
+  assert.equal(g.stats.get(wolf, 'dmgDealt'), 1, 'bosses keep their own tuning');
+});
+
 test('Lyra grows with her levels through the pipeline; slots and rarities are a closed set', () => {
   const g = arena();
   const L = g.companion;

@@ -1,4 +1,4 @@
-import { ATTRS, ATTR_IDS, POINTS_PER_LEVEL, LEVEL_GROWTH, XP_FOR, respecCost, scaled } from './attributes.js';
+import { ATTRS, ATTR_IDS, POINTS_PER_LEVEL, LEVEL_GROWTH, XP_FOR, THREAT, respecCost, scaled } from './attributes.js';
 
 // Levels and stat points (DESIGN §26): game.progression.
 //
@@ -30,6 +30,7 @@ export class Progression {
     if (S) {
       S.addSource('level', 'Level', (a) => this.levelContribution(a), 10);
       S.addSource('points', 'Points', (a) => this.pointsContribution(a), 20);
+      S.addSource('threat', 'The wilds grow bolder', (a) => this.threatContribution(a), 40);
     }
     this._bind();
   }
@@ -109,6 +110,15 @@ export class Progression {
       any = true;
     }
     return any ? out : null;
+  }
+
+  // Death stays dangerous (DESIGN §26–27): what hunts the roads bites harder as the
+  // stranger grows, so better gear and more health keep pace rather than run away.
+  threatContribution(a) {
+    if (!a || this.isPlayer(a) || this.isLyra(a) || a.boss || !THREAT.factions.includes(a.faction)) return null;
+    const lv = this.level();
+    if (lv <= 1) return null;
+    return { pct: { dmgDealt: Math.min(THREAT.cap, THREAT.perLevel * (lv - 1)) } };
   }
 
   // ---------------------------------------------------------------- points
