@@ -5085,3 +5085,11 @@ input[type='range']::-moz-range-thumb {
     grid-template-columns: repeat(2, 40px);
   }
 }
+
+/* The story's entries on the title screen (shown when this build has the story). */
+.title-story {
+  flex-wrap: wrap;
+}
+.title-story .btn {
+  flex: 1 1 auto;
+}

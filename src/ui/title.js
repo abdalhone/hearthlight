@@ -6,6 +6,7 @@ import { h, button, setText, icon } from './dom.js';
 import { makePanel } from './modal.js';
 import { HOW_TO_PLAY, TITLE_TAGLINES } from './content.js';
 import { SAVE_KEY, DAY_SECONDS } from '../core/constants.js';
+import { storyEntries, runEntry } from './story_menu.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -56,7 +57,7 @@ export class TitleScreen {
         { class: 'title-card' },
         h('div', { class: 'logo' }, h('span', { class: 'logo-flame', 'aria-hidden': 'true' }, icon('flame')), h('h1', { class: 'logo-text', text: 'Hearthlight' })),
         h('p', { class: 'tagline', text: tagline }),
-        h('nav', { class: 'title-menu', 'aria-label': 'Main menu' }, this.continueBtn, this.newBtn, h('div', { class: 'title-row' }, settingsBtn, howBtn)),
+        h('nav', { class: 'title-menu', 'aria-label': 'Main menu' }, this.continueBtn, this.newBtn, (this.storyRow = h('div', { class: 'title-row title-story', hidden: true })), h('div', { class: 'title-row' }, settingsBtn, howBtn)),
         this.mindLine,
       ),
       h('footer', { class: 'title-foot', text: 'All art and sound are made in your browser as you play.' }),
@@ -71,6 +72,7 @@ export class TitleScreen {
     this.newBtn.disabled = false;
     this.continueBtn.disabled = false;
     this.refreshMindLine();
+    this.refreshStory();
     this.checkSave();
     this.game.runtime?.onChange?.((name) => {
       if (name === '*' || name === 'sample' || name === 'db' || name === 'user') {
@@ -82,6 +84,18 @@ export class TitleScreen {
 
   hide() {
     if (this.el) this.el.hidden = true;
+  }
+
+  // "Prologue" and "The Book of Halcyre", when this build has the story (§20).
+  refreshStory() {
+    const row = this.storyRow;
+    if (!row) return;
+    row.textContent = '';
+    const entries = safe(() => storyEntries(this.game, this.ui), []);
+    for (const entry of entries) {
+      row.append(button(entry.label, { icon: entry.icon, cls: `btn-ghost title-${entry.id}`, title: entry.hint, onClick: () => runEntry(entry, this.ui) }));
+    }
+    row.hidden = !entries.length;
   }
 
   isVisible() {

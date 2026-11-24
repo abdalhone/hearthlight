@@ -365,6 +365,96 @@ for (const view of VIEWS) {
   await page.screenshot({ path: `${SHOTS}/ui3-${label}-settings.png` });
   await page.evaluate(() => window.__game.ui.closeAll());
 
+  // ---------- the phone HUD: compact, the world visible ----------
+  const hud = await page.evaluate(async () => {
+    const g = window.__game;
+    const ui = g.ui;
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    ui.closeAll();
+    ui.hud.setQuest('Ask Sister Aveline about Maren, who went into the Sunken Ruins.');
+    const small = ui.hud.isSmall();
+    if (small) ui.hud.setMini(true);
+    await wait(250);
+    const box = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el || el.hidden) return null;
+      const r = el.getBoundingClientRect();
+      return r.width ? { x: r.left, y: r.top, w: r.width, h: r.height, b: r.bottom, r: r.right } : null;
+    };
+    const hit = (a, b) => a && b && a.x < b.r && a.r > b.x && a.y < b.b && a.b > b.y;
+    const quest = box('.quest-line');
+    const cards = [box('.player-card'), box('.lyra-card'), box('.place-card'), box('.hud-buttons')];
+    const band = Math.max(...cards.filter(Boolean).map((c) => c.b), quest ? quest.b : 0);
+    const tiny = [];
+    for (const el of document.querySelectorAll('.hud button, .touch button')) {
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      const live = cs.visibility !== 'hidden' && cs.pointerEvents !== 'none' && Number(cs.opacity) > 0.05;
+      if (r.width && live && (r.width < 40 || r.height < 40)) tiny.push(`${el.className} ${Math.round(r.width)}x${Math.round(r.height)}`);
+    }
+    const folded = box('.lyra-card');
+    // Tap her folded card: it unfolds; the fold tab folds it again.
+    let unfolded = null;
+    let refolded = null;
+    let mindOpened = false;
+    if (small) {
+      document.querySelector('.lyra-card').click();
+      await wait(250);
+      unfolded = box('.lyra-card');
+      mindOpened = !!ui.top();
+      const q2 = box('.quest-line');
+      const overlapOpen = hit(q2, unfolded);
+      document.querySelector('.lyra-fold').click();
+      await wait(250);
+      refolded = box('.lyra-card');
+      return { small, band, vh: innerHeight, tiny, folded, unfolded, refolded, mindOpened, overlap: cards.some((c) => hit(c, quest)), overlapOpen };
+    }
+    return { small, band, vh: innerHeight, tiny, overlap: cards.some((c) => hit(c, quest)) };
+  });
+  if (hud.small) {
+    check(`[${label}] the phone HUD leaves the world visible`, hud.band <= hud.vh * (view.viewport.height > 520 ? 0.2 : 0.36), `top band ends at ${Math.round(hud.band)} of ${hud.vh}px`);
+    check(`[${label}] her card folds to portrait + mood and unfolds on a tap`, hud.folded.w < 80 && hud.unfolded.w > hud.folded.w + 60 && !hud.mindOpened && Math.abs(hud.refolded.w - hud.folded.w) < 2, JSON.stringify({ folded: Math.round(hud.folded.w), open: Math.round(hud.unfolded.w), refolded: Math.round(hud.refolded.w) }));
+    check(`[${label}] the quest line never covers a card (folded or open)`, !hud.overlap && !hud.overlapOpen);
+  }
+  check(`[${label}] every HUD and touch button is at least 40 px`, hud.tiny.length === 0, hud.tiny.join(', '));
+  await page.screenshot({ path: `${SHOTS}/ui3-${label}-hud.png` });
+
+  // ---------- the story's menu entries (only when this build has the story) ----------
+  const story = await page.evaluate(async () => {
+    const g = window.__game;
+    const ui = g.ui;
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const labels = () => [...document.querySelectorAll('.pause-menu .btn')].map((b) => b.textContent.trim());
+    const real = !!g.story;
+    ui.closeAll();
+    let before = [];
+    if (!real) {
+      ui.openPause();
+      await wait(100);
+      before = labels();
+      ui.closeAll();
+    }
+    const saved = { story: g.story, codex: g.codex };
+    const calls = [];
+    g.story = { playPrologue: () => calls.push('prologue') };
+    g.codex = { open: () => calls.push('book') };
+    ui.openPause();
+    await wait(100);
+    const after = labels();
+    document.querySelector('.pause-prologue')?.click();
+    await wait(50);
+    ui.openPause();
+    await wait(100);
+    document.querySelector('.pause-book')?.click();
+    await wait(50);
+    ui.closeAll();
+    g.story = saved.story;
+    g.codex = saved.codex;
+    return { real, before, after, calls };
+  });
+  if (!story.real) check(`[${label}] no story in this build: no Prologue or Book in the menu`, !story.before.some((t) => /Prologue|Halcyre/.test(t)), story.before.join(' | '));
+  check(`[${label}] with the story: the menu offers Prologue and The Book of Halcyre`, story.after.includes('Prologue') && story.after.some((t) => /Book of Halcyre/.test(t)) && story.calls.join() === 'prologue,book', JSON.stringify({ after: story.after, calls: story.calls }));
+
   // ---------- the morning: while you slept ----------
   const morning = await page.evaluate(async () => {
     const g = window.__game;
