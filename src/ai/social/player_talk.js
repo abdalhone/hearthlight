@@ -717,7 +717,7 @@ export function localReply(v, npc, text) {
   if (warmish && lines.length < 3 && !effects.recalled && intent !== 'myname' && (!open || effects.question === null) && st.opinion >= 22) {
     const q = askBack(v, id, ask, { known, intent, rng, exchanges: Math.max(chatOf(v, id).filter((m) => m.from === 'player').length, v.talks?.[id]?.length || 0), vars: vars() });
     if (q && !overlaps(q.line, lines.join(' '))) {
-      lines.push(q.line);
+      lines.push(freshOpening(q.line, lines));
       effects.question = q.q;
       if (q.q.kind === 'q') effects.asked = q.q.i;
     }
@@ -728,9 +728,41 @@ export function localReply(v, npc, text) {
   return { lines: out, mood, delta, intent, told, mentioned, name: learned, note: note ? { text: note[0], w: note[1] } : null, effects };
 }
 
+// What the player said that is worth repeating: the villager tells it on (DESIGN §23
+// "they talk about it to others"). A clause for the village, and the same said back to
+// the player's face by whoever hears it. Once a day per villager and kind.
+const WORD_GETS_ROUND = {
+  insult: { text: '{stranger} was rude to {v}', you: 'you were rude to {v}', valence: -0.35, severity: 0.3 },
+  compliment: { text: '{stranger} had kind words for {v}', you: 'you had kind words for {v}', valence: 0.25, severity: 0.2 },
+  flirt: { text: '{stranger} has been sweet-talking {v}', you: "you've been sweet-talking {v}", valence: 0.05, severity: 0.3 },
+  maren: { kind: 'maren_asking' },
+};
+
+export function spreadWord(v, e, local) {
+  if (!v?.rumors || !e?.id || !local) return null;
+  const id = e.id;
+  const key = local.intent === 'person' && local.note && /Maren/.test(local.note.text) ? 'maren' : local.intent;
+  const def = WORD_GETS_ROUND[key];
+  if (!def) return null;
+  const you = youOf(v);
+  const day = v.day?.() ?? 1;
+  const seen = (you.rumored ||= {});
+  const tag = `${id}:${key}`;
+  if (seen[tag] === day) return null;
+  seen[tag] = day;
+  const near = (v.witnessesNear?.(e.x, e.y, 90) || []).filter((w) => w !== id);
+  if (def.kind) return v.addRumor?.(def.kind, { witnesses: [id, ...near] }) || null;
+  const r = v.rumors.add({ kind: `said_${key}`, text: def.text, you: def.you, valence: def.valence, severity: def.severity, source: id, victim: id, heardBy: [id, ...near], t: v.now?.() ?? 0, day });
+  if (!r) return null;
+  for (const w of near) v.onHeard?.(w, r, id, { witness: true });
+  v.emit?.('rumor', { rumor: r });
+  return r;
+}
+
 // After a turn: the local answer's own bookkeeping, when its words were the ones said.
 // (With Claude's words, only what the player said counts: the name and the memory.)
 export function applyTurn(v, id, local, { source = 'local', asked = null } = {}) {
+  spreadWord(v, v?.entity?.(id), local);
   const fx = local?.effects;
   if (source === 'local' && fx) {
     if (fx.question !== undefined) setQuestion(v, id, fx.question);
@@ -765,6 +797,16 @@ function askBack(v, id, ask, { known, intent, rng, exchanges, vars }) {
   const line = fill(ask.ask[i][0], vars);
   if (!line) return null;
   return { line, q: { kind: 'q', i } };
+}
+
+// "Oi! … Oi. What's your name?": a short opening word already said is dropped.
+function freshOpening(line, said) {
+  const first = (t) => String(t || '').trim().split(/[\s,.!?…—-]+/)[0].toLowerCase();
+  const f = first(line);
+  if (!f || !said.some((l) => first(l) === f)) return line;
+  const m = line.match(/^\s*[^.!?,]{1,12}[.!,]\s+(\S.*)$/);
+  if (!m) return line;
+  return m[1].charAt(0).toUpperCase() + m[1].slice(1);
 }
 
 // Do two lines share three words in a row?

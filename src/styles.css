@@ -5831,3 +5831,6 @@ input[type='range']::-moz-range-thumb {
     height: 24px;
   }
 }
+.chat-to-chip {
+  animation: pop-in 0.18s var(--ease);
+}

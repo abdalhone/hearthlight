@@ -866,6 +866,11 @@ export class Chat {
     this.people = ids;
     for (const e of people) this.seenAt.set(e.id, { nx: e.x, ny: e.y, px: g.player?.x ?? 0, py: g.player?.y ?? 0 });
     this.checkTarget(ids);
+    // While you are in the middle of talking with someone close by, they stay to listen.
+    if (this.target !== LYRA && !this.away && Date.now() - (this.talkedAt || 0) < 30000) {
+      const e = this.entity(this.target);
+      if (e && e.talkingUntil !== undefined) e.talkingUntil = Math.max(e.talkingUntil ?? 0, (g.clock?.t ?? 0) + 2);
+    }
     const lyra = g.companion;
     const cs = companionshipOf(g);
     const list = [];
@@ -946,7 +951,7 @@ export class Chat {
     // The rest of their last answer is said before the player's next line, never after.
     this.flushUnsaid(id);
     this.pushVillager(id, { from: 'player', text: t });
-    this.lastSentAt = Date.now();
+    this.talkedAt = Date.now();
     g.audio?.play('ui_click');
     // Still answering the last line: this one waits its turn.
     if (this.waiting.has(id)) {

@@ -218,7 +218,9 @@ test('they ask things back, and hear the answer', async () => {
     if (!q || q.kind !== 'q') continue;
     seen++;
     const bank = ASK_YOU.elda.ask[q.i];
-    assert.ok(r.lines.includes(fill(bank[0], { n: 'Wren' })), `asked: ${r.lines.join(' | ')}`);
+    // (A leading word they had just said may be dropped: "Oi! … What's your name?")
+    const asked = fill(bank[0], { n: 'Wren' }).toLowerCase();
+    assert.ok(r.lines.some((l) => asked.endsWith(l.toLowerCase())), `asked: ${r.lines.join(' | ')}`);
     const a = await talk(v, e, 'no, not yet');
     assert.equal(a.intent, 'answer');
     assert.ok(a.lines[0] === fill(bank[2], { n: 'Wren' }), `answered: ${a.lines.join(' | ')}`);
@@ -393,6 +395,24 @@ test('the villager prompt stays compact and never carries a hidden truth', async
   assert.ok(game);
 });
 
+test('what the player says gets around: the rude word and the kind one', async () => {
+  const { people, v } = makeGame();
+  people.bram.x = people.tilly.x + 30;
+  people.bram.y = people.tilly.y;
+  await talk(v, people.tilly, 'you are an idiot');
+  const r = v.rumors.list.find((x) => x.kind === 'said_insult' && x.victim === 'tilly');
+  assert.ok(r, 'a rumor that the player was rude to Tilly');
+  assert.ok(r.heardBy.includes('bram'), 'Bram was standing there');
+  await talk(v, people.tilly, 'you are stupid');
+  assert.equal(v.rumors.list.filter((x) => x.kind === 'said_insult' && x.victim === 'tilly').length, 1, 'once a day');
+  const b = await talk(v, people.bram, 'hello Bram');
+  assert.ok(/rude to Tilly/.test(b.lines.join(' ')), `Bram brings it up: ${b.lines.join(' | ')}`);
+  await talk(v, people.mira, 'you are wonderful, Mira');
+  assert.ok(v.rumors.list.some((x) => x.kind === 'said_compliment' && x.victim === 'mira'));
+  await talk(v, people.aveline, 'Sister, do you know anything about Maren?');
+  assert.ok(v.rumors.list.some((x) => x.kind === 'maren_asking'));
+});
+
 test('Lyra overhears when she is near', async () => {
   const { game, people, v } = makeGame();
   const remembered = [];
@@ -537,6 +557,19 @@ test('browser: the chat talks to anyone within earshot (and screenshots)', { tim
         assert.equal(await page.evaluate(() => window.__game.ui.chat.target), 'pip');
         assert.equal(await page.getAttribute('.chat-field', 'placeholder'), 'Say something to Pip…');
         assert.equal(await page.evaluate(() => window.__game.player.crime ?? null), null, 'no sword stroke, no crime');
+      } else {
+        // A tap on someone in the world (chat shut) opens it, talking to them.
+        await page.evaluate(() => window.__game.ui.chat.close());
+        const at = await page.evaluate(() => {
+          const g = window.__game;
+          const pip = g.entities.get('pip');
+          const p = g.renderer.worldToCss(pip.x, pip.y - 10);
+          const r = g.canvas.getBoundingClientRect();
+          return { x: r.left + p.x, y: r.top + p.y };
+        });
+        await page.touchscreen.tap(at.x, at.y);
+        await page.waitForTimeout(250);
+        assert.deepEqual(await page.evaluate(() => [window.__game.ui.chat.isOpen(), window.__game.ui.chat.target]), [true, 'pip'], `${view.label}: tapping Pip`);
       }
       assert.deepEqual(errors, [], `${view.label}: page errors`);
       await ctx.close();
