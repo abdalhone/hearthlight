@@ -419,7 +419,9 @@ function weighMove(a, v, out, add, veto, { action, args }) {
       out.invitation = true;
       return;
     }
-    add(-0.05, 'she is not traveling with you right now', 'no_apart_errand');
+    // Errands of the player's while she lives her own day: only as a favor to a close friend.
+    if (v.trust >= 70 && v.fear <= 10) add(0.05, 'a favor, while she lives her own day');
+    else veto('refuse', 'no_apart_errand', 'she is living her own life today');
     return;
   }
   add(0.3, null);
@@ -555,7 +557,8 @@ function weighCompanionship(a, v, out, add, veto, { action, args }) {
   add(0.25, 'she enjoys your company');
   if (busy) {
     const promised = b.type === 'work' && v.purse < 25;
-    add(promised ? -0.4 : -0.2, BUSY_WORDS[b.type] || 'she is busy', 'no_busy');
+    add(promised ? -0.5 : -0.3, BUSY_WORDS[b.type] || 'she is busy', 'no_busy');
+    out.preferCounter = true;
     out.vars.npc = a.npcName(b.npc) || 'someone';
     out.vars.time = hourLabel(b.to);
     out.counterFallback = { name: 'set_plan', args: { value: `rejoin at ${b.to}` }, key: 'counter_later' };
@@ -625,7 +628,11 @@ function finish(a, out, v, worst) {
     return out;
   }
   const s = out.score;
-  if (s >= ACCEPT) {
+  if (s >= BARGAIN && s < ACCEPT && out.preferCounter && out.counterFallback) {
+    // Not now, but she says when: better than a grudging yes.
+    out.decision = 'counter';
+    out.counter = { name: out.counterFallback.name, args: out.counterFallback.args };
+  } else if (s >= ACCEPT) {
     out.decision = out.conditionKind ? 'accept_conditional' : 'accept';
   } else if (s >= BARGAIN) {
     out.decision = 'accept_conditional';

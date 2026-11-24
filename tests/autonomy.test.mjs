@@ -867,9 +867,17 @@ test('plugin intents answer the player in her voice', () => {
   assert.equal(r.id, 'autonomy.dismiss');
   assert.equal(a.companionship, 'apart');
   step(game, 3);
+  // Busy with her own paid work, she names a time instead of dropping it...
   r = answer('please come back');
   assert.equal(r.id, 'autonomy.come_back');
-  assert.equal(r.results[0].ok, true);
+  assert.equal(r.results[0].verdict.decision, 'counter');
+  assert.equal(r.results[0].verdict.counter.name, 'set_plan');
+  assert.equal(a.companionship, 'apart');
+  // ...unless she trusts the player enough to let the work wait.
+  setRel(mind, { trust: 65 });
+  step(game, 70, 1);
+  r = answer('please come back');
+  assert.equal(r.results[0].ok, true, r.results[0].message);
   assert.notEqual(a.companionship, 'apart');
   setRel(mind, { trust: 60 });
   step(game, 3);
