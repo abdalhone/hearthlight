@@ -2265,16 +2265,7 @@ input[type='range']::-moz-range-thumb {
   color: var(--parch-2);
 }
 
-/* pause */
-.pause-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 4px 2px;
-}
-.pause-menu .btn {
-  width: 100%;
-}
+/* pause: the menu (DESIGN §24) is styled under "one clean menu" near the end */
 
 /* sign */
 .panel-sign {
@@ -3530,15 +3521,6 @@ input[type='range']::-moz-range-thumb {
 
 /* ---------- settings ---------- */
 
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0 16px;
-  align-items: start;
-}
-.settings-col {
-  min-width: 0;
-}
 .brain-status {
   margin: 0 0 10px;
   padding: 6px 8px;
@@ -3598,25 +3580,6 @@ input[type='range']::-moz-range-thumb {
   display: flex;
   gap: 8px;
   margin-bottom: 6px;
-}
-.controls {
-  margin: 0 0 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.control {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-}
-.control dt,
-.control dd {
-  margin: 0;
-}
-.control dd {
-  color: var(--parch-2);
-  font-size: var(--fs-s);
 }
 
 /* how to play */
@@ -4061,12 +4024,6 @@ input[type='range']::-moz-range-thumb {
     grid-column: 1 / -1;
     order: 3;
   }
-  .settings-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-  .settings-grid > :first-child {
-    grid-column: 1 / -1;
-  }
   .soul-lists {
     grid-template-columns: 1fr 1fr;
   }
@@ -4220,7 +4177,6 @@ input[type='range']::-moz-range-thumb {
   .now-grid,
   .soul-form,
   .soul-lists,
-  .settings-grid,
   .store,
   .shop-panes,
   .inv {
@@ -5060,10 +5016,11 @@ input[type='range']::-moz-range-thumb {
 
 /* ---------- settings: villagers' minds ---------- */
 
-.village-ai .choice.is-disabled {
+.choice.is-disabled {
   opacity: 0.5;
+  cursor: default;
 }
-.village-ai .choice.is-disabled input {
+.choice.is-disabled input {
   cursor: not-allowed;
 }
 
@@ -7151,4 +7108,460 @@ input[type='range']::-moz-range-thumb {
   .ui:not(.is-touch) .hud-bottom {
     bottom: calc(var(--sa-b) + 12px);
   }
+}
+
+/* ---------- one clean menu (DESIGN §24): the menu, the title, Settings, How to play ---------- */
+
+/* The menu: Resume is the way back (Esc, Start), so no second close button. Anything
+   opened from it stacks on top; the menu hides underneath until that closes. */
+.panel-pause {
+  width: min(460px, 100%);
+}
+.panel-pause .panel-close {
+  display: none;
+}
+.modal-layer > .panel-pause:not(:last-child) {
+  visibility: hidden;
+}
+.pause-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px;
+}
+.menu-item {
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 7px 12px;
+  text-align: left;
+}
+.menu-item .keycap {
+  margin-left: auto;
+  flex: none;
+}
+.menu-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+.menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menu-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+}
+.menu-main {
+  justify-content: center;
+  min-height: 50px;
+  font-size: var(--fs-l);
+}
+.menu-main .menu-text {
+  flex: none;
+}
+.menu-main .keycap {
+  margin-left: 4px;
+}
+.menu-go {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.menu-go > .menu-span,
+.menu-go > .menu-row {
+  grid-column: 1 / -1;
+}
+.menu-row {
+  display: flex;
+  gap: 8px;
+}
+.menu-row > .menu-go-item {
+  flex: 1;
+}
+.menu-sub {
+  flex: none;
+  width: auto;
+  padding: 7px 14px;
+}
+.menu-sys {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 2px solid var(--line-dim);
+}
+.menu-sys-item {
+  justify-content: center;
+  gap: 7px;
+  min-height: 42px;
+  padding: 6px 8px;
+}
+.menu-sys-item .menu-hint {
+  display: none;
+}
+.menu-sys-item .menu-ico {
+  --isc: 2;
+}
+.menu-sys-item.is-done {
+  --bc: var(--heal);
+  color: var(--heal);
+}
+.menu-sys-item.is-busy {
+  opacity: 0.75;
+}
+/* An upright phone: the three side by side, each as wide as its words. */
+@media (max-width: 640px) {
+  .menu-sys {
+    display: flex;
+    gap: 6px;
+  }
+  .menu-sys-item {
+    flex: 1 1 auto;
+    width: auto;
+    gap: 5px;
+    padding: 6px 7px;
+  }
+}
+/* Keys mean nothing under a thumb. */
+.is-touch .pause-menu .keycap {
+  display: none;
+}
+
+/* A phone held sideways: Resume, then every place on one row, then the rest. */
+@media (max-height: 520px) {
+  .panel-pause {
+    width: min(620px, 100%);
+  }
+  .pause-menu {
+    gap: 8px;
+  }
+  .menu-main {
+    min-height: 44px;
+  }
+  .menu-go {
+    grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr));
+  }
+  .menu-go > .menu-span {
+    grid-column: auto;
+  }
+  .menu-go-item {
+    min-height: 46px;
+  }
+  .menu-go-item .menu-hint {
+    display: none;
+  }
+  .menu-sys {
+    padding-top: 8px;
+  }
+  /* Notices sit over the menu's header here: they wait while it is open (the Save
+     button says how saving went). */
+  .ui:has(.modal-layer > .panel-pause:last-child) .layer-toasts {
+    visibility: hidden;
+  }
+}
+
+/* The title menu: Continue and New game, the story, then Settings and How to play. */
+.title-menu {
+  width: min(320px, 100%);
+  gap: 10px;
+}
+.title-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.title-main .btn,
+.title-row .btn {
+  min-width: 0;
+}
+.title-story {
+  flex-wrap: wrap;
+}
+.title-story .btn {
+  flex: 1 1 40%;
+}
+.title-story .title-pastLives {
+  flex-basis: 100%;
+}
+.title-sys {
+  margin-top: 4px;
+}
+@media (max-height: 520px) {
+  .title-menu {
+    width: min(560px, 100%);
+    gap: 8px;
+  }
+  .title-main {
+    flex-direction: row;
+    gap: 8px;
+  }
+  .title-main .btn {
+    flex: 1;
+    min-height: 46px;
+  }
+  .title-story .btn,
+  .title-story .title-pastLives {
+    flex: 1 1 auto;
+    white-space: nowrap;
+  }
+  .title-sys {
+    margin-top: 0;
+  }
+}
+
+/* Settings: five tabs over one pane at a time. */
+.panel-settings {
+  width: min(760px, 100%);
+  height: min(580px, 100%);
+}
+.panel-settings .settings-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.settings-tabs {
+  padding: 6px 12px 0;
+}
+.set-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+}
+.set-tab-ico {
+  --isc: 2;
+  opacity: 0.7;
+}
+.set-tab.active .set-tab-ico {
+  opacity: 1;
+}
+.set-panes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.set-pane {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px 18px;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.set-pane[hidden] {
+  display: none;
+}
+/* Two balanced columns where there is room (a sideways phone, a desktop), one upright. */
+.set-groups {
+  columns: 2 300px;
+  column-gap: 24px;
+}
+.set-group {
+  min-width: 0;
+  break-inside: avoid;
+  margin-bottom: 14px;
+}
+.set-group-title {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ember);
+}
+.set-group-note {
+  margin: -2px 0 6px;
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+}
+.set-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.set-row:last-child {
+  border-bottom: 0;
+}
+.set-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  cursor: pointer;
+}
+.set-label {
+  font-family: var(--font-display);
+  font-size: var(--fs-s);
+  color: var(--parch);
+}
+.set-note {
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  color: var(--parch-dim);
+}
+.set-ctl {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.set-select .field,
+.set-text .field {
+  width: 168px;
+  min-height: 36px;
+}
+.set-range input {
+  width: 150px;
+}
+.set-range output {
+  min-width: 38px;
+  text-align: right;
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+}
+.set-row.is-disabled .set-label {
+  color: var(--parch-faint);
+}
+.set-row.is-disabled .set-main {
+  cursor: default;
+}
+.set-row.is-disabled .set-ctl {
+  opacity: 0.45;
+}
+.set-radio {
+  display: flex;
+  align-items: stretch;
+  padding: 2px 0 8px;
+  margin: 0;
+  border-bottom: 0;
+}
+.set-group .brain-status {
+  margin: 0 0 8px;
+}
+.set-group .api-key {
+  margin: 0;
+}
+.set-group .api-key summary {
+  min-height: 32px;
+  font-family: var(--font-display);
+  font-size: var(--fs-s);
+  color: var(--parch-2);
+  cursor: pointer;
+}
+.set-group .api-key .warning {
+  font-size: var(--fs-xs);
+}
+.key-row .field {
+  flex: 1;
+  min-width: 0;
+}
+.key-status {
+  display: block;
+  margin-bottom: 2px;
+}
+.voice-live-status {
+  margin: 4px 0 0;
+}
+.set-link {
+  margin-top: 4px;
+}
+
+@media (max-width: 640px) {
+  .panel-settings {
+    height: 100%;
+  }
+  /* Upright phone: the five tabs in two rows, nothing scrolls sideways. */
+  .settings-tabs {
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 8px;
+    overflow: visible;
+  }
+  .set-tab {
+    flex: 1 1 auto;
+    justify-content: center;
+    gap: 5px;
+    padding: 6px 6px;
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+    box-shadow: inset 0 0 0 1px var(--line-dim);
+  }
+  .set-tab.active::after {
+    display: none;
+  }
+  .set-tab.active {
+    box-shadow: inset 0 0 0 2px var(--arcane);
+  }
+  .set-pane {
+    padding: 10px 12px 16px;
+  }
+  .set-groups {
+    columns: 1;
+  }
+  .set-select .field,
+  .set-text .field {
+    width: 140px;
+  }
+  .set-range input {
+    width: 110px;
+  }
+}
+
+@media (max-height: 520px) {
+  .panel-settings {
+    height: 100%;
+  }
+  .settings-tabs {
+    padding: 2px 8px 0;
+  }
+  .set-tab {
+    min-height: 34px;
+    padding: 5px 10px 4px;
+  }
+  .set-pane {
+    padding: 8px 14px 12px;
+  }
+  .set-row {
+    padding: 5px 0;
+  }
+  .set-group {
+    margin-bottom: 8px;
+  }
+}
+
+/* How to play: the device switch over its list of controls. */
+.how-devices {
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  margin: 0 0 10px;
+}
+.how-devices .seg {
+  min-height: 30px;
+  padding: 5px 10px;
+  font-size: var(--fs-xs);
+}
+.is-touch .how-devices .seg {
+  min-height: 38px;
+}
+.how-controls .how-row dt {
+  font-family: var(--font-display);
 }

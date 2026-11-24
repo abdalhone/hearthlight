@@ -382,27 +382,9 @@ export class Hud {
       this.newMagic = true;
       if (this.bookDot) this.bookDot.hidden = false;
     });
-    bus.on('ui_open', (p) => {
-      if (p?.panel === 'pause') this.addPauseEntry();
-    });
     bus.on('game_start', () => {
       this.turnTipAt = (this.game.time || 0) + 3;
     });
-  }
-
-  // The pause menu gains "Spellbook" (the menu itself is built elsewhere).
-  addPauseEntry() {
-    if (!this.weaving.available()) return;
-    const top = this.ui.top?.();
-    const menu = top?.el?.querySelector?.('.pause-menu');
-    if (!menu || menu.querySelector('.pause-spellbook')) return;
-    const b = button('Spellbook', { cls: 'pause-spellbook', key: 'B', onClick: () => {
-      this.ui.closeModal(top, true);
-      this.openSpellbook();
-    } });
-    b.prepend(bookIcon());
-    const after = menu.children[2] || null; // after Resume and Lyra's mind
-    menu.insertBefore(b, after);
   }
 
   openSpellbook(slot) {

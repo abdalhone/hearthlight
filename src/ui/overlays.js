@@ -1,56 +1,266 @@
-// Small overlays: the pause menu, sign and diary popups, full-screen fades and the
+// Small overlays: the menu (pause), sign and diary popups, full-screen fades and the
 // red hit vignette.
 
-import { h, button, setStyle, toggleClass } from './dom.js';
+import { h, icon, setStyle, setText, toggleClass, button } from './dom.js';
 import { makePanel } from './modal.js';
 import { dayLabel } from './format.js';
-import { storyEntries, runEntry } from './story_menu.js';
+import { prologueAction, bookAction } from './story_menu.js';
 import { openCodex } from './codex.js';
+import { MENU_ICONS } from './content.js';
+import { spellbookIconUrl, SPELLBOOK_ICON_SIZE } from './weave_icons.js';
+
+// The icon for a place in the menus (MENU_ICONS), the same everywhere it appears.
+export function menuIcon(id, cls = 'menu-ico') {
+  const name = MENU_ICONS[id] || id;
+  if (name !== 'spellbook') return icon(name, cls);
+  const img = h('img', { class: `px-icon ${cls}`, alt: '', draggable: 'false', 'aria-hidden': 'true', src: spellbookIconUrl() });
+  img.style.setProperty('--iw', String(SPELLBOOK_ICON_SIZE.w));
+  img.style.setProperty('--ih', String(SPELLBOOK_ICON_SIZE.h));
+  return img;
+}
+
+function fnOf(obj, name) {
+  return obj && typeof obj[name] === 'function' ? obj[name].bind(obj) : null;
+}
+
+// The character sheet comes from its own branch (DESIGN §26): shown when this build has it.
+export function characterOpener(ui) {
+  const open = fnOf(ui, 'openCharacter') || fnOf(ui?.character, 'open') || fnOf(ui?.game?.character, 'open');
+  return open ? () => open() : null;
+}
+
+function spellbookReady(game, ui) {
+  const w = ui?.hud?.weaving;
+  if (w && typeof w.available === 'function') return !!w.available();
+  return typeof ui?.openSpellbook === 'function' && !!game?.magic;
+}
+
+// The one menu (DESIGN §24). Resume, then the places that are not already one tap away
+// on the HUD, or whose home is here (the HUD's book, her card and the quest line are
+// shortcuts to the same panels), then settings, save and quit. Inventory and the chat
+// live on the HUD only; How to play is under Settings → Controls. Pure:
+//   [{ id, group, label, hint, key, run, sub }]
+//   group 'main' — Resume; 'go' — places; 'sys' — Settings, Save, Quit.
+// `run(ctx)`: ctx.close() closes the menu, ctx.save() saves; a panel opened from here
+// stacks on top of it, so closing that panel (Esc, ✕) comes back to the menu.
+export function pauseItems(game, ui) {
+  const name = game?.settings?.companionName || game?.companion?.name || 'Lyra';
+  const items = [{ id: 'resume', group: 'main', label: 'Resume', hint: '', key: 'Esc', run: (ctx) => ctx.close() }];
+  if (spellbookReady(game, ui)) items.push({ id: 'spellbook', group: 'go', label: 'Spellbook', hint: 'Your weaves and slots', key: 'B', run: () => ui.openSpellbook() });
+  if (typeof ui?.openMissions === 'function') items.push({ id: 'missions', group: 'go', label: 'Missions', hint: 'What you took on', key: '', run: () => ui.openMissions('active') });
+  items.push({ id: 'lyra', group: 'go', label: name, hint: 'Her mind and memories', key: 'Tab', run: () => ui.openMind?.(ui.mind?.tab || 'now') });
+  const character = characterOpener(ui);
+  if (character) items.push({ id: 'character', group: 'go', label: 'Character', hint: 'Your stats and gear', key: '', run: character });
+  const book = bookAction(game, ui) || (() => openCodex(ui));
+  const prologue = prologueAction(game);
+  items.push({
+    id: 'book',
+    group: 'go',
+    label: 'The Book of Halcyre',
+    hint: 'The world and the story so far',
+    key: '',
+    run: book,
+    sub: prologue ? { id: 'prologue', label: 'Prologue', hint: 'Watch how it began', run: prologue } : null,
+  });
+  items.push({ id: 'settings', group: 'sys', label: 'Settings', hint: 'Sound, controls, her mind', key: '', run: () => ui.openSettings?.() });
+  items.push({ id: 'save', group: 'sys', label: 'Save', hint: 'Save now', key: '', run: (ctx) => ctx.save() });
+  items.push({ id: 'quit', group: 'sys', label: 'Quit to title', hint: 'Saves first', key: '', run: () => ui.quitToTitle?.() });
+  return items;
+}
+
+function whereText(g) {
+  try {
+    const loc = g.locations?.at(g.player.x, g.player.y);
+    return `${loc?.name || 'The Wilds'} · ${g.clock?.fullString?.() || ''}`;
+  } catch {
+    return '';
+  }
+}
+
+function itemButton(it, cls) {
+  const text = h('span', { class: 'menu-text' }, h('span', { class: 'menu-label', text: it.label }), it.hint ? h('span', { class: 'menu-hint', text: it.hint }) : null);
+  return h(
+    'button',
+    { type: 'button', class: `btn menu-item pause-${it.id} ${cls}`.trim(), 'data-item': it.id, title: it.hint || null },
+    menuIcon(it.id),
+    text,
+    it.key ? h('kbd', { class: 'keycap', text: it.key }) : null,
+  );
+}
 
 export function buildPause(ui) {
   const g = ui.game;
-  const panel = makePanel({ id: 'pause', title: 'Paused', subtitle: '', iconName: 'pause', cls: 'panel-small panel-pause' });
+  const panel = makePanel({ id: 'pause', title: 'Menu', subtitle: '', iconName: 'pause', cls: 'panel-small panel-pause', closeLabel: 'Resume' });
   panel.pauses = true;
-  const where = (() => {
+  const where = whereText(g);
+  panel.setTitle('Menu', where ? `Paused · ${where}` : 'Paused');
+  const items = pauseItems(g, ui);
+  let saving = false;
+  let saveTimer = 0;
+  const ctx = {
+    close: () => ui.closeModal(panel),
+    // Saving keeps the menu open and says how it went on the button itself.
+    save: async () => {
+      if (saving) return;
+      saving = true;
+      clearTimeout(saveTimer);
+      const b = panel.el.querySelector('.pause-save');
+      const label = b?.querySelector('.menu-label');
+      toggleClass(b, 'is-done', false);
+      toggleClass(b, 'is-busy', true);
+      if (label) setText(label, 'Saving…');
+      let ok = false;
+      try {
+        ok = !!(await g.save?.save?.('manual'));
+      } catch {
+        ok = false;
+      }
+      saving = false;
+      toggleClass(b, 'is-busy', false);
+      if (label) setText(label, ok ? 'Saved' : 'Not saved');
+      toggleClass(b, 'is-done', ok);
+      saveTimer = setTimeout(() => {
+        if (label) setText(label, 'Save');
+        toggleClass(b, 'is-done', false);
+      }, 2200);
+    },
+  };
+  const run = async (entry) => {
     try {
-      const loc = g.locations?.at(g.player.x, g.player.y);
-      return `${loc?.name || 'The Wilds'} · ${g.clock?.fullString?.() || ''}`;
-    } catch {
-      return '';
+      await entry.run(ctx);
+    } catch (err) {
+      console.warn(`[ui] menu: ${entry.id} failed`, err);
+      ui.toast?.(`${entry.label} will not open right now.`, 'warn');
     }
-  })();
-  panel.setTitle('Paused', where);
-  const menu = h('div', { class: 'pause-menu' });
-  menu.append(
-    button('Resume', { cls: 'btn-ember btn-big', key: 'Esc', onClick: () => ui.closeModal(panel) }),
-    button("Lyra's mind", { icon: 'mind', onClick: () => {
-      ui.closeModal(panel, true);
-      ui.openMind('now');
-    } }),
-    button('Inventory', { icon: 'bag', onClick: () => {
-      ui.closeModal(panel, true);
-      ui.openInventory();
-    } }),
-    ...(typeof ui.openMissions === 'function'
-      ? [button('Missions', { icon: 'scroll', onClick: () => {
-          ui.closeModal(panel, true);
-          ui.openMissions('active');
-        } })]
-      : []),
-    button('The Book of Halcyre', { icon: 'book', onClick: () => {
-      ui.closeModal(panel, true);
-      openCodex(ui);
-    } }),
-    button('Watch the prologue', { icon: 'flame', onClick: () => {
-      ui.closeModal(panel, true);
-      g.story?.playPrologue?.({ world: false });
-    } }),
-    button('Settings', { icon: 'gear', onClick: () => ui.openSettings() }),
-    button('Save game', { icon: 'scroll', onClick: () => g.save?.save?.('manual') }),
-    button('Quit to title', { cls: 'btn-ghost', onClick: () => ui.quitToTitle() }),
-  );
+  };
+
+  const menu = h('nav', { class: 'pause-menu', 'aria-label': 'Menu' });
+  const go = h('div', { class: 'menu-go' });
+  const sys = h('div', { class: 'menu-sys' });
+  // The places sit two to a row (a sideways phone puts them all on one); the Book, with
+  // the Prologue beside it, takes a whole row, and so does an odd one out.
+  const places = items.filter((it) => it.group === 'go' && it.id !== 'book');
+  go.style.setProperty('--n', String(Math.max(1, places.length)));
+  for (const it of items) {
+    if (it.group === 'main') {
+      const b = itemButton(it, 'btn-ember menu-main');
+      b.addEventListener('click', () => run(it));
+      menu.append(b);
+      continue;
+    }
+    if (it.group === 'sys') {
+      const b = itemButton(it, 'btn-ghost menu-sys-item');
+      b.addEventListener('click', () => run(it));
+      sys.append(b);
+      continue;
+    }
+    const b = itemButton(it, 'menu-go-item');
+    b.addEventListener('click', () => run(it));
+    if (it.id === 'book') {
+      const row = h('div', { class: 'menu-row' }, b);
+      if (it.sub) {
+        const sub = h('button', { type: 'button', class: `btn btn-ghost menu-item menu-sub pause-${it.sub.id}`, 'data-item': it.sub.id, title: it.sub.hint }, menuIcon(it.sub.id), h('span', { class: 'menu-label', text: it.sub.label }));
+        sub.addEventListener('click', () => {
+          // The cutscene takes the whole screen: nothing stays open under it.
+          ui.closeAll?.();
+          run(it.sub);
+        });
+        row.append(sub);
+      }
+      go.append(row);
+      continue;
+    }
+    if (places.length % 2 === 1 && it === places[places.length - 1]) b.classList.add('menu-span');
+    go.append(b);
+  }
+  menu.append(go, sys);
+  menu.addEventListener('keydown', (e) => moveFocus(menu, e));
   panel.body.append(menu);
+  panel.onClose = () => clearTimeout(saveTimer);
+  // A gamepad walks it too: the d-pad or a push of the stick moves, A presses, B resumes.
+  let stickWas = null;
+  panel.padNav = (inp) => {
+    let dir = null;
+    for (const a of ['up', 'down', 'left', 'right']) {
+      if (inp.uiPressed(a)) {
+        inp.consume(a);
+        dir = a;
+      }
+    }
+    const v = inp.padVec || { x: 0, y: 0 };
+    const stick = Math.abs(v.x) > Math.abs(v.y) ? (v.x > 0.6 ? 'right' : v.x < -0.6 ? 'left' : null) : v.y > 0.6 ? 'down' : v.y < -0.6 ? 'up' : null;
+    if (stick && stick !== stickWas) dir = dir || stick;
+    stickWas = stick;
+    if (dir) stepFocus(menu, dir);
+    if (inp.uiPressed('attack')) {
+      inp.consume('attack');
+      const at = document.activeElement;
+      if (at && menu.contains(at)) at.click();
+      else stepFocus(menu, 'down');
+    }
+    if (inp.uiPressed('dodge')) {
+      inp.consume('dodge');
+      ctx.close();
+    }
+  };
   return panel;
+}
+
+// Arrow keys walk the menu by where the buttons are on screen (it is a grid): the
+// nearest row (or column) that way, then the button most in line with this one. Home and
+// End jump to its ends. Pure: rects [{ x, y, w, h }] → index, or -1 at the edge.
+export function nextInDirection(rects, from, dir) {
+  const a = rects[from];
+  if (!a) return -1;
+  const vertical = dir === 'down' || dir === 'up';
+  const sign = dir === 'down' || dir === 'right' ? 1 : -1;
+  const mid = (r) => [r.x + r.w / 2, r.y + r.h / 2];
+  const [ax, ay] = mid(a);
+  const cands = [];
+  for (let i = 0; i < rects.length; i++) {
+    if (i === from) continue;
+    const r = rects[i];
+    // Edges, not centres, decide "that way": a wide button below counts as below.
+    const gap = vertical ? (sign > 0 ? r.y - (a.y + a.h) : a.y - (r.y + r.h)) : sign > 0 ? r.x - (a.x + a.w) : a.x - (r.x + r.w);
+    if (gap < -2) continue;
+    const [cx, cy] = mid(r);
+    cands.push({ i, gap, side: vertical ? Math.abs(cx - ax) : Math.abs(cy - ay) });
+  }
+  if (!cands.length) return -1;
+  const near = Math.min(...cands.map((c) => c.gap));
+  let best = null;
+  for (const c of cands) if (c.gap <= near + 6 && (!best || c.side < best.side)) best = c;
+  return best.i;
+}
+
+// Move focus one step: 'up' | 'down' | 'left' | 'right' | 'home' | 'end'.
+function stepFocus(menu, dir) {
+  const list = [...menu.querySelectorAll('button')].filter((b) => !b.disabled && b.offsetParent !== null);
+  if (!list.length) return;
+  const i = list.indexOf(document.activeElement);
+  let n;
+  if (dir === 'home') n = 0;
+  else if (dir === 'end') n = list.length - 1;
+  else if (i < 0) n = 0;
+  else {
+    const rects = list.map((b) => {
+      const r = b.getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height };
+    });
+    n = nextInDirection(rects, i, dir);
+    // Past the edge: wrap around in reading order.
+    if (n < 0) n = dir === 'down' || dir === 'right' ? (i + 1) % list.length : (i - 1 + list.length) % list.length;
+  }
+  list[n].focus();
+}
+
+function moveFocus(menu, e) {
+  const dirs = { ArrowDown: 'down', ArrowUp: 'up', ArrowRight: 'right', ArrowLeft: 'left', Home: 'home', End: 'end' };
+  const dir = dirs[e.key];
+  if (!dir) return;
+  stepFocus(menu, dir);
+  e.preventDefault();
+  e.stopPropagation();
 }
 
 export function buildSign(title, text) {
