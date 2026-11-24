@@ -392,7 +392,7 @@ export class LocalBrain {
         return this.line('ack_free');
       case 'emote':
         if (args.value === 'hug') return bondLevel(this.mind) >= 2 ? 'Come here, you.' : 'Oh — alright. Just a quick one.';
-        if (args.value === 'dance') return this.speech.pick(['Watch and weep.', 'Island style!', 'Only for you.']);
+        if (args.value === 'dance') return this.speech.pick(['Watch and weep.', 'Sheaf Moot style!', 'Only for you.']);
         return this.line('ack_emote');
       case 'sit':
         return this.line('ack_sit');
@@ -1297,7 +1297,7 @@ function favoriteAnswer(fav, soul) {
   if (/colou?r/.test(f)) return 'Moonpetal silver. Or arcane violet — the color a bolt makes just before it leaves your hand.';
   if (/book|story/.test(f)) return 'Anything old, with a cracked spine and someone else\'s notes in the margins.';
   if (/song|music/.test(f)) return this.line('song');
-  if (/animal|creature|pet/.test(f)) return 'Herons. Or the stray cat Pip keeps chasing. I named her Admiral the Second.';
+  if (/animal|creature|pet/.test(f)) return "Mam's bees, though they'd be insulted to hear it. Or Biscuit, the ginger stray Pip follows everywhere.";
   if (/season|weather/.test(f)) return 'Autumn. Rain on roofs and a perfect excuse to stay in with a book.';
   if (/place|spot/.test(f)) return 'Rooftops in the rain. Or Mirror Lake at dawn — from the shore.';
   if (/weapon/.test(f)) return 'My bow. Though a dagger never hurts. Well. It hurts them.';

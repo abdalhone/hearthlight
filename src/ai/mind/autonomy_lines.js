@@ -15,7 +15,7 @@ export const LINES = {
     tired: ['Mm. All right.', 'Fine. Slowly.'],
   },
   ok_follow: {
-    warm: ['Lead on. Try not to walk us into a bog.', 'Right behind you.', 'After you. I like the view of the road.', 'Coming. Calm water.'],
+    warm: ['Lead on. Try not to walk us into a bog.', 'Right behind you.', 'After you. I like the view of the road.', 'Coming. Flame’s lit.'],
     cool: ['I’ll come. Not too close.', 'Fine. I’ll keep up.', 'Walk. I’m behind you.'],
     afraid: ['Coming. Stay where I can see you.', 'Right behind you. Eyes open.'],
     tired: ['Coming. Slowly.', 'Lead. I’ll shuffle after you.'],
@@ -33,7 +33,7 @@ export const LINES = {
     tired: ['I’ll fight. I won’t be pretty about it.'],
   },
   ok_job: {
-    warm: ['{job}? I can do that.', 'Fine, {job}. Hum me a shanty while I work.', '{job}. Honest work. I’m on it.', 'Leave it to me. {job} it is.'],
+    warm: ['{job}? I can do that.', 'Fine, {job}. Hum me something while I work.', '{job}. Honest work. I’m on it.', 'Leave it to me. {job} it is.'],
     cool: ['{job}. Fine.', 'I’ll do it.'],
     afraid: ['{job}. Somewhere quiet, I hope.'],
     tired: ['{job}. Slowly. Don’t time me.'],
@@ -78,7 +78,7 @@ export const LINES = {
     warm: ['Bed. Finally. Wake me if the sky falls.', 'Gladly. I’ll name the stars until I drop off.', 'Goodnight, then. Dream of honey cakes.'],
     cool: ['I’ll sleep.', 'Goodnight.'],
     afraid: ['I’ll sleep. Bar the door.'],
-    tired: ['Oh, thank the tides.', 'Yes. Before I fall over.'],
+    tired: ['Oh, wicks and ashes, yes.', 'Yes. Before I fall over.'],
   },
   ok_talk: {
     warm: ['I’ll go and talk to {target}. I’m good at talking.', 'Leave {target} to me.', 'A chat with {target}? Gladly.'],
@@ -511,7 +511,7 @@ export const LINES = {
     tired: ['I’ll stay. Over here.'],
   },
   to_together: {
-    warm: ['All right. I think we’re all right again.', 'Calm water. I’m done keeping my distance.', 'I’ve decided you’re all right after all. Don’t spoil it.'],
+    warm: ['All right. I think we’re all right again.', 'Flame’s lit. I’m done keeping my distance.', 'I’ve decided you’re all right after all. Don’t spoil it.'],
     cool: ['All right. I’ll walk beside you again.'],
     afraid: ['All right. I believe you.'],
     tired: ['We’re fine. I’m too tired to stay cross.'],
