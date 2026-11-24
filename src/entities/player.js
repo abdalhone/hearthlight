@@ -823,7 +823,8 @@ export class Player extends Actor {
     } else if (carrier) text = `${carrier.name || 'Lyra'} carried you home. ${text}`;
     else if (bothDown) text = `Captain Rowan's patrol found you both on the road and carried you home. ${text}`;
     else text = `Someone from the village found you and carried you home. ${text}`;
-    if (lost > 0) text += ` ${lost} ${lost === 1 ? 'coin' : 'coins'} went missing on the way.`;
+    const coins = `${lost} ${lost === 1 ? 'coin' : 'coins'}`;
+    if (lost > 0) text += d.arrested ? ` The guard kept ${coins} as a fine.` : ` ${coins} went missing on the way.`;
     try {
       g.ui?.toast?.(text, 'warn', { key: 'wake', title: 'Knocked out' });
       const p = g.ui?.fadeIn?.(1.2);

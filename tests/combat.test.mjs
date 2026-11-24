@@ -483,7 +483,7 @@ test('a crime survives a save, and being beaten by the guard settles it', async 
   step(g, 1.5);
   await flushPromises();
   assert.equal(p.downed, false);
-  assert.ok(g.toasts.some((t) => t.text.includes('Captain Rowan Vale hauled you home')));
+  assert.ok(g.toasts.some((t) => t.text.includes('Captain Rowan Vale hauled you home') && t.text.includes('3 coins as a fine')));
 });
 
 test('when Lyra lands the killing blow the player gets the xp too', () => {
