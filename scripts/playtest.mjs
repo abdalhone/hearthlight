@@ -168,7 +168,8 @@ const social = await page.evaluate(async () => {
   let convo = null;
   const off = g.bus.on('conversation', (p) => (convo = p));
   const r = g.actions.run('talk_to', { target: 'bram' }, 'player');
-  for (let i = 0; i < 25 && !convo; i++) await new Promise((res) => setTimeout(res, 1000));
+  // Six lines read at a speaking pace take about 25 s on an idle machine; allow for load.
+  for (let i = 0; i < 45 && !convo; i++) await new Promise((res) => setTimeout(res, 1000));
   off();
   const rel = g.companion.mind.relationships.get('bram');
   return { started: r, lines: convo?.lines?.length || 0, rel: rel ? { familiarity: rel.familiarity, notes: rel.notes?.length } : null };
