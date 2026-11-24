@@ -368,39 +368,47 @@ export class TileMap {
     }
   }
 
-  // Paint ahead between frames: soak a visible chunk while it rains, otherwise build
-  // one missing chunk around the camera, so walking rarely waits.
+  // Paint ahead between frames, one chunk per frame, most urgent first: a stale chunk
+  // on screen, a dry chunk on screen while it rains, a missing chunk around the camera,
+  // then (in the rain) the wet twins of those, so walking rarely waits or pops.
   _warmup() {
     const art = this._art();
     const cam = this.game?.camera;
     if (!art || !cam || this._builtThisFrame > 0 || typeof document === 'undefined') return;
-    const span = CHUNK * TILE;
+    const wet = this.wetness > 0.01;
+    const onScreen = (c) => this._renderTime - c.used < 0.5;
     for (const c of this._chunks.values()) {
-      if (c.stale && this._renderTime - c.used < 0.5) {
+      if (c.stale && onScreen(c)) {
         this._chunk(c.cx, c.cy, art);
         return;
       }
     }
-    if (this.wetness > 0.01) {
+    if (wet) {
       for (const c of this._chunks.values()) {
-        if ((!c.wetCanvas || c.wetStale) && this._renderTime - c.used < 0.5) {
+        if ((!c.wetCanvas || c.wetStale) && onScreen(c)) {
           this._soak(c, art);
           return;
         }
       }
     }
+    const span = CHUNK * TILE;
     const cx0 = Math.max(0, Math.floor((cam.x - span) / span));
     const cy0 = Math.max(0, Math.floor((cam.y - span) / span));
     const cx1 = Math.min(Math.ceil(this.w / CHUNK) - 1, Math.floor((cam.x + cam.vw + span) / span));
     const cy1 = Math.min(Math.ceil(this.h / CHUNK) - 1, Math.floor((cam.y + cam.vh + span) / span));
+    let dryNeighbour = null;
     for (let cy = cy0; cy <= cy1; cy++) {
       for (let cx = cx0; cx <= cx1; cx++) {
-        if (this._chunks.has(cy * 1000 + cx)) continue;
-        if (this._chunks.size >= MAX_CHUNKS - 4) return;
-        this._chunk(cx, cy, art);
-        return;
+        const c = this._chunks.get(cy * 1000 + cx);
+        if (!c) {
+          // The warm area (about 20 chunks) fits the cache: the oldest chunk elsewhere goes.
+          this._chunk(cx, cy, art);
+          return;
+        }
+        if (wet && !dryNeighbour && (!c.wetCanvas || c.wetStale)) dryNeighbour = c;
       }
     }
+    if (dryNeighbour) this._soak(dryNeighbour, art);
   }
 
   // Rain soaks the ground quickly; it dries slowly once the sky clears.
