@@ -13,6 +13,7 @@ export const HAIR_EXTRA = {
   dark_brown: ['#22150f', '#3a251a', '#563727'],
   grey: ['#4c4a55', '#7d7b88', '#b3b1bd'],
   copper: ['#5a2414', '#93401f', '#c86a36'],
+  greying_black: ['#1c1a20', '#3b3942', '#86848f'], // Hess: black going grey
 };
 
 export const CLOTH_EXTRA = {
@@ -28,6 +29,9 @@ export const CLOTH_EXTRA = {
   straw: ['#6b5326', '#a5843f', '#d8b867'],
   rust: ['#3d1c12', '#6e3420', '#9c5530'],
   charcoal: ['#16151b', '#26242d', '#3a3743'],
+  slate: ['#202733', '#364254', '#56657c'],
+  honey: ['#5a3a14', '#966524', '#cf9a3e'],
+  blackthorn: ['#120e10', '#2a1e1c', '#463430'],
   bone: tri(RAMPS.bone),
   iron: tri(RAMPS.iron),
   gold: tri(RAMPS.gold),
@@ -36,11 +40,15 @@ export const CLOTH_EXTRA = {
 
 export const SKIN_NAMES = { deep: 0, brown: 1, tan: 2, light: 3, fair: 4 };
 
-export const HAIR_STYLES = ['short', 'long', 'ponytail', 'braid', 'bun', 'curly', 'bald', 'hood'];
-export const OUTFITS = ['tunic', 'dress', 'robe', 'armor', 'apron', 'trousers'];
+// Round 3 adds tufts (Hobb), cropped (Hess, Tansy), fringe (Tilly) and scarf (Sabeth's
+// headscarf); the coat (Hobb, Alder); the lamplighter's pole, walking sticks, a spear, a
+// fishing rod, a sling, a bolt of cloth and a dye paddle; and builds from lanky to tiny.
+export const HAIR_STYLES = ['short', 'long', 'ponytail', 'braid', 'bun', 'curly', 'bald', 'hood', 'tufts', 'cropped', 'fringe', 'scarf'];
+export const OUTFITS = ['tunic', 'dress', 'robe', 'armor', 'apron', 'trousers', 'coat'];
 export const ACCESSORIES = ['beard', 'mustache', 'glasses', 'hat', 'headband', 'eyepatch', 'earrings'];
-export const HELD_ITEMS = ['sword', 'dagger', 'staff', 'bow', 'hammer', 'hoe', 'ladle', 'book', 'axe', 'none'];
-export const BUILDS = ['normal', 'slim', 'stout', 'big', 'child'];
+export const HELD_ITEMS = ['sword', 'dagger', 'staff', 'bow', 'hammer', 'hoe', 'ladle', 'book', 'axe', 'none', 'lamppole', 'stick', 'spear', 'rod', 'sling', 'cloth', 'paddle'];
+export const BUILDS = ['normal', 'slim', 'stout', 'big', 'child', 'lanky', 'tall', 'broad', 'small', 'tiny', 'teen'];
+export const POSTURES = ['upright', 'stooped', 'bent'];
 
 export function skinRamp(v) {
   if (Array.isArray(v)) return v;
@@ -132,6 +140,26 @@ export function normalizeAppearance(a = {}) {
     rust: !!a.rust,
     skirt: a.skirt !== false,
     bookColor: a.bookColor || null,
+    // Round 3 details (DESIGN §19.1): what makes each newcomer recognisable.
+    posture: POSTURES.includes(a.posture) ? a.posture : 'upright',
+    scarf: hairStyle === 'scarf' ? clothRamp(a.scarfColor ?? 'teal') : null,
+    shawl: a.shawl ? clothRamp(a.shawl) : null,
+    chain: a.chain ? clothRamp(a.chain === true ? 'gold' : a.chain) : null,
+    clothColor: clothRamp(a.clothColor ?? 'teal'),
+    stick: clothRamp(a.stickColor ?? 'leather'),
+    hands: a.handTint ? rampFrom(mixHex(skinRamp(a.skin)[1], a.handTint, 0.55), 0.22) : skinRamp(a.skin),
+    apronStain: a.apronStain ? a.handTint || '#7a4aa0' : null,
+    apronBig: !!a.apronBig,
+    handOut: !!a.handOut,
+    bigEars: !!a.bigEars,
+    bigBoots: !!a.bigBoots,
+    glassesUp: !!a.glassesUp,
+    beltLantern: !!a.beltLantern,
+    knife: !!a.knife,
+    singed: !!a.singed,
+    needle: !!a.needle,
+    rolled: a.sleeves === 'rolled',
+    waxCuffs: a.cuffs === 'wax',
   };
 }
 

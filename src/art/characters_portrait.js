@@ -405,7 +405,18 @@ export function paintPortrait(appearance, expression = 'neutral') {
   sp.shadeAt(C - 3, T + 23, 0);
   // neckline per outfit
   sp.begin({ flat: true, shadow: 'none' });
-  if (a.outfit === 'tunic' || a.outfit === 'trousers') {
+  if (a.outfit === 'coat') {
+    // a coat's lapels open over a shirt, buttons down the front
+    for (let i = 0; i < 5; i++) {
+      sp.set(C - 3 + (i >> 1), shoulderTop + i, a.accent, 2);
+      sp.set(C + 2 - (i >> 1), shoulderTop + i, a.accent, 1);
+    }
+    for (let i = 0; i < 6; i++) {
+      sp.set(C - 6 + i, shoulderTop + i + 1, a.top, 2);
+      sp.set(C + 5 - i, shoulderTop + i + 1, a.top, 0);
+    }
+    for (let y = shoulderTop + 6; y < 48; y += 3) sp.dot(C - 1, y, a.accent[2]);
+  } else if (a.outfit === 'tunic' || a.outfit === 'trousers') {
     for (let i = 0; i < 4; i++) {
       sp.set(C - 3 + i, shoulderTop + i, a.skin, 1);
       sp.set(C + 2 - i, shoulderTop + i, a.skin, 0);
@@ -458,8 +469,9 @@ export function paintPortrait(appearance, expression = 'neutral') {
   // --- ears
   sp.begin({});
   if (!a.skeleton) {
-    sp.ellipse(C - 11.5 - (a.build === 'big' ? 1 : 0), T + 15, 1.8, 2.8, a.skin);
-    sp.ellipse(C + 11.5 + (a.build === 'big' ? 1 : 0), T + 15, 1.8, 2.8, a.skin);
+    const ear = a.bigEars ? 1.2 : 0;
+    sp.ellipse(C - 11.5 - (a.build === 'big' ? 1 : 0) - ear, T + 15 - ear, 1.8 + ear, 2.8 + ear, a.skin);
+    sp.ellipse(C + 11.5 + (a.build === 'big' ? 1 : 0) + ear, T + 15 - ear, 1.8 + ear, 2.8 + ear, a.skin);
     if (a.earrings) {
       sp.begin({ flat: true, shadow: 'none' });
       sp.dot(C - 12, T + 18, a.earrings);
@@ -494,6 +506,7 @@ export function paintPortrait(appearance, expression = 'neutral') {
   }
   face(sp, a, expr, T);
   features(sp, a, expr, T);
+  eyeOverlay(sp, a, expr, T);
   // gentle form shading: the right cheek and jaw turn away from the light
   sp.begin({ flat: true, shadow: 'none' });
   for (let r = 6; r < HEAD_ROWS; r++) {
@@ -533,7 +546,29 @@ export function paintPortrait(appearance, expression = 'neutral') {
   }
 
   // --- hair
-  if (style !== 'bald' && style !== 'hood') {
+  if (style === 'tufts') {
+    // a bald crown with white tufts standing out over the ears, and a wisp on top
+    sp.begin({ flat: true, shadow: 'none' });
+    sp.dot(C - 6, T + 3, lighten(a.skin[2], 0.3));
+    sp.dot(C - 5, T + 3, lighten(a.skin[2], 0.3));
+    sp.dot(C - 7, T + 4, lighten(a.skin[2], 0.2));
+    sp.begin({ band: 1, shadow: 'top' });
+    for (const side of [-1, 1]) {
+      for (let y = T + 5; y < T + 16; y++) {
+        const puff = y < T + 9 ? 2 + (y - T - 5) : y < T + 13 ? 5 : 3;
+        const x0 = side < 0 ? C - 11 - puff + 2 : C + 10;
+        const x1 = side < 0 ? C - 10 : C + 9 + puff - 2;
+        sp.span(x0, x1, y, hairR);
+      }
+    }
+    hairStrands(sp, C - 16, C + 15, T + 4, T + 16, hairR, 4);
+    sp.begin({ flat: true, shadow: 'none' });
+    for (const [x, y] of [[-1, -1], [0, -2], [1, -3], [2, -2], [-2, 0]]) sp.dot(C + x, T + y, hairR[2]);
+  } else if (style === 'scarf') {
+    // the headscarf hides the hair (painted with the headwear); a line of it at the brow
+    sp.begin({ band: 1 });
+    for (let x = C - 9; x <= C + 8; x++) sp.set(x, T + 8, hairR, x < C ? 1 : 0);
+  } else if (style !== 'bald' && style !== 'hood') {
     sp.begin({ band: 2, shadow: 'top' });
     const top = T - (style === 'curly' ? 2 : 1);
     for (let y = top; y <= T + 9; y++) {
@@ -560,12 +595,19 @@ export function paintPortrait(appearance, expression = 'neutral') {
         case 'braid':
           depth = ax > 9.5 ? 16 : 11 + ((x * 7) % 3 === 0 ? 1 : 0);
           break;
+        case 'cropped':
+          depth = ax > 9.5 ? 13 : 9 + ((x * 5) % 3 === 0 ? 1 : 0);
+          break;
+        case 'fringe':
+          // a blunt fringe cut straight across the brow
+          depth = ax > 9.5 ? 15 : 13;
+          break;
         default:
           depth = ax > 9.5 ? 16 : 10 + [1, 2, 1, 0, 1, 2, 2, 1, 0, 1][Math.floor(dx + 10) % 10];
       }
       for (let y = T + 9; y < T + depth; y++) {
         // keep the face open below the bangs except at the sides
-        if (y >= T + 12 && ax < 9.5 && style !== 'long') continue;
+        if (y >= T + (style === 'fringe' ? 13 : 12) && ax < 9.5 && style !== 'long') continue;
         if (y >= T + 14 && ax < 9.5) continue;
         sp.set(x, y, hairR);
       }
@@ -587,6 +629,10 @@ export function paintPortrait(appearance, expression = 'neutral') {
     if (style === 'bun') {
       sp.begin({ band: 1, shadow: 'none' });
       sp.ellipse(C, T - 3, 5, 4, hairR);
+    }
+    if (style === 'fringe' && a.singed) {
+      sp.begin({ flat: true, shadow: 'none' });
+      for (let x = C - 9; x <= C + 8; x += 3) sp.dot(x, T + 12, '#2a1a14');
     }
     if (style === 'ponytail') {
       sp.begin({ band: 1 });
@@ -662,7 +708,67 @@ export function paintPortrait(appearance, expression = 'neutral') {
     for (let x = C - 9; x <= C + 8; x++) sp.detail(x, T + 4, a.skin[0]);
     for (let x = C - 9; x <= C + 8; x++) sp.detail(x, T + 5, mixHex(a.skin[0], a.skin[1], 0.5));
   }
-  if (a.hat) {
+  if (a.scarf) {
+    // Sabeth's headscarf: snug over the crown, down past the ears, knotted at the nape
+    sp.begin({ band: 2, shadow: 'top' });
+    for (let y = T - 2; y < T + 24; y++) {
+      const r = y - T;
+      const outer = r < 0 ? 8 : r < 6 ? headHalf(Math.max(0, r), a.build) + 2 : r < 18 ? 14 : 13 - (r - 18);
+      for (let x = C - outer; x <= C + outer - 1; x++) {
+        const inner = r < 8 ? -1 : headHalf(r, a.build) - (r < 10 ? 1 : 0);
+        if (Math.abs(x - C + 0.5) < inner) continue;
+        sp.set(x, y, a.scarf);
+      }
+    }
+    // the knot and its tail at the side of the neck
+    sp.ellipse(C + 11, T + 24, 3, 2.4, a.scarf);
+    for (let y = T + 25; y < T + 31; y++) sp.span(C + 10 + ((y - T) % 2), C + 12, y, a.scarf);
+    hairStrands(sp, C - 15, C + 15, T - 2, T + 24, a.scarf, 6);
+    sp.begin({ flat: true, shadow: 'none' });
+    for (let x = C - 8; x <= C + 7; x++) sp.dot(x, T + 7, a.scarf[2]);
+  }
+  if (a.hat && a.hatStyle === 'veil') {
+    // a straw beekeeper's hat, the gauze veil pushed back over the crown
+    sp.begin({ band: 2, shadow: 'top' });
+    // the gauze bunched up above and behind the crown
+    sp.begin({ flat: true, shadow: 'none' });
+    for (let y = T - 8; y <= T - 4; y++) {
+      const h = 6 + (y - T + 8) * 1.5;
+      for (let x = Math.round(C - h); x <= Math.round(C + h - 1); x++) sp.dot(x, y, (x + 2 * y) % 5 === 0 ? '#ffffff' : '#dfe4ec', 0.5);
+    }
+    sp.begin({ band: 2, shadow: 'top' });
+    for (let y = T - 4; y <= T + 3; y++) sp.span(C - 9, C + 8, y, a.hat);
+    sp.ellipse(C, T + 5, 18, 2.6, a.hat);
+    sp.begin({ flat: true });
+    for (let x = C - 9; x <= C + 8; x++) sp.dot(x, T + 2, '#e2d2b0');
+    hairStrands(sp, C - 18, C + 18, T - 4, T + 7, a.hat, 2);
+  } else if (a.hat && a.hatStyle === 'knit') {
+    // a fisherman's knit cap: rounded crown, ribbed cuff
+    sp.begin({ band: 2, shadow: 'top' });
+    for (let y = T - 5; y <= T + 3; y++) {
+      const r = y - T + 5;
+      const h = r < 2 ? 7 + r * 2 : 12;
+      sp.span(C - h, C + h - 1, y, a.hat);
+    }
+    sp.begin({ band: 1 });
+    for (let y = T + 4; y <= T + 7; y++) sp.span(C - 13, C + 12, y, a.hat);
+    sp.begin({ flat: true, shadow: 'none' });
+    for (let x = C - 12; x <= C + 11; x += 2) for (let y = T + 4; y <= T + 7; y++) sp.dot(x, y, a.hat[0]);
+    for (let x = C - 9; x <= C + 8; x += 3) sp.dot(x, T - 1, a.hat[2]);
+  } else if (a.hat && a.hatStyle === 'helmet') {
+    // a watchman's kettle helmet, a size too big, sitting low over the brow
+    sp.begin({ band: 2, shadow: 'top' });
+    for (let y = T - 5; y <= T + 7; y++) {
+      const r = y - T + 5;
+      const h = r < 3 ? 8 + r * 2 : 13;
+      sp.span(C - h, C + h - 1, y, a.hat);
+    }
+    sp.ellipse(C, T + 8, 19, 2.4, a.hat);
+    sp.begin({ flat: true, shadow: 'none' });
+    for (let x = C - 7; x <= C - 2; x++) sp.dot(x, T - 3 + (x - C + 7 > 3 ? 1 : 0), '#e6e9f2');
+    for (let x = C - 12; x <= C + 11; x++) sp.dot(x, T + 6, a.hat[0]);
+    for (let x = C - 9; x <= C + 8; x++) sp.detail(x, T + 10, a.skin[0]);
+  } else if (a.hat) {
     if (a.hatStyle === 'brim') {
       sp.begin({ band: 2, shadow: 'top' });
       for (let y = T - 5; y <= T + 3; y++) sp.span(C - 9, C + 8, y, a.hat);
@@ -701,7 +807,8 @@ export function paintPortrait(appearance, expression = 'neutral') {
   }
   if (a.glasses) {
     sp.begin({ flat: true, shadow: 'none' });
-    const ey = T + 13;
+    // pushed up on his head, where he cannot find them
+    const ey = a.glassesUp ? T + 4 : T + 13;
     const frame = '#6b5a4a';
     for (const x0 of [C - 9, C + 3]) {
       for (let i = 0; i < 6; i++) {
@@ -767,5 +874,72 @@ export function paintPortrait(appearance, expression = 'neutral') {
     sp.dot(C + 4, shoulderTop + 2, metal[0]);
   }
   if (a.braid === 'left') paintBraid(sp, hairR, 36, 46);
+  if (a.tabard) {
+    sp.begin({ band: 1 });
+    for (let y = shoulderTop + 3; y < 48; y++) sp.span(C - 5, C + 4, y, a.tabard);
+    sp.begin({ flat: true, shadow: 'none' });
+    for (let y = shoulderTop + 4; y < 48; y++) sp.dot(C - 1, y, a.tabard[2]);
+  }
+  if (a.shawl) {
+    // a moth-eaten shawl round the shoulders, crossed at the throat
+    sp.begin({ band: 2, shadow: 'top' });
+    for (let y = shoulderTop - 2; y < 48; y++) {
+      const t = Math.min(1, (y - shoulderTop + 2) / 5);
+      const h = Math.round(9 + broad + t * (10 + broad));
+      for (let x = C - h; x <= C + h - 1; x++) {
+        if (y > shoulderTop + 1 && Math.abs(x - C + 0.5) < 2 + (y - shoulderTop) * 0.35 && y < shoulderTop + 7) continue;
+        sp.set(x, y, a.shawl);
+      }
+    }
+    hairStrands(sp, 2, 46, shoulderTop - 2, 47, a.shawl, 9);
+    sp.begin({ flat: true, shadow: 'none' });
+    for (const [x, y] of [[-14, 6], [9, 8]]) sp.dot(C + x, shoulderTop + y, a.shawl[0]);
+  }
+  if (a.chain) {
+    // the Reeve's chain of office
+    sp.begin({ flat: true, shadow: 'none' });
+    for (let i = 0; i <= 8; i++) {
+      const y = shoulderTop + 1 + Math.round(Math.sin((i / 8) * Math.PI) * 6);
+      sp.set(C - 8 + i * 2, y, a.chain, i % 2 ? 2 : 1);
+    }
+    sp.ellipse(C - 0.5, shoulderTop + 8.5, 1.6, 1.6, a.chain);
+  }
+  if (a.needle) {
+    sp.begin({ flat: true, shadow: 'none' });
+    for (let i = 0; i < 4; i++) sp.dot(C + 6 + i, shoulderTop + 1 + i, i ? '#c9cede' : '#ffffff');
+  }
+  if (a.beltLantern || a.quiver) {
+    // the quiver strap over her shoulder
+    if (a.quiver) {
+      sp.begin({ flat: true, shadow: 'none' });
+      for (let y = shoulderTop; y < 48; y++) sp.set(C + 8 - Math.round((y - shoulderTop) * 1.3), y, ['#2e1d14', '#51331f', '#76502f'], 1);
+      for (const [x, y] of [[13, -3], [14, -4], [12, -4]]) sp.dot(C + x, shoulderTop + y, '#e0dccf');
+    }
+  }
   return sp;
+}
+
+// Clouded eyes (Wenna) and a water-glare squint (Corran), over the painted eyes.
+function eyeOverlay(sp, a, expr, T) {
+  if (a.eyeStyle !== 'milky' && a.eyeStyle !== 'squint') return;
+  if (expr === 'happy' || expr === 'sleepy' || expr === 'love') return;
+  const ey = T + 13;
+  sp.begin({ flat: true, shadow: 'none' });
+  for (const x0 of [C - 8, C + 4]) {
+    if (a.eyeStyle === 'milky') {
+      for (let i = 1; i < 3; i++) {
+        sp.dot(x0 + i, ey + 1, '#dce8f0');
+        sp.dot(x0 + i, ey + 2, '#b4cad8');
+      }
+      sp.dot(x0 + 1, ey + 1, '#ffffff');
+    } else {
+      for (let i = 0; i < 4; i++) {
+        sp.dot(x0 + i, ey + 1, darken(a.skin[0], 0.05));
+        sp.dot(x0 + i, ey + 2, i === 0 || i === 3 ? a.skin[0] : EYE_DARK);
+        sp.dot(x0 + i, ey + 3, a.skin[1]);
+      }
+      sp.dot(x0 - 1, ey + 2, a.skin[0]);
+      sp.dot(x0 + 4, ey + 3, a.skin[0]);
+    }
+  }
 }

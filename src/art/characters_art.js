@@ -21,7 +21,7 @@ export const CHARACTER_ANIMS = Object.keys(HUMANOID_ANIMS);
 export const CHARACTER_DIRS = DIRECTIONS;
 
 // Anims a creature may not have: what to show instead.
-const ANIM_FALLBACK = { cast: 'attack', work: 'idle', sit: 'idle', sleep: 'down', run: 'walk', attack: 'idle' };
+const ANIM_FALLBACK = { cast: 'attack', work: 'idle', sit: 'idle', sleep: 'down', bed: 'sleep', run: 'walk', attack: 'idle' };
 
 const appearances = new Map(); // key -> normalized appearance (for portraits)
 const portraitCache = new Map();
@@ -42,7 +42,7 @@ function registerFrames(atlas, key, table, painter, kind) {
     for (const dir of DIRECTIONS) {
       const name = `char:${key}:${anim}:${dir}`;
       // Lying poses look the same from every side: share the frames.
-      const shareFrom = (anim === 'down' || anim === 'sleep') && kind === 'humanoid' && dir !== 'down' ? `char:${key}:${anim}:down` : null;
+      const shareFrom = (anim === 'down' || anim === 'sleep' || anim === 'bed') && kind === 'humanoid' && dir !== 'down' ? `char:${key}:${anim}:down` : null;
       if (shareFrom && atlas.has(shareFrom)) {
         atlas.add(name, atlas.get(shareFrom).frames, { ox: ANCHOR_X, oy: ANCHOR_Y, fps: spec.fps });
       } else {

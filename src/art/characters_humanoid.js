@@ -24,7 +24,11 @@ export const HUMANOID_ANIMS = {
   work: { frames: 4, fps: 7, loop: true },
   sit: { frames: 1, fps: 1, loop: true },
   sleep: { frames: 2, fps: 1.2, loop: true },
+  bed: { frames: 1, fps: 1, loop: true }, // lying in a bed along it, seen from above (§19.8)
 };
+
+// In the 'bed' pose the top of the head sits on this frame row (see characters_bed.js).
+export const BED_HEAD_ROW = 4;
 
 export const DIRECTIONS = ['down', 'left', 'right', 'up'];
 
@@ -49,6 +53,20 @@ function geometry(build) {
       return { headTop: 5, shoulderY: 15, waistY: 20, hipY: 21, footY: 28, torso: [5, 5, 5, 5, 5, 5, 5], legs: [12, 16], legW: 4, armW: 2, sideTorso: [-4, 3], headHalf: 5, belly: true };
     case 'slim':
       return { headTop: 5, shoulderY: 15, waistY: 20, hipY: 21, footY: 28, torso: [4, 4, 4, 3, 3, 3, 4], legs: [13, 16], legW: 3, armW: 2, sideTorso: [-3, 2], headHalf: 5 };
+    // Round 3 builds: a lamp-post of an old man, the tall dyer, the smith's broad apprentice,
+    // the small beekeeper, tiny Petra and fifteen-year-old Tansy.
+    case 'lanky':
+      return { headTop: 2, shoulderY: 12, waistY: 19, hipY: 20, footY: 28, torso: [4, 3, 3, 3, 3, 3, 3, 3, 3], legs: [13, 16], legW: 3, armW: 2, sideTorso: [-3, 2], headHalf: 5, lanky: true };
+    case 'tall':
+      return { headTop: 3, shoulderY: 13, waistY: 19, hipY: 20, footY: 28, torso: [4, 4, 4, 4, 3, 3, 4, 4], legs: [12, 16], legW: 4, armW: 2, sideTorso: [-3, 2], headHalf: 5 };
+    case 'broad':
+      return { headTop: 5, shoulderY: 15, waistY: 20, hipY: 21, footY: 28, torso: [6, 5, 5, 5, 4, 4, 5], legs: [12, 16], legW: 4, armW: 3, sideTorso: [-4, 3], headHalf: 5 };
+    case 'small':
+      return { headTop: 8, shoulderY: 18, waistY: 22, hipY: 23, footY: 28, torso: [4, 4, 3, 3, 4, 4], legs: [13, 16], legW: 3, armW: 2, sideTorso: [-3, 2], headHalf: 5 };
+    case 'tiny':
+      return { headTop: 10, shoulderY: 20, waistY: 23, hipY: 24, footY: 28, torso: [4, 4, 4, 4, 4], legs: [13, 16], legW: 3, armW: 2, sideTorso: [-3, 2], headHalf: 5 };
+    case 'teen':
+      return { headTop: 7, shoulderY: 17, waistY: 21, hipY: 22, footY: 28, torso: [4, 3, 3, 3, 3, 3], legs: [13, 16], legW: 3, armW: 2, sideTorso: [-3, 2], headHalf: 5 };
     default:
       return { headTop: 5, shoulderY: 15, waistY: 20, hipY: 21, footY: 28, torso: [4, 4, 4, 4, 4, 4, 4], legs: [12, 16], legW: 4, armW: 2, sideTorso: [-3, 2], headHalf: 5 };
   }
@@ -80,7 +98,17 @@ const FRINGES = {
   curly: [7, 6, 4, 4, 3, 4, 4, 4, 6, 7],
   bald: null,
   hood: null,
+  cropped: [5, 3, 2, 2, 2, 2, 2, 2, 3, 5],
+  fringe: [7, 6, 5, 5, 5, 5, 5, 5, 6, 7],
+  tufts: null,
+  scarf: null,
 };
+
+// How far the head drops and juts forward for a stoop (Hobb) or a back bent nearly
+// double (Petra).
+function postureOf(a) {
+  return a.posture === 'bent' ? { drop: 2, jut: 2 } : a.posture === 'stooped' ? { drop: 1, jut: 1 } : { drop: 0, jut: 0 };
+}
 
 // ---------------------------------------------------------------------------
 // Poses. Each frame is a small object; see paintFront/paintSide for meaning.
@@ -114,8 +142,9 @@ function basePose() {
 
 function itemClass(held) {
   if (held === 'bow') return 'bow';
-  if (held === 'staff' || held === 'hoe') return 'pole';
-  if (held === 'book') return 'book';
+  if (held === 'staff' || held === 'hoe' || held === 'lamppole' || held === 'spear' || held === 'rod' || held === 'paddle') return 'pole';
+  if (held === 'stick') return 'stick';
+  if (held === 'book' || held === 'cloth') return 'book';
   if (held === 'none') return 'none';
   return 'blade';
 }
@@ -129,6 +158,8 @@ export function humanoidPose(anim, frame, view, a) {
     case 'idle': {
       p.breath = [0, 1, 1, 0][frame % 4];
       p.sway = [0, 0, 1, 1][frame % 4];
+      // Wenna keeps a hand out in front of her (LORE §6).
+      if (a.handOut) p.armL = side ? { fx: 3, fy: -4 + (frame % 4 > 1 ? 1 : 0) } : { fx: 1, fy: -3 };
       break;
     }
     case 'walk': {
@@ -267,6 +298,16 @@ export function humanoidPose(anim, frame, view, a) {
       p.bob = f === 3 ? 1 : 0;
       p.face = f >= 2 ? 'focus' : 'open';
       p.smear = side && f === 2 ? [-1, -1, 1, 1] : null;
+      if (p.tool === 'lamppole') {
+        // Reaching the pole up to a lamp-head, steadying it, then the small lift of lighting.
+        p.twoHand = false;
+        p.smear = null;
+        p.lean = 0;
+        p.face = 'focus';
+        p.bob = 0;
+        p.item = side ? [1, -1] : [0, -1];
+        p.armR = side ? [{ fx: 2, fy: -7 }, { fx: 3, fy: -8 }, { fx: 3, fy: -9 }, { fx: 3, fy: -8 }][f] : [{ fx: -1, fy: -6 }, { fx: -1, fy: -7 }, { fx: -1, fy: -8 }, { fx: -1, fy: -7 }][f];
+      }
       break;
     }
     case 'sit': {
@@ -274,9 +315,10 @@ export function humanoidPose(anim, frame, view, a) {
       p.bob = a.build === 'child' ? 3 : 4;
       p.armR = side ? { fx: 2, fy: 0 } : { fx: -1, fy: 1 };
       p.armL = side ? { fx: 2, fy: 0 } : { fx: -1, fy: 1 };
-      p.hideItem = a.held !== 'book';
+      p.hideItem = a.held !== 'book' && a.held !== 'cloth';
       break;
     }
+    case 'bed':
     case 'sleep': {
       p.face = 'closed';
       p.breath = frame % 2;
@@ -295,6 +337,12 @@ export function humanoidPose(anim, frame, view, a) {
   if (side && cls === 'pole' && (anim === 'idle' || anim === 'walk' || anim === 'hurt')) {
     p.armR = { fx: 4, fy: 1 + (anim === 'walk' ? 0 : 0) };
   }
+  // A walking stick goes ahead of the feet and finds the ground.
+  if (cls === 'stick' && (anim === 'idle' || anim === 'walk')) {
+    if (side) p.armR = { fx: 3, fy: anim === 'walk' ? [-1, 0, 0, -1, 0, 0][frame % 6] : 0 };
+    else p.armR = { fx: 0, fy: 0 };
+  }
+  if (a.handOut && anim === 'walk') p.armL = side ? { fx: 3, fy: -4 } : { fx: 1, fy: -3 };
   return p;
 }
 
@@ -427,6 +475,59 @@ function itemPixels(kind, a, opts = {}) {
       }
       break;
     }
+    case 'lamppole': {
+      // Hobb's long lamplighter's pole with its brass hook (and a taper wick at the top).
+      for (let k = -8; k <= 16; k++) add(k, 0, DARK_WOOD, k % 5 === 0 ? 2 : 1);
+      add(17, 0, GOLD, 2);
+      add(18, 0, GOLD, 2);
+      add(18, 1, GOLD, 1);
+      add(17, 2, GOLD, 1);
+      add(16, 2, GOLD, 0);
+      add(19, -1, ['#ffb047', '#ffe08a', '#fff6c8'], 2);
+      break;
+    }
+    case 'stick':
+      // A walking stick from the hand down to the ground, knob at the top.
+      add(-1, 0, a.stick, 2);
+      add(-1, -1, a.stick, 2);
+      for (let k = 0; k <= 8; k++) add(k, 0, a.stick, k < 3 ? 1 : 0);
+      break;
+    case 'spear':
+      for (let k = -7; k <= 11; k++) add(k, 0, WOOD, 1);
+      add(12, 0, IRON, 1);
+      add(12, -1, IRON, 2);
+      add(12, 1, IRON, 0);
+      add(13, 0, IRON, 2);
+      add(13, -1, IRON, 2);
+      add(14, 0, IRON, 2);
+      add(15, 0, ['#e6e9f2', '#e6e9f2', '#e6e9f2'], 1);
+      add(11, -1, ['#7a2232', '#7a2232', '#7a2232'], 1);
+      break;
+    case 'rod':
+      // A fishing rod held up and out, a cork float on its line.
+      for (let k = -3; k <= 13; k++) add(k, 0, ['#5a4020', '#8a6a3a', '#b8945a'], k < 4 ? 1 : 2);
+      add(0, 1, IRON, 1);
+      add(1, 1, IRON, 0);
+      out.push([14, 1, ['#d8d0c0', '#d8d0c0', '#d8d0c0'], 1, true]);
+      out.push([14, 2, ['#d8d0c0', '#d8d0c0', '#d8d0c0'], 1, true]);
+      add(14, 3, ['#7a2232', '#ab3a45', '#ffffff'], 1);
+      break;
+    case 'sling':
+      add(0, 0, LEATHER, 1);
+      for (let k = 1; k <= 4; k++) add(k, 0, ['#5a4632', '#8a7050', '#b89a70'], 1);
+      add(5, -1, LEATHER, 2);
+      add(5, 0, LEATHER, 1);
+      add(5, 1, LEATHER, 0);
+      add(6, 0, ['#5a5a66', '#8a8a96', '#bcbcc8'], 1);
+      break;
+    case 'paddle':
+      for (let k = -4; k <= 7; k++) add(k, 0, WOOD, 1);
+      for (let k = 8; k <= 11; k++) {
+        add(k, -1, ['#2e1846', '#4c2a78', '#7148a8'], 2);
+        add(k, 0, ['#2e1846', '#4c2a78', '#7148a8'], 1);
+        add(k, 1, ['#12343a', '#1e5459', '#2f7a7c'], 1);
+      }
+      break;
     default:
       break;
   }
@@ -488,6 +589,7 @@ class Painter {
   }
 
   paint() {
+    if (this.anim === 'bed') return this.paintInBed();
     if (this.anim === 'sleep' || this.anim === 'down') return this.paintLying();
     if (this.view === 'side') this.paintSide();
     else this.paintFrontBack(this.view === 'up');
@@ -499,7 +601,7 @@ class Painter {
     const { a, g, p, sp } = this;
     const by = p.bob;
     const uy = by - p.breath;
-    const T = g.headTop + uy + p.headDy + (p.lean < 0 && this.anim === 'hurt' ? -1 : 0);
+    const T = g.headTop + uy + p.headDy + (p.lean < 0 && this.anim === 'hurt' ? -1 : 0) + (this.anim === 'bed' ? 0 : postureOf(a).drop);
     const th = g.torso;
     // Right arm sits on screen left when facing us, screen right from behind.
     const rightOnLeft = !back;
@@ -519,6 +621,8 @@ class Painter {
     // 4. arms (with items in hand)
     this.armAndItem('L', !rightOnLeft, uy, by, back);
     this.armAndItem('R', rightOnLeft, uy, by, back);
+    // 4b. what goes over the arms: Petra's shawl, the Reeve's chain, Hess's gear
+    this.overArms(uy, by, back);
 
     // 5. head
     this.headFront(T, back);
@@ -535,11 +639,80 @@ class Painter {
       this.drawItem(hx, hy, out, back, false);
       sp.begin({ shadow: 'all' });
       for (const [x, y] of this.lateHands) {
-        if (p.twoHand || (x === hx && y === hy)) sp.rect(x, y, g.armW, 2, a.skin);
+        if (p.twoHand || (x === hx && y === hy)) sp.rect(x, y, g.armW, 2, a.hands || a.skin);
       }
     }
     this.glows(back);
     return sp;
+  }
+
+  // Things worn over the shoulders and at the belt, painted after the arms (round 3).
+  overArms(uy, by, back) {
+    const { a, g, sp } = this;
+    const top = g.shoulderY + uy;
+    const waist = g.waistY + by;
+    const h = g.torso[0];
+    if (a.shawl) {
+      // a moth-eaten shawl: over both shoulders, pointed down the back or crossed in front
+      sp.begin({ band: 1, shadow: 'top' });
+      for (let r = -1; r <= 4; r++) {
+        const w = r < 0 ? h : r < 2 ? h + g.armW + (r === 1 ? 0 : 1) : Math.max(1, h + g.armW - (r - 1) * 2);
+        for (let x = CX - w; x <= CX + w - 1; x++) {
+          if (!back && r >= 1 && Math.abs(x - CX + 0.5) < 2 - (r > 2 ? 1 : 0)) continue;
+          sp.set(x, top + r, a.shawl);
+        }
+      }
+      if (back) sp.set(CX - 1, top + 5, a.shawl, 0);
+      sp.begin({ flat: true, shadow: 'none' });
+      sp.dot(CX - h - 1, top + 2, a.shawl[0]);
+      sp.dot(CX + h + 1, top + 3, a.shawl[0]);
+      if (!back) {
+        // fringe tassels and a moth hole
+        sp.dot(CX - 2, top + 5, a.shawl[1]);
+        sp.dot(CX + 1, top + 5, a.shawl[1]);
+        sp.dot(CX + h, top + 1, a.shawl[0]);
+      }
+    }
+    if (a.chain && !back) {
+      sp.begin({ flat: true, shadow: 'none' });
+      const c = a.chain;
+      for (const [dx, dy, t] of [
+        [-3, 0, 2],
+        [-3, 1, 1],
+        [-2, 2, 2],
+        [-1, 3, 1],
+        [0, 3, 1],
+        [1, 2, 0],
+        [2, 1, 1],
+        [2, 0, 0],
+      ])
+        sp.set(CX + dx, top + dy, c, t);
+      sp.set(CX - 1, top + 4, c, 2);
+      sp.set(CX, top + 4, c, 1);
+      sp.set(CX - 1, top + 5, c, 0);
+    }
+    if (a.quiver && !back) {
+      // the quiver strap across the chest
+      sp.begin({ flat: true, shadow: 'none' });
+      for (let i = 0; i <= waist - top - 1; i++) sp.set(CX + h - 2 - Math.round(i * ((2 * h - 3) / Math.max(1, waist - top - 1))), top + i, LEATHER, 1);
+    }
+    if (a.beltLantern) {
+      // a hooded road-candle at the belt: a warm point of light
+      const x = back ? CX - h - 1 : CX + h;
+      sp.begin({ band: 0 });
+      sp.set(x, waist + 1, IRON, 1);
+      sp.set(x, waist + 3, IRON, 0);
+      sp.begin({ flat: true, shadow: 'none' });
+      sp.dot(x, waist + 2, '#ffb047');
+    }
+    if (a.knife && !back) {
+      sp.begin({ band: 0 });
+      sp.set(CX - h - 1, waist + 1, LEATHER, 1);
+      sp.set(CX - h - 1, waist + 2, LEATHER, 1);
+      sp.set(CX - h - 1, waist + 3, LEATHER, 0);
+      sp.begin({ flat: true, shadow: 'none' });
+      sp.dot(CX - h - 1, waist, '#a3a8b8');
+    }
   }
 
   legsFront(by, back) {
@@ -572,6 +745,16 @@ class Painter {
       for (let y = legTop; y <= footBottom - 2; y++) sp.span(x0, x0 + w - 1, y, dress ? a.shoes : legRamp);
       sp.begin({});
       const shoeW = w;
+      if (a.bigBoots) {
+        // her mother's boots, too big: tall and wide
+        const bx0 = x0 - (i === 0 ? 1 : 0);
+        const bx1 = x0 + shoeW - 1 + (i === 1 ? 1 : 0);
+        sp.span(x0, x0 + shoeW - 1, footBottom - 3, a.shoes);
+        sp.span(x0, x0 + shoeW - 1, footBottom - 2, a.shoes);
+        sp.span(bx0, bx1, footBottom - 1, a.shoes);
+        sp.span(bx0, bx1, footBottom, a.shoes);
+        continue;
+      }
       sp.span(x0, x0 + shoeW - 1, footBottom - 1, a.shoes);
       sp.span(x0, x0 + shoeW - 1, footBottom, a.shoes);
       if (!back) sp.shadeAt(i === 0 ? x0 : x0, footBottom - 1, 2);
@@ -623,6 +806,31 @@ class Painter {
           sp.set(CX - 1, top + 3, a.accent, 0);
         }
         this.belt(waist, halfAt(waist), back);
+        break;
+      }
+      case 'coat': {
+        // a long coat to the knee over trousers, open at the front, buttons down it
+        const end = Math.min(g.footY - 3, bottom + 5);
+        sp.begin({ band: 1 });
+        for (let y = waist + 1; y <= end; y++) {
+          const h = halfAt(waist) + 1 + (y > bottom ? 1 : 0);
+          for (let x = CX - h; x <= CX + h - 1; x++) {
+            if (!back && y > waist + 1 && (x === CX - 1 || x === CX)) continue;
+            sp.set(x, y, a.top);
+          }
+        }
+        if (!back) {
+          sp.begin({ flat: true, shadow: 'none' });
+          for (let y = top + 2; y <= waist; y += 2) sp.dot(CX - 1, y, a.accent[2]);
+          sp.set(CX - 2, top, a.accent, 2);
+          sp.set(CX + 1, top, a.accent, 1);
+          sp.shadeAt(CX - 2, end, 0);
+          sp.shadeAt(CX + 1, end, 0);
+        } else {
+          sp.shadeAt(CX - 1, end - 1, 0);
+          sp.shadeAt(CX - 1, end, 0);
+        }
+        this.belt(waist, halfAt(waist), back, true);
         break;
       }
       case 'trousers': {
@@ -680,8 +888,21 @@ class Painter {
         if (!back) {
           sp.begin({ band: 1 });
           for (let y = top + 2; y <= end - 1; y++) {
-            const h = y <= waist ? 2 : 3;
+            const h = (y <= waist ? 2 : 3) + (a.apronBig ? 1 : 0);
             sp.span(CX - h, CX + h - 1, y, a.apron);
+          }
+          if (a.apronBig) for (let x = CX - 3; x <= CX + 2; x++) sp.set(x, end, a.apron, 0);
+          if (a.apronStain) {
+            // dye to the elbows and down the apron
+            sp.begin({ flat: true, shadow: 'none' });
+            for (const [dx, dy] of [
+              [-2, 1],
+              [1, 3],
+              [-1, 4],
+              [2, 0],
+              [0, 6],
+            ])
+              if (waist + dy <= end - 1) sp.dot(CX + dx, waist + dy, mixHex(a.apron[1], a.apronStain, 0.6));
           }
           sp.begin({ flat: true, shadow: 'none' });
           sp.set(CX - 3, top + 1, a.apron, 2);
@@ -825,8 +1046,13 @@ class Painter {
     // Items held in front are painted last (over hair and mantle); remember the hand.
     if (!back && which === 'R' && showItem) this.lateItem = { hx, hy, out: geo.out };
     if (!back) this.lateHands.push([hx, hy]);
+    if (a.rolled && !a.skeleton && hy - geo.sy >= 4) {
+      // sleeves rolled to the elbow
+      sp.begin({ band: 0 });
+      sp.limb(Math.round((geo.sx + hx) / 2), Math.round((geo.sy + hy) / 2), hx, hy - 1, g.armW, a.skin);
+    }
     sp.begin({ shadow: 'all' });
-    sp.rect(hx, hy, g.armW, 2, a.skin);
+    sp.rect(hx, hy, g.armW, 2, a.hands || a.skin);
     if (a.skeleton) {
       sp.begin({});
       sp.set(hx, hy, a.skin);
@@ -840,10 +1066,19 @@ class Painter {
     if (kind === 'none') return;
     const gx = out < 0 ? hx : hx + g.armW - 1;
     const gy = hy + 1;
-    if (kind === 'book') {
+    if (kind === 'book' || kind === 'cloth') {
       sp.begin({ band: 1 });
       const bx = out < 0 ? hx - 1 : hx;
-      const color = clothRamp(a.bookColor || 'wine');
+      const color = kind === 'cloth' ? a.clothColor : clothRamp(a.bookColor || 'wine');
+      if (kind === 'cloth') {
+        // a folded length of dyed cloth draped over the hand, a needle catching the light
+        sp.rect(bx - 1, hy - 1, 4, 3, color);
+        sp.set(bx, hy + 2, color, 0);
+        sp.set(bx + 1, hy + 3, color, 0);
+        sp.begin({ flat: true, shadow: 'none' });
+        sp.dot(bx + 2, hy - 1, '#e6e9f2');
+        return;
+      }
       sp.rect(bx, hy - 1, 3, 4, color);
       sp.begin({ flat: true });
       if (!back) {
@@ -874,7 +1109,14 @@ class Painter {
     switch (kind) {
       case 'staff':
       case 'hoe':
+      case 'lamppole':
+      case 'spear':
+      case 'paddle':
         return [0, -1];
+      case 'rod':
+        return [1, -1];
+      case 'stick':
+        return [0, 1];
       case 'bow':
         return [1, 0];
       case 'sword':
@@ -952,13 +1194,22 @@ class Painter {
   headFront(T, back) {
     const { a, sp } = this;
     // ears first so the head overlaps them
-    const showEars = a.hairStyle === 'short' || a.hairStyle === 'bald' || a.hairStyle === 'ponytail' || a.hairStyle === 'bun';
+    const showEars = ['short', 'bald', 'ponytail', 'bun', 'tufts', 'cropped', 'fringe'].includes(a.hairStyle);
     if (showEars && !a.skeleton) {
       sp.begin({});
       sp.set(CX - 6, T + 5, a.skin, 1);
       sp.set(CX - 6, T + 6, a.skin, 0);
       sp.set(CX + 5, T + 5, a.skin, 1);
       sp.set(CX + 5, T + 6, a.skin, 0);
+      if (a.bigEars) {
+        // ears that stick out under the helmet
+        sp.set(CX - 7, T + 4, a.skin, 2);
+        sp.set(CX - 7, T + 5, a.skin, 1);
+        sp.set(CX - 7, T + 6, a.skin, 0);
+        sp.set(CX + 6, T + 4, a.skin, 1);
+        sp.set(CX + 6, T + 5, a.skin, 0);
+        sp.set(CX + 6, T + 6, a.skin, 0);
+      }
       if (a.earrings && !back) {
         sp.dot(CX - 6, T + 7, a.earrings);
         sp.dot(CX + 5, T + 7, a.earrings);
@@ -989,7 +1240,23 @@ class Painter {
     const lx = big ? CX - 4 : CX - 3;
     const rx = big ? CX + 2 : CX + 2;
     const face = p.face;
-    if (face === 'closed' || face === 'ko') {
+    if (a.eyeStyle === 'milky' && face !== 'closed' && face !== 'ko' && face !== 'hurt') {
+      // clouded eyes, looking at nothing in particular
+      sp.dot(lx, ey, '#d8e4ec');
+      sp.dot(lx, ey + 1, '#a8c4d8');
+      sp.dot(rx, ey, '#d8e4ec');
+      sp.dot(rx, ey + 1, '#a8c4d8');
+      sp.dot(lx - 1, ey - 1, a.skin[0]);
+      sp.dot(rx + 1, ey - 1, a.skin[0]);
+    } else if (a.eyeStyle === 'squint' && face !== 'hurt') {
+      // sixty years of water glare
+      sp.dot(lx, ey + 1, EYE_DARK);
+      sp.dot(lx + 1, ey + 1, mixHex(EYE_DARK, a.skin[0], 0.4));
+      sp.dot(rx, ey + 1, EYE_DARK);
+      sp.dot(rx - 1, ey + 1, mixHex(EYE_DARK, a.skin[0], 0.4));
+      sp.dot(lx, ey + 2, a.skin[0]);
+      sp.dot(rx, ey + 2, a.skin[0]);
+    } else if (face === 'closed' || face === 'ko') {
       sp.dot(lx, ey + 1, EYE_DARK);
       sp.dot(rx + (big ? 1 : 0), ey + 1, EYE_DARK);
       if (big) {
@@ -1095,7 +1362,16 @@ class Painter {
       sp.dot(CX - 1, T + 8, mixHex(a.skin[0], '#4a1a24', 0.5));
       sp.dot(CX, T + 8, mixHex(a.skin[0], '#4a1a24', 0.5));
     }
-    if (a.glasses) {
+    if (a.glasses && a.glassesUp) {
+      // spectacles pushed up on his head, where he cannot find them
+      sp.begin({ flat: true, shadow: 'none' });
+      for (const x of [CX - 4, CX + 1]) {
+        sp.dot(x, T + 1, '#6b5a4a');
+        sp.dot(x + 1, T + 1, '#cfe6f0');
+        sp.dot(x + 2, T + 1, '#6b5a4a');
+      }
+      sp.dot(CX - 1, T + 1, '#6b5a4a');
+    } else if (a.glasses) {
       sp.begin({ flat: true, shadow: 'none' });
       const frame = '#6b5a4a';
       const glass = '#cfe6f0';
@@ -1172,6 +1448,35 @@ class Painter {
   hairFront(T, back) {
     const { a, p, sp } = this;
     const style = a.hairStyle;
+    if (style === 'tufts') {
+      // white tufts over the ears, a few wisps standing up on a bald crown
+      sp.begin({ flat: true, shadow: 'none' });
+      sp.dot(CX - 3, T + 1, lighten(a.skin[2], 0.3));
+      sp.dot(CX - 2, T + 1, lighten(a.skin[2], 0.2));
+      sp.begin({ shadow: 'top' });
+      for (const sx of [-1, 1]) {
+        const x0 = sx < 0 ? CX - 6 : CX + 4;
+        for (let r = 2; r <= 6; r++) {
+          sp.set(x0, T + r, a.hair, r === 2 ? 2 : 1);
+          sp.set(x0 + 1, T + r, a.hair, r < 4 ? 2 : 1);
+        }
+        sp.set(sx < 0 ? x0 - 1 : x0 + 2, T + 3, a.hair, 2);
+        sp.set(sx < 0 ? x0 - 1 : x0 + 2, T + 4, a.hair, 1);
+      }
+      sp.begin({ flat: true, shadow: 'none' });
+      sp.dot(CX - 1, T - 1, a.hair[2]);
+      sp.dot(CX, T - 2, a.hair[1]);
+      sp.dot(CX + 1, T - 1, a.hair[2]);
+      return;
+    }
+    if (style === 'scarf') {
+      // the scarf is painted with the headwear; a line of black hair shows at the brow
+      if (!back) {
+        sp.begin({ flat: true, shadow: 'none' });
+        for (let x = CX - 4; x <= CX + 3; x++) sp.dot(x, T + 3, x < CX ? a.hair[1] : a.hair[0]);
+      }
+      return;
+    }
     if (style === 'hood' || style === 'bald') {
       if (style === 'bald' && !back) {
         sp.begin({ flat: true, shadow: 'none' });
@@ -1241,6 +1546,11 @@ class Painter {
       sp.begin({ shadow: 'none' });
       sp.ellipse(CX, T - 1, 2.6, 2.1, a.hair);
     }
+    if (style === 'fringe' && a.singed) {
+      // a blunt fringe singed at the ends
+      sp.begin({ flat: true, shadow: 'none' });
+      for (let c = 2; c < 8; c += 2) sp.dot(CX - 5 + c, T + fr[c] - 1, '#2a1a14');
+    }
     if (style === 'braid' && a.braid !== 'left') {
       sp.begin({});
       this.braidStrand(CX + 4, T + 7, CX + 5, T + 13, a.hair);
@@ -1290,18 +1600,23 @@ class Painter {
   hairBackView(T, uy) {
     const { a, p, sp, g } = this;
     const style = a.hairStyle;
-    if (style === 'hood') return;
-    if (style === 'bald') {
-      if (a.wrinkles) {
+    if (style === 'hood' || style === 'scarf') return;
+    if (style === 'bald' || style === 'tufts') {
+      if (a.wrinkles || style === 'tufts') {
         sp.begin({});
         sp.span(CX - 5, CX + 4, T + 5, a.hair);
+        if (style === 'tufts') {
+          sp.span(CX - 6, CX + 5, T + 4, a.hair);
+          sp.span(CX - 5, CX + 4, T + 6, a.hair);
+          sp.dot(CX, T - 1, a.hair[2]);
+        }
       }
       return;
     }
     sp.begin({ shadow: 'all', band: 1 });
     for (let r = 0; r < 10; r++) {
       const h = HEAD_ROWS[r] + (style === 'curly' && r > 0 && r < 8 ? 1 : 0);
-      if (r >= 8 && (style === 'short' || style === 'bun' || style === 'ponytail')) {
+      if (r >= 8 && (style === 'short' || style === 'bun' || style === 'ponytail' || style === 'cropped' || style === 'fringe')) {
         sp.span(CX - h + 1, CX + h - 2, T + r, a.hair);
         continue;
       }
@@ -1356,6 +1671,74 @@ class Painter {
 
   headwear(T, back) {
     const { a, sp } = this;
+    if (a.scarf) {
+      // Sabeth's teal headscarf: snug over the crown and ears, knotted at the nape
+      const sc = a.scarf;
+      sp.begin({ band: 1, shadow: 'top' });
+      for (let r = -1; r <= 7; r++) {
+        const h = r < 0 ? 3 : r < 1 ? 4 : r < 7 ? 6 : 5;
+        for (let x = CX - h; x <= CX + h - 1; x++) {
+          if (!back && r >= 3 && x >= CX - 4 && x <= CX + 3) continue;
+          if (!back && r >= 2 && x >= CX - 3 && x <= CX + 2 && r > 2) continue;
+          sp.set(x, T + r, sc);
+        }
+      }
+      sp.begin({ flat: true, shadow: 'none' });
+      if (!back) {
+        for (let x = CX - 4; x <= CX + 3; x++) sp.dot(x, T + 2, sc[2]);
+      } else {
+        // the knot and its tails
+        sp.set(CX - 1, T + 8, sc, 2);
+        sp.set(CX, T + 8, sc, 1);
+        sp.set(CX - 2, T + 9, sc, 1);
+        sp.set(CX + 1, T + 9, sc, 0);
+        sp.set(CX - 2, T + 10, sc, 0);
+      }
+      return;
+    }
+    if (a.hat && a.hatStyle === 'veil') {
+      // Wenna's straw beekeeper's hat, the veil pushed back over the crown
+      const hat = a.hat;
+      sp.begin({ band: 1, shadow: 'top' });
+      sp.span(CX - 7, CX + 6, T + 2, hat);
+      sp.span(CX - 6, CX + 5, T + 3, hat, 0);
+      for (let r = -1; r <= 1; r++) sp.span(CX - 4, CX + 3, T + r, hat);
+      sp.begin({ flat: true, shadow: 'none' });
+      for (let x = CX - 4; x <= CX + 3; x++) sp.dot(x, T + 1, '#e2d2b0');
+      // gauze veil bunched at the back of the brim
+      for (let x = CX - 6; x <= CX + 5; x++) if ((x + T) % 2 === 0 || back) sp.dot(x, back ? T + 4 : T - 2, back ? '#cfd2da' : '#e8ecf2', back ? 0.85 : 0.75);
+      if (back) for (let x = CX - 5; x <= CX + 4; x += 2) sp.dot(x, T + 5, '#cfd2da', 0.7);
+      else {
+        sp.dot(CX - 5, T - 1, '#e8ecf2', 0.7);
+        sp.dot(CX + 4, T - 1, '#e8ecf2', 0.7);
+      }
+      return;
+    }
+    if (a.hat && a.hatStyle === 'knit') {
+      // a fisherman's knitted cap with a turned-up cuff
+      const hat = a.hat;
+      sp.begin({ band: 1, shadow: 'top' });
+      for (let r = -2; r <= 1; r++) sp.span(CX - (r < -1 ? 3 : r < 0 ? 4 : 5), CX + (r < -1 ? 2 : r < 0 ? 3 : 4), T + r, hat);
+      sp.span(CX - 6, CX + 5, T + 2, hat, 0);
+      sp.span(CX - 6, CX + 5, T + 3, hat, 0);
+      sp.begin({ flat: true, shadow: 'none' });
+      for (let x = CX - 5; x <= CX + 4; x += 2) sp.dot(x, T + 2, hat[2]);
+      for (let x = CX - 3; x <= CX + 2; x += 2) sp.dot(x, T - 1, hat[0]);
+      return;
+    }
+    if (a.hat && a.hatStyle === 'helmet') {
+      // a watchman's kettle helmet, a size too big: low over the brow
+      const hat = a.hat;
+      sp.begin({ band: 2, shadow: 'top' });
+      for (let r = -2; r <= 3; r++) sp.span(CX - (r < -1 ? 4 : r < 0 ? 5 : 6), CX + (r < -1 ? 3 : r < 0 ? 4 : 5), T + r, hat);
+      sp.span(CX - 8, CX + 7, T + 4, hat, 1);
+      sp.begin({ flat: true, shadow: 'none' });
+      sp.dot(CX - 3, T - 1, '#e6e9f2');
+      sp.dot(CX - 2, T - 2, '#e6e9f2');
+      for (let x = CX - 6; x <= CX + 5; x++) sp.dot(x, T + 3, hat[0]);
+      if (!back) for (let x = CX - 4; x <= CX + 3; x++) sp.detail(x, T + 5, a.skin[0]);
+      return;
+    }
     if (a.hoodUp && a.hood) {
       const hood = a.hood;
       sp.begin({ band: 1, shadow: 'top' });
@@ -1505,7 +1888,8 @@ class Painter {
     const by = p.bob;
     const uy = by - p.breath;
     const lean = p.lean;
-    const T = g.headTop + uy + p.headDy;
+    const post = postureOf(a);
+    const T = g.headTop + uy + p.headDy + post.drop;
     const nearIsRight = this.s > 0;
     const farArm = nearIsRight ? 'L' : 'R';
     const nearArm = nearIsRight ? 'R' : 'L';
@@ -1517,7 +1901,12 @@ class Painter {
     this.sideLeg(p.legB, by, true);
     this.sideLeg(p.legA, by, false);
     this.sideTorso(uy, by, lean);
-    this.sideHead(T, lean);
+    if (post.jut) {
+      // the stoop: shoulders rounded forward under a head carried ahead of the body
+      sp.begin({ band: 1 });
+      for (let k = 0; k < post.jut + 1; k++) this.lspan(g.sideTorso[0] + lean + 1, g.sideTorso[1] + lean + k, g.shoulderY + uy - 1 + k, a.shawl || a.top);
+    }
+    this.sideHead(T, lean + post.jut);
     if (a.braid === 'left' && !nearIsRight) {
       sp.begin({ shadow: 'none' });
       const bx = this.X(lean - 1);
@@ -1526,8 +1915,14 @@ class Painter {
       if (a.hairpin) this.crescent(this.X(lean + 0), T + 3, this.s < 0);
     }
     if (a.cloak) this.cloakSideMantle(uy, lean);
+    if (a.shawl) {
+      sp.begin({ band: 1, shadow: 'top' });
+      const [t0, t1] = g.sideTorso;
+      for (let r = -1; r <= 3; r++) this.lspan(t0 + lean - (r > 0 ? 1 : 0), t1 + lean + post.jut + (r < 2 ? 1 : 0), g.shoulderY + uy + r, a.shawl);
+      this.lset(t0 + lean - 1, g.shoulderY + uy + 4, a.shawl, 0);
+    }
     this.sideArm(nearArm, uy, lean, false);
-    this.sideHeadwear(T, lean);
+    this.sideHeadwear(T, lean + post.jut);
     this.sideGlows(uy, lean, nearArm, farArm);
   }
 
@@ -1596,6 +1991,13 @@ class Painter {
       sp.begin({ band: 1 });
       this.lspan(t0 - 1, t1 + 1, bottom + 1, a.top);
       this.beltSide(waist, t0, t1);
+    } else if (hem === 'coat') {
+      const end = Math.min(g.footY - 3, bottom + 5);
+      sp.begin({ band: 1 });
+      for (let y = waist + 1; y <= end; y++) this.lspan(t0 - 1 - (y > bottom ? 1 : 0), t1 + (y > bottom + 2 ? 0 : 1), y, a.top);
+      this.beltSide(waist, t0, t1, true);
+      sp.begin({ flat: true, shadow: 'none' });
+      for (let y = top + 2; y <= waist; y += 2) this.ldot(t1, y, a.accent[2]);
     } else if (hem === 'trousers') {
       this.beltSide(waist + 1, t0, t1);
       if (a.key === 'tobias') {
@@ -1645,6 +2047,18 @@ class Painter {
       sp.begin({ band: 1 });
       this.lset(t1, waist + 1, LEATHER);
       this.lset(t1, waist + 2, LEATHER);
+    }
+    if (a.beltLantern) {
+      sp.begin({ band: 0 });
+      this.lset(t1 + 1, waist + 1, IRON, 1);
+      this.lset(t1 + 1, waist + 3, IRON, 0);
+      sp.begin({ flat: true, shadow: 'none' });
+      this.ldot(t1 + 1, waist + 2, '#ffb047');
+    }
+    if (a.chain) {
+      sp.begin({ flat: true, shadow: 'none' });
+      this.lset(t1, top + 2, a.chain, 2);
+      this.lset(t1, top + 3, a.chain, 1);
     }
   }
 
@@ -1761,6 +2175,24 @@ class Painter {
   sideHair(T, L) {
     const { a, p, sp } = this;
     const style = a.hairStyle;
+    if (style === 'scarf') return;
+    if (style === 'tufts') {
+      sp.begin({ flat: true, shadow: 'none' });
+      this.ldot(-1 + L, T + 1, lighten(a.skin[2], 0.25));
+      sp.begin({ shadow: 'top' });
+      this.lspan(-5 + L, -2 + L, T + 3, a.hair);
+      this.lspan(-5 + L, -2 + L, T + 4, a.hair);
+      this.lspan(-5 + L, -3 + L, T + 5, a.hair);
+      this.lspan(-5 + L, -4 + L, T + 6, a.hair);
+      this.lset(-6 + L, T + 3, a.hair, 2);
+      sp.begin({ flat: true, shadow: 'none' });
+      this.ldot(0 + L, T - 1, a.hair[2]);
+      this.ldot(-1 + L, T - 2, a.hair[1]);
+      sp.begin({});
+      this.lset(-1 + L, T + 5, a.skin, 1);
+      this.lset(-1 + L, T + 6, a.skin, 0);
+      return;
+    }
     if (style === 'bald') {
       sp.begin({ flat: true, shadow: 'none' });
       this.ldot(-1 + L, T + 1, lighten(a.skin[2], 0.25));
@@ -1788,14 +2220,18 @@ class Painter {
       this.lspan(d0 + L, backTo + L, T + r, a.hair);
     }
     // fringe over the brow
-    this.lspan(0 + L, 3 + L, T + 3, a.hair);
-    this.lset(2 + L, T + 4, a.hair);
-    this.lset(3 + L, T + 4, a.hair);
+    if (style !== 'cropped') {
+      this.lspan(0 + L, 3 + L, T + 3, a.hair);
+      this.lset(2 + L, T + 4, a.hair);
+      this.lset(3 + L, T + 4, a.hair);
+    }
+    if (style === 'fringe') this.lspan(1 + L, 3 + L, T + 4, a.hair);
     if (style !== 'long' && style !== 'curly') {
       // ear
       sp.begin({});
       this.lset(-1 + L, T + 5, a.skin, 2);
       this.lset(-1 + L, T + 6, a.skin, 1);
+      if (a.bigEars) this.lset(-1 + L, T + 4, a.skin, 2);
       if (a.earrings) this.ldot(-1 + L, T + 7, a.earrings);
     }
     if (style === 'curly') {
@@ -1828,6 +2264,42 @@ class Painter {
 
   sideHeadwear(T, L) {
     const { a, sp } = this;
+    if (a.scarf) {
+      sp.begin({ band: 1, shadow: 'top' });
+      for (let r = -1; r <= 7; r++) {
+        const d0 = r < 0 ? -3 : r < 1 ? -4 : -5;
+        const d1 = r < 0 ? 1 : r < 3 ? 3 : 0;
+        this.lspan(d0 + L, d1 + L, T + r, a.scarf);
+      }
+      this.lset(-6 + L, T + 7, a.scarf, 1);
+      this.lset(-7 + L, T + 8, a.scarf, 0);
+      this.lset(-6 + L, T + 9, a.scarf, 0);
+      return;
+    }
+    if (a.hat && a.hatStyle === 'veil') {
+      sp.begin({ band: 1, shadow: 'top' });
+      this.lspan(-7 + L, 6 + L, T + 2, a.hat);
+      for (let r = -1; r <= 1; r++) this.lspan(-4 + L, 2 + L, T + r, a.hat);
+      sp.begin({ flat: true, shadow: 'none' });
+      this.lspan(-4 + L, 2 + L, T + 1, ['#e2d2b0', '#e2d2b0', '#e2d2b0'], 1);
+      for (let r = 2; r <= 6; r++) this.ldot(-7 + L - (r > 4 ? 1 : 0), T + r, '#e8ecf2');
+      return;
+    }
+    if (a.hat && a.hatStyle === 'knit') {
+      sp.begin({ band: 1, shadow: 'top' });
+      for (let r = -2; r <= 1; r++) this.lspan(-5 + L + (r < -1 ? 2 : 0), 2 + L - (r < -1 ? 1 : 0), T + r, a.hat);
+      this.lspan(-6 + L, 3 + L, T + 2, a.hat, 0);
+      this.lspan(-6 + L, 3 + L, T + 3, a.hat, 0);
+      return;
+    }
+    if (a.hat && a.hatStyle === 'helmet') {
+      sp.begin({ band: 2, shadow: 'top' });
+      for (let r = -2; r <= 3; r++) this.lspan(-5 + L + (r < 0 ? 1 : 0), 3 + L - (r < -1 ? 1 : 0), T + r, a.hat);
+      this.lspan(-7 + L, 6 + L, T + 4, a.hat, 1);
+      sp.begin({ flat: true, shadow: 'none' });
+      this.ldot(-1 + L, T - 1, '#e6e9f2');
+      return;
+    }
     if (a.hoodUp && a.hood) {
       sp.begin({ band: 1, shadow: 'top' });
       for (let r = -1; r < 11; r++) {
@@ -1922,7 +2394,8 @@ class Painter {
     const hy = g.hipY - 1 + uy + fy;
     const sleeve0 = a.skeleton ? a.skin : a.top;
     const sleeve = far ? [darken(sleeve0[0], 0.25), sleeve0[0], sleeve0[1]] : sleeve0;
-    const skin = far ? [darken(a.skin[0], 0.2), a.skin[0], a.skin[1]] : a.skin;
+    const hands = a.hands || a.skin;
+    const skin = far ? [darken(hands[0], 0.2), hands[0], hands[1]] : hands;
     const holds = which === 'R' && !p.hideItem && (p.tool || a.held !== 'none');
     const itemBehind = holds && far;
     if (itemBehind) this.sideItem(hx, hy, true);
@@ -1933,17 +2406,17 @@ class Painter {
     sp.begin({});
     this.lspan(hx, hx + 1, hy, skin);
     this.lspan(hx, hx + 1, hy + 1, skin);
-    if (holds && !far && (p.tool === 'book' || a.held === 'book')) this.sideItem(hx, hy, false);
+    if (holds && !far && (p.tool === 'book' || a.held === 'book' || a.held === 'cloth')) this.sideItem(hx, hy, false);
   }
 
   sideItem(hx, hy, far) {
     const { a, p, sp } = this;
     const kind = p.tool || a.held;
     if (kind === 'none') return;
-    if (kind === 'book') {
+    if (kind === 'book' || kind === 'cloth') {
       sp.begin({ band: 1 });
-      const color = clothRamp(a.bookColor || 'wine');
-      for (let y = hy - 1; y <= hy + 2; y++) this.lspan(hx + 1, hx + 2, y, color);
+      const color = kind === 'cloth' ? a.clothColor : clothRamp(a.bookColor || 'wine');
+      for (let y = hy - 1; y <= hy + 2 + (kind === 'cloth' ? 1 : 0); y++) this.lspan(hx + 1, hx + 2, y, color);
       sp.begin({ flat: true });
       this.ldot(hx + 2, hy, '#e8e0cc');
       return;
@@ -1991,6 +2464,40 @@ class Painter {
   // ---------------------------------------------------------------- lying down
   // Paint the figure standing, then rotate the unshaded buffers a quarter turn so
   // shading is recomputed for the new orientation (light stays upper-left).
+  // Lying in a bed, seen from above: head on the pillow, shoulders, the rest under the
+  // blanket the bed draws over it (characters_bed.js). The head top lands on BED_HEAD_ROW
+  // whatever the build, and nothing reaches past the bed's sides.
+  paintInBed() {
+    const { a } = this;
+    const bare = { ...a, hat: null, hoodUp: false, hood: null, held: 'none', cloak: null, shawl: null, posture: 'upright' };
+    const stand = new Painter(bare, 'idle', 0, 'down');
+    stand.anim = 'bed';
+    stand.p = { ...basePose(), face: 'closed', hideItem: true, armR: { fx: -1, fy: 0 }, armL: { fx: -1, fy: 0 } };
+    stand.paintFrontBack(false);
+    const src = stand.sp;
+    const dst = this.sp;
+    const g = stand.g;
+    const top = g.headTop - (a.hairStyle === 'bun' ? 3 : a.hairStyle === 'tufts' ? 2 : 1);
+    const dy = BED_HEAD_ROW - g.headTop;
+    dst.parts = src.parts.slice();
+    dst.cur = src.cur;
+    for (let y = Math.max(0, top); y <= g.headTop + 13 && y < FRAME; y++) {
+      for (let x = CX - 6; x <= CX + 5; x++) {
+        const i = y * FRAME + x;
+        if (src.part[i] < 0) continue;
+        const ny = y + dy;
+        if (ny < 0 || ny >= FRAME) continue;
+        const j = ny * FRAME + x;
+        dst.part[j] = src.part[i];
+        dst.ramp[j] = src.ramp[i];
+        dst.tone[j] = src.tone[i];
+        dst.color[j] = src.color[i];
+        dst.alpha[j] = src.alpha[i];
+      }
+    }
+    return dst;
+  }
+
   paintLying() {
     const { a, p } = this;
     const stand = new Painter(a, 'idle', 0, 'down');
