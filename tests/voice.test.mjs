@@ -215,6 +215,12 @@ test('the runtime plays the clip of a known line and finishes when it ends', asy
   ctx.started[0].onended();
   assert.deepEqual(await p, { ok: true, reason: 'done' });
   assert.equal(vp.busy(), false);
+  // a cutscene passes its own id for the line: the clip is still found by speaker and text
+  const q = vp.play({ speaker: 'bram', text: 'Mind the sparks.', key: 'prologue.07' });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(ctx.started.length, 2);
+  ctx.started[1].onended();
+  assert.deepEqual(await q, { ok: true, reason: 'done' });
 });
 
 test('an unknown line falls back cleanly: no clip, no fetch, no error', async () => {

@@ -5,10 +5,11 @@
 //
 //   node scripts/voice/collect.mjs                      -> scripts/voice/lines.json
 //   node scripts/voice/collect.mjs --sample             -> scripts/voice/lines.sample.json
-//   node scripts/voice/collect.mjs --out FILE [--quiet]
+//   node scripts/voice/collect.mjs --out FILE [--quiet] [--root OTHER_CHECKOUT]
 //
 // Sources (each optional, so the script works on any branch):
-//   src/story/scripts.js          cutscene scripts: export voiceLines() or plain step objects
+//   src/story/scripts.js          cutscene scripts: spokenLines() / voiceLines() -> [{ speaker, text,
+//                                 young? }], else the step objects themselves
 //   src/entities/npc_data.js      villager profiles (+ npc_data_more.js), FACT_SAY
 //   src/entities/monsters.js      bandit barks
 //   src/ai/brain/lines.js         Lyra's line banks (barks, chat, will), RULES expanded
@@ -25,8 +26,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { lineKey, isFixedLine, normalizeSpeaker, normalizeLine } from '../../src/audio/voice_key.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(HERE, '../..');
 const args = process.argv.slice(2);
+// --root DIR reads another checkout's game data (to size a render before a merge).
+const ROOT = path.resolve(args.includes('--root') ? args[args.indexOf('--root') + 1] : path.resolve(HERE, '../..'));
 const flag = (n) => args.includes(n);
 const opt = (n, d) => {
   const i = args.indexOf(n);
@@ -328,17 +330,23 @@ async function collectStory(profiles) {
   const aliases = speakerAliases(profiles);
   const resolve = (who) => aliases.get(normalizeSpeaker(who)) || normalizeSpeaker(who);
   let n = 0;
-  const fromList = (list, src) => {
+  const fromList = (list) => {
     for (const l of list || []) {
       if (l && typeof l.text === 'string') {
-        add(resolve(l.speaker || 'narrator'), l.text, src);
+        add(resolve(l.speaker || 'narrator'), l.text, `story:${l.script || l.key || 'line'}`);
         n++;
       }
     }
   };
-  if (typeof S.voiceLines === 'function') fromList(S.voiceLines(), 'story:voiceLines');
-  else if (Array.isArray(S.voiceLines)) fromList(S.voiceLines, 'story:voiceLines');
-  else {
+  const l0 = (list) => (Array.isArray(list) ? list[0] : null);
+  const listed = typeof S.spokenLines === 'function' ? S.spokenLines() : typeof S.voiceLines === 'function' ? S.voiceLines() : S.voiceLines;
+  if (Array.isArray(listed)) {
+    // Lyra at eleven, in memories, has her own young voice.
+    fromList(
+      listed.map((l) => (l && (l.young || l.speaker === 'lyra_young') ? { ...l, speaker: 'lyra_young' } : l)),
+      `story:${l0(listed)?.script || 'lines'}`,
+    );
+  } else {
     // Generic walk: {speaker|who|by|actor, text|line|say} is dialogue; narration steps
     // ({type: 'narrate'|'narration'|'caption', text} or {narrate: text}) are the narrator's.
     const seen = new Set();
@@ -349,8 +357,9 @@ async function collectStory(profiles) {
         for (const v of o) visit(v, src);
         return;
       }
-      const text = [o.text, o.line, o.say].find((v) => typeof v === 'string');
-      const who = [o.speaker, o.who, o.by, o.actor].find((v) => typeof v === 'string');
+      const text = [o.text, o.line].find((v) => typeof v === 'string') ?? (typeof o.say === 'string' && o.speaker ? o.say : null);
+      // { say: 'hess', text } names the speaker in `say`
+      const who = [o.speaker, o.who, o.by, typeof o.text === 'string' ? o.say : null, o.actor].find((v) => typeof v === 'string');
       const type = String(o.type || o.kind || o.step || '').toLowerCase();
       if (text && who) {
         add(resolve(who), text, src);

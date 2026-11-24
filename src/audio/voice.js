@@ -242,13 +242,20 @@ export class VoicePlayer {
   // line is in the foreground: it ranks with cutscenes and waits longer for its clip.
   play({ speaker, text, key, keys, kind = 'say', entity = null, priority, requestedAt, maxLatency, bubble = false } = {}) {
     const sp = speakerIdOf(speaker, this.game) || speakerIdOf(entity, this.game);
-    const k = keys?.length ? keys.join('+') : key || lineKey(sp, text);
+    // A caller's own id for the line (a script's 'prologue.07') is only a hint: the clip
+    // is found by speaker and text.
+    const own = key && (!this.manifest || this.manifest.has(key)) ? key : null;
+    const k = keys?.length ? keys.join('+') : own || lineKey(sp, text) || key;
     if (!k) return done('empty');
     if (!this.enabledFor(sp)) return done('muted');
     const pr = priority ?? (bubble ? priorityOf(sp, kind) : PRIORITY.cutscene);
     const asked = requestedAt ?? this.now();
     const wait = maxLatency ?? (pr >= PRIORITY.cutscene ? SCENE_LATENCY : BUBBLE_LATENCY);
     return this.loadManifest().then(() => {
+      if (!keys?.length && !this.manifest.has(k) && text) {
+        const byText = lineKey(sp, text);
+        if (byText && this.manifest.has(byText)) return this.play({ speaker: sp, text, key: byText, kind, entity, priority, requestedAt: asked, maxLatency, bubble });
+      }
       const parts = keys?.length ? keys : [k];
       if (!parts.every((x) => this.manifest.has(x))) {
         this.stats.noClip++;
