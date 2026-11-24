@@ -133,7 +133,7 @@ export class Barker {
       else if (this.isPlayer(p.entity)) this.queue('player_downed', {}, { priority: 6, urgent: true, kind: 'shout', cooldown: 5 });
     });
     on('revived', (p) => {
-      if (this.isLyra(p.entity)) this.queue('revived', {}, { priority: 6, urgent: true, cooldown: 5, ttl: 5 });
+      if (this.isLyra(p.entity)) this.queue('revived', {}, { priority: 6, urgent: true, yieldMs: 3, cooldown: 5, ttl: 5 });
     });
     on('heal', (p) => {
       if (this.isLyra(p.source) && this.isPlayer(p.target)) this.queue('healed_player', {}, { priority: 1.5, cooldown: 45 });
@@ -314,7 +314,9 @@ export class Barker {
     if (matches(soul.likes)) situation = 'gift_loved';
     else if (matches(soul.dislikes) || id === 'bone' || id === 'slime_gel') situation = 'gift_disliked';
     else if (def && ['food', 'gift', 'potion'].includes(def.type)) situation = 'gift_liked';
-    this.queue(situation, { item: name.toLowerCase() === name ? name : name.replace(/^./, (c) => c.toLowerCase()) }, { priority: 4, urgent: true, cooldown: 3, ttl: 4 });
+    // Her mind thanks the giver itself when it can; this line covers the times it does not.
+    const item = /^Maren/.test(name) ? name : name.toLowerCase();
+    this.queue(situation, { item }, { priority: 4, urgent: true, yieldMs: 3, cooldown: 3, ttl: 4 });
   }
 
   // ------------------------------------------------------- her own will

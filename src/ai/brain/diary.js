@@ -1,7 +1,7 @@
 // The offline mind's diary: a heartfelt first-person entry built from the day's real
 // memories, her mood, her bond with the player and what she is reaching for next.
 
-import { moodKey, bondLevel, lowerFirst, bare } from './speech_gen.js';
+import { moodKey, bondLevel, lowerFirst, bare, tidy } from './speech_gen.js';
 import { soulOf } from './soul_fallback.js';
 import { companionshipOf, ledgerOf } from './her_state.js';
 
@@ -31,7 +31,7 @@ const OPENERS = {
   ],
 };
 
-const CONNECTORS = ['First:', 'Then', 'And later,', 'Also —'];
+const CONNECTORS = ['Today', 'Then', 'Later,', 'And'];
 
 const EMOTION_REFLECTIONS = {
   joy: ["That made me happier than I'll admit out loud.", 'I laughed. Properly laughed.'],
@@ -116,6 +116,43 @@ function pick(list, rnd) {
   return list[Math.floor(rnd() * list.length) % list.length];
 }
 
+const STOP = new Set(['the', 'and', 'that', 'with', 'this', 'they', 'them', 'their', 'then', 'have', 'from', 'about', 'what', 'when', 'were', 'was', 'for', 'not', 'but', 'too', 'just', 'very', 'traveler', 'today']);
+
+function words(text) {
+  return new Set(
+    String(text || '')
+      .toLowerCase()
+      .split(/[^a-z']+/)
+      .filter((w) => w.length >= 3 && !STOP.has(w)),
+  );
+}
+
+// Two memories of one moment (the mind may note a gift twice): keep the first.
+function distinct(list) {
+  const out = [];
+  const seen = [];
+  for (const m of list) {
+    const w = words(m.text);
+    const dup = seen.some((s) => {
+      let both = 0;
+      for (const x of w) if (s.has(x)) both++;
+      return both / Math.max(1, Math.min(w.size, s.size)) >= 0.6;
+    });
+    if (dup) continue;
+    seen.push(w);
+    out.push(m);
+  }
+  return out;
+}
+
+// Does a deed line retell a memory ("gave me something I love" / "gave me a honey cake")?
+function overlaps(memoryText, line, playerName = '') {
+  const a = words(memoryText);
+  const name = String(playerName || '').toLowerCase();
+  for (const w of words(line)) if (w !== name && a.has(w)) return true;
+  return false;
+}
+
 function sentence(text) {
   const t = String(text || '').trim();
   if (!t) return '';
@@ -128,15 +165,18 @@ export function composeDiary(game, memories = [], { day, rnd = Math.random } = {
   const mood = moodKey(mind);
   const bond = bondLevel(mind);
   const soul = soulOf(game);
-  const playerName = game?.settings?.playerName || 'the traveler';
+  // The default name reads as a title in prose: "the traveler", as her memories say it.
+  const named = String(game?.settings?.playerName || '').trim();
+  const playerName = !named || /^traveler$/i.test(named) ? 'the traveler' : named;
   const parts = [];
   parts.push(pick(OPENERS[mood] || OPENERS.calm, rnd));
 
-  const top = memories.filter((m) => m && m.text).slice(0, 3);
+  const top = distinct(memories.filter((m) => m && m.text)).slice(0, 3);
   top.forEach((m, i) => {
     const text = sentence(m.text);
-    const c = CONNECTORS[i] || 'And';
-    const body = c.endsWith(':') || c.endsWith('—') ? `${c} ${text}` : `${c} ${lowerFirst(text)}`;
+    // A memory that already says when it happened needs no "Today".
+    const c = i === 0 && /^(?:today|this (?:morning|afternoon|evening)|tonight|at (?:dawn|dusk|noon))\b/i.test(text) ? '' : CONNECTORS[i] || 'And';
+    const body = c ? `${c}${c.endsWith(',') ? '' : ','} ${lowerFirst(text)}`.replace(/^(Then|And),/, '$1') : text;
     parts.push(body);
     const refl = EMOTION_REFLECTIONS[m.emotion];
     if (refl && (m.importance ?? 0) >= 5) parts.push(pick(refl, rnd));
@@ -152,7 +192,8 @@ export function composeDiary(game, memories = [], { day, rnd = Math.random } = {
   const state = companionshipOf(game);
   const today = day ?? game?.clock?.day ?? 1;
   const dLine = deedLine(game, playerName, today, rnd);
-  if (dLine) parts.push(dLine);
+  // The deed may be the very memory she already wrote about.
+  if (dLine && !top.some((m) => overlaps(m.text, dLine, playerName))) parts.push(dLine);
   const pLine = STATE_LINES[state] ? pick(STATE_LINES[state], rnd) : rel && rel.affinity < -10 ? pick(COLD_PLAYER, rnd) : pick(PLAYER_LINES[bond >= 4 ? 2 : bond >= 2 ? 1 : 0], rnd);
   parts.push(pLine.replace(/\{player\}/g, playerName));
 
@@ -170,7 +211,7 @@ export function composeDiary(game, memories = [], { day, rnd = Math.random } = {
   const w = game?.clock?.weather?.type || 'clear';
   parts.push(pick(CLOSERS[w] || CLOSERS.clear, rnd));
 
-  const text = parts.join(' ').replace(/\s+/g, ' ').trim();
+  const text = tidy(parts.join(' '));
   const head = top[0]?.text ? bare(top[0].text) : 'a quiet day';
   return { text, summary: `Day ${day ?? game?.clock?.day ?? 1}: ${lowerFirst(head)}.` };
 }

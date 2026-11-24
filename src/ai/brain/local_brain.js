@@ -1034,17 +1034,23 @@ const HANDLERS = {
 
   'ask.trust_me'(s, clause, reply, state) {
     const rel = playerRel(this.game);
-    if (state === 'left' || rel.trust < 35) return this.line('trust_player_low');
-    return this.line(rel.trust >= 65 && state !== 'wary' ? 'trust_player_high' : 'trust_player_mid');
+    const day = this.game.clock?.day ?? 1;
+    const hurt = ledgerOf(this.game, 8).some((d) => d && d.severity < 0 && (d.day == null || day - d.day <= 3));
+    if (state === 'left' || state === 'gone' || rel.trust < 15) return this.line('trust_player_low');
+    if (state === 'wary' || hurt || rel.fear > 25) return this.line('trust_player_wary');
+    if (rel.trust >= 65) return this.line('trust_player_high');
+    if (rel.trust >= 40) return this.line('trust_player_mid');
+    return this.line('trust_player_new');
   },
 
-  'ask.fear_me'(s, clause, reply) {
+  'ask.fear_me'(s, clause, reply, state) {
     const f = playerRel(this.game).fear;
     if (f >= 45) {
       reply.emotion = { name: 'fear', intensity: 0.2 };
       return this.line('fear_player_high');
     }
-    return this.line(f >= 15 ? 'fear_player_some' : 'fear_player_none');
+    if (f >= 15) return this.line('fear_player_some');
+    return this.line(state === 'wary' || state === 'left' ? 'fear_player_wary' : 'fear_player_none');
   },
 
   'ask.why_left'(s, clause, reply, state) {
@@ -1292,7 +1298,8 @@ const ACTIVITY_PHRASES = {
   rest: 'resting', free: 'my own time', wander: 'wandering', socialize: 'catching up with people', visit: 'visiting friends',
   study: 'studying', read: 'reading', train: 'practicing my bolts', lead: 'following a lead about Maren',
   follow_lead: 'following a lead about Maren', maren: 'looking for Maren', search: 'looking for Maren', pray: 'sitting in the chapel',
-  shop: 'buying supplies', stargaze: 'watching the stars',
+  shop: 'buying supplies', stargaze: 'watching the stars', travel: 'out on the road with you', escort: 'out on the road with you',
+  explore: 'exploring', hunt: 'hunting', errand: 'running errands', bath: 'a proper wash', bathe: 'a proper wash',
 };
 
 function activityPhrase(activity) {

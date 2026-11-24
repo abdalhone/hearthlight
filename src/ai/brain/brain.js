@@ -755,7 +755,7 @@ export class Brain {
   }
 
   // ------------------------------------------------------------- reflection
-  _dayMemories() {
+  _dayMemories(day = null) {
     const g = this.game;
     const mind = g.companion?.mind;
     if (!mind) return [];
@@ -781,6 +781,8 @@ export class Brain {
       seen.add(m.id ?? m.text);
       if (Number.isFinite(m.t) && m.t < since) continue;
       if (m.type === 'reflection') continue;
+      // Her first memories (seeded "two days ago", "yesterday") are not today's.
+      if ((Number.isFinite(m.daysAgo) && m.daysAgo > 0) || (day != null && Number.isFinite(m.day) && m.day < day)) continue;
       out.push(m);
     }
     out.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0) || (b.t ?? 0) - (a.t ?? 0));
@@ -793,7 +795,7 @@ export class Brain {
     // Gone for good: her last diary entry was written when she left.
     if (!mind || companionshipOf(g) === 'gone') return null;
     const day = this._sleepT != null ? Math.floor(this._sleepT / DAY_SECONDS) + 1 : g.clock?.day ?? 1;
-    const memories = this._dayMemories();
+    const memories = this._dayMemories(day);
     const offline = composeDiary(g, memories, { day });
     const entry = { day, text: offline.text, t: g.clock?.t ?? 0, source: 'local', reason };
     let summary = offline.summary;
