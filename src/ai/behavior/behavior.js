@@ -594,6 +594,9 @@ export class Behavior {
   }
 
   onDowned() {
+    // Knocked down mid-fight: the fight is over (her mind takes it from there).
+    if (this.fightBack) this.endFightBack('downed');
+    this.afterFight = null;
     this.cancelTask();
     this.idle.reset();
     this.target = null;

@@ -1052,6 +1052,7 @@ export class Autonomy {
       case 'reckless_order':
         return `${P} sent me into a fight that nearly killed me.`;
       case 'lethal_attack':
+        if (entry.outcome === 'downed') return `${P} came at me again and again, meaning it. I fought them until they knocked me senseless.`;
         return entry.outcome === 'fled'
           ? `${P} came at me again and again, meaning it. I stood and fought, and they ran.`
           : entry.outcome === 'broke'
@@ -1349,7 +1350,7 @@ export class Autonomy {
     const f = this.fight;
     if (!f || f.done) return;
     f.done = true;
-    const outcome = p.reason === 'fallen' ? 'fallen' : p.reason === 'fled' ? 'fled' : p.reason === 'broke' || f.broke ? 'broke' : p.reason || 'over';
+    const outcome = p.reason === 'fallen' ? 'fallen' : p.reason === 'fled' ? 'fled' : p.reason === 'downed' ? 'downed' : p.reason === 'broke' || f.broke ? 'broke' : p.reason || 'over';
     // She cuts them out of her life (quietly: she has said what she had to), then it is
     // written down: her memory, her diary, and the village's talk.
     if (this.companionship !== 'gone') this.setCompanionship('gone', '', { cause: 'lethal', goneReason: 'lethal', silent: true });
