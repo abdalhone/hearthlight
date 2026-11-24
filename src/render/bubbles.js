@@ -704,6 +704,9 @@ export class Bubbles {
         // Perch on the bubble's top-right corner so both stay readable.
         ax = bubble.layout.x + bubble.w - 2 * this.u;
         ay = bubble.layout.y + 2 * this.u;
+      } else if (this._tagged(e)) {
+        // Above the name tag, not on top of it (a villager's "?" over "Tilly").
+        ay -= Math.ceil((this.labelPx + 3 * this.u) / this.u) * this.u + 3 * r.scale;
       }
       if (ax < -40 || ax > W + 40 || ay < -40 || ay > H + 80) continue;
       const t = ic.t;
@@ -768,6 +771,14 @@ export class Bubbles {
   }
 
   // Names float over villagers the player is standing near.
+  // Does this entity show a name tag right now (see _drawNameTags)?
+  _tagged(e) {
+    const p = this.game?.player;
+    if (!p || !e || e === p || e.id === COMPANION_ID || !(e.profile || e.role) || !e.name) return false;
+    if (e.inBed && e.state === 'sleep') return false;
+    return Math.hypot(e.x - p.x, e.y - p.y) <= NAME_TAG_RANGE - 4;
+  }
+
   _drawNameTags(ctx, r) {
     const g = this.game;
     const p = g.player;

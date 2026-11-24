@@ -80,6 +80,8 @@ export function askCandidates(life, prob, npc, { max = 6 } = {}) {
   const about = prob.about;
   const out = [];
   const asked = new Set(prob.asked);
+  // Whoever just asked me the same question does not know either.
+  for (const id of life.know?.[prob.owner]?.[`asked:${about}`]?.by || []) asked.add(id);
   const t = life.now();
   const hour = life.hour();
   for (const e of life.villagers()) {
@@ -279,6 +281,8 @@ export function buildInput(life, prob) {
     busyElsewhere: !!(ent && life.busyElsewhere(ent)),
     caseStatus: kase?.status || 'none',
     caseSearching: !!kase && (kase.status === 'search' || kase.status === 'missing'),
+    // They know it themselves: told so when they asked, or they heard the news.
+    knowsSearch: !!kase && (kase.status === 'search' || kase.status === 'missing') && (prob.heard.some((h) => h.kind === 'sought' || h.kind === 'missing') || !!life.seerKnows?.(kase, prob.owner)),
     watchKnows: !!kase && (kase.alarmAt != null || kase.status === 'search' || kase.status === 'missing'),
     isWatch: WATCH.includes(prob.owner),
     child: CHILDREN.has(prob.owner),

@@ -40,6 +40,10 @@ export function decideLocal(I, { rng = Math.random, say = () => '', think = () =
   const lastHeard = (I.heard || [])[(I.heard || []).length - 1];
   if (lastHeard?.kind === 'busy' && I.kind !== 'worried') return out('give_up', null, 'busy', 'giveUp', {});
 
+  // The watch is out looking, and they know it: someone who only needed them for an errand
+  // leaves it to the watch.
+  if (I.knowsSearch && !I.isWatch && care < 0.6 && I.kind !== 'worried') return out('give_up', null, 'watchHasIt', 'giveUp', {});
+
   // Word of where they went that has not been followed yet: go there.
   // (A place already looked at counts again if they were seen there since.)
   const checkedAt = I.checkedAt || {};
@@ -120,7 +124,7 @@ export function decideLocal(I, { rng = Math.random, say = () => '', think = () =
   if ((I.options || []).includes('tell_lyra') && I.lyraNear && !I.lyraAsked && r() < 0.7) return out('tell_lyra', 'lyra', 'tellLyra', null, {});
 
   // Ask the people most likely to know.
-  const limit = worried ? 5 : 3;
+  const limit = I.knowsSearch ? 2 : worried ? 5 : 3;
   const candidates = (I.askable || []).filter((a) => !asked.has(a.id));
   const askPlayer = candidates.find((a) => a.id === 'player');
   if (askPlayer && asked.size >= 1 && r() < 0.6) return out('ask', 'player', 'askAny', null, { a: askPlayer.name });

@@ -42,6 +42,7 @@ const STEP_MAX = 110; // clock seconds before a stuck step gives up
 // Shops that are shut when their keeper is out (the Kettle and the chandlery never are).
 const SHOPKEEPERS = { general_store: 'garrick', herbalist: 'mira', smithy: 'bram' };
 const EVENTS_CAP = 160;
+const OFF_WORLD = -100000; // where the gone are kept: nowhere anyone can see or reach
 
 function safe(fn, fallback = null) {
   try {
@@ -350,6 +351,10 @@ export class VillageLife {
     if (!e || !text || !this.isHere(e)) return;
     if (safe(() => this.village?.isTalking?.(e), false)) return;
     if (!this.visible(e)) return; // nobody to hear it: the village view keeps it
+    // Nobody says the very same words twice in a minute.
+    const last = (this.lastSaid ||= new Map()).get(e.id);
+    if (last && last.text === text && this.rt() - last.at < 60) return;
+    this.lastSaid.set(e.id, { text, at: this.rt() });
     if (e === this.game?.companion) safe(() => e.mind?.say?.(text, { target }));
     else if (typeof e.say === 'function') safe(() => e.say(text, { target }));
     if (this.game) this.game._npcSayAt = this.now();
@@ -1000,9 +1005,13 @@ export class VillageLife {
       case 'go':
         this.makeStep(e, 'go', { place: target, prob: prob.id, doing: `looking for ${aboutName} at ${this.placeName(target)}` });
         break;
-      case 'search':
+      case 'search': {
+        // The watch keeps the list: nobody else is sent to a place someone is already searching.
+        const c = about ? this.cases.get(about) : null;
+        if (c && c.status !== 'found' && c.status !== 'dead') (c.searchers ||= {})[e.id] = target;
         this.makeStep(e, 'search', { place: target, prob: prob.id, about, doing: `searching ${placePhrase(target)} for ${aboutName}` });
         break;
+      }
       case 'ask':
         if (target === 'player') this.makeStep(e, 'askPlayer', { target: 'player', prob: prob.id, about, doing: `asking you about ${aboutName}` });
         else this.makeStep(e, 'ask', { target, prob: prob.id, about, doing: `asking ${this.name(target)} about ${aboutName}` });
@@ -1205,6 +1214,11 @@ export class VillageLife {
       vars.when = whenPhrase(k.t, t);
       vars.placeId = k.heading || k.place;
       info = { kind: 'heard', place: k.place, placeName: this.placeName(k.place), t: k.t, when: vars.when, with: k.with || null, heading: k.heading || null, via: k.from };
+    } else if (who !== 'lyra' && this.openProblem(who)?.about === about) {
+      // They are out looking for the same person.
+      key = 'lookingToo';
+      vars.when = s ? sincePhrase(s.t, t) : 'yesterday';
+      info = { kind: 'none', when: vars.when, looking: true };
     } else if (fc && (fc.status === 'search' || fc.status === 'missing') && who !== 'lyra' && this.seerKnows(fc, who)) {
       // They have no sighting, but they know the village is looking: that is the news.
       key = fc.status === 'missing' ? 'missing' : 'sought';
@@ -1263,7 +1277,7 @@ export class VillageLife {
     const lines = [[e.id, ask], [tgt.id, ans.line]];
     if (back && this.rng()() < 0.8) lines.push([e.id, back]);
     const aboutName = this.name(about);
-    const heardWhat = ans.info.kind === 'seen' ? `saw ${aboutName} ${ans.info.when}${ans.info.headingName ? `, heading for ${ans.info.headingName}` : ` at ${ans.info.placeName}`}${ans.info.withName ? `, with ${this.name(ans.info.with)}` : ''}` : ans.info.kind === 'heard' ? `heard ${aboutName} was at ${ans.info.placeName}` : ans.info.kind === 'guess' ? `guessed ${ans.info.placeName}` : ans.info.kind === 'busy' ? `said ${aboutName} is ${ans.info.doing || 'busy'}` : ans.info.kind === 'found' ? `said ${aboutName} has turned up` : ans.info.kind === 'sought' ? `said the watch is searching for ${aboutName}` : ans.info.kind === 'missing' ? `said ${aboutName} is missing` : `hasn't seen ${aboutName} since ${ans.info.when || 'yesterday'}`;
+    const heardWhat = ans.info.kind === 'seen' ? `saw ${aboutName} ${ans.info.when}${ans.info.headingName ? `, heading for ${ans.info.headingName}` : ` at ${ans.info.placeName}`}${ans.info.withName ? `, with ${this.name(ans.info.with)}` : ''}` : ans.info.kind === 'heard' ? `heard ${aboutName} was at ${ans.info.placeName}` : ans.info.kind === 'guess' ? `guessed ${ans.info.placeName}` : ans.info.kind === 'busy' ? `said ${aboutName} is ${ans.info.doing || 'busy'}` : ans.info.kind === 'found' ? `said ${aboutName} has turned up` : ans.info.looking ? `is looking for ${aboutName} too` : ans.info.kind === 'sought' ? `said the watch is searching for ${aboutName}` : ans.info.kind === 'missing' ? `said ${aboutName} is missing` : `hasn't seen ${aboutName} since ${ans.info.when || 'yesterday'}`;
     const summary = `${this.name(e.id)} asked ${this.name(tgt.id)} about ${aboutName}: ${this.name(tgt.id)} ${heardWhat}.`;
     this.event('ask', summary, { who: e.id, about });
     if (prob) {
@@ -1316,7 +1330,7 @@ export class VillageLife {
     const goneH = c ? (this.now() - (last?.t ?? c.openedAt - 2 * HOUR)) / HOUR : 0;
     const night = this.hour() >= 20.5 || this.hour() < 5;
     const worrying = c && ((c.noticers.length >= 2 && goneH >= 3) || (this.now() - c.openedAt > 2.5 * HOUR && goneH >= 4) || (night && goneH >= 2));
-    if (WATCH.includes(tgt.id) && worrying && c.status !== 'search' && c.status !== 'missing') {
+    if (WATCH.includes(tgt.id) && worrying && !['search', 'missing', 'found', 'dead'].includes(c.status)) {
       this.cases.note(c, this.now(), `${this.name(askerId)} told ${this.name(tgt.id)}.`, 'alarm');
       return this.startSearch(about, searchLeader(this, about) || tgt.id, { by: tgt.id });
     }
@@ -1493,7 +1507,9 @@ export class VillageLife {
     // Away no more: home, and the day goes on.
     if (this.absences.isAway(about)) this.markBack(about, { stay: true });
     if (serious) {
-      const r = safe(() => this.village?.addRumor?.('found_safe', { victim: about, witnesses: [by], source: by, about: 'village' }));
+      // The finder knows, and so does the watch: the search parties are called in.
+      const told = [by, c.leader, ...Object.keys(c.searchers || {})].filter((id) => id && id !== about && id !== 'player');
+      const r = safe(() => this.village?.addRumor?.('found_safe', { victim: about, witnesses: [...new Set(told)], source: by, about: 'village' }));
       if (r) c.foundRumor = r.id;
     }
     for (const p of this.problems) if (p.status === 'open' && p.about === about && (p.owner === by || dist(this.entity(p.owner), x) < 150)) this.closeProblem(p, 'resolved', `${this.name(by)} found ${this.name(about)}`);
@@ -2087,6 +2103,10 @@ export class VillageLife {
     if (!keepBody) {
       e.hidden = true;
       e.solid = false;
+      // Out of the world, so nothing nearby can bump into, greet or talk to someone who is not
+      // there (their last place is kept in the record; markBack sets them down at home).
+      e.x = OFF_WORLD;
+      e.y = OFF_WORLD;
     }
     e.absent = { cause, since: t };
     this.event('gone', `${this.name(id)} is gone (${cause}).`, { about: id, hidden: true });
@@ -2424,6 +2444,8 @@ export class VillageLife {
         if (!a.keepBody) {
           e.hidden = true;
           e.solid = false;
+          e.x = OFF_WORLD;
+          e.y = OFF_WORLD;
         }
       } else this.makeStep(e, 'away', { place: a.place, doing: 'somewhere nobody expects' });
     }
