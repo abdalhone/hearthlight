@@ -1113,7 +1113,7 @@ export class Magic {
     cast.curPlan = plan;
     cast.curMul = mul;
     cast.angle = angle;
-    this._emitMul = mul;
+    this._emitMul = mul * this.powerOf(caster);
     this._emitted.length = 0;
     try {
       plan.shapeDef.emit(ctx);
@@ -1133,6 +1133,14 @@ export class Magic {
     this._emitMul = 1;
     this._pose(caster, angle);
     this.fx('cast', { cast, plan, caster, x: ox, y: oy, angle, bodies: emitted });
+  }
+
+  // How hard a caster's weaves hit: the player grows with levels; anyone else may set
+  // caster.magicPower (bosses).
+  powerOf(caster) {
+    if (Number.isFinite(caster?.magicPower)) return caster.magicPower;
+    if (this.isPlayer(caster)) return 1 + BAL.POWER_PER_LEVEL * (Math.max(1, caster.level || 1) - 1);
+    return 1;
   }
 
   // Echo, volley: the same cast again a moment later, as the emitting plan's child.

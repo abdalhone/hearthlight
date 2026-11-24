@@ -34,7 +34,7 @@ export const SHAPES = {
     noun: 'Bolt',
     kind: 'projectile',
     clauseStyle: 'that',
-    base: { dmg: 9, cost: 5, cooldown: 0.32, speed: 240, range: 210, radius: 4, count: 1, life: 1.0 },
+    base: { dmg: 9, cost: 4, cooldown: 0.32, speed: 240, range: 210, radius: 4, count: 1, life: 1.0 },
     hits: 1,
     aim: (p) => ({ type: 'line', range: p.range, width: p.radius * 2 }),
     describe: (n, noun) => `Fires ${plural(n, 'a bolt', 'bolts')} of ${noun}`,

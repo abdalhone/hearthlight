@@ -377,11 +377,32 @@ export function drawBody(ctx, b, ox, oy, time) {
     case 'summon': {
       const zy = y - b.z;
       const fade = Math.min(1, (b.life - b.age) / 0.5, b.age / 0.3);
+      const form = b.plan.familiar?.form || 'wisp';
       ctx.globalCompositeOperation = 'lighter';
       disc(ctx, x, zy, b.r * 2, p.glow, 0.25 * fade);
       ctx.globalCompositeOperation = op;
-      disc(ctx, x, zy, b.r, p.deep, fade);
-      disc(ctx, x, zy - 1, b.r * 0.7, p.glow, fade);
+      if (form === 'golem' || form === 'sentinel') {
+        // A squat block of a body with stubby arms.
+        const s = Math.round(b.r * 1.4);
+        ctx.globalAlpha = fade;
+        ctx.fillStyle = p.deep;
+        ctx.fillRect(Math.round(x - s), Math.round(zy - s), s * 2, s * 2);
+        ctx.fillRect(Math.round(x - s - 2), Math.round(zy - 1), 2, 4);
+        ctx.fillRect(Math.round(x + s), Math.round(zy - 1), 2, 4);
+        ctx.fillStyle = p.glow;
+        ctx.fillRect(Math.round(x - s + 1), Math.round(zy - s + 1), s * 2 - 2, s - 1);
+      } else if (form === 'bird') {
+        const flap = Math.sin(b.age * 18) * 2;
+        line(ctx, x - b.r - 3, zy - 1 - flap, x, zy, p.glow, fade, 2);
+        line(ctx, x + b.r + 3, zy - 1 - flap, x, zy, p.glow, fade, 2);
+        disc(ctx, x, zy, b.r * 0.8, p.deep, fade);
+        disc(ctx, x, zy - 1, b.r * 0.55, p.glow, fade);
+      } else {
+        // An orb with a wisp of a tail behind it.
+        for (let k = 3; k >= 1; k--) disc(ctx, x - Math.cos(b.angle) * k * 2.2, zy - Math.sin(b.angle) * k * 1.4 + k * 0.6, b.r * (1 - k * 0.22), p.deep, 0.5 * fade);
+        disc(ctx, x, zy, b.r, p.deep, fade);
+        disc(ctx, x, zy - 1, b.r * 0.7, p.glow, fade);
+      }
       // Eyes that look where it is heading.
       const ex = Math.cos(b.angle) * 1.5;
       ctx.globalAlpha = fade;
@@ -487,16 +508,26 @@ function drawStatus(ctx, s, x, y, time, i, a) {
   ctx.globalAlpha = fade;
   switch (s.def.overlay) {
     case 'ice': {
-      ctx.globalAlpha = 0.42 * fade;
-      ctx.fillStyle = c;
-      ctx.fillRect(x - 7, y - 21, 14, 21);
-      ctx.globalAlpha = 0.85 * fade;
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x - 6.5, y - 20.5, 13, 20);
+      // A block of ice around the body: pale, jagged on top, one bright edge.
+      const w = Math.max(10, (a.radius || 5) * 2 + 4);
+      const h = 20;
+      const x0 = Math.round(x - w / 2);
+      const y0 = y - h;
+      ctx.globalAlpha = 0.4 * fade;
+      ctx.fillStyle = '#bfe9ff';
+      ctx.fillRect(x0, y0 + 2, w, h - 2);
+      ctx.fillRect(x0 + 1, y0, 3, 2);
+      ctx.fillRect(x0 + w - 5, y0 + 1, 3, 1);
+      ctx.fillRect(x0 + (w >> 1) - 1, y0 - 1, 3, 3);
+      ctx.globalAlpha = 0.6 * fade;
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(x - 5, y - 19, 2, 1);
-      ctx.fillRect(x - 5, y - 18, 1, 3);
+      ctx.fillRect(x0 + 2, y0 + 3, 1, h - 7);
+      ctx.fillRect(x0 + 3, y0 + 3, 2, 1);
+      ctx.fillRect(x0 + w - 4, y0 + 6, 1, 3);
+      ctx.globalAlpha = 0.5 * fade;
+      ctx.fillStyle = '#6fb6e6';
+      ctx.fillRect(x0, y - 1, w, 1);
+      ctx.fillRect(x0 + w - 1, y0 + 2, 1, h - 3);
       break;
     }
     case 'flame':
@@ -699,7 +730,6 @@ export function fallbackFx(magic, type, p) {
       if (p.tick && magic.random() > 0.35) break;
       const parts = b.plan.fallbackParticles;
       emit(g, parts[(b.index + (b.uid & 3)) % parts.length], p.x, p.y - 8, { count: p.tick ? 2 : 5, color: [b.palette.glow, b.palette.spark, b.palette.core], speed: [20, 60], life: [0.2, 0.45] });
-      if (!p.tick && !(g.magicFx?.sfx || g.magicSfx)) g.audio?.play?.('bolt_hit', { x: p.x, y: p.y, volume: 0.6 });
       break;
     }
     case 'explode': {

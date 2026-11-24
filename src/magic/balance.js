@@ -15,11 +15,13 @@ export const MAX_LIGHTS = 40;
 
 // Mana (DESIGN §22.1: a violet bar under health, start 40, regenerates, grows).
 export const MANA_START = 40;
-export const MANA_REGEN = 3.2; // per second, plus a share of the max
+export const MANA_REGEN = 5; // per second, plus a share of the max
 export const MANA_REGEN_SHARE = 0.025; // of max per second
-export const MANA_REGEN_DELAY = 0.6; // seconds after spending before regen resumes
+export const MANA_REGEN_DELAY = 0.4; // seconds after spending before regen resumes
 export const MANA_PER_LEVEL = 4;
 export const MANA_CAP = 400;
+// Weaves grow with the weaver: +7% damage a level (the sword grows by attack).
+export const POWER_PER_LEVEL = 0.07;
 
 // Slots.
 export const SLOTS_START = 4;

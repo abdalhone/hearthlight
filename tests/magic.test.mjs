@@ -658,3 +658,93 @@ test('weave names come from the words alone', () => {
   assert.equal(weaveName(plan), 'Seeking Glacial Orb');
   assert.equal(weaveName({ shapeDef: Shapes.get('bolt'), essenceDefs: [Essences.get('raw')], twistDefs: [] }), 'Arcane Bolt');
 });
+
+// ---------------------------------------------------------------- the plain look
+
+function stubCtx() {
+  const calls = { n: 0, bad: 0 };
+  const num = (...a) => {
+    calls.n++;
+    for (const v of a) if (typeof v === 'number' && !Number.isFinite(v)) calls.bad++;
+  };
+  return {
+    calls,
+    canvas: { width: 480, height: 270 },
+    globalAlpha: 1,
+    globalCompositeOperation: 'source-over',
+    fillStyle: '#000',
+    strokeStyle: '#000',
+    lineWidth: 1,
+    lineCap: 'butt',
+    fillRect: num,
+    strokeRect: num,
+    beginPath: num,
+    closePath: num,
+    moveTo: num,
+    lineTo: num,
+    arc: num,
+    ellipse: num,
+    fill: num,
+    stroke: num,
+  };
+}
+
+test('the fallback draws every kind, mode and status without a throw or a NaN, and lights each', () => {
+  const g = makeGame({ foes: 4 });
+  const m = g.magic;
+  m.unlockAll();
+  g.foes.forEach((f, i) => {
+    f.x = g.player.x + 30 + i * 14;
+    f.y = g.player.y - 10 + (i % 2) * 20;
+  });
+  const ctx = stubCtx();
+  const draw = () => {
+    m.layer.drawShadow(ctx, 0, 0, g.time);
+    m.layer.draw(ctx, 0, 0, g.time);
+    const lights = m.layer.getLight(g.time);
+    for (const l of lights) assert.ok(Number.isFinite(l.x) && Number.isFinite(l.y) && l.r > 0 && l.intensity >= 0, 'light');
+    return lights.length;
+  };
+  let lit = 0;
+  for (const shape of Shapes.ids()) {
+    resetArena(g);
+    g.foes.forEach((f, i) => {
+      f.x = g.player.x + 30 + i * 14;
+      f.y = g.player.y - 10 + (i % 2) * 20;
+    });
+    const w = { shape, essences: ['frost', 'storm'], twists: ['linger', 'spiral'] };
+    if (shape === 'beam') m.castStart(g.player, w, { x: g.foes[0].x, y: g.foes[0].y });
+    else m.cast(g.player, w, { x: g.foes[0].x, y: g.foes[0].y });
+    for (let i = 0; i < 90; i++) {
+      step(g);
+      if (i % 3 === 0) lit = Math.max(lit, draw());
+    }
+    m.castRelease(g.player);
+  }
+  for (const id of Statuses.ids()) m.status.apply(g.foes[0], id, { src: g.player, ignoreImmunity: true, chance: 99 });
+  m.castStart(g.player, { shape: 'bolt', essences: ['fire'], twists: ['charge'] }, AIM);
+  run(g, 0.5);
+  draw();
+  m.castCancel(g.player);
+  assert.ok(ctx.calls.n > 1000, 'it drew');
+  assert.equal(ctx.calls.bad, 0, 'no NaN reached the canvas');
+  assert.ok(lit > 0, 'weaves light the night');
+  // The layer sits with the entities but is no one: never alive, never interactive.
+  assert.equal(m.layer.isAlive(), false);
+  assert.equal(m.layer.canInteract(), false);
+  assert.ok(m.layer.sortY > 1e5);
+});
+
+test('a frozen or stunned caster cannot weave; a hold is broken by a stun', () => {
+  const g = makeGame({ foes: 1 });
+  const m = g.magic;
+  m.unlockAll();
+  m.castStart(g.player, { shape: 'beam', essences: ['raw'] }, AIM);
+  assert.ok(m.holdOf(g.player));
+  m.status.apply(g.player, 'stunned', { src: g.foes[0] });
+  step(g);
+  assert.equal(m.holdOf(g.player), null);
+  assert.equal(m.cast(g.player, 0, AIM).reason, 'disabled');
+  run(g, 2.5);
+  assert.equal(m.cast(g.player, 0, AIM).ok, true);
+});
