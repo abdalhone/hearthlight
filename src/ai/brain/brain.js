@@ -103,6 +103,28 @@ export class Brain {
     g.bus?.on('ui_open', (p) => {
       if (p?.panel === 'chat') this._chatTip();
     });
+    g.bus?.on('game_start', () => this._ensureConsentGate());
+  }
+
+  // Her own will installs the consent gate (DESIGN §16.4). If the world is running and no
+  // gate is in place, every request from the player would simply run, so a stand-in asks
+  // her mind directly. A gate installed later (by the autonomy plugin) replaces it.
+  _ensureConsentGate() {
+    const actions = this.game?.actions;
+    if (!actions?.setConsentGate || actions.consentGate) return false;
+    if (typeof this.game.companion?.mind?.evaluateRequest !== 'function') return false;
+    const gate = (name, args, source) => {
+      const mind = this.game.companion?.mind;
+      if (typeof mind?.evaluateRequest !== 'function') return null;
+      const req = { action: name, args: { ...(args || {}) }, source };
+      const coins = this.currentOffer?.coins;
+      if (coins > 0) req.pay = coins;
+      const v = mind.evaluateRequest(req);
+      return v && typeof v === 'object' && v.decision ? v : null;
+    };
+    gate.standIn = 'brain';
+    actions.setConsentGate(gate);
+    return true;
   }
 
   now() {
@@ -316,6 +338,7 @@ export class Brain {
   _request(name, args, source, offer = null) {
     const g = this.game;
     if (!g.actions?.has?.(name)) return { ok: false, message: `I don't know how to "${name}".` };
+    if (source === 'player') this._ensureConsentGate();
     const state = companionshipOf(g);
     // Without a consent gate installed, a Lyra who broke off still says no (DESIGN §16.4).
     if (source === 'player' && (state === 'left' || state === 'gone') && !g.actions.consentGate && !g.actions.get?.(name)?.ungated) {
@@ -335,7 +358,8 @@ export class Brain {
     if (isRefusal(res)) this.noteRefusal(name, args, res);
     else if (res.ok) {
       if (this.lastRefusal?.name === name) this.lastRefusal = null;
-      if (offer?.coins && !offer.paid) this._promisePay(name, args, offer.coins);
+      // The mind records a paid deal itself when its verdict weighed the coin.
+      if (offer?.coins && !offer.paid && !(res.verdict?.pay > 0)) this._promisePay(name, args, offer.coins);
     }
     return res;
   }

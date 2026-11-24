@@ -72,9 +72,12 @@ export function previewVerdict(game, action, args = {}, offer = null) {
   if (typeof fn !== 'function') return null;
   const owner = mind?.evaluateRequest ? mind : mind.autonomy;
   const a = { target: args?.target ?? null, value: args?.value ?? null, amount: args?.amount ?? null };
-  if (offer) a.offer = offer;
+  const req = { action, args: a, source: 'player', preview: true };
+  // Coin offered with the request weighs on her answer (§16.4: `pay`, or args.amount).
+  if (offer?.coins > 0) req.pay = offer.coins;
+  if (offer) req.offer = offer;
   try {
-    const v = fn.call(owner, { action, args: a, source: 'player', preview: true });
+    const v = fn.call(owner, req);
     return v && typeof v === 'object' && v.decision ? v : null;
   } catch (err) {
     console.error('[brain] evaluateRequest failed', err);

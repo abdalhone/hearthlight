@@ -184,7 +184,11 @@ export class LocalBrain {
           console.error(`[brain] intent ${it.id} answer failed`, err);
         }
         // A plugin answer that ignores a refusal would read as obedience: her refusal wins.
-        if (typeof text === 'string' && text.trim() && !(clause.results || []).some(isRefusal)) return text.trim();
+        if (typeof text === 'string' && text.trim() && !(clause.results || []).some(isRefusal)) {
+          // The plugin says what she does; her terms (a condition, a paid deal) still come first.
+          const terms = this.consentTerms(clause);
+          return terms && !text.includes(terms) ? `${terms} ${text.trim()}` : text.trim();
+        }
       }
       if (it.actions.length) return this.ack(clause, reply);
       // A plugin question without an answer: let the built-ins try the same words.
@@ -230,12 +234,44 @@ export class LocalBrain {
       if (v.message) return String(v.message).trim();
       extra = cond ? this.line('accept_condition', { condition: cond }) : '';
     } else if (v?.decision === 'accept' && v.message && String(v.message).trim().length > 3) {
-      // Her own words for agreeing beat a generic acknowledgement.
-      return String(v.message).trim();
+      const said = String(v.message).trim();
+      // A paid deal, a guarded yes, or nothing specific of her own to say: her words for
+      // agreeing carry it. Otherwise her own acknowledgement says what she is about to do.
+      if (offer?.coins || v.pay > 0 || this.guarded() || !base) return said;
     }
     if (offer?.coins && (!res || res.ok)) extra = `${extra} ${this.line('accept_paid', { coins: offer.coins })}`.trim();
     else if (offer?.share && (!res || res.ok)) extra = `${extra} ${this.line('accept_share')}`.trim();
     return `${base || ''} ${extra}`.replace(/\s+/g, ' ').trim();
+  }
+
+  // Is she holding the player at arm's length (wary, hurt, afraid, low trust)?
+  guarded() {
+    const state = companionshipOf(this.game);
+    if (state !== 'together') return true;
+    const rel = playerRel(this.game);
+    return rel.trust < 30 || rel.fear >= 25;
+  }
+
+  // Her terms for requests she agreed to in this clause: a condition or a paid deal, in
+  // her words (empty for a plain yes, which the action's own answer covers).
+  consentTerms(clause) {
+    const results = clause.results || [];
+    const offer = clause.offer || null;
+    const parts = [];
+    for (const res of results) {
+      const v = res?.verdict;
+      if (!res?.ok || !v) continue;
+      let t = '';
+      if (v.decision === 'accept_conditional') {
+        const cond = sentenceBody(v.condition);
+        t = String(v.message || '').trim() || (cond ? this.line('accept_condition', { condition: cond }) : '');
+      } else if (offer?.coins || v.pay > 0) {
+        t = String(v.message || '').trim() || this.line('accept_paid', { coins: offer?.coins || v.pay });
+      } else if (offer?.share) t = this.line('accept_share');
+      if (t && !parts.includes(t)) parts.push(t);
+    }
+    if (!parts.length && offer?.coins && results.some((r) => r?.ok && !r.verdict)) parts.push(this.line('accept_paid', { coins: offer.coins }));
+    return parts.join(' ');
   }
 
   // Her refusal / counter-offer for a refused request, in her voice.
@@ -247,7 +283,7 @@ export class LocalBrain {
       return this.line('counter_offer', { counter: this.describeAction(v.counter.name, v.counter.args || {}) });
     }
     if (message) return message;
-    const reason = capitalize(firstPersonReason(reasonText(v.reasons)));
+    const reason = capitalize(firstPersonReason(reasonText(reasonsAgainst(v.reasons))));
     const situation = refusalSituation(v, companionshipOf(this.game), offer);
     if (situation === 'refuse_left' || situation === 'refuse_and_act') return this.line(situation, { reason });
     if (!reason) return this.line('refuse_noreason');
@@ -589,7 +625,7 @@ const LEFT_HEARS = new Set(['ask.decline', 'social.apology', 'social.greet', 'so
 export function refusalSituation(verdict, state = 'together', offer = null) {
   if (verdict?.decision === 'refuse_and_act') return 'refuse_and_act';
   if (state === 'left' || state === 'gone') return 'refuse_left';
-  const r = `${(verdict?.reasons || []).join(' ')} ${verdict?.message || ''}`.toLowerCase();
+  const r = `${reasonsAgainst(verdict?.reasons || []).join(' ')} ${verdict?.message || ''}`.toLowerCase();
   if (/\b(?:again|already (?:said|told)|push|keep asking|asked (?:me )?(?:twice|before))\b/.test(r)) return 'refuse_pushed';
   if (/exhaust|tired|energy|sleep|barely stand|rest\b|worn out/.test(r)) return 'refuse_tired';
   if (/hungry|hunger|starv|\beat\b|food/.test(r)) return 'refuse_hungry';
@@ -604,7 +640,13 @@ export function refusalSituation(verdict, state = 'together', offer = null) {
 
 // Reasons may be written about her ("Lyra is exhausted"); she says them as herself.
 export function firstPersonReason(text) {
-  const t = String(text || '').trim();
+  // Scores and asides the mind attaches ("trust in you is low (12)") are for Claude, not
+  // for her lips.
+  const t = String(text || '')
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\btrust in you is low\b/gi, "I don't trust you enough right now")
+    .replace(/\b(?:Lyra|she) trusts you\b/gi, 'I trust you')
+    .trim();
   if (!t) return '';
   if (!/\b(?:lyra|she|her|herself)\b/i.test(t)) return t;
   return t
@@ -616,6 +658,15 @@ export function firstPersonReason(text) {
     .replace(/\bherself\b/g, 'myself')
     .replace(/\bher\b/g, 'my')
     .replace(/\b(?:Lyra|She|she)\b/g, 'I');
+}
+
+// Reasons that weigh FOR a request (the mind lists both kinds); a refusal is explained by
+// the ones against it.
+const IN_FAVOR = /\b(?:trusts you|coins? offered|the coin is good|it pays|fair (?:pay|share)|moonpetals open|keeps what she gathers|kindness to|meant to do that anyway|a loan to|wants .{1,40} safe|knew Maren|enjoys your company|for Maren|on Maren.s trail|you are hurt|hungry enough|she is hurt|likes her freedom|glad of a day|made amends)\b/i;
+
+export function reasonsAgainst(reasons) {
+  const list = Array.isArray(reasons) ? reasons.filter((r) => r && !IN_FAVOR.test(String(r))) : [];
+  return list.length ? list : Array.isArray(reasons) ? reasons : [];
 }
 
 // A condition as a clause: "Half the wood is mine." -> "half the wood is mine".
@@ -969,7 +1020,7 @@ const HANDLERS = {
 
   'ask.why_refused'() {
     const r = this.game.brain?.recentRefusal?.();
-    const why = r ? firstPersonReason(reasonText(r.verdict?.reasons)) : '';
+    const why = r ? firstPersonReason(reasonText(reasonsAgainst(r.verdict?.reasons))) : '';
     if (why) return this.line('why_refused', { reasons: why[0].toLowerCase() === why[0] ? why : lowerFirst(why) });
     if (r?.message) return this.line('why_refused', { reasons: lowerFirst(bare(r.message)) });
     return this.line('why_refused_none');
