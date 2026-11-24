@@ -26,6 +26,14 @@ export const ITEMS = {
   ruins_key: { name: 'Rusted Key', type: 'key', value: 0, desc: 'Stamped with the Sunken Ruins crest.' },
   maren_journal: { name: "Maren's Journal", type: 'quest', value: 0, desc: "Lyra's mentor's journal, water-stained." },
   lantern: { name: 'Lantern', type: 'tool', value: 15, desc: 'Lights the dark.' },
+  // Creature drops (added by the combat module). Ids and names avoid short pronoun-like
+  // substrings ("me", "it") so resolveItemId() stays predictable for chat parsing.
+  venison: { name: 'Venison', type: 'food', value: 5, heal: 3, desc: 'Lean red meat from the Whisperwood. Better over a fire.' },
+  egg: { name: 'Egg', type: 'food', value: 3, heal: 4, desc: 'Brown and speckled, still warm from the nest.' },
+  feather: { name: 'Feather', type: 'material', value: 1, desc: 'Soft, barred and light as a breath. Good for fletching.' },
+  bat_wing: { name: 'Bat Wing', type: 'material', value: 4, desc: 'Leathery and thin as paper. Mira swears it soothes a cough.' },
+  boar_tusk: { name: 'Boar Tusk', type: 'material', value: 8, desc: 'A curved ivory hook. Bram can set it into a knife handle.' },
+  antler: { name: 'Antler', type: 'material', value: 7, desc: 'A forked deer antler, worn smooth as river stone.' },
 };
 
 export function itemDef(id) {
