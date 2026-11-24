@@ -11,6 +11,7 @@ import {
   SELF_REVIVE_SECONDS,
   ASSAULT_SECONDS,
   CRIME_EVENT_GAP,
+  NPC_REVIVE_FALLBACK,
 } from '../src/entities/combat.js';
 import { DAY_SECONDS } from '../src/core/constants.js';
 import { Player, COMBO, STARTING_INVENTORY } from '../src/entities/player.js';
@@ -375,6 +376,16 @@ test('villagers and guards are knocked out at 0 HP, never killed', () => {
   assert.equal(elda.hp, 10);
   step(g, 12);
   assert.equal(rowan.downed, false, 'safety net');
+});
+
+test('a villager loaded from a save while knocked out still gets up', () => {
+  const g = makeGame();
+  const tobias = actor(g, { name: 'Tobias Reed', faction: 'villager', maxHp: 30 });
+  tobias.deserialize({ hp: 0, downed: true });
+  tobias.setState('downed');
+  step(g, NPC_REVIVE_FALLBACK + 1.5);
+  assert.equal(tobias.downed, false);
+  assert.equal(tobias.hp, 15);
 });
 
 test('hurting a villager is a crime: one event per victim, knockout escalates', () => {

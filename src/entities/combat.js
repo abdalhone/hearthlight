@@ -138,8 +138,15 @@ export class Combat {
 
   _updateDowned() {
     const g = this.game;
-    const lyra = g.companion;
-    if (lyra && lyra.downed && !lyra.dead && !this.downedAt.has(lyra)) this.downedAt.set(lyra, this.t);
+    // Adopt anyone knocked out outside combat.down (a loaded save, another module), once a second.
+    if (this.t >= (this._downScanAt || 0)) {
+      this._downScanAt = this.t + 1;
+      const list = g.entities?.all?.() || [];
+      for (let i = 0; i < list.length; i++) {
+        const e = list[i];
+        if (e.type === 'actor' && e.downed && !e.dead && !e.removed && !this.downedAt.has(e)) this.downedAt.set(e, this.t);
+      }
+    }
     for (const [a, t0] of this.downedAt) {
       if (!a.downed || a.removed || a.dead) {
         this.downedAt.delete(a);
@@ -662,10 +669,17 @@ export class Combat {
     target.lockTime = 0;
     target.invuln = Math.max(target.invuln || 0, 1.2);
     this.downedAt.delete(target);
-    this._sound('revive', target.x, target.y);
-    this._particles('heal', target.x, target.y - 8, { count: 14, color: '#9ff0b8', speed: 30, life: 0.8 });
-    this._particles('sparkle', target.x, target.y - 14, { count: 6, color: '#ffe08a', speed: 20, life: 0.7 });
-    this._flash({ x: target.x, y: target.y - 10, r: 56, color: '#ffe08a', intensity: 0.7, duration: 0.5 });
+    if (by && by !== target) {
+      // Helped up by someone: a warm glow worth noticing.
+      this._sound('revive', target.x, target.y);
+      this._particles('heal', target.x, target.y - 8, { count: 14, color: '#9ff0b8', speed: 30, life: 0.8 });
+      this._particles('sparkle', target.x, target.y - 14, { count: 6, color: '#ffe08a', speed: 20, life: 0.7 });
+      this._flash({ x: target.x, y: target.y - 10, r: 56, color: '#ffe08a', intensity: 0.7, duration: 0.5 });
+    } else {
+      // Getting up alone: dust off, no fanfare.
+      this._sound('revive', target.x, target.y, { volume: 0.45, pitch: 0.85 });
+      this._particles('dust', target.x, target.y, { count: 6, speed: 18, life: 0.5 });
+    }
     g.bus?.emit('revived', { entity: target, by });
     try {
       target.onRevived?.(by);
