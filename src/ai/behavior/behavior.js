@@ -1921,27 +1921,28 @@ export class Behavior {
       const s = taskStatus(this, this.task);
       if (s) return s;
     }
+    // The standing order always leads; a small idle flourish may trail it.
     const d = this.directive;
-    const idle = this.idle.status();
+    const extra = this.idle.flourish();
+    const withIdle = (s) => (extra && extra !== s ? `${s}, ${extra}` : s);
     switch (d.type) {
       case 'follow': {
-        if (idle) return idle;
         const who = this.followTarget();
-        return !who || who === g.player ? 'following you' : `following ${nameOf(g, who)}`;
+        return withIdle(!who || who === g.player ? 'following you' : `following ${nameOf(g, who)}`);
       }
       case 'stay':
-        return idle || 'holding position';
+        return withIdle('holding position');
       case 'wait':
-        return `waiting (${Math.max(0, Math.ceil(this.waitLeft))} s)`;
+        return withIdle(`waiting (${Math.max(0, Math.ceil(this.waitLeft))} s)`);
       case 'goto':
         return this.goal?.entity === g.player ? 'coming to you' : `heading ${goalPhrase(g, this.goal).to}`;
       case 'job':
         return this.jobs.status() || 'working';
       case 'guard': {
-        if (d.target === 'player') return 'guarding you';
-        if (d.target) return `guarding ${nameOf(g, g.entities?.get?.(d.target))}`;
-        if (d.label) return `guarding ${placePhrase(safe('locations.get', () => g.locations?.get?.(d.label))).name}`;
-        return 'standing guard';
+        if (d.target === 'player') return withIdle('guarding you');
+        if (d.target) return withIdle(`guarding ${nameOf(g, g.entities?.get?.(d.target))}`);
+        if (d.label) return withIdle(`guarding ${placePhrase(safe('locations.get', () => g.locations?.get?.(d.label))).name}`);
+        return withIdle('standing guard');
       }
       case 'patrol': {
         const loc = d.location ? safe('locations.get', () => g.locations?.get?.(d.location)) : null;
@@ -1950,13 +1951,14 @@ export class Behavior {
       case 'explore':
         return `exploring ${placePhrase(this.explore?.loc).name}`;
       case 'free':
-        return idle || 'wandering nearby';
+        return extra ? `free time, ${extra}` : 'free time, staying near you';
       case 'independent':
-      case 'flee':
       case 'leave':
       case 'keep_away':
       case 'wait_outside':
-        return (d.type === 'independent' || d.type === 'leave' ? idle : '') || this.own.status() || 'living her own day';
+        return withIdle(this.own.status() || 'living her own day');
+      case 'flee':
+        return this.own.status() || 'running for safety';
       default:
         return 'thinking';
     }

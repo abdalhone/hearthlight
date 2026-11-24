@@ -38,8 +38,16 @@ export class IdleLife {
     }
   }
 
+  // What she is doing between orders, as a full phrase ("humming to herself").
   status() {
     return this.act?.label || '';
+  }
+
+  // The same, short enough to hang off her standing order ("holding position, humming").
+  flourish() {
+    const act = this.act;
+    if (!act) return '';
+    return act.kind === 'hum' ? 'humming' : act.label || '';
   }
 
   // Returns true while doing something.

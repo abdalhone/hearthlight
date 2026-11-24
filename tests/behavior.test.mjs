@@ -498,7 +498,8 @@ test('stay holds her position; goto with then follow comes back', () => {
   player.x += 200;
   run(game, 2);
   assert.ok(Math.abs(lyra.x - x0) < 2);
-  assert.equal(b.status(), 'holding position');
+  // The order leads; an idle flourish may trail it ("holding position, humming").
+  assert.match(b.status(), /^holding position(?:, [a-z ]+)?$/);
   const r = b.setDirective({ type: 'goto', target: 'town_square', then: 'follow' });
   assert.equal(r.ok, true);
   run(game, 8, () => b.directive.type === 'follow');
