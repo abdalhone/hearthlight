@@ -54,7 +54,7 @@ export class TitleScreen {
       h(
         'main',
         { class: 'title-card' },
-        h('div', { class: 'logo' }, h('span', { class: 'logo-flame', 'aria-hidden': 'true' }, icon('sun')), h('h1', { class: 'logo-text', text: 'Hearthlight' })),
+        h('div', { class: 'logo' }, h('span', { class: 'logo-flame', 'aria-hidden': 'true' }, icon('flame')), h('h1', { class: 'logo-text', text: 'Hearthlight' })),
         h('p', { class: 'tagline', text: tagline }),
         h('nav', { class: 'title-menu', 'aria-label': 'Main menu' }, this.continueBtn, this.newBtn, h('div', { class: 'title-row' }, settingsBtn, howBtn)),
         this.mindLine,

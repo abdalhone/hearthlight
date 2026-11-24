@@ -162,6 +162,12 @@ export class MindPanel {
       b.setAttribute('aria-selected', tid === id ? 'true' : 'false');
       toggleClass(b, 'active', tid === id);
     }
+    // On narrow screens the tab strip scrolls: keep the chosen tab in view.
+    const active = this.tabButtons[id];
+    if (active && this.tabsEl.scrollWidth > this.tabsEl.clientWidth) {
+      const left = active.offsetLeft - (this.tabsEl.clientWidth - active.offsetWidth) / 2;
+      this.tabsEl.scrollLeft = Math.max(0, left);
+    }
     this.nowRefs = null;
     clear(this.content);
     this.content.scrollTop = 0;
@@ -534,7 +540,9 @@ export class MindPanel {
       if (e?.name) return e.name.split(' ')[0];
       const rel = safe(() => this.mind?.relationships?.get?.(id));
       if (rel?.name) return rel.name.split(' ')[0];
-      return String(id).replace(/_/g, ' ');
+      return String(id)
+        .replace(/_/g, ' ')
+        .replace(/\b[a-z]/g, (c) => c.toUpperCase());
     };
   }
 

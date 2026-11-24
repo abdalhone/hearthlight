@@ -249,7 +249,8 @@ export class UI {
 
     bus.on('item_given', (p) => {
       this.invDirty = true;
-      if (isLyra(p?.from) && isPlayer(p?.to) && p.itemId) this.toast(`${lyraName()} handed you ${itemName(p.itemId, p.qty || 1)}.`, 'item', { iconUrl: itemIconUrl(g, p.itemId) });
+      // Same key as pickups: a delivery that also raises item_gained shows one toast, not two.
+      if (isLyra(p?.from) && isPlayer(p?.to) && p.itemId) this.toast(`${lyraName()} handed you ${itemName(p.itemId, p.qty || 1)}.`, 'item', { key: `gain:${p.itemId}`, iconUrl: itemIconUrl(g, p.itemId) });
     });
     bus.on('item_used', () => (this.invDirty = true));
 

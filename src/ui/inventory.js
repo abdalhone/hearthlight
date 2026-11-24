@@ -210,7 +210,7 @@ export class ChestPanel {
     if (this.isOpen()) this.close();
     this.chest = chest;
     const title = chest.name && chest.name !== 'chest' ? capitalize(chest.name.replace(/_/g, ' ')) : 'Chest';
-    const panel = makePanel({ id: 'chest', title, subtitle: 'Tap an item to move it. Long stacks move all at once with the All button.', iconName: 'chest', cls: 'panel-wide' });
+    const panel = makePanel({ id: 'chest', title, subtitle: 'Choose an item to move one; All moves the whole stack.', iconName: 'chest', cls: 'panel-wide' });
     this.panel = panel;
     panel.onClose = () => {
       this.panel = null;

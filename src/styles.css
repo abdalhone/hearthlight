@@ -2269,6 +2269,9 @@ input[type='range']::-moz-range-thumb {
   padding: 12px;
   background: rgba(10, 9, 25, 0.35);
 }
+.person > .portrait-frame {
+  align-self: flex-start;
+}
 .person.is-friend {
   --bc: var(--heal-deep);
 }
@@ -3303,10 +3306,28 @@ input[type='range']::-moz-range-thumb {
     display: block;
   }
   .person {
-    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+  }
+  .person .portrait-md {
+    width: 40px;
+    height: 40px;
   }
   .bond {
     margin-left: 0;
+  }
+  .mind-hero {
+    padding: 10px 12px 6px;
+  }
+  .portrait-lg {
+    width: 48px;
+    height: 48px;
+  }
+  .hero-name {
+    font-size: var(--fs-l);
+  }
+  .panel-sub {
+    display: none;
   }
 }
 
