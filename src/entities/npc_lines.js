@@ -454,6 +454,8 @@ export const MORE_EXTRA_LINES = {
     refuse: ["No candles for you today. Not from my hands.", "Shop's shut. To you. Lamps stay lit for everyone. Candles don't."],
     lyraAlone: ["Star. Come and sit on the bench. Your mother's pretending not to wait for you.", 'There she is. Did you eat? Your mother will ask, and I\'ll have to lie.', "Star. Help an old man with the far lamps? ...Or don't. Clever wind's been doing it."],
     aboutLyra: {
+      together: ["Star's with you most days now. Well now. Bring her home for supper one night; her mother counts the plates.", "She's out with you, then. Good. Mind her near ladders. She won't mind herself."],
+      wary: ["Star's been quiet about you lately. Quiet's not nothing, with her.", "She came by and didn't say your name once. She usually says it twice. Mind that."],
       apart: ["Star had supper at ours. Ate two helpings. Said nothing about you. Which is something, I suppose.", "She's doing her own work. Good. Every wick wants its own flame."],
       left: ["Star came home tonight and sat on the bench and didn't say a word. Forty-one years with her mother. I know that quiet. Whatever you did, mend it properly.", "She asked to sleep at home tonight. First time in years. Well now. I didn't ask why. I'm asking you."],
       gone: ["She's home with us now. Her old bed under the eaves. She doesn't speak your name, and nor will I. Go on.", "You'll not find her on the road. She's here, at home, among her own. You'll find her wanting nothing from you."],
@@ -473,6 +475,8 @@ export const MORE_EXTRA_LINES = {
     refuse: ["No honey for you. Not today, not from my hives.", "Sell to you? I'd sooner feed it to Petra."],
     lyraAlone: ["Lyra Ambrel. Come here and let me hear you. You sound tired.", "There's my girl. You're carrying something. Put it down on the bench.", "Sit. Sing with me. The bees like it when you're off-key; it makes them feel superior."],
     aboutLyra: {
+      together: ["My girl's off with you, is she. Fine. You bring her back with all her fingers, or I'll know.", "She tells me you're not boring. From her that's a love song. Don't let it go to your head."],
+      wary: ["My girl's gone careful with you. I know that careful. I taught it to her.", "She talks about you less. When Lyra Ambrel goes quiet, somebody's been a fool."],
       apart: ["My girl came by for honey and stayed for an argument. Good. She sounded like herself.", "She's living her own life. I told her to. I'm the only one who ever listens to me."],
       left: ["My daughter came home and sat in the dark and didn't sing. She always sings. You did something. Mend it or keep away.", "She's sleeping under our roof again. I told her not to stay anywhere for our sake. She says it isn't for our sake. Think about that."],
       gone: ["She's home. With her mother. Where you don't come. I can't see you, but I can hear you're still standing there.", "Lyra Ambrel doesn't want you. She told me so, and she never lies to me. Well. Hardly ever. Not about this."],
@@ -513,6 +517,8 @@ export const MORE_EXTRA_LINES = {
     refuse: ["No mending for you. Not today.", "I'll not clothe someone who does that to my neighbours."],
     lyraAlone: ["Sister. Come here, you've mud to the knees again. Sit. I'll brush it.", "There you are. Hold still, you've a thread loose. ...You've more than a thread loose. Sit with me.", "Sister. Supper at ours. Don't argue. I've made too much on purpose."],
     aboutLyra: {
+      together: ["My sister's taken up with you. Mind you keep up; she doesn't wait for anyone.", "She's happy, I think. Muddier, too. That'll be you."],
+      wary: ["She's watching you, aye. So am I.", "Sister's gone quiet about you. That's how she gets before she decides something."],
       apart: ["My sister brought me lake-wort this morning. Wouldn't take coin for it. She's well, I think.", "She's keeping her own counsel. She always did. I followed her once; now she follows no one."],
       left: ["She came to the vats and sat by the stream and didn't say a word. I know what hurt looks like. Mend it.", "My sister cried on her cloak. The dye ran. That's how I know it's bad."],
       gone: ["She's home with Da and Mam. She doesn't want you. And I'll not argue with her for you.", "You'll leave her be. All of us are asking. Nicely, today."],

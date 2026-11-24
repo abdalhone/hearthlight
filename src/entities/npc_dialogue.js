@@ -1,4 +1,5 @@
 import { ASK_TOPICS } from './npc_data.js';
+import { factTellable } from './npc_data_more.js';
 import { itemName } from './items.js';
 import { pickLine, now, rand } from './creature_util.js';
 
@@ -73,6 +74,14 @@ export function aboutLyraLine(npc) {
   const lists = npc.profile.aboutLyra;
   if (!lists || st === 'together' || st === 'wary') return null;
   return pickLine(npc.game, lists[st] || lists.apart);
+}
+
+// Family and close friends say how she is even while she travels with the player.
+function nearLyraLine(npc) {
+  const st = npc.lyraState?.() || 'together';
+  const lists = npc.profile.aboutLyra;
+  if (!lists || (st !== 'together' && st !== 'wary')) return null;
+  return pickLine(npc.game, lists[st] || lists.together);
 }
 
 export function mainOptions(npc, player, tone = dialogueTone(npc, player)) {
@@ -162,6 +171,18 @@ function shopLine(npc, tone) {
       return "Bread's fresh, stew's hot, and the honey cakes won't last, love.";
     case 'garrick':
       return 'Feast your eyes, my friend! Everything priced to move. Mostly.';
+    case 'hobb':
+      return "Candles from Wenna's wax, and a lantern or two. Well now. Mind the drips.";
+    case 'wenna':
+      return "Linden honey. Last pull before the hives are wrapped. Don't haggle; I can hear you thinking it.";
+    case 'hess':
+      return 'Venison. Pelts. I buy tusk and antler. Mm.';
+    case 'sabeth':
+      return "Cloaks, and I'll take dye-plants in trade. Hold still while you look; you've a thread loose.";
+    case 'tansy':
+      return "Eggs. Three coppers. Don't tell Duchess.";
+    case 'corran':
+      return "Fish this morning's, eel from the shed. Hm-hmm. I'll buy what you catch, too.";
     default:
       return 'Take a look.';
   }
@@ -223,11 +244,12 @@ export function answerTopic(npc, topicId, player) {
   npc.familiarity = Math.min(100, (npc.familiarity || 0) + 2);
   const lines = [];
   if (t.id === 'lyra') {
-    const about = aboutLyraLine(npc);
+    const about = aboutLyraLine(npc) || nearLyraLine(npc);
     if (about) lines.push(about);
   }
   const level = shareLevel(npc);
-  const pool = p.facts.filter((f) => t.factTopics.includes(f.topic));
+  // LORE §9.10: some truths are not told to the player until the story reveals them.
+  const pool = p.facts.filter((f) => t.factTopics.includes(f.topic) && factTellable(f, 'player', g.flags));
   const next = pool.find((f) => !npc.told.has(f.id) && f.minFamiliarity <= level);
   if (next) {
     npc.told.add(next.id);

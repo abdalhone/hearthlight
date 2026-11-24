@@ -2124,13 +2124,13 @@ export function helpRole(npc, ctx) {
   if (fighter && !attacker) return victim?.downed || sev >= 2 ? 'tend' : 'shout';
   if (isChild(npc)) return 'flee';
   const kin = npc.isKinOf?.(victim?.id);
-  const carer = TENDERS.has(id) || kin || (!!RESPONSE_LINES[id]?.tend && d < 200);
-  if (carer && (sev >= 2 || d < 260 || kin || victim?.downed)) return 'tend';
-  if (attacker && close < 60) return 'flee';
+  if ((TENDERS.has(id) || kin) && (sev >= 2 || d < 260 || kin || victim?.downed)) return 'tend';
   if (attacker && incident) {
     const child = nearestChild(npc, 110);
     if (child && !incident.shielded.has(child.id) && child !== victim) return 'shield';
   }
+  if (RESPONSE_LINES[id]?.tend && d < 200 && (sev >= 2 || victim?.downed)) return 'tend';
+  if (attacker && close < 60) return 'flee';
   if (attacker && incident && !incident.fetcher && sev >= 2) {
     const G = nearestGuard(g, npc);
     const guardNear = G && Math.hypot(G.x - victim.x, G.y - victim.y) < 240;
