@@ -320,6 +320,9 @@ export const SHAPES = {
       // A ring finds its mark: it steers hard and forgives a loose aim.
       plan.homing = Math.max(plan.homing, 9);
       plan.aimAssist = true;
+      // It closes; it does not shove (or, in a gale, toss) what it holds.
+      plan.knock = 0;
+      plan.launch = 0;
       plan.hold = (plan.hold || 2.6) * Math.max(0.5, Math.min(2.2, plan.lifeMul || 1));
     },
     emit(ctx) {

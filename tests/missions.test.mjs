@@ -529,6 +529,46 @@ test('Lyra: her own offers come through the chat; dangerous missions go through 
   assert.equal(ms.status(offer.offer.args.value), 'active');
 });
 
+test('Lyra teaches the Stillring only while she trusts you (DESIGN §22.5); Wys finds the ward on the road', () => {
+  const game = makeGame();
+  const ms = game.missions;
+  prepare(game);
+  for (let round = 0; round < MISSIONS.length && ms.status('polite_way') !== 'available'; round++) {
+    const next = ms.available().find((m) => m.id !== 'polite_way');
+    if (!next) break;
+    ms.accept(next.id);
+    play(game, next.id);
+  }
+  assert.equal(ms.status('polite_way'), 'available');
+  game.trust = 60;
+  assert.equal(ms.status('polite_way'), 'locked', 'not offered to someone she is not sure of');
+  game.trust = 80;
+  ms.accept('polite_way');
+  // She grows unsure of you on the way: the lesson waits, and she says so once.
+  game.trust = 55;
+  const reach = ms.objective('polite_way');
+  setTime(game, reach.when);
+  moveTo(game, placeCenter(game, reach.at));
+  tick(game, 3);
+  assert.equal(ms.objective('polite_way').type, 'talk');
+  assert.equal(ms.status('polite_way'), 'active');
+  assert.ok(ms.state.polite_way.notNow, 'she said not tonight');
+  assert.ok(!game.magic.unlocked.shapes.has('bind'));
+  game.trust = 80;
+  tick(game, 2);
+  assert.equal(ms.status('polite_way'), 'done');
+  assert.ok(game.magic.unlocked.shapes.has('bind'), 'the Stillring is yours');
+  // The ward: Wys, on the road in the afternoon.
+  if (ms.status('hold_the_hem') !== 'done') {
+    if (ms.status('hold_the_hem') === 'available') ms.accept('hold_the_hem');
+    play(game, 'hold_the_hem');
+  }
+  assert.ok(game.magic.unlocked.shapes.has('ward'));
+  const m = MISSIONS.find((x) => x.id === 'hold_the_hem');
+  assert.equal(m.giver, 'wys');
+  assert.ok(m.objectives.some((o) => o.type === 'protect' && o.spawn?.species === 'wolf'));
+});
+
 test('save and load keep every mission where it was', () => {
   const game = makeGame();
   const ms = game.missions;

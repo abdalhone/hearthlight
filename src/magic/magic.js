@@ -1042,7 +1042,7 @@ export class Magic {
     if (!t || t.removed || t.dead || why === 'dismiss') return;
     const f = bindFlavor(b.plan);
     // What the ring leaves when it lets go (vines on the feet, a song's lull).
-    if (why === 'free' && isAlive(t)) for (const id of f.after) this.status.apply(t, id, { src: b.cast?.caster || null, potency: 0.9, power: b.dmg });
+    if (why === 'free' && isAlive(t)) for (const id of f.after) this.status.apply(t, id, { src: b.cast?.caster || null, potency: 0.9, power: b.dmg, ignoreImmunity: true });
     this.fx('unbind', { body: b, target: t });
   }
 
