@@ -4,16 +4,17 @@
 // On phones the HUD folds small so the world stays visible: Lyra's card shrinks to her
 // portrait and mood (tap to unfold), and the quest line tucks in beside it.
 
-import { h, icon, setIcon, setText, setStyle, toggleClass, meter, button, setAttr } from './dom.js';
-import { COMMANDS, JOBS, DELIVER_OPTIONS, REJOIN } from './content.js';
-import { hpText, frac, fmtInt, lyraStatusLine, weatherIconKey, weatherLabel, moodEmoji, moodToExpression, stanceLabel } from './format.js';
-import { portraitUrl } from './art.js';
-import { companionshipOf, companionshipLabel, companionshipTone, barMode, playerRelation, trustWords, fearWords, farewellText } from './lyra_view.js';
+// The Weave's pieces (DESIGN §22.4): the controller, the aim layer, the Spellbook.
 import { Weaving } from './weaving.js';
 import { AimPreview } from './aim_preview.js';
 import { paintSlot } from './touch.js';
 import { spellbookIconUrl, SPELLBOOK_ICON_SIZE } from './weave_icons.js';
 import { Spellbook } from './spellbook.js';
+import { h, icon, setIcon, setText, setStyle, toggleClass, meter, button, setAttr } from './dom.js';
+import { COMMANDS, JOBS, DELIVER_OPTIONS, REJOIN } from './content.js';
+import { hpText, frac, fmtInt, lyraStatusLine, weatherIconKey, weatherLabel, moodEmoji, moodToExpression, stanceLabel } from './format.js';
+import { portraitUrl } from './art.js';
+import { companionshipOf, companionshipLabel, companionshipTone, barMode, playerRelation, trustWords, fearWords, farewellText } from './lyra_view.js';
 
 const STANCE_ICON = { attack: 'sword', defend: 'shield', passive: 'feather', self_defense: 'shield' };
 
@@ -112,8 +113,44 @@ export class Hud {
     this.newMagic = false;
     ui.openSpellbook = (slot) => this.openSpellbook(slot);
     this.el = this.build();
+    this.mountWeave();
     this.watchLayout();
     this.bindMagic();
+  }
+
+  // The hotbar joins the bottom (under the prompts), the tip the HUD; the Ask bar moves
+  // beside Lyra for mouse players. Per step, the weave controller runs from the input's
+  // step hook, so it sees every press even while the HUD is hidden or a panel is open.
+  mountWeave() {
+    this.bottomEl = this.el.querySelector('.hud-bottom');
+    this.bottomEl.append(this.hotbar);
+    this.el.append(this.turnTip);
+    this.placeAskBar();
+    const inp = this.game.input;
+    if (typeof inp?.onStep === 'function') inp.onStep((dt) => this.stepWeave(dt));
+    else this.stepFromUpdate = true;
+  }
+
+  stepWeave(dt) {
+    const g = this.game;
+    this.weaving.update(dt);
+    if (this.weaving.sword && g.input) g.input.setSwingAim(this.weaving.sword.dx, this.weaving.sword.dy);
+    this.ui.touch?.update?.(dt);
+    const inp = g.input;
+    if (inp?.uiPressed('spellbook')) {
+      inp.consume('spellbook');
+      const top = this.ui.top?.();
+      if (g.state === 'playing' && (!top || top === this.spellbook?.panel)) this.toggleSpellbook();
+    }
+    this.syncCursor();
+    if (this.el.hidden || !g.player) return;
+    this.updateHotbar(dt);
+    this.placeAskBar();
+    this.maybeTurnTip();
+    if (this.turnTipT > 0) {
+      this.turnTipT -= dt;
+      if (this.turnTipT <= 0) this.hideTurnTip();
+    }
   }
 
   build() {
@@ -261,10 +298,8 @@ export class Hud {
     const top = h('div', { class: 'hud-top' }, this.cardsEl, this.rightEl);
     const center = h('div', { class: 'hud-center' }, this.questLine);
     this.center = center;
-    const bottom = h('div', { class: 'hud-bottom' }, this.listenBtn, this.prompt, this.hotbar);
-    this.bottomEl = bottom;
-    this.placeAskBar();
-    return h('div', { class: 'hud', hidden: true }, top, center, bottom, this.ordersWrap, this.jobsMenu, this.turnTip, this.fps);
+    const bottom = h('div', { class: 'hud-bottom' }, this.listenBtn, this.prompt, this.cmdbar);
+    return h('div', { class: 'hud', hidden: true }, top, center, bottom, this.ordersWrap, this.jobsMenu, this.fps);
   }
 
   // ---------- the Weave: hotbar, mana, Spellbook (DESIGN §22.4) ----------
@@ -874,26 +909,9 @@ export class Hud {
 
   update(dt) {
     const g = this.game;
-    // The weave controller runs every step (casts, aims, held beams), the rest is throttled.
-    this.weaving.update(dt);
-    if (this.weaving.sword && g.input) g.input.setSwingAim(this.weaving.sword.dx, this.weaving.sword.dy);
-    this.ui.touch?.update?.(dt);
-    const inp = g.input;
-    if (inp?.uiPressed('spellbook')) {
-      inp.consume('spellbook');
-      const top = this.ui.top?.();
-      if (g.state === 'playing' && (!top || top === this.spellbook?.panel)) this.toggleSpellbook();
-    }
+    if (this.stepFromUpdate) this.stepWeave(dt);
     this.updateKeepOut(dt);
-    this.syncCursor();
     if (this.el.hidden || !g.player) return;
-    this.updateHotbar(dt);
-    this.placeAskBar();
-    this.maybeTurnTip();
-    if (this.turnTipT > 0) {
-      this.turnTipT -= dt;
-      if (this.turnTipT <= 0) this.hideTurnTip();
-    }
     this.tick += dt;
     if (this.tick < 0.1) return;
     this.tick = 0;

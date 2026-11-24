@@ -207,6 +207,7 @@ export class Input {
     this.wheelSteps = 0; // whole steps waiting for the weave controller
     // A one-off aim for the next sword swing (unit vector + when it goes stale).
     this.swingAimVec = { x: 0, y: 0, until: -1 };
+    this.stepHooks = []; // run at the start of every fixed step (the weave controller)
     this._bound = false;
     if (typeof window !== 'undefined') this._attach();
   }
@@ -410,10 +411,25 @@ export class Input {
     if (x || y) this.lastDevice = 'touch';
   }
 
-  update() {
+  // Run `fn(dt)` at the start of every fixed step, before the world moves.
+  onStep(fn) {
+    if (typeof fn === 'function') this.stepHooks.push(fn);
+  }
+
+  update(dt = 1 / 60) {
     this._pollGamepad();
     // Holding the left button keeps the blade turned toward the cursor.
     if (this.mouse.left && this.mouse.over) this.aimSwingAtMouse();
+    for (let i = 0; i < this.stepHooks.length; i++) {
+      try {
+        this.stepHooks[i](dt);
+      } catch (err) {
+        if (!this._hookWarned) {
+          this._hookWarned = true;
+          console.warn('[input] step hook failed', err);
+        }
+      }
+    }
   }
 
   _pollGamepad() {
