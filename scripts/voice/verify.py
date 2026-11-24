@@ -1,19 +1,18 @@
-"""Measure rendered clips the way a listener would notice problems (DESIGN.md §21).
+"""Check every cutscene clip the author's way (step 8): transcribe the finished clip with
+Whisper and compare it with the script, measure loudness and peaks, and make sure nothing
+is silent, missing or cut off.
 
-  python scripts/voice/verify.py [--out assets/voice] [--only lyra,bram] [--strict]
+    $PY scripts/voice/verify.py [--model small.en] [--quick]
 
-Decodes every clip in the manifest and reports, per speaker: count, duration, size,
-loudness spread, peaks, median pitch and pitch range, speaking rate; and flags clips that
-clip, start or end abruptly, hold long silences, miss the loudness target, or whose
-duration disagrees with the manifest.
+Prints one row per line (WER, duration, LUFS, true peak, size) and a summary; writes
+scripts/voice/verify.json. --quick skips Whisper (loudness, peaks and files only).
+Exit status 1 when a clip is missing, silent, too loud or out of loudness range.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import math
-import subprocess
 import sys
 from pathlib import Path
 
@@ -22,93 +21,72 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import voicelib as vl  # noqa: E402
 
-
-def probe(path: Path) -> dict:
-    p = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_name,sample_rate,channels,bit_rate", "-of", "json", str(path)],
-        capture_output=True, text=True, check=True,
-    )
-    return json.loads(p.stdout)["streams"][0]
+OUT = vl.ROOT / "assets" / "voice"
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", default=str(vl.ROOT / "assets" / "voice"))
-    ap.add_argument("--only")
-    ap.add_argument("--strict", action="store_true")
-    ap.add_argument("--json")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--model", default="small.en")
+    ap.add_argument("--quick", action="store_true")
     args = ap.parse_args()
-    out = Path(args.out)
-    manifest = json.loads((out / "manifest.json").read_text())
-    only = set(args.only.split(",")) if args.only else None
-    lines = {}
-    for f in (vl.HERE / "lines.json", vl.HERE / "lines.sample.json"):
-        if f.exists():
-            for l in json.loads(f.read_text())["lines"]:
-                lines[l["key"]] = l["text"]
-
-    per: dict[str, list[dict]] = {}
-    problems = []
-    formats = set()
-    for key, m in sorted(manifest.items()):
-        if only and m["speaker"] not in only:
+    lines = json.loads((vl.HERE / "lines.json").read_text())["lines"]
+    manifest = vl.load_json(OUT / "manifest.json", {}) or {}
+    clips = manifest.get("clips", {})
+    ears = None if args.quick else vl.Ears(args.model, 2, vl.glossary_of([l["text"] for l in lines]))
+    rows, problems = [], []
+    total_bytes = 0
+    for l in lines:
+        c = clips.get(l["key"])
+        f = OUT / (c["file"] if c else f"{l['key']}.mp3")
+        if not c or not f.exists():
+            problems.append(f"{l['line']}: no clip")
+            rows.append({"line": l["line"], "speaker": l["speaker"], "missing": True})
             continue
-        path = out / f"{key}.mp3"
-        st = probe(path)
-        formats.add(f"{st['codec_name']} {st['sample_rate']} Hz {st['channels']} ch")
-        audio = vl.decode(path)
-        a = vl.analyze(audio)
-        a["size"] = path.stat().st_size
-        a["key"] = key
-        per.setdefault(m["speaker"], []).append(a)
-        head = vl.frame_rms(audio[: int(0.02 * vl.SR)])
-        head_db = 20 * math.log10(float(head.max()) / (float(vl.frame_rms(audio).max()) + 1e-12) + 1e-12)
-        if a["clipped"]:
-            problems.append(f"{key}: {a['clipped']} clipped samples")
-        if a["true_peak_db"] > -1.0:
-            problems.append(f"{key}: true peak {a['true_peak_db']} dBTP")
-        if abs(a["lufs"] - vl.TARGET_LUFS) > 1.5 and a["dur"] > 0.6:
-            problems.append(f"{key}: {a['lufs']} LUFS")
-        if a["tail_db"] > -30:
-            problems.append(f"{key}: ends abruptly ({a['tail_db']} dB in the last 30 ms)")
-        if head_db > -20:
-            problems.append(f"{key}: starts abruptly ({head_db:.0f} dB in the first 20 ms)")
-        if a["longest_gap_s"] > 1.2:
-            problems.append(f"{key}: {a['longest_gap_s']}s of silence inside")
-        # MP3 adds about 50 ms of encoder delay and padding
-        if abs(a["dur"] - m["dur"]) > 0.15:
-            problems.append(f"{key}: decodes to {a['dur']}s, manifest says {m['dur']}s")
-        if key in lines:
-            ipa_rate = len(vl.normalize_words(lines[key])) / max(a["speech_s"], 0.05)
-            a["words_per_s"] = round(ipa_rate, 2)
-
-    print(f"formats: {', '.join(sorted(formats))}")
-    print(f"{'speaker':<11} {'clips':>5} {'min':>5} {'KB':>7} {'avg s':>6} {'LUFS':>12} {'tp max':>7} {'f0 med':>7} {'f0 p10-p90':>12} {'words/s':>8}")
-    summary = {}
-    for sp, rows in sorted(per.items()):
-        dur = sum(r["dur"] for r in rows)
-        size = sum(r["size"] for r in rows)
-        lu = [r["lufs"] for r in rows if r["dur"] > 0.6] or [r["lufs"] for r in rows]
-        f0 = [r["f0_med"] for r in rows if r["f0_med"] > 0]
-        p10 = [r["f0_p10"] for r in rows if r["f0_p10"] > 0]
-        p90 = [r["f0_p90"] for r in rows if r["f0_p90"] > 0]
-        wps = [r["words_per_s"] for r in rows if "words_per_s" in r]
-        summary[sp] = {
-            "clips": len(rows), "minutes": round(dur / 60, 2), "kb": round(size / 1024), "avg_s": round(dur / len(rows), 2),
-            "lufs_min": min(lu), "lufs_max": max(lu), "true_peak_max": max(r["true_peak_db"] for r in rows),
-            "f0_median": round(float(np.median(f0)), 1) if f0 else 0, "f0_p10": round(float(np.median(p10)), 1) if p10 else 0,
-            "f0_p90": round(float(np.median(p90)), 1) if p90 else 0, "words_per_s": round(float(np.median(wps)), 2) if wps else 0,
-        }
-        s = summary[sp]
-        print(f"{sp:<11} {s['clips']:>5} {s['minutes']:>5.1f} {s['kb']:>7} {s['avg_s']:>6.2f} {s['lufs_min']:>5.1f}..{s['lufs_max']:<5.1f} "
-              f"{s['true_peak_max']:>7.1f} {s['f0_median']:>7.1f} {s['f0_p10']:>5.0f}-{s['f0_p90']:<6.0f} {s['words_per_s']:>8.2f}")
-    if args.json:
-        Path(args.json).write_text(json.dumps(summary, indent=1))
-    print("\nproblems:" if problems else "\nno problems found")
+        a = vl.load_audio(f)
+        dur = len(a) / vl.SR
+        lu = vl.lufs(a)
+        tp = vl.true_peak_db(a)
+        db = vl.frame_db(a)
+        voiced = float(np.mean(db > -45)) if len(db) else 0.0
+        size = f.stat().st_size
+        total_bytes += size
+        row = {"line": l["line"], "speaker": l["speaker"], "dur": round(dur, 2), "lufs": round(lu, 1), "tp": round(tp, 2), "kb": round(size / 1024, 1),
+               "voiced": round(voiced, 2), "take_errors": c.get("errors"), "strength": c.get("strength", 1.0), "seed": c.get("seed")}
+        if ears:
+            heard = ears.words(a)
+            e, n = vl.word_errors(l["text"], [w[0] for w in heard], ears.names)
+            row.update({"errors": e, "n": n, "wer": round(e / max(1, n), 3), "heard": " ".join(w[0] for w in heard)})
+        if c.get("text") != l["text"]:
+            problems.append(f"{l['line']}: clip made for other words")
+        if dur < 0.3 or voiced < 0.25:
+            problems.append(f"{l['line']}: (nearly) silent")
+        if tp > vl.MAX_TRUE_PEAK_DB + 0.05:
+            problems.append(f"{l['line']}: true peak {tp:.2f} dBTP")
+        if abs(lu - vl.TARGET_LUFS) > 1.0:
+            problems.append(f"{l['line']}: {lu:.1f} LUFS")
+        if len(c.get("words", [])) != len(vl.display_tokens(l["text"])):
+            problems.append(f"{l['line']}: caption words do not match the line")
+        rows.append(row)
+        if ears:
+            flag = "" if row["errors"] == 0 else f"   heard: {row['heard']}"
+            print(f"{l['line']:18s} {l['speaker']:8s} WER {row['wer']:.2f} ({row['errors']}/{row['n']})  {dur:5.1f}s {lu:6.1f} LUFS {tp:6.2f} dBTP {size / 1024:5.0f} KB{flag}", flush=True)
+    done = [r for r in rows if not r.get("missing")]
+    summary = {
+        "lines": len(lines), "voiced": len(done), "minutes": round(sum(r["dur"] for r in done) / 60, 2), "mb": round(total_bytes / 1e6, 2),
+        "lufs": [round(min(r["lufs"] for r in done), 1), round(max(r["lufs"] for r in done), 1)] if done else None,
+        "max_tp": round(max(r["tp"] for r in done), 2) if done else None,
+    }
+    if ears and done:
+        errs = sum(r["errors"] for r in done)
+        words = sum(r["n"] for r in done)
+        summary.update({"words": words, "word_errors": errs, "wer": round(errs / max(1, words), 4), "perfect_lines": sum(1 for r in done if r["errors"] == 0),
+                        "takes_flagged": sum(1 for r in done if (r.get("take_errors") or 0) > 0), "lightened": sum(1 for r in done if (r.get("strength") or 1) < 1)})
+    vl.write_json(vl.HERE / "verify.json", {"summary": summary, "problems": problems, "rows": rows}, indent=1)
+    print(json.dumps(summary))
     for p in problems:
-        print("  -", p)
-    return 1 if problems and args.strict else 0
+        print("  problem:", p)
+    return 1 if any("no clip" in p or "silent" in p or "true peak" in p or "LUFS" in p for p in problems) else 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())

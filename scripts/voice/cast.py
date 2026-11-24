@@ -68,6 +68,7 @@ def main() -> int:
             row["wps"].append(words / max(0.5, info["dur"]))
             row["centroid"].append(vl.timbre(audio)["centroid"])
             row["sim_ref"].append(info["sim"])
+            row["f0_take"] = row.get("f0_take", []) + [vl.f0_stats(vl.read_wav(vl.cache_dir() / "takes" / f"{info['fp']}.wav"))["f0"]]
             row["errors"] += info["errors"]
             row["n"] += info["n"]
             print(f"  {sp:8s} {l['line']:18s} errors {info['errors']} sim {info['sim']:.3f} heard: {info['heard']}", flush=True)

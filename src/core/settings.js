@@ -11,16 +11,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
   brain: 'auto',
   modelTier: 'quick', // claude.ai tier: 'quick' (fast) or 'default' (deeper, slower)
   apiModel: 'claude-opus-5-5', // model used with an API key
-  voice: false, // Lyra reads aloud the replies that have no recorded line (claude.ai's voice)
-  voiceName: 'airy', // claude.ai voice: buttery | airy | glassy | rounded
-  // Recorded voices (DESIGN.md §21, src/audio/voice.js)
-  voices: true, // characters speak their recorded lines
+  // Voices are heard only in the cutscenes (DESIGN.md §21, src/audio/voice.js); everyone
+  // else's words, Lyra's replies included, are text.
+  voices: true,
   voiceVol: 0.85,
-  voiceLyra: true,
-  voiceVillagers: true,
-  voiceNarrator: true,
-  kokoroLive: false, // Kokoro in this browser for everything Lyra says (downloads about 90 MB once)
-  browserVoice: false, // the browser's own voice when nothing better can speak
   musicVol: 0.45,
   sfxVol: 0.7,
   textSpeed: 1, // speech-bubble typing speed multiplier

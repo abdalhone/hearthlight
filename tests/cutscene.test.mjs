@@ -236,3 +236,88 @@ test('Escape-style skip ends the scene and stops the voice', async () => {
   assert.ok(voice.stops >= 1);
   assert.equal(voice.asks.length, 1);
 });
+
+// ------------------------------------------------------------------ captions follow the voice
+
+// A voice whose lines have clips with word times (src/audio/voice.js's clip() and onStart).
+function wordVoice() {
+  const v = fakeVoice('manual');
+  v.t = -1;
+  v.elapsed = () => v.t;
+  v.clip = (speaker, text) => ({ dur: 2, words: text.split(/\s+/).map((w, i) => [w, i * 0.5, i * 0.5 + 0.4]) });
+  v.startWords = (ms) => {
+    const a = v.asks[v.asks.length - 1];
+    const words = a.opts.text.split(/\s+/).map((w, i) => [w, i * 0.5, i * 0.5 + 0.4]);
+    v.t = 0;
+    a.opts.onStart?.({ duration: ms / 1000, words });
+    return a;
+  };
+  return v;
+}
+
+const on = (cp) => (cp.typing?.spans || []).map((s) => s.classList.contains('on'));
+
+test('with a clip, each word pops in the moment it is spoken; a tap shows the rest', async () => {
+  const voice = wordVoice();
+  const cp = makePlayer(voice, 5000);
+  const done = cp.play({ id: 'w', steps: [{ narrate: 'One two three four.', key: 'w.0' }] });
+  await sleep(5);
+  // Before the voice starts, the words wait for it (no typing yet).
+  cp.update(0.1);
+  assert.equal(shown(cp), '');
+  voice.startWords(2000);
+  cp.update(0.016);
+  assert.deepEqual(on(cp), [true, false, false, false], 'the first word at 0 s');
+  voice.t = 0.55;
+  cp.update(0.016);
+  assert.deepEqual(on(cp), [true, true, false, false], 'the second at 0.5 s');
+  voice.t = 1.05;
+  cp.update(0.016);
+  assert.deepEqual(on(cp), [true, true, true, false]);
+  cp.advance(); // a tap: every word at once
+  assert.deepEqual(on(cp), [true, true, true, true]);
+  cp.advance(); // and the next moves on
+  const r = await done;
+  assert.equal(r.skipped, false);
+});
+
+test('a clip that never starts: after a moment the line types itself', async () => {
+  const voice = wordVoice();
+  voice.play = (opts) => {
+    voice.asks.push({ opts });
+    return new Promise(() => {});
+  };
+  const cp = makePlayer(voice, 5000);
+  const done = cp.play({ id: 'w', steps: [{ narrate: 'Typed after all.', key: 'w.0' }] });
+  await sleep(5);
+  cp.update(0.3);
+  assert.equal(shown(cp), '');
+  cp.update(0.4); // past the wait
+  cp.update(0.1);
+  assert.ok(shown(cp).length > 0, 'typing began');
+  cp.advance();
+  assert.equal(shown(cp), 'Typed after all.');
+  cp.advance();
+  await done;
+});
+
+test('cues fire on their word as it is spoken, and a tapped-past line still changes the bed', async () => {
+  const voice = wordVoice();
+  const cp = makePlayer(voice, 5000);
+  const fired = [];
+  const done = cp.play({
+    id: 'c',
+    steps: [{ narrate: 'The snow had melted in a circle.', key: 'c.0', cues: [{ word: 'melted', sfx: 'shimmer' }, { word: 'circle', bed: 'drone' }] }],
+  });
+  await sleep(5);
+  // The scene's sound layer, observed.
+  cp.sound = { fx: (n) => fired.push(['fx', n]), bed: (n) => fired.push(['bed', n]), heart() {}, hush() {}, slam() {}, duckFor: (w) => fired.push(['duck', w.length]), unduck() {}, stop() {} };
+  voice.startWords(4000);
+  assert.deepEqual(fired, [['duck', 7]], 'effects duck under the words');
+  await sleep(1600); // 'melted' is the 4th word: 1.5 s
+  assert.deepEqual(fired.slice(1), [['fx', 'shimmer']]);
+  cp.advance();
+  cp.advance(); // tapped past before 'circle' (3 s)
+  await done;
+  assert.deepEqual(fired.slice(2), [['bed', 'drone']], 'the bed still changes; its one-off sound is let go');
+});

@@ -10,6 +10,16 @@
 //   { world: 'begin', panel? } … { world: 'end' }  steps on the live map; replays show the panel
 //   { call: name }                        a director hook (set the stage, place the actors)
 //   { end: true }                         stop here
+// Sound (src/story/sfx.js; all made in code):
+//   { sfx: name | [names], volume? }      an effect now (several stacked)
+//   { bed: name | 'none', level? }        the quiet layer under the scene (wind, room, chapel,
+//                                         drone, whispers, cave, village, lake)
+//   { heart: bpm | 0 }                    a heartbeat where fear lives
+//   { hush: ms }                          near silence and a thin ring (a pause a tap may cut)
+//   { slam: true | name | [names], flash? }  the sound back in at once, with a stacked hit
+// A spoken step may carry `cues`: [{ word, nth?, sfx?, bed?, heart?, hush?, slam?, flash?,
+// shake? } | { at: seconds, … }]: each fires as that word is spoken (from the clip's word
+// times) or typed, so picture, words and sound move together.
 // Any step may carry `when`: 'lyra_near' | 'npc_near:<id>' — it plays only if that holds.
 //
 // Every spoken step has a stable `key` (script id + its number among the spoken lines,
@@ -210,6 +220,10 @@ export function isSpoken(st) {
   return !!st && (st.narrate != null || st.say != null);
 }
 
+export function isSound(st) {
+  return !!st && !isSpoken(st) && (st.sfx != null || st.bed != null || st.heart != null || st.hush != null || st.slam != null);
+}
+
 // Number every spoken step: '<script>.<nn>'. Keys stay stable when non-spoken steps
 // (panels, camera moves, music) are added or moved.
 for (const [id, script] of Object.entries(SCRIPTS)) {
@@ -254,9 +268,15 @@ export function spokenLines() {
 }
 
 // Validation used by the tests: every step is one of the known kinds, with what it needs.
-const STEP_KINDS = ['panel', 'narrate', 'say', 'camera', 'actor', 'fade', 'wait', 'sound', 'music', 'title', 'world', 'call', 'end'];
+const STEP_KINDS = ['panel', 'narrate', 'say', 'camera', 'actor', 'fade', 'wait', 'sound', 'music', 'title', 'world', 'call', 'end', 'sfx', 'bed', 'heart', 'hush', 'slam'];
+const CUE_KEYS = ['word', 'nth', 'at', 'sfx', 'volume', 'bed', 'level', 'heart', 'hush', 'slam', 'flash', 'shake'];
 
-export function validateStep(st, panels = null) {
+function soundNamesOf(v) {
+  if (v == null || v === true) return [];
+  return Array.isArray(v) ? v : [v];
+}
+
+export function validateStep(st, panels = null, sounds = null) {
   if (!st || typeof st !== 'object') return 'not an object';
   const kinds = STEP_KINDS.filter((k) => st[k] != null);
   if (!kinds.length) return 'no step kind';
@@ -269,5 +289,24 @@ export function validateStep(st, panels = null) {
   if (st.camera && (typeof st.camera !== 'object' || st.camera.to == null)) return 'camera without a target';
   if (st.wait != null && !(Number(st.wait) >= 0)) return 'bad wait';
   if (st.when && !/^(lyra_near|npc_near:[a-z_]+)$/.test(st.when)) return `unknown condition ${st.when}`;
+  if (st.heart != null && !(Number(st.heart) >= 0)) return 'bad heartbeat';
+  if (st.hush != null && !(Number(st.hush) >= 0)) return 'bad hush';
+  if (st.cues != null) {
+    if (!isSpoken(st) || !Array.isArray(st.cues)) return 'cues belong on a spoken line';
+    const words = new Set(String(st.narrate ?? st.text).split(/\s+/).map((w) => w.toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[^a-z0-9']+/g, '')));
+    for (const c of st.cues) {
+      if (!c || typeof c !== 'object') return 'bad cue';
+      const extra = Object.keys(c).filter((k) => !CUE_KEYS.includes(k));
+      if (extra.length) return `unknown cue key ${extra[0]}`;
+      if (c.word != null && !words.has(String(c.word).toLowerCase().replace(/[^a-z0-9']+/g, ''))) return `cue word '${c.word}' is not in the line`;
+      if (c.word == null && !Number.isFinite(c.at)) return 'a cue needs a word or a time';
+      if (sounds) for (const n of soundNamesOf(c.sfx).concat(soundNamesOf(c.slam))) if (!sounds.sfx.includes(n)) return `unknown sound ${n}`;
+      if (sounds && c.bed != null && c.bed !== 'none' && !sounds.beds.includes(c.bed)) return `unknown bed ${c.bed}`;
+    }
+  }
+  if (sounds) {
+    for (const n of soundNamesOf(st.sfx).concat(soundNamesOf(st.slam))) if (!sounds.sfx.includes(n)) return `unknown sound ${n}`;
+    if (st.bed != null && st.bed !== 'none' && !sounds.beds.includes(st.bed)) return `unknown bed ${st.bed}`;
+  }
   return null;
 }

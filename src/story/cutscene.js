@@ -6,18 +6,26 @@
 // Skip button skips the whole scene. The game is paused underneath while a scene plays
 // (the director sets the state). Text is DOM at full resolution.
 //
-// Voice never holds a line: game.voice.play({ speaker, text, key, maxLatency, onStart,
-// wanted }) is asked for the clip, but the line keeps its own clock. It moves on by itself
-// at its reading time; only when the clip really starts playing does it wait for the
-// clip's end too (whichever is later). A clip that is slow, failed, blocked (audio not
-// yet allowed on an iPhone) or unreachable is dropped at the reading time, and after a
-// few failures in a row the scene carries on silently.
+// Voice never holds a line: game.voice.play({ speaker, text, maxLatency, onStart, wanted })
+// is asked for the clip, but the line keeps its own clock. It moves on by itself at its
+// reading time; only when the clip really starts playing does it wait for the clip's end
+// too (whichever is later). A clip that is slow, failed, blocked (audio not yet allowed on
+// an iPhone) or unreachable is dropped at the reading time, and after a few failures in a
+// row the scene carries on silently.
+//
+// Captions follow the voice: when the clip plays, each word pops in the moment it is
+// spoken (the clip's word times, scripts/voice/); without a clip the line types itself.
+// Sound (src/story/sfx.js): steps { sfx }, { bed }, { heart }, { hush: ms }, { slam }, and
+// `cues` on a spoken line — [{ word: 'melted', sfx: 'shimmer' }, { at: 1.2, heart: 64 }]
+// — fire on the word as it is spoken (or as it is typed), so picture, words and sound
+// move together. Effects duck under every spoken word.
 
 import { PANELS } from './panels.js';
 import { PanelInstance, panelMetrics, makeOverlay } from './panel_view.js';
 import { castPortrait, setStampAtlas } from './cast.js';
-import { stepKey, speakerName, readingMs, isSpoken } from './scripts.js';
+import { stepKey, speakerName, readingMs, isSpoken, isSound } from './scripts.js';
 import { Score } from './score.js';
+import { SceneSound } from './sfx.js';
 
 const HOLD_TO_SKIP = 0.9; // seconds of holding the pointer down
 const FADE_MS = 700;
@@ -27,6 +35,15 @@ const VOICE_FAILS_OFF = 3; // failed clips in a row before a scene stops asking
 // Reasons a clip did not play that say the voice layer itself is failing (not "no clip
 // for this line" or "muted").
 const VOICE_FAILURES = new Set(['unavailable', 'late', 'failed']);
+const CLIP_WAIT_S = 0.6; // a line with a clip holds its words this long for the voice to start
+const WORD_LEAD_S = 0.03; // a word pops in this much before it is heard
+
+// A word as cues name it: lower case, no punctuation.
+const bare = (w) =>
+  String(w || '')
+    .toLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[^a-z0-9']+/g, '');
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -229,6 +246,11 @@ export class CutscenePlayer {
     } catch {
       this.score = null;
     }
+    try {
+      this.sound = new SceneSound(this.game.audio, this.score);
+    } catch {
+      this.sound = null;
+    }
     return this.runSteps().then(
       (r) => r,
       (err) => {
@@ -250,7 +272,7 @@ export class CutscenePlayer {
         i++;
         while (i < steps.length && steps[i].world !== 'end') {
           const s2 = steps[i];
-          if (isSpoken(s2)) await this.exec(s2, i);
+          if (isSpoken(s2) || isSound(s2)) await this.exec(s2, i);
           i++;
         }
         i++;
@@ -289,6 +311,7 @@ export class CutscenePlayer {
       this.score?.cue(st.music);
       return;
     }
+    if (isSound(st)) return this.soundStep(st);
     if (st.camera) return this.cameraTo(st.camera);
     if (st.actor) return this.actor(st);
     if (st.call) {
@@ -300,6 +323,62 @@ export class CutscenePlayer {
       return;
     }
     if (isSpoken(st)) return this.line(st, index);
+  }
+
+  // A sound step: an effect, the bed, the heartbeat, the silence (a quiet pause a tap may
+  // cut short) or the slam.
+  soundStep(st) {
+    const s = this.sound;
+    try {
+      if (st.sfx) s?.fx(st.sfx, { volume: st.volume ?? 1 });
+      if (st.bed != null) s?.bed(st.bed === 'none' ? null : st.bed, { level: st.level ?? 1 });
+      if (st.heart != null) s?.heart(st.heart);
+      if (st.slam) {
+        s?.slam(st.slam === true ? 'big' : st.slam);
+        this.flash(st.flash || null);
+      }
+      if (st.hush != null) {
+        s?.hush();
+        return this.pause(Number(st.hush) || 0);
+      }
+    } catch (err) {
+      console.warn('[story] sound step failed', err);
+    }
+    return null;
+  }
+
+  // A cue on a spoken line, at its moment.
+  cue(c) {
+    const s = this.sound;
+    try {
+      if (c.sfx) s?.fx(c.sfx, { volume: c.volume ?? 1 });
+      if (c.bed != null) s?.bed(c.bed === 'none' ? null : c.bed, { level: c.level ?? 1 });
+      if (c.heart != null) s?.heart(c.heart);
+      if (c.hush) s?.hush();
+      if (c.slam) s?.slam(c.slam === true ? 'big' : c.slam);
+      if (c.flash) this.flash(c.flash);
+      if (c.shake) this.shake(c.shake);
+    } catch (err) {
+      console.warn('[story] cue failed', err);
+    }
+  }
+
+  // A white (or coloured) flash over the picture, gone in a breath.
+  flash(color) {
+    if (!color || !this.root || this.reduceMotion()) return;
+    const f = el('div', 'cs-flash');
+    f.style.background = color === true ? '#fff8e8' : String(color);
+    this.root.append(f);
+    setTimeout(() => f.remove?.(), 700);
+  }
+
+  shake(px = 4) {
+    if (!this.root || this.reduceMotion()) return;
+    this.root.style.setProperty?.('--cs-shake', `${Math.max(1, Math.min(10, Number(px) || 4))}px`);
+    this.root.classList.remove('cs-shaking');
+    void this.root.offsetWidth;
+    this.root.classList.add('cs-shaking');
+    setTimeout(() => this.root.classList.remove('cs-shaking'), 450);
   }
 
   check(when) {
@@ -459,7 +538,8 @@ export class CutscenePlayer {
     return null;
   }
 
-  // A spoken or narrated line: show it, type it, voice it, then wait for the reader.
+  // A spoken or narrated line: show it, voice it (the words follow the voice) or type it,
+  // then wait for the reader.
   async line(st, index) {
     const g = this.game;
     const narr = st.narrate != null;
@@ -482,9 +562,19 @@ export class CutscenePlayer {
     this.box.classList.add('cs-show');
     this.textEl.textContent = '';
     this.nextEl.classList.remove('cs-ready');
+    const voice = this.voiceOff ? null : g.voice;
     const rate = this.reduceMotion() ? Infinity : 42 * Math.max(0.5, Number(g.settings?.textSpeed) || 1);
-    this.typing = { text, shown: 0, rate, done: !Number.isFinite(rate) };
-    if (this.typing.done) this.textEl.textContent = text;
+    // A line with a clip holds its words a moment for the voice, so they can pop in as
+    // they are spoken; without one (or if it is late) it types itself.
+    let expect = null;
+    try {
+      expect = voice?.clip?.(speaker, text) || null;
+    } catch {
+      expect = null;
+    }
+    const typing = { text, shown: 0, rate, done: !Number.isFinite(rate), wait: expect && Number.isFinite(rate) ? CLIP_WAIT_S : 0, words: null, spans: null, next: 0, t0: 0 };
+    this.typing = typing;
+    if (typing.done) this.textEl.textContent = text;
     const key = stepKey(this.script.id, index, st);
     // The line's own clock (see the top of the file): it moves on at `deadline`, which only
     // a clip that really plays may push later.
@@ -495,7 +585,7 @@ export class CutscenePlayer {
     let auto = false;
     let resolveThis = null;
     let timer = null;
-    const line = { clip: false, over: false, ended: false };
+    const line = { clip: false, over: false, ended: false, cues: [], timers: [] };
     const advanced = new Promise((resolve) => {
       resolveThis = resolve;
     });
@@ -509,16 +599,47 @@ export class CutscenePlayer {
         if (performance.now() < deadline - 4) return arm();
         auto = true;
         // Never leave a line half-typed on its way out.
-        if (this.typing && !this.typing.done) {
-          this.typing.done = true;
-          this.textEl.textContent = this.typing.text;
-        }
+        this.finishTyping();
         this.advanceFn = null;
         resolveThis();
       }, Math.max(0, deadline - performance.now()));
     };
     arm();
-    const voice = this.voiceOff ? null : g.voice;
+    // Cues: on a word as it is spoken (or typed), or at a time into the line.
+    line.cues = (Array.isArray(st.cues) ? st.cues : []).map((c) => ({ c, fired: false }));
+    const fire = (q) => {
+      if (q.fired || line.over) return;
+      q.fired = true;
+      this.cue(q.c);
+    };
+    const schedule = (timeOf) => {
+      for (const t of line.timers) clearTimeout(t);
+      line.timers = [];
+      for (const q of line.cues) {
+        if (q.fired) continue;
+        const at = timeOf(q.c);
+        if (at == null) continue;
+        line.timers.push(setTimeout(() => fire(q), Math.max(0, at * 1000)));
+      }
+    };
+    const tokens = text.split(/\s+/).filter(Boolean);
+    const tokenAt = (c) => {
+      if (c.word == null) return -1;
+      const want = bare(c.word);
+      let n = Number(c.nth) || 1;
+      for (let i = 0; i < tokens.length; i++) if (bare(tokens[i]) === want && --n <= 0) return i;
+      return -1;
+    };
+    // Unvoiced: as the typing reaches the word.
+    const typedTime = (c) => {
+      if (Number.isFinite(c.at)) return c.at;
+      const i = tokenAt(c);
+      if (i < 0) return 0;
+      if (!Number.isFinite(rate)) return 0;
+      const chars = tokens.slice(0, i).join(' ').length + (i ? 1 : 0);
+      return typing.wait + chars / rate;
+    };
+    if (line.cues.length) schedule(typedTime);
     if (voice && typeof voice.play === 'function') {
       this.preloadAhead(index);
       try {
@@ -530,12 +651,26 @@ export class CutscenePlayer {
           // The clip may arrive no later than the line would have moved on without it.
           maxLatency: minRead / 1000,
           wanted: current,
-          onStart: ({ duration } = {}) => {
+          onStart: ({ duration, words } = {}) => {
             if (!current()) return;
             line.clip = true;
             const ms = Math.max(0, Number(duration) || 0) * 1000;
             deadline = Math.max(readEnd, performance.now() + ms + CLIP_TAIL_MS);
             arm();
+            const w = Array.isArray(words) && words.length ? words : null;
+            if (w) {
+              this.followVoice(typing, w);
+              this.sound?.duckFor(w);
+              if (line.cues.length) {
+                schedule((c) => {
+                  if (Number.isFinite(c.at)) return c.at;
+                  const i = tokenAt(c);
+                  if (i < 0) return 0;
+                  const k = tokens.length === w.length ? i : Math.min(w.length - 1, Math.floor((i * w.length) / tokens.length));
+                  return Math.max(0, Number(w[k][1]) || 0);
+                });
+              }
+            }
           },
         });
         Promise.resolve(asked).then(
@@ -543,9 +678,10 @@ export class CutscenePlayer {
             if (!current()) return;
             // The clip ended (or was cut): a breath after it, but never before the reading time.
             if (line.clip) {
+              if (typing.words) this.finishTyping();
               deadline = Math.max(readEnd, performance.now() + CLIP_TAIL_MS);
               arm();
-            }
+            } else typing.wait = 0; // no voice after all: type at once
           }),
           () => this.voiceResult({ ok: false, reason: 'failed' }, line),
         );
@@ -556,6 +692,14 @@ export class CutscenePlayer {
     await advanced;
     line.over = true;
     clearTimeout(timer);
+    for (const t of line.timers) clearTimeout(t);
+    // What a cue would have changed (the bed, the heartbeat, the silence) still changes when
+    // the line is tapped past; its one-off sounds are let go.
+    for (const q of line.cues) {
+      if (q.fired) continue;
+      const { sfx, flash, shake, ...state } = q.c;
+      if (state.bed != null || state.heart != null || state.hush || state.slam) this.cue(state);
+    }
     if (this.advanceFn === resolveThis) this.advanceFn = null;
     // A tap stops the voice at once; a line that moved on by itself stops a clip that is
     // still loading or stuck (it would talk over the next line).
@@ -565,8 +709,55 @@ export class CutscenePlayer {
       } catch {
         /* nothing to stop */
       }
+      if (line.clip) this.sound?.unduck();
     }
     this.typing = null;
+  }
+
+  // The clip is playing: the words pop in as they are spoken. Words already on screen
+  // (the line began to type before a late clip) stay.
+  followVoice(typing, words) {
+    if (!typing || typing.done || this.typing !== typing) return;
+    const tokens = typing.text.split(/\s+/).filter(Boolean);
+    if (!tokens.length) return;
+    const at = tokens.map((_, i) => {
+      const k = tokens.length === words.length ? i : Math.min(words.length - 1, Math.floor((i * words.length) / tokens.length));
+      return Math.max(0, Number(words[k][1]) || 0);
+    });
+    for (let i = 1; i < at.length; i++) if (at[i] < at[i - 1]) at[i] = at[i - 1];
+    let typed = 0;
+    let n = 0;
+    for (; n < tokens.length; n++) {
+      typed += tokens[n].length + (n ? 1 : 0);
+      if (typed > typing.shown) break;
+    }
+    this.textEl.textContent = '';
+    const spans = [];
+    tokens.forEach((tok, i) => {
+      if (i) this.textEl.append(document.createTextNode ? document.createTextNode(' ') : ' ');
+      const sp = el('span', i < n ? 'cw on' : 'cw', tok);
+      spans.push(sp);
+      this.textEl.append(sp);
+    });
+    typing.words = at;
+    typing.spans = spans;
+    typing.next = n;
+    typing.t0 = performance.now();
+  }
+
+  // Show the whole line at once (a tap, or the line leaving).
+  finishTyping() {
+    const t = this.typing;
+    if (!t || t.done) return;
+    t.done = true;
+    if (t.spans) {
+      for (let i = t.next; i < t.spans.length; i++) t.spans[i].classList.add('on');
+      t.next = t.spans.length;
+    } else {
+      t.shown = t.text.length;
+      this.textEl.textContent = t.text;
+    }
+    this.nextEl.classList.add('cs-ready');
   }
 
   // Fetch the next couple of lines' clips while this one plays, so they are ready in time.
@@ -605,10 +796,7 @@ export class CutscenePlayer {
   advance() {
     if (!this.active) return;
     if (this.typing && !this.typing.done) {
-      this.typing.done = true;
-      this.typing.shown = this.typing.text.length;
-      this.textEl.textContent = this.typing.text;
-      this.nextEl.classList.add('cs-ready');
+      this.finishTyping();
       return;
     }
     if (this.advanceFn) {
@@ -711,6 +899,8 @@ export class CutscenePlayer {
     }
     this.score?.stop();
     this.score = null;
+    this.sound?.stop();
+    this.sound = null;
     this.panel = null;
     this.prevPanel = null;
     this.ctx.clearRect(0, 0, this.devW, this.devH);
@@ -757,15 +947,33 @@ export class CutscenePlayer {
         this.skip();
       }
     }
-    if (this.typing && !this.typing.done) {
-      this.typing.shown += dt * this.typing.rate;
-      const n = Math.min(this.typing.text.length, Math.floor(this.typing.shown));
-      this.textEl.textContent = this.typing.text.slice(0, n);
-      if (n >= this.typing.text.length) {
-        this.typing.done = true;
-        this.nextEl.classList.add('cs-ready');
+    const ty = this.typing;
+    if (ty && !ty.done) {
+      if (ty.words) {
+        // Following the voice: every word whose moment has come.
+        const v = this.game.voice;
+        const clock = typeof v?.elapsed === 'function' ? v.elapsed() : -1;
+        const now = clock >= 0 ? clock : (performance.now() - ty.t0) / 1000;
+        while (ty.next < ty.spans.length && ty.words[ty.next] <= now + WORD_LEAD_S) ty.spans[ty.next++].classList.add('on');
+        if (ty.next >= ty.spans.length) {
+          ty.done = true;
+          this.nextEl.classList.add('cs-ready');
+        }
+      } else if (ty.wait > 0) {
+        ty.wait -= dt; // the voice may yet start
+      } else {
+        ty.shown += dt * ty.rate;
+        const n = Math.min(ty.text.length, Math.floor(ty.shown));
+        this.textEl.textContent = ty.text.slice(0, n);
+        if (n >= ty.text.length) {
+          ty.done = true;
+          this.nextEl.classList.add('cs-ready');
+        }
       }
     }
+    // Sound waits for the first tap on a phone: the bed starts as soon as it may.
+    const snd = this.sound;
+    if (snd?.bedName && !snd.curBed && snd.ready()) snd.bed(snd.bedName);
     if (this.panel) this.panel.update(dt);
     if (this.prevPanel) {
       this.prevPanel.update(dt);

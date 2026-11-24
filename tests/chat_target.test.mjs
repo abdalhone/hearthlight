@@ -26,7 +26,7 @@ import { hiddenIn, speakable } from '../src/ai/social/hidden.js';
 import { fill } from '../src/ai/social/lines.js';
 import { VILLAGER_RULES, buildSayTask, coerceSay, SAY_SCHEMA, publicText } from '../src/ai/social/village_prompt.js';
 import { ASK_YOU, detectName, knownName, chatOf, recordChat, notesOf, addNote, cleanYou, CHAT_CAP, understand } from '../src/ai/social/player_talk.js';
-import { EARSHOT, EARSHOT_LOSE, earshotPeople, whyNotHeard, pickActorAt, toneOf, standingOf, partingLine, villagerChips, ttsVoiceFor, inFight, speakVillagerLine } from '../src/ui/chat_target.js';
+import { EARSHOT, EARSHOT_LOSE, earshotPeople, whyNotHeard, pickActorAt, toneOf, standingOf, partingLine, villagerChips, inFight } from '../src/ui/chat_target.js';
 
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -178,19 +178,6 @@ test('chips, tones and parting lines read right', () => {
   assert.ok(villagerChips({ settings: { playerName: 'Wren' } }, 'hobb', false).includes("I'm Wren."));
   assert.ok(!villagerChips({ settings: { playerName: 'Wren' } }, 'hobb', true).includes("I'm Wren."));
   assert.ok(!villagerChips({ settings: { playerName: 'Traveler' } }, 'hobb', false).some((c) => /^I'm/.test(c)));
-  // Their own voice, never Lyra's.
-  for (const id of VILLAGERS) assert.notEqual(ttsVoiceFor(id, 'airy'), 'airy');
-});
-
-test("a villager's chat line with no recording speaks in a voice of their own", async () => {
-  const spoken = [];
-  const game = { settings: { voice: true, voiceName: 'glassy', voiceVol: 0.8 }, runtime: { tts: { speak: (text, o) => (spoken.push({ text, voice: o.voice }), Promise.resolve()) } } };
-  const r = await speakVillagerLine(game, 'elda', 'Sit, sit. The kettle is on.');
-  assert.equal(r.ok, true);
-  assert.equal(spoken[0].text, 'Sit, sit. The kettle is on.');
-  assert.notEqual(spoken[0].voice, 'glassy', 'never in Lyra’s voice');
-  game.settings.voice = false;
-  assert.equal((await speakVillagerLine(game, 'elda', 'Hm.')).ok, false, 'silent unless the player reads replies aloud');
 });
 
 // ------------------------------------------------------------------ what they keep of you

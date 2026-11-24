@@ -522,7 +522,7 @@ PLACES = {
 }
 
 
-def shape(audio: np.ndarray, fx: dict, place: str | None) -> np.ndarray:
+def shape(audio: np.ndarray, fx: dict, place: str | None, room_scale: float = 1.0) -> np.ndarray:
     x = audio
     if fx.get("tempo", 1.0) != 1.0 or fx.get("pitch"):
         x = rubberband(x, float(fx.get("pitch", 0.0)), float(fx.get("tempo", 1.0)), "preserved")
@@ -533,7 +533,7 @@ def shape(audio: np.ndarray, fx: dict, place: str | None) -> np.ndarray:
     if p.get("lowpass"):
         x = run_ffmpeg(x, [f"lowpass=f={p['lowpass']:.0f}:poles=2"])
     if p.get("room"):
-        x = room(x, p["room"], p.get("roomSize", 0.35), dark=p.get("dark", 0.75), pre=p.get("pre", 0.012))
+        x = room(x, p["room"] * room_scale, p.get("roomSize", 0.35), dark=p.get("dark", 0.75), pre=p.get("pre", 0.012))
     return x
 
 
@@ -621,8 +621,22 @@ class Mouth:
     def condition(self, ref: Path, exaggeration: float) -> None:
         key = (str(ref), round(float(exaggeration), 3))
         if key != self._cond_key:
-            self.tts.prepare_conditionals(str(ref), exaggeration=float(exaggeration))
+            if str(ref).endswith(".pt"):  # Chatterbox's own built-in voice
+                from chatterbox.tts import Conditionals
+
+                self.tts.conds = Conditionals.load(str(ref)).to("cpu")
+            else:
+                self.tts.prepare_conditionals(str(ref), exaggeration=float(exaggeration))
             self._cond_key = key
+
+    def ref_embed(self, ref: Path) -> np.ndarray:
+        """The voice a take should sound like, as the voice encoder hears it."""
+        if str(ref).endswith(".pt"):
+            from chatterbox.tts import Conditionals
+
+            e = Conditionals.load(str(ref)).t3.speaker_emb.detach().cpu().numpy().reshape(-1).astype(np.float64)
+            return e / (np.linalg.norm(e) + 1e-12)
+        return self.embed(read_wav(Path(ref)))
 
     def say(self, text: str, ref: Path, seed: int, exaggeration: float, cfg: float, temperature: float) -> np.ndarray:
         self.condition(ref, exaggeration)
@@ -657,9 +671,20 @@ def base_ref(name: str) -> Path:
     return HERE / "refs" / f"{name}.flac"
 
 
+def default_voice() -> Path:
+    """Chatterbox's own built-in voice (its conds.pt)."""
+    hf_env()
+    from huggingface_hub import hf_hub_download
+
+    return Path(hf_hub_download("ResembleAI/chatterbox", "conds.pt"))
+
+
 def shaped_ref(name: str, shape_spec: dict | None) -> Path:
     """The reference a character is conditioned on: one of the author's voices, reshaped
-    (pitch, vocal-tract size, pace) into another person, cached by its recipe."""
+    (pitch, vocal-tract size, pace) into another person, cached by its recipe; or
+    'default', Chatterbox's own voice."""
+    if name == "default":
+        return default_voice()
     src = base_ref(name)
     if not shape_spec:
         return src
@@ -682,8 +707,8 @@ def f0_stats(audio: np.ndarray) -> dict:
     from scipy.signal import resample_poly
 
     a = resample_poly(audio.astype(np.float32), 2, 3)
-    f0, vf, vp = librosa.pyin(a, fmin=50, fmax=600, sr=16000, frame_length=1024)
-    ok = vf & ~np.isnan(f0) & (vp > 0.5)
+    f0, vf, vp = librosa.pyin(a.astype(np.float64), fmin=50, fmax=500, sr=16000, frame_length=2048)
+    ok = vf & ~np.isnan(f0)
     f = f0[ok]
     if len(f) < 5:
         return {"f0": 0.0, "range": 0.0}

@@ -38,6 +38,8 @@ OUT = vl.ROOT / "assets" / "voice"
 LINES = vl.HERE / "lines.json"
 CAST = vl.HERE / "cast.json"
 MODEL = "chatterbox-0.1.7"
+EARS = "small.en"  # Whisper that judges takes and checks the finished clips (base.en mishears the Void)
+LIGHTER = [1.0, 0.6, 0.35, 0.15]  # effect strength tried in turn while a finished clip loses a word
 
 
 def load_cast() -> dict:
@@ -67,7 +69,7 @@ def plan_line(line: dict, cast: dict) -> dict:
     ref_sha = vl.file_sha(ref)
     seeds = list(v.get("seeds") or cast.get("seeds") or [11, 23, 37])
     takes = [{"seed": s, "fp": vl.sha({"model": MODEL, "ref": ref_sha, "text": text, "gen": gen, "seed": s})} for s in seeds]
-    post = {"fx": v.get("fx") or {}, "void": v.get("void"), "place": line.get("place"), "pipeline": vl.PIPELINE}
+    post = {"fx": v.get("fx") or {}, "void": v.get("void"), "place": line.get("place"), "pipeline": vl.PIPELINE, "ears": EARS, "lighter": LIGHTER}
     fp = vl.sha({"takes": [t["fp"] for t in takes], "post": post, "kbps": vl.KBPS})
     return {**line, "tts": text, "ref": str(ref), "ref_sha": ref_sha, "gen": gen, "takes": takes, "post": post, "fp": fp}
 
@@ -83,7 +85,7 @@ def _init(threads: int, names: list[str]) -> None:
 
     warnings.filterwarnings("ignore")
     _W["mouth"] = vl.Mouth(threads)
-    _W["ears"] = vl.Ears("base.en", threads, set(names))
+    _W["ears"] = vl.Ears(EARS, threads, set(names))
     _W["names"] = set(names)
     _W["refemb"] = {}
 
@@ -91,7 +93,7 @@ def _init(threads: int, names: list[str]) -> None:
 def _ref_emb(ref: str, ref_sha: str) -> np.ndarray:
     e = _W["refemb"].get(ref_sha)
     if e is None:
-        e = _W["mouth"].embed(vl.read_wav(Path(ref)))
+        e = _W["mouth"].ref_embed(Path(ref))
         _W["refemb"][ref_sha] = e
     return e
 
@@ -101,7 +103,7 @@ def take_for(job: dict, t: dict) -> dict:
     d = vl.cache_dir() / "takes"
     wav, meta = d / f"{t['fp']}.wav", d / f"{t['fp']}.json"
     info = vl.load_json(meta)
-    if info and wav.exists():
+    if info and wav.exists() and info.get("ears") == EARS:
         return info
     t0 = time.time()
     if wav.exists():
@@ -119,7 +121,7 @@ def take_for(job: dict, t: dict) -> dict:
     info = {
         "seed": t["seed"], "fp": t["fp"], "errors": errors, "n": n, "heard": " ".join(w[0] for w in words),
         "words": words, "sim": round(sim, 4), "gap": round(vl.longest_gap(clip), 3), "dur": round(len(clip) / vl.SR, 3),
-        "prob": round(float(np.mean([w[3] for w in words])) if words else 0.0, 3), "gen_s": round(gen_s, 1),
+        "prob": round(float(np.mean([w[3] for w in words])) if words else 0.0, 3), "gen_s": round(gen_s, 1), "ears": EARS,
     }
     vl.write_json(meta, info)
     return info
@@ -131,14 +133,34 @@ def score(info: dict) -> float:
     return info["errors"] * 10 + (1 - info["sim"]) * 5 + gap_pen + (1 - info["prob"]) * 2
 
 
-def finish_line(job: dict, best: dict) -> tuple[np.ndarray, list]:
+def lighter(post: dict, k: float) -> dict:
+    """The same shaping with its effects at strength k (the author's check: an effect that
+    hides a word is lowered, the echo lightened, and the clip heard again)."""
+    if k >= 1:
+        return post
+    p = json.loads(json.dumps(post))
+    if p.get("void"):
+        v = p["void"]
+        v["echo90"] = v.get("echo90", 0.22) * k
+        v["echo160"] = v.get("echo160", 0.12) * k
+        v["octaveDb"] = v.get("octaveDb", -15.0) + 20 * np.log10(max(k, 1e-3))
+    fx = p.get("fx") or {}
+    for key in ("grit", "tremor"):
+        if key in fx:
+            fx[key] = fx[key] * k
+    p["fx"] = fx
+    p["roomScale"] = k
+    return p
+
+
+def finish_line(job: dict, best: dict, k: float = 1.0) -> tuple[np.ndarray, list]:
     audio = vl.read_wav(vl.cache_dir() / "takes" / f"{best['fp']}.wav")
     clip, off = vl.cut_line(audio, best["words"])
-    post = job["post"]
+    post = lighter(job["post"], k)
     if post.get("void"):
         x = vl.void_chain(clip, best["words"], off, post["void"])
     else:
-        x = vl.shape(clip, post.get("fx") or {}, post.get("place"))
+        x = vl.shape(clip, post.get("fx") or {}, post.get("place"), post.get("roomScale", 1.0))
     return vl.finish(x), best["words"]
 
 
@@ -193,17 +215,28 @@ def render_job(job: dict) -> dict:
     try:
         infos = [take_for(job, t) for t in job["takes"]]
         best = min(infos, key=score)
-        audio, _ = finish_line(job, best)
         out = Path(job["out"]) / f"{job['key']}.mp3"
-        dec, tp = vl.encode_checked(audio, out)
-        heard = _W["ears"].words(dec)
-        final_errors, n = vl.word_errors(job["text"], [w[0] for w in heard], _W["names"])
+        tried = []
+        for k in LIGHTER:
+            audio, _ = finish_line(job, best, k)
+            dec, tp = vl.encode_checked(audio, out)
+            heard = _W["ears"].words(dec)
+            final_errors, n = vl.word_errors(job["text"], [w[0] for w in heard], _W["names"])
+            tried.append((final_errors, -k, audio))
+            if final_errors <= best["errors"]:
+                break
+        if tried[-1][0] > min(t[0] for t in tried):  # the lightest was no better: keep the best heard
+            final_errors, negk, audio = min(tried, key=lambda t: (t[0], t[1]))
+            k = -negk
+            dec, tp = vl.encode_checked(audio, out)
+            heard = _W["ears"].words(dec)
+            final_errors, n = vl.word_errors(job["text"], [w[0] for w in heard], _W["names"])
         words = caption_words(job["text"], heard, best["words"])
         return {
             "key": job["key"], "ok": True, "fp": job["fp"], "seed": best["seed"], "takes": [{k: i[k] for k in ("seed", "errors", "sim", "gap", "prob", "dur")} for i in infos],
             "errors": best["errors"], "n": n, "final_errors": final_errors, "heard": " ".join(w[0] for w in heard),
             "dur": round(len(dec) / vl.SR, 3), "lufs": round(vl.lufs(dec), 2), "tp": round(tp, 2), "bytes": out.stat().st_size,
-            "words": words, "secs": round(time.time() - t0, 1),
+            "words": words, "secs": round(time.time() - t0, 1), "strength": k,
         }
     except Exception as err:  # one bad line never stops the render
         import traceback
@@ -213,6 +246,24 @@ def render_job(job: dict) -> dict:
 
 
 # --------------------------------------------------------------------------- main
+
+def update_manifest(path: Path, entries: dict, keep: set | None = None) -> dict:
+    """Merge entries into the manifest on disk under a lock (two renders may share it)."""
+    import fcntl
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path.with_suffix(".lock"), "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        m = vl.load_json(path, {}) or {}
+        if not isinstance(m.get("clips"), dict):
+            m = {"format": "hearthlight-cutscene-voice/1", "clips": {}}
+        m["clips"].update(entries)
+        if keep is not None:
+            m["clips"] = {k: v for k, v in m["clips"].items() if k in keep}
+        m["clips"] = dict(sorted(m["clips"].items(), key=lambda kv: (kv[1].get("order", 0), kv[0])))
+        vl.write_json(path, m, indent=None)
+        return m
+
 
 def collect() -> list[dict]:
     subprocess.run(["node", str(vl.HERE / "collect.mjs")], check=True, cwd=vl.ROOT)
@@ -264,13 +315,14 @@ def main() -> int:
                     print(f"  FAILED {r['key']}: {r.get('error')}", flush=True)
                     continue
                 l = next(x for x in want if x["key"] == r["key"])
-                clips[r["key"]] = {
+                entry = {
                     "file": f"{r['key']}.mp3", "speaker": l["speaker"], "line": l["line"], "script": l["script"], "order": l["order"],
                     "text": l["text"], "dur": r["dur"], "words": r["words"], "fp": r["fp"], "seed": r["seed"], "takes": r["takes"],
                     "errors": r["errors"], "final_errors": r["final_errors"], "n": r["n"], "heard": r["heard"],
-                    "lufs": r["lufs"], "tp": r["tp"], "bytes": r["bytes"],
+                    "lufs": r["lufs"], "tp": r["tp"], "bytes": r["bytes"], "strength": r["strength"],
                 }
-                vl.write_json(manifest_path, manifest)
+                manifest = update_manifest(manifest_path, {r["key"]: entry})
+                clips = manifest["clips"]
                 flag = "" if r["errors"] == 0 else f"  << {r['errors']} word error(s) in the best take"
                 el = time.time() - t0
                 print(f"  [{done}/{len(jobs)}] {l['line']:18s} {l['speaker']:8s} {r['dur']:5.1f}s seed {r['seed']} takes {[t['errors'] for t in r['takes']]} final {r['final_errors']} {r['secs']:5.0f}s  eta {el / done * (len(jobs) - done) / 60:4.0f} min{flag}", flush=True)
@@ -278,12 +330,13 @@ def main() -> int:
     # Lines that are gone take their clips with them.
     keys = {l["key"] for l in lines}
     if not args.no_prune and not args.only and not args.script and not args.limit:
-        for k in [k for k in clips if k not in keys]:
-            del clips[k]
+        manifest = update_manifest(manifest_path, {}, keep=keys)
+        clips = manifest["clips"]
         for f in OUT.glob("*.mp3"):
             if f.stem not in keys:
                 f.unlink()
-    vl.write_json(manifest_path, manifest)
+    manifest = update_manifest(manifest_path, {})
+    clips = manifest["clips"]
     have = [clips[k] for k in keys if k in clips]
     mb = sum(c["bytes"] for c in have) / 1e6
     flagged = [c for c in have if c["errors"]]

@@ -20,7 +20,6 @@ import { coerceResponse, coerceReflection, coerceConversation, dedupeActions, MA
 import { coerceMemoryEdits, applyMemoryEdits } from '../mind/memory_edits.js';
 import { applyEffects, logConversation, resolvePerson } from './effects.js';
 import { VILLAGERS } from './soul_fallback.js';
-import { Voice } from './voice.js';
 import { Barker } from './barks.js';
 import { composeDiary } from './diary.js';
 import { companionshipOf, distanceTiles, previewVerdict, isRefusal } from './her_state.js';
@@ -47,7 +46,6 @@ export class Brain {
     this.speech = new SpeechGen();
     this.local = new LocalBrain(game, this.speech);
     this.providers = new ProviderSet(game, loadSdk ? { loadSdk } : {});
-    this.voice = new Voice(game);
     this.barks = new Barker(game, this);
     this.busy = false;
     this.lastError = null;
@@ -206,7 +204,6 @@ export class Brain {
     }
     g.bus?.emit('player_message', { text: clean });
     logConversation(g, 'player', clean);
-    this.voice.stop();
     const away = this._unreachable();
     if (away) return away;
     this._faceThePlayer();
@@ -737,7 +734,6 @@ export class Brain {
       }
       g.bus?.emit('speech', { speaker: lyra, text: say, target: g.player || null, kind: 'say' });
       logConversation(g, 'lyra', say);
-      this.voice.speak(say);
     }
     applyEffects(g, reply, { source: providerId === 'local' ? 'local' : 'claude', cause: 'conversation' });
     this.lastReplyAt = this.now();
