@@ -850,6 +850,88 @@ const ICONS = {
     p.blob(3, 13, 1.7, 1.5, ['#3d352c', '#5b5246', '#6e6455'], null, false);
   },
 
+  candle(p) {
+    // A pale beeswax taper in a little brass dish, lit.
+    const wax = ['#a8874a', '#d8b870', '#eed69a', '#fbeec4', '#fffbe6'];
+    for (let y = 5; y <= 12; y++) for (let x = 6; x <= 9; x++) p.set(x, y, wax[x === 6 ? 3 : x === 9 ? 1 : 2 + (y < 7 ? 1 : 0)]);
+    p.set(9, 6, wax[2]);
+    p.set(6, 9, wax[4]);
+    // A drip down the side.
+    p.set(6, 6, wax[4]);
+    p.set(5, 7, wax[3]);
+    p.set(5, 8, wax[2]);
+    // Wick and flame.
+    p.set(7, 4, '#3a2a20');
+    p.set(7, 3, '#ffb047');
+    p.set(8, 3, '#ee7f2d');
+    p.set(7, 2, '#ffe08a');
+    p.set(7, 1, CREAM_HI);
+    p.set(8, 2, '#ffb047');
+    // Dish.
+    for (let x = 3; x <= 12; x++) p.set(x, 13, x < 6 ? GOLD[4] : x > 10 ? GOLD[1] : GOLD[2]);
+    for (let x = 4; x <= 11; x++) p.set(x, 14, GOLD[1]);
+    p.set(12, 12, GOLD[3]);
+    p.set(13, 11, GOLD[2]);
+  },
+
+  honey(p) {
+    // A squat clay crock, a cloth tied over the top, honey running down one side.
+    const clay = ['#5a3020', '#8a4a2c', '#b86a3c', '#d9935a', '#f2bf88'];
+    p.blob(8, 10, 5.6, 4.6, clay, (x, y) => y >= 6, false);
+    for (let x = 4; x <= 11; x++) p.set(x, 6, x < 6 ? '#f6eedd' : x > 9 ? '#c8b89a' : '#e8dcc4');
+    for (let x = 5; x <= 10; x++) p.set(x, 5, x < 7 ? '#fff6e8' : '#e8dcc4');
+    p.rect(5, 7, 6, 1, '#7a2232');
+    p.set(4, 7, '#ab3a45');
+    // The drip.
+    p.set(10, 8, GOLD[4]);
+    p.set(10, 9, GOLD[3]);
+    p.set(11, 10, GOLD[3]);
+    p.set(11, 11, GOLD[2]);
+    // A bee on the lid.
+    p.set(9, 4, '#2a2018');
+    p.set(10, 4, GOLD[4]);
+    p.set(9, 3, '#d8eef2');
+    p.set(5, 10, clay[4]);
+  },
+
+  smoked_eel(p) {
+    // A coiled, glossy smoked eel on a twist of string.
+    const eel = ['#2a1810', '#4a2c1a', '#7a4a24', '#ad7a48', '#e2b070'];
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        const dx = x + 0.5 - 8;
+        const dy = y + 0.5 - 8.5;
+        const r = Math.hypot(dx, dy);
+        const a = Math.atan2(dy, dx);
+        const ring = 2.3 + ((a + Math.PI) / (Math.PI * 2)) * 3.2;
+        if (Math.abs(r - ring) < 1.25 && r < 6.2) {
+          const lit = -(dx * LIGHT_X + dy * LIGHT_Y) / (r || 1);
+          p.set(x, y, eel[Math.max(0, Math.min(4, Math.round(2 + lit * 1.4 - (Math.abs(r - ring) > 0.8 ? 1 : 0))))]);
+        }
+      }
+    }
+    p.set(8, 8, eel[1]);
+    p.set(3, 6, eel[0]);
+    p.set(2, 5, '#141219');
+    // Hanging string.
+    p.line(12, 2, 13, 0, '#c8b89a');
+    p.set(12, 3, '#a89878');
+  },
+
+  wool_cloak(p) {
+    // A folded cloak: violet outside, teal lining showing at the fold, a pewter clasp.
+    const vio = ['#2a1547', '#44267a', '#6340a8', '#8a66cc', '#b89ae6'];
+    const teal = ['#164a4a', '#227070', '#36a0a0', '#6ccaca'];
+    p.shape((x, y) => y >= 4 && y <= 13 && x >= 2 + Math.max(0, 6 - y) * 0.6 && x <= 13 - Math.max(0, 6 - y) * 0.6, vio, { k: 1.3 });
+    for (let x = 3; x <= 12; x++) p.set(x, 9, x < 6 ? teal[3] : x > 10 ? teal[1] : teal[2]);
+    for (let x = 3; x <= 12; x++) p.set(x, 10, teal[0]);
+    for (let y = 11; y <= 13; y++) p.set(7 + ((y * 3) % 2), y, vio[1]);
+    p.set(8, 5, IRON[4]);
+    p.set(7, 5, IRON[2]);
+    p.set(8, 6, IRON[1]);
+    p.set(4, 5, vio[4]);
+  },
+
   unknown(p) {
     const cloth = ['#5a4a3a', '#7a6a58', '#b5a184', '#e2d2b0'];
     p.blob(8, 10, 5.3, 4.3, cloth, (x, y) => y < 14, false);

@@ -33,6 +33,11 @@ export const ITEMS = {
   bat_wing: { name: 'Bat Wing', type: 'material', value: 4, desc: 'Leathery and thin as paper. Mira swears it soothes a cough.' },
   boar_tusk: { name: 'Boar Tusk', type: 'material', value: 8, desc: 'A curved ivory hook. Bram can set it into a knife handle.' },
   antler: { name: 'Antler', type: 'material', value: 7, desc: 'A forked deer antler, worn smooth as river stone.' },
+  // Round 3 (the newcomers' trades, LORE §5 economy).
+  candle: { name: 'Beeswax Candle', type: 'tool', value: 4, desc: "Dipped by Hobb Ambrel from Wenna's wax. Burns slow and smells of lindens." },
+  honey: { name: 'Linden Honey', type: 'food', value: 9, heal: 10, desc: "A crock of Wenna Ambrel's lindenflower honey, the last pull before winter." },
+  smoked_eel: { name: 'Smoked Eel', type: 'food', value: 12, heal: 16, desc: "From Corran Dell's net-shed. Garrick tells Brightwater it comes from Saltmere." },
+  wool_cloak: { name: 'Wool Cloak', type: 'gift', value: 30, desc: 'Dyed and sewn by Sabeth Coll: murrel violet with a lake-wort teal lining.' },
 };
 
 export function itemDef(id) {

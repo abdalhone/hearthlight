@@ -10,6 +10,7 @@
 // helped, rooms) and each fact's spoken `say` come from npc_lines.js, merged in below.
 
 import { FACT_SAY, NPC_EXTRA_LINES } from './npc_lines.js';
+import { MORE_PROFILES, MORE_KNOWS } from './npc_data_more.js';
 
 export const NPC_PROFILES = [
   {
@@ -781,3 +782,8 @@ export const ASK_TOPICS = [
   { id: 'self', label: 'Yourself', factTopics: ['family', 'past', 'secret'] },
   { id: 'people', label: 'The townsfolk', factTopics: ['people'] },
 ];
+
+// Round 3 (DESIGN §19.1): the ten newcomers from npc_data_more.js join the eight, and the
+// eight learn what they think of them (their own words win if both say something).
+for (const p of NPC_PROFILES) if (MORE_KNOWS[p.id]) p.knows = { ...MORE_KNOWS[p.id], ...p.knows };
+for (const p of MORE_PROFILES) if (!NPC_PROFILES.some((q) => q.id === p.id)) NPC_PROFILES.push(p);

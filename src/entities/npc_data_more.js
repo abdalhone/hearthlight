@@ -1485,7 +1485,32 @@ export const MORE_KNOWS = {
 // Merge the spoken lines into the profiles once, at import (as npc_data.js does for the eight).
 for (const p of MORE_PROFILES) {
   Object.assign(p, MORE_EXTRA_LINES[p.id] || {});
-  for (const f of p.facts) if (!f.say && MORE_FACT_SAY[f.id]) f.say = MORE_FACT_SAY[f.id];
+  for (const f of p.facts) {
+    if (!f.say && MORE_FACT_SAY[f.id]) f.say = MORE_FACT_SAY[f.id];
+    hideByLore(f);
+  }
+}
+
+// LORE §9.10: a secret whose keepers do not include Lyra is never offered to her, however
+// close she gets; the deepest ones (the plot's hidden truths) are not told to the player
+// either until the story sets the fact's revealFlag.
+function hideByLore(f) {
+  if (f.topic !== 'secret' && !f.knownBy) return;
+  const hidden = new Set(f.hiddenFrom || []);
+  if (Array.isArray(f.knownBy) && !f.knownBy.includes('lyra')) hidden.add('lyra');
+  if (f.topic === 'secret' && f.minFamiliarity >= 95) {
+    hidden.add('player');
+    if (!f.revealFlag) f.revealFlag = `reveal_${f.id}`;
+  }
+  if (hidden.size) f.hiddenFrom = [...hidden];
+}
+
+// May this fact be told to `listenerId` ('lyra' | 'player')? flags = game.flags.
+export function factTellable(f, listenerId, flags = null) {
+  if (!f) return false;
+  const hidden = f.hiddenFrom || [];
+  if (!hidden.includes(listenerId)) return true;
+  return listenerId === 'player' && !!f.revealFlag && !!flags?.[f.revealFlag];
 }
 
 // The ids of the ten, in LORE order.

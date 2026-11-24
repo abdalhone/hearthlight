@@ -2,7 +2,8 @@
 // profile's day plan applies at an hour, whether a plan covers the whole day,
 // and how weather bends it (nobody socializes in the square in the rain).
 
-export const ACTIVITIES = ['work', 'wander', 'eat', 'sleep', 'socialize', 'patrol', 'pray', 'farm'];
+// 'rest' sits at home; 'lamps' is the lamplighter's dusk round (DESIGN §19.1).
+export const ACTIVITIES = ['work', 'wander', 'eat', 'sleep', 'socialize', 'patrol', 'pray', 'farm', 'rest', 'lamps'];
 
 // The schedule entry active at `hour` (0..24). Entries are [from, to) and may
 // wrap past midnight (from > to).

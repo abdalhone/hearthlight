@@ -25,6 +25,8 @@ const DESIGN_LOCATIONS = [
   'hearthvale', 'town_square', 'player_home', 'ember_kettle', 'smithy', 'general_store', 'chapel', 'herbalist',
   'guardhouse', 'farmhouse', 'reed_farm', 'whisperwood', 'stonecut_quarry', 'bandit_camp', 'mirror_lake',
   'sunken_ruins', 'south_meadow', 'kings_road',
+  // Round 3 places (DESIGN §19.2, LORE §10 homes), built by the world agent.
+  'chandlery', 'lamplight_lane', 'ashby_house', 'dye_cottage', 'weavers_row', 'net_shed', 'wenna_hives',
 ];
 
 // ---------------------------------------------------------------- a small fake world
@@ -150,9 +152,12 @@ const px = (t) => t * TILE + TILE / 2;
 
 // ---------------------------------------------------------------- villager profiles
 
-test('the eight villagers exist with unique ids and complete profiles', () => {
+test('the eighteen villagers exist with unique ids and complete profiles', () => {
   const ids = NPC_PROFILES.map((p) => p.id);
-  assert.deepEqual([...ids].sort(), ['aveline', 'bram', 'elda', 'garrick', 'mira', 'pip', 'rowan', 'tobias']);
+  assert.deepEqual(
+    [...ids].sort(),
+    ['alder', 'aveline', 'bram', 'corran', 'elda', 'garrick', 'hess', 'hobb', 'mira', 'petra', 'pip', 'rowan', 'sabeth', 'tansy', 'tilly', 'tobias', 'wenna', 'wys'],
+  );
   assert.equal(new Set(ids).size, ids.length);
   for (const p of NPC_PROFILES) {
     assert.ok(p.name && p.role && p.personality && p.voice, `${p.id} has identity`);
@@ -166,6 +171,7 @@ test('the eight villagers exist with unique ids and complete profiles', () => {
     assert.ok(p.knows && Object.keys(p.knows).length >= 7, `${p.id} knows others`);
   }
   assert.equal(profileById('rowan').faction, 'guard');
+  assert.equal(profileById('wys').faction, 'guard');
   assert.equal(profileById('nobody'), null);
 });
 
