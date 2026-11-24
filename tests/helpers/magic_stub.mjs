@@ -120,6 +120,7 @@ export function makeMagicStub(game = null, opts = {}) {
       calls.push({ fn: 'cast', slot, aim: aim ? { x: aim.x, y: aim.y, target: aim.target || null } : null });
       const c = m.canCast(slot);
       if (!c.ok) return { ok: false, reason: c.reason };
+      m.holding = null; // a cast ends a hold, as in the runtime
       return { ok: true, plan: m.spend(slot) };
     },
     castStart(caster, slot, aim) {
@@ -129,20 +130,25 @@ export function makeMagicStub(game = null, opts = {}) {
       m.holding = { slot, t: 0 };
       return { ok: true, plan: m.spend(slot) };
     },
-    castHold(caster, slot, aim, dt) {
-      calls.push({ fn: 'castHold', slot, aim: aim ? { x: aim.x, y: aim.y } : null });
-      if (m.holding) m.holding.t += dt || 0;
-      return { ok: true };
+    // Holds are per caster, like the runtime's: castHold(caster, aim) -> state | null.
+    castHold(caster, aim) {
+      if (!m.holding) return null;
+      calls.push({ fn: 'castHold', slot: m.holding.slot, aim: aim ? { x: aim.x, y: aim.y } : null });
+      m.holding.t += 1 / 60;
+      return { mode: 'hold', t: m.holding.t, k: Math.min(1, m.holding.t) };
     },
-    castRelease(caster, slot, aim, o) {
-      calls.push({ fn: 'castRelease', slot, aim: aim ? { x: aim.x, y: aim.y } : null, cancel: !!o?.cancel });
+    castRelease(caster, aim) {
+      const slot = m.holding?.slot ?? -1;
+      calls.push({ fn: 'castRelease', slot, aim: aim ? { x: aim.x, y: aim.y } : null });
+      if (!m.holding) return { ok: false, reason: 'empty' };
       m.holding = null;
       return { ok: true };
     },
-    castCancel(caster, slot) {
-      calls.push({ fn: 'castCancel', slot });
+    castCancel(caster) {
+      calls.push({ fn: 'castCancel', slot: m.holding?.slot ?? -1 });
+      const had = !!m.holding;
       m.holding = null;
-      return { ok: true };
+      return had;
     },
     setSlot(i, w) {
       calls.push({ fn: 'setSlot', slot: i, weave: w });

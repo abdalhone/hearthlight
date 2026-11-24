@@ -119,7 +119,7 @@ export class Weaving {
     const bus = this.game.bus;
     if (!bus?.on) return;
     const bump = () => this.invalidate();
-    for (const ev of ['magic_unlocked', 'magic_slots', 'slot_changed', 'game_start', 'magic_loaded']) bus.on(ev, bump);
+    for (const ev of ['magic_unlocked', 'weave_slots', 'magic_slots', 'game_start', 'magic_loaded']) bus.on(ev, bump);
     bus.on('spell_cast', (p) => {
       if (p?.caster && p.caster === this.game.player && Number.isInteger(p.slot)) this.castAt[p.slot] = this.game.time || 0;
     });
@@ -193,8 +193,13 @@ export class Weaving {
     const tables = [m.registry?.[k], m.registry?.[singular(k)], m[k.toUpperCase()], m.registries?.[k], m.defs?.[k]];
     for (const t of tables) {
       if (!t) continue;
-      const e = t instanceof Map ? t.get(id) : t[id];
-      if (e) return e;
+      try {
+        // A runtime registry (get/ids), a Map, or a plain table.
+        const e = typeof t.get === 'function' ? t.get(id) : t[id];
+        if (e) return e;
+      } catch {
+        /* try the next table */
+      }
     }
     return null;
   }
@@ -210,8 +215,13 @@ export class Weaving {
     const tables = [m?.registry?.[k], m?.[k.toUpperCase()], m?.registries?.[k]];
     for (const t of tables) {
       if (!t) continue;
-      if (t instanceof Map) for (const id of t.keys()) add(id);
-      else if (typeof t === 'object') for (const id of Object.keys(t)) add(id);
+      try {
+        if (typeof t.ids === 'function') for (const id of t.ids()) add(id);
+        else if (t instanceof Map) for (const id of t.keys()) add(id);
+        else if (typeof t === 'object') for (const id of Object.keys(t)) add(id);
+      } catch {
+        /* a registry that cannot list itself adds nothing */
+      }
     }
     const u = this.unlockedSet(k);
     if (u) for (const id of u) add(id);
@@ -248,11 +258,20 @@ export class Weaving {
     const w = this.weaveAt(i);
     const key = w ? `${w.shape}|${(w.essences || []).join(',')}|${(w.twists || []).join(',')}|${w.name || ''}` : '';
     let rec = this.plans[i];
-    if (rec && rec.key === key && rec.weaveRef === w) return rec;
-    const plan = w ? this.compile(w) : null;
+    if (rec && rec.key === key && rec.weaveRef === w && rec.stamp === this.magic?._unlockStamp) return rec;
+    let plan = null;
+    if (w) {
+      try {
+        plan = typeof this.magic?.slotPlan === 'function' ? this.magic.slotPlan(i) : null;
+      } catch {
+        plan = null;
+      }
+      if (!plan) plan = this.compile(w);
+    }
     const ok = Weaving.planOk(plan);
     rec = {
       key,
+      stamp: this.magic?._unlockStamp,
       weaveRef: w,
       weave: w,
       plan: ok ? plan : null,
@@ -282,7 +301,7 @@ export class Weaving {
     const rec = this.slotInfo(i);
     const total = rec.cooldown;
     try {
-      const f = num(m?.cooldownFrac ? () => m.cooldownFrac(i) : null);
+      const f = num(m?.cooldownFraction ? () => m.cooldownFraction(i) : m?.cooldownFrac ? () => m.cooldownFrac(i) : null);
       if (f !== null) return Math.max(0, Math.min(1, f));
       const left = num(m?.cooldownLeft ? () => m.cooldownLeft(i) : m?.slotCooldown ? () => m.slotCooldown(i) : null) ?? num(m?.cooldowns?.[i]) ?? num(m?.slotCooldowns?.[i]);
       if (left !== null) return total > 0 ? Math.max(0, Math.min(1, left / total)) : left > 0 ? 1 : 0;
@@ -464,8 +483,12 @@ export class Weaving {
       const aim = this.aimFor(c);
       c.aim = aim;
       if (c.started && c.mode !== 'quick') {
-        this.call('castHold', c.slot, aim, dt);
-        c.held += dt;
+        const h = this.call('castHold', c.slot, aim, dt);
+        if (h === null) c.started = false;
+        else {
+          c.held += dt;
+          if (Number.isFinite(h?.k)) c.k = h.k;
+        }
       }
       const v = pool[poolI] || (pool[poolI] = {});
       poolI++;
@@ -522,7 +545,15 @@ export class Weaving {
       this.casts.delete(src);
       return;
     }
+    // The runtime holds one weave per caster: starting this one ended any other.
+    this.dropHolds(c);
     c.started = true;
+  }
+
+  // Held casts the runtime has let go of (another cast took over, mana ran out, a
+  // status froze the hands) stop holding here too, so a late release frees nothing.
+  dropHolds(except = null) {
+    for (const o of this.casts.values()) if (o !== except && o.mode !== 'quick' && o.started) o.started = false;
   }
 
   finish(src, cancel) {
@@ -552,6 +583,7 @@ export class Weaving {
     this.lastActT = this.game.time || 0;
     const r = this.call('cast', c.slot, aim);
     if (r && r.ok === false) this.fail(c.slot, r.reason);
+    else this.dropHolds(); // a cast ends whatever was being held
     return r;
   }
 
@@ -571,7 +603,8 @@ export class Weaving {
     const m = this.magic;
     const p = g.player;
     if (!m || !p) return null;
-    if (aim && fn !== 'castHold' && !p.rolling) {
+    // The runtime turns the caster itself (player.castPose); older ones may not.
+    if (aim && fn !== 'castHold' && !p.rolling && typeof p.castPose !== 'function') {
       try {
         p.faceToward?.(aim.x, aim.y);
       } catch {
@@ -586,9 +619,12 @@ export class Weaving {
       } else if (fn === 'castStart') {
         r = typeof m.castStart === 'function' ? m.castStart(p, slot, aim) : m.cast?.(p, slot, aim);
         if (r?.ok !== false) this.castAt[slot] = g.time || 0;
-      } else if (fn === 'castHold') r = m.castHold?.(p, slot, aim, dt);
-      else if (fn === 'castRelease') r = m.castRelease?.(p, slot, aim, cancelled ? { cancel: true } : undefined);
-      else if (fn === 'castCancel') r = m.castCancel?.(p, slot);
+      } else if (fn === 'castHold') {
+        // castHold(caster, aim) -> the hold's state, or null once it has ended.
+        if (typeof m.castHold !== 'function') return {};
+        return m.castHold(p, aim) ?? null;
+      } else if (fn === 'castRelease') r = cancelled && typeof m.castCancel === 'function' ? m.castCancel(p) : m.castRelease?.(p, aim);
+      else if (fn === 'castCancel') r = m.castCancel?.(p);
     } catch (err) {
       if (!this._warned) {
         this._warned = true;
@@ -776,7 +812,7 @@ export class Weaving {
     v.target = aim.target || null;
     v.starved = this.starved(c.slot);
     v.faint = false;
-    v.charge = rec.mode === 'charge' ? Math.min(1, (c.held || 0) / Math.max(0.3, Number(rec.plan?.chargeTime) || 1.2)) : 0;
+    v.charge = rec.mode === 'charge' ? (Number.isFinite(c.k) ? Math.max(0, Math.min(1, c.k)) : Math.min(1, (c.held || 0) / Math.max(0.3, Number(rec.plan?.chargeTime) || 1.2))) : 0;
     return v;
   }
 }
