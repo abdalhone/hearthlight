@@ -925,7 +925,10 @@ export class Village {
         if (!isPlayer(p.attacker)) return;
         const victimId = p.victim?.id || null;
         if (!victimId) return;
-        const kind = victimId === 'lyra' ? ((p.severity ?? 0) >= 0.9 ? 'downed_lyra' : 'hit_lyra') : (p.severity ?? 0) >= 0.9 ? 'downed_villager' : 'attacked_villager';
+        // Knocked down (or a severity at the top of a 0..1 scale) is the worse news.
+        const sev = Number(p.severity);
+        const down = !!p.victim?.downed || p.severity === 'downed' || p.severity === 'critical' || (Number.isFinite(sev) && sev <= 1 && sev >= 0.95);
+        const kind = victimId === 'lyra' ? (down ? 'downed_lyra' : 'hit_lyra') : down ? 'downed_villager' : 'attacked_villager';
         const x = p.x ?? p.victim?.x ?? 0;
         const y = p.y ?? p.victim?.y ?? 0;
         this.addRumor(kind, { victim: victimId, witnesses: [...this.witnessesNear(x, y, 240), victimId] });

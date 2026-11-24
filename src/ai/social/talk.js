@@ -284,6 +284,8 @@ function effectsFor(ctx, a, b, topic) {
     if (tag === 'grudge') aff = -0.4;
     else if (tag === 'rival') aff = rnd(ctx.rng) < 0.5 ? -0.3 : 0.4;
     if (topic === 'small') aff *= 0.4;
+    // Warmth comes slower the warmer they already are: old friends stay old friends.
+    if (aff > 0) aff *= Math.max(0.1, 1 - Math.max(0, bond?.affinity ?? 0) / 110);
     out[key] = { affinity: Math.round(aff * 10) / 10, familiarity: topic === 'small' ? 0.3 : 1, trust: topic === 'rumor' ? 0.4 : 0.2 };
   }
   return out;
