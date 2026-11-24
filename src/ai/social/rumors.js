@@ -74,11 +74,12 @@ export class Rumors {
   }
 
   // Add news (or freshen the same news from today). Returns the rumor.
-  add({ kind, about = 'player', text = null, you = null, valence = null, severity = null, source = 'village', victim = null, beast = null, t = 0, day = 1, heardBy = [] }) {
+  add({ kind, about = 'player', text = null, you = null, valence = null, severity = null, source = 'village', victim = null, beast = null, t = 0, day = 1, heardBy = [], saw = [] }) {
     const def = RUMOR_KINDS[kind] || {};
     const same = this.list.find((r) => r.kind === kind && r.victim === (victim || def.victim || null) && r.day === day && kind in RUMOR_KINDS);
     if (same) {
       for (const id of heardBy) if (id && !same.heardBy.includes(id)) same.heardBy.push(id);
+      for (const id of saw) if (id && !same.saw.includes(id)) same.saw.push(id);
       same.t = t;
       return same;
     }
@@ -98,6 +99,7 @@ export class Rumors {
       t,
       day,
       heardBy: [...new Set(heardBy.filter(Boolean))],
+      saw: [...new Set(saw.filter(Boolean))], // eyewitnesses
       versions: {},
     };
     if (!r.tpl) return null;
@@ -189,6 +191,7 @@ export class Rumors {
         if (r.victim) o.victim = r.victim;
         if (r.beast) o.beast = r.beast;
         if (Object.keys(r.versions).length) o.versions = r.versions;
+        if (r.saw?.length) o.saw = r.saw;
         return o;
       }),
     };
@@ -217,6 +220,7 @@ export class Rumors {
         t: Number(r.t) || 0,
         day: Number(r.day) || 1,
         heardBy: Array.isArray(r.heardBy) ? r.heardBy.filter((x) => typeof x === 'string').slice(0, 24) : [],
+        saw: Array.isArray(r.saw) ? r.saw.filter((x) => typeof x === 'string').slice(0, 24) : [],
         versions: r.versions && typeof r.versions === 'object' ? Object.fromEntries(Object.entries(r.versions).filter(([k, v]) => typeof v === 'string').slice(0, 24)) : {},
       });
     }

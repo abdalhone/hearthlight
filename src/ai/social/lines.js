@@ -86,10 +86,13 @@ export function namesOther(text, speakerId, listenerId) {
 function dropName(text) {
   return text
     .replace(/,\s*\{n\}(?=[.!?,;:]|$)/g, '')
-    .replace(/^\{n\}[,.!]?\s*/g, '')
+    .replace(/^(?:\{n\}[,.!?]?\s*)+/, '')
     .replace(/([.!?]\s+)\{n\}[,.!]\s*/g, '$1')
+    .replace(/\s+[—–]\s*\{n\}(?=[.!?])/g, '')
     .replace(/\s*\{n\}\s*/g, ' ');
 }
+
+const CLAUSES = new Set(['rumor', 'you', 'who']);
 
 function capFirst(s) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
@@ -101,7 +104,13 @@ export function fill(text, vars = {}) {
   if (typeof text !== 'string' || !text) return null;
   let s = text;
   if (/\{n\}/.test(s) && !vars.n) s = dropName(s);
-  s = s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null && vars[k] !== '' ? String(vars[k]) : m));
+  // A clause dropped in after a full stop or question ("have you heard? {rumor}!") starts
+  // a new sentence, so it takes a capital.
+  s = s.replace(/\{(\w+)\}/g, (m, k, at, whole) => {
+    if (vars[k] == null || vars[k] === '') return m;
+    const v = String(vars[k]);
+    return CLAUSES.has(k) && /(^|[^.][.!?])["”’']?\s+$/.test(whole.slice(0, at)) ? capFirst(v) : v;
+  });
   if (/\{\w+\}/.test(s)) return null;
   s = s
     .replace(/\s+([,!?]|\.(?!\.))/g, '$1')

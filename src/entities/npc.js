@@ -967,6 +967,8 @@ export class NPC extends Actor {
       }
       return;
     }
+    // A conversation is playing near the player: nobody talks over it.
+    if (village?.playing) return;
     const quiet = t - (g._npcSayAt ?? -Infinity) < SAY_GAP;
     // Lyra nearby.
     if (lyra && alive(lyra) && this.distTo(lyra) < 56 && t - this.lyraAt > 75 && !quiet && this.canSee(lyra)) {

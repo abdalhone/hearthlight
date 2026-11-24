@@ -96,6 +96,9 @@ export function chooseTopic(ctx, a, b) {
   for (const s of scenesFor(a, b)) {
     if (ctx.recentScenes?.has(s)) continue;
     if (s.night && !ctx.isNight) continue;
+    // A daytime scene (a market cry) not at night; a dusk scene (the far lamps) at dusk.
+    if (s.day && ctx.isNight) continue;
+    if (s.dusk && !(ctx.hour >= 17 && ctx.hour < 22.5)) continue;
     if (avoid.has(s.topic)) continue;
     cands.push([{ scene: s }, 1.6]);
   }
@@ -218,7 +221,9 @@ export function buildExchange(ctx, a, b, opts = {}) {
   if (topic === 'rumor') {
     rumor = opts.rumor || ctx.tellable?.(a, b)?.[0] || null;
     const clause = rumor ? ctx.renderRumor?.(rumor, a) : null;
-    const tell = clause ? say(va?.rumor?.tell, a, b, { rng, vars: { ...varsFor(a, b, extra), rumor: clause } }) : null;
+    // Someone who saw it with their own eyes says so.
+    const pool = rumor?.saw?.includes(a) && va?.rumor?.saw?.length ? va.rumor.saw : va?.rumor?.tell;
+    const tell = clause ? say(pool, a, b, { rng, vars: { ...varsFor(a, b, extra), rumor: clause } }) : null;
     if (tell) {
       if (!opts.continuing) push(line(b, rnd(rng) < 0.5 ? greetBack(ctx, b, a, extra) : null));
       push(line(a, tell));
@@ -257,7 +262,7 @@ export function buildExchange(ctx, a, b, opts = {}) {
     }
   }
   // A goodbye, sometimes.
-  if (lines.length < maxLines && lines.length >= 3 && rnd(rng) < 0.5) {
+  if (!opts.noBye && lines.length < maxLines && lines.length >= 3 && rnd(rng) < 0.5) {
     // Whoever did not speak last takes their leave.
     const who = lines[lines.length - 1]?.speaker === a ? b : a;
     const other = who === a ? b : a;

@@ -12,12 +12,12 @@ import { speakable } from './hidden.js';
 
 const RE = {
   greet: /\b(hi|hello|hey|hiya|howdy|greetings|good (?:morning|afternoon|evening|day)|morning|evening|well met|ho there|salutations)\b|^yo\b/i,
-  howare: /\bhow(?:'s| is| are|'re)? (?:you|ya|it going|things|life|are things|have you been|you been|do you do|you doing|goes it|fare you|are you keeping|is your day|was your day)\b|\bhow you doing\b|\bhow goes\b|\bwhat'?s up\b|\bare you (?:well|ok(?:ay)?|alright|all right)\b|\byou (?:ok(?:ay)?|alright|all right|well)\?/i,
+  howare: /\bhow(?:'s| is| are|'re)? (?:you|ya|it going|things|life|are things|have you been|you been|do you do|you doing|goes it|fare you|are you keeping|is your day|was your day)\b|\bhow (?:you|ya) doin(?:g|')?\b|\bhow goes\b|\bwhat'?s up\b|\bare you (?:well|ok(?:ay)?|alright|all right)\b|\byou (?:ok(?:ay)?|alright|all right|well)\?/i,
   thanks: /\b(thanks|thank you|thank ye|thankyou|cheers|much obliged|grateful|appreciate it)\b/i,
   apology: /\b(sorry|apologi[sz]e|apology|forgive me|my fault|i was wrong|i didn'?t mean|i regret|i shouldn'?t have|make (?:it )?(?:up|amends))\b/i,
   threat: /\b(i(?:'ll| will| am going to|'m going to|'m gonna| gonna| shall) (?:kill|hurt|hit|stab|burn|beat|end|smash|rob|cut|break|get) you|kill you|you(?:'re| are) dead|watch your back|or else|i'?ll burn (?:this|your)|i'?ll make you pay)\b/i,
   insult: /\b(idiot|stupid|fool(?:ish)?|ugly|hate you|shut up|useless|pathetic|dumb|moron|loser|old (?:hag|crow|fool|goat)|you stink|you smell|worthless|bastard|damn you|get lost|annoying|boring|coward|liar|cheat|fraud|crook)\b/i,
-  compliment: /\b(you(?:'re| are) (?:so |very |really )?(?:great|amazing|kind|lovely|wonderful|beautiful|pretty|handsome|clever|smart|brave|the best|cool|nice|funny|wise|strong|talented|sweet|awesome|brilliant)|i like (?:you|your|it here)|love your|nice (?:hat|shop|forge|place|work|hair|cakes?|bread|bees|lamps|garden|hens|boat)|good (?:job|work)|well done|you look (?:nice|well|great|lovely|good)|best (?:cakes?|smith|bread|honey))\b/i,
+  compliment: /\b(you(?:'re| are) (?:so |very |really |such )?(?:a |an )?(?:great|amazing|kind|lovely|wonderful|beautiful|pretty|handsome|clever|smart|brave|the best|cool|nice|funny|wise|strong|talented|sweet|awesome|brilliant|good (?:person|man|woman|friend|cook|smith|captain|healer|farmer|soul))|i (?:like|love|admire) (?:you|your|it here|this place)|love your|(?:nice|lovely|beautiful|fine|wonderful|great|cosy|cozy|pretty|amazing|excellent|good|best) (?:hat|shop|forge|place|inn|kettle|chapel|work|hair|cakes?|honey ?cakes?|bread|stew|honey|bees|hives|lamps?|garden|hens|chickens|boat|dock|farm|turnips?|sword|blades?|potions?|herbs|candles|smile|voice|cloak|eyes|smith(?:ing)?|cooking)|(?:this|your) (?:shop|inn|forge|place|stew|bread|cake|honey|farm|chapel) is (?:so |very |really )?(?:lovely|great|wonderful|nice|amazing|the best|beautiful|cosy|cozy|excellent|perfect)|good (?:job|work)|well done|you look (?:nice|well|great|lovely|good|wonderful)|best (?:cakes?|smith|bread|honey|stew|cook))\b/i,
   flirt: /\b(marry me|kiss me|kiss you|go out with me|date me|you(?:'re| are) (?:cute|hot|gorgeous|beautiful)|be mine|i fancy you|i love you|sweetheart|darling)\b/i,
   farewell: /\b(bye|goodbye|good-bye|farewell|see you|see ya|good night|goodnight|take care|later|i must go|got to go|gotta go)\b/i,
   news: /\b(news|gossip|what'?s new|anything new|heard anything|rumou?rs?|what'?s happening|what'?s going on|what have you heard|tell me something)\b/i,
@@ -243,7 +243,7 @@ export function localReply(v, npc, text) {
     if (r) {
       const clause = v.rumors.renderYou(r, id);
       const pool = r.valence >= 0.15 ? toYou.good || fallback.good : r.valence <= -0.15 ? toYou.bad || fallback.bad : null;
-      const l = clause && pool ? fill(pickProfile(pool, rng), { you: clause }) : null;
+      const l = clause && pool ? fill(pickFresh(pool, rng, lines), { you: clause }) : null;
       if (l) {
         lines.push(l);
         mentioned.push(r.id);
@@ -267,17 +267,26 @@ function overlaps(a, b) {
   return false;
 }
 
+// A line from the pool that does not open on the same word as one already said
+// ("Citizen. ... Citizen. Word is ...").
+function pickFresh(list, rng, said) {
+  const first = (t) => String(t || '').trim().split(/[\s,.!?…—-]+/)[0].toLowerCase();
+  const used = new Set(said.map(first));
+  const ok = (list || []).filter((l) => !used.has(first(l)));
+  return pickProfile(ok.length ? ok : list, rng);
+}
+
 function pickProfile(list, rng) {
   if (!Array.isArray(list) || !list.length) return null;
   return list[Math.floor(rnd(rng) * list.length)];
 }
 
+// "What do you think of me?": what they make of the player, to their face.
 function opinionOfYou(v, npc, P, voice, toYou, st) {
-  if (st.grievance?.grave) return P(toYou.grave || toYou.cold) || P(voice.no);
-  if (st.opinion >= 70) return P(voice.warm) || P(voice.yes);
-  if (st.opinion < 20) return P(toYou.cold) || P(voice.no);
-  if (st.opinion < 40) return P(voice.no) || P(voice.short);
-  return P(voice.yes) || P(voice.short);
+  if (st.grievance?.grave && st.grievance.fresh) return P(st.grievance.victim === 'lyra' && toYou.grave ? toYou.grave : toYou.cold || FALLBACK_TO_YOU.cold);
+  const stance = st.opinion >= 60 ? 'good' : st.opinion < 28 || st.cold ? 'bad' : 'mid';
+  const think = toYou.think || FALLBACK_TO_YOU.think;
+  return P(think[stance]) || P(think.mid) || P(voice.short);
 }
 
 function aboutPerson(v, npc, who, P, voice) {

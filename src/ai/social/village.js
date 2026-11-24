@@ -8,9 +8,9 @@
 import { Bonds } from './bonds.js';
 import { Rumors, RUMOR_KINDS } from './rumors.js';
 import { VILLAGERS, PEOPLE, SHORT_NAMES, FAMILY_TAGS } from './bonds_data.js';
-import { VOICES } from './voices.js';
+import { VOICES, SCENES } from './voices.js';
 import { buildExchange, chooseTopic, summarize, mainTag, WEEK_TOPICS, scenesFor } from './talk.js';
-import { voiceOf, say, rnd, shortName, thirdName, fill, varsFor, topicPool } from './lines.js';
+import { voiceOf, say, rnd, shortName, thirdName, fill, varsFor, topicPool, names } from './lines.js';
 import { localReply } from './player_talk.js';
 import { TO_YOU } from './voices_player.js';
 import { speakable } from './hidden.js';
@@ -76,6 +76,7 @@ export class Village {
     this.recent = new Set();
     this.recentQ = [];
     this.recentScenes = new Set();
+    this.sceneDay = {}; // scene index -> the day it last played: a scene keeps for a few days
     this.ambientAt = -Infinity; // game.time of the last Claude-written ambient exchange
     this.claudeBusy = false;
     this.barSaidAt = -Infinity;
@@ -208,11 +209,19 @@ export class Village {
         return !!pa && !!pb && !!pa.work && pa.work === pb.work;
       },
       recent: this.recent,
-      recentScenes: this.recentScenes,
+      recentScenes: this.scenesPlayed(),
       avoidTopics: this.avoidFor(extra.a, extra.b),
       strangerNews: this.rumors.list.some((r) => r.about === 'player' && this.now() - r.t < DAY) ? 1 : 0,
       ...extra,
     };
+  }
+
+  // Scenes played in the last three days (and the last few, whatever the day).
+  scenesPlayed() {
+    const day = this.day();
+    const out = new Set(this.recentScenes);
+    for (const [i, d] of Object.entries(this.sceneDay)) if (day - d < 3 && SCENES[i]) out.add(SCENES[i]);
+    return out;
   }
 
   // Nobody brings Lyra's own business to her as gossip, and the Maren thread stays the
@@ -241,6 +250,11 @@ export class Village {
 
   // How someone sees the player, as the voice banks file it.
   stance(id) {
+    if (id === 'lyra') {
+      const a = this.bond('lyra', 'player')?.affinity;
+      if (!Number.isFinite(a)) return 'mid';
+      return a >= 40 ? 'good' : a < 0 ? 'bad' : 'mid';
+    }
     const o = this.entity(id)?.opinionOfPlayer;
     if (!Number.isFinite(o)) return 'mid';
     if (this.rumors.freshAgainstPlayer(id, this.now())) return 'bad';
@@ -264,7 +278,7 @@ export class Village {
     const ctx = this.talkCtx({ a, b });
     let ex;
     if (Array.isArray(opts.lines) && opts.lines.length) ex = { topic: opts.topic || 'own', lines: opts.lines, effects: null };
-    else ex = buildExchange(ctx, a, b, { topic: opts.topic, passing: opts.passing, continuing: opts.continuing, maxLines: opts.maxLines, playerName: this.game?.settings?.playerName || '' });
+    else ex = buildExchange(ctx, a, b, { topic: opts.topic, passing: opts.passing, continuing: opts.continuing, noBye: opts.noBye, maxLines: opts.maxLines, playerName: this.game?.settings?.playerName || '' });
     return this.finishExchange(a, b, ex, opts);
   }
 
@@ -274,6 +288,8 @@ export class Village {
     if (!lines.length) return null;
     for (const l of lines) this.remember(l.text);
     if (ex.scene) {
+      const si = SCENES.indexOf(ex.scene);
+      if (si >= 0) this.sceneDay[si] = this.day();
       this.recentScenes.add(ex.scene);
       if (this.recentScenes.size > 12) this.recentScenes.delete(this.recentScenes.values().next().value);
     }
@@ -285,7 +301,7 @@ export class Village {
       const listener = teller === a ? b : a;
       this.rumors.hear(rumor, listener, teller, this.rng());
       this.onHeard(listener, rumor, teller);
-      rumorText = this.rumorForPlayer(rumor, listener);
+      rumorText = this.rumorForPlayer(rumor);
     }
     // Lines written elsewhere (Claude) still pass on what they carry.
     const effects = ex.effects || { ab: { affinity: 0.8, familiarity: 1, trust: 0.2 }, ba: { affinity: 0.8, familiarity: 1, trust: 0.2 } };
@@ -376,7 +392,7 @@ export class Village {
     if (!ex) {
       const first = opts.lyraFirst === false ? otherId : opts.lyraFirst === true || rnd(this.rng()) < 0.55 ? 'lyra' : otherId;
       const second = first === 'lyra' ? otherId : 'lyra';
-      ex = buildExchange(ctx, first, second, { topic: opts.topic, passing: opts.passing, continuing: opts.continuing, maxLines, playerName: g?.settings?.playerName || '' });
+      ex = buildExchange(ctx, first, second, { topic: opts.topic, passing: opts.passing, continuing: opts.continuing, noBye: opts.noBye, maxLines, playerName: g?.settings?.playerName || '' });
       if (ex.topic === 'maren' && ctx.avoidTopics.has('maren')) ex = buildExchange(ctx, first, second, { topic: 'howare', maxLines, playerName: '' });
     }
     if (!opts.lines && !opts.passing && !ex.scene && !learned.length) this.onHerMind(ex, otherId, mind);
@@ -407,8 +423,9 @@ export class Village {
     if (!th) return;
     const rng = this.rng();
     const nv = voiceOf(otherId);
-    const tag = mainTag(this.bond(otherId, 'lyra'));
-    const reply = (tag && say(nv?.as?.[tag], otherId, 'lyra', { rng, direct: true, onlyFor: true })) || say(nv?.warm, otherId, 'lyra', { rng }) || say(nv?.yes, otherId, 'lyra', { rng });
+    // They listen: warmly if they love her, otherwise a word of their own.
+    const close = (this.bond(otherId, 'lyra')?.affinity ?? 0) >= 60;
+    const reply = (close && say(nv?.warm, otherId, 'lyra', { rng })) || say(nv?.short, otherId, 'lyra', { rng }) || say(nv?.yes, otherId, 'lyra', { rng });
     if (!reply) return;
     const said = `${pickAt(ON_MY_MIND, rng)} ${th.text.charAt(0).toUpperCase()}${th.text.slice(1)}`.replace(/([^.!?])$/, '$1.');
     if (!speakable(said)) return;
@@ -429,6 +446,11 @@ export class Village {
     if (!rel) return null;
     const facts = (npc.profile?.facts || []).filter((f) => {
       if (!f || !f.text || f.topic === 'secret') return false;
+      // She grew up here: what everyone knows, and the villagers' own work and families,
+      // she knew long before the stranger came. News, Maren, the bandits and the ruins
+      // are what a neighbour can still tell her.
+      if (!LEARNABLE.has(f.topic) || (Number(f.minFamiliarity) || 0) < 10) return false;
+      if (names(f.say || f.text, 'lyra')) return false;
       if (Array.isArray(f.hiddenFrom) && f.hiddenFrom.includes('lyra')) return false;
       if (Array.isArray(f.knownBy) && !f.knownBy.includes('lyra') && f.hiddenFrom) return false;
       if ((Number(f.minFamiliarity) || 0) > (rel.familiarity ?? 0)) return false;
@@ -563,8 +585,10 @@ export class Village {
     return (e.talkingUntil ?? -Infinity) > t;
   }
 
+  // On their way somewhere (a talk is a nod in passing), as against milling about a room
+  // or a stall (they stop for a proper talk: npc.social holds them still while it plays).
   stationary(e) {
-    return !e.r || (e.r.phase !== 'travel' && !e.r.walking);
+    return !e.r || e.r.phase !== 'travel';
   }
 
   onScreen(e) {
@@ -744,18 +768,21 @@ export class Village {
   // ------------------------------------------------------------------ gossip
 
   // A notable event becomes news. witnesses hear it first; their opinion moves at once.
-  addRumor(kind, { victim = null, beast = null, witnesses = [], source = 'village', about = 'player' } = {}) {
+  // saw: the eyewitnesses among them (default: all of them but the one it happened to).
+  addRumor(kind, { victim = null, beast = null, witnesses = [], saw = null, source = 'village', about = 'player' } = {}) {
     const def = RUMOR_KINDS[kind];
     if (!def) return null;
     const heardBy = [...new Set(witnesses.filter(Boolean))];
     if (victim && !heardBy.includes(victim)) heardBy.push(victim);
-    const fresh = !this.rumors.list.some((r) => r.kind === kind && r.victim === (victim || def.victim || null) && r.day === this.day());
-    const r = this.rumors.add({ kind, victim, beast, heardBy, source, about: def.about || about, t: this.now(), day: this.day() });
+    const same = this.rumors.list.find((r) => r.kind === kind && r.victim === (victim || def.victim || null) && r.day === this.day());
+    const before = new Set(same?.heardBy || []);
+    const eyes = (saw || heardBy).filter((id) => id && id !== (victim || def.victim));
+    const r = this.rumors.add({ kind, victim, beast, heardBy, saw: eyes, source, about: def.about || about, t: this.now(), day: this.day() });
     if (!r) return null;
-    if (fresh) {
-      for (const id of heardBy) if (id !== source) this.onHeard(id, r, null, { witness: true });
-      this.emit('rumor', { rumor: r });
-    }
+    // The same news from another quarter (the crime and Lyra's deed of one blow): only
+    // those who had not heard it yet are moved by it.
+    for (const id of heardBy) if (id !== source && !before.has(id)) this.onHeard(id, r, null, { witness: true });
+    if (!same) this.emit('rumor', { rumor: r });
     return r;
   }
 
@@ -909,9 +936,12 @@ export class Village {
         const victimId = typeof p.victim === 'object' ? p.victim?.id : p.victim;
         const where = g?.player || g?.companion;
         const witnesses = where ? this.witnessesNear(where.x, where.y) : [];
+        // Her own ledger knows it; she saw it only if she was there.
+        const lyra = g?.companion;
+        const saw = lyra && where && dist(lyra, where) < SIGHT ? [...witnesses, 'lyra'] : [...witnesses];
         witnesses.push('lyra');
         const victim = RUMOR_KINDS[kind].victim || victimId || null;
-        this.addRumor(kind, { victim, witnesses, source: 'lyra' });
+        this.addRumor(kind, { victim, witnesses, saw, source: 'lyra' });
         return;
       }
       case 'crime': {
@@ -1272,13 +1302,13 @@ export class Village {
   localListen(aId, bId) {
     if (aId === 'lyra' || bId === 'lyra') {
       const other = aId === 'lyra' ? bId : aId;
-      const first = this.lyraConverse(other, { onScreen: false, maxLines: 4, continuing: true });
+      const first = this.lyraConverse(other, { onScreen: false, maxLines: 4, continuing: true, noBye: true });
       const second = this.lyraConverse(other, { onScreen: false, maxLines: 4, lyraFirst: false, continuing: true });
       return mergeConvs(first, second, this);
     }
     const ctx = this.talkCtx({ a: aId, b: bId });
     const t1 = chooseTopic(ctx, bId, aId);
-    const first = this.converse(bId, aId, { topic: t1, onScreen: false, maxLines: 4, continuing: true });
+    const first = this.converse(bId, aId, { topic: t1, onScreen: false, maxLines: 4, continuing: true, noBye: true });
     this.pairAt.delete(pairKey(aId, bId));
     const second = this.converse(aId, bId, { onScreen: false, maxLines: 4, continuing: true });
     return mergeConvs(first, second, this);
@@ -1360,7 +1390,7 @@ export class Village {
     for (const r of spread.slice(0, 2)) {
       const clause = this.rumorForPlayer(r);
       if (!clause) continue;
-      const n = r.heardBy.filter((x) => x !== 'player').length;
+      const n = r.heardBy.filter((x) => x !== 'player' && x !== r.victim).length;
       const how = n >= 12 ? 'by nightfall the whole village had heard' : n >= 5 ? `by nightfall ${n} people had heard it` : n >= 2 ? `${n} people had heard it by supper` : 'not many have heard it yet';
       out.push(cap(`word went round that ${clause}; ${how}.`));
     }
@@ -1463,6 +1493,7 @@ export class Village {
       bars: this.bars,
       grievances: this.grievances,
       amends: this.amendsDay,
+      scenes: this.sceneDay,
       seq: this.seq,
     };
   }
@@ -1482,6 +1513,7 @@ export class Village {
     this.bars = objOf(d.bars);
     this.grievances = objOf(d.grievances);
     this.amendsDay = objOf(d.amends);
+    this.sceneDay = objOf(d.scenes);
     this.seq = Number.isFinite(d.seq) ? d.seq : this.log.reduce((m, c) => Math.max(m, Number(c.id) || 0), 0);
     for (const c of this.log) this.pairAt.set(pairKey(c.a, c.b), c.t);
   }
@@ -1518,7 +1550,16 @@ export function topicLabel(topic) {
 function mergeConvs(first, second, v) {
   if (!first) return second;
   if (!second) return first;
-  const lines = [...first.lines, ...second.lines].slice(0, 8);
+  const lines = [];
+  for (const l of [...first.lines, ...second.lines]) {
+    const last = lines[lines.length - 1];
+    if (last && last.speaker === l.speaker) {
+      if (last.text.length + l.text.length < 170) last.text = `${last.text} ${l.text}`;
+      continue;
+    }
+    lines.push({ ...l });
+  }
+  lines.splice(8);
   // Present the stretch as one conversation, keeping both in the log.
   return { ...second, lines, summary: second.summary };
 }
@@ -1537,6 +1578,8 @@ function spokenFact(f, npc) {
   if (/^(i|i'm|my|we|our)\b/i.test(t) && speakable(t)) return t;
   return null;
 }
+
+const LEARNABLE = new Set(['maren', 'bandits', 'ruins', 'village']);
 
 const ON_MY_MIND = ['Can I tell you what\u2019s on my mind?', 'I keep thinking about something.', 'Something\u2019s been going round my head all day.'];
 
