@@ -368,8 +368,27 @@ export class Bubbles {
     return (wy - r.oy) * r.scale - r.subY;
   }
 
+  // Where the bubbles drawn last frame are, in CSS pixels of the canvas (which covers
+  // the page from its top-left corner). DOM overlays (toasts) use it to keep clear.
+  // Fills and returns `out`; tails and name tabs are included.
+  screenRects(out = []) {
+    out.length = 0;
+    const dpr = this._dpr || 1;
+    const u = this.u || 1;
+    for (let i = 0; i < this._vis.length; i++) {
+      const b = this._vis[i];
+      if (b.t >= b.life || b.entity?.removed || this._alpha(b) <= 0.02) continue;
+      const L = b.layout;
+      const tail = (b.kind === 'thought' ? 10 : 5) * u;
+      const y0 = L.below ? L.y - tail : L.y;
+      out.push({ x: L.x / dpr, y: y0 / dpr, w: L.w / dpr, h: (L.h + tail) / dpr });
+    }
+    return out;
+  }
+
   draw(ctx, r) {
     if (!r) return;
+    this._dpr = r.dpr || 1;
     this._metrics(r);
     const W = ctx.canvas.width;
     const H = ctx.canvas.height;

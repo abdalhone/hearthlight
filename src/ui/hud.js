@@ -102,6 +102,12 @@ export class Hud {
     this.prompt = h('button', { type: 'button', class: 'interact-prompt', hidden: true }, this.promptKey, this.promptText);
     this.prompt.addEventListener('click', () => g.input?.press('interact'));
 
+    // "Listen in" while two villagers talk nearby (§19.3): small, a key or a tap.
+    this.listenKey = h('kbd', { class: 'keycap', text: 'L' });
+    this.listenText = h('span', { class: 'listen-text' });
+    this.listenBtn = h('button', { type: 'button', class: 'listen-prompt', hidden: true, title: 'Listen in on their conversation (L)' }, this.listenKey, icon('ear'), this.listenText);
+    this.listenBtn.addEventListener('click', () => this.ui.village?.listenIn());
+
     // The "Ask Lyra" bar: every button is a request she weighs and answers (§16.4).
     this.cmdButtons = {};
     this.barTitle = h('span', { class: 'cmdbar-title', text: 'Ask Lyra' });
@@ -145,7 +151,7 @@ export class Hud {
 
     const top = h('div', { class: 'hud-top' }, h('div', { class: 'hud-cards' }, playerCard, this.lyraCard), h('div', { class: 'hud-right' }, placeCard, corner));
     const center = h('div', { class: 'hud-center' }, this.questLine);
-    const bottom = h('div', { class: 'hud-bottom' }, this.prompt, this.cmdbar);
+    const bottom = h('div', { class: 'hud-bottom' }, this.listenBtn, this.prompt, this.cmdbar);
     return h('div', { class: 'hud', hidden: true }, top, center, bottom, this.ordersWrap, this.jobsMenu, this.fps);
   }
 
@@ -334,6 +340,19 @@ export class Hud {
     setText(this.promptKey, touch ? 'Tap' : 'E');
     setText(this.promptText, t);
     if (this.prompt.hidden) this.prompt.hidden = false;
+  }
+
+  // label: what to show ('' hides it); busy: a listen is already under way.
+  setListen(label, busy = false) {
+    const t = String(label || '').trim();
+    if (!t) {
+      if (!this.listenBtn.hidden) this.listenBtn.hidden = true;
+      return;
+    }
+    setText(this.listenText, t);
+    toggleClass(this.listenBtn, 'is-busy', !!busy);
+    setAttr(this.listenBtn, 'aria-disabled', busy ? 'true' : null);
+    if (this.listenBtn.hidden) this.listenBtn.hidden = false;
   }
 
   setUnread(n) {

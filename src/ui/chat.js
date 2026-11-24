@@ -449,12 +449,14 @@ export class Chat {
     try {
       this.dictOffs.push(
         this.dict.onPartial((e) => {
+          if (!this.ownsDictation()) return;
           this.dictPartial = e?.text || '';
           this.showDictation();
         }),
       );
       this.dictOffs.push(
         this.dict.onFinal((e) => {
+          if (!this.ownsDictation()) return;
           let t = e?.text || '';
           if (!this.dictCommitted) t = t.replace(/^\s+/, '');
           this.dictCommitted += t;
@@ -464,7 +466,9 @@ export class Chat {
       );
       this.dictOffs.push(
         this.dict.onState((e) => {
+          if (!this.ownsDictation()) return;
           this.dictState = e?.state || 'idle';
+          if (this.dictState === 'idle' && this.ui.dictOwner === 'chat') this.ui.dictOwner = null;
           toggleClass(this.mic, 'listening', this.dictState === 'listening' || this.dictState === 'starting');
           this.mic.title = this.dictState === 'idle' ? 'Speak to Lyra' : 'Stop listening';
           if (this.dictState === 'idle') {
@@ -479,6 +483,11 @@ export class Chat {
       console.warn('[chat] dictation setup failed', err);
       this.mic.hidden = true;
     }
+  }
+
+  // The mic is shared with villagers' dialogs: the chat only follows dictation it started.
+  ownsDictation() {
+    return !this.ui.dictOwner || this.ui.dictOwner === 'chat';
   }
 
   showDictation() {
@@ -499,10 +508,11 @@ export class Chat {
     } catch {
       active = this.dictState !== 'idle';
     }
-    if (active) {
+    if (active && this.ownsDictation()) {
       this.stopDictation();
       return;
     }
+    this.ui.dictOwner = 'chat';
     this.dictCommitted = this.field.value;
     this.dictPartial = '';
     let p;
@@ -527,6 +537,7 @@ export class Chat {
   }
 
   handleDictationError(err) {
+    if (this.ui.dictOwner === 'chat') this.ui.dictOwner = null;
     const code = err?.code || 'upstream_error';
     const ui = this.ui;
     if (code === 'unavailable') {

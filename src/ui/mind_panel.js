@@ -53,6 +53,7 @@ import {
   nowParagraph,
 } from './lyra_view.js';
 import { STORY } from '../lore/story.js';
+import { villageOf, villagerRoster, villageFeeling, villagerBonds, villageTalkViews, rumorsAboutPlayer, closestToHer, readWorth, worthView, editHistory, firstName } from './village_view.js';
 
 export const MIND_TABS = [
   { id: 'now', label: 'Now' },
@@ -128,6 +129,28 @@ const SOUL_LISTS = [
   ['dreams', 'Dreams'],
   ['quirks', 'Quirks'],
 ];
+
+// The five ways a villager can feel about the player, for the village bar.
+const OPINION_KEYS = [
+  ['fond', 'Fond', 'var(--heal)'],
+  ['friendly', 'Friendly', 'var(--heal-deep)'],
+  ['neutral', 'Neutral', 'var(--line)'],
+  ['wary', 'Wary', 'var(--ember-deep)'],
+  ['hostile', 'Hostile', 'var(--danger)'],
+];
+
+function detailsKey(d) {
+  return `${d.closest('[data-person]')?.dataset.person || ''}|${d.className}|${d.querySelector('summary')?.textContent || ''}`;
+}
+
+function safeLog(village) {
+  try {
+    const l = village?.log;
+    return typeof l === 'function' ? l.call(village) : l || [];
+  } catch {
+    return [];
+  }
+}
 
 function safe(fn, fallback = null) {
   try {
@@ -257,7 +280,10 @@ export class MindPanel {
     if (this.tab === 'now') this.updateNow();
     else if (this.dirty && LIVE_TABS.has(this.tab)) {
       const top = this.content.scrollTop;
+      // Folds the player opened stay open when the tab rebuilds.
+      const open = new Set([...this.content.querySelectorAll('details[open]')].map(detailsKey));
       this.showTab(this.tab);
+      if (open.size) for (const d of this.content.querySelectorAll('details')) if (open.has(detailsKey(d))) d.open = true;
       this.content.scrollTop = top;
     }
     this.dirty = false;
@@ -509,24 +535,194 @@ export class MindPanel {
       );
     }
 
-    this.content.append(h('p', { class: 'tab-intro', text: `${name} travels with you by choice. This is how she sees you, and why.` }), stateBox, deeds, promBox);
+    this.content.append(h('p', { class: 'tab-intro', text: `${name} travels with you by choice. This is how she sees you, and why.` }), stateBox);
+    const worth = this.worthBox(name);
+    if (worth) this.content.append(worth);
+    this.content.append(deeds, promBox);
+  }
+
+  // Her own weighing (§19.4): what being with you gives her against what it costs her.
+  worthBox(name) {
+    const w = worthView(readWorth(this.mind));
+    if (!w) return null;
+    const box = h('section', { class: `box worth-box tone-${w.tone}` }, h('h3', { text: `Is it worth it to ${name}?` }), h('p', { class: 'worth-verdict', text: w.verdict }));
+    const gives = h('i', { class: 'w-gives' });
+    const costs = h('i', { class: 'w-costs' });
+    setStyle(gives, 'width', `${Math.round(w.balance * 1000) / 10}%`);
+    setStyle(costs, 'width', `${Math.round((1 - w.balance) * 1000) / 10}%`);
+    box.append(
+      h('div', { class: 'worth-scale', role: 'img', 'aria-label': `Staying gives her ${w.stay}, and costs her ${w.cost}` }, gives, costs),
+      h('div', { class: 'worth-nums' }, h('span', { text: `Gives ${w.stay}` }), h('span', { text: `Costs ${w.cost}` })),
+    );
+    const col = (cls, title, items, empty) => {
+      const ul = h('ul');
+      for (const r of items.slice(0, 8)) {
+        const bar = h('i');
+        setStyle(bar, 'width', `${Math.max(8, Math.round(r.share * 100))}%`);
+        ul.append(h('li', { class: r.quote ? 'quote' : '' }, h('span', { class: 'w-weight', title: `Weighs ${Math.abs(r.weight)}` }, bar), h('span', { class: 'w-text', text: r.quote ? `“${r.text}”` : r.text })));
+      }
+      if (!items.length) ul.append(h('li', { class: 'empty', text: empty }));
+      return h('div', { class: `worth-col ${cls}` }, h('h4', { text: title }), ul);
+    };
+    box.append(
+      h(
+        'div',
+        { class: 'worth-cols' },
+        col('gives', 'What staying gives her', w.gives, 'Nothing she would name yet.'),
+        col('costs', 'What it costs her', w.costs, 'Nothing she is holding against it.'),
+      ),
+      h('p', { class: 'muted small', text: 'Small wrongs she can afford, she weighs and lets go, and they fade. She never says any of this out loud.' }),
+    );
+    return box;
+  }
+
+  // An "edited" mark that unfolds what she used to remember, and why she changed it.
+  editMark(entry, host) {
+    const ed = editHistory(entry, this.game.clock?.day || 0);
+    if (!ed) return null;
+    const mark = h('button', { type: 'button', class: 'edit-mark', 'aria-expanded': 'false', title: 'She changed how she remembers this' }, 'edited');
+    let panel = null;
+    mark.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (panel) {
+        panel.remove();
+        panel = null;
+        mark.setAttribute('aria-expanded', 'false');
+        return;
+      }
+      panel = h('div', { class: 'edit-history' });
+      for (const v of ed.versions.slice(0, 4)) {
+        if (v.text) panel.append(h('p', { class: 'edit-was' }, 'She used to remember it as: ', h('s', { text: `“${v.text}”` })));
+        if (v.why) panel.append(h('p', { class: 'edit-why', text: `Why she changed it: ${v.why}` }));
+        if (v.when) panel.append(h('p', { class: 'edit-when', text: `Changed ${v.when}` }));
+      }
+      if (!ed.versions.length && ed.why) panel.append(h('p', { class: 'edit-why', text: `Why she changed it: ${ed.why}` }));
+      if (!panel.childElementCount) panel.append(h('p', { class: 'edit-was', text: 'She reworded this one, and kept the old words to herself.' }));
+      host.append(panel);
+      mark.setAttribute('aria-expanded', 'true');
+    });
+    return mark;
   }
 
   // ---------- People ----------
 
+  // Hearthvale's people (§19.6): how the village sees the player, who she holds close,
+  // every villager in the world (with what each thinks of the player and of whom they
+  // are fond), then everyone else she knows.
   renderPeople() {
+    const g = this.game;
     const mind = this.mind;
-    const rels = listFrom(mind.relationships, ['all', 'list']).filter((r) => r && r.id);
-    if (!rels.length) {
-      this.content.append(h('p', { class: 'empty', text: "She hasn't really met anyone here yet. Walk her through the village." }));
-      return;
+    const name = g.settings?.companionName || g.companion?.name || 'Lyra';
+    const names = this.nameLookup();
+    const nameOf = (id) => (id === 'lyra' ? name : id === 'player' ? g.settings?.playerName || 'you' : names(id) || '');
+    const roster = villagerRoster(g, mind);
+    const village = villageOf(g);
+    const today = g.clock?.day || 0;
+
+    this.content.append(h('p', { class: 'tab-intro', text: `Hearthvale's people: who ${name} holds close, what she honestly thinks of them, and how each of them sees you. You can ask her to count someone as a friend or an enemy, but she makes up her own mind.` }));
+
+    // How the village sees the player.
+    const feel = villageFeeling(roster);
+    const vbox = h('section', { class: 'box village-box' }, h('h3', { text: 'How Hearthvale sees you' }));
+    if (feel.count) {
+      vbox.append(h('p', { class: 'feel', text: feel.sentence }));
+      const bar = h('div', { class: 'feel-bar', role: 'img', 'aria-label': `${feel.count} villagers: ${OPINION_KEYS.map(([k, l]) => `${feel.counts[k]} ${l.toLowerCase()}`).join(', ')}` });
+      const legend = h('div', { class: 'feel-legend' });
+      for (const [k, label, color] of OPINION_KEYS) {
+        const n = feel.counts[k];
+        if (!n) continue;
+        const seg = h('i', { class: `o-${k}` });
+        setStyle(seg, 'width', `${(n / feel.count) * 100}%`);
+        bar.append(seg);
+        const item = h('span', { text: `${n} ${label.toLowerCase()}` });
+        item.style.setProperty('--sw', color);
+        legend.append(item);
+      }
+      vbox.append(bar, legend);
+    } else vbox.append(h('p', { class: 'empty', text: 'Nobody in the village has made up their mind about you yet.' }));
+    const rumors = rumorsAboutPlayer(village);
+    if (rumors.length) {
+      const ul = h('ul', { class: 'rumor-list' });
+      for (const r of rumors) ul.append(h('li', { class: `tone-${r.tone}`, text: r.text }));
+      vbox.append(h('h4', { class: 'people-sub', text: 'What people are saying about you' }), ul);
     }
-    const list = h('div', { class: 'people' });
-    for (const rel of rels) list.append(this.personCard(rel));
-    this.content.append(h('p', { class: 'tab-intro', text: 'Everyone she knows, and what she honestly thinks of them. You can ask her to count someone as a friend (attack mode never touches a friend) or as an enemy, but she makes up her own mind.' }), list);
+    const talk = villageTalkViews(safeLog(village), { nameOf, today, limit: 6 });
+    if (talk.length) {
+      const ul = h('ul', { class: 'talk-log' });
+      for (const t of talk) ul.append(h('li', null, h('span', { class: 'talk-what', text: t.text }), t.when ? h('span', { class: 'talk-when', text: t.when }) : null, t.summary ? h('span', { class: 'talk-sum', text: t.summary }) : null));
+      vbox.append(h('h4', { class: 'people-sub', text: 'Village talk' }), ul);
+    }
+    this.content.append(vbox);
+
+    // Who she is close to.
+    const close = closestToHer(roster, 6);
+    if (close.length) {
+      const row = h('div', { class: 'close-row' });
+      for (const v of close) {
+        const url = portraitUrl(g, personArtKey(g, v.rel) || v.id, 'happy');
+        row.append(
+          h(
+            'span',
+            { class: 'close-chip' },
+            url ? h('img', { alt: '', src: url, draggable: 'false' }) : h('span', { class: 'portrait monogram', 'aria-hidden': 'true', text: v.first.charAt(0) || '?' }),
+            h('span', { text: v.first }),
+            h('span', { class: 'close-bond', text: v.bond?.label || '' }),
+          ),
+        );
+      }
+      this.content.append(h('section', { class: 'box close-box' }, h('h3', { text: `Who ${name} holds close` }), row));
+    }
+
+    // The villagers, then everyone else she knows.
+    const ids = roster.map((v) => v.id);
+    if (roster.length) {
+      const list = h('div', { class: 'people people-village' });
+      for (const v of roster) list.append(v.rel ? this.personCard(v.rel, v, { village, ids, nameOf }) : this.villagerStub(v, { village, ids, nameOf }));
+      this.content.append(h('h3', { class: 'people-head', text: `The people of Hearthvale (${roster.length})` }), list);
+    }
+    const inRoster = new Set(ids);
+    const others = listFrom(mind.relationships, ['all', 'list']).filter((r) => r && r.id && !inRoster.has(r.id) && r.id !== 'lyra');
+    if (others.length) {
+      const list = h('div', { class: 'people' });
+      for (const rel of others) list.append(this.personCard(rel));
+      this.content.append(h('h3', { class: 'people-head', text: roster.length ? 'Everyone else she knows' : 'Everyone she knows' }), list);
+    }
+    if (!roster.length && !others.length) this.content.append(h('p', { class: 'empty', text: "She hasn't really met anyone here yet. Walk her through the village." }));
   }
 
-  personCard(rel) {
+  // What a villager thinks of the player, and the people they are closest to.
+  villageLine(v, ctx) {
+    if (!v) return null;
+    const bits = [];
+    if (v.opinionLevel) bits.push(h('span', { class: `opinion-chip o-${v.opinionLevel.key}`, title: `What ${v.first} thinks of you (${Math.round(v.opinion)}/100)`, text: `Thinks of you: ${v.opinionLevel.label.toLowerCase()}` }));
+    if (ctx?.village) {
+      const b = villagerBonds(ctx.village, v.id, ctx.ids, ctx.nameOf);
+      if (b.close.length) bits.push(h('span', { class: 'v-close', text: `Close to ${b.close.map((c) => (c.tag && c.tag !== 'friend' ? `${c.name} (${c.tag})` : c.name)).join(', ')}` }));
+      if (b.odds.length) bits.push(h('span', { class: 'v-odds', text: `At odds with ${b.odds.map((c) => c.name).join(', ')}` }));
+    }
+    return bits.length ? h('div', { class: 'person-village' }, ...bits) : null;
+  }
+
+  // A villager she has no recorded relationship with yet.
+  villagerStub(v, ctx) {
+    const g = this.game;
+    const url = portraitUrl(g, v.npc?.spriteKey || v.id, 'neutral');
+    const img = url ? h('img', { class: 'portrait portrait-md', alt: '', draggable: 'false', src: url }) : h('span', { class: 'portrait portrait-md monogram', 'aria-hidden': 'true', text: v.first.charAt(0).toUpperCase() || '?' });
+    return h(
+      'article',
+      { class: 'person is-stub', 'data-person': v.id },
+      h('span', { class: 'portrait-frame' }, img),
+      h(
+        'div',
+        { class: 'person-main' },
+        h('div', { class: 'person-head' }, h('span', { class: 'person-name', text: v.name }), v.role ? h('span', { class: 'person-role', text: capitalize(v.role) }) : null),
+        this.villageLine(v, ctx),
+        h('p', { class: 'not-met', text: 'She has not said what she makes of them yet.' }),
+      ),
+    );
+  }
+
+  personCard(rel, v = null, ctx = null) {
     const g = this.game;
     const mind = this.mind;
     const bond = safe(() => mind.relationships.bond?.(rel.id)) || {};
@@ -557,10 +753,10 @@ export class MindPanel {
       ['familiarity', 'Knows them', 'meter-fam'],
       ['fear', 'Fear', 'meter-fear'],
     ]) {
-      const v = Number(rel[k]) || 0;
-      if (k === 'fear' && v < 5) continue;
+      const val = Number(rel[k]) || 0;
+      if (k === 'fear' && val < 5) continue;
       const m = meter(cls, label);
-      m.set(v / 100, `${Math.round(v)}`);
+      m.set(val / 100, `${Math.round(val)}`);
       bars.append(h('div', { class: 'bar-row' }, h('span', { class: 'bar-label', text: label }), m.el));
     }
 
@@ -588,18 +784,21 @@ export class MindPanel {
       actions = h('div', { class: 'person-actions' }, fBtn, eBtn);
     }
 
+    // Villagers fold their numbers away: eighteen cards of bars is a lot on a phone.
+    const more = v ? h('details', { class: 'person-more' }, h('summary', { text: 'Her bond in numbers' }), bars) : bars;
     const meta = [rel.role, rel.kind && rel.kind !== 'human' ? rel.kind : null].filter(Boolean).join(' · ');
     return h(
       'article',
-      { class: `person ${tags.includes('enemy') ? 'is-enemy' : ''} ${tags.includes('friend') ? 'is-friend' : ''}`.trim() },
+      { class: `person ${tags.includes('enemy') ? 'is-enemy' : ''} ${tags.includes('friend') ? 'is-friend' : ''}`.trim(), 'data-person': rel.id },
       h('span', { class: 'portrait-frame' }, img),
       h(
         'div',
         { class: 'person-main' },
         h('div', { class: 'person-head' }, h('span', { class: 'person-name', text: name }), meta ? h('span', { class: 'person-role', text: capitalize(meta) }) : null, h('span', { class: 'bond' }, h('span', { class: 'bond-label', text: bond.label || bondLabel(level) }), pips)),
+        this.villageLine(v, ctx),
         tagRow.childElementCount ? tagRow : null,
         opinion,
-        bars,
+        more,
         notesEl,
         actions,
       ),
@@ -663,7 +862,13 @@ export class MindPanel {
         const about = (m.about || []).map((id) => names(id)).filter(Boolean);
         const place = m.location ? names(m.location, true) : '';
         const meta = [m.type && m.type !== 'event' ? m.type : null, place, about.length ? `with ${about.join(', ')}` : null, m.emotion ? (typeof m.emotion === 'string' ? m.emotion : m.emotion.name) : null].filter(Boolean).join(' · ');
-        group.append(h('article', { class: `memory imp-${Math.min(10, Math.max(1, Math.round(m.importance || 1)))}` }, h('span', { class: 'stars', title: `Importance ${m.importance ?? 1}/10`, text: starString(m.importance) }), h('div', { class: 'memory-main' }, h('p', { class: 'memory-text', text: m.text }), meta ? h('div', { class: 'memory-meta', text: meta }) : null)));
+        const main = h('div', { class: 'memory-main' });
+        const textEl = h('p', { class: 'memory-text', text: m.text });
+        const mark = this.editMark(m, main);
+        if (mark) textEl.append(mark);
+        main.append(textEl);
+        if (meta) main.append(h('div', { class: 'memory-meta', text: meta }));
+        group.append(h('article', { class: `memory imp-${Math.min(10, Math.max(1, Math.round(m.importance || 1)))}${mark ? ' is-edited' : ''}` }, h('span', { class: 'stars', title: `Importance ${m.importance ?? 1}/10`, text: starString(m.importance) }), main));
       }
       results.append(group);
     }
@@ -694,14 +899,13 @@ export class MindPanel {
           const kind = knowledgeKind(k);
           const src = sourceLabel(k, (id) => names(id));
           const conf = kind === 'theory' || kind === 'rumor' ? confidenceWord(k.confidence) : '';
-          ul.append(
-            h(
-              'li',
-              { class: `fact kind-${kind}` },
-              h('span', { class: `kind-badge kind-${kind}`, text: kind }),
-              h('span', { class: 'fact-main' }, h('span', { class: 'fact-text', text: k.text }), src || conf ? h('span', { class: 'fact-src', text: [src, conf].filter(Boolean).join(' · ') }) : null),
-            ),
-          );
+          const factMain = h('span', { class: 'fact-main' });
+          const textEl = h('span', { class: 'fact-text', text: k.text });
+          const mark = this.editMark(k, factMain);
+          if (mark) textEl.append(mark);
+          factMain.append(textEl);
+          if (src || conf) factMain.append(h('span', { class: 'fact-src', text: [src, conf].filter(Boolean).join(' · ') }));
+          ul.append(h('li', { class: `fact kind-${kind}${mark ? ' is-edited' : ''}` }, h('span', { class: `kind-badge kind-${kind}`, text: kind }), factMain));
         }
         results.append(h('section', { class: 'fact-group' }, h('h3', { class: 'day-head', text: gr.label }), ul));
       }
@@ -781,9 +985,9 @@ export class MindPanel {
         if (loc) return loc.name;
       }
       const e = safe(() => g.entities?.get?.(id));
-      if (e?.name) return e.name.split(' ')[0];
+      if (e?.name) return firstName(e.name);
       const rel = safe(() => this.mind?.relationships?.get?.(id));
-      if (rel?.name) return rel.name.split(' ')[0];
+      if (rel?.name) return firstName(rel.name);
       // People and places from her past live in the lorebook.
       const lore = safe(() => this.mind?.lorebook?.get?.(id));
       if (lore && (lore.name || lore.title)) return String(lore.name || lore.title);

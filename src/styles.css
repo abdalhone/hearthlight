@@ -4290,3 +4290,550 @@ input[type='range']::-moz-range-thumb {
 .radial-open .tpad .tbtn {
   pointer-events: none;
 }
+
+/* =====================================================================
+   Round 3 (DESIGN §19.6): saying anything to anyone, listening in, the
+   morning's "while you slept", the eighteen, her worth-it judgment, edited
+   memories, and phone polish (toasts that keep clear, the keyboard inset).
+   ===================================================================== */
+
+/* ---------- dialog: "Say something…" ---------- */
+
+.dlg-you {
+  margin: 0 0 -4px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  font-size: var(--fs-s);
+  color: #ffe7c4;
+}
+.dlg-you-name {
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  color: var(--ember);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.dlg-you-text {
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+.dlg-dots {
+  margin: 10px 2px;
+}
+.dlg-dots i {
+  background: var(--ember);
+}
+.panel-dialog.is-waiting .dlg-box {
+  cursor: default;
+}
+.panel-foot.dlg-say {
+  justify-content: stretch;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px 12px;
+}
+.dlg-say-field {
+  flex: 1;
+  min-width: 0;
+}
+.dlg-say-field.provisional {
+  color: #ffe7c4;
+  font-style: italic;
+}
+.dlg-mic.listening {
+  --bc: var(--danger);
+  background: #4a1a24;
+  animation: mic-pulse 1s ease-in-out infinite;
+}
+.dlg-text,
+.dlg-opt .btn-label {
+  overflow-wrap: anywhere;
+}
+
+/* A phone's on-screen keyboard: --kb is how much of the screen it covers (set from
+   the visual viewport). Panels and the chat rise above it, so the field stays seen. */
+.kb-open .modal-layer {
+  padding-bottom: calc(var(--kb, 0px) + 6px);
+}
+.kb-open .panel-dialog {
+  max-height: 100%;
+}
+.kb-open .chat {
+  bottom: var(--kb, 0px);
+  max-height: calc(100% - var(--kb, 0px) - var(--sa-t) - 8px);
+}
+
+/* ---------- listen in ---------- */
+
+.listen-prompt {
+  --bc: rgba(169, 149, 255, 0.55);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 4px 10px 4px 5px;
+  border: 0;
+  background: rgba(19, 18, 50, 0.78);
+  color: var(--arcane-pale);
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  pointer-events: auto;
+  cursor: pointer;
+  opacity: 0.88;
+  animation: prompt-in 0.18s var(--ease);
+  box-shadow:
+    0 -2px 0 0 var(--bc),
+    0 2px 0 0 var(--bc),
+    -2px 0 0 0 var(--bc),
+    2px 0 0 0 var(--bc);
+}
+.listen-prompt:hover,
+.listen-prompt:focus-visible {
+  opacity: 1;
+  --bc: var(--arcane);
+}
+.listen-prompt .keycap {
+  background: var(--arcane-deep);
+  color: #fff;
+  font-size: 11px;
+}
+.listen-prompt .listen-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.listen-prompt.is-busy {
+  cursor: default;
+  opacity: 0.7;
+}
+.is-touch .listen-prompt .keycap {
+  display: none;
+}
+.is-touch .listen-prompt {
+  min-height: 40px;
+  padding: 6px 12px 6px 8px;
+  font-size: var(--fs-s);
+}
+
+/* ---------- morning card: while you slept ---------- */
+
+.slept {
+  --bc: var(--line-dim);
+  margin: 0 0 14px;
+  padding: 10px 14px 12px;
+  background: rgba(10, 9, 25, 0.38);
+  box-shadow:
+    0 -2px 0 0 var(--bc),
+    0 2px 0 0 var(--bc),
+    -2px 0 0 0 var(--bc),
+    2px 0 0 0 var(--bc);
+}
+.slept h3 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: var(--fs-s);
+  font-weight: 500;
+  color: var(--ember-hot);
+  letter-spacing: 0.04em;
+}
+.slept ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.slept li {
+  position: relative;
+  padding-left: 16px;
+  font-size: var(--fs-s);
+  line-height: 1.4;
+  color: var(--parch-2);
+}
+.slept li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0.55em;
+  width: 6px;
+  height: 6px;
+  background: var(--ember);
+  opacity: 0.8;
+}
+.slept-wait {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--parch-faint);
+  font-style: italic;
+  font-size: var(--fs-s);
+}
+.slept-wait .dots i {
+  background: var(--ember);
+}
+
+/* ---------- mind: people, the village, worth it, edits ---------- */
+
+.village-box .feel {
+  margin: 4px 0 10px;
+}
+.feel-bar {
+  display: flex;
+  height: 10px;
+  margin: 6px 0 4px;
+  background: var(--ink-0);
+  box-shadow: inset 0 0 0 1px var(--line-dim);
+  overflow: hidden;
+}
+.feel-bar i {
+  display: block;
+  height: 100%;
+}
+.feel-bar .o-fond {
+  background: var(--heal);
+}
+.feel-bar .o-friendly {
+  background: var(--heal-deep);
+}
+.feel-bar .o-neutral {
+  background: var(--line);
+}
+.feel-bar .o-wary {
+  background: var(--ember-deep);
+}
+.feel-bar .o-hostile {
+  background: var(--danger);
+}
+.feel-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+}
+.feel-legend span::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  background: var(--sw, var(--line));
+}
+.talk-log,
+.rumor-list {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.talk-log li,
+.rumor-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  font-size: var(--fs-s);
+}
+.talk-what {
+  color: var(--parch);
+}
+.talk-when {
+  font-size: var(--fs-xs);
+  color: var(--parch-faint);
+}
+.talk-sum {
+  flex-basis: 100%;
+  font-size: var(--fs-xs);
+  font-style: italic;
+  color: var(--parch-dim);
+  overflow-wrap: anywhere;
+}
+.rumor-list li {
+  font-style: italic;
+  color: var(--parch-2);
+}
+.rumor-list li.tone-good::before,
+.rumor-list li.tone-bad::before,
+.rumor-list li.tone-neutral::before {
+  content: '“';
+  color: var(--ember);
+  font-style: normal;
+}
+.rumor-list li.tone-bad::before {
+  color: var(--danger);
+}
+.close-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.close-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 3px;
+  background: rgba(169, 149, 255, 0.1);
+  box-shadow: inset 0 0 0 1px var(--arcane-dark);
+  font-size: var(--fs-s);
+  max-width: 100%;
+}
+.close-chip img,
+.close-chip .monogram {
+  width: 28px;
+  height: 28px;
+  image-rendering: pixelated;
+  flex: none;
+}
+.close-chip .close-bond {
+  font-family: var(--font-display);
+  font-size: var(--fs-2xs);
+  color: var(--arcane);
+}
+.people-head {
+  margin: 18px 0 8px;
+  font-family: var(--font-display);
+  font-size: var(--fs-s);
+  font-weight: 500;
+  color: var(--ember-hot);
+}
+.person-village {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 2px 0 6px;
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+}
+.opinion-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  font-family: var(--font-display);
+  font-size: var(--fs-2xs);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--parch-2);
+  box-shadow: inset 0 0 0 1px var(--line-dim);
+}
+.opinion-chip.o-fond,
+.opinion-chip.o-friendly {
+  color: var(--heal);
+  box-shadow: inset 0 0 0 1px var(--heal-deep);
+}
+.opinion-chip.o-wary {
+  color: var(--ember);
+  box-shadow: inset 0 0 0 1px var(--ember-deep);
+}
+.opinion-chip.o-hostile {
+  color: var(--danger);
+  box-shadow: inset 0 0 0 1px var(--danger-deep);
+}
+.not-met {
+  font-size: var(--fs-s);
+  font-style: italic;
+  color: var(--parch-faint);
+  margin: 4px 0;
+}
+.person-more > summary {
+  cursor: pointer;
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+  margin: 4px 0;
+}
+.person {
+  min-width: 0;
+}
+.person-main {
+  min-width: 0;
+}
+
+.worth-box .worth-verdict {
+  margin: 2px 0 10px;
+  font-size: var(--fs-m);
+  color: var(--parch);
+}
+.worth-scale {
+  display: flex;
+  height: 12px;
+  background: var(--ink-0);
+  box-shadow: inset 0 0 0 1px var(--line-dim);
+  overflow: hidden;
+}
+.worth-scale .w-gives {
+  background: linear-gradient(90deg, var(--heal-deep), var(--heal));
+}
+.worth-scale .w-costs {
+  background: linear-gradient(90deg, var(--danger), var(--danger-deep));
+}
+.worth-nums {
+  display: flex;
+  justify-content: space-between;
+  margin: 4px 0 12px;
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+}
+.worth-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.worth-col h4 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.worth-col.gives h4 {
+  color: var(--heal);
+}
+.worth-col.costs h4 {
+  color: var(--danger);
+}
+.worth-col ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.worth-col li {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 8px;
+  align-items: start;
+  font-size: var(--fs-s);
+  line-height: 1.35;
+}
+.worth-col li.quote .w-text {
+  font-style: italic;
+}
+.w-weight {
+  height: 6px;
+  margin-top: 0.5em;
+  background: var(--ink-0);
+  box-shadow: inset 0 0 0 1px var(--line-dim);
+}
+.w-weight i {
+  display: block;
+  height: 100%;
+}
+.gives .w-weight i {
+  background: var(--heal);
+}
+.costs .w-weight i {
+  background: var(--danger);
+}
+.w-text {
+  overflow-wrap: anywhere;
+}
+.worth-col .empty {
+  margin: 0;
+  font-size: var(--fs-s);
+}
+
+.edit-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 0;
+  background: rgba(169, 149, 255, 0.14);
+  color: var(--arcane-pale);
+  font-family: var(--font-display);
+  font-size: var(--fs-2xs);
+  line-height: 18px;
+  vertical-align: 1px;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: inset 0 0 0 1px var(--arcane-dark);
+}
+.edit-mark[aria-expanded='true'] {
+  background: rgba(169, 149, 255, 0.28);
+}
+.edit-history {
+  margin: 6px 0 2px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--arcane-deep);
+  background: rgba(106, 82, 201, 0.1);
+  font-size: var(--fs-s);
+}
+.edit-history p {
+  margin: 0 0 4px;
+}
+.edit-was {
+  color: var(--parch-dim);
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+.edit-was s {
+  text-decoration-color: rgba(185, 173, 153, 0.5);
+}
+.edit-why {
+  color: var(--arcane-pale);
+}
+.edit-when {
+  font-size: var(--fs-xs);
+  color: var(--parch-faint);
+}
+
+/* ---------- settings: villagers' minds ---------- */
+
+.village-ai .choice.is-disabled {
+  opacity: 0.5;
+}
+.village-ai .choice.is-disabled input {
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .worth-cols {
+    grid-template-columns: 1fr;
+  }
+  .panel-foot.dlg-say {
+    padding: 8px 10px calc(var(--sa-b) + 10px);
+  }
+  .dlg-typing .dlg-options,
+  .dlg-typing .dlg-extra,
+  .dlg-typing .dlg-portrait {
+    display: none;
+  }
+  .dlg-typing .panel-dialog .dlg-box {
+    min-height: 56px;
+  }
+  .kb-open .panel-dialog {
+    align-self: end;
+  }
+}
+
+@media (max-height: 520px) {
+  .dlg-typing .dlg-options,
+  .dlg-typing .dlg-extra {
+    display: none;
+  }
+  .panel-foot.dlg-say {
+    padding: 6px 10px 8px;
+  }
+}
+
+/* Toasts placed by script (clear of bubbles and the HUD) glide between slots. */
+.toasts.placed {
+  transition:
+    top 0.18s var(--ease),
+    left 0.18s var(--ease);
+}
+/* A notice waiting for room on screen (see toast.js). */
+.toast.deferred {
+  display: none;
+}
