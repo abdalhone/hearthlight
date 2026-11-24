@@ -4,7 +4,8 @@
 // list and with solid tiles through rt.wallAt, and hit through rt.hit (combat rules).
 //
 // Body fields (read by fx.js; the contract's list first):
-//   kind 'projectile'|'area'|'beam'|'strike'|'summon'|'rune'|'wall'|'trail'
+//   kind 'projectile'|'area'|'beam'|'strike'|'summon'|'rune'|'wall'|'trail'|'bind'|'ward'
+//              (bind: the ring holding a bound target; ward: a shield on its bearer)
 //   x, y (ground position, world px), vx, vy, r, angle, age, life, owner, plan,
 //   essences (ids), palette {core, glow, spark, deep}, gen
 //   mode       projectile: 'fly' | 'orb' | 'lob' | 'fall' | 'arc' (a chain arc)
@@ -15,6 +16,8 @@
 //   dmg, speed, range, traveled, pierceLeft, bounceLeft, homing, target
 //   orbitT, orbitA, orbitR, spin, spiralAmp, spiralFreq, wobble   twist motion
 //   armed (rune), held (beam), cast (the cast record), index (place in its emission)
+//   target     bind: who it holds; ward: its bearer (homing missiles: their mark)
+//   shield, shieldMax, hitT   a ward's strength left, at its raising, when it last took a blow
 //   delay      seconds before it starts (staggered novas, punches)
 //   seed       0..1, stable per body (for visual variety)
 //   fxState    free slot for fx.js to keep per-body state (reset when the body is reused)
@@ -126,6 +129,12 @@ export class Body {
     this.lastTx = -99999;
     this.lastTy = -99999;
     this.seed = 0;
+    this.shield = 0;
+    this.shieldMax = 0;
+    this.hitT = -9;
+    this.plateA = 0;
+    this.braceT = 0;
+    this.wardSeen = 0;
     this.fxState = null;
     this.why = '';
     this.hits.clear();
@@ -788,6 +797,42 @@ function updateTrail(rt, b, dt) {
   }
 }
 
+// A bind's hold (DESIGN §22.5): the ring closes on its target's feet and stays there while
+// the target is bound, biting now and then with its weave's essences.
+function updateBind(rt, b, dt) {
+  const t = b.target;
+  if (!t || t.removed || t.dead || !alive(t)) {
+    rt.end(b, 'free');
+    return;
+  }
+  b.x = t.x;
+  b.y = t.y;
+  b.cur = b.r * (b.age < 0.22 ? 2.2 - 1.2 * (b.age / 0.22) : 1);
+  if (b.age > 0.3 && !rt.status.has(t, 'bound')) {
+    rt.end(b, 'free');
+    return;
+  }
+  if (b.tickMul <= 0) return;
+  b.tickT -= dt;
+  if (b.tickT > 0) return;
+  b.tickT += b.tick;
+  if (rt.canAffect(b.cast, t)) rt.hit(b, t, b.tickMul, HIT_TICK);
+}
+
+// A ward (DESIGN §22.5) rides on its bearer; the runtime does the shielding (absorb, the
+// shots it stops, its flavors) in wardStep.
+function updateWard(rt, b, dt) {
+  const t = b.target;
+  if (!t || t.removed || t.dead || !alive(t)) {
+    rt.end(b, 'break');
+    return;
+  }
+  b.x = t.x;
+  b.y = t.y;
+  b.cur = b.r * (b.age < 0.18 ? 0.35 + 0.65 * (b.age / 0.18) : 1);
+  rt.wardStep(b, dt);
+}
+
 export const KIND_UPDATE = {
   projectile: updateProjectile,
   area: updateArea,
@@ -797,6 +842,8 @@ export const KIND_UPDATE = {
   rune: updateRune,
   wall: updateWall,
   trail: updateTrail,
+  bind: updateBind,
+  ward: updateWard,
 };
 
 export const KINDS = Object.keys(KIND_UPDATE);

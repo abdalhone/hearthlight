@@ -1,6 +1,6 @@
-import { Body, KIND_UPDATE, segDist } from './bodies.js';
+import { Body, KIND_UPDATE, segDist, HIT, HIT_TICK } from './bodies.js';
 import { compileWeave, validateWeave, normalizeWeave, weaveKey, planStats } from './compile.js';
-import { Shapes } from './shapes.js';
+import { Shapes, bindFlavor, wardFlavor } from './shapes.js';
 import { Essences } from './essences.js';
 import { Twists } from './twists.js';
 import { Prices, PRICE_SLOTS } from './prices.js';
@@ -35,11 +35,15 @@ import { T as TILE_IDS } from '../world/tiles.js';
 //   compile(weave) -> plan (validated against unlocks and slot limits), catalog()
 //   bodies (live Body list, see bodies.js), status (StatusSystem), statusesOf(actor),
 //   applyStatus(target, id, opts), holdOf(caster), serialize(), deserialize(d)
+//   holdTarget(body, target, info) (a bind's hold, DESIGN §22.5), absorb(target, amount,
+//   source, opts) -> the part of a blow a ward takes (combat.damage asks), wardOn(actor)
 //
 // Bus events: spell_cast {caster, weave, plan, slot}, spell_hit {body, target, amount,
 // essences, caster, plan}, status_applied {target, status, source, potency, duration},
 // reaction {id, name, x, y, target, source}, magic_unlocked {kind, id, source},
-// mana_changed {cur, max}, weave_slots {slot, weave} (a slot was set or cleared).
+// mana_changed {cur, max}, weave_slots {slot, weave} (a slot was set or cleared),
+// bind {source, target, seconds, plan, resisted} (a bind closed on someone),
+// ward {caster, bearer, shield, plan} (a ward rose) and ward_broken {bearer, caster, plan}.
 //
 // Other casters (bosses, a foe that weaves): cast(boss, weave, aim) needs no unlocks, mana
 // or slot cooldowns (pace it yourself); its harm follows combat.canHarm; caster.magicPower
@@ -51,6 +55,9 @@ import { T as TILE_IDS } from '../world/tiles.js';
 //   onEvent(type, payload, magic)   types: cast spawn launch hit end explode bounce pulse
 //       impact armed patch block status reaction familiar dash charge beam_start beam_end
 //       link (a reaction arcing from one target to another) fizzle (a refused cast)
+//       bind (a hold closed) unbind (it let go) bind_resist (a boss shrugged it off)
+//       ward_hit (a ward took a blow) ward_block (it stopped a missile: how 'block' |
+//       'reflect' | 'deflect') ward_thicken ward_break
 //   update(dt, magic), drawGround(ctx, ox, oy, time, magic), drawBody(ctx, body, ox, oy, time),
 //   drawLayer(ctx, ox, oy, time, magic) (replaces drawBody for every body),
 //   drawStatuses(ctx, ox, oy, time, magic), getLights(time, magic) -> light[],
@@ -72,6 +79,13 @@ const DEFAULT_MODE = { projectile: 'fly', area: 'burst' };
 const TAU = Math.PI * 2;
 const ZERO = Object.freeze({ x: 0, y: 0 });
 const NUMBER_FLUSH = 0.4;
+// Binds on bosses (DESIGN §22.5): a boss is held this share of the time, half that again
+// for each bind in a row (BIND_DR_MAX in a row and it shrugs the next one off), and the
+// row is forgotten after BIND_DR_RESET seconds without one.
+const BOSS_HOLD = 0.45;
+const BIND_DR_MAX = 3;
+const BIND_DR_RESET = 14;
+const WARD_CAP = 1.6; // a ward thickened by echoes and recasts holds at most this times its raising
 
 const isAlive = (a) => !!a && !a.removed && !a.dead && (typeof a.isAlive === 'function' ? a.isAlive() : a.hp > 0);
 
@@ -129,6 +143,9 @@ export class Magic {
     this.bodies = [];
     this.cands = [];
     this.shots = [];
+    this.hazards = []; // bosses' globs and bubbles (wards stop them)
+    this._wards = []; // live wards, for combat.damage's question
+    this._retaliate = []; // [ward, attacker, …]: wards answering blows (next step)
     this.status = new StatusSystem(game, this);
     this.unlocked = { shapes: new Set(['bolt']), essences: new Set(['raw']), twists: new Set(), prices: new Set() };
     this.priceSlots = PRICE_SLOTS; // prices a weave may carry (DESIGN §25)
@@ -378,6 +395,12 @@ export class Magic {
   spawn(kind, init, plan, cast, index = 0, emitting = false) {
     if (!plan || !plan.ok) return null;
     if (!KIND_UPDATE[kind]) kind = 'projectile';
+    // One ward to a bearer: another (an echo, a volley, a second cast) thickens it.
+    if (kind === 'ward') {
+      const bearer = init.target || cast?.caster || null;
+      const w = bearer ? this.wardOn(bearer) : null;
+      if (w && this._thicken(w, init, plan)) return w;
+    }
     if (this.bodies.length >= BAL.BODY_CAP || (cast && cast.live >= BAL.PER_CAST_CAP)) {
       this.capped++;
       return null;
@@ -498,6 +521,21 @@ export class Magic {
         b.x2 = init.x2 ?? b.x;
         b.y2 = init.y2 ?? b.y;
         break;
+      case 'bind':
+        b.target = init.target || null;
+        b.tickMul = init.tickMul ?? 0.15;
+        b.tickT = b.tick;
+        b.cur = b.r * 2.2;
+        break;
+      case 'ward':
+        b.target = init.target || o;
+        b.shield = Math.max(1, Number.isFinite(init.shield) ? init.shield : plan.shield || 20);
+        b.shieldMax = b.shield;
+        b.cur = b.r * 0.35;
+        b.plateA = b.seed * TAU;
+        b.braceT = 0;
+        this._wards.push(b);
+        break;
       default:
         break;
     }
@@ -609,6 +647,8 @@ export class Magic {
     }
     if (b.kind === 'projectile' && (b.mode === 'fly' || b.mode === 'arc') && (why === 'hit' || why === 'wall')) this.mark(b, b.x, b.y, 5, 0.35);
     if (b.kind === 'beam' && b.held) this.fx('beam_end', { body: b });
+    if (b.kind === 'bind') this._releaseHold(b, why);
+    else if (b.kind === 'ward') this._wardEnd(b, why);
     this.fx('end', { body: b, why });
     b.active = false;
     if (b.cast) b.cast.live--;
@@ -939,6 +979,433 @@ export class Magic {
       d.seed = this.rng.next();
       this.decals.push(d);
       return;
+    }
+  }
+
+  // ================================================================ bind (DESIGN §22.5)
+
+  // Hold `a` still — rooted, no blows, no weaves — for the bind weave body `b` that
+  // touched it (shape bind's onHit). A lingering patch's bite only catches the feet.
+  // Bosses resist: BOSS_HOLD of the hold, halved for each bind in a row, then shrugged off.
+  // Returns the seconds held (0: not held).
+  holdTarget(b, a, info = {}) {
+    if (!b?.plan || !a || a.type !== 'actor' || a.removed || a.dead || !isAlive(a)) return 0;
+    const plan = b.plan;
+    const src = b.cast?.caster || b.owner || null;
+    if (info.tick || (b.kind === 'area' && b.mode === 'patch')) {
+      this.status.apply(a, 'rooted', { src, potency: 0.55, power: b.dmg, duration: 0.8 });
+      return 0;
+    }
+    const f = bindFlavor(plan);
+    let secs = (plan.hold || 2.6) * f.hold * (plan.gen > 0 ? 0.55 : 1) * (1 + 0.5 * (b.cast?.chargeK || 0));
+    let dr = null;
+    if (a.boss || a.superArmor || Number.isFinite(a.ccResist)) {
+      dr = a._bindDR || (a._bindDR = { n: 0, t: -1e9 });
+      if (this.t - dr.t > BIND_DR_RESET) dr.n = 0;
+      if (dr.n >= BIND_DR_MAX) {
+        dr.t = this.t;
+        this.fx('bind_resist', { target: a, plan, body: b });
+        this._floatText(a, 'Resisted', plan.palette?.spark || '#e6dcff');
+        return 0;
+      }
+      secs *= (Number.isFinite(a.ccResist) ? a.ccResist : BOSS_HOLD) * Math.pow(0.5, dr.n);
+    }
+    const inst = this.status.apply(a, 'bound', { src, potency: 1, duration: secs, power: b.dmg });
+    if (!inst) return 0;
+    const resisted = !!dr;
+    if (dr) {
+      dr.n++;
+      dr.t = this.t;
+    }
+    let hold = null;
+    for (let i = 0; i < this.bodies.length; i++) {
+      const o = this.bodies[i];
+      if (o.active && !o.ending && o.kind === 'bind' && o.target === a) {
+        hold = o;
+        break;
+      }
+    }
+    if (hold) hold.life = Math.max(hold.life, hold.age + inst.t + 0.5);
+    else {
+      const bare = typeof plan.bare === 'function' ? plan.bare() : plan;
+      const r = (6 + Math.min(14, a.radius ?? 5)) * Math.min(1.5, Math.max(0.8, plan.size || 1));
+      hold = this.spawn('bind', { x: a.x, y: a.y, target: a, r, life: inst.t + 0.5, tick: plan.tick || 0.7, tickMul: f.tick * 0.35, dmg: b.dmg }, bare, b.cast, b.index);
+    }
+    this.game.bus?.emit('bind', { source: src, target: a, seconds: inst.t, plan, weave: plan.weave, resisted });
+    this.fx('bind', { body: hold, target: a, seconds: inst.t, plan, source: b, resisted });
+    return inst.t;
+  }
+
+  _releaseHold(b, why) {
+    const t = b.target;
+    if (!t || t.removed || t.dead || why === 'dismiss') return;
+    const f = bindFlavor(b.plan);
+    // What the ring leaves when it lets go (vines on the feet, a song's lull).
+    if (why === 'free' && isAlive(t)) for (const id of f.after) this.status.apply(t, id, { src: b.cast?.caster || null, potency: 0.9, power: b.dmg });
+    this.fx('unbind', { body: b, target: t });
+  }
+
+  // A word floating over someone ("Resisted"), never piled on itself.
+  _floatText(a, text, color) {
+    const k = `${a.uid ?? a.id}:${text}`;
+    const m = this._floatAt || (this._floatAt = new Map());
+    if (this.t - (m.get(k) ?? -9) < 1) return;
+    m.set(k, this.t);
+    if (m.size > 64) m.clear();
+    try {
+      this.game.bubbles?.number?.(a.x, a.y - 30, text, color, { kind: 'dot' });
+    } catch {
+      /* cosmetic */
+    }
+  }
+
+  // ================================================================ ward (DESIGN §22.5)
+
+  wardOn(a) {
+    const l = this._wards;
+    for (let i = 0; i < l.length; i++) {
+      const w = l[i];
+      if (w.active && !w.ending && w.target === a) return w;
+    }
+    return null;
+  }
+
+  // Is `a` someone the caster would shield (themself, a friend)?
+  _wardable(caster, a) {
+    if (!a || a.type !== 'actor' || a.removed || a.dead || !isAlive(a)) return false;
+    if (a === caster) return true;
+    if (this.isPlayer(caster)) return this.isFriendOfPlayer(a);
+    return !!caster && factionRelation(caster.faction, a.faction) === 'ally';
+  }
+
+  // Who a ward cast shields: the friend it was aimed at (or standing on the aim point),
+  // else — homing — whoever near is hurt worst, else the caster; then, for more wards,
+  // the friends nearest the first.
+  wardBearers(cast, plan, n = 1) {
+    const caster = cast?.caster;
+    if (!caster) return [];
+    const cands = this._ensureCands();
+    const reach = (plan?.aim?.range || plan?.range || 110) + 24;
+    const near = (a, x, y, r) => (a.x - x) ** 2 + (a.y - y) ** 2 <= r * r;
+    let first = null;
+    const t = cast.target;
+    if (t && t !== caster && this._wardable(caster, t) && near(t, caster.x, caster.y, reach)) first = t;
+    if (!first) {
+      const aim = this.aimOf(cast);
+      if ((aim.x - caster.x) ** 2 + (aim.y - caster.y) ** 2 > 16 * 16) {
+        let bd = 22 * 22;
+        for (let i = 0; i < cands.length; i++) {
+          const a = cands[i];
+          if (a === caster || !this._wardable(caster, a)) continue;
+          const d2 = (a.x - aim.x) ** 2 + (a.y - 6 - aim.y) ** 2;
+          if (d2 < bd) {
+            bd = d2;
+            first = a;
+          }
+        }
+      }
+    }
+    if (!first && plan?.seekHurt) {
+      const frac = (a) => (a.maxHp > 0 ? a.hp / a.maxHp : 1);
+      let best = caster;
+      let bf = frac(caster);
+      for (let i = 0; i < cands.length; i++) {
+        const a = cands[i];
+        if (a === caster || !this._wardable(caster, a) || !near(a, caster.x, caster.y, reach)) continue;
+        if (frac(a) < bf - 0.05) {
+          bf = frac(a);
+          best = a;
+        }
+      }
+      first = best;
+    }
+    const out = [first || caster];
+    while (out.length < n) {
+      let best = null;
+      let bd = 90 * 90;
+      const o = out[0];
+      for (let i = 0; i < cands.length; i++) {
+        const a = cands[i];
+        if (out.includes(a) || !this._wardable(caster, a)) continue;
+        const d2 = (a.x - o.x) ** 2 + (a.y - o.y) ** 2;
+        if (d2 < bd) {
+          bd = d2;
+          best = a;
+        }
+      }
+      if (!best) break;
+      out.push(best);
+    }
+    return out;
+  }
+
+  // A second ward on a bearer: the same weave thickens the first (up to WARD_CAP of its
+  // raising, and lasts longer); another weave takes its place, carrying half of what the
+  // old one had left. Returns true when it was absorbed into the old one.
+  _thicken(w, init, plan) {
+    const same = w.plan && plan && String(w.plan.essences) === String(plan.essences) && w.plan.shape === plan.shape;
+    const add = Math.max(0, Number(init.shield) || 0);
+    if (!same) {
+      init.shield = add + Math.max(0, w.shield) * 0.5;
+      this.end(w, 'replace');
+      return false;
+    }
+    w.shield = Math.min(Math.max(w.shieldMax, add) * WARD_CAP, w.shield + add);
+    w.shieldMax = Math.max(w.shieldMax, w.shield);
+    if (Number.isFinite(init.life)) w.life = Math.max(w.life, w.age + init.life);
+    this.fx('ward_thicken', { body: w });
+    return true;
+  }
+
+  // Each step a ward stands: its gifts (a water ward heals, earth and iron weigh on the
+  // bearer), its ring of small shields (orbit), and the missiles it stops.
+  wardStep(w, dt) {
+    if (w.shield <= 0) {
+      this.end(w, 'break');
+      return;
+    }
+    const plan = w.plan;
+    const f = plan.ward || wardFlavor(plan);
+    const t = w.target;
+    if (w.age < dt * 1.5) this.game.bus?.emit('ward', { caster: w.cast?.caster || null, bearer: t, shield: w.shield, plan });
+    if (f.heal > 0 && t.hp < t.maxHp) this.heal(t, (t.maxHp || 0) * f.heal * dt, w);
+    if (f.slow < 1) {
+      w.braceT -= dt;
+      if (w.braceT <= 0) {
+        w.braceT = 0.5;
+        this.status.apply(t, 'braced', { src: t, potency: 1, duration: 1.2 });
+      }
+    }
+    if (plan.wardOrbit) {
+      w.plateA += dt * 4;
+      this._wardPlates(w);
+      if (!w.active || w.ending) return;
+    }
+    this._wardShots(w, f);
+  }
+
+  // Where the orbit twist's three small shields are (written into out[0..5]).
+  wardPlates(w, out) {
+    const r = (w.cur || w.r) * 1.35;
+    for (let i = 0; i < 3; i++) {
+      const a = w.plateA + (i / 3) * TAU;
+      out[i * 2] = w.x + Math.cos(a) * r;
+      out[i * 2 + 1] = w.y + Math.sin(a) * r * 0.8;
+    }
+    return out;
+  }
+
+  _wardPlates(w) {
+    const P = this._plates || (this._plates = new Float32Array(6));
+    this.wardPlates(w, P);
+    const list = this.cands;
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      if (a === w.target || !this.isFoe(w.cast, a)) continue;
+      for (let k = 0; k < 3; k++) {
+        const rr = 7 + (a.radius ?? 5);
+        if ((a.x - P[k * 2]) ** 2 + (a.y - P[k * 2 + 1]) ** 2 > rr * rr) continue;
+        const last = w.hits.get(a);
+        if (last !== undefined && w.age - last < 0.5) break;
+        w.hits.set(a, w.age);
+        this.hit(w, a, 0.5, HIT_TICK);
+        break;
+      }
+      if (!w.active || w.ending) return;
+    }
+  }
+
+  // Is (x, y) inside the ward (or, for a ring of small shields, on one of them)?
+  _inWard(w, x, y, R) {
+    if (w.plan.wardOrbit) {
+      const P = this._plates || (this._plates = new Float32Array(6));
+      this.wardPlates(w, P);
+      for (let k = 0; k < 3; k++) if ((x - P[k * 2]) ** 2 + (y - P[k * 2 + 1]) ** 2 <= (R * 0.45 + 4) ** 2) return true;
+      return false;
+    }
+    return (x - w.x) ** 2 + (y - w.y) ** 2 <= R * R;
+  }
+
+  // Foes' arrows and bolts, foes' weaves and bosses' globs and bubbles: a ward stops
+  // them (light and the bounce twist turn them back on whoever loosed them; wind and the
+  // spiral twist turn them aside), paying for each out of its strength.
+  _wardShots(w, f) {
+    const bearer = w.target;
+    const R = (w.cur || w.r) * (f.reach || 1) + 4;
+    const reflect = !!(w.plan.reflect || f.reflect);
+    const deflect = !reflect && !!(w.plan.deflect || f.deflect);
+    const how = reflect ? 'reflect' : deflect ? 'deflect' : 'block';
+    const pay = reflect ? 0.5 : deflect ? 0.35 : 1;
+    const shots = this.shots;
+    for (let i = 0; i < shots.length; i++) {
+      const p = shots[i];
+      if (p.removed || p.state !== 'fly' || p._wardSeen === w.uid) continue;
+      if (!p.owner || p.owner === bearer || !this._harmableBy(bearer, p.owner)) continue;
+      if (!this._inWard(w, p.x, p.y, R)) continue;
+      p._wardSeen = w.uid;
+      const cost = Number(p.damage) > 0 ? p.damage : 4;
+      if (reflect) this._turnShot(w, p, true);
+      else if (deflect) this._turnShot(w, p, false);
+      else {
+        p.state = 'spent';
+        p.stateT = 0;
+        this.game.entities?.remove?.(p);
+      }
+      this._wardTake(w, cost * pay, p.x, p.y - (p.z || 8), how);
+      if (!w.active || w.ending) return;
+    }
+    const list = this.bodies;
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+      if (!o.active || o.ending || o.kind !== 'projectile' || o.mode === 'lob' || o.mode === 'fall' || o.wardSeen === w.uid) continue;
+      const by = o.cast?.caster || o.owner;
+      if (!by || by === bearer || by === w.cast?.caster || !this._harmableBy(bearer, by)) continue;
+      if (!this._inWard(w, o.x, o.y, R + o.r)) continue;
+      o.wardSeen = w.uid;
+      const cost = o.dmg > 0 ? o.dmg : 4;
+      if (reflect) {
+        const ang = Math.atan2(by.y - o.y, by.x - o.x);
+        const back = this.spawn('projectile', { mode: 'fly', x: o.x, y: o.y, angle: ang, speed: Math.max(160, o.speed), r: o.r, life: 1.4, range: 220, dmg: o.dmg, target: by, homing: 4 }, o.plan, w.cast, w.index);
+        if (back) back.wardSeen = w.uid;
+        this.end(o, 'wall');
+      } else if (deflect) {
+        const nx = o.x - w.x;
+        const ny = o.y - w.y;
+        const nl = Math.hypot(nx, ny) || 1;
+        const side = o.vx * -ny + o.vy * nx >= 0 ? 1 : -1;
+        const sp = Math.hypot(o.vx, o.vy) || o.speed;
+        o.vx = ((-ny / nl) * side * 0.85 + (nx / nl) * 0.5) * sp;
+        o.vy = ((nx / nl) * side * 0.85 + (ny / nl) * 0.5) * sp;
+        o.target = null;
+        o.homing = 0;
+      } else this.end(o, 'wall');
+      this._wardTake(w, cost * pay, o.x, o.y - (o.z || 8), how);
+      if (!w.active || w.ending) return;
+    }
+    const hz = this.hazards;
+    for (let i = 0; i < hz.length; i++) {
+      const h = hz[i];
+      if (h.done || h.removed || (h.kind !== 'glob' && h.kind !== 'bubble') || h.delay > 0 || (h.z || 0) > 26) continue;
+      if (!h.owner || !this._harmableBy(bearer, h.owner)) continue;
+      if (!this._inWard(w, h.x, h.y, R + (h.r || 8) * 0.4)) continue;
+      const cost = (Number(h.owner.atk) || 8) * (Number(h.mul) || 0.4);
+      try {
+        h.end?.();
+      } catch (err) {
+        this.warn('ward hazard', err);
+      }
+      this._wardTake(w, cost * (how === 'block' ? 1 : 0.6), h.x, h.y - (h.z || 4), 'block', h.pal?.mid);
+      if (!w.active || w.ending) return;
+    }
+  }
+
+  // An arrow or bolt turned back at its archer (reflect) or sent skimming past (deflect).
+  _turnShot(w, p, back) {
+    const src = p.owner;
+    const sp = (p.speed || Math.hypot(p.vx, p.vy) || 200) * (back ? 1.1 : 0.95);
+    let ang;
+    if (back) ang = src && !src.removed ? Math.atan2(src.y - p.y, src.x - p.x) : Math.atan2(-p.vy, -p.vx);
+    else {
+      const nx = p.x - w.x;
+      const ny = p.y - w.y;
+      const nl = Math.hypot(nx, ny) || 1;
+      const side = p.vx * -ny + p.vy * nx >= 0 ? 1 : -1;
+      ang = Math.atan2((nx / nl) * side * 0.85 + (ny / nl) * 0.5, (-ny / nl) * side * 0.85 + (nx / nl) * 0.5);
+    }
+    p.vx = Math.cos(ang) * sp;
+    p.vy = Math.sin(ang) * sp;
+    p.speed = sp;
+    p.angle = ang;
+    p.traveled = 0;
+    p._tileX = -1;
+    p._tileY = -1;
+    if (back) {
+      p.owner = w.target;
+      p.target = src || null;
+      p.homing = 3;
+    } else {
+      p.target = null;
+      p.homing = 0;
+    }
+  }
+
+  _wardTake(w, amount, x, y, how, color) {
+    if (amount > 0) w.shield -= amount;
+    w.hitT = this.t;
+    this.fx('ward_block', { body: w, x, y, how, amount, color });
+    if (w.shield <= 0.01) this.end(w, 'break');
+  }
+
+  // combat.damage asks before a blow lands: the part a ward takes (0: no ward). A song
+  // ward also covers friends standing near its bearer. Blows from close by are answered
+  // (next step) with the ward's essences: fire burns, frost chills, thorns scratch…
+  absorb(target, amount, source, opts = {}) {
+    if (!(amount > 0) || !target || !this._wards.length) return 0;
+    if (opts.kind === 'oath' || opts.kind === 'fall') return 0;
+    const w = this._wardFor(target);
+    if (!w) return 0;
+    const took = Math.min(w.shield, amount);
+    if (!(took > 0)) return 0;
+    w.shield -= took;
+    w.hitT = this.t;
+    const f = w.plan.ward || wardFlavor(w.plan);
+    if (f.drink > 0) this.heal(target, took * f.drink, w);
+    const src = source && source.type === 'projectile' ? source.owner || null : source;
+    if (src && src.type === 'actor' && src !== target && src !== w.cast?.caster && !opts.dot && !opts.reaction && f.thorns > 0) {
+      const reach = (w.cur || w.r) + (src.radius ?? 5) + 30;
+      if ((src.x - w.x) ** 2 + (src.y - w.y) ** 2 <= reach * reach) this._retaliate.push(w, src);
+    }
+    this.fx('ward_hit', { body: w, target, x: target.x, y: target.y, amount: took, source: src, shared: target !== w.target });
+    if (w.shield <= 0.01) this.end(w, 'break');
+    return took;
+  }
+
+  _wardFor(target) {
+    const l = this._wards;
+    for (let i = 0; i < l.length; i++) {
+      const w = l[i];
+      if (w.active && !w.ending && w.target === target && w.shield > 0) return w;
+    }
+    for (let i = 0; i < l.length; i++) {
+      const w = l[i];
+      const share = w.plan?.ward?.share;
+      if (!share || !w.active || w.ending || !(w.shield > 0)) continue;
+      const r = share + (target.radius ?? 5);
+      if ((target.x - w.x) ** 2 + (target.y - w.y) ** 2 > r * r) continue;
+      if (this._wardable(w.cast?.caster || w.target, target)) return w;
+    }
+    return null;
+  }
+
+  // Blows the wards took last step, answered now (never inside combat.damage).
+  _answerBlows() {
+    const q = this._retaliate;
+    for (let i = 0; i + 1 < q.length; i += 2) {
+      const w = q[i];
+      const a = q[i + 1];
+      if (!w.active || w.ending || !isAlive(a) || !this.canAffect(w.cast, a)) continue;
+      const last = w.hits.get(a);
+      if (last !== undefined && w.age - last < 0.35) continue;
+      w.hits.set(a, w.age);
+      const f = w.plan.ward || wardFlavor(w.plan);
+      this.hit(w, a, f.thorns, HIT);
+    }
+    q.length = 0;
+  }
+
+  _wardEnd(w, why) {
+    const i = this._wards.indexOf(w);
+    if (i >= 0) this._wards.splice(i, 1);
+    const t = w.target;
+    const f = w.plan.ward || wardFlavor(w.plan);
+    if (t && f.slow < 1) this.status.remove(t, 'braced', true);
+    if (w.plan.wardBurst && why !== 'dismiss' && why !== 'replace') {
+      const broke = why === 'break';
+      this.explode(w, w.x, w.y, 30 * Math.min(2, w.plan.size || 1) * (broke ? 1.2 : 1), broke ? 1.4 : 0.9, 'burst', true);
+    }
+    if (why === 'break') {
+      this.fx('ward_break', { body: w });
+      this.game.bus?.emit('ward_broken', { bearer: t, caster: w.cast?.caster || null, plan: w.plan });
     }
   }
 
@@ -1575,8 +2042,10 @@ export class Magic {
   _buildCandidates() {
     const out = this.cands;
     const shots = this.shots;
+    const hz = this.hazards;
     out.length = 0;
     shots.length = 0;
+    hz.length = 0;
     const list = this.game.entities?.list || this.game.entities?.all?.() || [];
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
@@ -1584,6 +2053,7 @@ export class Magic {
       if (e.type === 'actor') {
         if (!e.dead && isAlive(e)) out.push(e);
       } else if (e.type === 'projectile') shots.push(e);
+      else if (e.type === 'hazard') hz.push(e);
     }
   }
 
@@ -1614,6 +2084,7 @@ export class Magic {
     for (let i = 0; i < this.cooldowns.length; i++) if (this.cooldowns[i] > 0) this.cooldowns[i] = Math.max(0, this.cooldowns[i] - dt);
     this._regen(dt);
     this._buildCandidates();
+    if (this._retaliate.length) this._answerBlows();
     this._updateHolds(dt);
     this._updateMovers(dt);
     this._updatePending(dt);

@@ -459,7 +459,10 @@ export class Combat {
     const raw = Math.max(0, Number(amount) || 0) * variance * (crit ? critMul : 1) * mul;
     const def = Math.max(0, (target.def || 0) - (opts.penetration || 0));
     const floor = S && Number.isFinite(S.armorFloor) ? raw * S.armorFloor : 0;
-    const dealt = Math.max(1, Math.round(Math.max(raw - def, floor)));
+    let dealt = Math.max(1, Math.round(Math.max(raw - def, floor)));
+    // A ward (a weave, DESIGN §22.5) takes what it can of the blow first.
+    const warded = g.magic?.absorb ? Math.round(g.magic.absorb(target, dealt, source, opts) || 0) : 0;
+    if (warded > 0) dealt = Math.max(0, dealt - warded);
     target.hp = Math.max(0, target.hp - dealt);
 
     const isPlayer = this.isPlayer(target);
@@ -467,8 +470,10 @@ export class Combat {
     const attacker = source && source.type === 'actor' ? source : null;
     if (attacker) this._noteAggression(target, attacker);
     // Hurting a villager or guard is a crime; set it before anyone hears about the hit.
+    // (A blow a ward caught was still a blow.)
     const crime = attacker && this.isPlayer(attacker) && this.isLawful(target) ? (target.hp <= 0 ? 'knockout' : 'assault') : null;
     if (crime) this._recordCrime(attacker, target, crime);
+    if (dealt <= 0) return this._wardedBlow(source, attacker, target, kind, warded, opts, crime);
     target.flash = opts.dot ? Math.max(target.flash || 0, 0.55) : 1;
     if (!opts.dot) target.invuln = opts.invuln ?? (isPlayer ? 0.55 : isFriend ? 0.35 : 0.12);
     target.lastAttacker = source || null;
@@ -518,6 +523,7 @@ export class Combat {
     if (!opts.quiet) this._hitFx(target, dealt, crit, kind, dx, dy, isFriend || this.isLawful(target), isPlayer, heavy && !opts.noHitStop, !!opts.silent);
 
     const ev = { source: source || null, target, amount: dealt, kind, crit: !!crit };
+    if (warded > 0) ev.absorbed = warded;
     if (opts.magic || opts.damageType) {
       ev.damageType = opts.damageType || null;
       ev.magic = true;
@@ -533,6 +539,26 @@ export class Combat {
     }
     if (crime) this._reportCrime(attacker, target, crime);
     return dealt;
+  }
+
+  // A blow a ward took whole: no wound, no stagger, no number; the shield's own look and
+  // sound say it. Everyone still hears that it was struck (damage, amount 0).
+  _wardedBlow(source, attacker, target, kind, warded, opts, crime) {
+    const g = this.game;
+    target.lastAttacker = source || null;
+    target.lastAttackedAt = g.clock?.t ?? this.t;
+    if (!opts.dot) target.invuln = opts.invuln ?? (this.isPlayer(target) ? 0.3 : 0.12);
+    if (attacker && target.species) this._provoke(target, attacker);
+    const ev = { source: source || null, target, amount: 0, kind, crit: false, absorbed: warded };
+    if (opts.magic || opts.damageType) {
+      ev.damageType = opts.damageType || null;
+      ev.magic = true;
+      ev.deliberate = !!opts.deliberate;
+      if (opts.dot) ev.dot = true;
+    }
+    g.bus?.emit('damage', ev);
+    if (crime) this._reportCrime(attacker, target, crime);
+    return 0;
   }
 
   // ---------------------------------------------------------------- crimes (§16.7)

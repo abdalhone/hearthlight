@@ -11,7 +11,7 @@ import { STARTER_WEAVE } from '../src/magic/magic.js';
 import * as BAL from '../src/magic/balance.js';
 import { TILE } from '../src/core/constants.js';
 
-const SHAPE_IDS = ['bolt', 'blast', 'strike', 'throw', 'beam', 'nova', 'orb', 'summon', 'rune', 'rain', 'wall', 'dash'];
+const SHAPE_IDS = ['bolt', 'blast', 'strike', 'throw', 'beam', 'nova', 'orb', 'summon', 'rune', 'rain', 'wall', 'dash', 'bind', 'ward'];
 const ESSENCE_IDS = ['raw', 'fire', 'water', 'frost', 'storm', 'earth', 'wind', 'nature', 'poison', 'light', 'dark', 'iron', 'song'];
 const TWIST_IDS = ['multishot', 'split', 'pierce', 'bounce', 'chain', 'homing', 'echo', 'big', 'swift', 'burst', 'linger', 'orbit', 'volley', 'spiral', 'leech', 'charge'];
 
@@ -21,7 +21,7 @@ test('registries hold every fixed id, and every entry fills in completely', () =
   for (const id of SHAPE_IDS) assert.ok(Shapes.has(id), `shape ${id}`);
   for (const id of ESSENCE_IDS) assert.ok(Essences.has(id), `essence ${id}`);
   for (const id of TWIST_IDS) assert.ok(Twists.has(id), `twist ${id}`);
-  assert.equal(Object.keys(SHAPES).length, 13, 'twelve shapes, and the surge the prices brought (DESIGN §25)');
+  assert.equal(Object.keys(SHAPES).length, 15, 'twelve shapes, bind and ward (DESIGN §22.5), and the surge the prices brought (DESIGN §25)');
   assert.ok(Shapes.has('surge'));
   assert.equal(Object.keys(ESSENCES).length, 13);
   assert.equal(Object.keys(TWISTS).length, 16);
@@ -63,7 +63,7 @@ test('compile: numbers, palette, name, description and aim preview', () => {
   assert.equal(compileWeave({ shape: 'beam', essences: ['light'] }).input, 'hold');
   assert.equal(compileWeave({ shape: 'bolt', essences: ['light'], twists: ['charge'] }).input, 'charge');
   const aims = SHAPE_IDS.map((s) => compileWeave({ shape: s, essences: ['raw'] }).aim.type);
-  for (const t of aims) assert.ok(['line', 'cone', 'circle', 'ring', 'arc', 'point'].includes(t), t);
+  for (const t of aims) assert.ok(['line', 'cone', 'circle', 'ring', 'arc', 'point', 'bind', 'shield'].includes(t), t);
   assert.match(describeWeave(compileWeave({ shape: 'summon', essences: ['earth'], twists: ['chain'] })), /golem.*\. It leaps from foe to foe\./i);
 });
 

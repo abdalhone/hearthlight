@@ -299,7 +299,194 @@ export const SHAPES = {
       }
     },
   },
+  // DESIGN §22.5 (the author: "even the binding spell that the girl has, I can have it as
+  // well"): the stranger's own Stillring. A ring of light flies to the mark and closes on
+  // it: held — rooted, no blows, no weaves — for a few heartbeats. Whatever a bind weave
+  // touches is held (its shards, arcs, bursts, a lingering patch's bite), so every twist
+  // binds in its own way; children hold for less. Bosses resist: a shorter hold, shorter
+  // again each time (magic.holdTarget). Aimed at a villager or Lyra it is an attack.
+  bind: {
+    name: 'Bind',
+    noun: 'Bind',
+    kind: 'projectile',
+    clauseStyle: 'that',
+    missile: 'ring', // fx draws the flying ring, not a bolt
+    base: { dmg: 4, cost: 10, cooldown: 4.5, speed: 300, range: 150, radius: 5, count: 1, life: 0.9, hold: 2.6, tick: 0.7 },
+    hits: 1,
+    aim: (p) => ({ type: 'bind', range: p.range, radius: 10 }),
+    describe: (n, noun) =>
+      n === 1 ? `Throws a ring of ${noun} that closes on what you aim at and holds it still` : `Throws ${n} rings of ${noun} that close on foes and hold them still`,
+    onPlan(plan) {
+      // A ring finds its mark: it steers hard and forgives a loose aim.
+      plan.homing = Math.max(plan.homing, 9);
+      plan.aimAssist = true;
+      plan.hold = (plan.hold || 2.6) * Math.max(0.5, Math.min(2.2, plan.lifeMul || 1));
+    },
+    emit(ctx) {
+      const p = ctx.plan;
+      const rt = ctx.rt;
+      // Many rings, many marks: the aimed one first, then whoever stands nearest it.
+      const chosen = ctx.target ? [ctx.target] : [];
+      for (let i = 0; i < ctx.count; i++) {
+        const a = ctx.fan(i, ctx.count, 0.35);
+        let target = i === 0 ? ctx.target : null;
+        if (!target && i > 0 && rt?.nearestFoe) {
+          target = rt.nearestFoe({ cast: ctx.cast }, ctx.aimX, ctx.aimY, 110, chosen);
+          if (target) chosen.push(target);
+        }
+        ctx.spawn('projectile', {
+          mode: 'fly',
+          x: ctx.ox + Math.cos(a) * 6,
+          y: ctx.oy + Math.sin(a) * 6,
+          angle: a,
+          speed: p.speed,
+          r: p.radius,
+          life: p.life,
+          range: p.range,
+          target: target || undefined,
+        });
+      }
+    },
+    onHit(body, target, rt, info) {
+      if (body.kind === 'bind') return; // the hold itself bites; it never binds again
+      rt.holdTarget?.(body, target, info);
+    },
+  },
+
+  // DESIGN §22.5 ("a shield spell that would save me from spells"): a ward around the
+  // caster, or around the friend it is aimed at. It takes blows until its strength is
+  // spent, stops foes' arrows, bolts, globs and weaves, and answers whoever strikes it
+  // with its essences (fire burns them, frost chills…). magic.js runs it (absorb, the
+  // shots it stops, its flavors below); twists that mean something else on a shield are
+  // adapted: linger lasts longer, burst bursts when it breaks, orbit becomes a ring of
+  // small shields, bounce turns missiles back, spiral turns them aside, homing finds the
+  // friend who needs it most.
+  ward: {
+    name: 'Ward',
+    noun: 'Ward',
+    kind: 'ward',
+    base: { dmg: 5, cost: 14, cooldown: 8, speed: 0, range: 110, radius: 13, count: 1, life: 6, shield: 24, tick: 0.5 },
+    hits: 2,
+    aim: (p) => ({ type: 'shield', range: p.range, radius: p.radius }),
+    describe: (n, noun) =>
+      n === 1
+        ? `Raises a ward of ${noun} around you (or the friend you aim at) that takes blows and stops missiles`
+        : `Raises wards of ${noun} around you and up to ${n - 1} friend${n > 2 ? 's' : ''} near you that take blows and stop missiles`,
+    adapt: {
+      linger: { hooks: false, clause: ['lasts longer', 'last longer'], onPlan: (p) => (p.life *= 1.7) },
+      burst: { hooks: false, clause: ['bursts when it breaks', 'burst when they break'], onPlan: (p) => (p.wardBurst = true) },
+      orbit: { hooks: false, clause: ['becomes a ring of small shields', 'become rings of small shields'], onPlan: (p) => (p.wardOrbit = true) },
+      bounce: { clause: ['turns missiles back', 'turn missiles back'], onPlan: (p) => (p.reflect = true) },
+      spiral: { hooks: false, clause: ['turns missiles aside', 'turn missiles aside'], onPlan: (p) => (p.deflect = true) },
+      homing: { clause: ['finds whoever needs it most', 'find whoever needs them most'], onPlan: (p) => (p.seekHurt = true) },
+      pierce: { clause: ['bites through armour', 'bite through armour'] },
+      split: { clause: ['throws off shards when struck', 'throw off shards when struck'] },
+      chain: { clause: ['arcs into whoever strikes it', 'arc into whoever strikes them'] },
+    },
+    onPlan(plan) {
+      const f = wardFlavor(plan);
+      plan.ward = f;
+      plan.shield = Math.round((plan.shield || 24) * f.absorb * Math.pow(plan.size || 1, 0.6) * 10) / 10;
+      if (f.reflect) plan.reflect = true;
+      if (f.deflect) plan.deflect = true;
+    },
+    emit(ctx) {
+      const p = ctx.plan;
+      const rt = ctx.rt;
+      const bearers = rt?.wardBearers ? rt.wardBearers(ctx.cast, p, ctx.count) : [ctx.caster];
+      const k = (rt?.powerOf ? rt.powerOf(ctx.caster) : 1) * (ctx.cast?.curMul ?? 1) * (1 + 0.6 * (ctx.chargeK || 0));
+      for (let i = 0; i < ctx.count; i++) {
+        // More wards than friends near: the rest thicken the first.
+        const who = bearers[i] || bearers[0] || ctx.caster;
+        ctx.spawn('ward', { target: who, x: who.x, y: who.y, r: p.radius, life: p.life, shield: p.shield * k * (bearers[i] ? 1 : 0.5), tick: p.tick, delay: i * 0.05 });
+      }
+    },
+  },
 };
+
+// How each essence flavors a bind (DESIGN §22.5: "fire ring burns, frost freezes the hold
+// longer, storm shocks, dark drains, song lulls, nature roots with vines…"). hold: how
+// long it holds; tick: how hard the ring bites while it holds (its essences' statuses
+// ride on the bite: burning, shocked, drained…); after: a status left when it lets go.
+// An essence with no entry holds plainly and bites a little.
+export const BIND_FLAVORS = {
+  raw: { hold: 1, tick: 0.4 },
+  fire: { hold: 0.9, tick: 1 },
+  water: { hold: 1, tick: 0.5 },
+  frost: { hold: 1.45, tick: 0.4 },
+  storm: { hold: 0.9, tick: 0.8 },
+  earth: { hold: 1.15, tick: 0.5 },
+  wind: { hold: 0.85, tick: 0.4 },
+  nature: { hold: 1.05, tick: 0.4, after: 'rooted' },
+  poison: { hold: 1, tick: 0.7 },
+  light: { hold: 1, tick: 0.5 },
+  dark: { hold: 1, tick: 0.8 },
+  iron: { hold: 1.2, tick: 0.5 },
+  song: { hold: 1.3, tick: 0, after: 'lulled' },
+};
+const BIND_DEFAULT = { hold: 1, tick: 0.5 };
+
+// How each essence flavors a ward ("light reflects bolts back, fire burns whoever strikes
+// it, frost chills them, earth and iron absorb more but slow you, water heals a little,
+// wind deflects missiles, storm shocks, dark drinks a little health, nature grows thorns,
+// poison stings, song shields nearby friends too"). absorb: strength; thorns: how hard it
+// answers a blow (its statuses ride on it); heal: share of max health per second; slow:
+// the bearer's pace while it stands; drink: share of each blow it turns into health;
+// share: px around the bearer whose friends it also shields; reach: wider catch.
+export const WARD_FLAVORS = {
+  raw: { absorb: 1, thorns: 0.35 },
+  fire: { absorb: 0.9, thorns: 1.1 },
+  water: { absorb: 1, thorns: 0.3, heal: 0.02 },
+  frost: { absorb: 1, thorns: 0.6 },
+  storm: { absorb: 0.9, thorns: 0.9 },
+  earth: { absorb: 1.55, thorns: 0.4, slow: 0.8 },
+  wind: { absorb: 0.85, thorns: 0.4, deflect: true, reach: 1.35 },
+  nature: { absorb: 1.05, thorns: 1 },
+  poison: { absorb: 0.95, thorns: 0.8 },
+  light: { absorb: 1, thorns: 0.35, reflect: true },
+  dark: { absorb: 1, thorns: 0.7, drink: 0.2 },
+  iron: { absorb: 1.6, thorns: 0.5, slow: 0.78 },
+  song: { absorb: 0.95, thorns: 0.2, share: 46 },
+};
+const WARD_DEFAULT = { absorb: 1, thorns: 0.4 };
+
+const flavorCache = new WeakMap();
+
+// A plan's blended bind flavor: holds and bites average, every after-status is kept.
+export function bindFlavor(plan) {
+  let f = plan && flavorCache.get(plan);
+  if (f) return f;
+  const ess = plan?.essences?.length ? plan.essences : ['raw'];
+  f = { hold: 0, tick: 0, after: [] };
+  for (const e of ess) {
+    const d = BIND_FLAVORS[e] || BIND_DEFAULT;
+    f.hold += (d.hold ?? 1) / ess.length;
+    f.tick += (d.tick ?? 0.5) / ess.length;
+    if (d.after && !f.after.includes(d.after)) f.after.push(d.after);
+  }
+  if (plan && typeof plan === 'object') flavorCache.set(plan, f);
+  return f;
+}
+
+// A plan's blended ward flavor: strengths average, every gift is kept (at the
+// strongest one any of its essences gives).
+export function wardFlavor(plan) {
+  const ess = plan?.essences?.length ? plan.essences : ['raw'];
+  const f = { absorb: 0, thorns: 0, heal: 0, slow: 1, drink: 0, share: 0, reach: 1, reflect: false, deflect: false };
+  for (const e of ess) {
+    const d = WARD_FLAVORS[e] || WARD_DEFAULT;
+    f.absorb += (d.absorb ?? 1) / ess.length;
+    f.thorns += (d.thorns ?? 0.4) / ess.length;
+    if (d.heal) f.heal = Math.max(f.heal, d.heal);
+    if (d.slow) f.slow = Math.min(f.slow, d.slow);
+    if (d.drink) f.drink = Math.max(f.drink, d.drink);
+    if (d.share) f.share = Math.max(f.share, d.share);
+    if (d.reach) f.reach = Math.max(f.reach, d.reach);
+    if (d.reflect) f.reflect = true;
+    if (d.deflect) f.deflect = true;
+  }
+  return f;
+}
 
 const BASE_KEYS = ['dmg', 'cost', 'cooldown', 'speed', 'range', 'radius', 'count', 'life'];
 

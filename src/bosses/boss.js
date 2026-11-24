@@ -144,6 +144,12 @@ export class Boss extends Creature {
     }
     this.t += dt;
     pickFoe(this);
+    // Held by a bind, frozen, stunned (weaves, DESIGN §22.1/§22.5; bosses resist and it
+    // never lasts): nothing moves, and a blow being wound up waits where it was.
+    if (this.statusFlags?.disabled) {
+      stop(this);
+      return;
+    }
     if (this.move) return this.runMove(dt);
     this._posed = false;
     try {

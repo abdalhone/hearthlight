@@ -189,6 +189,37 @@ export const STATUSES = {
     duration: 3,
     move: 0.5,
   },
+  // A bind's hold (DESIGN §22.5): rooted, no blows, no weaves. Not `cc`: bosses resist it
+  // their own way (magic.holdTarget: a shorter hold, shorter again each time).
+  bound: {
+    name: 'Bound',
+    tags: ['bound'],
+    color: '#d9ccff',
+    overlay: 'bound',
+    duration: 2.6,
+    disable: true,
+    root: true,
+    immunity: 0.8,
+  },
+  // What a song bind leaves when it lets go: slow, soft, half-hearted for a moment.
+  lulled: {
+    name: 'Lulled',
+    tags: ['song', 'calm'],
+    color: '#ffb8e6',
+    overlay: 'lull',
+    duration: 2.5,
+    move: 0.55,
+    dmgDealt: 0.7,
+  },
+  // An earth or iron ward's weight on its bearer.
+  braced: {
+    name: 'Braced',
+    tags: ['ward'],
+    color: '#d6b98a',
+    overlay: 'none',
+    duration: 1.2,
+    move: 0.8,
+  },
   blinded: {
     name: 'Blinded',
     tags: ['steam', 'blind'],

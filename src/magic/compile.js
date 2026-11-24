@@ -39,7 +39,8 @@ import {
 // aimAssist, dmgTypes [{type, share}], damageType, statuses [{id, potency, chance}], tags,
 // palette, palettes, particles, sounds, light, familiar, terrain, value, budget, aim,
 // hooks { onEmit: [fn…], onSpawn, onUpdate, onHit, onEnd } (each fn(this-free) gets
-// (…args) as in twists.js), child(twistId) -> plan, attackPlan() -> plan (summons).
+// (…args) as in twists.js; a shape may carry hooks and onPlan too, and `adapt` twists),
+// child(twistId) -> plan, attackPlan() -> plan (summons), bare() -> the plan untwisted.
 
 const cache = new Map();
 const CACHE_MAX = 600;
@@ -234,16 +235,27 @@ function build(w, twists, gen, key, prices = []) {
   const lead = essenceDefs.find((e) => e.id !== 'raw') || essenceDefs[0];
   plan.familiar = { ...lead.familiar };
 
-  // Hooks: twists first (in the order the player set them), then any essence hooks.
+  // Hooks: the shape's own first (bind holds whatever its weave touches), then twists
+  // (in the order the player set them), then any essence and price hooks. A shape may
+  // adapt a twist that means something else on it (a ward that lingers lasts longer
+  // instead of leaving a patch): `adapt[twistId].hooks === false` drops that twist's hooks.
+  const adapt = shapeDef.adapt || null;
   plan.hooks = {};
   for (const h of HOOKS) plan.hooks[h] = [];
-  for (const d of [...twistDefs, ...essenceDefs, ...priceDefs]) for (const h of HOOKS) if (typeof d[h] === 'function') plan.hooks[h].push(d[h]);
+  const hooked = [shapeDef, ...twistDefs.filter((t) => adapt?.[t.id]?.hooks !== false), ...essenceDefs, ...priceDefs];
+  for (const d of hooked) for (const h of HOOKS) if (typeof d[h] === 'function') plan.hooks[h].push(d[h]);
   for (const h of HOOKS) if (!plan.hooks[h].length) plan.hooks[h] = EMPTY;
 
+  try {
+    shapeDef.onPlan?.(plan);
+  } catch (err) {
+    console.warn(`[magic] shape ${shapeDef.id} onPlan failed`, err);
+  }
   for (const t of twistDefs) {
     if (t.input === 'charge') plan.input = 'charge';
     try {
       t.onPlan?.(plan);
+      adapt?.[t.id]?.onPlan?.(plan);
     } catch (err) {
       console.warn(`[magic] twist ${t.id} onPlan failed`, err);
     }
@@ -296,6 +308,15 @@ function build(w, twists, gen, key, prices = []) {
     c = compileWeave({ shape: plan.weave.shape, essences: plan.weave.essences, twists: tw }, { gen: gen + 1, trusted: true });
     children.set(k, c);
     return c;
+  };
+  // The weave with no twists, one generation the same: what a bind's hold ring is made
+  // of (it looks and bites like its weave, but no twist runs on it a second time).
+  let bare = null;
+  plan.bare = () => {
+    if (bare) return bare;
+    bare = plan.weave.twists.length ? compileWeave({ shape: plan.weave.shape, essences: plan.weave.essences, twists: [] }, { gen, trusted: true }) : plan;
+    if (!bare.ok) bare = plan;
+    return bare;
   };
   let attack = null;
   plan.attackPlan = () => {

@@ -98,8 +98,12 @@ export function describeWeave(plan) {
   const clauses = [];
   const sentences = [];
   for (const t of plan.twistDefs || []) {
-    if (t.clause) clauses.push(n === 1 ? t.clause[0] : t.clause[1]);
-    if (t.sentence) sentences.push(t.sentence);
+    // A shape that adapts a twist says what it does there instead.
+    const a = shape?.adapt?.[t.id];
+    const clause = a && 'clause' in a ? a.clause : t.clause;
+    const sentence = a && 'sentence' in a ? a.sentence : t.sentence;
+    if (clause) clauses.push(n === 1 ? clause[0] : clause[1]);
+    if (sentence) sentences.push(sentence);
   }
   // "Fires 3 bolts of fire that split on impact." reads well; heads that already end in
   // a phrase of their own ("...around you") get the twists as a sentence: "They split...".

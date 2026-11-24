@@ -292,7 +292,8 @@ export class UI {
     });
 
     bus.on('damage', (d) => {
-      if (isPlayer(d?.target)) {
+      // (A blow a ward caught whole leaves no wound to flash.)
+      if (isPlayer(d?.target) && !(d.absorbed > 0 && !(d.amount > 0))) {
         const max = d.target.maxHp || 60;
         this.vignette.hit(Math.min(0.65, ((Number(d.amount) || 1) / max) * 4));
       }
