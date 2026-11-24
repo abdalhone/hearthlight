@@ -1537,3 +1537,62 @@ notices and has opinions (berserk frightens her).
   says), and that save can never be continued — it moves to *Past lives* on the title
   screen. New Game explains this clearly. A setting (Game tab) can soften it to "wake at
   home" for players who want that; it is off by default, as the author wants.
+
+## 28. Errands, problems, and the missing (the author: "everyone has a job… he needs to go to the ironsmith today… he doesn't find the ironsmith… he is not able to continue his day… Claude thinks: why am I not able to continue my job? The shopkeeper isn't there. Where is he? He will ask other villagers… if they don't know, they will search… ask more people… and at the end they might just say that he's missing, and they will have no idea why")
+
+- **Errands.** Every villager's day has real errands that depend on other people and
+  places, generated each morning from their work and relationships (data per villager in
+  `src/ai/village_life/errands_data.js`): Hobb buys wick from Garrick and lights the lamps;
+  Pip takes Bram his lunch; Elda buys honey from Wenna and eggs from Tansy; Tilly fetches
+  ore from the quarry; Mira takes Petra her salve; Wys reports to Rowan at dusk; Alder
+  brings Moot business to Elda; Corran sells his catch at the Kettle; Sabeth delivers cloth
+  to Garrick… An errand = `{ who, purpose, needs: { person?, place?, item? }, window,
+  then }`. Errands are visible (a villager walking somewhere has a reason the player can
+  learn by asking or watching) and they make the village economy and relationships real.
+- **Sightings.** Every villager (and Lyra) remembers who they saw, where and when
+  (`lastSeen`), from their own eyes as they move about. This is what they actually know.
+- **Problems.** When an errand cannot be done (the person is not where they should be,
+  the shop is shut, the item is gone, the way is blocked), the villager has a **problem**
+  and **thinks** about it: why can't I go on? who do I need? where would they be? who
+  would know? Then they act: go where the person should be, check their home, ask the
+  people most likely to know (family, work-mates, neighbors), ask again, wait, give up for
+  today, or raise the alarm with the watch. Each villager asked answers from *their own*
+  knowledge (sightings, the missing person's habits, rumors) and may reason and act in turn
+  (they join the search, or remember something). Word spreads person to person; the watch
+  organizes a search; Lyra hears and may ask the player ("Have you seen Garrick?") — and
+  the player may lie. Found: "There you are!" and the day goes on. Not found by nightfall:
+  **missing** becomes village knowledge; schedules adapt (someone minds the shop), people
+  worry, and in the end they may say he's missing and have no idea why.
+- **Claude thinks for them.** Each think step is a compact decision: the villager's profile
+  and voice, what they know (sightings, habits, rumors, what others told them), the problem,
+  and the actions open to them → `{ thought, say, action: { type: go|ask|wait|search|alarm|
+  give_up|tell_lyra, target }, belief? }`. With a Claude provider (claude.ai or an API key)
+  and the setting **"Villagers think with Claude: always"**, these steps run in the
+  background, **batched** (one call reasons for every villager who has a pending problem),
+  **budgeted** (at most one call per ~30 s, a per-session cap, quick tier), only when there
+  is a real problem, and never for idle chatter; the local reasoner (the same actions from
+  rules over the same knowledge) runs whenever Claude is off, busy, failing or over budget.
+  Never block the game.
+- **The player can follow it**: a villager with a problem shows it (a "?" over their head,
+  their thought in the Mind-style Village view, what they say aloud); asking them "what's
+  wrong?" gets their real situation.
+
+## 29. Killing, witnesses and what the village can know (the author: "if I killed someone without nobody seeing it, nobody should know… they would feel that he's missing")
+
+- A fallen villager can be **killed** only by the player's deliberate finishing blow (an
+  explicit hold-to-strike on someone lying down, with a clear warning the first time). Lyra
+  and the bosses' rules are unchanged (Lyra never dies). The dead lie where they fell.
+- **Witnesses** are anyone who saw it (line of sight, light, distance — night and walls
+  hide things). Seen: murder — the alarm, the watch, Lyra's horror (§19.7 at its gravest),
+  the village turns on the player. Unseen: nobody knows. The dead person's errands fail;
+  §28 runs: people notice, ask, search, and say he is missing.
+- **Bodies and evidence.** A body can be found (someone's search reaches it; a patrol; the
+  lake gives it back after a few days). The player can carry a body (§27 carrying) and hide
+  it (deep woods, the lake, the ruins). A found body turns *missing* into *murder*: the watch
+  investigates with what people actually know — who was last seen with him, where, when
+  (sightings of the player nearby), what the player said when asked — and may question the
+  player, who can lie, deflect or confess. Suspicion is a belief, not a certainty; Lyra
+  weighs it with everything else she knows of the player.
+- Grief is real and lasting: family and friends mourn (their days change, their lines
+  change), the village talks, the Moot meets, the dead person's work goes undone or
+  passes to someone else.
