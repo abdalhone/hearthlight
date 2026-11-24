@@ -1,6 +1,8 @@
 // The in-game HUD: player and Lyra cards (with where she stands with you), place /
 // clock / weather, the quest line, the interact prompt, the "Ask Lyra" bar (with its
 // Jobs menu) and its radial form on small screens. DOM writes happen only on change.
+// On phones the HUD folds small so the world stays visible: Lyra's card shrinks to her
+// portrait and mood (tap to unfold), and the quest line tucks in beside it.
 
 import { h, icon, setIcon, setText, setStyle, toggleClass, meter, button, setAttr } from './dom.js';
 import { COMMANDS, JOBS, DELIVER_OPTIONS, REJOIN } from './content.js';
@@ -9,6 +11,36 @@ import { portraitUrl } from './art.js';
 import { companionshipOf, companionshipLabel, companionshipTone, barMode, playerRelation, trustWords, fearWords, farewellText } from './lyra_view.js';
 
 const STANCE_ICON = { attack: 'sword', defend: 'shield', passive: 'feather', self_defense: 'shield' };
+
+// Phones and short screens get the compact HUD (the same breakpoints as styles.css).
+const SMALL_QUERY = '(max-width: 640px), (max-height: 520px)';
+const PORTRAIT_PHONE_QUERY = '(max-width: 640px) and (min-height: 521px)';
+const MINI_KEY = 'hearthlight.hud.lyraMini';
+
+function readMiniPref() {
+  try {
+    const v = window.localStorage?.getItem(MINI_KEY);
+    return v === null || v === undefined ? true : v === '1';
+  } catch {
+    return true;
+  }
+}
+
+function saveMiniPref(on) {
+  try {
+    window.localStorage?.setItem(MINI_KEY, on ? '1' : '0');
+  } catch {
+    /* private mode: the choice lasts for this visit only */
+  }
+}
+
+function media(q) {
+  try {
+    return typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(q) : null;
+  } catch {
+    return null;
+  }
+}
 
 // The tab on the bar says what asking means right now.
 const BAR_TITLES = {
@@ -32,7 +64,10 @@ export class Hud {
     this.mode = ''; // bar mode last applied: full | collapsed | hidden
     this.farewell = '';
     this.refusedT = 0;
+    this.mini = readMiniPref(); // Lyra's card folded to portrait + mood (small screens only)
+    this.layoutT = 0;
     this.el = this.build();
+    this.watchLayout();
   }
 
   build() {
@@ -67,13 +102,26 @@ export class Hud {
     this.relRow = h('span', { class: 'rel-row' }, this.csChip, this.trustMini, this.fearMini);
     this.farewellEl = h('span', { class: 'farewell', hidden: true });
     this.lyraLive = h('span', { class: 'lyra-live' }, this.lHp.el, this.lStatus);
+    // Folded (phones): her portrait with the mood on its corner and a hairline of health.
+    this.lMiniHp = h('i', { class: 'mini-hp-fill' });
+    this.lMiniMood = h('span', { class: 'mini-mood', 'aria-hidden': 'true' });
     this.lyraCard = h(
       'button',
       { type: 'button', class: 'card lyra-card', title: "Open Lyra's mind (Tab)" },
-      h('span', { class: 'portrait-frame' }, this.lPortrait),
+      h('span', { class: 'portrait-frame' }, this.lPortrait, this.lMiniMood, h('span', { class: 'mini-hp' }, this.lMiniHp)),
       h('span', { class: 'lyra-info' }, h('span', { class: 'card-row' }, this.lName, this.lMood, this.lStance), this.lyraLive, this.relRow, this.farewellEl),
+      h('span', { class: 'unfold-chev', 'aria-hidden': 'true', text: '›' }),
     );
-    this.lyraCard.addEventListener('click', () => this.ui.openMind(this.cs && this.cs !== 'together' ? 'you' : 'now'));
+    this.lyraCard.addEventListener('click', () => {
+      if (this.isFolded()) this.setMini(false);
+      else this.ui.openMind(this.cs && this.cs !== 'together' ? 'you' : 'now');
+    });
+    this.foldBtn = h('button', { type: 'button', class: 'lyra-fold', title: "Fold Lyra's card", 'aria-label': "Fold Lyra's card" }, h('span', { class: 'fold-chev', 'aria-hidden': 'true', text: '‹' }));
+    this.foldBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setMini(true);
+    });
+    this.lyraWrap = h('div', { class: 'lyra-wrap' }, this.lyraCard, this.foldBtn);
 
     // Place, clock and weather
     this.place = h('div', { class: 'place-name' });
@@ -95,6 +143,9 @@ export class Hud {
     // Quest line
     this.questText = h('span', { class: 'quest-text' });
     this.questLine = h('div', { class: 'quest-line', hidden: true }, icon('scroll'), this.questText);
+    // On a phone the line is one short row; a tap shows all of it for a while.
+    this.questOpenT = 0;
+    this.questLine.addEventListener('click', () => this.toggleQuestFull());
 
     // Interact prompt
     this.promptKey = h('kbd', { class: 'keycap', text: 'E' });
@@ -149,10 +200,127 @@ export class Hud {
 
     this.fps = h('div', { class: 'fps num', hidden: true });
 
-    const top = h('div', { class: 'hud-top' }, h('div', { class: 'hud-cards' }, playerCard, this.lyraCard), h('div', { class: 'hud-right' }, placeCard, corner));
+    this.cardsEl = h('div', { class: 'hud-cards' }, playerCard, this.lyraWrap);
+    this.rightEl = h('div', { class: 'hud-right' }, placeCard, corner);
+    const top = h('div', { class: 'hud-top' }, this.cardsEl, this.rightEl);
     const center = h('div', { class: 'hud-center' }, this.questLine);
+    this.center = center;
     const bottom = h('div', { class: 'hud-bottom' }, this.listenBtn, this.prompt, this.cmdbar);
     return h('div', { class: 'hud', hidden: true }, top, center, bottom, this.ordersWrap, this.jobsMenu, this.fps);
+  }
+
+  // ---------- the compact phone HUD ----------
+
+  watchLayout() {
+    this.smallMq = media(SMALL_QUERY);
+    this.portraitMq = media(PORTRAIT_PHONE_QUERY);
+    const relayout = () => {
+      this.applyMini();
+      this.queueLayout();
+    };
+    for (const mq of [this.smallMq, this.portraitMq]) {
+      try {
+        mq?.addEventListener?.('change', relayout);
+      } catch {
+        /* old Safari: the periodic layout below still runs */
+      }
+    }
+    if (typeof ResizeObserver === 'function') {
+      try {
+        this.ro = new ResizeObserver(() => this.queueLayout());
+        this.ro.observe(this.cardsEl);
+        this.ro.observe(this.rightEl);
+      } catch {
+        this.ro = null;
+      }
+    }
+    this.applyMini();
+  }
+
+  isSmall() {
+    return !!this.smallMq?.matches;
+  }
+
+  isFolded() {
+    return this.mini && this.isSmall();
+  }
+
+  setMini(on) {
+    on = !!on;
+    if (on === this.mini) return;
+    this.mini = on;
+    saveMiniPref(on);
+    this.applyMini();
+    this.game.audio?.play(on ? 'ui_close' : 'ui_open');
+    this.queueLayout();
+  }
+
+  applyMini() {
+    const folded = this.isFolded();
+    toggleClass(this.lyraWrap, 'mini', folded);
+    setAttr(this.lyraCard, 'aria-expanded', this.isSmall() ? String(!folded) : null);
+    const name = this.game.settings?.companionName || this.game.companion?.name || 'Lyra';
+    setAttr(this.lyraCard, 'aria-label', folded ? `${name}: show her card` : null);
+  }
+
+  queueLayout() {
+    if (this._layoutQueued) return;
+    this._layoutQueued = true;
+    const run = () => {
+      this._layoutQueued = false;
+      this.layoutTop();
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run);
+    else run();
+  }
+
+  // Phone held upright: the quest line tucks in under the corner buttons, beside Lyra's
+  // folded card, or under both cards when hers is open. Elsewhere the stylesheet
+  // places it (top centre).
+  layoutTop() {
+    const st = this.center.style;
+    if (this.el.hidden || !this.portraitMq?.matches) {
+      if (this.questPlaced) {
+        st.top = st.left = st.width = st.transform = '';
+        this.questPlaced = false;
+        this.center.classList.remove('tucked', 'beside');
+      }
+      return;
+    }
+    const root = this.el.getBoundingClientRect();
+    const cards = this.cardsEl.getBoundingClientRect();
+    const lyra = this.lyraWrap.getBoundingClientRect();
+    const right = this.rightEl.getBoundingClientRect();
+    if (!root.width || !right.width) return;
+    const gap = 6;
+    const edgeL = cards.left - root.left;
+    const edgeR = right.right - root.left;
+    let top = right.bottom - root.top + gap;
+    let left = edgeL;
+    let beside = false;
+    if (lyra.bottom - root.top + gap > top) {
+      // Her card reaches below the buttons: sit beside it if the line still has room.
+      left = lyra.right - root.left + 8;
+      beside = true;
+    }
+    if (edgeR - left < 200) {
+      top = Math.max(cards.bottom, right.bottom) - root.top + gap;
+      left = edgeL;
+      beside = false;
+    }
+    st.top = `${Math.round(top)}px`;
+    st.left = `${Math.round(left)}px`;
+    st.width = `${Math.round(edgeR - left)}px`;
+    st.transform = 'none';
+    this.questPlaced = true;
+    this.center.classList.add('tucked');
+    toggleClass(this.center, 'beside', beside);
+  }
+
+  toggleQuestFull(force) {
+    const open = force ?? !this.questLine.classList.contains('full');
+    toggleClass(this.questLine, 'full', open);
+    this.questOpenT = open ? 7 : 0;
   }
 
   buildJobsMenu() {
@@ -323,11 +491,16 @@ export class Hud {
 
   show(on) {
     this.el.hidden = !on;
+    if (on) {
+      this.applyMini();
+      this.queueLayout();
+    }
   }
 
   setQuest(text) {
     const t = String(text || '').trim();
     setText(this.questText, t);
+    setAttr(this.questLine, 'title', t || null);
     this.questLine.hidden = !t;
   }
 
@@ -383,9 +556,22 @@ export class Hud {
     const coins = p.inventory?.count?.('coin') ?? p.gold ?? 0;
     setText(this.pCoins, fmtInt(coins));
 
+    if (this.questOpenT > 0) {
+      this.questOpenT -= 0.1;
+      if (this.questOpenT <= 0) this.toggleQuestFull(false);
+    }
+    if (!this.ro) {
+      this.layoutT -= 0.1;
+      if (this.layoutT <= 0) {
+        this.layoutT = 0.5;
+        this.layoutTop();
+      }
+    }
+
     if (c) {
       setText(this.lName, s.companionName || c.name || 'Lyra');
       this.lHp.set(frac(c.hp, c.maxHp), hpText(c.hp, c.maxHp));
+      setStyle(this.lMiniHp, 'width', `${Math.round(frac(c.hp, c.maxHp) * 100)}%`);
       toggleClass(this.lyraCard, 'downed', !!c.downed);
       const beh = c.behavior;
       const stance = beh?.stance || 'defend';
@@ -437,6 +623,7 @@ export class Hud {
       mood = null;
     }
     setText(this.lMood, moodEmoji(mood));
+    setText(this.lMiniMood, moodEmoji(mood));
     setAttr(this.lMood, 'title', mood?.label ? `Mood: ${mood.label}` : null);
     setAttr(this.lMood, 'aria-label', mood?.label ? `Mood: ${mood.label}` : 'Mood');
     const expr = c.downed || this.cs === 'gone' || this.cs === 'left' ? 'sad' : moodToExpression(mood, mind?.emotions, mind?.needs);

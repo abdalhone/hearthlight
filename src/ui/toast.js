@@ -14,7 +14,7 @@ const MAX_VISIBLE_SMALL = 3; // phones: fewer at once, so they fit between the H
 const PLACE_EVERY = 0.1;
 
 // HUD pieces the stack must never cover (the chat is handled on its own).
-const HUD_SELECTOR = '.hud .card, .hud-btn, .quest-line, .listen-prompt, .interact-prompt, .cmdbar, .orders-btn, .tbtn, .jobs-menu, .fps';
+const HUD_SELECTOR = '.hud .card, .hud-btn, .lyra-fold, .quest-line, .listen-prompt, .interact-prompt, .cmdbar, .orders-btn, .tbtn, .jobs-menu, .fps';
 
 export class Toasts {
   constructor(ui) {
