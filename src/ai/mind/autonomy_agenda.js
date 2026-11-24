@@ -190,6 +190,11 @@ export function buildPlan(v) {
   if (joinable && bond && (v.energy ?? 0.8) >= 0.45 && !raining) out.push(makeBlock(19.5, eveEnd, 'travel', null, 'An evening with you. I’d like that.', { company: 'player' }));
   else if (raining) out.push(makeBlock(19.5, eveEnd, 'hearth', 'ember_kettle', 'Rain on the roof and the hearth going. Perfect.', { company: together ? 'invite' : 'alone' }));
   else if (joinable && r > 0.5) out.push(makeBlock(19.5, eveEnd, 'moonpetals', 'whisperwood', 'The moonpetals open at night. Not a walk I take alone.', { company: 'invite' }));
+  // Evenings of her own go to her people: Mam and Da most of all (social, DESIGN §19.3).
+  else if (v.friend && (!joinable || r < 0.35)) {
+    const parents = v.friend.id === 'hobb' || v.friend.id === 'wenna';
+    out.push(makeBlock(19.5, eveEnd, 'visit', v.friend.at || 'town_square', parents ? 'Mam and Da will want to hear about my day. I’ll tell them half.' : `An evening with ${v.friend.name}.`, { npc: v.friend.id, npcName: v.friend.name }));
+  }
   else out.push(makeBlock(19.5, eveEnd, 'stars', 'south_meadow', 'Clear sky. I’m going to name every star I know.', { company: together && bond ? 'invite' : 'alone' }));
 
   // Sleep, in the cottage while she trusts the player, otherwise a room at the inn.

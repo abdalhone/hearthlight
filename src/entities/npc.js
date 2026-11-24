@@ -1721,15 +1721,36 @@ export class NPC extends Actor {
     const p = g.player;
     const lyra = g.companion;
     const day = g.clock?.day ?? 1;
+    const village = g.village;
     if (this.profile.id === 'elda') this.maybeRentRoom();
     if (this.profile.id === 'tobias') this.shooBoars();
     if (asleep) return;
+    // In a conversation the village is playing: stand still and face them.
+    if (village?.isTalking?.(this)) {
+      const other = village.partnerOf?.(this);
+      if (this.r.phase !== 'travel') {
+        if (this.r.walking) {
+          this.walker.stop();
+          this.r.walking = false;
+        }
+        this.r.subT = 0;
+        if (other && this.state !== 'sit') this.faceToward(other.x, other.y);
+      }
+      return;
+    }
+    // A conversation is playing near the player: nobody talks over it.
+    if (village?.playing) return;
     const quiet = t - (g._npcSayAt ?? -Infinity) < SAY_GAP;
     // Lyra nearby (not small talk in the minutes after somebody hurt her).
     const shaken = lyra && g._helpIncidents?.get?.(lyra) && t - g._helpIncidents.get(lyra).t < 150;
     if (lyra && alive(lyra) && !shaken && this.distTo(lyra) < 56 && t - this.lyraAt > 75 && !quiet && this.canSee(lyra)) {
       const st = companionshipOf(g);
       const alone = st === 'apart' || st === 'left' || (p && Math.hypot(p.x - lyra.x, p.y - lyra.y) > 220);
+      // On her own, she and the people she knows talk properly (the village plays it).
+      if (alone && village?.requestChat && rand(g) < 0.5) {
+        this.lyraAt = t;
+        if (village.requestChat(this, lyra)) return;
+      }
       let list = this.profile.lyra;
       let extra = null;
       if (alone && st !== 'together' && st !== 'wary' && this.profile.lyraAlone?.length) list = this.profile.lyraAlone;
@@ -1756,7 +1777,7 @@ export class NPC extends Actor {
       return;
     }
     // Word about Lyra when she is not with the player (once a day each).
-    if (dp < 80 && this._aboutLyraDay !== day && !quiet && rand(g) < 0.3) {
+    if (dp < 80 && this._aboutLyraDay !== day && !quiet && !village?.wantsSlot?.() && rand(g) < 0.3) {
       const l = D.aboutLyraLine(this);
       if (l) {
         this._aboutLyraDay = day;
@@ -1765,12 +1786,15 @@ export class NPC extends Actor {
         return;
       }
     }
-    // Ambient chatter while the player is around to hear it.
+    // Ambient chatter while the player is around to hear it. Talk between neighbours goes
+    // through the village (both voices, their bond, their news); a lone line otherwise.
     if (dp < 130 && t - this.ambientAt > 40 + this.jitter * 30 && !quiet && this.visibleToPlayer(0)) {
       this.ambientAt = t;
+      const other = this.nearestPerson(48, true);
+      if (other && rand(g) < 0.8 && this.chatWith(other)) return;
+      // A conversation is waiting for this quiet moment: leave it to them.
+      if (village?.wantsSlot?.()) return;
       g._npcSayAt = t;
-      const other = this.activity === 'socialize' || this.activity === 'eat' ? this.nearestPerson(40, true) : null;
-      if (other && rand(g) < 0.7) return this.chatWith(other);
       const k = g.clock?.weather?.type === 'rain' ? 'rain' : g.clock?.isNight ? 'night' : 'day';
       const tone = D.dialogueTone(this, p);
       const l = tone === 'cold' || tone === 'wronged' ? null : pickLine(g, this.profile.lines?.[k] || this.profile.lines?.day);
@@ -1778,20 +1802,25 @@ export class NPC extends Actor {
     }
   }
 
+  // Talk with a neighbour. Returns true when a conversation started.
   chatWith(other) {
     const g = this.game;
+    if (!other || other === this) return false;
+    if (g.village?.requestChat) return !!g.village.requestChat(this, other);
+    // Without a village (tests, or a world built without plugins): a line each way.
     const p = this.profile;
     this.faceToward(other.x, other.y);
+    g._npcSayAt = now(g);
     const pair = p.pairs?.[other.id];
     const text = pair?.length && rand(g) < 0.6 ? pickLine(g, pair) : (pickLine(g, p.chatter) || 'Hello, {name}.').replace(/\{name\}/g, D.firstName(other));
     this.say(text, { target: other });
-    // A neighbor answers back, sometimes.
     if (other instanceof NPC && other.isAlive() && other.state !== 'sleep' && rand(g) < 0.55) {
       const op = other.profile;
       const back = op.pairs?.[p.id]?.length ? pickLine(g, op.pairs[p.id]) : (pickLine(g, op.chatter) || 'Mm.').replace(/\{name\}/g, D.firstName(this));
       other.faceToward(this.x, this.y);
       other.pendingSay = { at: now(g) + 1.8, text: back, kind: 'say', target: this };
     }
+    return true;
   }
 
   nearestPerson(r, npcOnly = false) {
@@ -1892,9 +1921,15 @@ export class NPC extends Actor {
   }
 
   // Someone spoke to this villager. Returns the reply (also said aloud) or null.
+  // Villagers talking among themselves (and with Lyra in a village conversation) answer
+  // through the village, which writes both sides; this only answers the player and Lyra.
   hears(speaker, text) {
     const g = this.game;
     if (!speaker || speaker === this || !this.isAlive()) return null;
+    const fromPlayer = speaker === g.player;
+    const fromLyra = speaker === g.companion;
+    if (!fromPlayer && !fromLyra) return null;
+    if (g.village?.isTalking?.(this)) return null;
     const t = String(text || '').toLowerCase();
     if (this.state === 'sleep') {
       if (rand(g) < 0.3) this.pendingSay = { at: now(g) + 0.7, text: pickLine(g, this.profile.sleepy) || 'Mmh...', kind: 'say', target: speaker };
@@ -1908,7 +1943,7 @@ export class NPC extends Actor {
     let reply = null;
     if (/\bmaren\b/.test(t) && this.profile.knows?.maren) reply = this.profile.knows.maren;
     else if (new RegExp(`\\b(hello|hi|hey|good (morning|evening|day)|${escapeRe(first)})\\b`).test(t)) {
-      reply = speaker === g.player ? D.greetingFor(this, speaker) : speaker === g.companion ? pickLine(g, this.profile.lyra) : null;
+      reply = fromPlayer ? D.greetingFor(this, speaker) : pickLine(g, this.profile.lyra);
     }
     if (reply) this.pendingSay = { at: now(g) + 0.8, text: reply, kind: 'say', target: speaker };
     return reply;

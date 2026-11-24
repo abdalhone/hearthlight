@@ -390,6 +390,9 @@ export const socialPlugin = {
     },
   },
 
+  // The village's conversations with her are kept by her mind the same way.
+  applyConversation,
+
   // Is she in the middle of a talk (or on her way to one)?
   busy(ctx) {
     const s = state(ctx?.game);
