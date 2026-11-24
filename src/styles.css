@@ -1023,6 +1023,10 @@ textarea {
 .cmdbar {
   position: relative;
 }
+/* Room for the bar's tab, so the interact or listen prompt above never sits on it. */
+.hud-bottom > .cmdbar {
+  margin-top: 10px;
+}
 /* A tab on the bar's top edge: these are requests, and she may say no. */
 .cmdbar-title {
   position: absolute;
@@ -3985,12 +3989,18 @@ input[type='range']::-moz-range-thumb {
     grid-template-columns: 1fr;
     gap: 2px;
   }
+  /* An upright phone: a small portrait beside the words, which take the full width
+     that is left (not a portrait on a row of its own above a narrow column). */
   .dlg {
-    flex-direction: column;
     gap: 10px;
   }
-  .dlg-portrait {
-    align-self: flex-start;
+  .dlg-portrait .portrait-xl {
+    width: 52px;
+    height: 52px;
+  }
+  .dlg-options {
+    grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+    gap: 8px;
   }
   .portrait-xl {
     width: 64px;
@@ -5094,21 +5104,32 @@ input[type='range']::-moz-range-thumb {
   flex: 1 1 auto;
 }
 
-/* A phone with a full-screen panel open (her mind, the inventory…): notices still sit
-   along the panel's top edge (see .modal-open .toasts), but only the newest one, slim
-   enough to stay on the title row instead of covering what is under it. */
-@media (max-width: 640px), (max-height: 520px) {
-  .modal-open:has(.panel-wide) .toast:not(:last-child) {
-    display: none;
-  }
-  .modal-open:has(.panel-wide) .toast {
-    padding: 4px 10px 4px 6px;
-    font-size: var(--fs-xs);
-  }
-  .modal-open:has(.panel-wide) .toast-text {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
+/* A phone with a panel open (toast.js placeOverPanel): the stack shows above a short
+   panel when it fits, else only the newest notice does ('one-up'); with no room above
+   (her mind, the inventory, any panel held sideways) the newest notice is laid over the
+   panel's title row, from its left edge to the close button, as an opaque banner
+   ('on-head'), instead of half-covering the title or what is under it. */
+.toasts.on-head {
+  align-items: stretch;
+  gap: 0;
+  transition: none;
+}
+.toasts.on-head .toast:not(.head-pick),
+.toasts.one-up .toast:not(.head-pick) {
+  display: none;
+}
+.toasts.on-head .toast {
+  min-height: var(--head-h, 40px);
+  padding: 4px 10px 4px 8px;
+  font-size: var(--fs-xs);
+  background-color: rgb(24, 23, 58);
+}
+.toasts.on-head .toast-warn {
+  background-color: rgb(58, 18, 30);
+}
+.toasts.on-head .toast-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

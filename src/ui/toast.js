@@ -26,6 +26,7 @@ export class Toasts {
     this.lastY = null;
     this.lastX = null;
     this.waiting = false; // no free slot: hidden, and not aging
+    this.panelMode = null; // phones with a panel open: 'one-up' | 'on-head' (see setPanelMode)
     this._bubbles = [];
   }
 
@@ -120,6 +121,7 @@ export class Toasts {
 
   unplace() {
     for (const t of this.items) this.setDeferred(t, false);
+    this.setPanelMode(null);
     if (!this.placed && !this.waiting) return;
     this.placed = false;
     this.waiting = false;
@@ -128,6 +130,66 @@ export class Toasts {
     const st = this.el.style;
     st.top = st.left = st.bottom = st.transform = st.visibility = '';
     this.el.classList.remove('placed');
+  }
+
+  // Phones with a panel open. 'one-up': only the newest notice shows, in the
+  // stylesheet's place above a short panel. 'on-head': no room above the panel (her
+  // mind, the inventory, any panel held sideways), so the newest notice becomes an
+  // opaque banner laid over the panel's title row, from its left edge to the close
+  // button. `box` is { x, y, w, h } relative to the UI root. null: the stylesheet's way.
+  setPanelMode(mode, box = null) {
+    const st = this.el.style;
+    if (!mode) {
+      if (!this.panelMode) return;
+      this.panelMode = null;
+      this.el.classList.remove('on-head', 'one-up');
+      st.removeProperty('top');
+      st.left = st.width = st.transform = '';
+      st.removeProperty('--head-h');
+      return;
+    }
+    this.panelMode = mode;
+    this.el.classList.toggle('on-head', mode === 'on-head');
+    this.el.classList.toggle('one-up', mode === 'one-up');
+    // The newest notice still showing is the one on screen; the others age unseen.
+    const live = this.items.filter((t) => !t.leaving);
+    for (const t of this.items) t.el.classList.toggle('head-pick', t === live[live.length - 1]);
+    if (!box) return;
+    st.setProperty('top', `${Math.round(box.y)}px`, 'important'); // over .modal-open's !important
+    st.left = `${Math.round(box.x)}px`;
+    st.width = `${Math.round(box.w)}px`;
+    st.transform = 'none';
+    st.setProperty('--head-h', `${Math.round(box.h)}px`);
+  }
+
+  // Notices while a panel is open. Desktop and roomy screens keep the stylesheet's
+  // place along the top edge; on a phone the stack shows whole above the panel when it
+  // fits, else only the newest notice does, else it becomes the title-row banner.
+  placeOverPanel() {
+    const ui = this.ui;
+    const root = ui.root;
+    const top = ui.top?.();
+    const small = this.maxVisible() === MAX_VISIBLE_SMALL;
+    if (!small || !top?.el || !top.head || !root) {
+      this.unplace();
+      return;
+    }
+    const rb = root.getBoundingClientRect();
+    const room = top.el.getBoundingClientRect().top - rb.top - 14;
+    // Measured in the stylesheet's layout, all in one step (nothing paints between).
+    this.unplace();
+    if (room >= this.el.offsetHeight) return;
+    const live = this.items.filter((t) => !t.leaving);
+    const newest = live[live.length - 1];
+    if (newest && room >= newest.el.offsetHeight + 8) {
+      this.setPanelMode('one-up');
+      return;
+    }
+    const hr = top.head.getBoundingClientRect();
+    const cr = top.closeBtn?.getBoundingClientRect?.();
+    const x = hr.left - rb.left + 4;
+    const right = cr && cr.width ? cr.left - rb.left - 6 : hr.right - rb.left - 4;
+    this.setPanelMode('on-head', { x, y: hr.top - rb.top + 4, w: Math.max(120, right - x), h: Math.max(32, hr.height - 8) });
   }
 
   // Everything the stack must keep clear of, in CSS px relative to the UI root.
@@ -167,6 +229,10 @@ export class Toasts {
     const g = ui.game;
     const root = ui.root;
     const live = this.items.filter((t) => !t.leaving);
+    if (live.length && ui.stack?.length) {
+      this.placeOverPanel();
+      return;
+    }
     if (!root || !live.length || g?.state !== 'playing' || ui.stack?.length) {
       this.unplace();
       return;

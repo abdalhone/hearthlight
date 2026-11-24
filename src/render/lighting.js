@@ -204,15 +204,16 @@ export class Lighting {
     return s;
   }
 
-  // In the light map a light only restores brightness, slightly tinted; its color
-  // comes mostly from the additive glow, so warm light on green grass reads warm
-  // instead of olive.
+  // In the light map a light restores the ground's own color, tinted by the light;
+  // the rest of its color comes from the additive glow. A warm light (a lamp, a fire)
+  // restores less green and blue than it shows, the way flame light does, so a lamp
+  // pool on grass reads amber-olive and on stone reads amber, never lime.
   mapSprite(color) {
     const key = color || DEFAULT_COLOR;
     let s = this._soft.get(key);
     if (s) return s;
     if (this._soft.size > 96) this._soft.clear();
-    s = this.sprite(lighten(key.startsWith('#') ? key : DEFAULT_COLOR, 0.04));
+    s = this.sprite(warmMapColor(lighten(key.startsWith('#') ? key : DEFAULT_COLOR, 0.04)));
     this._soft.set(key, s);
     return s;
   }
@@ -398,6 +399,14 @@ export class Lighting {
     ctx.globalCompositeOperation = 'source-over';
     ctx.imageSmoothingEnabled = false;
   }
+}
+
+// Flame-warm lights (red well above blue) multiply the scene through a deeper amber.
+export function warmMapColor(c) {
+  const [r, g, b] = parseColor(c);
+  if (r < b + 40) return c;
+  const hex = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+  return `#${hex(r)}${hex(g * 0.8)}${hex(b * 0.66)}`;
 }
 
 const _rgb = [255, 255, 255];

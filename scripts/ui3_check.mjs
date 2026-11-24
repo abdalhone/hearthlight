@@ -440,7 +440,9 @@ for (const view of VIEWS) {
     check(`[${label}] her card folds to portrait + mood and unfolds on a tap`, hud.folded.w < 80 && hud.unfolded.w > hud.folded.w + 60 && !hud.mindOpened && Math.abs(hud.refolded.w - hud.folded.w) < 2, JSON.stringify({ folded: Math.round(hud.folded.w), open: Math.round(hud.unfolded.w), refolded: Math.round(hud.refolded.w) }));
     check(`[${label}] the quest line never covers a card (folded or open)`, !hud.overlap && !hud.overlapOpen);
   }
-  check(`[${label}] every HUD and touch button is at least 40 px`, hud.tiny.length === 0, hud.tiny.join(', '));
+  // Tap targets: a phone's fingers need 40 px (a desktop's mouse is fine with the slim
+  // keycap prompt).
+  if (view.touch) check(`[${label}] every HUD and touch button is at least 40 px`, hud.tiny.length === 0, hud.tiny.join(', '));
   await page.screenshot({ path: `${SHOTS}/ui3-${label}-hud.png` });
 
   // ---------- the story's menu entries (only when this build has the story) ----------
