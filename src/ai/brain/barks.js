@@ -11,6 +11,7 @@ import { factionRelation } from '../../entities/entity.js';
 import { ITEMS } from '../../entities/items.js';
 import { soulOf } from './soul_fallback.js';
 import { jobLabel, firstName } from './local_brain.js';
+import { companionshipOf, distanceTiles, isRefusal } from './her_state.js';
 
 export const BARK_GAP = 20; // seconds between ordinary barks
 const URGENT_GAP = 2.5;
@@ -28,6 +29,27 @@ const PLACE_SITUATION = {
   stonecut_quarry: 'place_quarry', south_meadow: 'place_meadow', hearthvale: 'place_village', town_square: 'place_village',
   player_home: 'place_home', ember_kettle: 'place_inn', chapel: 'place_chapel',
 };
+// Deeds the player did that she reacts to out loud (DESIGN §16.2).
+const DEED_SITUATION = {
+  hit_lyra_accident: 'deed_hit_accident', hit_lyra: 'deed_hit', protected_lyra: 'deed_protected', kindness: 'deed_kindness',
+  killed_harmless: 'deed_killed_harmless', attacked_villager: 'deed_attacked_villager', attacked_guard: 'deed_attacked_villager',
+  downed_villager: 'deed_attacked_villager', reckless_order: 'deed_reckless', broke_promise: 'deed_broke_promise',
+  kept_promise: 'deed_kept_promise', respected_refusal: 'deed_respected_refusal', pushed_after_refusal: 'deed_pushed',
+  stole: 'deed_stole', abandoned_downed: 'deed_abandoned',
+};
+const DEED_PRIORITY = {
+  deed_hit: 6, deed_hit_again: 6, deed_attacked_villager: 6, deed_hit_accident: 4, deed_abandoned: 4.5, deed_stole: 4, deed_protected: 3.5,
+  deed_reckless: 3, deed_broke_promise: 3, deed_kept_promise: 2.5, deed_killed_harmless: 2.5, deed_pushed: 2.5, deed_kindness: 1.5,
+  deed_respected_refusal: 1.2,
+};
+const URGENT_DEEDS = new Set(['deed_hit', 'deed_hit_again', 'deed_attacked_villager', 'deed_hit_accident', 'deed_abandoned', 'deed_stole']);
+// Lines that only make sense beside the player, as their companion.
+const PLAYER_CENTRIC = new Set([
+  'player_low_hp', 'player_hurt', 'player_kill', 'player_downed', 'healed_player', 'thanks_heal', 'player_level_up', 'morning_wake',
+  'player_idle', 'late_night', 'combat_close_call', 'trade', 'quest_update', 'idle_night_sky', 'lonely', 'hungry', 'tired', 'idle_bored',
+]);
+const NEAR_TILES = 14;
+
 const RARE_ITEMS = new Set(['crystal', 'potion', 'honey_cake', 'iron_sword', 'lantern', 'moonpetal', 'wolf_pelt']);
 
 function itemPhrase(id, qty = 1) {
@@ -49,6 +71,7 @@ export class Barker {
     this.pending = [];
     this.lastBarkAt = -1e9;
     this.lastLyraSpeechAt = -1e9;
+    this.lastForeignSpeechAt = -1e9; // her lines said by other modules (mind, autonomy, the chat)
     this.cooldowns = new Map();
     this.visited = new Set();
     this.placeSeen = new Map();
@@ -166,8 +189,20 @@ export class Barker {
     on('companion_action', (p) => {
       if (p.source === 'player') this.ack(p);
     });
+    on('deed', (p) => this.onDeed(p));
+    on('companionship_changed', (p) => this.onCompanionship(p));
+    on('crime', (p) => {
+      if (this.isPlayer(p.actor)) this.queue('crime_warning', {}, { priority: 5.5, urgent: true, yieldMs: 3, kind: 'shout', cooldown: 60, delay: 0.4, ttl: 5 });
+    });
+    on('promise', (p) => {
+      // Promises made in the chat are answered by the reply itself.
+      if (this.brain._chatRun || p.by !== 'player' || (p.state && p.state !== 'open')) return;
+      this.queue('promise_made', {}, { priority: 1.5, cooldown: 30, ttl: 5, delay: 0.8 });
+    });
     on('speech', (p) => {
-      if (this.isLyra(p.speaker)) this.lastLyraSpeechAt = this.now();
+      if (!this.isLyra(p.speaker)) return;
+      this.lastLyraSpeechAt = this.now();
+      if (!this._emitting) this.lastForeignSpeechAt = this.now();
     });
   }
 
@@ -282,17 +317,54 @@ export class Barker {
     this.queue(situation, { item: name.toLowerCase() === name ? name : name.replace(/^./, (c) => c.toLowerCase()) }, { priority: 4, urgent: true, cooldown: 3, ttl: 4 });
   }
 
+  // ------------------------------------------------------- her own will
+
+  onDeed(p) {
+    let situation = DEED_SITUATION[p.deed];
+    if (!situation) return;
+    // Reactions to requests in the chat are part of her reply already.
+    if (this.brain._chatRun && (situation === 'deed_pushed' || situation === 'deed_respected_refusal')) return;
+    if (situation === 'deed_killed_harmless' && !(p.severity < 0)) return;
+    const now = this.now();
+    if (situation === 'deed_hit') {
+      if (now - (this._lastHitAt ?? -1e9) < 90 || companionshipOf(this.game) !== 'together') situation = 'deed_hit_again';
+      this._lastHitAt = now;
+    }
+    const urgent = URGENT_DEEDS.has(situation);
+    const kind = urgent && situation !== 'deed_hit_accident' ? 'shout' : 'say';
+    this.queue(situation, {}, { priority: DEED_PRIORITY[situation] ?? 2, urgent, yieldMs: 3, kind, cooldown: urgent ? 6 : 30, delay: urgent ? 0.3 : 1, ttl: 6, chance: situation === 'deed_kindness' || situation === 'deed_respected_refusal' ? 0.6 : 1 });
+  }
+
+  onCompanionship(p) {
+    const { state, previous } = p;
+    let situation = null;
+    if (state === 'wary' && previous === 'together') situation = 'became_wary';
+    else if (state === 'together') situation = previous === 'wary' ? 'trust_regained' : 'returning';
+    else if (state === 'apart') situation = previous === 'left' ? 'returning' : 'going_apart';
+    else if (state === 'left') situation = 'leaving';
+    else if (state === 'gone') situation = 'gone_farewell';
+    if (!situation) return;
+    // Whatever else was waiting no longer fits.
+    this.pending = this.pending.filter((c) => c.priority >= 6);
+    const grave = state === 'left' || state === 'gone';
+    this.queue(situation, {}, { priority: grave ? 6.5 : 5.8, urgent: true, yieldMs: 4, cooldown: 10, delay: grave ? 0.2 : 1, ttl: 8 });
+  }
+
   // ---------------------------------------------------------------- acks
 
   // A player command from the HUD or hotkeys: answer at once, it is a reply.
   ack(entry) {
+    // Requests made in the chat get their answer in the reply.
+    if (this.brain._chatRun) return;
     // The HUD may both run an action and ask for an ack: answer once.
     const now = this.now();
     if (this._lastAck && this._lastAck.name === entry.name && now - this._lastAck.t < 0.5) return;
     this._lastAck = { name: entry.name, t: now };
+    const res = { ok: entry.ok, message: entry.message, refused: !!entry.refused, verdict: entry.verdict || (entry.decision ? { decision: entry.decision, reasons: [], message: entry.message || '' } : undefined) };
+    if (isRefusal(res)) this.brain.noteRefusal?.(entry.name, entry.args || {}, res);
     let text = null;
     try {
-      text = this.brain.local.ackAction({ name: entry.name, args: entry.args || {} }, { ok: entry.ok, message: entry.message });
+      text = this.brain.local.ackAction({ name: entry.name, args: entry.args || {} }, res);
     } catch {
       text = null;
     }
@@ -303,11 +375,17 @@ export class Barker {
 
   // ------------------------------------------------------------- queueing
 
-  queue(situation, vars = {}, { priority = 1, ttl = 4, cooldown = 60, urgent = false, chance = 1, kind = 'say', delay = 0, fallback = null } = {}) {
+  queue(situation, vars = {}, { priority = 1, ttl = 4, cooldown = 60, urgent = false, chance = 1, kind = 'say', delay = 0, fallback = null, yieldMs = 0 } = {}) {
     if (chance < 1 && Math.random() > chance) return;
+    const state = companionshipOf(this.game);
+    if (state === 'gone' && situation !== 'gone_farewell') return;
+    if ((state === 'left' || state === 'apart') && PLAYER_CENTRIC.has(situation)) return;
+    if (state === 'left' && situation.startsWith('gift_')) situation = 'gift_cold';
     const now = this.now();
     if (cooldown > 0 && now - (this.cooldowns.get(situation) ?? -1e9) < cooldown) return;
-    const c = { situation, vars, priority, urgent, kind, fallback, at: now + delay, until: now + delay + ttl };
+    // yieldMs: seconds; if she said something else in that window (another module spoke for
+    // her about the same moment), this line stays unsaid.
+    const c = { situation, vars, priority, urgent, kind, fallback, yieldFor: yieldMs, queuedAt: now, at: now + delay, until: now + delay + ttl };
     const i = this.pending.findIndex((x) => x.situation === situation);
     if (i >= 0) {
       if (this.pending[i].priority <= priority) this.pending[i] = c;
@@ -335,6 +413,7 @@ export class Barker {
   update(dt) {
     const g = this.game;
     if (!g || g.state !== 'playing' || g.paused || !this.lyra) return;
+    if (this.lyra.removed) return;
     const now = this.now();
 
     // Combat ended?
@@ -370,6 +449,10 @@ export class Barker {
         continue;
       }
       if (now < c.at) continue;
+      if (c.yieldFor && this.lastForeignSpeechAt > c.queuedAt - c.yieldFor) {
+        this.pending.splice(i, 1);
+        continue;
+      }
       if (!best || c.priority > best.priority) best = c;
     }
     if (!best || !this.canSpeak(best, now)) return;
@@ -386,6 +469,7 @@ export class Barker {
     if (!text) text = this.brain.speech.line(c.situation, c.vars, ctx);
     if (!text && c.fallback) text = this.brain.speech.line(c.fallback, c.vars, ctx);
     if (!text) return false;
+    if (PLAYER_CENTRIC.has(c.situation) && distanceTiles(g) > NEAR_TILES) return false;
     const now = this.now();
     this.lastBarkAt = now;
     this.cooldowns.set(c.situation, now);
@@ -394,7 +478,12 @@ export class Barker {
     } catch (err) {
       console.error('[brain] bubble failed', err);
     }
-    g.bus?.emit('speech', { speaker: lyra, text, target: null, kind: 'bark' });
+    this._emitting = true;
+    try {
+      g.bus?.emit('speech', { speaker: lyra, text, target: null, kind: 'bark' });
+    } finally {
+      this._emitting = false;
+    }
     return true;
   }
 
@@ -453,6 +542,7 @@ export class Barker {
     if (weather === 'rain' && outdoors) add('idle_rain', {}, 1.5);
     if ((h >= 23 || h < 4) && outdoors) add('late_night', {}, 2);
     if (this.playerStill >= 40) add('player_idle', {}, 2);
+    if (companionshipOf(g) === 'wary') add('wary_idle', {}, 3);
     const mem = this.pickMemory(loc);
     if (mem) add('idle_memory', { memory: mem.text, _id: mem.id }, 3);
     const goal = (mind?.goals || []).filter((x) => x && !x.done && x.text).sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))[0];

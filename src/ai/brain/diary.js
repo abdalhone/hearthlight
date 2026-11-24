@@ -3,6 +3,7 @@
 
 import { moodKey, bondLevel, lowerFirst, bare } from './speech_gen.js';
 import { soulOf } from './soul_fallback.js';
+import { companionshipOf, ledgerOf } from './her_state.js';
 
 const OPENERS = {
   happy: [
@@ -65,6 +66,45 @@ const PLAYER_LINES = [
 
 const COLD_PLAYER = ["{player} was unkind today. I don't know what I did. Maybe nothing.", "I'm hurt, and it was {player} who did it. I'll sleep on it."];
 
+// How things stand with the player colors the entry (DESIGN §16.3).
+const STATE_LINES = {
+  wary: [
+    "I'm keeping one eye on {player} now. I hate that I have to.",
+    'I still walk beside {player}. Just not as close. I need to see who they really are.',
+  ],
+  apart: [
+    'I spent the day on my own business. It felt good to choose my own road for once.',
+    "I didn't see much of {player} today. I had my own life to see to, and that's alright.",
+  ],
+  left: [
+    "I'm writing this in a rented room at the Ember Kettle, away from {player}. It's quieter here. It's also lonelier.",
+    "I left {player} today. I keep checking that the door is locked, and I hate that most of all.",
+  ],
+};
+
+const DEED_WORDS = {
+  hit_lyra: 'hit me', hit_lyra_accident: 'caught me with their blade by accident', downed_lyra: 'knocked me out',
+  abandoned_downed: 'left me lying on the ground', attacked_villager: 'attacked one of the villagers', downed_villager: 'beat a villager senseless',
+  attacked_guard: 'attacked a guard', stole: 'stole', lied: 'lied to me', broke_promise: 'broke a promise to me', killed_harmless: 'killed a harmless creature',
+  reckless_order: 'nearly got me killed', protected_lyra: 'saved my life', revived_lyra: 'came back for me when I was down',
+  gift_loved: 'gave me something I love', kept_promise: 'kept their word', kindness: 'was kind when no one made them',
+};
+
+function deedLine(game, playerName, day, rnd) {
+  const today = ledgerOf(game, 12).filter((d) => d && (d.day == null || d.day === day) && Number.isFinite(d.severity));
+  if (!today.length) return null;
+  const worst = today.reduce((a, b) => (b.severity < a.severity ? b : a));
+  const best = today.reduce((a, b) => (b.severity > a.severity ? b : a));
+  const words = (d) => DEED_WORDS[d.deed] || (d.text ? lowerFirst(bare(d.text)) : null);
+  if (worst.severity <= -2 && words(worst)) {
+    return pick([`${playerName} ${words(worst)}. I can't stop seeing it.`, `I keep coming back to it: ${playerName} ${words(worst)}.`], rnd);
+  }
+  if (best.severity >= 2 && words(best)) {
+    return pick([`And ${playerName} ${words(best)}. I keep thinking about that.`, `${playerName} ${words(best)}. I won't forget it.`], rnd);
+  }
+  return null;
+}
+
 const CLOSERS = {
   rain: ['The rain is soft on the roof. Goodnight.', 'Rain on the shutters. My favorite lullaby. Goodnight.'],
   clear: ['The stars are out. I counted eleven before I gave up. Goodnight.', 'Clear sky tonight. Maren, if you can see these stars too — hold on.'],
@@ -109,7 +149,11 @@ export function composeDiary(game, memories = [], { day, rnd = Math.random } = {
   } catch {
     rel = null;
   }
-  const pLine = rel && rel.affinity < -10 ? pick(COLD_PLAYER, rnd) : pick(PLAYER_LINES[bond >= 4 ? 2 : bond >= 2 ? 1 : 0], rnd);
+  const state = companionshipOf(game);
+  const today = day ?? game?.clock?.day ?? 1;
+  const dLine = deedLine(game, playerName, today, rnd);
+  if (dLine) parts.push(dLine);
+  const pLine = STATE_LINES[state] ? pick(STATE_LINES[state], rnd) : rel && rel.affinity < -10 ? pick(COLD_PLAYER, rnd) : pick(PLAYER_LINES[bond >= 4 ? 2 : bond >= 2 ? 1 : 0], rnd);
   parts.push(pLine.replace(/\{player\}/g, playerName));
 
   let objective = null;

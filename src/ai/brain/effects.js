@@ -133,11 +133,22 @@ export function similar(a, b) {
   return shared / Math.min(A.size, B.size) >= 0.6;
 }
 
-// Push a line to the mind's conversation log, capped.
+// Push a line to the mind's conversation log, capped. The mind may log the same line from
+// the bus (player_message / speech): a duplicate of one of the last entries is skipped.
 export function logConversation(game, role, text, cap = 40) {
   const mind = game?.companion?.mind;
   if (!mind || !text) return;
   if (!Array.isArray(mind.conversation)) mind.conversation = [];
-  mind.conversation.push({ role, text: String(text).slice(0, 600), t: game.clock?.t ?? 0 });
-  if (mind.conversation.length > cap) mind.conversation.splice(0, mind.conversation.length - cap);
+  const clean = String(text).slice(0, 600);
+  const t = game.clock?.t ?? 0;
+  const log = mind.conversation;
+  for (let i = log.length - 1; i >= 0 && i >= log.length - 3; i--) {
+    const e = log[i];
+    if (!e || e.role !== role || Math.abs((e.t ?? t) - t) >= 10) continue;
+    const prev = String(e.text ?? '');
+    // The mind keeps a shorter copy of long lines.
+    if (prev === clean || (prev.length >= 300 && clean.startsWith(prev))) return;
+  }
+  log.push({ role, text: clean, t });
+  if (log.length > cap) log.splice(0, log.length - cap);
 }

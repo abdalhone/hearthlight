@@ -318,16 +318,21 @@ export class Brain {
       this.currentOffer = null;
     }
     if (source !== 'player') return res;
-    const now = this.now();
-    if (isRefusal(res)) {
-      this.lastRefusal = { name, args: { ...(args || {}) }, verdict: res.verdict || null, message: res.message || '', t: now };
-      const counter = res.verdict?.decision === 'counter' ? res.verdict.counter : null;
-      this.pendingCounter = counter?.name && g.actions.has(counter.name) ? { counter, t: now } : null;
-    } else if (res.ok) {
+    if (isRefusal(res)) this.noteRefusal(name, args, res);
+    else if (res.ok) {
       if (this.lastRefusal?.name === name) this.lastRefusal = null;
       if (offer?.coins && !offer.paid) this._promisePay(name, args, offer.coins);
     }
     return res;
+  }
+
+  // Remember a refused request (from the chat or the HUD): "why not?", a coin offer that
+  // sweetens it, or a "deal" that takes her counter-offer all refer back to it.
+  noteRefusal(name, args, res) {
+    const now = this.now();
+    this.lastRefusal = { name, args: { ...(args || {}) }, verdict: res?.verdict || null, message: res?.message || '', t: now };
+    const counter = res?.verdict?.decision === 'counter' ? res.verdict.counter : null;
+    this.pendingCounter = counter?.name && this.game.actions?.has?.(counter.name) ? { counter, t: now } : null;
   }
 
   // An accepted paid request: the player now owes her (tracked as their promise, §16.8).

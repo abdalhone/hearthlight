@@ -362,6 +362,12 @@ export const WILL_LINES = {
     'Put it down! Rowan will hang you for this!',
   ],
   promise_made: ["I'll hold you to that.", 'A promise, then. I keep count.', { t: 'Promise noted. In ink.', trait: 'bookish' }, "Good. Don't forget it."],
+  gift_cold: [
+    "...Thank you. It doesn't change anything.",
+    "I'll take it. Don't read into that.",
+    'Fine. Leave it there.',
+    "You can't buy your way back. But thank you.",
+  ],
   fear_bark: ['Stay back.', "Don't come closer.", 'Keep your distance.', 'Not one more step.'],
   wary_idle: [
     "I'm watching you.",

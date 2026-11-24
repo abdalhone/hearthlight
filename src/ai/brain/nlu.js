@@ -995,7 +995,7 @@ export const BUILTIN_INTENTS = [
   {
     id: 'ask.what_is', kind: 'question', confidence: 0.8,
     patterns: [/^what (?:is|are) (?:a |an |the )?(?<topic>[a-z' ]{3,40})$/],
-    slots: (m) => (/^(?:this|that|it|up|wrong|happening|going on|next|new)$/.test(m.groups.topic) ? null : { topic: cleanRef(m.groups.topic) }),
+    slots: (m) => (/^(?:this|that|it|up|wrong|happening|going on|next|new)$|^(?:my|our|your)\b/.test(m.groups.topic) ? null : { topic: cleanRef(m.groups.topic) }),
   },
 
   // ------------------------------------------------------- social
