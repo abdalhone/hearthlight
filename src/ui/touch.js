@@ -53,8 +53,10 @@ function captureOn(el, e) {
 
 // No click may follow a touch on a control (it would land on whatever opens under the
 // finger), and no long-press menu or double-tap zoom either.
-function noGhosts(el) {
-  el.addEventListener('touchstart', (e) => e.cancelable && e.preventDefault(), { passive: false });
+// (The move pad lets touchstart through, so a tap on the world still closes the phone's
+// keyboard when a text field has it.)
+function noGhosts(el, start = true) {
+  if (start) el.addEventListener('touchstart', (e) => e.cancelable && e.preventDefault(), { passive: false });
   el.addEventListener('touchend', (e) => e.cancelable && e.preventDefault(), { passive: false });
   el.addEventListener('contextmenu', (e) => e.preventDefault());
 }
@@ -88,7 +90,7 @@ export class TouchControls {
     this.zone.addEventListener('pointerup', (e) => this.onUp(e));
     this.zone.addEventListener('pointercancel', (e) => this.onUp(e));
     this.zone.addEventListener('lostpointercapture', (e) => this.onUp(e));
-    noGhosts(this.zone);
+    noGhosts(this.zone, false);
 
     // The right-thumb cluster, laid out around the sword's centre (an anchor point).
     this.anchor = h('div', { class: 'tcluster' });

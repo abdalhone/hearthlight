@@ -504,10 +504,12 @@ export class Weaving {
     }
     const t = g.time || 0;
     const recent = t - (this.lastActT ?? -9) < 2.5;
-    if (!this.casts.size && (this.foeNear || recent) && input?.mouseAiming?.(2.5)) {
+    const padAiming = !!(input?.padAim && (input.padAim.x || input.padAim.y));
+    if (!this.casts.size && (padAiming || ((this.foeNear || recent) && input?.mouseAiming?.(2.5)))) {
       const rec = this.slotInfo(this.selected);
       if (rec.plan) {
         const c = this._hoverCast || (this._hoverCast = { slot: 0, source: 'mouse', mode: 'quick', touch: null, held: 0 });
+        c.source = padAiming ? 'pad' : 'mouse';
         c.slot = this.selected;
         const aim = this.aimFor(c);
         const v = this._hoverAim || (this._hoverAim = {});
