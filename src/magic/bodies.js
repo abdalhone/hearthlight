@@ -176,6 +176,7 @@ export const HIT = Object.freeze({});
 export const HIT_HEAVY = Object.freeze({ heavy: true, knock: 1.5 });
 export const HIT_TICK = Object.freeze({ tick: true });
 export const HIT_PUNCH = Object.freeze({ heavy: true, knock: 2 });
+export const HIT_POOL = Object.freeze({ pool: true }); // a full hit whose number is pooled (rain drops)
 
 const alive = (a) => !a.removed && !a.dead && a.isAlive();
 
@@ -401,7 +402,7 @@ function updateFall(rt, b, dt) {
   b.z -= b.vz * dt;
   if (b.z > 0) return;
   b.z = 0;
-  hitCircle(rt, b, b.x, b.y, b.r1, 1, HIT);
+  hitCircle(rt, b, b.x, b.y, b.r1, 1, HIT_POOL);
   if (!b.active) return;
   rt.fx('impact', { body: b, x: b.x, y: b.y, r: b.r1 });
   rt.mark(b, b.x, b.y, b.r1 * 0.8, 0.25);

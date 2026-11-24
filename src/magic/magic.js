@@ -173,14 +173,7 @@ export class Magic {
 
   fx(type, payload) {
     // A reaction's name is gameplay feedback: it shows whatever the fx layer does.
-    if (type === 'reaction') {
-      try {
-        const r = payload.reaction;
-        this.game.bubbles?.number?.(payload.x, payload.y - 30, `${r?.name || payload.id}!`, r?.color || '#ffffff', { kind: 'crit', crit: true });
-      } catch {
-        /* cosmetic */
-      }
-    }
+    if (type === 'reaction') this._reactionText(payload);
     const fx = this.game.magicFx;
     if (fx && typeof fx.onEvent === 'function') {
       try {
@@ -194,6 +187,26 @@ export class Magic {
       fallbackFx(this, type, payload);
     } catch (err) {
       this.warn(`fallback fx ${type}`, err);
+    }
+  }
+
+  // "Freeze!" over the target: once per reaction per second, never two piled up.
+  _reactionText(p) {
+    const list = this._reactTexts || (this._reactTexts = []);
+    const now = this.t;
+    for (let i = list.length - 1; i >= 0; i--) if (now - list[i].t > 1) list.splice(i, 1);
+    let near = 0;
+    for (const r of list) {
+      if (r.id === p.id) return;
+      if (now - r.t < 0.6 && Math.abs(r.x - p.x) < 60 && Math.abs(r.y - p.y) < 40) near++;
+    }
+    if (near >= 2) return;
+    list.push({ id: p.id, x: p.x, y: p.y, t: now });
+    try {
+      const r = p.reaction;
+      this.game.bubbles?.number?.(p.x, p.y - 30 - near * 11, `${r?.name || p.id}!`, r?.color || '#ffffff', { kind: 'crit', crit: true });
+    } catch {
+      /* cosmetic */
     }
   }
 
@@ -614,6 +627,7 @@ export class Magic {
     }
     const party = target === g.player || target === g.companion || target.id === 'player' || target.id === 'lyra';
     const tick = !!flags.tick;
+    const pooled = tick || !!flags.pool; // many small hits: one summed number every so often
     const o = this._dmg;
     o.kind = 'magic';
     o.damageType = plan.damageType;
@@ -625,7 +639,7 @@ export class Magic {
     o.heavy = !!flags.heavy;
     o.noHitStop = !flags.heavy;
     o.noStagger = tick;
-    o.quiet = tick;
+    o.quiet = pooled;
     o.silent = !!(g.magicFx?.sfx || g.magicSfx);
     o.crit = tick ? false : undefined;
     o.invuln = party ? undefined : 0;
@@ -641,7 +655,7 @@ export class Magic {
       this.warn('combat.damage', err);
     }
     if (!(dealt > 0)) return 0;
-    if (tick) this._number(target, dealt, plan.palette.glow);
+    if (pooled) this._number(target, dealt, plan.palette.glow);
     const info = this._hitInfo;
     info.dealt = dealt;
     info.x = target.x;
