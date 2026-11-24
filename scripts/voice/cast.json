@@ -21,7 +21,7 @@
     "aveline": { "name": "Sister Aveline", "ref": "goth", "refShape": { "pitch": -5.0, "formant": -2.4, "tempo": 0.9}, "gen": { "exaggeration": 0.3, "cfg": 0.3, "temperature": 0.7}, "fx": { "bass": 1.5, "treble": -1.5}},
     "maren": { "name": "Maren", "ref": "goth", "refShape": { "pitch": -2.5, "formant": -2.0}, "gen": { "exaggeration": 0.6, "cfg": 0.45, "temperature": 0.8}, "fx": {}},
     "hobb": { "name": "Hobb", "ref": "bro", "refShape": { "pitch": -2.0, "formant": -0.4, "tempo": 0.9}, "gen": { "exaggeration": 0.3, "cfg": 0.3, "temperature": 0.7}, "fx": { "tremor": 10, "lowpass": 7500, "tempo": 0.95}},
-    "varek": { "name": "Varek One-Eye", "ref": "bro", "refShape": { "pitch": -5.0, "formant": -2.2}, "gen": { "exaggeration": 0.55, "cfg": 0.5, "temperature": 0.8}, "fx": { "grit": 0.35, "eq": [[2800, 2.5, 1.2]], "bass": 1.5}},
+    "varek": { "name": "Varek One-Eye", "ref": "bro", "refShape": { "pitch": -5.0, "formant": -2.2}, "gen": { "exaggeration": 0.45, "cfg": 0.5, "temperature": 0.8}, "fx": { "pitch": -2.5, "grit": 0.4, "eq": [[2800, 2.5, 1.2]], "bass": 1.5}},
     "corran": { "name": "Corran", "ref": "bro", "refShape": { "pitch": 2.0, "formant": 0.5, "tempo": 0.9}, "gen": { "exaggeration": 0.45, "cfg": 0.3, "temperature": 0.75}, "fx": { "tremor": 18, "grit": 0.3, "lowpass": 6000}}
   }
 }
