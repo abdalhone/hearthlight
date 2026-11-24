@@ -486,8 +486,11 @@ export class Chat {
   }
 
   // The mic is shared with villagers' dialogs: the chat only follows dictation it started.
+  // With no owner recorded, only a session the chat is still following counts (an
+  // 'idle' that ends a villager's session must not rewrite the chat's field).
   ownsDictation() {
-    return !this.ui.dictOwner || this.ui.dictOwner === 'chat';
+    const o = this.ui.dictOwner;
+    return o === 'chat' || (!o && this.dictState !== 'idle');
   }
 
   showDictation() {

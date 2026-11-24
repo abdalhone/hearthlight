@@ -685,7 +685,10 @@ export class MindPanel {
     if (roster.length) {
       const list = h('div', { class: 'people people-village' });
       for (const v of roster) list.append(v.rel ? this.personCard(v.rel, v, { village, ids, nameOf }) : this.villagerStub(v, { village, ids, nameOf }));
-      this.content.append(h('h3', { class: 'people-head', text: `The people of Hearthvale (${roster.length})` }), list);
+      // One note for everyone she has not talked about yet, not the same line on each card.
+      const unsaid = roster.filter((v) => !v.rel).length;
+      const note = unsaid ? h('p', { class: 'not-met', text: unsaid === roster.length ? `${name} has not said what she makes of any of them yet.` : `${name} has not said what she makes of ${unsaid === 1 ? 'one of them' : `${unsaid} of them`} yet.` }) : null;
+      this.content.append(h('h3', { class: 'people-head', text: `The people of Hearthvale (${roster.length})` }), note, list);
     }
     const inRoster = new Set(ids);
     const others = listFrom(mind.relationships, ['all', 'list']).filter((r) => r && r.id && !inRoster.has(r.id) && r.id !== 'lyra');
@@ -724,7 +727,6 @@ export class MindPanel {
         { class: 'person-main' },
         h('div', { class: 'person-head' }, h('span', { class: 'person-name', text: v.name }), v.role ? h('span', { class: 'person-role', text: capitalize(v.role) }) : null),
         this.villageLine(v, ctx),
-        h('p', { class: 'not-met', text: 'She has not said what she makes of them yet.' }),
       ),
     );
   }
