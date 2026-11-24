@@ -280,7 +280,14 @@ export function cleanRef(s) {
     .replace(/[.!?,]+$/, '')
     .trim();
   for (let i = 0; i < 3; i++) t = t.replace(DETERMINER, '');
-  t = t.replace(/\s+(?:over there|over here|there|here|now|right now|for me|please|quickly|first)$/, '').trim();
+  // "the sunken ruins with me tonight" -> "sunken ruins": company and time are not the place.
+  for (let i = 0; i < 4; i++) {
+    const before = t;
+    t = t
+      .replace(/\s+(?:over there|over here|there|here|now|right now|for me|please|quickly|first|real quick|with me|with us|together|alone|tonight|today|tomorrow|this (?:morning|afternoon|evening)|at (?:night|dawn|dusk)|for (?:a bit|a while|now)|later|soon|again)$/, '')
+      .trim();
+    if (t === before) break;
+  }
   return t;
 }
 
@@ -807,10 +814,12 @@ export const BUILTIN_INTENTS = [
     patterns: [
       /^(?:follow|accompany|escort|tail|shadow)(?: (?<who>.+?))?$/,
       /^(?:come|walk|tag along|stick|go|travel|ride) (?:with|along with|alongside) (?<who2>me|us)$/,
+      // An invitation with a destination ("come with me to the forest?") is still company.
+      /^(?:come|walk|tag along|go|travel|ride) (?:with|along with) (?<who3>me|us) (?:to|into|towards?|through|as far as|down to|up to|out to) (?<dest>.+)$/,
       /^(?:come on|come along|let us go|let us move|let us head out|let us get going|let us roll|move out|on me|with me|keep up|stay with me|you are with me|let us be off|onward|forward|let us move on|follow my lead|tag along|come with)$/,
     ],
     slots(m, c, env) {
-      const raw = (m.groups?.who || m.groups?.who2 || 'me').replace(/\s+(?:closely|close|from a distance|at a distance|from afar|from behind)$/, '') || 'me';
+      const raw = (m.groups?.who || m.groups?.who2 || m.groups?.who3 || 'me').replace(/\s+(?:closely|close|from a distance|at a distance|from afar|from behind)$/, '') || 'me';
       if (/^(?:the |that )?(?:road|path|river|stream|trail)\b/.test(raw)) return null;
       const who = whoRef(raw, env, 'player');
       if (who === 'lyra') return null;
@@ -829,13 +838,15 @@ export const BUILTIN_INTENTS = [
     patterns: [
       /^(?:go|head|run|walk|travel|get|move|make your way|hurry|sneak|return|proceed|wander|set off|lead (?:me|us)|take (?:me|us)) (?:back |over |on |ahead |up |down |on over |back over )?(?:to|into|towards?|toward|for|inside|in|over to|down to|up to|out to) (?<place>.+)$/,
       /^(?:meet me|wait for me|find me|join me) (?:at|in|by|near) (?<place>.+)$/,
+      /^(?:let us|we should|shall we|we could|why do not we|how about we) (?:go|head|walk|travel|make our way|get) (?:back |over |on |down |up )?(?:to|into|towards?|toward|over to|down to|up to|out to) (?<place>.+)$/,
       /^(?:go|head) (?<place>(?:inside|outside|indoors|outdoors))$/,
     ],
     slots(m, c, env) {
       const place = cleanRef(m.groups.place);
       if (!place || /^(?:bed|sleep|work|war|it|that|there)$/.test(place)) return null;
       const who = whoRef(place, env, null);
-      return { place: who === 'player' ? 'player' : place, then: /^(?:meet me|wait for me|find me|join me)/.test(c.core) ? 'stay' : /^(?:return|lead|take)/.test(c.core) ? 'follow' : 'stay' };
+      const together = /^(?:return|lead|take|let us|we should|shall we|we could|why do not we|how about we)\b/.test(c.core) || /^(?:let us|we should|shall we|we could|why do not we|how about we)\b/.test(c.norm);
+      return { place: who === 'player' ? 'player' : place, then: /^(?:meet me|wait for me|find me|join me)/.test(c.core) ? 'stay' : together ? 'follow' : 'stay' };
     },
     acts: (s) => [s.place === 'player' ? act('come_here') : act('goto', s.place, s.then)],
   },
