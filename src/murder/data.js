@@ -133,25 +133,26 @@ export function hidingPlace(game, x, y) {
   return null;
 }
 
-// A spot of churchyard beside the chapel, one per grave (tile offsets from the chapel's
-// north-west corner, outside its walls).
+// The chapel yard: the quiet lawn behind the chapel (north of its altar wall), then the
+// grass on its east side. Tile offsets from the chapel's north-west corner; a grave never
+// goes on a path, a wall or anything standing.
 export const GRAVE_SPOTS = [
-  [-2, 3],
-  [-2, 5],
-  [-2, 7],
-  [-4, 3],
-  [-4, 5],
-  [-4, 7],
-  [-2, 9],
-  [-4, 9],
-  [-6, 4],
-  [-6, 6],
-  [-6, 8],
-  [-2, 11],
-  [-4, 11],
-  [-6, 10],
-  [-8, 5],
-  [-8, 7],
-  [-8, 9],
-  [-6, 12],
+  [2, -2],
+  [4, -2],
+  [6, -2],
+  [8, -2],
+  [10, -2],
+  [2, -4],
+  [4, -4],
+  [6, -4],
+  [8, -4],
+  [10, -4],
+  [13, 1],
+  [15, 1],
+  [13, 3],
+  [15, 3],
+  [17, 1],
+  [17, 3],
+  [13, 5],
+  [15, 5],
 ];

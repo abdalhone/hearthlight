@@ -281,6 +281,17 @@ export class Murder {
     return s.ids.has(id);
   }
 
+  // Is anyone near enough to hear this victim's cry (npc.js HELP_HEAR, by severity)?
+  heardBy(victim, severity = 1) {
+    const reach = [0, 300, 440, 600][Math.max(1, Math.min(3, Math.round(Number(severity) || 1)))];
+    for (const e of [...(this.life?.villagers?.() || []), this.game?.companion]) {
+      if (!e || e === victim || e.dead || e.absent || !e.isAlive?.()) continue;
+      const r = reach * (e.state === 'sleep' ? 0.35 : 1);
+      if (dist(e, victim) <= r) return true;
+    }
+    return false;
+  }
+
   isSecret(victimId) {
     return !!this.pending[victimId];
   }
@@ -1066,7 +1077,7 @@ export class Murder {
   tickCases() {
     const g = this.game;
     const P = g.player;
-    if (!P || this.session || this.isWanted() || g.ui?.isModalOpen?.()) return;
+    if (!P || this.session || this.isWanted() || !this.quiet()) return;
     const t = this.now();
     for (const c of Object.values(this.cases)) {
       if (c.state !== 'open') continue;
@@ -1092,6 +1103,16 @@ export class Murder {
     }
   }
 
+  // Nothing else on screen: no scene playing, no panel open, the player on their feet.
+  quiet() {
+    const g = this.game;
+    if (g.state !== 'playing' || g.paused) return false;
+    if (safe(() => g.story?.isPlaying?.(), false)) return false;
+    if (safe(() => g.ui?.isModalOpen?.(), false)) return false;
+    if (safe(() => g.ui?.chat?.isOpen?.(), false)) return false;
+    return true;
+  }
+
   beginQuestioningUI(id) {
     const s = this.startQuestioning(id);
     if (!s) return;
@@ -1102,7 +1123,7 @@ export class Murder {
   tickArrest() {
     const g = this.game;
     const P = g.player;
-    if (!P || !this.isWanted() || P.downed || g.ui?.isModalOpen?.() || this.now() - this.arrestAskedAt < 50) return;
+    if (!P || !this.isWanted() || P.downed || !this.quiet() || this.now() - this.arrestAskedAt < 50) return;
     if (P.crime?.kind === 'outside') return;
     for (const id of ['rowan', 'wys']) {
       const e = this.entity(id);
