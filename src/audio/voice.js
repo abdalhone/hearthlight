@@ -3,8 +3,10 @@
 //
 //   game.voice.say({ speaker, text, kind, entity })   clip if there is one, else the
 //                                                      speaker group's fallback (Lyra's live voice)
-//   game.voice.play({ speaker, text, key?, kind })    the clip only, in the foreground (cutscenes,
-//                                                      dialogue) -> Promise<{ ok, reason }>
+//   game.voice.play({ speaker, text, key?, kind,      the clip only, in the foreground (cutscenes,
+//                     maxLatency?, onStart?, wanted? }) dialogue) -> Promise<{ ok, reason }>;
+//                                                      onStart({ duration }) when the clip really
+//                                                      starts; wanted() false drops it unplayed
 //   game.voice.stop()                                 silence whoever is speaking
 //   game.voice.preload([{ speaker, text }])           fetch (and decode) clips ahead of a scene
 //   game.voice.claim({ speaker, stop })               an outside voice (claude.ai tts, the
@@ -29,7 +31,7 @@ const TILE = 16;
 const NEAR_PX = 12 * TILE; // villagers heard within this of the player
 const LYRA_NEAR_PX = 24 * TILE;
 const BUBBLE_LATENCY = 1.6; // s: a clip that arrives later than this after its bubble is dropped
-const SCENE_LATENCY = 10; // s: a cutscene waits this long for its line
+const SCENE_LATENCY = 10; // s: a foreground line waits this long for its clip (cutscenes pass less)
 const DEDUPE_S = 2.5; // the same line asked for twice within this is said once
 const CACHE_CLIPS = 64; // decoded clips kept (about 2.5 s x 24 kHz x 4 bytes each)
 
@@ -61,6 +63,15 @@ export function readManifest(json) {
 }
 
 const done = (reason, ok = false) => Promise.resolve({ ok, reason });
+
+function stillWanted(wanted) {
+  if (typeof wanted !== 'function') return true;
+  try {
+    return !!wanted();
+  } catch {
+    return false;
+  }
+}
 
 // What the build put next to the page: { manifest: 'voice/manifest.json', live: 'kokoro/' | null }
 // (a one-line tag written by scripts/build.mjs). Without it there are no clips to ask for.
@@ -240,7 +251,10 @@ export class VoicePlayer {
   // Play the pre-rendered clip of a line. Resolves when it ends (or at once when muted,
   // missing, outranked or unavailable). Called directly (a cutscene, an open dialogue) the
   // line is in the foreground: it ranks with cutscenes and waits longer for its clip.
-  play({ speaker, text, key, keys, kind = 'say', entity = null, priority, requestedAt, maxLatency, bubble = false } = {}) {
+  //   maxLatency  seconds the line may wait for its clip (a cutscene passes its reading time)
+  //   onStart     called with { duration } (seconds) the moment the clip really plays
+  //   wanted      () => false once the caller has moved on: the clip is dropped unplayed
+  play({ speaker, text, key, keys, kind = 'say', entity = null, priority, requestedAt, maxLatency, bubble = false, onStart = null, wanted = null } = {}) {
     const sp = speakerIdOf(speaker, this.game) || speakerIdOf(entity, this.game);
     // A caller's own id for the line (a script's 'prologue.07') is only a hint: the clip
     // is found by speaker and text.
@@ -254,8 +268,9 @@ export class VoicePlayer {
     return this.loadManifest().then(() => {
       if (!keys?.length && !this.manifest.has(k) && text) {
         const byText = lineKey(sp, text);
-        if (byText && this.manifest.has(byText)) return this.play({ speaker: sp, text, key: byText, kind, entity, priority, requestedAt: asked, maxLatency, bubble });
+        if (byText && this.manifest.has(byText)) return this.play({ speaker: sp, text, key: byText, kind, entity, priority, requestedAt: asked, maxLatency, bubble, onStart, wanted });
       }
+      if (!stillWanted(wanted)) return { ok: false, reason: 'unwanted' };
       const parts = keys?.length ? keys : [k];
       if (!parts.every((x) => this.manifest.has(x))) {
         this.stats.noClip++;
@@ -267,7 +282,7 @@ export class VoicePlayer {
       }
       this._preempt();
       const token = ++this._token;
-      const cur = { token, key: k, speaker: sp, priority: pr, source: null, external: null, resolve: null, gain: kind === 'whisper' ? 0.55 : 1 };
+      const cur = { token, key: k, speaker: sp, priority: pr, source: null, external: null, resolve: null, gain: kind === 'whisper' ? 0.55 : 1, onStart };
       const p = new Promise((res) => (cur.resolve = res));
       this.current = cur;
       (parts.length > 1 ? this._joined(parts) : this._buffer(k)).then((buf) => {
@@ -277,6 +292,7 @@ export class VoicePlayer {
           this.stats.late++;
           return this._finish(token, 'late');
         }
+        if (!stillWanted(wanted)) return this._finish(token, 'unwanted');
         this._start(cur, buf, entity);
       });
       return p;
@@ -297,6 +313,16 @@ export class VoicePlayer {
   _start(cur, buf, entity) {
     const ctx = this.ctx();
     if (!ctx) return this._finish(cur.token, 'no_audio');
+    // A context the browser has not let run yet (iPhone before a tap, a hidden tab) would
+    // hold the clip silent and never end it: ask it to run for next time, and skip this one.
+    if (ctx.state === 'suspended' || ctx.state === 'interrupted') {
+      try {
+        ctx.resume?.()?.catch?.(() => {});
+      } catch {
+        /* not allowed outside a gesture */
+      }
+      return this._finish(cur.token, 'suspended');
+    }
     try {
       const out = this._output(ctx);
       const src = ctx.createBufferSource();
@@ -321,6 +347,11 @@ export class VoicePlayer {
       src.start();
       this.stats.played++;
       this._duck(true);
+      try {
+        cur.onStart?.({ duration: Number(buf.duration) || 0 });
+      } catch {
+        /* the caller's business */
+      }
     } catch (err) {
       console.warn('[voice] playback failed', err);
       this.stats.failed++;

@@ -1,11 +1,17 @@
 // The cutscene player (DESIGN §20): letterboxed scenes made of data steps — painted panels,
 // narration, dialogue with portraits, in-world camera moves and actors, fades, waits,
-// sound, music and voiced lines. Tap, click, Space or Enter advances (finishing the typing
-// first); Escape, holding the pointer, or the Skip button skips the whole scene. The game
-// is paused underneath while a scene plays (the director sets the state). Text is DOM at
-// full resolution. Voice: game.voice.play({ speaker, text, key }) → Promise that resolves
-// when the clip ends (or at once when there is none); the line then waits out a reading
-// time, so a missing or failed voice never blocks.
+// sound, music and voiced lines. Tap, click, Space or Enter advances: the first finishes
+// the typing, the next moves on at once (stopping the voice); a tap in a quiet pause
+// (a title card, a held panel, a wait) cuts it short. Escape, holding the pointer, or the
+// Skip button skips the whole scene. The game is paused underneath while a scene plays
+// (the director sets the state). Text is DOM at full resolution.
+//
+// Voice never holds a line: game.voice.play({ speaker, text, key, maxLatency, onStart,
+// wanted }) is asked for the clip, but the line keeps its own clock. It moves on by itself
+// at its reading time; only when the clip really starts playing does it wait for the
+// clip's end too (whichever is later). A clip that is slow, failed, blocked (audio not
+// yet allowed on an iPhone) or unreachable is dropped at the reading time, and after a
+// few failures in a row the scene carries on silently.
 
 import { PANELS } from './panels.js';
 import { PanelInstance, panelMetrics, makeOverlay } from './panel_view.js';
@@ -15,6 +21,12 @@ import { Score } from './score.js';
 
 const HOLD_TO_SKIP = 0.9; // seconds of holding the pointer down
 const FADE_MS = 700;
+const CLIP_TAIL_MS = 650; // a breath after a voiced line ends before the next
+const PAUSE_TAP_MS = 250; // a pause must have shown this long before a tap cuts it
+const VOICE_FAILS_OFF = 3; // failed clips in a row before a scene stops asking
+// Reasons a clip did not play that say the voice layer itself is failing (not "no clip
+// for this line" or "muted").
+const VOICE_FAILURES = new Set(['unavailable', 'late', 'failed']);
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -44,6 +56,10 @@ export class CutscenePlayer {
     this.overlay = null;
     this.score = null;
     this.lineStarted = 0;
+    this.readMs = readingMs; // how long a line stays up unvoiced (tests may shorten it)
+    this.voiceFails = 0;
+    this.voiceOff = false;
+    this.pauses = new Set(); // quiet waits a tap may cut short: { finish, from }
     this.onKey = (e) => this.handleKey(e);
     this.onKeyUp = (e) => {
       if (this.active || performance.now() < (this.guardUntil || 0)) {
@@ -102,6 +118,12 @@ export class CutscenePlayer {
       if (!this.active) return;
       e.preventDefault();
       this.holdT = 0;
+      // A tap is a gesture: on an iPhone this is when sound may start.
+      try {
+        g.audio?.unlock?.();
+      } catch {
+        /* sound is optional */
+      }
     });
     r.addEventListener('pointerup', (e) => {
       if (!this.active) return;
@@ -182,6 +204,8 @@ export class CutscenePlayer {
     this.camTween = null;
     this.actorTweens = [];
     this.inWorld = false;
+    this.voiceFails = 0;
+    this.voiceOff = false;
     this.box.classList.remove('cs-show');
     this.titleEl.classList.remove('cs-show');
     // A scene that opens on a painted panel rises out of black; one that opens in the
@@ -241,11 +265,11 @@ export class CutscenePlayer {
     if (st.title != null && !st.steps) return this.showTitle(st);
     if (st.panel) {
       this.showPanel(st.panel, st);
-      if (st.hold) await this.wait(st.hold);
+      if (st.hold) await this.pause(st.hold);
       return;
     }
     if (st.fade) return this.fade(st.fade, st.ms ?? FADE_MS, st.color);
-    if (st.wait != null) return this.wait(st.wait);
+    if (st.wait != null) return this.pause(st.wait);
     if (st.sound) {
       try {
         this.game.audio?.play?.(st.sound, { volume: st.volume ?? 0.9 });
@@ -318,7 +342,7 @@ export class CutscenePlayer {
     this.titleMain.textContent = st.title || '';
     this.titleSub.textContent = st.sub || '';
     this.titleEl.classList.add('cs-show');
-    return this.wait(st.ms ?? 2600).then(() => {
+    return this.pause(st.ms ?? 2600).then(() => {
       this.titleEl.classList.remove('cs-show');
       return this.wait(500);
     });
@@ -455,51 +479,82 @@ export class CutscenePlayer {
     this.typing = { text, shown: 0, rate, done: !Number.isFinite(rate) };
     if (this.typing.done) this.textEl.textContent = text;
     const key = stepKey(this.script.id, index, st);
-    // Voice: plays alongside the typing; never blocks the scene.
+    // The line's own clock (see the top of the file): it moves on at `deadline`, which only
+    // a clip that really plays may push later.
     const started = performance.now();
-    let voiceEnded = Promise.resolve(false);
-    const voice = g.voice;
-    if (voice && typeof voice.play === 'function') {
-      try {
-        voiceEnded = Promise.resolve(voice.play({ speaker, text, key })).then(
-          (v) => v,
-          () => false,
-        );
-      } catch {
-        voiceEnded = Promise.resolve(false);
-      }
-    }
-    const minRead = readingMs(text, narr);
+    const minRead = Math.max(400, Number(this.readMs(text, narr)) || 0);
+    const readEnd = started + minRead;
+    let deadline = readEnd;
     let auto = false;
     let resolveThis = null;
+    let timer = null;
+    const line = { clip: false, over: false, ended: false };
     const advanced = new Promise((resolve) => {
       resolveThis = resolve;
     });
     this.advanceFn = resolveThis;
-    const autoTimer = voiceEnded.then((v) => {
-      // A clip that resolved almost at once means there was no clip: read instead.
-      const elapsed = performance.now() - started;
-      const remain = v && elapsed > 400 ? 650 : Math.max(650, minRead - elapsed);
-      return this.wait(remain);
-    });
-    autoTimer.then(() => {
-      // Only this line's own timer may move it on: once the player has tapped past it,
-      // its timer must not cut the next line short.
-      if (this.advanceFn !== resolveThis) return;
-      auto = true;
-      // Never leave a line half-typed on its way out.
-      if (this.typing && !this.typing.done) {
-        this.typing.done = true;
-        this.textEl.textContent = this.typing.text;
-      }
-      this.advanceFn = null;
-      resolveThis();
-    });
-    await advanced;
-    if (this.advanceFn === resolveThis) this.advanceFn = null;
-    if (!auto) {
+    const current = () => this.advanceFn === resolveThis && !line.over;
+    const arm = () => {
+      clearTimeout(timer);
+      if (!current()) return;
+      timer = setTimeout(() => {
+        if (!current()) return;
+        if (performance.now() < deadline - 4) return arm();
+        auto = true;
+        // Never leave a line half-typed on its way out.
+        if (this.typing && !this.typing.done) {
+          this.typing.done = true;
+          this.textEl.textContent = this.typing.text;
+        }
+        this.advanceFn = null;
+        resolveThis();
+      }, Math.max(0, deadline - performance.now()));
+    };
+    arm();
+    const voice = this.voiceOff ? null : g.voice;
+    if (voice && typeof voice.play === 'function') {
+      this.preloadAhead(index);
       try {
-        voice?.stop?.();
+        const asked = voice.play({
+          speaker,
+          text,
+          key,
+          kind: 'cutscene',
+          // The clip may arrive no later than the line would have moved on without it.
+          maxLatency: minRead / 1000,
+          wanted: current,
+          onStart: ({ duration } = {}) => {
+            if (!current()) return;
+            line.clip = true;
+            const ms = Math.max(0, Number(duration) || 0) * 1000;
+            deadline = Math.max(readEnd, performance.now() + ms + CLIP_TAIL_MS);
+            arm();
+          },
+        });
+        Promise.resolve(asked).then(
+          (r) => this.voiceResult(r, line, () => {
+            if (!current()) return;
+            // The clip ended (or was cut): a breath after it, but never before the reading time.
+            if (line.clip) {
+              deadline = Math.max(readEnd, performance.now() + CLIP_TAIL_MS);
+              arm();
+            }
+          }),
+          () => this.voiceResult({ ok: false, reason: 'failed' }, line),
+        );
+      } catch {
+        this.voiceResult({ ok: false, reason: 'failed' }, line);
+      }
+    }
+    await advanced;
+    line.over = true;
+    clearTimeout(timer);
+    if (this.advanceFn === resolveThis) this.advanceFn = null;
+    // A tap stops the voice at once; a line that moved on by itself stops a clip that is
+    // still loading or stuck (it would talk over the next line).
+    if (voice && (!auto || !line.ended)) {
+      try {
+        voice.stop?.();
       } catch {
         /* nothing to stop */
       }
@@ -507,7 +562,39 @@ export class CutscenePlayer {
     this.typing = null;
   }
 
-  // The player taps: finish the typing first, then move on.
+  // Fetch the next couple of lines' clips while this one plays, so they are ready in time.
+  preloadAhead(index) {
+    const voice = this.game.voice;
+    if (!voice?.preload || this.voiceOff) return;
+    const steps = this.script?.steps || [];
+    const next = [];
+    for (let i = index + 1; i < steps.length && next.length < 2; i++) {
+      const st = steps[i];
+      if (isSpoken(st)) next.push({ speaker: st.narrate != null ? 'narrator' : st.say, text: st.narrate != null ? st.narrate : st.text });
+    }
+    if (!next.length) return;
+    try {
+      Promise.resolve(voice.preload(next)).catch(() => {});
+    } catch {
+      /* a head start only */
+    }
+  }
+
+  // What the voice layer said about a line's clip. Failures in a row mean the voice files
+  // cannot be reached (or decoded): the rest of the scene carries on silently.
+  voiceResult(r, line, onEnded) {
+    const reason = r?.reason || (r?.ok ? 'done' : 'failed');
+    line.ended = true;
+    if (r?.ok || reason === 'done') this.voiceFails = 0;
+    else if (VOICE_FAILURES.has(reason)) {
+      this.voiceFails++;
+      if (this.voiceFails >= VOICE_FAILS_OFF) this.voiceOff = true;
+    }
+    onEnded?.();
+  }
+
+  // The player taps: finish the typing first, then move on at once (never waiting for the
+  // voice). A tap with no line up cuts a quiet pause short.
   advance() {
     if (!this.active) return;
     if (this.typing && !this.typing.done) {
@@ -521,7 +608,10 @@ export class CutscenePlayer {
       const f = this.advanceFn;
       this.advanceFn = null;
       f();
+      return;
     }
+    const now = performance.now();
+    for (const p of [...this.pauses]) if (now - p.from >= PAUSE_TAP_MS) p.finish();
   }
 
   skip() {
@@ -535,6 +625,7 @@ export class CutscenePlayer {
     this.advanceFn?.();
     for (const w of [...this.waiters]) w();
     this.waiters.clear();
+    this.pauses.clear();
   }
 
   handleKey(e) {
@@ -572,6 +663,19 @@ export class CutscenePlayer {
       };
       this.waiters.add(finish);
       setTimeout(finish, ms);
+    });
+  }
+
+  // A quiet wait (a title card, a held panel, a `wait` step) that a tap may cut short.
+  pause(ms) {
+    if (this.skipping || !(ms > 0)) return Promise.resolve();
+    let entry = null;
+    const p = new Promise((resolve) => {
+      entry = { from: performance.now(), finish: resolve };
+    });
+    this.pauses.add(entry);
+    return Promise.race([p, this.wait(ms)]).then(() => {
+      this.pauses.delete(entry);
     });
   }
 
