@@ -8925,3 +8925,32 @@ input[type='range']::-moz-range-thumb {
     opacity: 0;
   }
 }
+
+/* ---------- the menu: a ✕ like every panel; sideways, places four to a row ---------- */
+
+.panel-pause .panel-close {
+  display: inline-flex;
+}
+@media (max-height: 520px) {
+  .panel-pause {
+    width: min(720px, 100%);
+  }
+  .panel-pause .menu-go {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .panel-pause .menu-go > .menu-row {
+    display: contents;
+  }
+  .panel-pause .menu-go > .menu-span,
+  .panel-pause .menu-go .menu-row > .btn {
+    grid-column: auto;
+  }
+  .panel-pause .menu-label {
+    white-space: normal;
+    line-height: 1.1;
+  }
+  .panel-pause .panel-body {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+}
