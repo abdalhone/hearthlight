@@ -30,7 +30,7 @@ import { stepJob, newJob, canRespond, roleFor, countRoles, isLyra, isPlayer, isV
 import { startCarry, endCarry, syncCarries } from './carry.js';
 import { tendPlayer, wakeHome, flameReturn, finalDeath, admitPatient, releasePatient, carriedOff } from './outcomes.js';
 import { hasKeptFlame } from './kept_flame.js';
-import { placeName } from './epitaph.js';
+import { placeName, placePhrase } from './epitaph.js';
 
 // Death is dangerous (DESIGN §27). `game.survival` owns every fall in the world: the
 // player's bleed-out window and the cinematic around it, Lyra's and the villagers' own
@@ -296,6 +296,7 @@ export class Survival {
       grave: !!opts.grave,
       patrol: null,
       place: placeName(g, actor.x, actor.y),
+      where: placePhrase(g, actor.x, actor.y),
       lyraAt: (opts.t || 0) + 9,
     };
     // Falling into water: the body is pulled to the nearest bank, cold and soaked.
@@ -683,7 +684,7 @@ export class Survival {
       const lyra = g.companion;
       if (rec?.lyraCame && lyra?.mind) {
         const P = g.player?.name && g.player.name !== 'Traveler' ? g.player.name : 'the stranger';
-        safe(() => lyra.mind.remember(`${P} went down in ${rec.place}, bleeding. ${carrier.name} carried them to Mira's and I walked beside them the whole way.`, { importance: 7, about: [PLAYER_ID, carrier.id], tags: ['rescue'], emotion: 'fear' }));
+        safe(() => lyra.mind.remember(`${P} went down ${rec.where}, bleeding. ${carrier.name} carried them to Mira's and I walked beside them the whole way.`, { importance: 7, about: [PLAYER_ID, carrier.id], tags: ['rescue'], emotion: 'fear' }));
       }
     }
   }
@@ -703,10 +704,10 @@ export class Survival {
     if (!mind) return;
     const named = this.game.player?.name && this.game.player.name !== 'Traveler' ? this.game.player.name : null;
     const P = named || 'The stranger';
-    const where = this.falls.get(F)?.place || placeName(this.game, F.x, F.y);
+    const where = this.falls.get(F)?.where || placePhrase(this.game, F.x, F.y);
     let text = '';
-    if (kind === 'warmth') text = isPlayer(this, F) ? `${P} went down in ${where}. I gave them my warmth to get them up. I'm cold to the bone, and I don't care.` : `I gave ${F.name} some of my warmth to get them up.`;
-    else if (kind === 'carried') text = `${P} went down in ${where}, bleeding. I carried them to Mira's. I didn't stop once.`;
+    if (kind === 'warmth') text = isPlayer(this, F) ? `${P} went down ${where}. I gave them my warmth to get them up. I'm cold to the bone, and I don't care.` : `I gave ${F.name} some of my warmth to get them up.`;
+    else if (kind === 'carried') text = `${P} went down ${where}, bleeding. I carried them to Mira's. I didn't stop once.`;
     else if (kind === 'flame') text = `${P} died. The flame Aveline kept for them brought them back at dawn. I don't know what to do with that.`;
     if (!text) return;
     safe(() => mind.remember(text, { importance: kind === 'flame' ? 9 : 7, about: [PLAYER_ID], tags: ['rescue', kind], emotion: kind === 'flame' ? 'fear' : 'relief' }));
@@ -1041,7 +1042,7 @@ export class Survival {
     const rec = P && this.falls.get(P);
     if (rec) {
       const who = rec.carrier ? ` ${rec.carrier === L ? 'You are' : `${rec.carrier.name} is`} carrying them to Mira's.` : '';
-      out.push(`${name} is lying on the ground in ${rec.place}, bleeding out: about ${Math.max(0, Math.ceil(rec.left))} seconds before they die.${who}${hasKeptFlame(g) ? ' A kept flame burns for them at the chapel.' : ' No flame is kept for them: if they die, they are gone.'}`);
+      out.push(`${name} is lying on the ground ${rec.where}, bleeding out: about ${Math.max(0, Math.ceil(rec.left))} seconds before they die.${who}${hasKeptFlame(g) ? ' A kept flame burns for them at the chapel.' : ' No flame is kept for them: if they die, they are gone.'}`);
     }
     const mine = L && this.patients.get(L);
     if (mine) out.push(`You are lying in a cot at Mira's, mending${mine.savedBy === PLAYER_ID ? `; ${name.toLowerCase() === 'the stranger' ? 'the stranger' : name} carried you here` : ''}.`);

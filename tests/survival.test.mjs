@@ -537,7 +537,7 @@ test('villagers and Lyra have windows of their own: nobody comes, and they are o
 
 test('the memorial reads like her, and like the village', () => {
   const g = makeGame({ hour: 14 });
-  const m = composeMemorial(g, { place: 'South Meadow', anyoneCame: false });
+  const m = composeMemorial(g, { place: 'South Meadow', where: 'in South Meadow', anyoneCame: false });
   assert.equal(m.name, 'Ash');
   assert.ok(m.lyra.text.includes('Ash'));
   assert.ok(m.village.some((v) => v.id === 'aveline' && /flame/.test(v.text)));

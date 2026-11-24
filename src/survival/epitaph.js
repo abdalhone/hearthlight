@@ -22,34 +22,39 @@ function firstSentence(text, max = 140) {
   return s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s;
 }
 
-function lower(s) {
-  const t = String(s || '');
-  return t ? t[0].toLowerCase() + t.slice(1) : t;
-}
 
 export function placeName(game, x, y) {
   const loc = safe(() => game.locations?.at?.(x, y));
   return loc?.name || 'the wilds';
 }
 
+// "in Whisperwood", "on King's Road", "at Fennick's Herbs".
+export function placePhrase(game, x, y) {
+  const loc = safe(() => game.locations?.at?.(x, y));
+  if (!loc) return 'in the wilds';
+  if (loc.kind === 'road' || loc.kind === 'lane') return `on ${loc.name}`;
+  if (loc.kind === 'building' || loc.kind === 'home') return `at ${loc.name}`;
+  return `in ${loc.name}`;
+}
+
 // How it happened, in a few words.
 export function causePhrase(game, rec) {
   const P = rec?.actor;
-  const where = rec?.place || (P ? placeName(game, P.x, P.y) : 'the wilds');
+  const where = rec?.where || (P ? placePhrase(game, P.x, P.y) : 'in the wilds');
   const night = !!safe(() => game.clock?.isNight ?? (game.clock?.phase === 'night'), false);
-  if (rec?.cause === 'berserk') return `Their heart gave out after the berserk fury, in ${where}.`;
+  if (rec?.cause === 'berserk') return `Their heart gave out after the berserk fury, ${where}.`;
   if (rec?.carrierName) return `They died on ${rec.carrierName}'s shoulders, on the way to Mira's.`;
-  if (rec?.wet) return `They went down in the cold water by ${where} and did not come up again.`;
+  if (rec?.wet) return `They went down in the cold water ${where} and did not come up again.`;
   const alone = !rec?.anyoneCame;
-  return `They bled out in ${where}${night ? ', at night' : ''}${alone ? ', alone' : ''}.`;
+  return `They bled out ${where}${night ? ', at night' : ''}${alone ? ', alone' : ''}.`;
 }
 
 // Her best memory of them: the most important thing they did together in play (not the
 // story she was born knowing), short enough to quote whole.
-function bestMemory(mind) {
+function bestMemory(mind, now = Infinity) {
   const all = safe(() => mind?.memory?.all?.(), []) || [];
   const list = all
-    .filter((m) => m && Array.isArray(m.about) && m.about.includes(PLAYER_ID) && m.type !== 'reflection' && !m.pinned && (m.day ?? 1) > 0)
+    .filter((m) => m && Array.isArray(m.about) && m.about.includes(PLAYER_ID) && m.type !== 'reflection' && !m.pinned && (m.day ?? 1) > 0 && !(m.t > now - 180))
     .sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
   for (const m of list) {
     const s = firstSentence(m.text, 400);
@@ -69,30 +74,30 @@ export function lyraLastEntry(game, rec) {
   const lyra = game?.companion;
   const P = strangerName(game) || 'The stranger';
   const Pm = strangerName(game) || 'the stranger';
-  const where = rec?.place || placeName(game, game?.player?.x ?? 0, game?.player?.y ?? 0);
+  const where = rec?.where || placePhrase(game, game?.player?.x ?? 0, game?.player?.y ?? 0);
   const days = game?.clock?.day ?? 1;
   const tone = lyra ? lyraTone(lyra) : 'steady';
-  const mem = lyra ? bestMemory(lyra.mind) : '';
+  const mem = lyra ? bestMemory(lyra.mind, game?.clock?.t ?? Infinity) : '';
   const came = !!rec?.lyraCame;
   const parts = [];
   if (tone === 'warm') {
-    parts.push(came ? `I got to ${Pm} and it wasn't enough. I had them, and then I didn't.` : `${P} died today in ${where}, and I wasn't there.`);
-    if (mem) parts.push(`I keep thinking about the day ${lower(mem.replace(/[.!?…]$/, ''))}.`);
+    parts.push(came ? `I got to ${Pm} and it wasn't enough. I had them, and then I didn't.` : `${P} died today ${where}, and I wasn't there.`);
+    if (mem) parts.push(`I keep thinking about it: ${mem}`);
     parts.push(`We had ${days} ${days === 1 ? 'day' : 'days'}. It should have been more.`);
     parts.push('No flame was kept in their name. I should have made them go to Aveline. I should have made them.');
     parts.push("Da lit the far lamp tonight without being asked. I can't write any more.");
   } else if (tone === 'steady') {
-    parts.push(`${P} died today, in ${where}.${came ? ' I was there at the end. It was not enough.' : ' I was too far away.'}`);
-    if (mem) parts.push(`I remember: ${lower(mem)}`);
-    parts.push(`${days} ${days === 1 ? 'day' : 'days'} since they woke in the Wayhouse. I'll light a candle at the chapel tomorrow, though no flame was kept for them.`);
+    parts.push(`${P} died today, ${where}.${came ? ' I was there at the end. It was not enough.' : ' I was too far away.'}`);
+    if (mem) parts.push(`I remember this: ${mem}`);
+    parts.push(`${days === 1 ? 'One day' : `${days} days`} since they woke in the Wayhouse. I'll light a candle at the chapel tomorrow, though no flame was kept for them.`);
     parts.push('Keep your own wick, little lamp. Sleep. I can’t.');
   } else if (tone === 'guarded') {
     parts.push(`${P} is dead.${came ? ' I ran to them. I don’t know why I’m surprised I did.' : ''}`);
     parts.push("I hadn't forgiven them, and now I never have to decide. I'm angry about that, of all things.");
-    if (mem) parts.push(`I keep coming back to it: ${lower(mem)}`);
+    if (mem) parts.push(`I keep coming back to it: ${mem}`);
     parts.push('Aveline will say words. I will stand at the back.');
   } else {
-    parts.push(`The stranger died today in ${where}.`);
+    parts.push(`The stranger died today ${where}.`);
     parts.push(came ? "I'd cut them out of my life, and I still ran when I heard. I carried what was left of them as far as I could." : "I'd cut them out of my life. I heard too late, and I'm not sure I would have been quicker.");
     parts.push("I don't know what that says about me. Mam says it says I'm an Ambrel.");
   }
@@ -152,6 +157,7 @@ export function composeMemorial(game, rec = {}) {
     when: safe(() => game.clock?.fullString?.(), '') || `Day ${day}`,
     diedAt: Date.now(),
     place: rec.place || (P ? placeName(game, P.x, P.y) : 'the wilds'),
+    where: rec.where || (P ? placePhrase(game, P.x, P.y) : 'in the wilds'),
     cause: causePhrase(game, rec),
     level: P?.level ?? 1,
     saved: (rec.savedIds || []).length,

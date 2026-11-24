@@ -275,7 +275,7 @@ export function finalDeath(sv, rec) {
   const memorial = composeMemorial(g, rec);
   const mind = g.companion?.mind;
   safe(() => mind?.addDiary?.(memorial.lyra.text, g.clock?.day ?? 1));
-  safe(() => mind?.remember?.(`${g.player?.name || 'The stranger'} died today, in ${memorial.place}. No flame was kept for them.`, { importance: 10, about: ['player'], tags: ['death'], emotion: 'sadness' }));
+  safe(() => mind?.remember?.(`${g.player?.name && g.player.name !== 'Traveler' ? g.player.name : 'The stranger'} died today, ${memorial.where}. No flame was kept for them.`, { importance: 10, about: ['player'], tags: ['death'], emotion: 'sadness' }));
   sv.memorial = memorial;
   g.bus?.emit?.('player_died', { mode: 'final', memorial });
   const seq = async () => {
