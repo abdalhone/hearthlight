@@ -195,9 +195,6 @@ const C = {
   refl: rgb('#123222'),
   sky: rgb('#c4e4f6'),
   foam: rgb('#eef8ff'),
-  wetSky: rgb('#b7c9df'),
-  puddle: rgb('#4f6684'),
-  puddleRim: rgb('#2c2430'),
 };
 
 const RUG = {
@@ -385,6 +382,7 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
       }
       if (TALLM[mat[k - 1]] || TALLM[mat[k - 2]]) f *= 0.86;
       c = shade(c, f);
+      if (m === T.COBBLE) c = ageCobble(c, raw, mat, k, lf2[L]);
       if (wet) c = wetten(art, c, m, wx, wy, raw, td[(((wy + 1) & 63) << 6) | (wx & 63)]);
       od[ly * CPX + lx] = c;
     }
@@ -583,6 +581,21 @@ function wetten(art, c, m, wx, wy, raw = c, below = raw) {
 
 function puddleAt(art, wx, wy) {
   return art.puddle[(((wy >> 2) & 63) << 6) | ((wx >> 2) & 63)];
+}
+
+// Village cobbles are not new: moss creeps into the joints near the lawns, and some
+// stretches were laid in a warmer stone than others.
+const GRASSY = new Uint8Array(64);
+GRASSY[T.GRASS] = GRASSY[T.TALL_GRASS] = GRASSY[T.FOREST] = 1;
+const COBBLE_MOSS = rgb('#46653a');
+const COBBLE_WARM = rgb('#8f7b6b');
+
+function ageCobble(c, raw, mat, k, region) {
+  if (lumOf(raw) < 0.27) {
+    const near = GRASSY[mat[k - 6]] || GRASSY[mat[k + 6]] || GRASSY[mat[k - 6 * SW]] || GRASSY[mat[k + 6 * SW]] || GRASSY[mat[k - 3 * SW - 3]] || GRASSY[mat[k + 3 * SW + 3]];
+    if (near) return mixc(c, COBBLE_MOSS, 0.6);
+  }
+  return region > 0.62 ? mixc(c, COBBLE_WARM, Math.min(0.28, (region - 0.62) * 0.9)) : c;
 }
 
 function fillTile(out, lx, ly, c) {

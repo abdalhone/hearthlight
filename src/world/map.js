@@ -194,14 +194,15 @@ export class TileMap {
   // ---- render cache management ----
 
   // Blends and baked shadows reach a couple of tiles over chunk borders; mirrored
-  // trees reach a few tiles down into the water below them.
+  // trees reach a few tiles down into the water below them. Touched chunks are only
+  // marked stale: they keep drawing until a repaint slot comes up (one per frame), so
+  // felling a tree never stalls a frame repainting four chunks at once.
   invalidateTile(tx, ty) {
     const cs = CHUNK;
     for (let dy = -2; dy <= 4; dy += 2) {
       for (let dx = -2; dx <= 2; dx += 2) {
-        const cx = Math.floor((tx + dx) / cs);
-        const cy = Math.floor((ty + dy) / cs);
-        this._chunks.delete(cy * 1000 + cx);
+        const c = this._chunks.get(Math.floor((ty + dy) / cs) * 1000 + Math.floor((tx + dx) / cs));
+        if (c) c.stale = true;
       }
     }
   }
@@ -216,16 +217,20 @@ export class TileMap {
 
   _chunk(cx, cy, art) {
     const key = cy * 1000 + cx;
-    let c = this._chunks.get(key);
-    if (c) {
-      c.used = this._renderTime;
-      return c;
+    const old = this._chunks.get(key);
+    if (old && (!old.stale || this._builtThisFrame > 0)) {
+      old.used = this._renderTime;
+      return old;
     }
-    c = paintChunk(art, this, cx, cy, this._shadowCasters(cx, cy));
+    const c = paintChunk(art, this, cx, cy, this._shadowCasters(cx, cy));
     c.cx = cx;
     c.cy = cy;
     c.used = this._renderTime;
-    c.wetCanvas = null;
+    c.stale = false;
+    // A repainted chunk keeps its old wet twin until a fresh one is soaked, so the
+    // street never flashes dry in the rain.
+    c.wetCanvas = old?.wetCanvas || null;
+    c.wetStale = !!c.wetCanvas;
     if (c.mask) {
       try {
         bakeReflections(c, this, this.game?.objects);
@@ -248,6 +253,7 @@ export class TileMap {
   // The rain-soaked twin of a chunk: land only (water stays from the dry canvas).
   _soak(c, art) {
     c.wetCanvas = paintChunk(art, this, c.cx, c.cy, this._shadowCasters(c.cx, c.cy), true).canvas;
+    c.wetStale = false;
     this._builtThisFrame++;
   }
 
@@ -331,7 +337,7 @@ export class TileMap {
         }
         ctx.drawImage(c.canvas, X, Y);
         if (wet > 0.01) {
-          if (!c.wetCanvas && this._builtThisFrame === 0) this._soak(c, art);
+          if ((!c.wetCanvas || c.wetStale) && this._builtThisFrame === 0) this._soak(c, art);
           if (c.wetCanvas) {
             ctx.globalAlpha = alpha0 * Math.min(1, wet);
             ctx.drawImage(c.wetCanvas, X, Y);
@@ -369,9 +375,15 @@ export class TileMap {
     const cam = this.game?.camera;
     if (!art || !cam || this._builtThisFrame > 0 || typeof document === 'undefined') return;
     const span = CHUNK * TILE;
+    for (const c of this._chunks.values()) {
+      if (c.stale && this._renderTime - c.used < 0.5) {
+        this._chunk(c.cx, c.cy, art);
+        return;
+      }
+    }
     if (this.wetness > 0.01) {
       for (const c of this._chunks.values()) {
-        if (!c.wetCanvas && this._renderTime - c.used < 0.5) {
+        if ((!c.wetCanvas || c.wetStale) && this._renderTime - c.used < 0.5) {
           this._soak(c, art);
           return;
         }
@@ -406,7 +418,10 @@ export class TileMap {
     this._dryFor += dt;
     if (this._dryFor > FREE_WET_AFTER) {
       this._dryFor = -Infinity; // freed; nothing to do until the next rain
-      for (const c of this._chunks.values()) c.wetCanvas = null;
+      for (const c of this._chunks.values()) {
+        c.wetCanvas = null;
+        c.wetStale = false;
+      }
     }
   }
 
