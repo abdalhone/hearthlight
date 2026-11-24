@@ -324,6 +324,8 @@ export function arrive(sv, job, rec, F) {
   else if (job.role === 'revive') action = 'salve';
   else if (job.role === 'carry' || job.role === 'arrest') action = 'lift';
   if (action === 'lift' && rec.carrier) return becomeEscortOrLeave(sv, job);
+  // Someone is already getting them up on the spot: kneel and press on the wound instead.
+  if (action === 'lift' && someoneReviving(sv, rec, job)) action = 'stanch';
   if (action === 'lift') {
     job.phase = 'lift';
     job.t = 0;
@@ -379,6 +381,15 @@ function kneelStep(sv, job, rec, F, dt) {
   return true;
 }
 
+// Is another rescuer kneeling with salve or warmth right now?
+function someoneReviving(sv, rec, job) {
+  for (const r of rec.responders) {
+    const j = sv.jobs.get(r);
+    if (j && j !== job && j.phase === 'kneel' && (j.mode === 'warmth' || j.mode === 'salve')) return true;
+  }
+  return false;
+}
+
 function doRevive(sv, job, rec, F) {
   const a = job.rescuer;
   const g = sv.game;
@@ -410,6 +421,12 @@ function liftStep(sv, job, rec, F, dt) {
   if (rec.carrier && rec.carrier !== a) return becomeEscortOrLeave(sv, job);
   stopFeet(sv, job);
   a.faceToward?.(F.x, F.y);
+  if (someoneReviving(sv, rec, job)) {
+    job.phase = 'kneel';
+    job.mode = 'stanch';
+    job.t = 0;
+    return true;
+  }
   if (job.t < LIFT_SECONDS) return true;
   rec.stanchers.delete(a);
   if (!sv.startCarry(a, F, job)) {
