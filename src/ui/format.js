@@ -254,7 +254,7 @@ export function groupByDay(list) {
   return [...map.entries()].sort((a, b) => b[0] - a[0]).map(([day, items]) => ({ day, items }));
 }
 
-const TYPE_ORDER = { potion: 0, food: 1, gift: 2, material: 3, weapon: 4, tool: 5, key: 6, quest: 7, currency: 8 };
+const TYPE_ORDER = { potion: 0, food: 1, gift: 2, material: 3, weapon: 4, gear: 4, tool: 5, key: 6, quest: 7, currency: 8 };
 // Inventory list order: useful things first, then by name.
 export function sortItems(list) {
   return [...(list || [])].sort((a, b) => {
