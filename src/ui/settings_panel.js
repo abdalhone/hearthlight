@@ -3,7 +3,7 @@
 
 import { h, button, clear, setText } from './dom.js';
 import { makePanel } from './modal.js';
-import { saveApiKey, loadApiKey } from '../core/settings.js';
+import { saveApiKey, loadApiKey, DEFAULT_SETTINGS } from '../core/settings.js';
 import { CONTROLS_SUMMARY } from './content.js';
 
 const BRAIN_CHOICES = [
@@ -19,6 +19,31 @@ const VOICES = [
   ['glassy', 'Glassy'],
   ['rounded', 'Rounded'],
 ];
+
+// The brain's last error code, as something a player can act on.
+const PROBLEMS = {
+  auth: 'your API key was not accepted',
+  rate_limited: 'too many requests just now; she answers on her own for a while',
+  connection: 'Claude could not be reached from here',
+  invalid_request: 'the request was turned down; check the model name',
+  session_expired: 'your claude.ai session expired; sign in again',
+  refused: 'Claude declined one message',
+  invalid_json: 'one reply came back garbled',
+  upstream_error: 'Claude had a problem; she answered on her own',
+  not_granted: 'Claude is not allowed in this view',
+  sampling_disabled: 'Claude is switched off for this view',
+  not_declared: 'Claude is not available in this view',
+  not_available: 'Claude is not available in this view',
+  capability_disabled: 'Claude is switched off for this view',
+  capability_removed: 'Claude is no longer available in this view',
+  cancelled: '',
+};
+
+export function problemWords(code) {
+  if (!code) return '';
+  if (Object.prototype.hasOwnProperty.call(PROBLEMS, code)) return PROBLEMS[code];
+  return String(code).replace(/_/g, ' ');
+}
 
 function safe(fn, fallback = null) {
   try {
@@ -92,11 +117,21 @@ export class SettingsPanel {
     this.ui.title?.refreshMindLine?.();
   }
 
+  // The status line follows the brain while the panel is open (busy, errors, provider).
+  update(dt) {
+    if (!this.isOpen()) return;
+    this.statusT = (this.statusT || 0) + dt;
+    if (this.statusT < 0.5) return;
+    this.statusT = 0;
+    this.refreshStatus();
+  }
+
   refreshStatus() {
     if (!this.statusEl) return;
     const st = safe(() => this.game.brain?.status?.()) || {};
-    const err = st.lastError ? ` · last problem: ${st.lastError}` : '';
-    setText(this.statusEl, `Her mind right now: ${st.label || 'her offline mind'}${st.busy ? ' (thinking…)' : ''}${err}`);
+    const problem = problemWords(st.lastError);
+    setText(this.statusEl, `Her mind right now: ${st.label || 'her offline mind'}${st.busy ? ' (thinking…)' : ''}${problem ? `. Last problem: ${problem}.` : ''}`);
+    this.statusEl.dataset.provider = st.provider || 'local';
   }
 
   render() {
@@ -141,6 +176,8 @@ export class SettingsPanel {
         if (!v) return;
         saveApiKey(v);
         g.apiKey = v;
+        // The key itself never goes on the bus; listeners only learn that it changed.
+        g.bus?.emit('settings_changed', { key: 'apiKey', value: true });
         keyField.value = '';
         keyField.placeholder = '•••••••• saved in this browser';
         setText(keyStatus, 'Key saved in this browser.');
@@ -153,6 +190,7 @@ export class SettingsPanel {
       onClick: () => {
         saveApiKey('');
         g.apiKey = '';
+        g.bus?.emit('settings_changed', { key: 'apiKey', value: false });
         keyField.value = '';
         keyField.placeholder = 'sk-ant-…';
         setText(keyStatus, 'No key saved.');
@@ -164,7 +202,7 @@ export class SettingsPanel {
       if (e.key === 'Enter') saveKey.click();
     });
     const modelField = h('input', { type: 'text', class: 'field mono', value: s.apiModel || '', spellcheck: 'false', 'aria-label': 'Model for your API key' });
-    modelField.addEventListener('change', () => this.set('apiModel', modelField.value.trim() || 'claude-opus-5-5'));
+    modelField.addEventListener('change', () => this.set('apiModel', modelField.value.trim() || DEFAULT_SETTINGS.apiModel));
     mindSec.append(
       h(
         'details',

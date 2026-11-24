@@ -277,14 +277,16 @@ export class UI {
       if (isLyra(entity)) this.toast(isPlayer(by) ? `You helped ${lyraName()} back to her feet.` : `${lyraName()} is back on her feet.`, 'good');
     });
 
+    // Work she took on for you is news; her own work, on her own day, is her business.
     bus.on('job_done', (p) => {
-      if (!isLyra(p?.actor)) return;
+      if (!isLyra(p?.actor) || p.own) return;
       const name = this.jobLabel(p.job);
       this.toast(`${lyraName()} finished: ${name.toLowerCase()}.`, 'lyra');
     });
     bus.on('job_failed', (p) => {
-      if (!isLyra(p?.actor)) return;
-      if (p.reason) this.toast(String(p.reason), 'lyra');
+      // A job stopped on purpose (asked, or for something else) needs no notice.
+      if (!isLyra(p?.actor) || p.own || p.stopped) return;
+      if (p.reason) this.toast(String(p.reason), 'lyra', { title: `${lyraName()} gave up on ${this.jobLabel(p.job).toLowerCase()}` });
     });
 
     bus.on('player_wake', (p) => {
@@ -809,11 +811,17 @@ export class UI {
     const g = this.game;
     if (this.hotkeyGrace > 0) this.hotkeyGrace -= dt;
     if (g.state === 'playing') this.handleHotkeys();
+    else if (this.stack.length && g.input?.uiPressed('menu')) {
+      // On the title screen Esc closes Settings and How to play too.
+      g.input.consume('menu');
+      this.closeTop();
+    }
     this.hud.update(dt);
     this.chat.update(dt);
     this.toasts.update(dt);
     this.dialog.update(dt);
     this.mind.update(dt);
+    this.settings.update(dt);
 
     if (this.invDirty) {
       this.invDirty = false;

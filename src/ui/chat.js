@@ -208,7 +208,7 @@ export class Chat {
     const g = this.game;
     const row = h('div', { class: `msg msg-${m.from}${m.kind ? ` msg-${m.kind}` : ''}` });
     if (m.from === 'npc' && m.name) row.append(h('span', { class: 'msg-name', text: m.name }));
-    if (m.kind === 'initiative') row.append(h('span', { class: 'msg-kicker', text: `${g.settings?.companionName || 'Lyra'}, unprompted` }));
+    if (m.kind === 'initiative') row.append(h('span', { class: 'msg-kicker', text: `${g.settings?.companionName || 'Lyra'}, of her own accord` }));
     if (m.kind === 'refusal') row.append(h('span', { class: 'msg-kicker', text: 'She said no' }));
     row.append(h('span', { class: 'msg-text', text: m.text }));
     if (m.note) row.append(h('span', { class: 'msg-note', text: `“${m.note}”` }));
