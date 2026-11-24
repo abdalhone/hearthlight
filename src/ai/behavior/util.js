@@ -230,6 +230,14 @@ export function lineOfSight(game, x0, y0, x1, y1) {
   return true;
 }
 
+// A clear line between two actors where projectiles actually fly: just above the
+// feet (bolts travel at ground level and only look raised). Someone standing
+// against a wall is still in sight even though their head overlaps it.
+const SHOT_LIFT = 3;
+export function clearShot(game, a, b) {
+  return lineOfSight(game, a.x, a.y - SHOT_LIFT, b.x, b.y - SHOT_LIFT);
+}
+
 export function doorIsOpen(door) {
   if (!door) return true;
   if (typeof door.isOpen === 'boolean') return door.isOpen;

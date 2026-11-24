@@ -14,6 +14,7 @@ import {
   atMapEdge,
   openSpotAway,
   companionshipOf,
+  isTogether,
   need,
 } from './safety.js';
 import { rand, chance, dist, tileOf, tileCenter, walkable, nearestWalkable, isActorAlive, onScreen, nameOf, placePhrase, safe } from './util.js';
@@ -104,12 +105,37 @@ const MODE_LABEL = {
   with_player: 'traveling with you',
 };
 
+// The one-word activities of the plans her mind makes (autonomy blocks:
+// { from, to, activity, at, why, with, job?, npc?, kind?, bed? }).
+const PLAN_WORDS = {
+  travel: 'with_player',
+  work: 'work',
+  eat: 'eat',
+  visit: 'visit',
+  lead: 'lead',
+  study: 'study',
+  rest: 'rest',
+  sleep: 'sleep',
+  free: 'free',
+};
+const COMPANY_WORDS = new Set(['player', 'invite', 'alone', 'you', 'none']);
+
+function freeTime(kind) {
+  if (kind === 'stars') return { mode: 'stargaze', job: null };
+  if (kind === 'moonpetals') return { mode: 'job', job: 'gather_herbs' };
+  if (kind === 'rain') return { mode: 'rest', job: null };
+  return { mode: 'wander', job: null };
+}
+
 // Classify a plan entry: { mode, job, person, buyer, at }.
 export function classifyActivity(entry) {
-  const text = String(entry?.activity || '').toLowerCase();
+  const text = String(entry?.activity || '').toLowerCase().trim();
   let mode = 'wander';
   let job = entry?.job && JOBS[entry.job] ? entry.job : null;
+  const word = PLAN_WORDS[text];
   if (job) mode = 'job';
+  else if (word === 'free') ({ mode, job } = freeTime(entry?.kind));
+  else if (word) mode = word;
   else {
     for (const [re, m] of ACTIVITY_RULES) {
       if (!re.test(text)) continue;
@@ -128,15 +154,17 @@ export function classifyActivity(entry) {
       job = j;
     } else mode = 'errand';
   }
-  let person = entry?.with || entry?.who || null;
+  const named = (v) => (v && !COMPANY_WORDS.has(String(v).toLowerCase()) ? String(v) : null);
+  let person = named(entry?.npc) || named(entry?.who) || named(entry?.with);
   const m = text.match(NPC_WORD);
   if (!person && m) person = m[1] === 'gale' ? 'garrick' : m[1];
   if (!person && at && NPC_IDS.includes(at)) person = at;
-  // "herbs for Mira": a buyer to deliver the work to.
+  // "herbs for Mira" / a coin job for an NPC: someone to deliver the work to.
   let buyer = entry?.deliverTo || entry?.for || null;
   if (!buyer && mode === 'job') {
     const f = text.match(/\bfor\s+(bram|elda|pip|rowan|mira|tobias|aveline|garrick)\b/);
     if (f) buyer = f[1];
+    else if (named(entry?.npc) && !(entry?.kind === 'moonpetals')) buyer = named(entry.npc);
   }
   return { mode, job, person, buyer, at };
 }
@@ -228,14 +256,26 @@ export class OwnLife {
     }
   }
 
-  begin(state) {
+  // carry: the same kind of directive again (a revised plan): keep today's state.
+  begin(state, carry = false) {
+    if (carry && this.st) return;
     this.st = state || {};
     this.day = null;
   }
 
+  // Is `next` the same life as `prev`, only re-issued (her day re-planned, the same
+  // person to keep away from, the same way of leaving)?
+  canCarry(prev, next) {
+    if (!prev || !next || prev.type !== next.type || !this.st) return false;
+    if (next.type === 'independent') return (prev.avoid || null) === (next.avoid || null);
+    if (next.type === 'keep_away') return prev.from === next.from && !!prev.follow === !!next.follow;
+    if (next.type === 'leave') return prev.mode === next.mode && next.mode !== 'gone';
+    return false;
+  }
+
   setupIndependent(d) {
     let plan = null;
-    if (Array.isArray(d.plan)) plan = d.plan.filter((e) => e && Number.isFinite(hourOf(e.from)) && Number.isFinite(hourOf(e.to))).map((e) => ({ from: e.from, to: e.to, activity: String(e.activity || 'wander'), at: e.at ?? null, why: e.why ?? null, with: e.with ?? null, job: e.job ?? null, deliverTo: e.deliverTo ?? null }));
+    if (Array.isArray(d.plan)) plan = d.plan.filter((e) => e && Number.isFinite(hourOf(e.from)) && Number.isFinite(hourOf(e.to))).map(planEntry);
     else if (typeof d.plan === 'string' && d.plan.trim() && !/^(today|agenda|her own|own|default|plan|day|her day|my day)$/i.test(d.plan.trim())) {
       // One activity named in words: do it for the next three hours, then her usual day.
       const h = this.game.clock?.hour ?? 12;
@@ -279,6 +319,8 @@ export class OwnLife {
     const isPlayer = from === g.player;
     const follow = typeof d.follow === 'boolean' ? d.follow : isPlayer && ['together', 'wary'].includes(companionshipOf(g));
     const next = { type: 'keep_away', from: isPlayer ? 'player' : from.id, tiles, follow };
+    // Her own plan for the day, lived at that distance (when she has left the player).
+    if (Array.isArray(d.plan) && d.plan.length) next.plan = d.plan.filter((e) => e && Number.isFinite(hourOf(e.from)) && Number.isFinite(hourOf(e.to))).map(planEntry);
     if (Number.isFinite(d.seconds) && d.seconds > 0) {
       next.seconds = Math.min(600, d.seconds);
       next.then = plain(d.then || (prev?.type === 'keep_away' ? prev.then : prev) || { type: 'follow', target: 'player', distance: 'normal' });
@@ -363,6 +405,11 @@ export class OwnLife {
     // Someone she has left behind: keep well away from them.
     const avoid = d.avoid ? this.resolveWho(d.avoid) : null;
     if (avoid && this.avoidStep(dt, avoid, (d.tiles || LEFT_AVOID_TILES) * TILE)) return true;
+    // A haul already on its way to whoever pays for it is delivered before anything new.
+    if (this.day?.jobOn && b.jobs.active && b.jobs.phase === 'deliver') {
+      b.jobs.update(dt);
+      return true;
+    }
     let entry = activeEntry(this.plan(d), hour);
     if (!entry && (hour >= 22 || hour < 6)) entry = NIGHT_ENTRY;
     // Plans are rebuilt now and then; an entry that reads the same is the same entry.
@@ -382,9 +429,15 @@ export class OwnLife {
         return this.doOwnJob(dt, day, hour);
       case 'visit':
         return this.doVisit(dt, day);
+      case 'lead':
+        // A lead that runs through someone (Aveline saw Maren last): talk to them first.
+        if (day.person && !day.asked) return this.doVisit(dt, day);
+        return this.doAtPlace(dt, day, hour);
       case 'with_player':
-        if (companionshipOf(g) === 'left' || companionshipOf(g) === 'gone' || avoid === g.player) return this.ownIdle(dt, day.spot);
-        return b.doFollow(dt, 'normal');
+        if (isTogether(g) && avoid !== g.player) return b.doFollow(dt, 'normal');
+        // Time she would have spent with the player, but she is not with them now.
+        if (!day.place) this.relocate(day, asLocation(g, DEFAULT_PLACE.wander), 'wander');
+        return this.doAtPlace(dt, day, hour);
       default:
         return this.doAtPlace(dt, day, hour);
     }
@@ -413,12 +466,23 @@ export class OwnLife {
     }
     day.label = this.labelFor(day);
     this.day = day;
-    // Tell the player what she is off to do, when they are around to hear it.
+    // Tell the player what she is off to do, when they are around to hear it (her
+    // mind's own will announces the plans it makes; then it is not said twice).
     const p = g.player;
     const s = companionshipOf(g);
-    if (!day.skipped && entry && p && s !== 'left' && s !== 'gone' && !d.avoid && dist(a.x, a.y, p.x, p.y) < 10 * TILE && b.t - this.announcedAt > 45) {
+    const mindSpeaks = !!a.mind?.autonomy;
+    if (!mindSpeaks && !day.skipped && entry && p && s !== 'left' && s !== 'gone' && !d.avoid && dist(a.x, a.y, p.x, p.y) < 10 * TILE && b.t - this.announcedAt > 45) {
       if (b.say(say.planNext(day.label, place ? placePhrase(place) : null, s === 'together' || s === 'wary'))) this.announcedAt = b.t;
     }
+  }
+
+  // Move the current entry somewhere else (and say what it is now).
+  relocate(day, place, mode = day.mode) {
+    day.mode = mode;
+    day.place = place || null;
+    day.spot = place ? this.pickSpotIn(place) || (place.center ? { x: place.center.x, y: place.center.y } : null) : null;
+    day.phase = 'travel';
+    day.label = this.labelFor(day);
   }
 
   labelFor(day) {
@@ -430,6 +494,7 @@ export class OwnLife {
       return where ? `${base} ${where.at}` : base;
     }
     if (day.mode === 'visit' && day.person) return `visiting ${nameOf(this.game, day.person)}`;
+    if (day.mode === 'lead' && day.person && !day.asked) return `asking ${nameOf(this.game, day.person)} about Maren`;
     if (day.mode === 'eat' && where) return `having a meal ${where.at}`;
     if (day.mode === 'study' && where) return `studying ${where.at}`;
     if (day.mode === 'sleep') return 'going to bed';
@@ -492,7 +557,9 @@ export class OwnLife {
     const remaining = hoursLeft(day.entry, hour) * HOURS_TO_SECONDS;
     if (day.mode === 'eat' && !day.ate) {
       day.ate = true;
-      if (need(g, 'hunger') < 0.8) b.eatOwnFood();
+      // At the Kettle her mind buys the meal itself; elsewhere she eats from her pack.
+      const innMeal = !!a.mind?.autonomy && day.place?.id === 'ember_kettle';
+      if (!innMeal && need(g, 'hunger') < 0.8) b.eatOwnFood();
     }
     if ((day.mode === 'eat' || day.mode === 'rest' || day.mode === 'study' || day.mode === 'stargaze') && !day.sitDone && remaining > 8) {
       day.sitDone = true;
@@ -538,24 +605,38 @@ export class OwnLife {
 
   doSleep(dt, day) {
     const b = this.b;
+    const g = this.game;
     if (b.task?.kind === 'sleep') return true;
     if (!b.isBedtime(true)) {
-      // Too early for bed: rest near it instead.
-      day.mode = 'rest';
-      day.place = asLocation(this.game, this.bedLocationId());
-      day.spot = day.place ? this.pickSpotIn(day.place) : null;
-      day.label = this.labelFor(day);
-      return true;
+      // Too early for bed: wind down close to it, and turn in once it is late enough.
+      if (!day.place) {
+        day.place = asLocation(g, this.bedLocationId(day));
+        day.spot = day.place ? this.pickSpotIn(day.place) : null;
+        day.phase = 'travel';
+        day.label = day.place ? `winding down ${placePhrase(day.place).at}` : 'winding down for the night';
+      }
+      if (this.travel(dt, day) === 'moving') return true;
+      return this.ownIdle(dt, day.spot);
     }
-    const bed = b.lyraBed();
+    const bed = this.bedFor(day);
     if (!bed || b.t - b.bedFailedAt < 60) return this.ownIdle(dt, null);
     b.startSleep(bed);
     if (b.task) b.task.own = true;
+    day.label = 'going to bed';
     return true;
   }
 
-  bedLocationId() {
-    const at = this.actor.mind?.agenda?.sleepAt;
+  // The bed her plan names (her room at the inn, or her own in the cottage).
+  bedFor(day) {
+    const g = this.game;
+    const id = day?.entry?.bed;
+    const named = id ? safe('objects.get', () => g.objects?.get?.(id), null) : null;
+    return named || this.b.lyraBed();
+  }
+
+  bedLocationId(day = null) {
+    if (day?.entry?.at) return day.entry.at;
+    const at = day?.entry?.bed || this.actor.mind?.agenda?.sleepAt;
     return at === 'lyra_inn_bed' ? 'ember_kettle' : 'player_home';
   }
 
@@ -572,9 +653,12 @@ export class OwnLife {
       day.jobRuns++;
     }
     const remaining = hoursLeft(day.entry, hour) * HOURS_TO_SECONDS;
-    if (day.jobRuns >= 3 || remaining < 15 || day.jobFailed) return this.ownIdle(dt, day.spot);
+    // One bundle for whoever pays for it, maybe a second if the morning is long; then
+    // the rest of the time is hers.
+    if (day.jobRuns >= 2 || remaining < 15 || day.jobFailed) return this.ownIdle(dt, day.spot);
     const buyer = day.buyer ? this.resolveWho(day.buyer) : null;
-    const amount = { fish: 3, cook: null }[day.job] ?? 4;
+    const planned = Number(day.entry?.amount);
+    const amount = Number.isFinite(planned) && planned > 0 ? Math.min(12, Math.round(planned)) : ({ fish: 3, cook: null }[day.job] ?? 4);
     const r = jobs.start({ job: day.job, amount, deliverTo: buyer ? buyer.id : 'keep', targetRef: day.place?.id ?? null, quiet: true, own: true });
     if (!r.ok) {
       day.jobFailed = true;
@@ -589,14 +673,21 @@ export class OwnLife {
     const g = this.game;
     const a = this.actor;
     const who = day.person && isActorAlive(day.person) ? day.person : null;
-    if (!who) return this.doAtPlace(dt, day, g.clock?.hour ?? 12);
+    const lead = day.mode === 'lead';
+    if (!who) {
+      if (lead) this.finishAsking(day);
+      return this.doAtPlace(dt, day, g.clock?.hour ?? 12);
+    }
     const d = dist(a.x, a.y, who.x, who.y);
     if (d > 26) {
       const r = b.steering.moveTo(who.x, who.y, dt, { arrive: 22, run: d > 20 * TILE ? 1.15 : 1, ignore: who, maxNodes: 20000 });
       if (r === 'moving') return true;
       if (r !== 'arrived') {
         day.blockedT += dt;
-        if (day.blockedT > 6) day.person = null;
+        if (day.blockedT > 6) {
+          day.person = null;
+          if (lead) this.finishAsking(day);
+        }
       }
       return true;
     }
@@ -609,12 +700,25 @@ export class OwnLife {
         day.greeted = true;
         b.emote('wave');
         b.say(say.greet(nameOf(g, who)));
+      } else if (lead) {
+        // The question she came to ask; then she walks the place with what she heard.
+        b.emote('think');
+        b.say(say.askAboutMaren(nameOf(g, who)), { target: who });
+        safe('mind.remember', () => a.mind?.remember?.(`I asked ${who.name || nameOf(g, who)} about Maren again.`, { importance: 3, about: [who.id, 'maren'], type: 'event', tags: ['maren', 'lead'] }));
+        this.finishAsking(day);
       } else if (chance(0.4)) {
         b.emote(chance(0.5) ? 'laugh' : 'think');
         safe('mind.feel', () => a.mind?.feel?.('joy', 0.04, `time with ${who.name || 'a friend'}`));
       }
     }
     return true;
+  }
+
+  finishAsking(day) {
+    day.asked = true;
+    day.phase = 'travel';
+    day.actT = rand(6, 10);
+    day.label = this.labelFor(day);
   }
 
   // Idle life anchored on a spot of her own (not on the player).
@@ -728,7 +832,10 @@ export class OwnLife {
     b.say(say.fleeSafe(fromPlayer, loc ? placePhrase(loc) : null), { force: true });
     const s = companionshipOf(g);
     let next = d.then;
-    if (!next || (fromPlayer && next.type === 'follow')) next = fromPlayer ? (s === 'together' || s === 'wary' ? { type: 'keep_away', from: 'player', tiles: 6 } : { type: 'independent' }) : { type: 'follow', target: 'player', distance: 'normal' };
+    // Safe from the player but still traveling with them: room to breathe for a minute,
+    // then she trails them from a distance.
+    const breathe = { type: 'keep_away', from: 'player', tiles: 6, seconds: 60, then: { type: 'follow', target: 'player', distance: 'far' } };
+    if (!next || (fromPlayer && next.type === 'follow')) next = fromPlayer ? (s === 'together' || s === 'wary' ? breathe : { type: 'independent' }) : { type: 'follow', target: 'player', distance: 'normal' };
     if (!fromPlayer && (s === 'apart' || s === 'left')) next = { type: 'independent', ...(s === 'left' ? { avoid: 'player' } : {}) };
     if (s === 'gone') next = { type: 'leave', mode: 'gone' };
     const r = b.setDirective(next, { quiet: true });
@@ -760,10 +867,12 @@ export class OwnLife {
     const ex = st.exit;
     const p = g.player;
     const seen = onScreen(g, a.x, a.y, 16);
-    // Out of sight and far from the player for a while: she is simply gone.
+    // She walks the whole way; only after a long while out of anyone's sight, far
+    // from the player, is she simply gone (a player who runs after her can still
+    // catch a last glimpse of her on the road).
     if (!seen && (!p || dist(a.x, a.y, p.x, p.y) > 28 * TILE)) st.farT += dt;
     else st.farT = 0;
-    if (st.farT > 4) return this.vanish(d);
+    if (st.farT > 30) return this.vanish(d);
     if (ex.none || dist(a.x, a.y, ex.x, ex.y) < 10 || atMapEdge(g, a, 0)) {
       const ux = ex.none ? a.x - (p?.x ?? a.x - 1) : ex.x - (g.map?.w ? (g.map.w * TILE) / 2 : a.x - 1);
       const uy = ex.none ? a.y - (p?.y ?? a.y) : 0;
@@ -814,6 +923,11 @@ export class OwnLife {
     if (!from || !isActorAlive(from)) {
       st.spot = null;
       return this.ownIdle(dt, null);
+    }
+    // Not traveling with them: she gets on with her own day and steps away whenever
+    // they come close.
+    if (!d.follow && (d.plan || !isTogether(g))) {
+      return this.runIndependent(dt, { type: 'independent', plan: d.plan || null, avoid: from === g.player ? 'player' : from.id, tiles: d.tiles || 4 });
     }
     const minD = (d.tiles || 4) * TILE;
     const dd = dist(a.x, a.y, from.x, from.y);
@@ -900,8 +1014,16 @@ export class OwnLife {
     const d = this.b.directive;
     const g = this.game;
     switch (d.type) {
-      case 'independent':
-        return this.day?.skipped ? 'keeping to the village today' : this.day?.label || 'living her own day';
+      case 'independent': {
+        const day = this.day;
+        if (day?.skipped) return 'keeping to the village today';
+        const jobs = this.b.jobs;
+        if (day?.jobOn && jobs.active) {
+          if (jobs.phase === 'deliver') return jobs.status();
+          if (jobs.amount) return `${day.label} (${jobs.count}/${jobs.amount})`;
+        }
+        return day?.label || 'living her own day';
+      }
       case 'flee': {
         const from = this.st?.from;
         const dest = this.st?.dest;
@@ -920,6 +1042,18 @@ export class OwnLife {
         return '';
     }
   }
+}
+
+// A plan entry as plain data: every simple field her mind gave it (npc, kind, bed,
+// amount...), nothing live.
+function planEntry(e) {
+  const out = {};
+  for (const [k, v] of Object.entries(e)) {
+    if (v == null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') out[k] = v;
+  }
+  out.activity = String(e.activity || 'wander');
+  out.at = e.at ?? null;
+  return out;
 }
 
 function plain(d) {

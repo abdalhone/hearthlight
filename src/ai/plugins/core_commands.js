@@ -1,4 +1,4 @@
-import { cmd, act, firstMessage, cleanRef, parseDuration } from '../behavior/phrases.js';
+import { cmd, act, firstMessage, refusalLine, cleanRef, parseDuration } from '../behavior/phrases.js';
 import { goalPhrase, dist } from '../behavior/util.js';
 import { say } from '../behavior/lines.js';
 import { isFriend, isThreat } from '../behavior/combat_ai.js';
@@ -532,11 +532,14 @@ export const coreCommandsPlugin = {
     },
   ],
 
-  // Player-issued orders from the HUD bar and hotkeys get a spoken acknowledgement.
+  // Player-issued orders from the HUD bar and hotkeys get a spoken answer. The brain
+  // answers them itself when it is running (one voice, one bubble); this is the
+  // fallback for a game without one.
   onEvent(type, payload, ctx) {
-    if (type !== 'companion_action' || payload?.source !== 'player' || !payload.message) return;
-    const b = body(ctx);
-    b?.say?.(payload.message, { force: true });
+    if (type !== 'companion_action' || payload?.source !== 'player') return;
+    if (ctx?.game?.brain) return;
+    const text = payload.message || (payload.refused ? refusalLine(payload.verdict || { decision: payload.decision }) : '');
+    if (text) body(ctx)?.say?.(text, { force: true });
   },
 
   promptContext(ctx) {

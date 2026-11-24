@@ -50,6 +50,13 @@ export class Companion extends Actor {
     game.bus?.on?.('settings_changed', (p) => {
       if (p?.key === 'companionName' && p.value) this.name = String(p.value).slice(0, 24);
     });
+    // However she gets back up (the player's hand, combat's minute, her own), she says so.
+    game.bus?.on?.('revived', (p) => {
+      if (p?.entity !== this || this.leftWorld) return;
+      const byPlayer = !!p.by && p.by === game.player;
+      this.behavior.say(say.revived(byPlayer), { force: true });
+      if (byPlayer) this.faceToward(p.by.x, p.by.y);
+    });
   }
 
   // Nothing removes Lyra but her own leaving: a stray removal is ignored and a kill
@@ -140,9 +147,6 @@ export class Companion extends Actor {
     this.wasDowned = false;
     this.downedFor = 0;
     this.behavior.onRevived(by);
-    const byPlayer = by && by === this.game.player;
-    this.behavior.say(say.revived(byPlayer), { force: true });
-    if (byPlayer) this.faceToward(by.x, by.y);
   }
 
   canInteract(actor) {

@@ -102,7 +102,7 @@ export const JOBS = {
     noun: 'food',
     unit: ['dish', 'dishes'],
     kind: 'cook',
-    items: ['cooked_fish', 'stew', 'bread'],
+    items: null, // every dish she takes off the fire counts
     defaultAmount: null,
   },
   collect_loot: {
@@ -170,11 +170,32 @@ function recipeAvailable(r, inv) {
   return true;
 }
 
-export function recipesFor(targetRef) {
-  if (!targetRef) return RECIPES;
+// The recipes a fire offers (the world's Fire.recipes: { inputs, out, qty }) in the
+// job's terms, so a dish the world adds is one she can cook too.
+const fireRecipeCache = new WeakMap();
+function recipesOf(fire) {
+  const list = fire?.recipes;
+  if (!Array.isArray(list) || !list.length) return RECIPES;
+  let out = fireRecipeCache.get(list);
+  if (!out) {
+    out = list
+      .filter((r) => r && r.out && r.inputs)
+      .map((r) => {
+        const known = RECIPES.find((k) => k.id === r.out);
+        return { id: r.out, needs: { ...r.inputs }, qty: Math.max(1, r.qty || 1), seconds: known?.seconds ?? 5, words: known?.words ?? new RegExp(`\\b${String(r.out).replace(/_/g, '[ _]')}\\b`) };
+      });
+    if (!out.length) out = RECIPES;
+    fireRecipeCache.set(list, out);
+  }
+  return out;
+}
+
+export function recipesFor(targetRef, fire = null) {
+  const all = recipesOf(fire);
+  if (!targetRef) return all;
   const t = String(targetRef).toLowerCase();
-  const match = RECIPES.filter((r) => r.words.test(t));
-  return match.length ? match : RECIPES;
+  const match = all.filter((r) => r.words.test(t));
+  return match.length ? match : all;
 }
 
 export function cookableCount(inv, targetRef = null) {
@@ -383,7 +404,7 @@ export class JobRunner {
       const list = safe('objects.inRadius', () => g.objects?.inRadius?.(a.x, a.y, 90 * TILE, isFire), []) || [];
       for (const o of list) out.push({ obj: o, score: dist(a.x, a.y, o.x, o.y) });
     } else if (job.kind === 'fish') {
-      for (const s of this.fishingSpots()) out.push({ obj: null, spot: s, score: s.score });
+      for (const s of this.fishingSpots()) if (!this.isBlacklisted(s.obj || spotKey(s))) out.push({ obj: null, spot: s, score: s.score });
     }
     out.sort((p, q) => p.score - q.score);
     return out.slice(0, 12);
@@ -536,7 +557,8 @@ export class JobRunner {
     if (res === 'blocked' || res === 'locked' || res === 'stuck') {
       this.blockedT += dt;
       if (this.blockedT > 2.5 || res === 'locked' || res === 'stuck') {
-        if (t) this.blacklist.set(t, this.b.t + 30);
+        const key = t || (this.spot ? this.spot.obj || spotKey(this.spot) : null);
+        if (key) this.blacklist.set(key, this.b.t + 30);
         this.beginSearch();
       }
     } else this.blockedT = 0;
@@ -613,6 +635,8 @@ export class JobRunner {
       this.edgeSaid = true;
       if (chance(0.35)) this.b.say(say.edgeNerves(), { kind: 'whisper' });
     }
+    // The dock's fishing spot has the lake's own catch rules (the work API).
+    if (s.obj && typeof s.obj.work === 'function' && canWorkSafe(s.obj, a)) return this.stepFishSpot(dt, s);
     this.biteT -= dt;
     if (this.biteT > 0) return 'running';
     this.biteT = rand(3, 5.5);
@@ -634,6 +658,39 @@ export class JobRunner {
     return 'running';
   }
 
+  stepFishSpot(dt, s) {
+    const g = this.game;
+    const a = this.actor;
+    const spot = s.obj;
+    let res = null;
+    try {
+      res = spot.work(a, dt);
+    } catch (err) {
+      warnOnce('fishing_spot.work failed', err);
+      s.obj = null; // fish the old way from here
+      return 'running';
+    }
+    // A line in the water: a little ripple now and then.
+    this.fxT -= dt;
+    if (this.fxT <= 0) {
+      this.fxT = rand(1.1, 1.8);
+      safe('particles.emit', () => g.particles?.emit?.('splash', s.wx + rand(-3, 3), s.wy + rand(-2, 2), { count: 2 }));
+    }
+    if (!res?.done) return 'running';
+    const fish = (res.items || []).filter((it) => it?.id && it.qty > 0);
+    safe('audio.play', () => g.audio?.play?.('splash', { x: s.wx, y: s.wy }));
+    safe('particles.emit', () => g.particles?.emit?.('splash', s.wx, s.wy, { count: 6 }));
+    if (!fish.length) {
+      if (chance(0.15)) this.b.say(say.fishMiss(), { kind: 'whisper' });
+      return 'running';
+    }
+    safe('bubbles.icon', () => g.bubbles?.icon?.(a, '!'));
+    if (chance(0.3)) this.b.say(say.fishCatch());
+    this.gain(fish, spot);
+    if (this.amount && this.count >= this.amount) return this.beginDeliver();
+    return 'running';
+  }
+
   stepCook(dt) {
     const g = this.game;
     const a = this.actor;
@@ -641,7 +698,7 @@ export class JobRunner {
     if (fire) a.faceToward(fire.x, fire.y - 4);
     a.setState('work');
     if (!this.recipe) {
-      this.recipe = recipesFor(this.targetRef).find((r) => recipeAvailable(r, a.inventory)) || null;
+      this.recipe = recipesFor(this.targetRef, fire).find((r) => recipeAvailable(r, a.inventory)) || null;
       this.workT = 0;
       if (!this.recipe) return this.count > 0 ? this.beginDeliver() : this.fail(say.noIngredients());
     }
@@ -659,7 +716,7 @@ export class JobRunner {
     for (const [id, n] of Object.entries(r.needs)) a.inventory.remove(id, n);
     if (this.count === 0) this.b.say(say.cooked(r.id));
     safe('audio.play', () => g.audio?.play?.('pickup', { x: a.x, y: a.y }));
-    this.gain([{ id: r.id, qty: 1 }], fire, true);
+    this.gain([{ id: r.id, qty: r.qty || 1 }], fire, true);
     if (this.amount && this.count >= this.amount) return this.beginDeliver();
     return 'running';
   }
@@ -887,6 +944,11 @@ export class JobRunner {
     if (d.delivering) this.beginDeliver();
     return this.active;
   }
+}
+
+// Shore spots are places, not objects: remembered by their tile.
+function spotKey(s) {
+  return `${Math.round(s.x)},${Math.round(s.y)}`;
 }
 
 function moveItems(from, to, id, qty) {

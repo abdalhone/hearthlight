@@ -1,5 +1,5 @@
 import { factionRelation } from '../../entities/entity.js';
-import { clamp, dist, tileOf, walkable, lineOfSight, isActorAlive, warnOnce, safe } from './util.js';
+import { clamp, dist, tileOf, walkable, lineOfSight, clearShot, isActorAlive, warnOnce, safe } from './util.js';
 
 // Lyra in a fight: who counts as a friend, who she should fight under each stance,
 // and how she fights (range first, kite melee foes, dagger when cornered, never
@@ -69,6 +69,20 @@ export function isThreat(game, self, e) {
   return false;
 }
 
+// Would her bolts and dagger actually land on `e` if she chose it? The combat
+// rules decide (they spare villagers and pets unless they hurt her first); without
+// them, anything she would pick is fair.
+export function canHarm(game, self, e) {
+  const c = game.combat;
+  if (!c || typeof c.canHarm !== 'function') return true;
+  try {
+    return !!c.canHarm(self, e, true);
+  } catch (err) {
+    warnOnce('combat.canHarm failed', err);
+    return true;
+  }
+}
+
 export function threatOf(game, self, e) {
   if (Number.isFinite(e.threat)) return e.threat;
   return isHostile(game, self, e) ? 2 : 0.5;
@@ -91,7 +105,7 @@ function isFightable(e, self) {
 // her, the player included: the one case that bypasses isFriend).
 export function selectTarget(ctx) {
   const { game, self, stance, player, now, memory, current, focus } = ctx;
-  if (focus && isFightable(focus, self) && !isFriend(game, self, focus)) return focus;
+  if (focus && isFightable(focus, self) && !isFriend(game, self, focus) && canHarm(game, self, focus)) return focus;
   const list = game.entities?.list || game.entities?.all?.() || [];
   const cx = ctx.center?.x ?? self.x;
   const cy = ctx.center?.y ?? self.y;
@@ -109,6 +123,7 @@ export function selectTarget(ctx) {
     const attackedHer = hitHerAgo < SELF_DEFENSE_SECONDS;
     const selfDefense = stance === 'self_defense' && attackedHer;
     if (!selfDefense && (isFriend(game, self, e) || isInnocent(game, self, e))) continue;
+    if (!canHarm(game, self, e)) continue;
     const vsPlayer = (rec && now - rec.vsPlayer < MEMORY_SECONDS) || (player && (e.target === player || e.ai?.target === player));
     const vsSelf = (rec && now - rec.vsSelf < MEMORY_SECONDS) || e.target === self || e.ai?.target === self;
     const byPlayer = rec && now - rec.byPlayer < MEMORY_SECONDS;
@@ -197,7 +212,7 @@ export class CombatAI {
     const st = b.steering;
     this.trackTarget(target, dt);
     const d = dist(a.x, a.y, target.x, target.y);
-    const los = lineOfSight(g, a.x, a.y - 8, target.x, target.y - 6);
+    const los = clearShot(g, a, target);
     const ranged = isRangedFoe(target);
     let moved = false;
 
@@ -209,7 +224,12 @@ export class CombatAI {
     } else if (d >= 40) this.cornered = Math.max(0, this.cornered - dt);
 
     if (!moved) {
-      if (d > 100 || !los) {
+      if (opts.stayOut && (d > 100 || !los)) {
+        // The target is somewhere she will not follow it: hold at the edge.
+        st.stop();
+        a.faceToward(target.x, target.y);
+        moved = true;
+      } else if (d > 100 || !los) {
         st.moveTo(target.x, target.y, dt, { arrive: los ? 85 : 26, run: d > 160 ? 1.3 : 1, ignore: target });
         moved = true;
       } else if (this.friendBlockT > 0) {
@@ -246,12 +266,12 @@ export class CombatAI {
     const a = b.actor;
     const lead = clamp(d / BOLT_SPEED, 0, 0.6);
     let ax = target.x + clamp(this.vx * lead, -24, 24);
-    let ay = target.y - 6 + clamp(this.vy * lead, -24, 24);
-    if (!lineOfSight(g, a.x, a.y - 8, ax, ay)) {
+    let ay = target.y - 3 + clamp(this.vy * lead, -24, 24);
+    if (!lineOfSight(g, a.x, a.y - 3, ax, ay)) {
       ax = target.x;
-      ay = target.y - 6;
+      ay = target.y - 3;
     }
-    if (this.friendInLine(a.x, a.y - 8, ax, ay, target)) {
+    if (this.friendInLine(a.x, a.y - 3, ax, ay, target)) {
       this.friendBlockT = 0.5;
       this.boltCd = 0.15;
       return false;
@@ -279,14 +299,14 @@ export class CombatAI {
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
       if (e === a || e === target || e.type !== 'actor' || e.removed || e.dead) continue;
-      if (e.x < minX || e.x > maxX || e.y - 6 < minY || e.y - 6 > maxY) continue;
+      if (e.x < minX || e.x > maxX || e.y - 3 < minY || e.y - 3 > maxY) continue;
       const ex = e.x - x0;
-      const ey = e.y - 6 - y0;
+      const ey = e.y - 3 - y0;
       const t = (ex * dx + ey * dy) / l2;
       if (t < 0.02 || t > 1.1) continue;
       const px = x0 + dx * t;
       const py = y0 + dy * t;
-      if (Math.hypot(e.x - px, e.y - 6 - py) > 10) continue;
+      if (Math.hypot(e.x - px, e.y - 3 - py) > 10) continue;
       if (e === g.player || isFriend(g, a, e) || isInnocent(g, a, e)) return e;
     }
     return null;
