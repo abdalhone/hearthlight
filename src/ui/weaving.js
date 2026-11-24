@@ -444,8 +444,7 @@ export class Weaving {
       this.touches.clear();
       return;
     }
-    // Hit-stop freezes the world: hold every cast where it is.
-    if (g.hitStop > 0) return;
+    // (A hit-stop freezes the world, not the hands: presses made in it still count.)
     const n = this.slotCount();
     if (input) {
       const steps = input.takeWheel?.() || 0;

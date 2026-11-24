@@ -6862,3 +6862,8 @@ input[type='range']::-moz-range-thumb {
 .touch.lefty .stick {
   left: calc(100% - var(--sa-r) - 96px);
 }
+
+/* On touch the contextual button (with its tag) says what E would: no second prompt. */
+.is-touch .interact-prompt {
+  display: none;
+}
