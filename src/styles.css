@@ -9008,6 +9008,10 @@ body {
   .panel-dialog:has(.dlg-extra > .shop) .panel-foot.dlg-say {
     display: none;
   }
+  /* "Done trading" keeps its whole outline (the column clips at its edge). */
+  .panel-dialog .dlg-extra > .shop > .btn {
+    margin: 0 3px 3px 0;
+  }
 }
 
 /* One close control: the chat's ✕ is the panels' ✕ (same box, same mark). */

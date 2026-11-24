@@ -291,6 +291,7 @@ async function run([W, H]) {
   const lesson = () => page.evaluate(() => ({ id: window.__game.ui.coach.lesson?.id || null, i: window.__game.ui.coach.lesson?.i ?? -1 }));
   let L = await lesson();
   if (check(L.id === 'cast', `${tag}: the casting lesson appears`)) {
+    await wait(400); // the card's fade-in
     await shot('05-lesson-cast');
     // 1: really cast (tap the weave it points at).
     const ring = await box('.coach-ring');
