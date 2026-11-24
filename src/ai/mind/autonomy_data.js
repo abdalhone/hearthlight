@@ -126,7 +126,11 @@ export const ACTION_CATEGORY = {
   promise: 'talk',
   note_about: 'talk',
   remember: 'talk',
-  forget: 'talk',
+  // Her memory is hers (DESIGN §17.4): asked to forget or remember differently, she weighs it.
+  forget: 'memory',
+  edit_memory: 'memory',
+  update_knowledge: 'memory',
+  retract_knowledge: 'memory',
   set_goal: 'talk',
   complete_goal: 'talk',
   express: 'talk',

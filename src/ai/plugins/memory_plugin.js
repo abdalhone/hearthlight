@@ -1,9 +1,13 @@
-import { PLAYER_ID } from '../../core/constants.js';
+import { PLAYER_ID, DAY_SECONDS } from '../../core/constants.js';
 import { resolvePerson, memoryAnswer, lifeAnswer, knowAnswer } from '../mind/voice.js';
 import { clamp, cap, pick, shorten, playerRef, firstName } from '../mind/text.js';
+import { editMemory, forgetMemory, updateKnowledge, retractKnowledge, applyLifeEdits, consolidateDay } from '../mind/memory_edits.js';
 
-// Memory plugin (mind): remembering what the player asks her to, forgetting (unless it
-// matters too much), and recalled memories for Claude's prompt.
+// Memory plugin (mind): remembering what the player asks her to, tending her own memory
+// (DESIGN §17.4: edit_memory, forget, update_knowledge, retract_knowledge, each keeping a
+// history), the night's consolidation, and recalled memories for Claude's prompt.
+// When the player asks her to forget or remember differently, it is a request she weighs
+// (the consent gate, §16.4); when she decides herself (Claude, her sleep), it simply runs.
 
 const PERSONAL = /\b(i|i'm|i've|me|my|mine|you|your|yours|you're)\b/i;
 
@@ -38,20 +42,74 @@ function rememberAction(args, ctx) {
   };
 }
 
+// Did the player ask for this (it went through her consent gate a moment ago)?
+function askedByPlayer(ctx, name) {
+  const a = ctx?.mind?.autonomy;
+  return !!a && !(a._selfAct > 0) && !!a.wasJustEvaluated?.(name);
+}
+
 function forgetAction(args, ctx) {
   const mind = ctx.mind;
   if (!mind) return { ok: false, message: "I can't think straight right now." };
-  const text = String(args.value || args.target || '').trim();
+  const text = String(args.target || args.value || '').trim();
   if (!text) return { ok: false, message: 'Forget what?' };
-  if (/\bmaren\b/i.test(text)) return { ok: false, message: 'Forget Maren? Never. Not one word of her.' };
-  const best = mind.recall(text, { limit: 1, stores: ['episode', 'life'], touch: false, spread: false })[0];
-  if (best?.store === 'life' && best.relevance >= 0.3) return { ok: false, message: "That's my life you're asking me to forget. No." };
-  const { people, places } = mind.resolveQuery(text);
-  const m = best?.store === 'episode' && best.relevance >= 0.3 ? best.ref : mind.memory.bestMatch(text, { people, places, minRelevance: 0.3 });
-  if (!m) return { ok: false, message: "I don't remember anything like that to forget." };
-  if (m.pinned || m.importance >= 8) return { ok: false, message: 'No. Some things I keep, even when they hurt.' };
-  mind.memory.remove(m.id);
-  return { ok: true, message: pick(["Gone. ...Mostly. I'm not that kind of wizard.", "Forgotten. Or I'll pretend it is, which is nearly the same.", 'Consider it forgotten.'], ctx.game?.rng) };
+  const by = askedByPlayer(ctx, 'forget') ? 'player' : 'self';
+  return forgetMemory(mind, text, { why: by === 'player' ? '' : args.value && args.target ? args.value : '', by });
+}
+
+// "Remember it differently": which memory, when the player did not say.
+function lastAboutPlayer(mind) {
+  const now = mind.now?.() ?? 0;
+  const list = mind.memory?.all?.() || [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i];
+    if (now - m.t > DAY_SECONDS) break;
+    if (m.type !== 'reflection' && m.about?.includes(PLAYER_ID)) return m.id;
+  }
+  return null;
+}
+
+function editAction(args, ctx) {
+  const mind = ctx.mind;
+  if (!mind) return { ok: false, message: "I can't think straight right now." };
+  const asked = askedByPlayer(ctx, 'edit_memory');
+  const ref = String(args.target || '').trim() || (asked ? lastAboutPlayer(mind) : null) || String(args.value || '').trim();
+  if (!ref) return { ok: false, message: 'Remember what differently?' };
+  if (!args.value && !Number.isFinite(args.amount)) return { ok: false, message: 'Differently how?' };
+  return editMemory(mind, ref, { text: args.value || null, importance: Number.isFinite(args.amount) ? args.amount : null, by: asked ? 'player' : 'self', asked });
+}
+
+function updateKnowledgeAction(args, ctx) {
+  const mind = ctx.mind;
+  if (!mind) return { ok: false, message: "I can't think straight right now." };
+  const ref = String(args.target || '').trim();
+  if (!ref) return { ok: false, message: 'Correct what?' };
+  const by = askedByPlayer(ctx, 'update_knowledge') ? 'player' : 'self';
+  const r = updateKnowledge(mind, ref, { text: args.value || null, confidence: Number.isFinite(args.amount) ? args.amount : null, by });
+  // Something she did not know yet: the player told her, so she learns it as theirs.
+  if (!r.ok && !r.entry && args.value && by === 'player' && /know anything/.test(r.message)) {
+    const k = mind.learn?.(ref, String(args.value), { source: 'player' });
+    if (k) return { ok: true, message: pick(["I didn't know that. I'll remember it.", 'Noted.'], ctx.game?.rng) };
+  }
+  return r;
+}
+
+function retractKnowledgeAction(args, ctx) {
+  const mind = ctx.mind;
+  if (!mind) return { ok: false, message: "I can't think straight right now." };
+  const ref = String(args.target || '').trim();
+  if (!ref) return { ok: false, message: 'Stop believing what?' };
+  const by = askedByPlayer(ctx, 'retract_knowledge') ? 'player' : 'self';
+  return retractKnowledge(mind, ref, { why: args.value || (by === 'player' ? `${cap(playerRef(ctx.game))} told me it isn't so.` : '') });
+}
+
+// Her own tending at sleep, after the store merged and faded its entries.
+function hookConsolidation(mind) {
+  const mem = mind?.memory;
+  if (!mem || mem.onConsolidate?.forMind === mind) return;
+  const fn = () => consolidateDay(mind);
+  fn.forMind = mind;
+  mem.onConsolidate = fn;
 }
 
 const STATE = new WeakMap();
@@ -75,14 +133,50 @@ export const memoryPlugin = {
       run: rememberAction,
     },
     forget: {
-      ungated: true, // asks nothing of her (DESIGN §16.4)
-      description: 'Drop a memory matching the text. Lyra refuses to forget important things.',
-      params: { value: 'text to match' },
+      description: 'Let one of your memories go (her own choice; when the player asks, a request she weighs). Never your past, never Maren, never what protects you.',
+      params: { target: 'memory id (optional)', value: 'words that find the memory' },
       run: forgetAction,
+    },
+    edit_memory: {
+      description: 'Rewrite or reframe one of your memories; the old version is kept. Never makes small what protects you.',
+      params: { target: 'memory id, or words that find it', value: 'how you remember it now', amount: 'new importance 1..10 (optional)' },
+      run: editAction,
+    },
+    update_knowledge: {
+      description: 'Correct or update something you know (a fact, rumor or theory); the old version is kept.',
+      params: { target: 'subject or knowledge id', value: 'the corrected text', amount: 'confidence 0..1 (optional)' },
+      run: updateKnowledgeAction,
+    },
+    retract_knowledge: {
+      description: 'Stop believing a fact or theory you now think is wrong.',
+      params: { target: 'subject or knowledge id', value: 'why, in your words' },
+      run: retractKnowledgeAction,
     },
   },
 
+  install(ctx) {
+    hookConsolidation(ctx?.mind || ctx?.game?.companion?.mind);
+  },
+
+  // Her reframed past lives in the memory store's save; the mind rebuilds her life from
+  // the story on load, so the edits are laid back on top once everything is loaded.
+  deserialize(data, ctx) {
+    const mind = ctx?.mind || ctx?.game?.companion?.mind;
+    if (!mind) return;
+    hookConsolidation(mind);
+    applyLifeEdits(mind);
+  },
+
+  serialize() {
+    return { v: 1 };
+  },
+
   onEvent(type, p, ctx) {
+    if (type === 'game_start' || type === 'player_sleep') {
+      hookConsolidation(ctx?.mind);
+      if (type === 'game_start' && p?.loaded) applyLifeEdits(ctx?.mind);
+      return;
+    }
     // When Claude stores a memory, it is her own reflection rather than something told.
     if (type === 'companion_action' && p?.name === 'remember') {
       const s = state(ctx.game);
@@ -180,6 +274,24 @@ export const memoryPlugin = {
       confidence: 0.9,
       actions(m) {
         return [{ name: 'remember', args: { target: null, value: m.groups.text.trim(), amount: 6 } }];
+      },
+      answer(m, ctx, results) {
+        return results?.[0]?.message || null;
+      },
+    },
+    {
+      id: 'mem.edit',
+      examples: ['remember it differently', 'remember that differently: I was trying to help', "don't remember it like that", 'please remember the wolf fight differently: it was my idea'],
+      patterns: [
+        /^(?:(?:please|lyra|can you|could you|would you|will you)[, ]+)*remember (?:it|that|this|the (?<what>.+?)) (?:differently|another way|a different way|otherwise)(?:\s*[:,.;-]\s*(?<text>.{3,}))?\??$/i,
+        /^(?:(?:please|lyra)[, ]+)*(?:don't|do not) remember (?:it|that|this) (?:that way|like that)(?:\s*[:,.;-]\s*(?<text>.{3,}))?$/i,
+      ],
+      command: true,
+      confidence: 0.86,
+      actions(m) {
+        const what = m.groups?.what ? m.groups.what.trim() : null;
+        const text = m.groups?.text ? m.groups.text.trim() : null;
+        return [{ name: 'edit_memory', args: { target: what, value: text, amount: null } }];
       },
       answer(m, ctx, results) {
         return results?.[0]?.message || null;

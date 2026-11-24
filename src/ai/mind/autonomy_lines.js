@@ -392,6 +392,36 @@ export const LINES = {
     afraid: ['No.'],
     tired: ['No. Not today.'],
   },
+  no_forget_protect: {
+    warm: ['No. I remember that for a reason.'],
+    cool: ['No. I remember that for a reason.'],
+    afraid: ['No. I remember that for a reason.'],
+    tired: ['No. I remember that for a reason.'],
+  },
+  no_forget_life: {
+    warm: ['That’s my life you’re asking me to forget. No.'],
+    cool: ['That’s my life. No.'],
+    afraid: ['No. That’s my life.'],
+    tired: ['My life stays mine. No.'],
+  },
+  no_forget_keep: {
+    warm: ['No. Some things I keep, even when they hurt.'],
+    cool: ['No. That one I keep.'],
+    afraid: ['No. I keep that.'],
+    tired: ['No. I keep that one.'],
+  },
+  no_forget_maren: {
+    warm: ['Forget Maren? Never. Not one word of her.'],
+    cool: ['Not Maren. Never.'],
+    afraid: ['Not Maren. Never.'],
+    tired: ['Never Maren.'],
+  },
+  no_memory: {
+    warm: ['My memories are mine to keep, thanks.', 'I’ll remember things my own way, if it’s all the same to you.'],
+    cool: ['No. How I remember things is my business.'],
+    afraid: ['No. Leave my memories alone.'],
+    tired: ['No. Mine.'],
+  },
   stop_villager: {
     warm: ['Don’t you dare. {target} has done nothing to you.', 'No. And put that thought away before I see you act on it.'],
     cool: ['Never. Lay a hand on {target} and I’ll stop you myself.', 'Try it and you’ll be rooted where you stand.'],

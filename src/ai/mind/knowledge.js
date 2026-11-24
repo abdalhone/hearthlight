@@ -1,11 +1,16 @@
-import { clamp01, normName } from './text.js';
+import { clamp01, normName, tokenize } from './text.js';
+import { cleanHistory, pushHistory, jaccard } from './memory.js';
 
 // What Lyra knows about the world (DESIGN §17.2), as opposed to what happened to her.
 // mind.knowledge is this store's `list` (a plain array, so §9 readers keep working):
 //   { id: 'k12', subject, text, kind: 'fact'|'lore'|'theory'|'rumor',
 //     source: 'lore'|'told'|'observed'|'player'|'inferred', confidence 0..1,
-//     about: [ids], loreId, from (who told her), t }
+//     about: [ids], loreId, from (who told her), t,
+//     edited?, history?: [{ t, text, confidence, kind, why }], retracted?, why? }
 // Theories stay theories: hearing the same thing again never turns a belief into a fact.
+// She corrects what she knows (DESIGN §17.4): update() keeps the earlier text in history;
+// retract() marks a belief she now thinks is wrong (kept, with her reason, so a retracted
+// lore entry is not learned again; it is never recalled).
 
 export const KNOWLEDGE_KINDS = ['fact', 'lore', 'theory', 'rumor'];
 export const KNOWLEDGE_SOURCES = ['lore', 'told', 'observed', 'player', 'inferred'];
@@ -60,11 +65,17 @@ export class KnowledgeStore {
     return !!this.byLore(loreId);
   }
 
+  // What she still believes (everything she has not retracted).
+  active() {
+    return this.list.filter((k) => !k.retracted);
+  }
+
   // Entries whose subject matches (loosely), or that are about an id.
-  about(subjectOrId) {
+  about(subjectOrId, { includeRetracted = false } = {}) {
     const n = normName(subjectOrId);
     if (!n) return [];
     return this.list.filter((k) => {
+      if (k.retracted && !includeRetracted) return false;
       if (k.about.includes(String(subjectOrId))) return true;
       const s = normName(k.subject);
       return s && (s === n || s.includes(n) || n.includes(s));
@@ -86,6 +97,8 @@ export class KnowledgeStore {
 
     const existing = (opts.loreId && this.byLore(String(opts.loreId))) || this._same(subj, clean, kind);
     if (existing) {
+      // Something she retracted, heard again: she does not simply believe it again.
+      if (existing.retracted) return existing;
       existing.t = Math.max(existing.t, t);
       // Hearing a fact again from a better source makes her surer; a theory stays a theory.
       if (kind !== 'theory' && existing.kind !== 'theory') existing.confidence = Math.max(existing.confidence, confidence);
@@ -105,6 +118,13 @@ export class KnowledgeStore {
       from: opts.from ? String(opts.from) : null,
       t,
     };
+    const hist = cleanHistory(opts.history, LIMITS.text);
+    if (hist.length) k.history = hist;
+    if (opts.edited || hist.length) k.edited = true;
+    if (opts.retracted) {
+      k.retracted = true;
+      if (opts.why) k.why = String(opts.why).slice(0, 140);
+    }
     this.list.push(k);
     if (this.list.length > this.max) this.prune();
     this.rev++;
@@ -115,6 +135,59 @@ export class KnowledgeStore {
     const s = normName(subject);
     const t = normName(text);
     return this.list.find((k) => normName(k.text) === t && (normName(k.subject) === s || k.kind === kind)) || null;
+  }
+
+  // Correct or update an entry, keeping what she believed before. changes:
+  // { text, confidence, kind, why }. Returns the entry, or null when nothing changed.
+  update(id, { text = null, confidence = null, kind = null, why = '' } = {}) {
+    const k = this.get(id);
+    if (!k) return null;
+    const next = text == null ? k.text : String(text).replace(/\s+/g, ' ').trim().slice(0, LIMITS.text);
+    const conf = Number.isFinite(Number(confidence)) && confidence !== null ? Math.round(clamp01(Number(confidence)) * 100) / 100 : k.confidence;
+    const nk = kind ? normalizeKind(kind, k.source) : k.kind;
+    if (!next || (next === k.text && conf === k.confidence && nk === k.kind && !k.retracted)) return null;
+    pushHistory(k, { t: this.now(), text: k.text, confidence: k.confidence, kind: k.kind, why });
+    k.text = next;
+    k.confidence = conf;
+    k.kind = nk;
+    if (k.retracted) {
+      delete k.retracted;
+      delete k.why;
+    }
+    this.rev++;
+    return k;
+  }
+
+  // She no longer believes it. The entry stays (with her reason) but is never recalled.
+  retract(id, why = '') {
+    const k = this.get(id);
+    if (!k || k.retracted) return null;
+    pushHistory(k, { t: this.now(), text: k.text, confidence: k.confidence, kind: k.kind, why: why || 'I stopped believing it.' });
+    k.retracted = true;
+    k.why = String(why || 'I stopped believing it.').slice(0, 140);
+    k.retractedT = Math.round(this.now());
+    this.rev++;
+    return k;
+  }
+
+  // Older beliefs that newer knowledge has overtaken: same subject, the same claim told
+  // differently, and the newer one at least as sure. -> [{ old, newer }]
+  superseded(since = -Infinity) {
+    const out = [];
+    const live = this.list.filter((k) => !k.retracted && k.source !== 'lore');
+    const fresh = live.filter((k) => k.t >= since);
+    for (const newer of fresh) {
+      const s = normName(newer.subject);
+      const nt = new Set(tokenize(newer.text));
+      for (const old of live) {
+        if (old === newer || old.t >= newer.t || out.some((x) => x.old === old)) continue;
+        if (normName(old.subject) !== s || normName(old.text) === normName(newer.text)) continue;
+        if (RELIABILITY[newer.kind] < RELIABILITY[old.kind] && newer.confidence < old.confidence) continue;
+        if (jaccard(new Set(tokenize(old.text)), nt) < 0.3) continue;
+        out.push({ old, newer });
+      }
+    }
+    return out;
   }
 
   remove(id) {
@@ -128,7 +201,7 @@ export class KnowledgeStore {
   prune(max = this.max) {
     if (this.list.length <= max) return 0;
     const now = this.now();
-    const worth = (k) => (k.source === 'lore' ? 100 : 0) + k.confidence * 2 + (k.loreId ? 3 : 0) + (k.source === 'player' ? 1 : 0) - Math.min(5, (now - k.t) / 9000);
+    const worth = (k) => (k.source === 'lore' ? 100 : 0) + k.confidence * 2 + (k.loreId ? 3 : 0) + (k.source === 'player' ? 1 : 0) - Math.min(5, (now - k.t) / 9000) - (k.retracted && !k.loreId ? 4 : 0);
     const ranked = this.list.map((k) => ({ k, w: worth(k) })).sort((a, b) => a.w - b.w);
     const drop = new Set(ranked.slice(0, this.list.length - max).map((x) => x.k.id));
     const before = this.list.length;
@@ -154,6 +227,17 @@ export class KnowledgeStore {
         if (k.about.length) o.a = k.about;
         if (k.loreId) o.lore = k.loreId;
         if (k.from) o.f = k.from;
+        if (k.edited) o.e = 1;
+        if (k.history?.length) o.h = k.history.map((h) => ({ ...h }));
+        if (k.retracted) {
+          o.r = 1;
+          if (k.why) o.w = k.why;
+          // A retracted lore entry keeps its words: the story's version is what she let go of.
+          if (o.x == null) {
+            o.s = k.subject;
+            o.x = k.text;
+          }
+        }
         return o;
       }),
     };
@@ -177,7 +261,20 @@ export class KnowledgeStore {
         text = text || lt.text;
       }
       if (!subject || !text) continue;
-      const k = this.add(subject, text, { id: e.id, kind: e.k ?? e.kind, source: e.src ?? e.source, confidence: e.c ?? e.confidence, about: e.a ?? e.about, loreId, from: e.f ?? e.from, t: Number(e.t) || 0 });
+      const k = this.add(subject, text, {
+        id: e.id,
+        kind: e.k ?? e.kind,
+        source: e.src ?? e.source,
+        confidence: e.c ?? e.confidence,
+        about: e.a ?? e.about,
+        loreId,
+        from: e.f ?? e.from,
+        t: Number(e.t) || 0,
+        history: e.h ?? e.history,
+        edited: !!(e.e ?? e.edited),
+        retracted: !!(e.r ?? e.retracted),
+        why: e.w ?? e.why,
+      });
       const num = parseInt(String(k?.id || '').replace(/\D/g, ''), 10);
       if (Number.isFinite(num)) maxId = Math.max(maxId, num);
     }
@@ -185,6 +282,9 @@ export class KnowledgeStore {
     this.rev++;
   }
 }
+
+// How much a kind of knowledge is worth against another when they disagree.
+const RELIABILITY = { lore: 3, fact: 2, theory: 1, rumor: 0 };
 
 // The subject and text a lore-backed entry has (a mystery clue is 'mysteryId#index').
 export function loreText(lorebook, loreId) {
