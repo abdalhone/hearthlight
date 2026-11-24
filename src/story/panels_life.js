@@ -154,7 +154,12 @@ const night_of_lamps = {
             b.rect(dx - dw / 2 - 1, ground - dh - 1, dw + 2, dh + 1, '#140f18');
             for (let yy = 0; yy < dh; yy++) for (let xx = 0; xx < dw; xx++) b.px(dx - dw / 2 + xx, ground - dh + yy, rampAt(['#b86a2a', '#e8a050', '#ffd08a'], 0.3 + (1 - yy / dh) * 0.5, xx, yy));
             b.glow(dx, ground - 10, 30 * u, '#ffb050', 0.5);
-            stamp(b, 'maren', 'idle', 'down', R2(dx), R2(ground), { mul: [0.5, 0.45, 0.5], rim: { color: '#ffc070', side: 1, k: 0.6 }, recolor: (r0, g0, b0) => (Math.abs(r0 - b0) < 30 && Math.abs(r0 - g0) < 30 && r0 < 150 ? [210, 204, 196] : [r0, g0, b0]) });
+            // her grey robe reads as a pale nightgown against the light; the outline stays dark
+            const gown = (r0, g0, b0) => {
+              const lum = (r0 + g0 + b0) / 3;
+              return Math.abs(r0 - b0) < 30 && Math.abs(r0 - g0) < 30 && lum > 55 && lum < 150 ? [lum * 1.5, lum * 1.45, lum * 1.38] : [r0, g0, b0];
+            };
+            stamp(b, 'maren', 'idle', 'down', R2(dx), R2(ground), { mul: [0.62, 0.55, 0.58], rim: { color: '#ffc070', side: 1, k: 0.5 }, recolor: gown });
           }
         }
       },
@@ -199,8 +204,8 @@ const night_of_lamps = {
         }
         stamp(b, 'hobb', 'sit', 'left', R2(hx + 6 * u), R2(hy + 2 * u), { mul: [0.6, 0.55, 0.9], rim: { color: '#b9a8ff', side: -1, k: 0.6 } });
         // The girl in the middle of it, arms up, eleven years old and furious.
-        stamp(b, 'lyra_young', 'idle', 'down', R2(cx - 4 * u), R2(cy), { mul: [0.8, 0.72, 1.0], rim: { color: '#e0d4ff', side: 1, k: 0.7 } });
-        b.glow(cx - 4 * u, cy - 14 * u, 22 * u, '#b9a8ff', 0.5);
+        b.glow(cx - 4 * u, cy - 10 * u, 26 * u, '#b9a8ff', 0.35);
+        stamp(b, 'lyra_young', 'idle', 'down', R2(cx - 4 * u), R2(cy), { mul: [0.85, 0.8, 1.0], rim: { color: '#e0d4ff', side: 1, k: 0.55 } });
         b.outline(OUTLINE);
       },
     },
@@ -214,7 +219,7 @@ const night_of_lamps = {
     const out = lamps.filter((l) => !l.burst).map((lp, i) => ({ x: lp.x, y: lp.y - 27 * u, r: 44 * u, color: '#a184ff', k: 0.75, flicker: true, depth: 1 }));
     const b = lamps.find((l) => l.burst);
     out.push({ x: b.x, y: b.y - 26 * u, r: 30 * u, color: '#e8e0ff', k: 0.3 + 0.3 * Math.max(0, Math.sin(t * 3)), depth: 1 });
-    out.push({ x: cx - 4 * u, y: cy - 14 * u, r: 36 * u, color: '#c9b8ff', k: 0.4, depth: 1 });
+    out.push({ x: cx - 4 * u, y: cy - 12 * u, r: 36 * u, color: '#c9b8ff', k: 0.22, depth: 1 });
     return out;
   },
 };

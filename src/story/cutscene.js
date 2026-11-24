@@ -184,8 +184,11 @@ export class CutscenePlayer {
     this.inWorld = false;
     this.box.classList.remove('cs-show');
     this.titleEl.classList.remove('cs-show');
+    // A scene that opens on a painted panel rises out of black; one that opens in the
+    // world keeps the world in view while the letterbox slides in.
+    const first = (script.steps || []).find((st) => st.panel || st.camera || st.actor || st.say != null || st.narrate != null || st.world);
     this.fadeEl.style.transition = 'none';
-    this.fadeEl.style.opacity = '1';
+    this.fadeEl.style.opacity = first && !first.panel ? '0' : '1';
     this.game.input?.releaseAll?.();
     window.addEventListener('keydown', this.onKey, true);
     window.addEventListener('keyup', this.onKeyUp, true);

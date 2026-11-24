@@ -168,8 +168,10 @@ export function house(b, x, baseY, w, h, roofH, opts = {}) {
   // Wall, darker at the foot, lit edge on the light side.
   for (let yy = 0; yy < h; yy++) {
     for (let xx = 0; xx < w; xx++) {
-      const t = 0.75 - (yy / h) * 0.45 + ((opts.lightSide || -1) > 0 ? xx / w : 1 - xx / w) * 0.2;
-      b.px(x + xx, baseY - h + yy, rampAt(wall, t, x + xx, yy));
+      // horizontal boards or courses every few pixels, smooth light across the wall
+      const course = (yy % 4 === 0 ? -0.06 : 0) + (noise(Math.floor(xx / 6), Math.floor(yy / 4), 7) - 0.5) * 0.08;
+      const t = 0.7 - (yy / h) * 0.4 + ((opts.lightSide || -1) > 0 ? xx / w : 1 - xx / w) * 0.18 + course;
+      b.px(x + xx, baseY - h + yy, rampSmooth(wall, clamp(t), x + xx, yy, 3));
     }
   }
   // Roof: a gable whose overhang throws a line of shadow on the wall.
