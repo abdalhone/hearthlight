@@ -430,7 +430,7 @@ export function applyVerdict(m, about, v) {
 }
 
 // Outside: the watch walks the stranger to the King's Road, past the bell-reach.
-function walkOut(m) {
+export function walkOut(m) {
   const g = m.game;
   const P = g.player;
   if (!P) return;

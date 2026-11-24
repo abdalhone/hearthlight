@@ -505,3 +505,88 @@ test('Sister Aveline gone: Petra (or Mira, or Elda) tells Maren’s story instea
   void DAY;
   void HOUR;
 });
+
+test('the lake gives back what it takes: days later, on the shore, found in the morning — missing becomes murder', () => {
+  const g = makeGame({ hour: 9 });
+  holdLyra(g, px(150), px(112));
+  const corran = g.entities.get('corran');
+  const bram = g.entities.get('bram');
+  put(bram, px(WOODS.tx + 1), px(WOODS.ty));
+  put(g.player, px(WOODS.tx), px(WOODS.ty));
+  downBy(g, bram);
+  const rec = g.murder.kill(bram, g.player);
+  g.murder.bodyInteract(bram, g.player);
+  const shore = lakeShore(g);
+  put(g.player, shore.x, shore.y);
+  g.murder.carrierInteract(g.player);
+  assert.ok(rec.hidden.returnsAt >= g.clock.t + 2 * DAY - 1 && rec.hidden.returnsAt <= g.clock.t + 4 * DAY + 1, 'two to four days');
+  put(g.player, px(96), px(79));
+  // Days pass (the clock jumps; the lake keeps its own time).
+  g.clock.t = rec.hidden.returnsAt + 1;
+  g.clock.skipTo(5.5);
+  step(g, 2, 1 / 10);
+  assert.ok(rec.washedUp != null && !bram.hidden, 'washed up on the shore');
+  assert.equal(rec.foundAt, null, 'nobody walks the shore before dawn');
+  g.clock.skipTo(6.5);
+  step(g, 2, 1 / 10);
+  assert.ok(rec.foundAt != null, 'found in the morning');
+  assert.equal(rec.foundBy, 'corran', 'Corran walks his shore');
+  assert.ok(g.murder.cases.bram, 'and the watch opens a case');
+  assert.ok(g.villageLife.cases.get('bram')?.status === 'dead');
+  void corran;
+});
+
+test('wanted for murder and beaten down by the watch: the Moot sits once the stranger is up', () => {
+  const g = makeGame({ hour: 12 });
+  quiet(g, ['bram', 'elda']);
+  const sq = g.locations.get('town_square').center;
+  const bram = g.entities.get('bram');
+  const elda = g.entities.get('elda');
+  hold(bram);
+  hold(elda);
+  put(bram, sq.x, sq.y);
+  put(g.player, sq.x - 14, sq.y);
+  put(elda, sq.x + 50, sq.y - 10);
+  downBy(g, bram);
+  g.murder.kill(bram, g.player);
+  assert.equal(g.player.crime.kind, 'murder');
+  // The watch clears it where the stranger falls (player.js) — for a killing, that is custody.
+  g.combat.clearCrime(g.player, 'arrested');
+  assert.ok(g.murder.trialPending?.about === 'bram');
+  step(g, 1.5, 1 / 10);
+  assert.equal(g.murder.trialPending, null);
+  assert.equal(g.murder.cases.bram.verdict, 'guilty', 'Elda saw it');
+  assert.ok(g.murder.outside && g.player.crime?.kind === 'outside');
+});
+
+test('Lyra asks, once, when she is unsure; a denial she chooses to believe, a confession she takes to the watch', () => {
+  for (const answer of ['No. I never touched him.', 'Yes. I did it.']) {
+    const g = makeGame({ hour: 10 });
+    holdLyra(g, px(150), px(112));
+    const bram = g.entities.get('bram');
+    put(bram, px(WOODS.tx + 1), px(WOODS.ty));
+    put(g.player, px(WOODS.tx), px(WOODS.ty));
+    downBy(g, bram);
+    const rec = g.murder.kill(bram, g.player);
+    put(g.player, px(96), px(79));
+    g.murder.found('bram', 'hess', 'whisperwood');
+    const st = g.murder.lyra.bram;
+    st.belief = 'fears';
+    st.weighAt = Infinity;
+    holdLyra(g, g.player.x + 30, g.player.y);
+    step(g, 1, 1 / 10);
+    assert.ok(st.asked, 'she asked');
+    assert.ok(g.murder.lyraAsking);
+    g.bus.emit('player_message', { text: answer });
+    assert.ok(g.murder.lyraReply?.text, 'she answers in her own words');
+    if (answer.startsWith('No')) {
+      assert.equal(st.answered, 'denied');
+      assert.equal(st.belief, 'doubts');
+    } else {
+      assert.equal(st.answered, 'confessed');
+      assert.equal(g.companion.mind.companionship, 'gone');
+      assert.ok(rec.answers.some((a) => a.kind === 'lyra_told'), 'she told the watch');
+      assert.ok(g.murder.cases.bram.suspicion >= 0.85);
+    }
+  }
+});

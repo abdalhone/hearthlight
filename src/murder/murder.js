@@ -96,6 +96,7 @@ export class Murder {
       );
       bus.on('npc_topic', (p) => safe(() => Grief.onTopic(this, p)));
       bus.on('delivered', (p) => safe(() => this.onDelivered(p)));
+      bus.on('crime_cleared', (p) => safe(() => this.onCrimeCleared(p)));
     }
     this.attach();
     this.installPlugin();
@@ -1055,6 +1056,7 @@ export class Murder {
     Grief.tickMoots(this);
     this.tickCases();
     this.tickArrest();
+    this.tickCustody();
     Lyra.tick(this);
     Grief.tickOutside(this);
   }
@@ -1136,17 +1138,40 @@ export class Murder {
 
   onTended(p) {
     if (!p?.arrested) return;
-    const about = this.wanted?.about;
-    if (!about || !this.dead[about]) return;
-    // Carried in by the watch: the Moot sits once they are on their feet.
-    this.trialAfterTending = { about, at: this.now() + 2 };
-    setTimeoutSafe(() => {
-      if (this.trialAfterTending) {
-        const a = this.trialAfterTending.about;
-        this.trialAfterTending = null;
-        Grief.trial(this, a);
-      }
-    }, 3500);
+    const about = this.wanted?.reason === 'murder' ? this.wanted.about : null;
+    if (about && this.dead[about] && !this.cases[about]?.verdict) this.trialPending = { about, t: Math.round(this.now()) };
+  }
+
+  // Beaten down by the watch while wanted (player.js settles a lesser crime "where you
+  // fell"): for a killing, the Moot sits once the stranger is on their feet again. Outside,
+  // the watch only drives them back to the road.
+  onCrimeCleared(p) {
+    if (!this.isPlayer(p?.actor) || p.reason !== 'arrested') return;
+    const P = this.game?.player;
+    if (this.outside && this.now() < this.outside.until) {
+      if (P) P.crime = { level: 3, kind: 'outside', until: this.outside.until, victimId: this.outside.about, since: this.now(), t: this.now() };
+      this.outsideAgain = true;
+      return;
+    }
+    const about = this.wanted?.reason === 'murder' ? this.wanted.about : null;
+    if (about && this.dead[about] && !this.cases[about]?.verdict) this.trialPending = { about, t: Math.round(this.now()) };
+  }
+
+  // On their feet, nothing else on screen: what the watch was waiting for happens now.
+  tickCustody() {
+    const P = this.game?.player;
+    if (!P || P.downed || P.state === 'sleep' || safe(() => this.game.survival?.isFallen?.(P), false) || !this.quiet()) return;
+    if (this.trialPending) {
+      const { about } = this.trialPending;
+      this.trialPending = null;
+      Grief.trial(this, about);
+      return;
+    }
+    if (this.outsideAgain) {
+      this.outsideAgain = false;
+      Grief.walkOut(this);
+      this.toast('The watch walked you back out to the road. Your days outside are not done.', 'warn', 'outside');
+    }
   }
 
   onNewDay() {
@@ -1224,6 +1249,7 @@ export class Murder {
       graves: this.graves,
       lyra: this.lyra,
       watchUntil: Number.isFinite(this.watchUntil) ? this.watchUntil : null,
+      trialPending: this.trialPending || null,
     };
   }
 
@@ -1240,6 +1266,7 @@ export class Murder {
     this.graves = Array.isArray(d.graves) ? d.graves : [];
     this.lyra = obj(d.lyra);
     this.watchUntil = Number.isFinite(d.watchUntil) ? d.watchUntil : -Infinity;
+    this.trialPending = d.trialPending && typeof d.trialPending.about === 'string' ? d.trialPending : null;
     // The dead stay dead.
     for (const rec of Object.values(this.dead)) {
       for (const k of ['clues', 'after', 'answers', 'seen']) if (!Array.isArray(rec[k])) rec[k] = [];
@@ -1258,11 +1285,6 @@ export class Murder {
     }
     for (const gr of this.graves) this.addGrave(gr);
   }
-}
-
-function setTimeoutSafe(fn, ms) {
-  if (typeof setTimeout === 'function') setTimeout(fn, ms);
-  else fn();
 }
 
 export { whenPhrase };
