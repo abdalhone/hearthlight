@@ -762,7 +762,7 @@ class WorldBuilder {
     });
     this.partition(this.col(100, 52, 56), [[100, 56]]);
     this.bed('bram', 98, 52);
-    this.look('shelf', 99, 52, 'bramPoems', { variant: 'books', name: "Bram's shelf" });
+    this.look('shelf', 99, 52, 'bramShelf', { variant: 'books', name: "Bram's shelf" });
     this.decor('chair', 99, 55, { variant: 'left' });
     this.look('forge', 0, 0, 'forge', { footprint: { x: 103, y: 52, w: 2, h: 1 }, name: 'Forge' });
     this.look('anvil', 102, 54, 'anvil', { name: 'Anvil' });
