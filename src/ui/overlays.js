@@ -31,6 +31,12 @@ export function buildPause(ui) {
       ui.closeModal(panel, true);
       ui.openInventory();
     } }),
+    ...(g.villageLife
+      ? [button('Hearthvale today', { icon: 'people', onClick: () => {
+          ui.closeModal(panel, true);
+          ui.openVillageLife?.();
+        } })]
+      : []),
     button('The Book of Halcyre', { icon: 'book', onClick: () => {
       ui.closeModal(panel, true);
       openCodex(ui);

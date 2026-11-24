@@ -5600,3 +5600,257 @@ input[type='range']::-moz-range-thumb {
     padding: 14px 14px 24px;
   }
 }
+
+/* ---------- Hearthvale today: errands, problems and the missing (DESIGN §28) ---------- */
+
+.panel-life {
+  --bc: var(--ember-dark);
+  background-image: var(--texture), linear-gradient(180deg, rgba(255, 176, 71, 0.1), transparent 35%);
+}
+.panel-life .panel-title {
+  color: var(--ember-hot);
+  text-shadow: 0 2px 0 var(--ember-dark);
+}
+.life-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.life-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.life-h {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-m);
+  color: var(--parch-2);
+  letter-spacing: 0.02em;
+}
+.life-case,
+.life-trouble {
+  --bc: var(--line-dim);
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(10, 9, 25, 0.4);
+  box-shadow:
+    0 -2px 0 0 var(--bc),
+    0 2px 0 0 var(--bc),
+    -2px 0 0 0 var(--bc),
+    2px 0 0 0 var(--bc),
+    0 6px 0 0 var(--shadow);
+}
+.life-case {
+  flex-direction: column;
+}
+.life-case.is-search {
+  --bc: var(--ember-deep);
+}
+.life-case.is-missing,
+.life-case.is-dead {
+  --bc: var(--danger-deep);
+}
+.life-case.is-found {
+  --bc: var(--heal-deep);
+}
+.life-case.is-missing .portrait,
+.life-case.is-dead .portrait {
+  filter: grayscale(0.85) brightness(0.8);
+}
+.life-case-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.life-case-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.life-status {
+  align-self: flex-start;
+  padding: 1px 8px;
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+  background: var(--ink-0);
+  box-shadow: 0 0 0 1px var(--line-soft);
+}
+.life-status.is-search {
+  color: var(--ember);
+  box-shadow: 0 0 0 1px var(--ember-deep);
+}
+.life-status.is-missing,
+.life-status.is-dead {
+  color: var(--danger);
+  box-shadow: 0 0 0 1px var(--danger-deep);
+}
+.life-status.is-found {
+  color: var(--heal);
+  box-shadow: 0 0 0 1px var(--heal-deep);
+}
+.life-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: var(--fs-s);
+}
+.life-facts dt {
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  color: var(--parch-faint);
+  padding-top: 2px;
+}
+.life-facts dd {
+  margin: 0;
+  color: var(--parch);
+}
+.life-timeline > summary {
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  color: var(--ember);
+  padding: 4px 0;
+}
+.life-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-s);
+}
+.life-ev {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 8px;
+  color: var(--parch-2);
+}
+.life-time {
+  font-family: var(--font-display);
+  font-size: var(--fs-2xs);
+  color: var(--parch-faint);
+  padding-top: 3px;
+}
+.ev-missing .life-text,
+.ev-dead .life-text,
+.ev-lie .life-text {
+  color: var(--danger);
+}
+.ev-found .life-text {
+  color: var(--heal);
+}
+.ev-search .life-text,
+.ev-alarm .life-text {
+  color: var(--ember);
+}
+.ev-think .life-text {
+  font-style: italic;
+  color: var(--parch-dim);
+}
+.life-q {
+  font-family: var(--font-display);
+  font-size: var(--fs-l);
+  color: var(--ember-hot);
+  line-height: 1;
+}
+.life-src {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-size: var(--fs-2xs);
+  color: var(--parch-faint);
+}
+.life-thought {
+  margin: 0;
+  font-style: italic;
+  color: var(--parch);
+}
+.life-said {
+  margin: 0;
+  color: var(--ember-hot);
+}
+.life-doing {
+  margin: 0;
+  color: var(--parch-dim);
+  font-size: var(--fs-s);
+}
+.life-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 8px;
+}
+.life-person {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 8px;
+  background: rgba(10, 9, 25, 0.28);
+}
+.life-person.has-problem {
+  background: rgba(134, 48, 27, 0.25);
+}
+.life-person .portrait-sm {
+  width: 36px;
+  height: 36px;
+}
+.life-person-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.life-name {
+  font-family: var(--font-display);
+  font-size: var(--fs-s);
+  color: var(--parch);
+}
+.life-worry {
+  font-size: var(--fs-xs);
+  color: var(--rose);
+}
+.life-errands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+.life-errand {
+  padding: 0 6px;
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+  background: var(--ink-0);
+  box-shadow: 0 0 0 1px var(--line-dim);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.life-errand.st-done {
+  color: var(--heal);
+}
+.life-errand.st-failed,
+.life-errand.st-given_up {
+  color: var(--danger);
+}
+.life-errand.st-active {
+  color: var(--ember);
+}
+.life-foot {
+  margin: 0;
+}
+@media (max-width: 520px) {
+  .life-grid {
+    grid-template-columns: 1fr;
+  }
+  .life-case,
+  .life-trouble {
+    padding: 10px;
+  }
+  .life-ev {
+    grid-template-columns: 54px 1fr;
+  }
+}

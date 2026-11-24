@@ -91,7 +91,7 @@ const PLACE_WORDS = [
 ];
 const RE_UNSURE = /\b(don'?t know|dunno|no idea|not sure|can'?t say|couldn'?t say|maybe)\b/i;
 const RE_NO = /\b(no|nope|nah|haven'?t|have not|didn'?t|did not|not seen|never seen|not since)\b/i;
-const RE_YES = /\b(yes|yeah|yep|aye|i saw|i'?ve seen|i have seen|saw (?:him|her|them)|seen (?:him|her|them)|i did)\b/i;
+const RE_YES = /\b(yes|yeah|yep|aye|i saw|i'?ve seen|i have seen|saw (?:him|her|them)|i did)\b/i;
 const RE_WRONG = /\b(what'?s wrong|what is wrong|what'?s the matter|is (?:something|anything) wrong|(?:you|everything) (?:all right|alright|ok(?:ay)?)\?|you (?:look|seem) (?:worried|upset|troubled|lost|bothered)|what happened|what'?s going on|what'?s happening|trouble\?|problem\?|what'?s up with you)\b/i;
 const RE_SEEN = /\b(have you seen|seen|where(?:'s| is| are)|do you know where|any (?:sign|word|news) of|heard from|what happened to)\b/i;
 const RE_WHERE_GOING = /\b(where (?:are you|you) (?:going|off to|headed|heading)|what are you (?:doing|up to|after)|where to|what'?s the errand|on an errand)\b/i;
@@ -1309,10 +1309,11 @@ export class VillageLife {
   problemFound(prob, e, x) {
     if (!x || !this.isHere(x)) return;
     const c = this.cases.get(x.id);
-    if (this.serious(c)) return this.found(x.id, e.id);
-    // Not a village matter: they walk over and get on with it.
+    const open = c && c.status !== 'found' && c.status !== 'dead';
+    if (open && this.serious(c)) return this.found(x.id, e.id);
+    // Not a village matter (or already found): they walk over and get on with it.
     this.closeProblem(prob, 'resolved', `found ${this.name(x.id)}`);
-    if (c && !this.problems.some((p) => p.status === 'open' && p.about === x.id)) this.closeCase(c, 'found', e.id, this.placeOf(x));
+    if (open && !this.problems.some((p) => p.status === 'open' && p.about === x.id)) this.closeCase(c, 'found', e.id, this.placeOf(x));
     this.meet(e, x, prob);
   }
 
