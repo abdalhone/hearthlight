@@ -10,7 +10,7 @@ import { tokenize, clamp, clamp01, normName } from './text.js';
 // Her memory is hers to tend (DESIGN §17.4): edit() rewrites or reframes a memory and keeps
 // the earlier version in its history; forget() lets one go and notes why in `forgotten`.
 
-export const MEMORY_LIMITS = Object.freeze({ max: 240, text: 280, gist: 80, tags: 8, about: 6, history: 4, why: 140, forgotten: 16 });
+export const MEMORY_LIMITS = Object.freeze({ max: 240, text: 400, gist: 80, tags: 8, about: 6, history: 4, why: 140, forgotten: 16 });
 
 const TYPES = new Set(['event', 'fact', 'conversation', 'reflection']);
 

@@ -1,6 +1,6 @@
 import { DAY_SECONDS, PLAYER_ID } from '../../core/constants.js';
 import { clamp, cap, pick, playerRef, firstName, normName, tokenize } from './text.js';
-import { pushHistory, cleanHistory, jaccard } from './memory.js';
+import { pushHistory, cleanHistory, jaccard, MEMORY_LIMITS } from './memory.js';
 
 // Lyra tends her own memory (DESIGN §17.4, §19.5). She rewrites how she remembers things
 // when she learns more, corrects facts that turned out wrong, lets small things fade,
@@ -251,7 +251,7 @@ export function coerceMemoryEdits(raw, max = 3) {
     const id = String(e.id ?? e.memory ?? '').trim().replace(/^\[|\]$/g, '').slice(0, 80);
     const op = String(e.op ?? e.operation ?? '').trim().toLowerCase();
     if (!id || !OPS.has(op)) continue;
-    const text = typeof e.text === 'string' && e.text.trim() ? e.text.replace(/\s+/g, ' ').trim().slice(0, 280) : null;
+    const text = typeof e.text === 'string' && e.text.trim() ? e.text.replace(/\s+/g, ' ').trim().slice(0, MEMORY_LIMITS.text) : null;
     const n = Number(e.importance);
     const importance = Number.isFinite(n) && e.importance !== null && e.importance !== '' ? clamp(Math.round(n), 1, 10) : null;
     const why = typeof e.why === 'string' ? e.why.replace(/\s+/g, ' ').trim().slice(0, WHY_MAX) : '';

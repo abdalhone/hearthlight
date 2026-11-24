@@ -1381,7 +1381,7 @@ export class Autonomy {
     const theirs = p?.maxHp ? clamp(p.hp / p.maxHp, 0, 1) : 1;
     const power = (num(p?.atk, 6) * theirs) / Math.max(1, num(l?.atk, 7));
     // Hurt, outmatched or terrified, stepping in could cost her everything.
-    const risk = (1 - mine) * 2.2 + Math.max(0, power - 1) * 0.6 + Math.max(0, this.stats().fear - 40) / 30 + (l?.downed ? 9 : 0);
+    const risk = (1 - mine) * 2.6 + Math.max(0, power - 1) * 0.6 + Math.max(0, this.stats().fear - 40) / 30 + (l?.downed ? 9 : 0);
     return { value: Math.round(value * 100) / 100, risk: Math.round(risk * 100) / 100, step: value > risk };
   }
 

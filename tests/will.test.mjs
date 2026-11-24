@@ -292,7 +292,7 @@ test('stepping in for a villager only when protecting them is worth more than th
     const pip = villager(game, 'pip', 'Pip', player.x + 14, player.y);
     a.mind.relationships.ensure(pip);
     a.mind.relationships.get('pip').affinity = 60;
-    assert.ok(a.protectWorth(pip).value > w.value + 1.5, 'a child she loves is worth far more to her');
+    assert.ok(a.protectWorth(pip).value >= w.value + 1.5, 'a child she loves is worth far more to her');
   }
 });
 

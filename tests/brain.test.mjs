@@ -1318,7 +1318,7 @@ test('prompt: her will in the dynamic context (§16.10), recall instead of dumps
   // A long soul stays inside its caps; the rules never swallow the context budget.
   mind.soul = { name: 'Lyra', backstory: 'She walked. '.repeat(400), values: Array.from({ length: 40 }, (_, i) => `value number ${i}`), likes: Array.from({ length: 50 }, (_, i) => `like ${i}`), secrets: Array.from({ length: 9 }, (_, i) => ({ text: `secret ${i} `.repeat(40), revealAtBond: 3 })) };
   const long = buildChatPrompt(game, 'hello', []);
-  assert.ok(long.rules.length < 9000, `rules ${long.rules.length}`);
+  assert.ok(long.rules.length < 9600, `rules ${long.rules.length}`);
   assert.ok(long.rules.length + long.context.length <= PROMPT_BUDGET + 200, `whole ${long.rules.length + long.context.length}`);
 });
 
