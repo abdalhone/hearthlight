@@ -1,10 +1,19 @@
-// Keyboard, gamepad and touch input, merged into named actions (DESIGN.md §14).
-// The mapping helpers are pure exports so they are unit-tested without a browser;
-// the Input class touches `window` only inside its constructor and methods.
+// Keyboard, mouse, gamepad and touch input, merged into named actions (DESIGN.md §14,
+// §22.4). The mapping helpers are pure exports so they are unit-tested without a
+// browser; the Input class touches `window` only inside its constructor and methods.
+//
+// Weaving (§22.4): 1–6 cast the weave in that slot toward the mouse (hold for beams and
+// charged weaves), the right button casts the selected slot, the wheel / Q / R pick the
+// selected slot, B opens the Spellbook. The left button swings the sword toward the
+// mouse. Asking Lyra moved off the number row to Alt (Option) + 1–5 and the numpad.
+
+export const WEAVE_SLOTS = 6;
 
 export const ACTIONS = [
   'up', 'down', 'left', 'right', 'attack', 'dodge', 'interact', 'talk', 'mind', 'inventory', 'menu',
   'cmd1', 'cmd2', 'cmd3', 'cmd4', 'cmd5',
+  'weave1', 'weave2', 'weave3', 'weave4', 'weave5', 'weave6',
+  'cast', 'slot_prev', 'slot_next', 'spellbook',
 ];
 
 export const KEYMAP = Object.freeze({
@@ -19,18 +28,29 @@ export const KEYMAP = Object.freeze({
   Tab: 'mind', KeyM: 'mind',
   KeyI: 'inventory',
   Escape: 'menu',
-  Digit1: 'cmd1', Digit2: 'cmd2', Digit3: 'cmd3', Digit4: 'cmd4', Digit5: 'cmd5',
+  Digit1: 'weave1', Digit2: 'weave2', Digit3: 'weave3', Digit4: 'weave4', Digit5: 'weave5', Digit6: 'weave6',
   Numpad1: 'cmd1', Numpad2: 'cmd2', Numpad3: 'cmd3', Numpad4: 'cmd4', Numpad5: 'cmd5',
+  KeyQ: 'slot_prev', KeyR: 'slot_next',
+  KeyB: 'spellbook',
 });
 
-// Standard gamepad layout: A attack, B dodge, X interact, Y talk, Start menu,
-// Back mind, LB inventory, d-pad moves.
+// Alt (Option on a Mac) + 1–5 asks Lyra, as the plain number row did before weaving.
+export const ALT_KEYMAP = Object.freeze({
+  Digit1: 'cmd1', Digit2: 'cmd2', Digit3: 'cmd3', Digit4: 'cmd4', Digit5: 'cmd5',
+});
+
+// Standard gamepad layout: A attack, B dodge, X interact, Y talk, Start menu, Back mind,
+// LB inventory, RB next weave, LT previous weave, RT cast the selected weave, d-pad moves.
+// The right stick aims.
 export const GAMEPAD_BUTTONS = Object.freeze({
   0: 'attack',
   1: 'dodge',
   2: 'interact',
   3: 'talk',
   4: 'inventory',
+  5: 'slot_next',
+  6: 'slot_prev',
+  7: 'cast',
   8: 'mind',
   9: 'menu',
   12: 'up',
@@ -42,10 +62,16 @@ export const GAMEPAD_BUTTONS = Object.freeze({
 // [buttonIndex, action, heldKey] precomputed so polling allocates nothing.
 const PAD_ENTRIES = Object.entries(GAMEPAD_BUTTONS).map(([i, a]) => [Number(i), a, `${a}#${i}`]);
 
-// Keys whose browser default (scrolling, focus change) must not happen in-game.
+// Keys whose browser default (scrolling, focus change, Option-characters) must not happen in-game.
 const PREVENT = new Set(['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
-export function actionForKey(code, key) {
+// How long a sword aim (a click toward the mouse, a drag on the sword button) stays fresh.
+export const SWING_AIM_SECONDS = 0.4;
+// Wheel travel (in pixels of deltaY) per slot step; a notched wheel gives ~100 per notch.
+export const WHEEL_STEP = 60;
+
+export function actionForKey(code, key, alt = false) {
+  if (alt) return (code && ALT_KEYMAP[code]) || null;
   if (code && KEYMAP[code]) return KEYMAP[code];
   // Some keyboards / IMEs report an empty code: fall back to the key name.
   if (!code && typeof key === 'string') {
@@ -56,8 +82,43 @@ export function actionForKey(code, key) {
   return null;
 }
 
-export function shouldPreventDefault(code) {
+export function shouldPreventDefault(code, alt = false) {
+  if (alt) return !!ALT_KEYMAP[code];
   return PREVENT.has(code);
+}
+
+// 'weave3' -> 2 (slot index); anything else -> -1.
+export function slotOfAction(a) {
+  if (typeof a !== 'string' || a.length !== 6 || !a.startsWith('weave')) return -1;
+  const n = a.charCodeAt(5) - 49; // '1' -> 0
+  return n >= 0 && n < WEAVE_SLOTS ? n : -1;
+}
+
+// Wheel deltas -> whole slot steps, keeping the remainder (trackpads send many small ones).
+// Returns { steps, rest }. deltaMode 1 (lines) and 2 (pages) are scaled to pixels.
+export function wheelSteps(rest, deltaY, deltaMode = 0) {
+  const px = deltaMode === 1 ? deltaY * 33 : deltaMode === 2 ? deltaY * 400 : deltaY;
+  let acc = (Number.isFinite(rest) ? rest : 0) + (Number.isFinite(px) ? px : 0);
+  let steps = 0;
+  while (acc >= WHEEL_STEP) {
+    acc -= WHEEL_STEP;
+    steps++;
+  }
+  while (acc <= -WHEEL_STEP) {
+    acc += WHEEL_STEP;
+    steps--;
+  }
+  // A long scroll is a few steps, never a spin through the whole bar.
+  if (steps > 2) steps = 2;
+  if (steps < -2) steps = -2;
+  return { steps, rest: acc };
+}
+
+// Selected slot after `steps` (wrapping) among `count` slots.
+export function cycleSlot(current, steps, count) {
+  const n = Math.max(1, count | 0);
+  const c = Number.isFinite(current) ? Math.trunc(current) : 0;
+  return (((c + steps) % n) + n) % n;
 }
 
 // Radial deadzone with rescale so small stick drift is ignored but full range remains.
@@ -79,6 +140,18 @@ export function joystickVector(dx, dy, radius, dz = 0.14) {
     y /= m;
   }
   return applyDeadzone(x, y, dz);
+}
+
+// A floating stick follows the thumb: when the finger runs past the rim, the base slides
+// after it so a turn-around never needs the thumb to travel back across the pad.
+// Returns the new base { x, y } (unchanged while inside the rim).
+export function followBase(bx, by, fx, fy, radius) {
+  const dx = fx - bx;
+  const dy = fy - by;
+  const d = Math.hypot(dx, dy);
+  if (!(d > radius) || !(radius > 0)) return { x: bx, y: by };
+  const k = (d - radius) / d;
+  return { x: bx + dx * k, y: by + dy * k };
 }
 
 // Sum of digital directions + analog vectors, clamped to length 1.
@@ -105,6 +178,10 @@ export function isTextTarget(t) {
   return false;
 }
 
+function nowSeconds() {
+  return typeof performance !== 'undefined' && performance.now ? performance.now() / 1000 : Date.now() / 1000;
+}
+
 export class Input {
   constructor(game) {
     this.game = game;
@@ -115,8 +192,15 @@ export class Input {
     this.enabled = true; // false while typing or while a panel is open
     this.touchVec = { x: 0, y: 0 };
     this.padVec = { x: 0, y: 0 };
-    this.lastDevice = 'keyboard'; // keyboard | gamepad | touch
+    this.padAim = { x: 0, y: 0 }; // right stick, deadzoned
+    this.lastDevice = 'keyboard'; // keyboard | mouse | gamepad | touch
     this.gamepadIndex = -1;
+    // The mouse over the game canvas: CSS px relative to the canvas, and when it last moved.
+    this.mouse = { x: 0, y: 0, over: false, movedAt: -1e9, left: false, right: false };
+    this.wheelRest = 0;
+    this.wheelSteps = 0; // whole steps waiting for the weave controller
+    // A one-off aim for the next sword swing (unit vector + when it goes stale).
+    this.swingAimVec = { x: 0, y: 0, until: -1 };
     this._bound = false;
     if (typeof window !== 'undefined') this._attach();
   }
@@ -134,6 +218,19 @@ export class Input {
       this.gamepadIndex = -1;
       this.padHeld.clear();
       this.padVec.x = this.padVec.y = 0;
+      this.padAim.x = this.padAim.y = 0;
+    });
+    // Mouse: on the window so a release outside the canvas still lets go of a held cast.
+    window.addEventListener('pointermove', (e) => this._onPointerMove(e), { passive: true });
+    window.addEventListener('pointerdown', (e) => this._onPointerDown(e));
+    window.addEventListener('pointerup', (e) => this._onPointerUp(e));
+    window.addEventListener('pointercancel', (e) => this._onPointerUp(e));
+    window.addEventListener('mouseout', (e) => {
+      if (!e.relatedTarget) this.mouse.over = false; // left the page
+    });
+    window.addEventListener('wheel', (e) => this._onWheel(e), { passive: false });
+    window.addEventListener('contextmenu', (e) => {
+      if (this._isCanvas(e.target)) e.preventDefault();
     });
   }
 
@@ -141,29 +238,151 @@ export class Input {
     return isTextTarget(e?.target);
   }
 
+  _playing() {
+    const st = this.game?.state;
+    return st === undefined || st === 'playing';
+  }
+
   _onKeyDown(e) {
     if (this.isTyping(e)) return;
-    // Modifier chords belong to the browser (copy, reload, devtools).
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const a = actionForKey(e.code, e.key);
+    // Modifier chords belong to the browser (copy, reload, devtools), except Alt + 1–5.
+    if (e.ctrlKey || e.metaKey) return;
+    const alt = !!e.altKey;
+    const a = actionForKey(e.code, e.key, alt);
     if (!a) return;
     this.lastDevice = 'keyboard';
     if (!e.repeat && !this.held.has(a)) this.edge.add(a);
     this.held.add(a);
     // Only while playing: menus and panels keep Space, Tab and arrows for their buttons.
-    const st = this.game?.state;
-    if (shouldPreventDefault(e.code) && this.enabled && (st === undefined || st === 'playing')) e.preventDefault();
+    if (shouldPreventDefault(e.code, alt) && this.enabled && this._playing()) e.preventDefault();
   }
 
   _onKeyUp(e) {
-    const a = actionForKey(e.code, e.key);
+    // Release whatever the key was bound to, with or without Alt still held.
+    const a = actionForKey(e.code, e.key, false);
     if (a) this.held.delete(a);
+    const b = actionForKey(e.code, e.key, true);
+    if (b) this.held.delete(b);
+  }
+
+  // ---------- mouse ----------
+
+  _canvas() {
+    return this.game?.canvas || this.game?.renderer?.canvas || null;
+  }
+
+  _isCanvas(t) {
+    const c = this._canvas();
+    return !!c && t === c;
+  }
+
+  _onPointerMove(e) {
+    if (e.pointerType && e.pointerType !== 'mouse') return;
+    const c = this._canvas();
+    if (!c) return;
+    const r = c.getBoundingClientRect();
+    const m = this.mouse;
+    m.x = e.clientX - r.left;
+    m.y = e.clientY - r.top;
+    m.over = e.target === c;
+    m.movedAt = nowSeconds();
+    if (m.over) this.lastDevice = 'mouse';
+  }
+
+  _onPointerDown(e) {
+    if (e.pointerType !== 'mouse') return;
+    this._onPointerMove(e);
+    if (!this._isCanvas(e.target) || !this._playing()) return;
+    if (e.button === 0) {
+      e.preventDefault();
+      this.mouse.left = true;
+      this.aimSwingAtMouse();
+      this.setVirtual('attack', true);
+    } else if (e.button === 2) {
+      e.preventDefault();
+      this.mouse.right = true;
+      this.setVirtual('cast', true);
+    }
+  }
+
+  _onPointerUp(e) {
+    if (e.pointerType !== 'mouse') return;
+    if (e.button === 0 && this.mouse.left) {
+      this.mouse.left = false;
+      this.setVirtual('attack', false);
+    } else if (e.button === 2 && this.mouse.right) {
+      this.mouse.right = false;
+      this.setVirtual('cast', false);
+    }
+  }
+
+  _onWheel(e) {
+    if (!this._isCanvas(e.target) || !this._playing() || !this.enabled) return;
+    e.preventDefault();
+    const r = wheelSteps(this.wheelRest, e.deltaY, e.deltaMode);
+    this.wheelRest = r.rest;
+    this.wheelSteps += r.steps;
+  }
+
+  // Whole wheel steps since the last call (the weave controller turns them into slots).
+  takeWheel() {
+    const s = this.wheelSteps;
+    this.wheelSteps = 0;
+    return s;
+  }
+
+  // Is the mouse aiming right now: over the game and moved in the last `within` seconds
+  // (or a button held)? A keyboard-only player falls back to auto-aim.
+  mouseAiming(within = 8) {
+    const m = this.mouse;
+    if (!m.over) return false;
+    return m.left || m.right || nowSeconds() - m.movedAt < within;
+  }
+
+  // The mouse in world pixels (null when it is not over the game).
+  mouseWorld() {
+    if (!this.mouse.over) return null;
+    const r = this.game?.renderer;
+    if (!r?.cssToWorld) return null;
+    return r.cssToWorld(this.mouse.x, this.mouse.y);
+  }
+
+  // Aim the next sword swing from the player toward the mouse.
+  aimSwingAtMouse() {
+    const p = this.game?.player;
+    const w = this.mouseWorld();
+    if (!p || !w) return;
+    this.setSwingAim(w.x - p.x, w.y - (p.y - 6), SWING_AIM_SECONDS);
+  }
+
+  // Aim the next swing along (dx, dy); `seconds` it stays fresh (a held drag refreshes it).
+  setSwingAim(dx, dy, seconds = SWING_AIM_SECONDS) {
+    const l = Math.hypot(dx, dy);
+    if (!(l > 0.0001)) return;
+    const v = this.swingAimVec;
+    v.x = dx / l;
+    v.y = dy / l;
+    v.until = (this.game?.time ?? nowSeconds()) + seconds;
+  }
+
+  clearSwingAim() {
+    this.swingAimVec.until = -1;
+  }
+
+  // The fresh sword aim as a unit vector, or null. Read by the player when a swing starts.
+  swingAim() {
+    const v = this.swingAimVec;
+    const t = this.game?.time ?? nowSeconds();
+    if (t > v.until) return null;
+    return v;
   }
 
   releaseAll() {
     this.held.clear();
     this.virtual.clear();
     this.touchVec.x = this.touchVec.y = 0;
+    this.mouse.left = this.mouse.right = false;
+    this.clearSwingAim();
   }
 
   // An on-screen button tap (one press).
@@ -187,6 +406,8 @@ export class Input {
 
   update() {
     this._pollGamepad();
+    // Holding the left button keeps the blade turned toward the cursor.
+    if (this.mouse.left && this.mouse.over) this.aimSwingAtMouse();
   }
 
   _pollGamepad() {
@@ -205,6 +426,10 @@ export class Input {
     this.padVec.x = v.x;
     this.padVec.y = v.y;
     if (v.x || v.y) this.lastDevice = 'gamepad';
+    const aim = applyDeadzone(pad.axes?.[2] ?? 0, pad.axes?.[3] ?? 0, 0.3);
+    this.padAim.x = aim.x;
+    this.padAim.y = aim.y;
+    if (aim.x || aim.y) this.lastDevice = 'gamepad';
     const buttons = pad.buttons || [];
     for (let i = 0; i < PAD_ENTRIES.length; i++) {
       const [idx, a, key] = PAD_ENTRIES[i];

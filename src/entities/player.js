@@ -225,6 +225,7 @@ export class Player extends Actor {
     this._inY = my;
     if (this.attackBuffer > 0 && this._canSwing()) {
       this.attackBuffer = 0;
+      this._faceSwingAim(input);
       this.attack();
     }
     if (this.rolling) {
@@ -234,6 +235,16 @@ export class Player extends Actor {
       return;
     }
     this._accelerate(dt, mx, my);
+  }
+
+  // A swing aimed with the mouse or by dragging the sword button (DESIGN §22.4) turns
+  // the blade that way first; the swing still locks onto a foe in front of it.
+  _faceSwingAim(input) {
+    const a = input?.swingAim?.();
+    if (!a || this.rolling) return;
+    this.facing.x = a.x;
+    this.facing.y = a.y;
+    this.dir = dirFromVec(a.x, a.y, this.dir);
   }
 
   _modalOpen() {
