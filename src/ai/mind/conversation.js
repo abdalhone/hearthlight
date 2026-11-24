@@ -72,56 +72,6 @@ const CONJ = {
   goes: 'go',
 };
 
-function conjugate(word) {
-  const w = word.toLowerCase();
-  if (CONJ[w]) return CONJ[w];
-  if (/ed$/.test(w) || /^(had|lost|made|kept|left|told|went|saw|took|gave|could|would|can|will|should|must|never|once)$/.test(w)) return word;
-  if (/ies$/.test(w) && w.length > 4) return word.slice(0, -3) + 'y';
-  if (/(sses|shes|ches|xes|zes|oes)$/.test(w)) return word.slice(0, -2);
-  if (/s$/.test(w) && !/ss$/.test(w)) return word.slice(0, -1);
-  return word;
-}
-
-// "Bram writes poetry at night." spoken to Bram -> "You write poetry at night."
-// Returns null when the sentence is not about the listener or cannot be turned safely.
-export function toSecondPerson(fact, npc) {
-  const text = String(fact || '').trim();
-  if (!text || !npc?.name) return null;
-  const names = [npc.name, firstName(npc.name), npc.name.split(/\s+/)[0]].filter(Boolean).sort((a, b) => b.length - a.length);
-  let rest = null;
-  let possessive = false;
-  for (const n of names) {
-    const re = new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(['’]s)?\\b\\s*`, 'i');
-    const m = text.match(re);
-    if (m) {
-      rest = text.slice(m[0].length);
-      possessive = !!m[1];
-      break;
-    }
-  }
-  if (rest == null || !rest) return null;
-  // Other capitalized names make pronoun swaps unsafe.
-  const otherNames = rest.match(/\b[A-Z][a-z]{2,}/g) || [];
-  const pronounSafe = otherNames.length === 0;
-  let out;
-  if (possessive) {
-    out = `Your ${rest}`;
-  } else {
-    const words = rest.split(/\s+/);
-    let i = 0;
-    while (i < words.length - 1 && /ly$/i.test(words[i]) && !/^(only|early|holy)$/i.test(words[i])) i++;
-    words[i] = conjugate(words[i]);
-    out = `You ${words.join(' ')}`;
-  }
-  if (pronounSafe) {
-    out = out
-      .replace(/\b(his|her)\b(?=\s+[a-z])/g, 'your')
-      .replace(/\b(himself|herself)\b/g, 'yourself')
-      .replace(/\b(he|she)\b/g, 'you');
-  }
-  return out;
-}
-
 // ---------------------------------------------------------------- facts in their own mouth
 
 // Who is a he and who is a she, for pronouns in villagers' facts. Unknown names make a

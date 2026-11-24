@@ -19,6 +19,7 @@ import { parseMessage } from '../src/ai/brain/nlu.js';
 import { Mind } from '../src/ai/mind/mind.js';
 import { bondOf, BOND_LABELS, makeRel } from '../src/ai/mind/relationships.js';
 import { WorkingMemory } from '../src/ai/mind/working_memory.js';
+import { toFirstPerson, retold } from '../src/ai/mind/conversation.js';
 import { relationshipsPlugin } from '../src/ai/plugins/relationships_plugin.js';
 import { memoryPlugin } from '../src/ai/plugins/memory_plugin.js';
 import { feelingsPlugin } from '../src/ai/plugins/feelings_plugin.js';
@@ -739,6 +740,20 @@ test('talk_to through Claude: the brain writes the talk when the player asked fo
   run(game, 0.5);
   await new Promise((r) => setTimeout(r, 0));
   assert.deepEqual(asked, []);
+});
+
+test('villagers tell their facts in their own words', () => {
+  const npc = (id) => ({ id, name: NPC_PROFILES.find((p) => p.id === id).name, profile: NPC_PROFILES.find((p) => p.id === id) });
+  const bram = npc('bram');
+  assert.equal(toFirstPerson("Bram's wife, Hanna, died of the winter fever six years ago. He still sets out two cups at breakfast.", bram), 'My wife, Hanna, died of the winter fever six years ago. I still set out two cups at breakfast.');
+  assert.equal(toFirstPerson('Maren asked Bram to sharpen a silver chisel before she left. He never saw her again to return the whetstone she lent him.', bram), 'Maren asked me to sharpen a silver chisel before she left. I never saw her again to return the whetstone she lent me.');
+  assert.equal(toFirstPerson('Bram secretly writes poems by forge-light and hides them in a tin box under the anvil.', bram), 'I secretly write poems by forge-light and hide them in a tin box under the anvil.');
+  assert.equal(toFirstPerson('One of Bram\'s poems begins: "The fire forgets nothing it has warmed."', bram), 'One of my poems begins: "The fire forgets nothing it has warmed."', 'quotes stay as said');
+  const aveline = npc('aveline');
+  assert.equal(toFirstPerson('Sister Aveline saw Maren walk toward the Sunken Ruins at dusk. She never returned.', aveline), 'I saw Maren walk toward the Sunken Ruins at dusk. She never returned.', 'she is Maren here');
+  assert.equal(toFirstPerson("Aveline sees grief in Lyra that is older than Maren's disappearance, and waits for Lyra to speak of it.", aveline), "I see grief in you that is older than Maren's disappearance, and wait for you to speak of it.");
+  assert.equal(toFirstPerson('Moonpetals only open at night in Whisperwood.', npc('mira')), 'Moonpetals only open at night in Whisperwood.');
+  assert.equal(retold('Elda has run the Ember Kettle for twenty-two years.', npc('elda')), 'she has run the Ember Kettle for twenty-two years.');
 });
 
 // ------------------------------------------------------------------ plugins: actions, intents, prompt context
