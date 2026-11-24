@@ -1037,6 +1037,36 @@ facts.
   and **Her life** (timeline from birth), and a **You and her** section (trust, fear,
   affinity, respect, companionship state, what she has seen you do, promises).
 
+### 17.4 She edits her own memory
+
+Her memory is hers to tend, like a person's: she rewrites how she remembers things when she
+learns more, corrects facts that turned out wrong, lets small things fade, sharpens what
+matters, and forgets what she chooses to forget — for her own reasons.
+
+- **Edits keep their history.** Every memory and knowledge entry can carry
+  `history: [{ t, text, importance, why }]` (earlier versions) and `edited: true`; nothing is
+  silently overwritten, so the UI can show "she used to remember it as…".
+- **Actions** (her own when she runs them; when the player asks, they are requests she
+  weighs like any other — §16.4):
+  | action | target | value | amount | effect |
+  |---|---|---|---|---|
+  | `edit_memory` | memory id or words that find it | how she remembers it now | new importance 1..10 (optional) | rewrite or reframe a memory, keeping the old version in history |
+  | `forget` | | words that find it | | let a memory go (exists; she refuses for things that protect her) |
+  | `update_knowledge` | subject or knowledge id | the corrected text | confidence 0..1 | correct or update a fact, rumor or theory |
+  | `retract_knowledge` | subject or knowledge id | why | | drop a fact or theory she now believes is wrong |
+  Life memories (her past before the game) can be reframed but never forgotten.
+- **Who edits:** Claude, through the response JSON field
+  `"memory_edits": [{ "id", "op": "update"|"reweight"|"forget"|"retract", "text", "importance", "why" }]`
+  (ids from the recall context it was given); the offline mind at sleep (merge duplicates of
+  the day into one memory, let trivial ones fade, update facts superseded by newer
+  knowledge, reframe the day's events through her new opinions); the autonomy module
+  (reconciliation and hurt change how she remembers people — or don't, if it is not worth it
+  to her).
+- **The player cannot edit her mind directly** in the Mind panel. Asking her ("please forget
+  that I hit you", "remember it differently") is a request: she may agree, refuse ("No. I
+  remember that for a reason."), or reframe it her own way. The Memories tab shows an
+  "edited" mark with her earlier version and her reason.
+
 ## 18. The 2D look
 
 Stay 2D pixel art. Take the mood, not the medium, of low-res "lost console game" reels:
