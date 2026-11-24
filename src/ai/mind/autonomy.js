@@ -1895,10 +1895,18 @@ export class Autonomy {
       return true;
     }
     // apart
-    if (b.company === 'player' && this._wantsCompany()) {
-      const morning = b.from <= 7.5;
-      this.setCompanionship(this._returnState(), '', { cause: 'back', lineKey: this._playerNear(400) ? (morning ? 'plan_back_morning' : 'plan_back') : null });
-      return true;
+    if (b.company === 'player') {
+      if (this._wantsCompany()) {
+        const morning = b.from <= 7.5;
+        this.setCompanionship(this._returnState(), '', { cause: 'back', lineKey: this._playerNear(400) ? (morning ? 'plan_back_morning' : 'plan_back') : null });
+        return true;
+      }
+      // She meant to spend these hours with the player, but not any more: a day of her own.
+      if (this._moodReplanRev !== this.agenda.revision) {
+        this.planDay('mood');
+        this._moodReplanRev = this.agenda.revision;
+        return true;
+      }
     }
     this._direct('apart', 'apart');
     if (this._playerNear(260) && this.now() - this.lastAnnounceT > 45) {
