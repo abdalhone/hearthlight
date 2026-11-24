@@ -78,6 +78,21 @@ const GRASSY = new Set([TILE_IDS.GRASS, TILE_IDS.TALL_GRASS, TILE_IDS.FOREST, TI
 const DEFAULT_MODE = { projectile: 'fly', area: 'burst' };
 const TAU = Math.PI * 2;
 const ZERO = Object.freeze({ x: 0, y: 0 });
+// Weaves and friends (the author: "the spells do not do any damage" when aimed at Lyra).
+// A player's weave physically hits whoever it touches but the caster. A friend it hits
+// was aimed at (a deliberate blow) when the aim named them, the aim point sat within
+// FRIEND_AIM_R of them with nobody nearer it, or a straight weave's aim line passed within
+// FRIEND_LINE_R of them before anyone else; otherwise it is an accident: ACCIDENT_MUL of
+// the damage, no status, and the mind and the crime rules weigh it as an accident.
+export const FRIEND_AIM_R = 20;
+export const FRIEND_LINE_R = 12;
+export const ACCIDENT_MUL = 0.5;
+// Bodies that touch whoever stands in them: the strike itself (bolts, beams, blasts,
+// cones, novas). What lingers on the ground or hovers (patches, rains, runes, walls,
+// trails, familiars) spares friends unless the weave was aimed at one.
+const STRIKES_FRIENDS = { projectile: true, beam: true, strike: true };
+const AREA_LINGERS = { patch: true, rain: true };
+const LINE_AIMS = { line: true, cone: true, arc: true };
 const NUMBER_FLUSH = 0.4;
 // Binds on bosses (DESIGN §22.5): a boss is held this share of the time, half that again
 // for each bind in a row (BIND_DR_MAX in a row and it shrugs the next one off), and the
@@ -136,6 +151,7 @@ function makeCtx(rt) {
 
 export class Magic {
   constructor(game) {
+    this._body = null; // the body being updated (canAffect asks what kind of touch it is)
     this.game = game;
     this.t = 0;
     this.rng = new RNG(7177);
@@ -266,14 +282,20 @@ export class Magic {
   }
 
   // May this cast's bodies touch `a`? (DESIGN §22.1 rules of harm.) A player's weave
-  // spares friends unless the player aimed it at a friend on purpose (cast.friendly);
-  // anyone else follows combat.canHarm.
+  // touches friends too: always when aimed at one (cast.friendly), and otherwise when the
+  // body is the strike itself (see STRIKES_FRIENDS; that hit is an accident). A weave
+  // that shields (benign) never harms a friend. Anyone else follows combat.canHarm.
   canAffect(cast, a) {
     if (!a || a.type !== 'actor' || a.removed || a.dead) return false;
     const caster = cast?.caster || null;
     if (a === caster) return false;
     if (this.isPlayer(caster)) {
-      if (this.isFriendOfPlayer(a)) return !!cast.friendly;
+      if (this.isFriendOfPlayer(a)) {
+        if (cast.friendly) return true;
+        // A shield never harms a friend; a hold (a bind's ring) closes only on its mark.
+        if (cast.plan?.shapeDef?.benign || cast.plan?.hold > 0 || cast.sparesFriends) return false;
+        return this.strikesFriends(this._body);
+      }
       return true;
     }
     const c = this.game.combat;
@@ -285,6 +307,77 @@ export class Magic {
       }
     }
     return !caster || factionRelation(caster.faction, a.faction) === 'hostile';
+  }
+
+  // Is this body the strike itself (it hits a friend in its way), or something that
+  // lingers (it spares them)? Outside a body's own update (a hook, a test) a cast's
+  // touch is the strike.
+  strikesFriends(b) {
+    if (!b) return true;
+    if (STRIKES_FRIENDS[b.kind]) return true;
+    if (b.kind === 'area') return !AREA_LINGERS[b.mode] && !(b.life > 2.5);
+    return false;
+  }
+
+  // The friend a player's aim names, or null (see FRIEND_AIM_R). Auto-aim (a quick tap, a
+  // key with no mouse over the game) only ever picks foes, so it never names a friend.
+  // The UI may ask this while the player drags, to show the aim is on a friend.
+  aimedFriend(caster, aim, plan = null) {
+    if (!aim || !this.isPlayer(caster) || aim.auto) return null;
+    const t = aim.target;
+    if (t && t.type === 'actor' && t !== caster && isAlive(t)) return this.isFriendOfPlayer(t) ? t : null;
+    const ax = aim.x;
+    const ay = aim.y;
+    if (!Number.isFinite(ax) || !Number.isFinite(ay)) return null;
+    const actors = this._actors();
+    // Whoever stands nearest the aim point (body or feet), when near enough.
+    let near = null;
+    let nd = FRIEND_AIM_R * FRIEND_AIM_R;
+    for (const a of actors) {
+      if (a === caster || !isAlive(a)) continue;
+      const d2 = Math.min((a.x - ax) ** 2 + (a.y - 6 - ay) ** 2, (a.x - ax) ** 2 + (a.y - ay) ** 2);
+      if (d2 < nd) {
+        nd = d2;
+        near = a;
+      }
+    }
+    if (near) return this.isFriendOfPlayer(near) ? near : null;
+    // A straight weave's line: the first person it passes close to.
+    const type = plan?.aim?.type || 'line';
+    if (!LINE_AIMS[type]) return null;
+    const ox = caster.x;
+    const oy = caster.y - 7;
+    const dx = ax - ox;
+    const dy = ay - oy;
+    const len = Math.hypot(dx, dy);
+    if (len < 6) return null;
+    const ux = dx / len;
+    const uy = dy / len;
+    const reach = Math.max(len, plan?.aim?.range || plan?.range || 0) + 6;
+    let first = null;
+    let fa = Infinity;
+    for (const a of actors) {
+      if (a === caster || !isAlive(a)) continue;
+      const rx = a.x - ox;
+      const ry = a.y - 6 - oy;
+      const along = rx * ux + ry * uy;
+      if (along < 2 || along > reach) continue;
+      const perp = Math.abs(rx * uy - ry * ux);
+      if (perp > FRIEND_LINE_R + Math.min(4, (a.radius ?? 5) * 0.5)) continue;
+      if (along < fa) {
+        fa = along;
+        first = a;
+      }
+    }
+    return first && this.isFriendOfPlayer(first) ? first : null;
+  }
+
+  // A player's weave hitting a friend: was this one aimed at them? (Otherwise an accident.)
+  _aimedAtFriend(cast, target) {
+    if (!cast?.friendly) return false;
+    if (cast.target === target) return true;
+    // A blast aimed at one friend also means whoever stands with them.
+    return Number.isFinite(cast.aimX) && Math.hypot(target.x - cast.aimX, target.y - 6 - cast.aimY) <= FRIEND_AIM_R * 1.6;
   }
 
   // A real foe (for homing, chains and familiars): something the cast may touch that is
@@ -685,6 +778,12 @@ export class Magic {
       }
     }
     const party = target === g.player || target === g.companion || target.id === 'player' || target.id === 'lyra';
+    // A friend the player's weave touched: aimed at them (deliberate), caught in a weave
+    // aimed at another friend (no accident either: the player chose to loose it on
+    // friends), or caught in a weave aimed elsewhere (an accident).
+    const friendHit = !!cast && this.isPlayer(caster) && !this.isPlayer(target) && this.isFriendOfPlayer(target);
+    const deliberate = friendHit && this._aimedAtFriend(cast, target);
+    const accident = friendHit && !cast.friendly;
     const tick = !!flags.tick;
     const pooled = tick || !!flags.pool; // many small hits: one summed number every so often
     const o = this._dmg;
@@ -704,13 +803,15 @@ export class Magic {
     o.crit = tick ? false : undefined;
     o.invuln = party ? undefined : 0;
     o.penetration = plan.penetration;
-    o.deliberate = !!(cast && cast.friendly && cast.target === target);
+    o.deliberate = deliberate;
+    o.accident = accident;
     o.weave = plan;
     o.essences = plan.essences;
     o.magic = true;
+    const amt = accident ? amount * ACCIDENT_MUL : amount;
     let dealt = 0;
     try {
-      dealt = g.combat?.damage ? g.combat.damage(caster || null, target, amount, o) || 0 : this._rawDamage(target, amount);
+      dealt = g.combat?.damage ? g.combat.damage(caster || null, target, amt, o) || 0 : this._rawDamage(target, amt);
     } catch (err) {
       this.warn('combat.damage', err);
     }
@@ -722,7 +823,8 @@ export class Magic {
     info.y = target.y;
     info.target = target;
     info.tick = tick;
-    if (!target.removed && !target.dead) {
+    info.accident = accident;
+    if (!target.removed && !target.dead && !accident) {
       this.status.react(target, plan.tags, { src: caster, power: amount });
       const sts = plan.statuses;
       for (let i = 0; i < sts.length && !target.dead; i++) {
@@ -748,7 +850,7 @@ export class Magic {
         }
       }
     }
-    g.bus?.emit('spell_hit', { body: b, target, amount: dealt, essences: plan.essences, caster, plan, tick });
+    g.bus?.emit('spell_hit', { body: b, target, amount: dealt, essences: plan.essences, caster, plan, tick, deliberate, accident });
     this.fx('hit', { body: b, target, x: target.x, y: target.y, amount: dealt, tick });
     return dealt;
   }
@@ -1486,8 +1588,9 @@ export class Magic {
     } else this.weaveReady.set(r.key, this.t + cd);
   }
 
-  // Who and where a cast is aimed at. A friend counts as aimed at only when the aim
-  // names them (aim.target) or the aim point sits right on them: never by auto-aim.
+  // Who and where a cast is aimed at. A friend counts as aimed at when the aim names
+  // them (see aimedFriend: the aim on them, near them, or a straight weave's line through
+  // them): never by auto-aim.
   _newCast(caster, plan, aim, o = {}) {
     const g = this.game;
     let target = aim?.target && aim.target.type === 'actor' && isAlive(aim.target) && aim.target !== caster ? aim.target : null;
@@ -1495,26 +1598,21 @@ export class Magic {
     let ax = Number.isFinite(aim?.x) ? aim.x : NaN;
     let ay = Number.isFinite(aim?.y) ? aim.y : NaN;
     const probe = { caster, friendly: true, target: null };
+    if (!target && this.isPlayer(caster)) target = this.aimedFriend(caster, aim, plan);
     if (!target && Number.isFinite(ax)) {
       let best = null;
       let bd = 14 * 14;
-      let friend = null;
-      let fd = 7 * 7;
       for (const a of this._actors()) {
         if (a === caster || !isAlive(a)) continue;
+        if (this.isPlayer(caster) && this.isFriendOfPlayer(a)) continue;
         const d2 = (a.x - ax) ** 2 + (a.y - 4 - ay) ** 2;
         const d2b = Math.min(d2, (a.x - ax) ** 2 + (a.y - ay) ** 2);
-        if (this.isPlayer(caster) && this.isFriendOfPlayer(a)) {
-          if (d2b < fd) {
-            fd = d2b;
-            friend = a;
-          }
-        } else if (d2b < bd && this.canAffect(probe, a)) {
+        if (d2b < bd && this.canAffect(probe, a)) {
           bd = d2b;
           best = a;
         }
       }
-      target = best || friend;
+      target = best;
     }
     const range = plan.aim?.range || plan.range || 120;
     if (!Number.isFinite(ax)) {
@@ -2105,13 +2203,16 @@ export class Magic {
         continue;
       }
       b.age += dt;
+      this._body = b;
       try {
         KIND_UPDATE[b.kind](this, b, dt);
       } catch (err) {
         this.warn(`update ${b.kind}`, err);
+        this._body = null;
         this.end(b, 'error');
         continue;
       }
+      this._body = null;
       if (!b.active) continue;
       const hooks = b.plan.hooks.onUpdate;
       for (let k = 0; k < hooks.length; k++) {
@@ -2198,7 +2299,8 @@ export class Magic {
       if (!d.status || !d.cast) continue;
       for (const a of this.cands) {
         if (Math.abs(a.x - d.x) > d.r || Math.abs(a.y - d.y) > d.r) continue;
-        if (!this.canAffect(d.cast, a) || (d.cast.friendly && this.isFriendOfPlayer(a))) continue;
+        // What lies on the ground spares friends, aimed at one or not.
+        if (!this.canAffect(d.cast, a) || (this.isPlayer(d.cast.caster) && this.isFriendOfPlayer(a))) continue;
         this.status.apply(a, d.status, { src: d.cast.caster, potency: 0.6, power: 4 });
       }
     }

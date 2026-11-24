@@ -49,6 +49,8 @@ const LAMP_AREAS = ['town_square', 'lamplight_lane', 'weavers_row'];
 const TENDERS = new Set(['mira', 'hobb', 'wenna', 'elda', 'aveline']); // heal, help up, walk home
 const HELP_HEAR = [0, 300, 440, 600]; // how far a shout carries, by severity 1..3
 const HELP_SECONDS = 45; // the longest anyone stays on one call
+// What a villager yelps when the stranger's weave catches them by accident.
+const ACCIDENT_YELPS = ['Oi! Mind where that goes!', 'Ow! Watch it!', 'Careful with that!', 'Hey! Not at me!'];
 const DANGER_NEAR = 84; // an attacker this close to the victim keeps carers back
 
 const WORK_OBJECTS = {
@@ -1425,6 +1427,19 @@ export class NPC extends Actor {
     const g = this.game;
     const src = attackerOf(p.source);
     if (!src || src === this || this.downed) return;
+    // Caught by the stranger's weave meant for something else: a yelp, not a call to arms.
+    if (p.accident) {
+      const t0 = now(g);
+      if (t0 - (this._yelpAt ?? -Infinity) > 5) {
+        this._yelpAt = t0;
+        try {
+          g.bubbles?.say?.(this, ACCIDENT_YELPS[Math.floor(Math.random() * ACCIDENT_YELPS.length)], { kind: 'shout' });
+        } catch {
+          /* words are decoration */
+        }
+      }
+      return;
+    }
     const t = now(g);
     const sev = this.hp <= this.maxHp * 0.4 ? 2 : 1;
     if (t - (this._hurtCallAt ?? -Infinity) < 6 && sev <= (this._hurtCallSev ?? 0)) return;
@@ -2338,7 +2353,7 @@ function installVillageHooks(game) {
   };
   bus.on('damage', (p) => {
     const lyra = game.companion;
-    if (!p || !lyra || p.target !== lyra) return;
+    if (!p || !lyra || p.target !== lyra || p.accident) return;
     const src = attackerOf(p.source);
     if (!src || src === lyra) return;
     const f = lyra.maxHp ? lyra.hp / lyra.maxHp : 1;

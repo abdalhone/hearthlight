@@ -192,8 +192,14 @@ export class Behavior {
     const player = this.game.player;
     if (tgt === player && src !== this.actor) this.rec(src).vsPlayer = this.t;
     if (tgt === this.actor) {
+      // A weave that caught her on its way to something else is no attack on her.
+      if (src === player && p.accident) {
+        this.lastPlayerHitAt = this.t;
+        this.scanT = 0;
+        return;
+      }
       this.rec(src).vsSelf = this.t;
-      if (src === player) this.onHitByPlayer();
+      if (src === player) this.onHitByPlayer(p);
       // Woken or startled out of a seat by a hit.
       if (this.task && (this.task.kind === 'sleep' || this.task.kind === 'sit')) this.cancelTask();
       this.idle.reset();
@@ -205,8 +211,8 @@ export class Behavior {
   // The player's sword hit her. An accident when something hostile is right next to
   // her and it is the first hit in 8 s (DESIGN §16.2); otherwise on purpose. Being hit
   // on purpose again (or at all, once she has left) switches self-defense on.
-  onHitByPlayer() {
-    const accident = this.hostileWithin(48) && this.t - this.lastPlayerHitAt > 8;
+  onHitByPlayer(p = {}) {
+    const accident = !p.deliberate && this.hostileWithin(48) && this.t - this.lastPlayerHitAt > 8;
     this.lastPlayerHitAt = this.t;
     if (accident) return;
     this.deliberateHits[this.hitI] = this.t;

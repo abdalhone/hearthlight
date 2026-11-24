@@ -313,7 +313,7 @@ test('a song can charm a foe to fight for the weaver', () => {
 
 // ---------------------------------------------------------------- rules of harm
 
-test('friendly fire: an area weave aimed at a foe spares Lyra and villagers', () => {
+test('friendly fire: a weave aimed at a foe still hits a friend it touches, as an accident', () => {
   const g = makeGame({ log: true, foes: 1 });
   const m = g.magic;
   m.unlockAll();
@@ -328,9 +328,17 @@ test('friendly fire: an area weave aimed at a foe spares Lyra and villagers', ()
   m.cast(g.player, { shape: 'nova', essences: ['fire'] }, { x: foe.x, y: foe.y });
   run(g, 1);
   assert.ok(foe.hp < foe.maxHp);
-  assert.equal(g.companion.hp, g.companion.maxHp);
-  assert.equal(g.villager.hp, g.villager.maxHp);
-  assert.ok(!g.player.crime);
+  const hits = g.events.filter((e) => e.type === 'damage' && e.payload.source === g.player);
+  const onFoe = hits.find((e) => e.payload.target === foe);
+  const onLyra = hits.find((e) => e.payload.target === g.companion);
+  const onBram = hits.find((e) => e.payload.target === g.villager);
+  assert.ok(onLyra && onBram, 'the ring touched Lyra and Bram too');
+  assert.equal(onLyra.payload.accident, true);
+  assert.equal(onLyra.payload.deliberate, false);
+  assert.equal(onBram.payload.accident, true);
+  assert.ok(onLyra.payload.amount <= Math.ceil(onFoe.payload.amount * 0.75), 'an accident hurts less');
+  assert.ok(!g.player.crime, 'an accident is not a crime');
+  assert.ok(!g.magic.status.has(g.companion, 'burning'), 'and sets nobody alight');
   // An aim point next to Lyra but on the foe picks the foe.
   resetArena(g);
   foe.x = g.companion.x + 10;
@@ -338,6 +346,32 @@ test('friendly fire: an area weave aimed at a foe spares Lyra and villagers', ()
   const r = m.cast(g.player, { shape: 'bolt', essences: ['raw'] }, { x: foe.x + 2, y: foe.y });
   assert.equal(r.cast.target, foe);
   assert.equal(r.cast.friendly, false);
+});
+
+test('friendly fire: a bolt dragged straight at Lyra lands on her (the aim line through her counts)', () => {
+  const g = makeGame({ log: true, foes: 0 });
+  const m = g.magic;
+  m.unlockAll();
+  const lyra = g.companion;
+  lyra.x = g.player.x + 25;
+  lyra.y = g.player.y + 4;
+  const hp = lyra.hp;
+  // A touch drag: the aim point at full range straight through her, no target named.
+  const r = m.cast(g.player, { shape: 'bolt', essences: ['raw'] }, { x: g.player.x + 140, y: g.player.y - 7 + 10, auto: false });
+  assert.ok(r.ok);
+  assert.equal(r.cast.target, lyra, 'the line through her names her');
+  assert.equal(r.cast.friendly, true);
+  run(g, 1);
+  assert.ok(lyra.hp < hp, 'she was hurt');
+  const hit = g.events.find((e) => e.type === 'damage' && e.payload.target === lyra);
+  assert.equal(hit.payload.deliberate, true);
+  // Within the generous radius of the aim point counts too.
+  resetArena(g);
+  assert.equal(m.aimedFriend(g.player, { x: lyra.x + 15, y: lyra.y - 4 }, m.compile({ shape: 'blast', essences: ['raw'] })), lyra);
+  // An auto-aimed tap never names her, whatever lies on its line.
+  assert.equal(m.aimedFriend(g.player, { x: lyra.x, y: lyra.y, auto: true }), null);
+  // A line that passes well clear of her does not.
+  assert.equal(m.aimedFriend(g.player, { x: g.player.x, y: g.player.y + 140 }, m.compile({ shape: 'bolt', essences: ['raw'] })), null);
 });
 
 test('friendly fire: aimed at Lyra on purpose it is an attack; bystanders are accidents', () => {

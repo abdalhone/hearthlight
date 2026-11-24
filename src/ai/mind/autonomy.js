@@ -49,6 +49,8 @@ const CAUSES = {
   start: { reason: 'I chose to travel with you. I owe you for the wolves, and I’m curious about you.' },
   hit: { reason: 'You struck me with your sword, on purpose.', memo: '{P} struck me with their sword, on purpose. I am keeping my distance now.' },
   hit_again: { reason: 'You struck me with your sword. Twice. I don’t stay with someone who does that.', memo: '{P} struck me again. I bound them with light and got clear. I am done traveling with them.' },
+  hit_weave: { reason: 'You turned a weave on me, on purpose.', memo: '{P} turned a weave on me, on purpose. I am keeping my distance now.' },
+  hit_again_weave: { reason: 'You turned your weaves on me. Twice. I don’t stay with someone who does that.', memo: '{P} turned a weave on me again. I bound them with light and got clear. I am done traveling with them.' },
   villager: { reason: 'You attacked {target}.', memo: '{P} attacked {target}. I never thought I would have to watch them like that.' },
   villager_again: { reason: 'You attacked {target} after I warned you. I won’t stand beside someone who hurts the people here.', memo: '{P} attacked {target} again, after my warning. I bound them and called the guards. We are finished.' },
   villager_down: { reason: 'You beat {target} until they dropped. I won’t stand beside someone who does that.', memo: '{P} beat {target} until they dropped. I bound them and called the guards. We are finished.' },
@@ -577,9 +579,10 @@ export class Autonomy {
     if (this._readPurse() === 0) this._writePurse(START_PURSE);
   }
 
-  _onDamage({ source, target }) {
+  _onDamage(ev) {
+    const { source, target } = ev;
     if (target && this.isLyra(target)) {
-      if (source && this.isPlayer(source)) return this._playerHitLyra();
+      if (source && this.isPlayer(source)) return this._playerHitLyra(ev);
       if (source && source !== target && typeof source === 'object') {
         this.recentAttackers.set(source, this.now());
         this._checkHelp(source);
@@ -591,16 +594,19 @@ export class Autonomy {
       if (!(target.hp > 0)) return undefined;
       // Only what she saw (DESIGN §29: line of sight, light, distance).
       if (this.game?.murder && !this.game.murder.saw('lyra', target)) return undefined;
-      return this._playerHitNpc(target);
+      return this._playerHitNpc(target, ev);
     }
     return undefined;
   }
 
   // §16.2: an accident if a hostile creature is within 48 px of her and it is the first
-  // hit in 8 s; otherwise deliberate. Hits within one swing flurry count once.
-  _playerHitLyra() {
+  // hit in 8 s; otherwise deliberate. Hits within one swing flurry count once. A weave
+  // says itself which it was: aimed at her (deliberate), or caught her on its way to
+  // something else (an accident, however often: the player was not aiming at her).
+  _playerHitLyra(ev = {}) {
     const now = this.now();
     const h = this.hit;
+    const weave = !!ev.magic;
     if (now - h.recordedT < 1.2) {
       h.lastT = now;
       return;
@@ -608,8 +614,9 @@ export class Autonomy {
     const first = now - h.lastT > 8;
     h.lastT = now;
     h.recordedT = now;
-    const accident = first && this._hostileNear(this.lyra(), 48);
-    this.recordDeed(accident ? 'hit_lyra_accident' : 'hit_lyra');
+    const accident = ev.accident ? true : ev.deliberate ? false : first && this._hostileNear(this.lyra(), 48);
+    h.lastWith = weave ? 'weave' : 'sword';
+    this.recordDeed(accident ? 'hit_lyra_accident' : 'hit_lyra', weave ? { with: 'weave' } : {});
   }
 
   _npcRec(id) {
@@ -621,7 +628,7 @@ export class Autonomy {
     return rec;
   }
 
-  _playerHitNpc(victim) {
+  _playerHitNpc(victim, ev = {}) {
     const now = this.now();
     const rec = this._npcRec(victim.id);
     if (now - rec.lastT < 0.25) return; // the damage and crime events of one blow
@@ -631,7 +638,7 @@ export class Autonomy {
     }
     const first = now - rec.lastT > 8;
     rec.lastT = now;
-    if (first && this._hostileNear(victim, 48)) {
+    if (ev.accident || (!ev.deliberate && first && this._hostileNear(victim, 48))) {
       rec.accidentUntil = now + 3;
       this.say(this.line('deed_hit_accident'), { minGap: 6 });
       return;
@@ -911,6 +918,7 @@ export class Autonomy {
     const before = this.stats();
     const worthBefore = this.worthTrack.avg ?? this.worth().net;
     const entry = { t: Math.round(now * 10) / 10, day: this.day(), deed, severity: Math.round(severity * 100) / 100, text, victimId };
+    if (opts.with) entry.with = String(opts.with);
     this.ledger.push(entry);
     this._trimLedger();
 
@@ -1028,9 +1036,9 @@ export class Autonomy {
       case 'reckless_order':
         return `${P} sent me into a fight that nearly killed me.`;
       case 'hit_lyra_accident':
-        return `${P} caught me with their sword in the fight. An accident, I think.`;
+        return entry.with === 'weave' ? `${P} caught me with a weave meant for something else. An accident, I think.` : `${P} caught me with their sword in the fight. An accident, I think.`;
       case 'hit_lyra':
-        return `${P} struck me with their sword. On purpose.`;
+        return entry.with === 'weave' ? `${P} turned a weave on me. On purpose.` : `${P} struck me with their sword. On purpose.`;
       case 'downed_lyra':
         return `${P} knocked me out. The person I traveled with.`;
       case 'abandoned_downed':
@@ -1152,7 +1160,7 @@ export class Autonomy {
         }
         // A second blow ends it, and so does a first one when staying was already barely worth it.
         if (hitsBefore >= 1 || info.worthBefore < WORTH.wary || st === 'left') {
-          if (st !== 'left') this.setCompanionship('left', '', { cause: 'hit_again', lineKey: 'to_left_hit' });
+          if (st !== 'left') this.setCompanionship('left', '', { cause: this.hit.lastWith === 'weave' ? 'hit_again_weave' : 'hit_again', lineKey: 'to_left_hit' });
           else this.say(this.line('to_left_hit'), { force: true });
           this._bindAndRun();
           // Her village answers when she calls (DESIGN §19.7).
@@ -1171,7 +1179,7 @@ export class Autonomy {
           }
           return;
         }
-        if (!this.setCompanionship('wary', '', { cause: 'hit', lineKey: 'to_wary_hit' })) this.say(this.line('to_wary_hit'), { force: true });
+        if (!this.setCompanionship('wary', '', { cause: this.hit.lastWith === 'weave' ? 'hit_weave' : 'hit', lineKey: 'to_wary_hit' })) this.say(this.line('to_wary_hit'), { force: true });
         this._act('keep_distance', { target: 'player', amount: 4 });
         // One blow that leaves her badly hurt is reason enough to call out.
         const l = this.lyra();
@@ -1551,7 +1559,7 @@ export class Autonomy {
     const day = this.daySeconds();
     const HURT = { sadness: 0.25, anger: 0.15, fear: 0.06, joy: -0.15, trust: -0.15, affection: -0.08, curiosity: -0.05 };
     const scale = (o, k) => Object.fromEntries(Object.entries(o).map(([e, v]) => [e, v * k]));
-    const harm = cause === 'hit' || cause === 'hit_again' || cause === 'villager' || cause === 'villager_again' || cause === 'villager_down' || cause === 'villager_gone' || cause === 'downed' || cause === 'violence' || cause === 'abandoned';
+    const harm = cause === 'hit' || cause === 'hit_again' || cause === 'hit_weave' || cause === 'hit_again_weave' || cause === 'villager' || cause === 'villager_again' || cause === 'villager_down' || cause === 'villager_gone' || cause === 'downed' || cause === 'violence' || cause === 'abandoned';
     try {
       if (state === 'gone') aff.setTint({ sadness: 0.35, anger: 0.12, joy: -0.2, trust: -0.2, affection: -0.1 }, { halfLife: 2 * day, label: 'heartsick', emoji: '😢' });
       else if (state === 'left') {
