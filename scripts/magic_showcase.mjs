@@ -135,7 +135,17 @@ await page.evaluate(() => {
     S.cells.push({ c, d, ess: ESS[i] });
   }
   // A row of dummies right of the player for twist close-ups.
-  for (let i = 0; i < 5; i++) S.dummies.push(dummy(p.x + 60 + (i % 2) * 26, p.y - 40 + i * 20, i % 2 ? 'wolf' : 'slime'));
+  // Where the i-th close-up dummy stands: a column to the right in landscape, a row
+  // below the player in portrait (so the shots stay on screen either way).
+  S.dummySpot = (i) => {
+    const pl = g.player;
+    if (cam.vw >= cam.vh) return { x: pl.x + 60 + (i % 2) * 26, y: pl.y - 40 + i * 20 };
+    return { x: pl.x - 48 + i * 24, y: pl.y + 64 + (i % 2) * 22 };
+  };
+  for (let i = 0; i < 5; i++) {
+    const at = S.dummySpot(i);
+    S.dummies.push(dummy(at.x, at.y, i % 2 ? 'wolf' : 'slime'));
+  }
   for (const d of S.dummies) d.removed = true;
 
   S.reset = () => {
@@ -288,13 +298,13 @@ if (!perfOnly) {
         let d = S.dummies[i];
         if (!d) {
           const proto = S.dummies[i % 5];
-          d = new proto.constructor(g, i % 2 ? 'wolf' : 'slime', { x: g.player.x - 150 + (i % 5) * 52, y: g.player.y - 60 + Math.floor(i / 5) * 40 });
+          d = new proto.constructor(g, i % 2 ? 'wolf' : 'slime', { x: g.camera.x + g.camera.vw * (0.1 + 0.2 * (i % 5)), y: g.player.y - 60 + Math.floor(i / 5) * 40 });
           d.maxHp = d.hp = 1e7;
           d.controller = null;
           g.entities.add(d);
           extra.push(d);
         } else {
-          d.x = g.player.x - 150 + (i % 5) * 52;
+          d.x = g.camera.x + g.camera.vw * (0.1 + 0.2 * (i % 5));
           d.y = g.player.y - 60 + Math.floor(i / 5) * 40;
         }
         for (const id of st[i]) g.magic.applyStatus(d, id, { src: g.player, potency: 1.2, power: 6, duration: 30, ignoreImmunity: true, chance: 99 });
@@ -309,8 +319,9 @@ if (!perfOnly) {
       for (const d of S.extra || []) g.entities.remove(d);
       S.extra = [];
       S.dummies.forEach((d, i) => {
-        d.x = g.player.x + 60 + (i % 2) * 26;
-        d.y = g.player.y - 40 + i * 20;
+        const at = S.dummySpot(i);
+        d.x = at.x;
+        d.y = at.y;
       });
     });
     // Reactions: set up what each dummy carries, then touch it with the other.
