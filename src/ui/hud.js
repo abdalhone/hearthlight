@@ -161,7 +161,7 @@ export class Hud {
     // "Listen in" while two villagers talk nearby (§19.3): small, a key or a tap.
     this.listenKey = h('kbd', { class: 'keycap', text: 'L' });
     this.listenText = h('span', { class: 'listen-text' });
-    this.listenBtn = h('button', { type: 'button', class: 'listen-prompt', hidden: true, title: 'Listen in on their conversation (L)' }, this.listenKey, icon('ear'), this.listenText);
+    this.listenBtn = h('button', { type: 'button', class: 'listen-prompt', hidden: true, title: 'Listen in on their conversation (L)' }, this.listenKey, icon('convo'), this.listenText);
     this.listenBtn.addEventListener('click', () => this.ui.village?.listenIn());
 
     // The "Ask Lyra" bar: every button is a request she weighs and answers (§16.4).

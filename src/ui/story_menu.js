@@ -34,7 +34,7 @@ export function bookAction(game, ui) {
 export function storyEntries(game, ui) {
   const out = [];
   const pro = prologueAction(game);
-  if (pro) out.push({ id: 'prologue', label: 'Prologue', icon: 'flame', hint: 'Watch how it began', run: pro });
+  if (pro) out.push({ id: 'prologue', label: 'Prologue', icon: 'star', hint: 'Watch how it began', run: pro });
   const book = bookAction(game, ui);
   if (book) out.push({ id: 'book', label: 'The Book of Halcyre', icon: 'book', hint: 'The world, its people and the story so far', run: book });
   return out;

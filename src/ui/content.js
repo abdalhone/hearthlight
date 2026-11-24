@@ -83,7 +83,7 @@ export const HOW_TO_PLAY = [
   {
     title: 'The village',
     text:
-      'Eighteen people live in Hearthvale, and they live their own lives: they work, eat at the Kettle, talk to each other, gossip, and remember what you do. Walk up to anyone and press E (or tap the hand) to talk; type anything into "Say something…" and they answer in their own way. When two of them are talking nearby, press L or tap "Listen in". In the morning, "While you slept" tells you what went on in the village overnight.',
+      'Of the hundred and fifty people in Hearthvale, eighteen are yours to know, and they live their own lives: they work, eat at the Kettle, talk to each other, gossip, and remember what you do. Walk up to anyone and press E (or tap the hand) to talk; type anything into "Say something…" and they answer in their own way. When two of them are talking nearby, press L or tap "Listen in". In the morning, "While you slept" tells you what went on in the village overnight.',
   },
   {
     title: 'Talking with her',

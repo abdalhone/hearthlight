@@ -53,7 +53,7 @@ under the icons; tap it to read all of it.
 
 ### Hearthvale: eighteen people with their own lives
 
-Eighteen people live in the village: old Hobb the lamplighter and Wenna the beekeeper (Lyra's
+About a hundred and fifty people live in Hearthvale, and eighteen of them are yours to know: old Hobb the lamplighter and Wenna the beekeeper (Lyra's
 parents), Elda at the Ember Kettle, Bram the smith and his apprentice Tilly, Pip, Captain Rowan
 and young Wys of the watch, Mira the herbalist, Tobias and Tansy on the farm, Sister Aveline at
 the chapel, Garrick the merchant, Hess the huntress, Sabeth the dyer, Alder the Reeve and Petra

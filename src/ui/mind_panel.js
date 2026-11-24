@@ -320,7 +320,7 @@ export class MindPanel {
         'div',
         { class: 'hero-text' },
         h('div', { class: 'hero-name' }, h('span', { text: name }), soul.fullName && soul.fullName !== name ? h('span', { class: 'hero-full', text: soul.fullName }) : null),
-        h('div', { class: 'hero-mood' }, h('span', { class: 'mood-emoji', text: moodEmoji(mood) }), h('span', { text: cs === 'gone' ? 'Gone from Hearthvale' : mood?.label ? `Feeling ${mood.label}` : 'Feeling like herself' })),
+        h('div', { class: 'hero-mood' }, h('span', { class: 'mood-emoji', text: moodEmoji(mood) }), h('span', { text: cs === 'gone' ? 'Keeping away from you' : mood?.label ? `Feeling ${mood.label}` : 'Feeling like herself' })),
         h(
           'div',
           { class: 'hero-bond' },
@@ -535,7 +535,14 @@ export class MindPanel {
       );
     }
 
-    this.content.append(h('p', { class: 'tab-intro', text: `${name} travels with you by choice. This is how she sees you, and why.` }), stateBox);
+    const intro = {
+      together: `${name} travels with you by choice. This is how she sees you, and why.`,
+      wary: `${name} is still beside you, but guarded. This is how she sees you, and why.`,
+      apart: `${name} is living her own life for now. This is how she sees you, and why.`,
+      left: `${name} has broken off with you. This is how she sees you, and why.`,
+      gone: `${name} has cut you out of her life. This is how she sees you, and why.`,
+    }[cs] || `${name} travels with you by choice. This is how she sees you, and why.`;
+    this.content.append(h('p', { class: 'tab-intro', text: intro }), stateBox);
     const worth = this.worthBox(name);
     if (worth) this.content.append(worth);
     this.content.append(deeds, promBox);
@@ -967,7 +974,7 @@ export class MindPanel {
         'li',
         { class: 'life-node life-now' },
         h('span', { class: 'life-age', text: 'Now' }),
-        h('div', { class: 'life-card' }, h('h3', { class: 'life-title', text: `Day ${day} in Hearthvale` }), h('p', { class: 'life-text', text: cs === 'gone' ? `${name} has left Hearthvale.` : `${companionshipLabel(cs)}. ${companionshipBlurb(cs)}` })),
+        h('div', { class: 'life-card' }, h('h3', { class: 'life-title', text: `Day ${day} in Hearthvale` }), h('p', { class: 'life-text', text: `${companionshipLabel(cs)}. ${companionshipBlurb(cs)}` })),
       ),
     );
     this.content.append(h('p', { class: 'tab-intro', text: `${name}'s life from the beginning, as she remembers it.` }), line);

@@ -36,7 +36,7 @@
   --sky: #8ccbe6;
   --rose: #f08cae;
 
-  --panel-bg: rgba(24, 24, 60, 0.94);
+  --panel-bg: rgba(24, 24, 60, 0.98); /* near-opaque: speech in the world must not ghost through */
   --card-bg: rgba(19, 18, 50, 0.84);
   --shadow: rgba(5, 3, 14, 0.5);
   --texture: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.035) 1px, transparent 1.2px);
@@ -4426,6 +4426,9 @@ input[type='range']::-moz-range-thumb {
   min-height: 40px;
   padding: 6px 12px 6px 8px;
   font-size: var(--fs-s);
+  /* Over bright grass under a thumb it has to read at a glance. */
+  opacity: 1;
+  background: rgba(19, 18, 50, 0.9);
 }
 
 /* ---------- morning card: while you slept ---------- */
@@ -5088,8 +5091,22 @@ input[type='range']::-moz-range-thumb {
   }
 }
 
-/* Narrow phones: the corner buttons go two by two so the cards keep their room. */
+/* Narrow phones (360–379 px): the cards give up a little width so the corner buttons
+   stay in one row and the top band stays as slim as on a wider phone. */
 @media (max-width: 379px) {
+  .hud-cards {
+    width: calc(100vw - 200px);
+  }
+  /* Her name before her stance (the stance is on the ◆ menu too). */
+  .lyra-card .stance-badge {
+    display: none;
+  }
+}
+/* The narrowest phones: the corner buttons go two by two so the cards keep their room. */
+@media (max-width: 339px) {
+  .hud-cards {
+    width: min(190px, 49vw);
+  }
   .hud-buttons {
     display: grid;
     grid-template-columns: repeat(2, 40px);

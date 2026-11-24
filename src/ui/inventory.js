@@ -124,7 +124,7 @@ export class InventoryPanel {
     if (!this.selected && mineList.length) this.selected = { owner: 'player', id: mineList[0].id };
     if (!mineList.length) this.mine.append(h('p', { class: 'empty', text: 'Your pack is empty. Gather, loot and trade to fill it.' }));
     for (const it of mineList) this.mine.append(slot(g, it, this.selected?.owner === 'player' && this.selected.id === it.id, () => this.select('player', it.id)));
-    if (!herList.length) this.hers.append(h('p', { class: 'empty', text: gone ? `${lyraName} took her pack with her.` : `${lyraName} carries nothing but her focus and a dagger.` }));
+    if (!herList.length) this.hers.append(h('p', { class: 'empty', text: gone ? `${lyraName} keeps her pack to herself now.` : `${lyraName} carries nothing but her focus and a dagger.` }));
     for (const it of herList) this.hers.append(slot(g, it, this.selected?.owner === 'lyra' && this.selected.id === it.id, () => this.select('lyra', it.id)));
     this.renderDetail();
   }
