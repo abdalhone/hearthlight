@@ -69,6 +69,7 @@ export class Chat {
     this.thinkingRow = h('div', { class: 'msg msg-lyra msg-thinking', hidden: true }, h('span', { class: 'dots' }, h('i'), h('i'), h('i')));
 
     this.chips = h('div', { class: 'chat-chips' });
+    this.chips.addEventListener('scroll', () => this.markMoreChips(), { passive: true });
     this.renderChips();
 
     this.field = h('input', {
@@ -142,6 +143,7 @@ export class Chat {
     this.unread = 0;
     this.ui.hud?.setUnread(0);
     this.scrollToEnd();
+    this.markMoreChips();
     if (focus && sync) this.field.focus({ preventScroll: true });
     else if (focus) this.focusSoon();
   }
@@ -855,6 +857,18 @@ export class Chat {
       this.chips.append(b);
     }
     this.chips.scrollLeft = 0;
+    this.chips.scrollTop = 0;
+    this.markMoreChips();
+  }
+
+  // A fade at the far edge while more quick replies are out of view (.has-more).
+  markMoreChips() {
+    const el = this.chips;
+    if (!el || typeof requestAnimationFrame !== 'function') return;
+    requestAnimationFrame(() => {
+      const more = el.scrollHeight > el.clientHeight + el.scrollTop + 2 || el.scrollWidth > el.clientWidth + el.scrollLeft + 2;
+      el.classList.toggle('has-more', more);
+    });
   }
 
   villagerHeader() {

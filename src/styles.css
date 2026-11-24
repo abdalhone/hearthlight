@@ -8828,6 +8828,17 @@ input[type='range']::-moz-range-thumb {
     min-width: 48px;
   }
 }
+/* Upright: two rows, and a third that fades out under them where there are more (a
+   2-px sliver of it read as a stray line). */
+@media (max-width: 640px) and (min-height: 521px) {
+  .chat-chips {
+    max-height: 98px;
+  }
+  .chat-chips.has-more {
+    -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 22px), transparent);
+    mask-image: linear-gradient(180deg, #000 calc(100% - 22px), transparent);
+  }
+}
 /* Sideways on a short phone (844×340 in the claude.ai app) two rows of quick replies
    left her words a strip 84 px tall: one row that slides, fading at the edge where
    there are more. */
@@ -8838,6 +8849,8 @@ input[type='range']::-moz-range-thumb {
     overflow-y: hidden;
     max-height: none;
     padding-right: 28px;
+  }
+  .chat-chips.has-more {
     -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
     mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
   }
