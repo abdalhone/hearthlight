@@ -108,3 +108,24 @@ test('faction relations', () => {
   assert.equal(factionRelation('player', 'villager'), 'ally');
   assert.equal(factionRelation('player', 'wildlife'), 'neutral');
 });
+
+test('consent gate: player requests can be refused, her own choices are not gated', () => {
+  const game = { bus: { emit() {} }, clock: { t: 0 }, plugins: { ctx: {} } };
+  const reg = new ActionRegistry(game);
+  let ran = 0;
+  reg.register('attack', { description: 'x', run: () => ((ran += 1), { ok: true }) });
+  reg.register('remember', { description: 'y', ungated: true, run: () => ({ ok: true }) });
+  reg.setConsentGate((name) => ({ decision: 'refuse', reasons: ['too dangerous'], message: 'No.' }));
+  const refused = reg.run('attack', { target: 'wolf' }, 'player');
+  assert.equal(refused.ok, false);
+  assert.equal(refused.refused, true);
+  assert.equal(refused.message, 'No.');
+  assert.equal(ran, 0);
+  assert.equal(reg.run('attack', { target: 'wolf' }, 'claude').ok, true);
+  assert.equal(reg.run('attack', { target: 'wolf' }, 'self').ok, true);
+  assert.equal(reg.run('remember', { value: 'x' }, 'player').ok, true);
+  assert.equal(ran, 2);
+  assert.equal(reg.history.at(-4).refused, true);
+  reg.setConsentGate(() => ({ decision: 'accept_conditional', message: 'Fine, half is mine.' }));
+  assert.equal(reg.run('attack', {}, 'player').ok, true);
+});
