@@ -476,11 +476,14 @@ export function knowAnswer(ctx, topic, { define = false } = {}) {
       const n = firstName(d.name);
       const told = [...d.notes.filter((x) => x.source !== 'self').map((x) => x.text), ...d.facts.filter((f) => f.source !== 'lore').map((f) => f.text)];
       const parts = [];
-      if (d.role && !/^lyra/i.test(d.role)) parts.push(`${n}, ${String(d.role).replace(/^the /i, 'the ')}.`);
+      if (d.role && !/^lyra/i.test(d.role)) {
+        const role = String(d.role) === 'mentor' ? 'my teacher' : String(d.role);
+        parts.push(`${n}, ${/^(?:the|a|an|my|her|his|our)\b/i.test(role) ? role : `the ${role}`}.`);
+      }
       if (told.length) parts.push(`${told.length > 1 ? 'What I know: ' : ''}${told.slice(-2).join(' ')}`);
       else if (d.lore) parts.push(firstPerson(d.lore, mind.name));
       if (d.opinion) parts.push(shorten(d.opinion, 160));
-      if (parts.length) return shorten(parts.join(' '), 440);
+      if (parts.length) return clipSentences(toListener(parts.join(' ')), 380);
     }
   }
   for (const id of Object.keys(CLOSED_PEOPLE)) {
@@ -529,7 +532,8 @@ export function knowAnswer(ctx, topic, { define = false } = {}) {
     else if (e.source === 'told' && e.from) parts.push(`${firstName(mind.relationships.get(e.from)?.name || e.from)} told me ${lowerFirst(text)}`);
     else parts.push(text);
   }
-  const qn = look.questions[0];
+  // The open question she keeps coming back to, when it is about what was asked.
+  const qn = look.questions.find((x) => [x.question, ...(x.clues || [])].some((t) => key(t).includes(qk)));
   if (qn) parts.push(`And I keep coming back to one question: ${toListener(lowerFirst(String(qn.question).replace(new RegExp(`^Is ${mind.name || 'Lyra'}\\b`), 'am I')))}`);
   return shorten(parts.join(' '), 460);
 }

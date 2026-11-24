@@ -1,7 +1,7 @@
 import { PLAYER_ID } from '../../core/constants.js';
 import { normalizeTag, bondOf } from '../mind/relationships.js';
-import { resolvePerson, opinionAnswer, playerAnswer, friendsAnswer, relLine, firstPerson, closedAbout } from '../mind/voice.js';
-import { clamp, firstName, cap, pick, shorten, isChild, playerRef } from '../mind/text.js';
+import { resolvePerson, opinionAnswer, playerAnswer, friendsAnswer, relLine, firstPerson, closedAbout, toListener } from '../mind/voice.js';
+import { clamp, firstName, cap, pick, shorten, isChild, playerRef, lowerFirst } from '../mind/text.js';
 
 // Relationships plugin (mind): who Lyra counts as friend or enemy, notes she keeps
 // about people, and what she thinks of them. The store itself is mind.relationships.
@@ -251,7 +251,8 @@ export const relationshipsPlugin = {
           if (!d || d.met) return null;
           const closed = closedAbout(ctx.mind, d.id);
           if (closed) return closed;
-          return shorten(`${firstName(d.name)}${d.role ? `, ${String(d.role).replace(/^lyra's /i, 'my ')}` : ''}. ${firstPerson(d.lore || '', ctx.mind.name)}`, 420);
+          const nm = String(d.name).includes(',') ? d.name : firstName(d.name);
+          return shorten(toListener(`${nm}${d.role ? `, ${lowerFirst(firstPerson(String(d.role), ctx.mind.name))}` : ''}. ${firstPerson(d.lore || '', ctx.mind.name)}`), 420);
         }
         if (who.group) return null;
         if (who.player) return playerAnswer(ctx, 'think');
@@ -264,7 +265,7 @@ export const relationshipsPlugin = {
         if (!rel || rel.firstMet == null) {
           // Someone she has never met but knows of (Varek One-Eye): what the valley says.
           const d = ctx.mind?.dossier?.(who.id || ref);
-          if (d?.lore) return shorten(`${n}? I know only what the valley says. ${firstPerson(d.lore, ctx.mind.name)}`, 420);
+          if (d?.lore) return shorten(toListener(`${n}? I know only what the valley says. ${firstPerson(d.lore, ctx.mind.name)}`), 420);
           if (!who.entity) return null;
           return `${n}? ${roleText ? `The ${roleText}, I'm told. ` : ''}We haven't met properly yet.`;
         }

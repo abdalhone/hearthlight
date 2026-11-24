@@ -1003,7 +1003,7 @@ const HANDLERS = {
     const item = resolveItemId(topic);
     if (item && ITEMS[item]) return this.line('know_item', { item: ITEMS[item].name, desc: ITEMS[item].desc });
     const k = (this.mind?.knowledge || []).find((x) => String(x.subject || '').toLowerCase().includes(topic));
-    if (k?.text) return k.text;
+    if (k?.text) return spokenByHer(k.text, soulOf(this.game).name || 'Lyra');
     return this.line('know_none', { topic });
   },
 
@@ -1335,6 +1335,23 @@ function activityPhrase(activity) {
 function shortOrigin(origin) {
   const t = String(origin || 'far away').split(/[:;(—]/)[0].replace(/[.,\s]+$/, '').trim();
   return t || 'far away';
+}
+
+// A note or a lore line that names her, as she would say it: "Lyra's" -> "my", "Lyra came" ->
+// "I came", anywhere else "me"; the stranger, to the player, is "you".
+function spokenByHer(text, name = 'Lyra') {
+  const n = String(name).replace(/[.*+?^${}()|[\]\\]/g, '');
+  const VERB = { has: 'have', is: 'am', was: 'was', does: 'do', goes: 'go' };
+  return String(text || '')
+    .replace(new RegExp(`\\b${n}'s\\b`, 'g'), 'my')
+    .replace(new RegExp(`\\b${n} (has|is|was|does|goes)\\b`, 'g'), (m, v) => `I ${VERB[v]}`)
+    .replace(new RegExp(`\\b${n} ([a-z]+ed|came|went|took|saw|lit|found|heard|knew|left|got)\\b`, 'g'), 'I $1')
+    .replace(new RegExp(`(^|[.!?]\\s+)${n}\\b`, 'g'), '$1I')
+    .replace(new RegExp(`\\b${n}\\b`, 'g'), 'me')
+    .replace(/\b(my|me)\b(?=[^.!?]*$)/, (w) => w)
+    .replace(/\bthe stranger's\b/g, 'your')
+    .replace(/\bthe stranger\b/g, 'you')
+    .replace(/(^|[.!?]\s+)(my|me)\b/g, (m, a, w) => `${a}${w === 'my' ? 'My' : 'Me'}`);
 }
 
 // At most n characters, cut after a whole sentence when one fits.

@@ -1151,7 +1151,7 @@ function matchPlugin(c, env) {
 // its history: "the Sunken Ruins", "the Greywinter") are answered from what she knows (the
 // memory plugin's mem.know, LORE's telling) before a place or an item with a similar name
 // catches them. People keep their own questions.
-const LORE_Q = /^(?:what (?:is|are|was|were) (?:a |an |the )?(?<q>[a-z' -]{3,40})|tell me about (?:a |an |the )?(?<q2>[a-z' -]{3,40}))$/;
+const LORE_Q = /^(?:what (?:is|are|was|were) (?:a |an |the )?(?<q>[a-z', -]{3,40})|tell me about (?:a |an |the )?(?<q2>[a-z', -]{3,40}))$/;
 function loreTermKey(t) {
   return String(t || '').toLowerCase().replace(/[“”"'’]/g, '').replace(/^(?:the|a|an) /, '').replace(/-/g, ' ').replace(/\s+/g, ' ').trim().replace(/(?:es|s)$/, '');
 }
