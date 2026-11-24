@@ -498,18 +498,24 @@ export function lakeGivesBack(m, rec) {
   v.hidden = false;
   rec.washedUp = Math.round(m.now());
   m.event('lake', `Mirror Lake gave back a body on the shore.`, { about: rec.id, hidden: true });
-  // Corran walks his shore every morning; anyone at the dock sees it soon enough.
-  const finder = alive(m, 'corran') ? 'corran' : alive(m, 'hess') ? 'hess' : alive(m, 'tansy') ? 'tansy' : null;
-  if (finder) {
-    const e = m.entity(finder);
-    if (e && !m.visible(e, 40) && !m.visible(v, 40)) {
-      e.x = v.x + 18;
-      e.y = v.y + 6;
-      safe(() => e.walker?.stop?.());
-      if (e.r) e.r.key = null;
-    }
-    m.found(rec.id, finder, 'mirror_lake', { lake: true });
+}
+
+// Corran walks his shore every morning; anyone at the dock sees what the lake gave back.
+export function shoreFinder(m, rec) {
+  const v = m.entity(rec.id);
+  if (!v || rec.foundAt != null) return;
+  const finder = ['corran', 'hess', 'tansy', 'pip', 'hobb'].find((id) => alive(m, id) && m.entity(id)?.state !== 'sleep') || ['corran', 'hess', 'tansy', 'pip', 'hobb'].find((id) => alive(m, id));
+  if (!finder) return;
+  const e = m.entity(finder);
+  if (e && !m.visible(e, 40) && !m.visible(v, 40)) {
+    e.x = v.x + 18;
+    e.y = v.y + 6;
+    safe(() => e.walker?.stop?.());
+    safe(() => e.wake?.());
+    if (e.r) e.r.key = null;
   }
+  rec.washedUp = null;
+  m.found(rec.id, finder, 'mirror_lake', { lake: true });
 }
 
 export function foundByChance(m, rec, how) {

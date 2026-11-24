@@ -189,13 +189,13 @@ export const WATCH = {
 // The player's answers, by kind. {where} is a real place they could name.
 export const ANSWERS = {
   truth: (where, when) => `${when ? `${cap(when)}, ` : ''}${where}.`,
-  lieNever: () => "I haven't seen them in days.",
+  lieNever: (him = 'them') => `I haven't seen ${him} in days.`,
   lieElsewhere: (alibi) => `I was ${alibi} all day.`,
   excuse: (place) => (/(wood|meadow|glade)/.test(place) ? 'Gathering herbs.' : /(lake|dock)/.test(place) ? 'Fishing.' : 'Just walking.'),
   firewood: () => 'Firewood.',
   deflect: () => 'Why are you asking me?',
   dunno: () => "I don't know what they saw.",
-  confess: () => 'I killed them.',
+  confess: (him = 'them') => `I killed ${him}.`,
 };
 
 // The Moot sits (the trial). The chair speaks; the watch tells what it knows.

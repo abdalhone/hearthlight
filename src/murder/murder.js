@@ -661,7 +661,7 @@ export class Murder {
     this.emit('body_found', { id, finder, place: rec.foundPlace, murder: true });
     this.openCase(id);
     Grief.onFound(this, rec);
-    if (finder !== 'lyra') Lyra.learnsDeath(this, rec);
+    if (finder !== 'lyra' && !witnessed) Lyra.learnsDeath(this, rec);
     if (!witnessed) this.toast(`${this.name(id)} has been found dead ${placeAt(rec.foundPlace, this.placeName(rec.foundPlace))}. Struck down with a blade. The watch is asking questions.`, 'warn', `found:${id}`);
     return rec;
   }
@@ -840,8 +840,9 @@ export class Murder {
   priorHarm(id) {
     const out = [];
     const rs = this.village?.rumors?.list || [];
+    const before = (this.dead[id]?.t ?? Infinity) - 30;
     for (const r of rs) {
-      if (r.victim !== id) continue;
+      if (r.victim !== id || !(r.t < before)) continue;
       if (r.kind === 'downed_villager' || r.kind === 'attacked_villager') out.push({ kind: 'violence', by: r.source || 'village', t: r.t, text: `Everyone knows ${this.playerName()} ${r.kind === 'downed_villager' ? 'beat' : 'struck'} ${this.name(id)} before.` });
       else if (r.kind === 'threat') out.push({ kind: 'threat', by: r.source || id, t: r.t, text: `${this.playerName()} threatened ${this.name(id)}.` });
     }
@@ -1022,6 +1023,8 @@ export class Murder {
       }
       // The lake gives back what it takes.
       if (rec.hidden?.kind === 'lake' && rec.foundAt == null && t >= (rec.hidden.returnsAt ?? Infinity)) Grief.lakeGivesBack(this, rec);
+      // Washed up on the shore: whoever walks it first in the morning finds it.
+      if (rec.washedUp != null && rec.foundAt == null && ((this.hour() >= 6 && this.hour() < 10) || t - rec.washedUp > 0.5 * DAY)) Grief.shoreFinder(this, rec);
       // The stream is no hiding place: found by morning.
       if (rec.streamAt != null && rec.foundAt == null && t - rec.streamAt > 0.4 * DAY) Grief.foundByChance(this, rec, 'stream');
       // The watch lays the body out in the chapel.

@@ -53,7 +53,7 @@ export function gatherEvidence(m, rec) {
   const t = m.now();
   const add = (kind, by, extra = {}) => {
     const w = extra.w ?? WEIGHTS[kind] ?? 0.1;
-    const key = `${kind}:${by || ''}:${extra.place || ''}`;
+    const key = extra.uid || `${kind}:${by || ''}:${extra.place || ''}`;
     if (out.some((e) => e.key === key)) return;
     out.push({ key, kind, by: by || null, w, t: extra.t ?? null, place: extra.place || null, text: extra.text || '' });
   };
@@ -100,7 +100,9 @@ export function gatherEvidence(m, rec) {
   // Harm done before.
   for (const h of m.priorHarm(rec.id)) add(h.kind, h.by, { t: h.t, text: h.text });
   // What happened when the watch asked.
-  for (const a of rec.answers || []) if (a.kind) add(a.kind, a.by || 'watch', { w: a.w, t: a.t, text: a.text });
+  (rec.answers || []).forEach((a, i) => {
+    if (a.kind) add(a.kind, a.by || 'watch', { w: a.w, t: a.t, text: a.text, uid: `answer:${i}` });
+  });
   return out;
 }
 
@@ -121,9 +123,9 @@ export function buildQuestions(m, rec, evidence) {
     vars: {},
     options: [
       { id: 'truth', label: ANSWERS.truth(where(m, rec.place), truthWhen), kind: 'truth' },
-      { id: 'lie', label: ANSWERS.lieNever(), kind: 'lie' },
+      { id: 'lie', label: ANSWERS.lieNever(m.pronoun(rec.id, 'him')), kind: 'lie' },
       { id: 'deflect', label: ANSWERS.deflect(), kind: 'deflect' },
-      { id: 'confess', label: ANSWERS.confess(), kind: 'confess' },
+      { id: 'confess', label: ANSWERS.confess(m.pronoun(rec.id, 'him')), kind: 'confess' },
     ],
   });
   const best = (kinds) => evidence.filter((e) => kinds.includes(e.kind)).sort((a, b) => b.w - a.w)[0] || null;
@@ -138,21 +140,21 @@ export function buildQuestions(m, rec, evidence) {
         { id: 'excuse', label: `${cap(m.pronoun(rec.id, 'he'))} went home.`, kind: 'lie_soft' },
         { id: 'dunno', label: "I don't know.", kind: 'deflect' },
         { id: 'lie', label: `I never met ${V} that day.`, kind: 'lie' },
-        { id: 'confess', label: ANSWERS.confess(), kind: 'confess' },
+        { id: 'confess', label: ANSWERS.confess(m.pronoun(rec.id, 'him')), kind: 'confess' },
       ] });
     } else if (e === carryE) {
       qs.push({ id: 'carry', key: 'carry', vars, evidence: e.key, options: [
         { id: 'excuse', label: ANSWERS.firewood(), kind: 'lie_soft' },
         { id: 'dunno', label: ANSWERS.dunno(), kind: 'deflect' },
         { id: 'lie', label: "I wasn't carrying anything.", kind: 'lie' },
-        { id: 'confess', label: ANSWERS.confess(), kind: 'confess' },
+        { id: 'confess', label: ANSWERS.confess(m.pronoun(rec.id, 'him')), kind: 'confess' },
       ] });
     } else {
       qs.push({ id: 'near', key: 'near', vars, evidence: e.key, options: [
         { id: 'excuse', label: ANSWERS.excuse(String(e.place || '')), kind: 'excuse' },
         { id: 'deflect', label: "Walking. It's not a crime.", kind: 'deflect' },
         { id: 'lie', label: 'I was never there.', kind: 'lie' },
-        { id: 'confess', label: ANSWERS.confess(), kind: 'confess' },
+        { id: 'confess', label: ANSWERS.confess(m.pronoun(rec.id, 'him')), kind: 'confess' },
       ] });
     }
   }
