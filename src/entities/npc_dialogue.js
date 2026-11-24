@@ -1,5 +1,6 @@
 import { ASK_TOPICS } from './npc_data.js';
 import { factTellable } from './npc_data_more.js';
+import { GONE_STAYS } from './npc_lines.js';
 import { itemName } from './items.js';
 import { pickLine, now, rand } from './creature_util.js';
 
@@ -73,6 +74,7 @@ export function aboutLyraLine(npc) {
   const st = npc.lyraState?.() || 'together';
   const lists = npc.profile.aboutLyra;
   if (!lists || st === 'together' || st === 'wary') return null;
+  if (st === 'gone' && GONE_STAYS[npc.profile.id]) return pickLine(npc.game, GONE_STAYS[npc.profile.id]);
   return pickLine(npc.game, lists[st] || lists.apart);
 }
 

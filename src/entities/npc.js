@@ -59,6 +59,7 @@ const WORK_OBJECTS = {
   garrick: ['shelf', 'crate', 'barrel', 'table'],
   tobias: ['crop'],
   rowan: ['table', 'crate'],
+  tilly: ['anvil', 'forge', 'table'], // Tilly works the smithy alongside Bram
 };
 
 // Is the actor (the player by default) wanted for a crime right now?

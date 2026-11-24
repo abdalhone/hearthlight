@@ -666,3 +666,18 @@ export const RESPONSE_LINES = {
   corran: { shout: ['Hoy! HOY! Leave off!', 'The watch! Somebody!'], fetch: ["I'll fetch the watch. Hm. Quick as I can."], shield: ['Behind me, boy. Behind me.'] },
   wys: { answer: ['HALT! The watch is here!', 'Stand away, citizen! I — I mean it!', 'Watchman Pike! Stand back!'], escort: ['I\'ll walk you home. On duty. Very safely.'] },
 };
+
+// DESIGN §19.7 changed what 'gone' means: Lyra never leaves Hearthvale. Gone, she has cut
+// the player out and lives among her own (the chandlery, or her room at the Kettle), and
+// the village stands with her. These replace the original eight's older 'gone' lines
+// (which had her walk the King's Road) wherever npc_dialogue.js speaks of her.
+export const GONE_STAYS = {
+  bram: ["The mage is at her father's. Wants nothing from you. Neither do I. Hmph.", "She's home among her own. Leave her be. I mean it."],
+  elda: ["She's home with Hobb and Wenna, love, and she doesn't want to see you. I'll not carry messages.", "She ate at my bar tonight and didn't once say your name. That's how I know it's done, dear."],
+  pip: ["Lyra doesn't want to see you. She's at her mam's. I'm not supposed to talk to you either.", "She's still here! She just doesn't want YOU. Elda says that's different."],
+  rowan: ['Lyra Ambrel is under the watch\'s eye now. Keep away from Lamplight Lane, citizen.', 'She asked the watch to keep you from her door. The watch will.'],
+  mira: ["She's at the chandlery. She asked me not to talk about you. ...I'm sorry. I won't.", "She's still here. She just isn't yours to worry about anymore. Sorry."],
+  tobias: ["Oh dear. Miss Lyra's at her parents' and won't hear your name. I'm... I'm on her side, I'm afraid.", 'She waved at everyone today. Everyone but you. Oh dear.'],
+  aveline: ['She is home, child, among the people who love her. She has closed her door to you. Respect it.', 'Lyra lit her family\'s flame tonight and asked me to pray for her peace. Not for you. For her peace.'],
+  garrick: ["She's at her da's, my friend, and the whole village has her back. Business advice: stay off Lamplight Lane.", 'She bought a lantern today. Full price. Looked straight through me when I mentioned you.'],
+};

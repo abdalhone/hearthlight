@@ -626,3 +626,19 @@ test('bedUnder finds the bed someone is asleep in, and nothing for the awake', a
   lyra.x = px(14);
   assert.equal(bedUnder(g, lyra), null, 'asleep on the floor is not in a bed');
 });
+
+test("when Lyra is 'gone' nobody says she left the valley: she is home and the village stands with her", async () => {
+  const { aboutLyraLine } = await import('../src/entities/npc_dialogue.js');
+  const g = makeGame();
+  addPlayer(g, px(32), px(22));
+  for (const id of ALL) {
+    const n = addNpc(g, id, 33, 22);
+    n.lyraState = () => 'gone';
+    for (let i = 0; i < 6; i++) {
+      const l = aboutLyraLine(n);
+      assert.ok(l, `${id} has a gone line`);
+      assert.ok(!/King's Road|walked (north|out|the road)|left the valley|didn't look back|bend in the road|walked .* at dawn/i.test(l), `${id}: ${l}`);
+    }
+    g.entities.remove(n);
+  }
+});
