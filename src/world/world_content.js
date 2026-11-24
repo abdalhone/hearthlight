@@ -215,5 +215,5 @@ export const LOOKS = {
     label: 'Look',
     text: 'Lyra\'s things, set out with care: a star chart held flat by a river pebble, a pressed moonpetal between two pages, and a letter that begins "Maren —" and stops there.',
   },
-  lyraTrunk: { label: 'Look', text: 'A sea-chest from the Glasswater Isles, scuffed salt-white at the corners. It is locked, and it is not yours.' },
+  lyraTrunk: { label: 'Look', text: "Lyra's old trunk from the chandlery, with Hobb's road-warden mark burned into the lid. It is locked, and it is not yours." },
 };

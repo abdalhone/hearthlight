@@ -12,24 +12,31 @@ import { describeBlock } from './autonomy_agenda.js';
 // {P} (the player), {place}, {at} ("in the Whisperwood"), {n} (someone nearby).
 
 const PLACE_THOUGHTS = {
-  kings_road: ["The King's Road. I keep checking the treeline for grey shapes.", 'Two days ago I nearly died on this road. Funny how a road can look so ordinary in daylight.'],
-  hearthvale: ['Woodsmoke and bread. Hearthvale smells like a place people stay.', 'Every chimney in Hearthvale is going. I could get used to this.'],
-  town_square: ["The notice board's three layers deep. Somebody here always needs help with something.", "A well, a notice board, and Elda's voice carrying from the Kettle. That's a village square."],
-  player_home: ["{P}'s cottage. My boots by the door. When did that start feeling normal?", "The spare bed is lumpy and I wouldn't trade it."],
-  ember_kettle: ['The Ember Kettle. Honey cakes are within reach. Stay strong, Lyra.', "Elda's hearth could warm a whole fleet. I want to fall asleep in front of it like a cat."],
-  smithy: ['Hot iron and honest work. I love the smell of a forge.', "Bram's hammer keeps better time than any drummer I've met."],
+  kings_road: ["The King's Road. I keep checking the treeline for grey shapes.", 'Two days ago the wolves came out of the trees right about here. Funny how a road looks so ordinary in daylight.'],
+  hearthvale: ['Woodsmoke and bread. Hearthvale smells like every year of my life.', "Every chimney in Hearthvale is going. I'd know this valley blindfolded. Mam practically does."],
+  town_square: ['The notice board is three layers deep, and Pip has posted about Biscuit again.', "The well, the notice board, Elda's voice from the Kettle. And under all of it, the Wellstone humming."],
+  player_home: ["The Wayhouse. Jory Fallow's books are still on the shelf.", 'My trunk at the foot of the spare bed, locked. Some things stay mine.'],
+  ember_kettle: ['The Ember Kettle. Honey cakes are within reach. Stay strong, Lyra.', "Elda's hearth has been lit for three hundred years. I want to fall asleep in front of it like a cat."],
+  smithy: ['Hot iron and honest work. I love the smell of a forge.', "Bram's hammer, and Tilly's a little off the beat. You could set the hours by them."],
   general_store: ['Every shelf in here has a price, and every price has a story, if you ask Garrick.', "I'm counting my coins in here. Out of respect for Garrick's talents."],
-  chapel: ['The chapel candle. Maren saw this same flame.', 'Old books on the chapel shelves. I could lose a week in here, easily.'],
-  herbalist: ["Silverleaf, feverfew, marsh mallow. Mira's shop smells like every sickroom I ever sat in. And like the cure.", 'Mira labels her jars in three colors of ink. I respect that enormously.'],
+  chapel: ['Thirty-eight flames on the altar. I count them every time. Everyone does.', 'The road-candle in the window. Sixty years and it has never once gone out.'],
+  herbalist: ["Silverleaf, feverfew, mint. Mira's shop smells like every sickroom I ever sat in. And like the cure.", 'Mira labels her jars in three colors of ink. I respect that enormously.'],
   guardhouse: ['The guardhouse. Everyone in here stands a little straighter.', "Rowan's map of the valley has the bandit camp circled three times."],
   farmhouse: ["Tobias's kitchen. There's a turnip on every surface. I'm not judging.", 'A farmhouse that smells of bread and worry. Tobias, all over.'],
-  reed_farm: ["Tobias's turnips, in tidy rows. Boar tracks along the fence.", 'Good soil. My father always said you could smell a good harvest coming.'],
-  whisperwood: ["The Whisperwood. The trees lean in like they're listening.", 'Moonpetals grow somewhere in here. They only open at night.', 'Wolf tracks. Old ones. ...Mostly old ones.'],
-  stonecut_quarry: ["Stonecut Quarry. Every chisel mark in that rock was somebody's long day.", 'Slimes in a quarry. Of course. Where else would you keep something wet and angry?'],
+  reed_farm: ["Tobias's turnips, in tidy rows. Boar tracks along the fence.", 'Good soil. Da always says you can smell a good harvest coming.'],
+  whisperwood: ["The Whisperwood. The trees lean in like they're listening.", "Mam's hives are along the near edge. I can hear them from here.", 'Wolf tracks. Old ones. ...Mostly old ones.'],
+  stonecut_quarry: ["Stonecut Quarry. The Cut is under that north face, behind Bram's stakes. I don't look at it.", 'Slimes in the quarry pools. Only the quarry pools. That bothers me more than it should.'],
   bandit_camp: ['The bandit camp. Breathe. Count them. Then count them again.', 'Smoke, stolen goods and too many knives. I hate this place already.'],
-  mirror_lake: ["Mirror Lake. Still as the lagoon at home. Don't look at the deep part.", "The water's so calm it holds the whole sky. I'll stay on the dock, thank you."],
-  sunken_ruins: ['The Sunken Ruins. Maren walked in here. Maren walked in here.', "Lanternwright stone. It hums if you stand still. I don't like standing still here."],
+  mirror_lake: ["Mirror Lake. So still it holds the whole sky. Don't look at the deep part.", "I'll stay on the dock, thank you. Near the dock. Somewhere near the dock."],
+  sunken_ruins: ['The Sunken Ruins. Maren went over this wall. Maren went over this wall.', "Lanternwright stone. It hums if you stand still. I don't like standing still here."],
   south_meadow: ["The South Meadow. Flowers to the knees. I'm going to pick some and pretend it's for practical reasons.", 'Rabbits everywhere. Nobody hurt them, please.'],
+  chandlery: ["The chandlery. Wax, wicks and Mam's songs. The old home.", "Da's dipping-vat. When I was small I thought candles grew on the racks."],
+  lamplight_lane: ['Lamplight Lane. I could walk it with my eyes shut. Da very nearly does.', 'The far lamps along the lane. Somebody has to see to them.'],
+  ashby_house: ["Ashby House. I can feel the Reeve's ledger from the doorstep.", "Petra's voice through the Ashby window. Somebody's being told how they were born."],
+  dye_cottage: ["The dye-vats. The stream runs violet and teal below Beth's yard.", "Beth's cottage. Hess's bow by the door, Beth's needle in everything else."],
+  weavers_row: ["Weavers' Row. Nan Pike's loom, and three Pike girls arguing over it.", 'The clack of the loom. Half the village is wearing something from that room.'],
+  net_shed: ["Corran's net-shed. Smells of fish and lake and pipe smoke.", 'Nets drying on the rail. Corran humming somewhere close.'],
+  wenna_hives: ["Mam's hives. The bees know me. Most of them approve.", 'Lindenflower and bees. She sings to them. They like it better than they like me.'],
 };
 
 const KIND_THOUGHTS = {
@@ -39,7 +46,7 @@ const KIND_THOUGHTS = {
   camp: ['Too many tents, too few honest faces.'],
   field: ['Open sky in every direction. My shoulders finally come down from my ears.'],
   road: ['Roads are just long promises. This one goes somewhere I want to be.'],
-  building: ['I always count the doors in a new place. Habit from the road.'],
+  building: ['I count the ways out of every room I walk into. A habit from the Cut.'],
   village: ['Lamps in windows, smoke from chimneys. Places like this are worth guarding.'],
   square: ['Everyone passes through a square sooner or later. Good place to wait for news.'],
   home: ['A roof, a bed, a fire. Most of what anybody needs.'],
@@ -212,11 +219,11 @@ export class ThoughtGenerator {
         add('rain:in:0', "Rain on the roof. Best sound in the world. Don't tell anyone I said that.", 2);
         add('rain:in:1', 'Listen to that rain. I could sleep for a week.', 1.2);
       } else {
-        add('rain:out:0', 'Rain. Back home, the lighthouse gutters sang in weather like this.', 1.5);
-        add('rain:out:1', `Soaked to the braid ${ctx.at}. Tides take this rain.`, 1.2);
+        add('rain:out:0', 'Rain. Bryn and I used to race paper boats down the gutters on Lamplight Lane in weather like this.', 1.5);
+        add('rain:out:1', `Soaked to the braid ${ctx.at}. Wicks and ashes, this rain.`, 1.2);
       }
     } else if (w === 'fog') {
-      add('fog:0', 'Fog like this rolls off the lagoon at home. You learn to listen instead of look.', 1.5);
+      add('fog:0', 'Grey in the morning, count your neighbors by noon. It is only fog, Lyra. Only fog.', 1.5);
       add('fog:1', fill("Can't see ten paces in this. Keep talking, {P}, so I know where you are.", ctx), 1.2);
     } else if (w === 'cloudy') {
       add('cloud:0', fill("Clouds sitting low over {place}. Rain before long, I'd bet.", ctx), 0.8);
@@ -224,7 +231,7 @@ export class ThoughtGenerator {
     }
     if (ctx.night && !ctx.indoor && w === 'clear') {
       add('stars:0', "Clear sky. There's the Lantern Bearer rising. Maren said it points to anyone who's lost.", 2);
-      add('stars:1', 'Stars like spilled salt. On Kettlewake I knew every one by name. I still do.', 1.6);
+      add('stars:1', 'Stars like spilled salt. On the lamp-round with Da I learned every one by name.', 1.6);
     } else if (ctx.night) {
       add('night:0', `Night ${ctx.at}. Everything sounds closer in the dark.`, 1);
       add('night:1', "If I can't sleep tonight I'll count stars from the window.", 0.8);
@@ -233,7 +240,8 @@ export class ThoughtGenerator {
       add('dawn:1', fill('Morning light on {place}. Everything looks forgivable at dawn.', ctx), 1.2);
     } else if (ctx.phase === 'dusk') {
       const wolves = this.mind.memory.all().some((m) => m.tags.includes('wolves'));
-      if (wolves && !ctx.indoor) add('dusk:0', "Dusk. That's when the wolves found me on the King's Road. I keep checking the shadows.", 1.6);
+      if (wolves && !ctx.indoor) add('dusk:0', "Dusk. That's when the wolves came on the King's Road. I keep checking the shadows.", 1.6);
+      add('dusk:lamps', "Dusk. The bell, then Da's ladder on the first lamp-post. Somebody should see to the far ones.", 1.2);
       add('dusk:1', "The light's going gold. My favorite and least favorite hour.", 1);
     } else if (ctx.hour >= 11.5 && ctx.hour < 13.5 && w === 'clear' && !ctx.indoor) {
       add('noon:0', fill('Sun high over {place}. Somebody, somewhere, is eating lunch without me.', ctx), 0.8);
@@ -281,8 +289,10 @@ export class ThoughtGenerator {
       else if (rel.affinity >= 45) add(`people:fond:${rel.id}`, pick([`${n}! The day just got better.`, `Good to see ${n} about.`], this.mind.game?.rng), 1.2);
       else if (rel.affinity <= -10) add(`people:cold:${rel.id}`, `${n}. I'll keep my distance.`, 1.2);
       else if (rel.familiarity < 20) add(`people:new:${rel.id}`, `${n}. I still don't know much about ${n}. Yet.`, 1);
-      if (rel.id === 'pip') add('people:pip', "Pip's watching my hands again. One day, kid. One real cantrip, safely.", 1.6);
-      if (rel.id === 'aveline' && ctx.stage.index <= 1) add('people:aveline', 'Sister Aveline. She knew Maren. I should ask her. I keep not asking her.', 1.8);
+      if (rel.id === 'pip') add('people:pip', "Sprout's watching my hands again. When you're eleven, Pip. Not a day before.", 1.6);
+      if (rel.id === 'aveline' && ctx.stage.index <= 1) add('people:aveline', "Sister Aveline. She knows something about Maren she hasn't said. I keep not asking.", 1.8);
+      if (rel.id === 'hobb') add('people:hobb', 'Da. Spectacles on his head, looking for his spectacles.', 1.3);
+      if (rel.id === 'wenna') add('people:wenna', "Mam's listening for me before she can see me. She always is.", 1.3);
       if (rel.tags.includes('enemy')) add(`people:enemy:${rel.id}`, `${n}. My hand's already near my dagger.`, 1.2);
     }
     const ids = new Set(ctx.nearby.map((x) => x.rel.id));
@@ -300,13 +310,13 @@ export class ThoughtGenerator {
     const lvl = bondOf(rel).level;
     const P = ctx.P;
     if (lvl <= 1) {
-      add('player:0', `I still don't know what brought ${P} to Hearthvale. Running from something, or toward it?`, 0.9);
-      add('player:1', `${cap(P)} stood beside me against a wolf pack without even knowing my name. Who does that?`, 0.9);
+      add('player:0', `Nobody lies warm in the snow. I still don't know what put ${P} in that ring.`, 0.9);
+      add('player:1', `${cap(P)} stood beside me against the wolves instead of running. I noticed.`, 0.9);
     } else if (lvl === 2) {
-      add('player:2', `I'm glad it was ${P} on that road and not anyone else.`, 0.9);
+      add('player:2', `I climbed that mountain for Maren and came down with ${P}. Some days I don't mind.`, 0.9);
       add('player:3', `${cap(P)} hums when they think nobody's listening. Badly. I like it.`, 0.7);
     } else if (lvl <= 4) {
-      add('player:4', `I'd follow ${P} into the Sunken Ruins. I suppose I'm going to.`, 0.9);
+      add('player:4', `Once we have that key, I'd go into the ruins with ${P}. That's not nothing.`, 0.9);
       add('player:5', `When did ${P} become the person I look for first in a room?`, 0.9);
     } else {
       add('player:6', 'Home is a person now. Maren would laugh at me.', 1);
@@ -334,7 +344,7 @@ export class ThoughtGenerator {
     }
     const purse = Number(m.agenda?.purse);
     if (Number.isFinite(purse)) {
-      if (purse < 5) add('self:purse:low', "My purse is nearly empty. Honest work, and soon. Mira pays for silverleaf, I'm told.", 1.1);
+      if (purse < 5) add('self:purse:low', 'My purse is nearly empty. Honest work, and soon. Mira pays fair for silverleaf.', 1.1);
       else if (purse >= 20) add('self:purse:full', `${purse} coins of my own. A room at the Kettle if I need one, and a honey cake if I want one.`, 0.8);
     }
     const plan = m.currentPlan?.();
@@ -386,12 +396,11 @@ export class ThoughtGenerator {
     if (list) list.forEach((t, i) => add(`quest:${stage.id}:${i}`, fill(t, ctx), 1.3));
     for (const g of activeGoals(this.mind.goals).slice(0, 4)) {
       let text = null;
-      if (g.id === 'repay_debt') text = fill("I owe {P} a life. I keep a tally in my head, and it's very lopsided.", ctx);
-      else if (g.id === 'meet_village') {
-        const unmet = this.unmetVillagers();
-        text = unmet.length ? `Faces still to learn: ${joinList(unmet.slice(0, 3))}. I'm getting there.` : null;
-      } else if (g.id === 'moonpetals') text = ctx.night ? 'Moonpetals are open by now, somewhere in the Whisperwood. One night soon.' : 'Moonpetals in the Whisperwood. One night soon.';
-      else if (g.id === 'teach_pip') text = 'A cantrip for Pip. Something small and bright that cannot set anything on fire. ...Something that probably cannot.';
+      if (g.id === 'the_stranger') text = fill("{P} said 'little lamp' in their sleep. I keep coming back to that.", ctx);
+      else if (g.id === 'waystones') text = 'The dead waystone toward Saltmere. Three words of script got me one night of light. I need the rest.';
+      else if (g.id === 'the_stone') text = 'The Sheaf Moot, and the stone question with it. Not yet. Not because they need me to.';
+      else if (g.id === 'moonpetals') text = ctx.night ? 'Moonpetals are open by now, somewhere in the Whisperwood. One night soon.' : 'Moonpetals in the Whisperwood. One night soon.';
+      else if (g.id === 'teach_pip') text = 'Two years until Pip is eleven. I am counting too. Do not tell him.';
       else if (g.id === 'follow_maren') text = "North, through the waygate. Maren's waiting. I can feel it.";
       else if (g.id !== 'find_maren' && g.source !== 'quest') text = `${g.text.replace(/[.!]$/, '')}. I haven't forgotten.`;
       if (text) add(`goal:${g.id}`, text, 0.9 + g.priority * 0.4);
@@ -431,12 +440,13 @@ export class ThoughtGenerator {
     if (ctx.night && (id === 'whisperwood' || id === 'south_meadow' || kind === 'forest')) add('soul:moonpetal', "Moonpetals open at this hour. If I see one glowing, we're stopping. Non-negotiable.", 2);
     if (id === 'mirror_lake' || kind === 'lake') add('soul:deepwater', "Don't look at the deep part. Don't look at the deep part.", 1.6);
     if (id === 'chapel') add('soul:books', "There's a book on that shelf older than Hearthvale. My fingers are itching.", 1.4);
-    if (id === 'smithy') add('soul:forge', "Forge-smoke and hot iron. Smells like my father's lamp room, somehow.", 1.2);
+    if (id === 'smithy') add('soul:forge', "Forge-smoke and hot iron. Smells like Da's dipping-room, somehow.", 1.2);
     if (ctx.inv?.has?.('honey_cake') && ctx.needs.hunger > 0.5) add('soul:cake', "There's a honey cake in my satchel. It's for emergencies. Emotional ones count.", 1.3);
     if (ctx.inv?.has?.('moonpetal')) add('soul:pressed', "I've a moonpetal pressed in my book. It still glows a little when I'm not looking.", 0.8);
-    if (ctx.mood.valence > 0.3) add('soul:hum', 'I keep humming the old Kettlewake net-mending song. Mother would be smug.', 0.7);
-    if (ctx.mood.valence < -0.2) add('soul:bead', "I'm tapping my bead again. Calm water, Lyra. Calm water.", 1.1);
-    if (ctx.indoor && this.mind.perception.firstVisit) add(`soul:doors:${id}`, 'I counted the doors when we came in. Old habit from the road. Two ways out. Good.', 1.2);
+    if (ctx.mood.valence > 0.3) add('soul:hum', "I keep humming Mam's bee-song. She'd be smug.", 0.7);
+    if (ctx.mood.valence < -0.2) add('soul:pin', "I'm tapping my pin again. Keep your own wick, Lyra.", 1.1);
+    if (ctx.indoor && this.mind.perception.firstVisit) add(`soul:doors:${id}`, 'I counted the ways out when we came in. Old habit from the Cut. Two. Good.', 1.2);
+    if (id === 'town_square' && ctx.phase === 'dusk') add('soul:hum_hitch', "The Wellstone's hum. There it is again, that hitch at dusk. Since midsummer.", 1.2);
   }
 
   activityCands(ctx, add) {
@@ -459,7 +469,7 @@ export class ThoughtGenerator {
       } catch {
         fire = null;
       }
-      if (fire && ctx.needs.hunger > 0.45) add('sit:fire', 'A fire, a full stomach and quiet company. Kettlewake nights felt like this.', 1.4);
+      if (fire && ctx.needs.hunger > 0.45) add('sit:fire', 'A fire, a full stomach and quiet company. Longwatch at the chandlery felt like this.', 1.4);
       else if (fire) add('sit:fire_hungry', 'Warm hands, empty stomach. One out of two.', 1.2);
       else add('sit:rest', 'Off my feet for a moment. My boots and I are no longer on speaking terms.', 1);
     }

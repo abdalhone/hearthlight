@@ -17,7 +17,7 @@ import {
   placePhrase,
   itemPhrase,
 } from './text.js';
-import { FIRST_IMPRESSIONS, KNOWN_PLACES } from './soul.js';
+import { LYRA_PEOPLE, KNOWN_PLACES } from './soul.js';
 import { itemName, itemDef } from '../../entities/items.js';
 
 // Perception: turns bus events (and what she can see) into feelings, memories and
@@ -82,7 +82,7 @@ const GIFT_LINES = {
     'Moonpetals are my favorite. How did you know? ...Did somebody tell you?',
   ],
   honey_cake: [
-    "A honey cake! I take back every unkind thing I've ever thought about you. Nine out of ten. Ten if it's Elda's.",
+    "A honey cake! I take back every unkind thing I've ever thought about you. Nine out of ten. Eleven if it's Elda's.",
     'Honey cake. You absolute treasure. This is the way to my heart, and now you know it.',
   ],
   crystal: ['It hums! Feel that? Maren would have loved this.'],
@@ -93,7 +93,7 @@ const GIFT_LINES = {
   bone: ['A bone. Lovely. Very... bone-like.'],
   wolf_pelt: ["A wolf pelt. I'll be honest, wolves and I have a history."],
   coin: ["Coins? I'm not for hire, you know. ...I'll put them toward honey cakes."],
-  food: ["Oh, thank you. I'll save it for when my stomach starts arguing.", 'Food! The way to a ranger\'s heart.'],
+  food: ["Oh, thank you. I'll save it for when my stomach starts arguing.", 'Food! The way to a mage\'s heart. Lamp-chill is real, you know.'],
   liked: ['Oh, I like this. Thank you.', "That's thoughtful. Thank you."],
   neutral: ["Thank you. I'll find a use for it.", 'For me? Thank you, really.'],
   disliked: ["That's... thank you. It's the thought that counts."],
@@ -790,7 +790,7 @@ export class Perception {
     const m = this.mind;
     if ((door.id === 'ruins_gate' || /ruins/i.test(door.name || '')) && this.throttle('ruins_gate_open', 3600)) {
       m.appraise('hope', 0.8, 'the ruins gate opened');
-      m.remember('The ruins gate groaned open. Cold air came out of the dark like a held breath. Maren walked in here.', {
+      m.remember('The ruins gate groaned open, after a hundred and ten years. Cold air came out of the dark like a held breath. Maren is somewhere past this.', {
         importance: 7,
         tags: ['sunken_ruins', 'gate', 'maren'],
         about: ['maren'],
@@ -1255,10 +1255,14 @@ export class Perception {
     if (rel && rel.fear > 0) rel.fear = Math.max(0, Math.round((rel.fear - 0.5 * hours) * 10) / 10);
   }
 
-  // First impressions, from her soul's notes on the villagers or from the profile.
+  // Seeing someone for the first time this session. The people of Hearthvale she has
+  // known all her life (soul.js LYRA_PEOPLE, seeded by the mind): a familiar face, not a
+  // first impression. Anyone else gets a first impression from the profile.
   meet(e, emit = true) {
     if (!e?.id || this.met.has(e.id)) return null;
     this.met.add(e.id);
+    const known = this.mind.relationships.map.get(e.id);
+    if (LYRA_PEOPLE[e.id] && known && known.firstMet != null) return this.greetKnown(e, known, emit);
     const m = this.mind;
     const g = this.game;
     const rels = m.relationships;
@@ -1298,7 +1302,7 @@ export class Perception {
       m.addThought(`Hello, ${named ? named : 'cat'}. You're Pip's, aren't you? Then you're ours, too.`, 'meeting', { show: true });
       m.feel('affection', 0.12, `meeting ${call}`);
     } else {
-      const fi = FIRST_IMPRESSIONS[e.id] || this.impressionFromProfile(e);
+      const fi = this.impressionFromProfile(e);
       rel.affinity = clamp(fi.affinity, -100, 100);
       rel.trust = clamp(fi.trust, 0, 100);
       rel.respect = clamp(fi.respect, 0, 100);
@@ -1360,6 +1364,21 @@ export class Perception {
     };
   }
 
+  // Someone she has known all her life, seen for the first time today: the face brings
+  // them to mind, and a passing thought. No new memory: she has a lifetime of them.
+  greetKnown(e, rel, emit = true) {
+    const m = this.mind;
+    const t = this.game?.clock?.t ?? 0;
+    m.relationships.ensure(e);
+    rel.lastSeen = t;
+    const p = LYRA_PEOPLE[e.id];
+    m.notice(`person:${e.id}`, { source: 'person', amount: 0.5, label: rel.name, reminisce: false });
+    if (p?.thought) m.addThought(p.thought, 'meeting', { show: true });
+    m.relationships._emit(rel, { met: true }, 'seen today');
+    if (emit) this.game?.bus?.emit?.('npc_meet', { a: this.owner, b: e });
+    return rel;
+  }
+
   checkVillageGoal() {
     const m = this.mind;
     const goal = m.goals.find((x) => x.id === 'meet_village' && !x.done);
@@ -1375,10 +1394,15 @@ export class Perception {
     if (total >= 3 && met >= total) m.completeGoal(goal.id);
   }
 
-  // Villagers (with profiles) she has met.
+  // Villagers she has seen since play began (she has known them all her life; this
+  // counts faces, for the pacing of the Maren arc).
   villagersMet() {
     let n = 0;
-    for (const r of this.mind.relationships.map.values()) if (r.npc && r.firstMet != null && r.kind !== 'group') n++;
+    const rels = this.mind.relationships.map;
+    for (const id of this.met) {
+      const r = rels.get(id);
+      if (r && r.npc && r.kind !== 'group' && r.id !== PLAYER_ID) n++;
+    }
     return n;
   }
 

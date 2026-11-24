@@ -142,15 +142,15 @@ export const memoryPlugin = {
         /\bwhere (?:did you grow up|were you born|(?:are|'re) you from|do you come from)\b/i,
         /\bhow did you (?:first )?(?<q>meet maren|find maren|learn magic|get your magic|discover your magic|become a ranger|start out)\b/i,
         /\bdo you have (?:any )?(?<q>family|siblings|brothers?|sisters?|parents)\b/i,
-        /\bwhat (?:was|were) (?:it|things) like (?<q>growing up|on the isles|at home|back home)\b/i,
+        /\bwhat (?:was|were) (?:it|things) like (?<q>growing up|in hearthvale|at home|back home)\b/i,
       ],
       confidence: 0.85,
       answer(m, ctx) {
         let q = String(m.groups?.q || m[0]).toLowerCase();
-        if (/where|born|from|grow|childhood|youth|isles|home/.test(q) || /where/.test(m[0].toLowerCase())) q = `${q} Kettlewake Glasswater Isles born`;
+        if (/where|born|from|grow|childhood|youth|hearthvale|home/.test(q) || /where/.test(m[0].toLowerCase())) q = `${q} Hearthvale Lamplight Lane chandlery born`;
         if (/magic/.test(q)) q = 'magic lamp storm lighthouse';
         if (/meet maren|find maren|first lesson/.test(q)) q = 'Maren first lesson came beacon';
-        if (/sibling|brother/.test(q)) q = 'Cal brother';
+        if (/sibling|brother/.test(q)) q = 'Ansel Bee Jem Sabeth sister';
         if (/parent|mother|father|mum|mom|dad|family/.test(q)) q = `${q} mother father`;
         return lifeAnswer(ctx, q);
       },
