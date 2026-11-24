@@ -870,7 +870,8 @@ export class Perception {
     if (this.isPlayer(speaker)) return;
     if (!this.near(speaker, NOTICE_RADIUS)) return;
     if (this.throttle(`heard_topics_${speaker.id}`, 6)) m.noticeText(String(text), { source: 'overheard', amount: 0.3 });
-    if (/\bmaren\b/i.test(text) && this.throttle('heard_maren', 120)) {
+    // Said to her face, in a talk she is having: the conversation itself is remembered.
+    if (/\bmaren\b/i.test(text) && !this.isSelf(target) && this.throttle('heard_maren', 120)) {
       m.appraise('hope', 0.6, `${speaker.name} spoke of Maren`);
       m.remember(`Heard ${speaker.name || 'someone'} mention Maren: "${firstSentence(text, 120)}"`, {
         importance: 6,

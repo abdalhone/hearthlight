@@ -76,7 +76,9 @@ export class MemoryIndex {
     if (!this.linker || lsig !== this._linkerSig) {
       this.linker = buildLinker(m);
       this._linkerSig = lsig;
-      this.sigs = {}; // every record must be re-linked with the new vocabulary
+      // Every record must be re-linked with the new vocabulary.
+      this.sigs = {};
+      for (const d of this.docs.values()) d.sig = null;
     }
     const life = m.life || [];
     this._sync('life', `${life.length}:${life[0]?.id || ''}`, life, (e) => e.id, lifeSig, (e) => this._lifeDoc(e));
@@ -88,12 +90,21 @@ export class MemoryIndex {
     if (people) this._sync('person', null, people, (d) => d.id, (d) => d.sig, (d) => d);
   }
 
+  // What the linker's vocabulary depends on: the names of the people she could mean, the
+  // places, the player's name and the story. Meeting a villager whose name the linker
+  // already knows changes nothing, so the index is not rebuilt for it.
   _linkerSignature() {
     const m = this.mind;
     const g = m?.game;
-    let profiles = 0;
-    for (const e of g?.entities?.all?.() || []) if (e?.profile) profiles++;
-    return `${m?.relationships?.size || 0}:${profiles}:${g?.locations?.all?.()?.length || 0}:${g?.settings?.playerName || ''}:${m?.lorebook?.size || 0}`;
+    const list = g?.entities?.all?.() || [];
+    const quick = `${m?.relationships?.size || 0}:${list.length}:${g?.locations?.all?.()?.length || 0}:${g?.settings?.playerName || ''}:${m?.lorebook?.size || 0}`;
+    if (quick === this._quickSig) return this._linkerSigCache;
+    this._quickSig = quick;
+    const names = new Set();
+    for (const e of list) if (e?.profile) names.add(`${e.id}|${e.name}|${e.profile.role || e.role || ''}`);
+    for (const r of m?.relationships?.map?.values?.() || []) if (r.id !== PLAYER_ID) names.add(`${r.id}|${r.name}|${r.role || ''}`);
+    this._linkerSigCache = `${[...names].sort().join(';')}#${g?.locations?.all?.()?.length || 0}#${g?.settings?.playerName || ''}#${m?.lorebook?.size || 0}`;
+    return this._linkerSigCache;
   }
 
   _peopleSignature() {

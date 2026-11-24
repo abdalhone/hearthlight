@@ -142,7 +142,7 @@ function buildLocal(ctx, npc, topic) {
   const conv = localConversation(mind, npc, topic);
   const rel = mind.relationships.get(npc.id);
   // A chat, not a lecture: about eight lines in all.
-  const room = Math.max(0, Math.floor((9 - conv.lines.length) / 2));
+  const room = Math.max(0, Math.floor((8 - conv.lines.length) / 2));
   const lore = room ? loreLines(ctx, npc, topic, rel, Math.min(room, topic ? 2 : 1)) : { lines: [], entries: [] };
   if (lore.lines.length) {
     // Before her closing line.
@@ -251,7 +251,7 @@ function playLine(ctx, talk, line) {
     mind.say(text, { target: npc, kind: 'say' });
   } else if (typeof npc.say === 'function') {
     try {
-      npc.say(text, { kind: 'say' });
+      npc.say(text, { kind: 'say', target: ctx.companion });
     } catch (err) {
       console.error('[social] npc.say failed', err);
     }
@@ -269,7 +269,8 @@ function playLine(ctx, talk, line) {
   } catch {
     /* the chat is optional */
   }
-  return lineDuration(text) + 0.35;
+  // The next line starts as this one is being finished, the way people actually talk.
+  return lineDuration(text) * 0.85 + 0.3;
 }
 
 // Everything the conversation changes: what she knows, what she thinks of them, what she

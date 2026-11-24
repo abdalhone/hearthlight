@@ -315,10 +315,9 @@ export class Mind {
     if (t - this.perception.lastSpoke < 5 || this._speech.length) return false;
     const b = g.bubbles;
     try {
-      if (typeof b?.isBusy === 'function' && b.isBusy(o)) return false;
-      if (typeof b?.has === 'function' && b.has(o)) return false;
+      if (bubbleShowing(b, o)) return false;
       if (!b?.thought) return false;
-      b.thought(o, text);
+      if (!b.thought(o, text) && typeof b.hasBubble === 'function') return false;
     } catch (err) {
       return false;
     }
@@ -959,6 +958,21 @@ function buildLife(lorebook) {
     feeling: e.feeling ? String(e.feeling) : null,
     importance: Math.max(1, Math.min(10, Math.round(Number(e.importance) || 6))),
   }));
+}
+
+// Is a speech bubble (or a thought) already over her head? (render's Bubbles API, with
+// older names as a fallback.)
+export function bubbleShowing(b, o) {
+  if (!b || !o) return false;
+  try {
+    if (typeof b.isSpeaking === 'function' && b.isSpeaking(o)) return true;
+    if (typeof b.hasBubble === 'function' && b.hasBubble(o)) return true;
+    if (typeof b.isBusy === 'function' && b.isBusy(o)) return true;
+    if (typeof b.has === 'function' && b.has(o)) return true;
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 function playerName(game) {

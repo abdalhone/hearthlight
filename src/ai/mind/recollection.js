@@ -123,11 +123,12 @@ export function recallContext(mind, text, { budget = 3500 } = {}) {
   for (const e of qEnts) addPerson(e);
   for (const h of hits) {
     if (h.store === 'person') addPerson(`person:${h.id}`);
-    else if (people.length < 2) for (const e of h.ents) addPerson(e);
+    else if (people.length < 2 && h.relevance >= 0.3 && seen.has(h.key)) for (const e of h.ents) addPerson(e);
   }
   for (const id of people) {
     const d = dossier(mind, id);
-    if (!d) continue;
+    // Someone she has only heard named adds nothing unless the player asked about them.
+    if (!d || (!d.met && !d.lore && !qEnts.has(`person:${id}`))) continue;
     groups.person.push({ line: shorten(`- [person:${d.id}] ${d.text}`, LINE_MAX.person), item: { id: `person:${d.id}`, store: 'person', label: d.name } });
     seen.add(`person:${d.id}`);
   }
@@ -414,6 +415,7 @@ export function maybeReminisce(mind, entKey, cue) {
   if (!per || g?.state !== 'playing' || !o || o.downed || o.state === 'sleep') return null;
   const t = per.rt();
   const R = mind._reminisce;
+  if (per.clock < 20) return null; // let the player find their feet first
   if (t - R.last < 120 || per.encounter || per.threats > 0) return null;
   if (per.firstVisit && t - per.placeSince < 60) return null; // a first visit has its own thoughts
   const now = mind.now();
@@ -460,6 +462,8 @@ export function maybeReminisce(mind, entKey, cue) {
 function bubbleBusy(g, o) {
   const b = g?.bubbles;
   try {
+    if (typeof b?.hasBubble === 'function') return !!b.hasBubble(o);
+    if (typeof b?.isSpeaking === 'function') return !!b.isSpeaking(o);
     if (typeof b?.isBusy === 'function') return !!b.isBusy(o);
     if (typeof b?.has === 'function') return !!b.has(o);
   } catch {

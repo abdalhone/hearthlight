@@ -117,6 +117,8 @@ const LOOSE_ALIASES = new Set([
   'church', 'temple', 'shrine', 'wildflowers', 'blacksmith', 'smith', 'herbalist', 'apothecary', 'barracks',
   'well', 'the well', 'the road', 'main road', 'camp', 'fields', 'farm', 'forest', 'square', 'lake', 'meadow',
 ]);
+// Parts of names that are ordinary words too.
+const COMMON_NAME_WORDS = new Set(['gale', 'reed', 'vale', 'hale', 'sister', 'brother', 'mother', 'father', 'captain', 'merrow', 'june']);
 // Words never to link at all: they are ordinary English far more often than places.
 const NEVER_LINK = new Set(['mine', 'well', 'wood', 'will', 'may', 'lead', 'stray']);
 
@@ -261,11 +263,18 @@ export function buildLinker(mind) {
       .split(/\s+/)
       .map((p) => p.replace(/^["'“‘]+|["'”’]+$/g, ''))
       .filter((p) => p.length >= 4 && /^[A-Z]/.test(p));
-    surfaces.push(...parts);
+    // Name parts that are also plain words ("born in a gale", "her sister") count only
+    // when the player says them.
+    const plain = parts.filter((p) => COMMON_NAME_WORDS.has(p.toLowerCase()));
+    surfaces.push(...parts.filter((p) => !plain.includes(p)));
     if (role && String(role).split(/\s+/).length <= 3) surfaces.push(role, `the ${role}`);
     L.add(`person:${id}`, name || id, surfaces);
+    if (plain.length) L.add(`person:${id}`, name || id, plain, { queryOnly: true });
   };
-  for (const [id, words] of Object.entries(ROLE_WORDS)) L.addStrict(`person:${id}`, null, words);
+  for (const [id, words] of Object.entries(ROLE_WORDS)) {
+    L.addStrict(`person:${id}`, null, words.filter((w) => !COMMON_NAME_WORDS.has(w)));
+    L.add(`person:${id}`, null, words.filter((w) => COMMON_NAME_WORDS.has(w)), { exact: true, queryOnly: true });
+  }
   for (const e of game?.entities?.all?.() || []) {
     if (e?.profile) addPerson(e.id, e.name, e.profile.role || e.role);
   }
