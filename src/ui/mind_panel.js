@@ -49,6 +49,7 @@ import {
   sourceLabel,
   confidenceWord,
   lifeTimeline,
+  directiveWords,
 } from './lyra_view.js';
 import { STORY } from '../lore/story.js';
 
@@ -352,16 +353,14 @@ export class MindPanel {
     setText(r.stateText, safe(() => mind.describeState?.(), '') || 'She is quiet, taking in the world around her.');
     const beh = c?.behavior;
     const status = safe(() => beh?.status?.(), '') || 'nearby';
-    const dir = beh?.directive?.type || 'follow';
+    const dir = beh?.directive?.type || '';
     const stance = beh?.stance || 'defend';
     const target = beh?.currentTarget;
-    clear(r.doing);
-    appendAll(r.doing, [
-      h('span', { class: 'chip chip-static' }, icon('boots'), h('span', { text: capitalize(status) })),
-      h('span', { class: `chip chip-static stance-${stance}` }, icon(stance === 'attack' ? 'sword' : stance === 'passive' ? 'feather' : 'shield'), h('span', { text: capitalize(stanceLabel(stance)) })),
-      h('span', { class: 'chip chip-static' }, icon('flag'), h('span', { text: `Order: ${dir}` })),
-      target && target.name ? h('span', { class: 'chip chip-static chip-danger' }, icon('sword'), h('span', { text: `Fighting ${target.name}` })) : null,
-    ]);
+    const doingKey = `${status}|${stance}|${dir}|${target?.name || ''}`;
+    if (doingKey !== r.doingKey) {
+      r.doingKey = doingKey;
+      this.drawDoing(r, status, stance, dir, target);
+    }
     const emo = mind.emotions || {};
     for (const [k] of EMOTIONS) r.emo[k].set(clamp01(Number(emo[k]) || 0), `${Math.round((Number(emo[k]) || 0) * 100)}`);
     const needs = mind.needs || {};
@@ -384,6 +383,16 @@ export class MindPanel {
         r.thoughts.append(h('li', { class: `thought src-${t.source || 'self'}` }, h('span', { class: 'thought-text', text: t.text })));
       }
     }
+  }
+
+  drawDoing(r, status, stance, dir, target) {
+    clear(r.doing);
+    appendAll(r.doing, [
+      h('span', { class: 'chip chip-static' }, icon('boots'), h('span', { text: capitalize(status) })),
+      h('span', { class: `chip chip-static stance-${stance}` }, icon(stance === 'attack' ? 'sword' : stance === 'passive' ? 'feather' : 'shield'), h('span', { text: capitalize(stanceLabel(stance)) })),
+      h('span', { class: 'chip chip-static' }, icon('flag'), h('span', { text: `Plan: ${directiveWords(dir)}` })),
+      target && target.name ? h('span', { class: 'chip chip-static chip-danger' }, icon('sword'), h('span', { text: `Fighting ${target.name}` })) : null,
+    ]);
   }
 
   // Her own plan for today (§16.1): what she means to do, where and why.
@@ -429,11 +438,11 @@ export class MindPanel {
     const today = g.clock?.day || 0;
 
     const stateBox = h('section', { class: `box you-state tone-${companionshipTone(cs)}` });
-    stateBox.append(
+    appendAll(stateBox, [
       h('div', { class: 'you-head' }, h('span', { class: 'cs-chip cs-chip-lg', 'data-tone': companionshipTone(cs), text: companionshipLabel(cs) }), rel ? h('span', { class: 'you-sum', text: `She ${trustWords(rel.trust)}, and ${fearWords(rel.fear)}.` }) : null),
       reason ? h('blockquote', { class: 'opinion', text: `“${reason}”` }) : null,
       h('p', { class: 'muted', text: companionshipBlurb(cs) }),
-    );
+    ]);
     if (rel) {
       const aff = rel.affinity;
       const affFill = h('div', { class: `bipolar-fill ${aff < 0 ? 'neg' : 'pos'}` });

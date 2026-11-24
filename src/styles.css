@@ -556,7 +556,7 @@ textarea {
   background: linear-gradient(180deg, #c6ecff, #4b9ac9);
 }
 .meter-fear .meter-fill {
-  background: linear-gradient(180deg, #b9a6d6, #5e4a85);
+  background: linear-gradient(180deg, #ffb3a8, #c9485e);
 }
 .meter-priority .meter-track {
   height: 5px;
@@ -1198,6 +1198,12 @@ textarea {
 
 /* ---------- toasts ---------- */
 
+/* While a panel is open, notices rise from the bottom so they never cover its header. */
+.modal-open .toasts {
+  top: auto !important;
+  bottom: calc(var(--sa-b) + 18px);
+  flex-direction: column-reverse;
+}
 .toasts {
   position: absolute;
   top: calc(var(--sa-t) + 62px);
@@ -3947,6 +3953,12 @@ input[type='range']::-moz-range-thumb {
     width: 48px;
     height: 48px;
   }
+  .toolbar {
+    flex-wrap: wrap;
+  }
+  .toolbar .search {
+    flex-basis: 100%;
+  }
   .deed {
     grid-template-columns: 40px 1fr;
   }
@@ -4089,9 +4101,13 @@ input[type='range']::-moz-range-thumb {
   .chat-open .hud-bottom {
     display: none;
   }
+  /* Beside the open chat there is no room up top: notices sit low, under the cards. */
   .chat-open .toasts {
+    top: auto;
+    bottom: calc(var(--sa-b) + 10px);
     left: calc((100% - min(420px, 52%)) / 2);
     width: min(320px, calc(48% - 16px));
+    flex-direction: column-reverse;
   }
   .panel-dialog {
     max-height: 100%;

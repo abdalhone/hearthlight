@@ -19,7 +19,7 @@ import { COMMANDS, JOBS, REJOIN, pickAck } from './content.js';
 import { itemIconUrl } from './art.js';
 import { itemName } from '../entities/items.js';
 import { gainText, frac, truncate } from './format.js';
-import { companionshipOf, companionshipLabel, companionshipReason, deedLabel } from './lyra_view.js';
+import { companionshipOf, companionshipLabel, companionshipReason, deedLabel, requestAnswer } from './lyra_view.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -670,16 +670,12 @@ export class UI {
   // fitting line of her own. A counter-offer becomes a button under her reply.
   showAnswer(r, kind, fallback = '') {
     const g = this.game;
-    const verdict = r?.verdict && typeof r.verdict === 'object' ? r.verdict : null;
-    const refused = !!r?.refused || (!!verdict?.decision && !ACCEPTED.has(verdict.decision));
-    let line = String(r?.message || (refused || verdict?.decision === 'accept_conditional' ? verdict?.message : '') || '').trim();
-    if (!line) line = r?.ok && !refused ? fallback || pickAck(kind) : pickAck(refused ? 'refused' : 'failed');
-    const counter = refused && verdict?.counter?.name ? { label: 'All right, your way', name: String(verdict.counter.name), args: verdict.counter.args || {} } : null;
-    this.lyraSays(line, { kind: refused ? 'refusal' : r?.ok ? 'answer' : 'problem', offer: counter });
-    if (refused) {
+    const a = requestAnswer(r, { kind, fallback, pick: pickAck });
+    this.lyraSays(a.line, { kind: a.kind, offer: a.counter });
+    if (a.refused) {
       this.hud?.flashRefusal();
       g.audio?.play('error', { volume: 0.45, pitch: 0.8 });
-    } else if (!r?.ok) g.audio?.play('error');
+    } else if (!a.ok) g.audio?.play('error');
     this.hud?.refreshCompanion(true);
   }
 

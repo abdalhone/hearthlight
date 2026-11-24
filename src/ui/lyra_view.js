@@ -65,6 +65,47 @@ export function companionshipReason(mind) {
   return '';
 }
 
+// ---------- her answer to a request (§16.4) ----------
+
+const ACCEPTED = new Set(['accept', 'accept_conditional']);
+
+// Read an ActionRegistry.run() result for the player: was it refused, what does she
+// say (the gate's or the action's words first; `pick(kind)` supplies a line of her
+// own otherwise), and did she offer something else instead.
+export function requestAnswer(r, { kind = '', fallback = '', pick = () => '' } = {}) {
+  const verdict = r && typeof r.verdict === 'object' && r.verdict ? r.verdict : null;
+  const refused = !!r?.refused || (!!verdict?.decision && !ACCEPTED.has(verdict.decision));
+  const ok = !!r?.ok && !refused;
+  let line = String(r?.message || (refused || verdict?.decision === 'accept_conditional' ? verdict?.message : '') || '').trim();
+  if (!line) line = ok ? fallback || pick(kind) : pick(refused ? 'refused' : 'failed');
+  const c = refused ? verdict?.counter : null;
+  const counter = c && c.name ? { label: 'All right, your way', name: String(c.name), args: c.args && typeof c.args === 'object' ? c.args : {} } : null;
+  return { ok, refused, line: String(line || ''), kind: refused ? 'refusal' : ok ? 'answer' : 'problem', counter, decision: verdict?.decision || (ok ? 'accept' : null) };
+}
+
+// Her standing plan in words, for the Now tab ("Plan: her own day").
+const DIRECTIVE_WORDS = {
+  follow: 'walking with you',
+  stay: 'holding a spot',
+  wait: 'waiting a moment',
+  goto: 'on her way somewhere',
+  job: 'working',
+  guard: 'keeping watch',
+  patrol: 'on patrol',
+  explore: 'exploring',
+  free: 'free time',
+  independent: 'her own day',
+  flee: 'running to safety',
+  leave: 'leaving',
+  keep_away: 'keeping her distance',
+  wait_outside: 'waiting outside',
+};
+
+export function directiveWords(type) {
+  if (!type) return 'taking things as they come';
+  return DIRECTIVE_WORDS[type] || String(type).replace(/_/g, ' ');
+}
+
 // ---------- the player in her eyes (§16.2) ----------
 
 const num = (v, d = null) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : d);

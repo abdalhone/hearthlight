@@ -8,7 +8,15 @@ import { hpText, frac, fmtInt, lyraStatusLine, weatherIconKey, weatherLabel, moo
 import { portraitUrl } from './art.js';
 import { companionshipOf, companionshipLabel, companionshipTone, barMode, playerRelation, trustWords, fearWords, farewellText } from './lyra_view.js';
 
-const STANCE_ICON = { attack: 'sword', defend: 'shield', passive: 'feather' };
+const STANCE_ICON = { attack: 'sword', defend: 'shield', passive: 'feather', self_defense: 'shield' };
+
+// The tab on the bar says what asking means right now.
+const BAR_TITLES = {
+  together: (n) => `Ask ${n}`,
+  wary: (n) => `Ask ${n} · she is wary`,
+  apart: (n) => `${n} is living her own life`,
+  left: (n) => `${n} left you`,
+};
 
 export class Hud {
   constructor(ui) {
@@ -258,7 +266,7 @@ export class Hud {
       this.csChip.dataset.tone = companionshipTone(state);
       this.lyraCard.dataset.cs = state;
       this.cmdbar.dataset.cs = state;
-      setText(this.barTitle, state === 'together' ? `Ask ${name}` : state === 'wary' ? `Ask ${name} · she is wary` : companionshipLabel(state));
+      setText(this.barTitle, BAR_TITLES[state] ? BAR_TITLES[state](name) : `Ask ${name}`);
       this.applyMode(barMode(state));
       if (changed && state !== 'gone') this.farewell = '';
     }
@@ -267,6 +275,7 @@ export class Hud {
     this.trustMini.hidden = gone;
     this.fearMini.hidden = gone;
     this.lStance.hidden = gone;
+    this.lMood.hidden = gone;
     toggleClass(this.lyraCard, 'gone', gone);
     if (gone) {
       const words = farewellText(mind, g.flags) || this.farewell;

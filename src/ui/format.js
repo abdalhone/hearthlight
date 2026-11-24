@@ -87,7 +87,7 @@ export function dayLabel(day, today) {
   return `Day ${d}`;
 }
 
-const STANCE_LABELS = { attack: 'attack mode', defend: 'defending', passive: 'passive' };
+const STANCE_LABELS = { attack: 'attack mode', defend: 'defending', passive: 'passive', self_defense: 'defending herself' };
 export function stanceLabel(stance) {
   return STANCE_LABELS[stance] || 'defending';
 }
