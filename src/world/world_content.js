@@ -210,4 +210,10 @@ export const LOOKS = {
   potionShelf: { label: 'Look', text: 'Rows of little bottles, each tied with a ribbon in a different color and labelled in tiny, careful handwriting.' },
   lakeLog: { label: 'Look', text: 'A driftwood log worn smooth by years of people sitting to watch the water.' },
   bench: { label: 'Look', text: 'A bench carved with initials, hearts and one very rude goat.' },
+  innSpareBed: { label: 'Look', text: 'A spare bed, made up tight enough to bounce a coin. Elda lets it by the night to whoever comes up the King\'s Road. You have a bed of your own at the cottage.' },
+  lyraDesk: {
+    label: 'Look',
+    text: 'Lyra\'s things, set out with care: a star chart held flat by a river pebble, a pressed moonpetal between two pages, and a letter that begins "Maren —" and stops there.',
+  },
+  lyraTrunk: { label: 'Look', text: 'A sea-chest from the Glasswater Isles, scuffed salt-white at the corners. It is locked, and it is not yours.' },
 };

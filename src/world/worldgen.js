@@ -500,11 +500,39 @@ class WorldBuilder {
     // The pond survives the clearing above (water was skipped).
 
     // --- The Ember Kettle (inn) ---
-    this.building({ id: 'ember_kettle', x: 64, y: 43, w: 13, h: 11, door: 70, material: 'timber', roof: { style: 'red', chimneys: [66, 74] }, sign: 'inn', smoky: true });
-    this.must({ objType: 'hearth', id: 'inn_hearth', footprint: { x: 66, y: 44, w: 2, h: 1 }, name: 'Inn hearth' });
-    this.rug(65, 45, 4, 2);
-    for (let c = 71; c <= 74; c++) this.decor('counter', c, 47, { variant: c === 71 ? 'left' : c === 74 ? 'right' : 'mid', name: 'Bar counter' });
-    for (const c of [71, 72, 73, 74, 75]) this.look('shelf', c, 44, 'innShelf', { variant: c % 2 ? 'bottles' : 'barrels' });
+    // Two guest rooms at the back (rows 40-44) behind a partition with open doorways;
+    // the taproom fills the front. The east room is the one Lyra rents when she would
+    // rather not sleep under the player's roof (DESIGN §16.1).
+    this.building({ id: 'ember_kettle', x: 64, y: 39, w: 13, h: 15, door: 70, material: 'timber', roof: { style: 'red', chimneys: [66, 74] }, sign: 'inn', smoky: true });
+    for (let c = 65; c <= 75; c++) if (c !== 68 && c !== 72) this.set(c, 45, T.WALL);
+    for (let r = 40; r <= 44; r++) this.set(70, r, T.WALL);
+    // West room: a spare bed Elda lets by the night.
+    this.look('bunk', 0, 0, 'innSpareBed', { footprint: { x: 65, y: 40, w: 1, h: 2 }, name: 'Guest bed', variant: 'guest' });
+    this.decor('chair', 67, 40, { variant: 'left' });
+    this.decor('nightstand', 66, 40, { name: 'Nightstand' });
+    this.rug(66, 42, 3, 2);
+    this.decor('pot', 69, 40, { variant: 'plant' });
+    // East room: Lyra's.
+    this.must({
+      objType: 'bed',
+      id: 'lyra_inn_bed',
+      footprint: { x: 75, y: 40, w: 1, h: 2 },
+      owner: 'lyra',
+      rented: true,
+      name: "Lyra's room at the inn",
+      sleepSide: 'left',
+      words: ['inn bed', 'her room', 'rented room', 'room at the inn', "lyra's room"],
+    });
+    this.look('desk', 73, 40, 'lyraDesk', { name: "Lyra's desk", variant: 'lyra' });
+    this.look('trunk', 71, 40, 'lyraTrunk', { name: "Lyra's trunk" });
+    this.rug(72, 42, 3, 2);
+    this.decor('pot', 71, 44, { variant: 'flower' });
+    // Taproom.
+    this.must({ objType: 'hearth', id: 'inn_hearth', footprint: { x: 65, y: 46, w: 2, h: 1 }, name: 'Inn hearth' });
+    this.rug(65, 47, 4, 2);
+    for (let c = 71; c <= 74; c++) this.decor('counter', c, 48, { variant: c === 71 ? 'left' : c === 74 ? 'right' : 'mid', name: 'Bar counter' });
+    for (const c of [74, 75]) this.look('shelf', c, 46, 'innShelf', { variant: c % 2 ? 'bottles' : 'barrels' });
+    this.decor('barrel', 71, 46, { name: 'Cider barrel' });
     this.decor('table', 0, 0, { footprint: { x: 66, y: 49, w: 2, h: 1 }, solid: true });
     this.decor('chair', 65, 49, { variant: 'right' });
     this.decor('chair', 68, 49, { variant: 'left' });
@@ -1287,10 +1315,17 @@ class WorldBuilder {
     const S = this.spawns;
     S.player = at(96, KINGS_ROAD_Y);
     S.companion = at(97, KINGS_ROAD_Y);
+    // Where the King's Road leaves the vale. Someone leaving Hearthvale for good walks
+    // off the map here (DESIGN §16.3: Lyra, if she is ever gone).
+    S.exits = {
+      east: { ...at(W - 1, KINGS_ROAD_Y + 1), dir: 'east' },
+      west: { ...at(0, KINGS_ROAD_Y + 1), dir: 'west' },
+    };
+    this.map.exits = S.exits;
     // Villagers where they are at 8 in the morning.
     S.npcs = [
       { id: 'bram', ...at(99, 54) },
-      { id: 'elda', ...at(73, 45) },
+      { id: 'elda', ...at(73, 47) },
       { id: 'pip', ...at(78, 62) },
       { id: 'rowan', ...at(75, 65) },
       { id: 'mira', ...at(49, 54) },

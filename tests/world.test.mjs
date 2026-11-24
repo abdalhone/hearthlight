@@ -33,7 +33,7 @@ const REQUIRED_LOCATIONS = [
   'kings_road',
 ];
 
-const REQUIRED_OBJECTS = ['home_bed', 'lyra_bed', 'home_chest', 'bandit_chest', 'inn_hearth', 'camp_campfire', 'lake_campfire', 'ruins_gate', 'maren_journal', 'fishing_spot', 'notice_board'];
+const REQUIRED_OBJECTS = ['home_bed', 'lyra_bed', 'lyra_inn_bed', 'home_chest', 'bandit_chest', 'inn_hearth', 'camp_campfire', 'lake_campfire', 'ruins_gate', 'maren_journal', 'fishing_spot', 'notice_board'];
 
 const NPC_IDS = ['bram', 'elda', 'pip', 'rowan', 'mira', 'tobias', 'aveline', 'garrick'];
 
@@ -236,6 +236,10 @@ test('every place and villager is reachable from the start; the ruins only with 
     } else assert.ok(noKey(c), `${id} reachable`);
   }
   for (const n of WORLD.spawns.npcs) assert.ok(noKey(n), `${n.id} reachable`);
+  // Lyra's rented room is reachable (she has to get to her bed).
+  const innBed = WORLD.objects.get('lyra_inn_bed');
+  assert.ok(noKey(innBed.sleepSpot), "Lyra's room at the inn is reachable");
+  assert.ok(noKey(WORLD.objects.get('lyra_bed').sleepSpot), "Lyra's cottage bed is reachable");
   const j = WORLD.objects.get('maren_journal');
   assert.ok(key({ x: j.x, y: j.y - 4 }), 'journal reachable with the key');
   assert.equal(noKey({ x: j.x, y: j.y - 4 }), false);
@@ -656,4 +660,61 @@ test('standalone map and object manager basics', () => {
   om.remove(b);
   assert.equal(om.isBlockingTile(1, 1), false);
   assert.equal(om.get(a.id), null);
+});
+
+test("Lyra's rented room at the Ember Kettle is hers (DESIGN §16.1)", () => {
+  const { game } = buildWorld();
+  const bed = game.objects.get('lyra_inn_bed');
+  assert.equal(bed.objType, 'bed');
+  assert.equal(bed.owner, 'lyra');
+  const inn = game.map.buildings.find((b) => b.id === 'ember_kettle');
+  for (const [tx, ty] of bed.occupiedTiles()) assert.equal(game.map.buildingAt(tx, ty), inn, 'inside the inn');
+  assert.equal(game.locations.at(bed.x, bed.y - 8).id, 'ember_kettle');
+  assert.equal(game.objects.findByWord('inn bed', 0, 0).id, 'lyra_inn_bed');
+  assert.equal(game.objects.findByWord('lyra_inn_bed', 0, 0).id, 'lyra_inn_bed');
+  // The player is told whose room it is; nothing else happens.
+  const slept = [];
+  const toasts = [];
+  game.sleep = (b) => slept.push(b.id);
+  game.ui = { toast: (t) => toasts.push(t) };
+  const player = { id: 'player', inventory: new Inventory() };
+  game.player = player;
+  assert.match(bed.interactLabel(player), /Lyra/);
+  bed.interact(player);
+  assert.deepEqual(slept, []);
+  assert.equal(toasts.length, 1);
+  assert.match(toasts[0], /Lyra's room/);
+  assert.ok(player.inventory.isEmpty());
+  // Lyra herself lies down in it.
+  const states = [];
+  const lyra = { id: 'lyra', inventory: new Inventory(), faceDir() {}, setState: (s) => states.push(s) };
+  bed.interact(lyra);
+  assert.deepEqual(states, ['sleep']);
+  // Her cottage bed still puts the player to sleep (it is in the player's home).
+  game.objects.get('lyra_bed').interact(player);
+  assert.deepEqual(slept, ['lyra_bed']);
+});
+
+test("the King's Road runs off both edges of the map on walkable tiles", () => {
+  const { map } = WORLD;
+  const start = WORLD.spawns.player;
+  const noKey = reachable(G, start);
+  const exits = WORLD.spawns.exits;
+  assert.ok(exits && exits.east && exits.west, 'spawns.exits');
+  assert.deepEqual(map.exits, exits);
+  for (const side of ['east', 'west']) {
+    const e = exits[side];
+    const t = tileOf(e);
+    assert.ok(t.tx === 0 || t.tx === map.w - 1, `${side} exit on the map edge`);
+    assert.ok(walkable(G, e), `${side} exit walkable`);
+    assert.ok(noKey(e), `${side} exit reachable from the start`);
+    assert.equal(WORLD.locations.at(e.x, e.y).id, 'kings_road');
+    const p = G.pathfinder.find(start.x, start.y, e.x, e.y, { maxNodes: 40000 });
+    assert.ok(p && p.length, `path to the ${side} edge`);
+  }
+  // Every row of the road is open at both edges.
+  for (let y = 83; y < 86; y++) {
+    assert.equal(G.isBlockedTile(0, y, null), false);
+    assert.equal(G.isBlockedTile(map.w - 1, y, null), false);
+  }
 });

@@ -850,7 +850,6 @@ export class FishingSpot extends Harvestable {
         { id: 'raw_fish', min: 1, max: 1, chance: 0.25 },
       ],
     });
-    this.hidden = true;
     this.workVerb = 'Fish';
     this.workSound = 'splash';
     this.workFx = 'splash';
@@ -994,9 +993,12 @@ export class Bed extends WorldObject {
     const f = o.footprint || { x: o.tx, y: o.ty - 1, w: 1, h: 2 };
     super(game, { ...o, objType: 'bed', footprint: f, solid: true, low: true, interactReach: 8, shadow: { dx: 1, dy: -2, rx: 8, ry: 3 } });
     this.owner = o.owner ?? null;
+    // A room Lyra pays for herself at the Ember Kettle (DESIGN §16.1): hers, not the player's.
+    this.rented = !!o.rented;
     this.name = o.name ?? (this.owner === 'lyra' ? "Lyra's bed" : 'Bed');
-    this.sprite = this.owner === 'lyra' ? 'prop:bed:lyra' : 'prop:bed';
-    this.words = ['bed', 'sleep', ...(this.owner === 'lyra' ? ['lyra', 'her bed', 'your bed'] : this.owner === 'player' ? ['my bed', 'home bed'] : [])];
+    this.sprite = this.rented ? 'prop:bed:inn' : this.owner === 'lyra' ? 'prop:bed:lyra' : 'prop:bed';
+    const ownWords = this.owner === 'lyra' ? ['lyra', 'her bed', 'your bed'] : this.owner === 'player' ? ['my bed', 'home bed'] : [];
+    this.words = ['bed', 'sleep', ...ownWords, ...(o.words || [])];
     // A free spot beside the bed for whoever sleeps here.
     this.sleepSpot = { x: this.x + (o.sleepSide === 'left' ? -TILE : TILE), y: this.y - 6 };
   }
@@ -1006,14 +1008,20 @@ export class Bed extends WorldObject {
   }
 
   interactLabel(actor) {
+    const player = isPlayer(this.game, actor);
+    if (player && this.rented) return "Lyra's room";
     const h = this.game?.clock?.hour ?? 22;
-    if (isPlayer(this.game, actor) && h >= 6 && h < 18) return 'Rest (sleep from 6 PM)';
-    return this.owner === 'lyra' && isPlayer(this.game, actor) ? "Sleep in Lyra's bed" : 'Sleep';
+    if (player && h >= 6 && h < 18) return 'Rest (sleep from 6 PM)';
+    return this.owner === 'lyra' && player ? "Sleep in Lyra's bed" : 'Sleep';
   }
 
   interact(actor) {
     const g = this.game;
     if (isPlayer(g, actor)) {
+      if (this.rented) {
+        this._toast(actor, "This is Lyra's room. She pays Elda for it out of her own purse, and what is in here is hers.", 'info');
+        return;
+      }
       try {
         g.sleep?.(this);
       } catch (err) {
@@ -1610,7 +1618,8 @@ export class ObjectManager {
     // Kind matches beat loose name matches ("gate" means the gate, not the gate pillar).
     const kind = (o) => !o.removed && o.objType !== 'window' && (types.has(o.objType) || !!o.words?.some((k) => k === w || types.has(k)));
     const named = (o) => !o.removed && o.objType !== 'window' && !!o.name && o.name.toLowerCase().includes(w);
-    return this.nearest(kind, x, y, 900) || this.nearest(named, x, y, 900);
+    // Nearby first; then anywhere, so "the inn bed" works from across the map.
+    return this.nearest(kind, x, y, 900) || this.nearest(named, x, y, 900) || this.nearest(kind, x, y, Infinity) || this.nearest(named, x, y, Infinity);
   }
 
   _uniqueName(o) {
