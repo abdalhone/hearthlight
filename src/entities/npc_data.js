@@ -5,7 +5,11 @@
 // Schema: DESIGN.md "NPCs". Extra fields used by npc.js: startOpinion, farewells,
 // gift { liked, neutral, disliked }, lyra (lines when Lyra is near), chatter
 // (lines to other villagers, {name} = their first name), pairs (lines for one
-// particular neighbor), sleepy, flee, fight (guards) and trick (Pip).
+// particular neighbor), sleepy, flee, fight (guards) and trick (Pip). Round-2 lines
+// (cold, crime, shaken, wronged, refuse, lyraAlone, aboutLyra, askPrompt, noMore, notYet,
+// helped, rooms) and each fact's spoken `say` come from npc_lines.js, merged in below.
+
+import { FACT_SAY, NPC_EXTRA_LINES } from './npc_lines.js';
 
 export const NPC_PROFILES = [
   {
@@ -756,6 +760,12 @@ export const NPC_PROFILES = [
     },
   },
 ];
+
+// Merge the spoken lines into the profiles once, at import.
+for (const p of NPC_PROFILES) {
+  Object.assign(p, NPC_EXTRA_LINES[p.id] || {});
+  for (const f of p.facts) if (!f.say && FACT_SAY[f.id]) f.say = FACT_SAY[f.id];
+}
 
 export function profileById(id) {
   return NPC_PROFILES.find((p) => p.id === id) || null;
