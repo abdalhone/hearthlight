@@ -146,6 +146,7 @@ export class MagicFx {
     const list = magic.bodies;
     const crowd = this._viewN > CROWD ? CROWD / this._viewN : 1;
     this.parts.scale = this.q * crowd;
+    this.parts.q = this.q;
     let seen = 0;
     for (let i = 0; i < list.length; i++) {
       const b = list[i];

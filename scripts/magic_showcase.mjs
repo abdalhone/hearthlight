@@ -31,7 +31,7 @@ const tag = `${W}x${H}`;
 
 const SHAPES = ['bolt', 'blast', 'strike', 'throw', 'beam', 'nova', 'orb', 'summon', 'rune', 'rain', 'wall', 'dash'];
 // How long after the cast each shape looks its best (ms).
-const SETTLE = { bolt: 130, blast: 110, strike: 90, throw: 520, beam: 420, nova: 170, orb: 700, summon: 1500, rune: 1300, rain: 750, wall: 450, dash: 70 };
+const SETTLE = { bolt: 70, blast: 110, strike: 90, throw: 560, beam: 420, nova: 170, orb: 700, summon: 1500, rune: 1300, rain: 750, wall: 450, dash: 70 };
 
 await mkdir(out, { recursive: true });
 const server = await startServer(0);

@@ -760,7 +760,10 @@ function drawCone(R, b, L) {
   }
 }
 
-// An explosion: a flash, a fireball (or a hole of night for dark), a shock ring.
+// An explosion: a brief flash, then a boiling cluster of shaded puffs in the essence's
+// colors (a hole of night for dark), the second essence's color in their hearts, and a
+// shock ring along the ground carrying the essence's edge (flames, spikes, rocks…).
+const PUFFS = 7;
 function drawBurst(R, b, L) {
   const P = L.pal;
   const x = b.x - R.ox;
@@ -770,33 +773,61 @@ function drawBurst(R, b, L) {
   const r = Math.max(3, b.r1);
   const c = R.ctx;
   const dark = L.look.dark;
-  if (k < 0.3) {
-    c.globalAlpha = 1 - k / 0.3;
-    disc(c, x, y, r * (0.35 + k), L.hot);
-  }
-  c.globalAlpha = 0.6 * a;
-  disc(c, x, y, r * (0.45 + 0.4 * k), dark ? DARK_CORE : P.deep);
-  c.globalAlpha = 0.75 * a;
-  disc(c, x, y - r * 0.08, r * (0.32 + 0.35 * k), dark ? P.deep : P.glow);
-  if (!dark) {
-    c.globalAlpha = 0.8 * a * a;
-    disc(c, x, y - r * 0.15, r * (0.2 + 0.2 * k), P.spark);
-  }
-  c.globalAlpha = a;
-  ring(c, x, y + 3, r * (0.55 + 0.5 * k), P.core, 1, 0.62);
+  const body = dark ? DARK_CORE : P.deep;
+  const mid = dark ? P.deep : P.glow;
+  const hi = dark ? P.glow : P.spark;
+  // The shock ring first (on the ground), so the puffs boil over it.
+  const rr = r * (0.5 + 0.55 * Math.sqrt(k));
   c.globalAlpha = 0.5 * a;
-  ring(c, x, y + 3, r * (0.45 + 0.5 * k), L.multi ? L.accent : P.glow, 2, 0.62);
+  ring(c, x, y + 3, rr, body, 2, 0.62);
+  c.globalAlpha = a;
+  ring(c, x, y + 3, rr, P.core, 1, 0.62);
+  edgeDeco(R, b, L, x, y + 3, rr, 0.62, a * 0.9, 0, TAU);
+  // A flash for the first few frames only: hot, small, gone fast.
+  if (k < 0.16) {
+    c.globalAlpha = 1 - k / 0.16;
+    disc(c, x, y, r * (0.22 + k * 1.4), L.hot);
+  }
+  // The puffs: each drifts out and up, swells, then shrinks away; shaded dark under,
+  // mid in the body, a highlight to the upper left, the accent in the newest hearts.
+  const spread = r * (0.12 + 0.42 * Math.sqrt(k));
+  const lift = k * r * 0.35;
+  const swell = k < 0.35 ? 0.55 + k * 1.3 : 1 - (k - 0.35) * 1.15;
+  for (let i = 0; i < PUFFS; i++) {
+    const h = hash(b.uid, i, 11);
+    const an = (i / PUFFS) * TAU + h * 0.9 + b.seed * 3;
+    const d = spread * (i === 0 ? 0.15 : 0.7 + h * 0.5);
+    const px0 = x + Math.cos(an) * d;
+    const py0 = y + Math.sin(an) * d * 0.62 - lift * (0.6 + h * 0.8);
+    const pr = Math.max(1, r * (i === 0 ? 0.36 : 0.2 + h * 0.12) * swell);
+    c.globalAlpha = Math.min(1, a * 1.4);
+    disc(c, px0, py0 + 1, pr + 0.6, body);
+    disc(c, px0 - pr * 0.12, py0 - pr * 0.1, pr * 0.82, mid);
+    if (k < 0.7) {
+      c.globalAlpha = Math.min(1, a * 1.6);
+      disc(c, px0 - pr * 0.32, py0 - pr * 0.35, pr * 0.42, hi);
+    }
+    if (L.multi && k < 0.5 && i % 2 === 0) {
+      c.globalAlpha = 0.85 * (1 - k * 2);
+      disc(c, px0 + pr * 0.15, py0 + pr * 0.1, pr * 0.3, L.accent);
+    }
+  }
   c.globalAlpha = 1;
   const g = R.g;
   if (g) {
-    halo(g, x, y, r * (1.2 + k), L.halo, 0.8 * a, R.bounds);
-    if (k < 0.35) {
-      g.globalAlpha = 1 - k / 0.35;
-      disc(g, x, y, r * (0.3 + k), P.core);
+    halo(g, x, y, r * (0.9 + 0.8 * k), L.halo, 0.7 * a, R.bounds);
+    if (k < 0.2) {
+      g.globalAlpha = 1 - k / 0.2;
+      disc(g, x, y, r * (0.18 + k), P.core);
     }
     g.globalAlpha = a;
-    ring(g, x, y + 3, r * (0.55 + 0.5 * k), P.spark, 1, 0.62);
+    ring(g, x, y + 3, rr, P.spark, 1, 0.62);
+    if (!dark && k < 0.6) {
+      g.globalAlpha = 0.6 * (1 - k / 0.6);
+      disc(g, x - r * 0.1, y - lift - r * 0.1, r * 0.22 * swell, P.spark);
+    }
     g.globalAlpha = 1;
+    R.bounds.add(x, y, r + 4);
   }
 }
 

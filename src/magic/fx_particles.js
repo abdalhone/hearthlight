@@ -135,6 +135,7 @@ export class FxParticles {
     this.glowN = 0;
     // Emission scale 0..1 set by the fx layer each step (crowds and slow frames shed less).
     this.scale = 1;
+    this.q = 1; // quality alone (statuses keep their marks in a crowd of weaves)
   }
 
   get count() {
@@ -151,9 +152,9 @@ export class FxParticles {
 
   // How many of `n` wanted particles to actually make, given how full the pool is
   // (stochastic rounding, so small emitters still emit on average).
-  budget(n) {
+  budget(n, keep = false) {
     const l = this.n / this.cap;
-    let k = n * this.scale;
+    let k = n * (keep ? this.q : this.scale);
     if (l > 0.45) k *= Math.max(0, 1 - (l - 0.45) / 0.5);
     const f = Math.floor(k);
     return f + (Math.random() < k - f ? 1 : 0);

@@ -132,7 +132,7 @@ export class StatusFx {
           let n = Math.floor(acc);
           accs[j] = acc - n;
           if (!n) continue;
-          n = parts.budget(n);
+          n = parts.budget(n, true);
           const st = styleId(p[0]);
           const ramp = rampFor(st, statusPal(s.def));
           for (let q = 0; q < n; q++) this._emit(parts, st, ramp, p[2], a, rec, s);
@@ -283,7 +283,33 @@ export class StatusFx {
       }
       if (g) halo(g, cx, feet - F.h * 0.5, F.h * 0.7, P.glow, (Math.floor(t * 14) & 1 ? 0.35 : 0.12) * fade, R.bounds);
     }
-    if (s.def.overlay === 'flame' && g) halo(g, cx, feet - F.h * 0.45, F.h * 0.9, P.glow, 0.28 * fade * (0.6 + 0.4 * flicker(t, a.x)), R.bounds);
+    if (s.def.overlay === 'flame') {
+      // Tongues of flame licking up the silhouette, re-rolled a dozen times a second.
+      const n = w > 12 ? 4 : 3;
+      const seed = Math.floor(t * 12) + (a.x | 0) * 7;
+      const base = top + Math.round(F.h * 0.55);
+      for (let q = 0; q < n; q++) {
+        const x = Math.round(F.left + ((q + 0.5) / n) * w + (hash(seed, q, 1) - 0.5) * 2);
+        const hgt = 3 + Math.round(hash(seed, q) * (q === 1 || q === 2 ? 6 : 4));
+        const y0 = base - Math.round(hash(q, a.x | 0) * 3);
+        c.globalAlpha = fade;
+        c.fillStyle = P.deep;
+        c.fillRect(x - 1, y0 - Math.round(hgt * 0.5), 3, Math.round(hgt * 0.5) + 1);
+        c.fillStyle = P.glow;
+        c.fillRect(x, y0 - hgt + 1, 1, hgt);
+        if (hgt > 4) c.fillRect(x - 1, y0 - Math.round(hgt * 0.4), 1, 2);
+        c.fillStyle = P.core;
+        c.fillRect(x, y0 - Math.round(hgt * 0.35), 1, 2);
+        px(c, x, y0 - hgt, P.spark);
+        if (g) {
+          g.globalAlpha = 0.8 * fade;
+          g.fillStyle = P.spark;
+          g.fillRect(x, y0 - hgt + 1, 1, Math.max(1, hgt - 2));
+          g.globalAlpha = 1;
+        }
+      }
+      if (g) halo(g, cx, feet - F.h * 0.45, F.h * 0.9, P.glow, 0.32 * fade * (0.6 + 0.4 * flicker(t, a.x)), R.bounds);
+    }
     switch (look.head) {
       case 'stars': {
         for (let q = 0; q < 3; q++) {
