@@ -31,7 +31,7 @@ function nextSpot(b) {
     const moved = Math.hypot(s.x - b.x, s.y - b.y);
     if (moved < 30) continue;
     const near = t ? Math.hypot(s.x - t.x, s.y - t.y) : 0;
-    const score = -near * 0.6 + Math.random() * 60 + Math.min(moved, 120) * 0.2;
+    const score = -near * 1.0 + Math.random() * 50 + Math.min(moved, 120) * 0.2;
     if (score > bs) {
       bs = score;
       best = s;
@@ -116,7 +116,7 @@ export const lakeBrain = {
         if (m.stageT >= 1.0) {
           m.stage = 'up';
           m.stageT = 0;
-          m.upFor = b.phase >= 2 ? 6 : 8;
+          m.upFor = b.phase >= 2 ? 7 : 9;
           b.setAnim('idle');
         }
         return;
@@ -172,7 +172,7 @@ export const lakeBrain = {
         const t = b.target;
         const base = t ? angleTo(b, t) : angleTo(b, b.arena);
         m.angles = b.phase >= 2 ? [base - 0.5, base + 0.5] : [base];
-        m.span = 120;
+        m.span = 92;
         m.mks = m.angles.map((a) => addMarker(b, { kind: 'line', x: b.x - Math.sin(a) * 0, y: b.y, angle: a, len: 230, w: m.span, dur: m.dur, color: '#4fb6f0', edge: '#e0f6ff' }));
         sound(b, 'boss_hum', { volume: 0.5, pitch: 1.4 });
       },
@@ -190,9 +190,9 @@ export const lakeBrain = {
             w: 14,
             speed: 150,
             life: 1.5,
-            mul: 0.8,
+            mul: 0.6,
             knockback: 120,
-            push: 220,
+            push: 200,
           });
         }
       },

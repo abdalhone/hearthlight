@@ -50,7 +50,7 @@ export const greyjawBrain = {
       }
       return;
     }
-    if (b.hitStreak > 42 && b.ready('retreat')) {
+    if (b.hitStreak > 32 && b.ready('retreat')) {
       b.cool('retreat', 9);
       b.hitStreak = 0;
       const away = angleTo(t, b);
@@ -119,7 +119,7 @@ export const greyjawBrain = {
       end(b, m) {
         b.z = 0;
         if (m.data.chainNext && b.mode === 'fight') b.startMove('lunge', { chain: true });
-        else b.mem.nextAt = b.t + 0.8 + Math.random() * 1.2;
+        else b.mem.nextAt = b.t + 1.2 + Math.random() * 1.2;
       },
     },
 
@@ -150,7 +150,7 @@ export const greyjawBrain = {
         }
       },
       end(b) {
-        b.mem.nextAt = b.t + 0.6 + Math.random();
+        b.mem.nextAt = b.t + 1 + Math.random();
       },
     },
 

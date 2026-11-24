@@ -18,6 +18,14 @@ function firePos(b) {
   return f ? { x: f.x, y: f.y } : { x: b.arena.x, y: b.arena.y + 16 };
 }
 
+function menNear(b) {
+  let n = 0;
+  for (const e of b.game.entities?.all?.() || []) {
+    if (e !== b && e.faction === 'bandit' && alive(e) && Math.hypot(e.x - b.arena.x, e.y - b.arena.y) < b.arena.r + 32) n++;
+  }
+  return n;
+}
+
 function fireDrop(b, x, y, r = 12, life = 3.2) {
   if (!b.mem.fire) return;
   spawnHazard(b.game, { kind: 'fire', owner: b, x, y, r, life, mul: 0.3, tick: 0.55, knockback: 30 });
@@ -61,7 +69,8 @@ export const varekBrain = {
     }
     const d = dist(b, t);
     faceTarget(b, t);
-    if (b.ready('call') && b.adds.size < 2) return void b.startMove('call');
+    // His men come when he shouts, unless the camp is already full of them.
+    if (b.ready('call') && b.adds.size < 2 && menNear(b) < 3) return void b.startMove('call');
     if (b.phase >= 2 && b.ready('sweep') && d < 44) return void b.startMove('sweep');
     if (b.ready('slam') && d < 46) return void b.startMove('slam');
     if (b.ready('charge') && d > 64 && d < 170) return void b.startMove('charge');

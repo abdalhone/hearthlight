@@ -204,6 +204,7 @@ export class Boss extends Creature {
       if (m.stage === 'windup') {
         this.telegraph = 0.2 + 0.8 * k;
         spec.windupTick?.(this, m, dt, k);
+        if (this.move !== m) return;
         if (m.t >= m.dur) {
           this.telegraph = 0;
           m.stage = 'active';
@@ -211,9 +212,11 @@ export class Boss extends Creature {
           m.dur = this.stageTime(spec.active, m, 0);
           this.setAnim(spec.anim?.active || 'attack', true);
           spec.strike?.(this, m);
+          if (this.move !== m) return; // the blow ended the fight (or the move)
         }
       } else if (m.stage === 'active') {
         spec.activeTick?.(this, m, dt, k);
+        if (this.move !== m) return;
         if (m.t >= m.dur || m.endActive) {
           m.stage = 'recover';
           m.t = 0;

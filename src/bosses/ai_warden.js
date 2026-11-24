@@ -189,9 +189,11 @@ export const wardenBrain = {
       },
       strike(b, m) {
         sound(b, 'boss_beam');
-        m.beam = { x: m.mk.x, y: m.mk.y, angle: m.angle, len: 210, w: 16 };
-        hitShape(b, { kind: 'line', ...m.beam }, { mul: 1.3, kind: 'magic', knockback: 120, hitSet: m.hitSet });
-        flashLight(b, m.beam.x + Math.cos(m.angle) * 100, m.beam.y + Math.sin(m.angle) * 100, 120, '#9fc8ff', 0.9, 0.35);
+        const beam = { x: m.mk.x, y: m.mk.y, angle: m.angle, len: 210, w: 16 };
+        m.beam = beam;
+        // (A blow that knocks the player out resets the fight mid-strike: use locals.)
+        flashLight(b, beam.x + Math.cos(beam.angle) * 100, beam.y + Math.sin(beam.angle) * 100, 120, '#9fc8ff', 0.9, 0.35);
+        hitShape(b, { kind: 'line', ...beam }, { mul: 1.3, kind: 'magic', knockback: 120, hitSet: m.hitSet });
         shake(b, 1.5, 0.2);
       },
       end(b, m) {
