@@ -1,0 +1,417 @@
+// Chat with Lyra (DESIGN.md §14): message log, text field, Send, quick-reply chips,
+// a dictation mic when the runtime offers one, and her thinking indicator.
+// Opening it never pauses the world; typing turns game keys off.
+
+import { h, button, setText, toggleClass, clear } from './dom.js';
+import { CHIPS } from './content.js';
+import { portraitUrl } from './art.js';
+import { cleanLine } from './format.js';
+
+const MAX_MESSAGES = 140;
+
+export class Chat {
+  constructor(ui) {
+    this.ui = ui;
+    this.game = ui.game;
+    this.messages = []; // {from, text, name, t}
+    this.el = null;
+    this.mounted = false;
+    this._open = false;
+    this.thinking = false;
+    this.unread = 0;
+    this.typing = false;
+    this.dict = null; // dictation namespace once available
+    this.dictState = 'idle';
+    this.dictCommitted = '';
+    this.dictPartial = '';
+    this.dictOffs = [];
+    this.lastPlayerEcho = { text: '', at: 0 };
+  }
+
+  mount() {
+    if (this.mounted) return this.el;
+    this.mounted = true;
+    this.portrait = h('img', { class: 'portrait portrait-chat', alt: '', draggable: 'false' });
+    this.title = h('div', { class: 'chat-name' });
+    this.status = h('div', { class: 'chat-status' });
+    const closeBtn = button('', { icon: 'close', cls: 'btn-icon chat-close', title: 'Close chat (Esc)', onClick: () => this.close() });
+    const head = h('header', { class: 'chat-head' }, h('span', { class: 'portrait-frame small' }, this.portrait), h('div', { class: 'chat-heading' }, this.title, this.status), closeBtn);
+
+    this.log = h('div', { class: 'chat-log', role: 'log', 'aria-live': 'polite', 'aria-label': 'Conversation with Lyra' });
+    this.thinkingRow = h('div', { class: 'msg msg-lyra msg-thinking', hidden: true }, h('span', { class: 'dots' }, h('i'), h('i'), h('i')));
+
+    this.chips = h('div', { class: 'chat-chips' });
+    for (const c of CHIPS) {
+      const b = h('button', { type: 'button', class: 'chip', text: c });
+      b.addEventListener('click', () => this.send(c));
+      this.chips.append(b);
+    }
+
+    this.field = h('input', {
+      class: 'field chat-field',
+      type: 'text',
+      maxlength: '400',
+      autocomplete: 'off',
+      enterkeyhint: 'send',
+      spellcheck: 'true',
+      'aria-label': 'Message to Lyra',
+      placeholder: 'Say something to Lyra…',
+    });
+    this.field.addEventListener('focus', () => this.setTyping(true));
+    this.field.addEventListener('blur', () => this.setTyping(false));
+    this.field.addEventListener('input', () => {
+      // Typing during dictation: what's in the field becomes the committed text.
+      if (this.dictState !== 'idle') {
+        this.dictCommitted = this.field.value;
+        this.dictPartial = '';
+      }
+    });
+    this.field.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        this.submit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        if (this.field.value) this.field.value = '';
+        else this.close();
+      }
+    });
+    this.mic = button('', { icon: 'mic', cls: 'btn-icon chat-mic', title: 'Speak to Lyra' });
+    this.mic.hidden = true;
+    this.mic.addEventListener('click', () => this.toggleDictation());
+    this.sendBtn = button('', { icon: 'send', cls: 'btn-icon btn-ember chat-send', title: 'Send (Enter)', onClick: () => this.submit() });
+    const form = h('div', { class: 'chat-input' }, this.field, this.mic, this.sendBtn);
+
+    this.el = h('aside', { class: 'chat', hidden: true, 'aria-label': 'Chat with Lyra' }, head, this.log, this.chips, form);
+    for (const m of this.messages) this._render(m);
+    this.log.append(this.thinkingRow);
+    this.refreshHeader();
+    return this.el;
+  }
+
+  // ---------- contract ----------
+
+  // focus: put the caret in the field. sync: do it now, inside the tap, so phones
+  // raise their keyboard (a deferred focus is ignored there).
+  open(focus = false, sync = false) {
+    if (!this.mounted) return;
+    if (!this._open) {
+      this._open = true;
+      this.el.hidden = false;
+      this.ui.root.classList.add('chat-open');
+      this.game.audio?.play('ui_open', { volume: 0.7 });
+      this.game.bus?.emit('ui_open', { panel: 'chat' });
+      this.refreshHeader();
+    }
+    this.unread = 0;
+    this.ui.hud?.setUnread(0);
+    this.scrollToEnd();
+    if (focus && sync) this.field.focus({ preventScroll: true });
+    else if (focus) this.focusSoon();
+  }
+
+  close() {
+    if (!this._open) return;
+    this._open = false;
+    if (this.dictState !== 'idle') this.stopDictation();
+    this.field.blur();
+    this.el.hidden = true;
+    this.ui.root.classList.remove('chat-open');
+    this.setTyping(false);
+    this.game.audio?.play('ui_close', { volume: 0.7 });
+    this.game.bus?.emit('ui_close', { panel: 'chat' });
+  }
+
+  toggle() {
+    if (this._open) this.close();
+    else this.open(!this.ui.isTouch);
+  }
+
+  isOpen() {
+    return this._open;
+  }
+
+  // {from: 'player'|'lyra'|'system'|'npc', text, name}
+  addMessage(m) {
+    if (!m || !m.text) return;
+    const from = ['player', 'lyra', 'system', 'npc'].includes(m.from) ? m.from : 'system';
+    const text = cleanLine(m.text, 1200);
+    if (!text) return;
+    const now = Date.now();
+    // The UI echoes the player's line at once; the brain may echo it again.
+    if (from === 'player' && this.lastPlayerEcho.text === text && now - this.lastPlayerEcho.at < 4000) {
+      this.lastPlayerEcho.text = '';
+      return;
+    }
+    const msg = { from, text, name: m.name || null, t: now, kind: m.kind || null };
+    this.messages.push(msg);
+    if (this.messages.length > MAX_MESSAGES) this.messages.shift();
+    if (this.mounted) {
+      this._render(msg);
+      if (from === 'lyra' && !this._open) {
+        this.unread++;
+        this.ui.hud?.setUnread(this.unread);
+      }
+    }
+  }
+
+  setThinking(on) {
+    this.thinking = !!on;
+    if (!this.mounted) return;
+    this.thinkingRow.hidden = !this.thinking;
+    if (this.thinking) this.log.append(this.thinkingRow);
+    this.refreshHeader();
+    this.scrollToEnd();
+  }
+
+  // ---------- internals ----------
+
+  _render(m) {
+    const row = h('div', { class: `msg msg-${m.from}${m.kind ? ` msg-${m.kind}` : ''}` });
+    if (m.from === 'npc' && m.name) row.append(h('span', { class: 'msg-name', text: m.name }));
+    row.append(h('span', { class: 'msg-text', text: m.text }));
+    this.log.insertBefore(row, this.thinkingRow.parentNode === this.log ? this.thinkingRow : null);
+    while (this.log.childElementCount > MAX_MESSAGES + 1) {
+      const first = this.log.firstElementChild;
+      if (first === this.thinkingRow) break;
+      first.remove();
+    }
+    this.scrollToEnd();
+  }
+
+  // A conversation Lyra had with a villager, shown as an overheard exchange.
+  addOverheard(title, lines) {
+    if (!this.mounted || !lines?.length) return;
+    const block = h('div', { class: 'msg msg-overheard' }, h('div', { class: 'overheard-title', text: title }));
+    for (const l of lines.slice(0, 8)) {
+      block.append(h('div', { class: 'overheard-line' }, h('span', { class: 'msg-name', text: l.name }), h('span', { class: 'msg-text', text: cleanLine(l.text, 300) })));
+    }
+    this.log.insertBefore(block, this.thinkingRow.parentNode === this.log ? this.thinkingRow : null);
+    this.scrollToEnd();
+  }
+
+  scrollToEnd() {
+    if (!this.mounted || !this._open) return;
+    requestAnimationFrame(() => {
+      this.log.scrollTop = this.log.scrollHeight;
+    });
+  }
+
+  focusSoon() {
+    // Next frame, so the key that opened the chat is not typed into the field.
+    requestAnimationFrame(() => {
+      if (this._open) this.field.focus({ preventScroll: true });
+    });
+  }
+
+  setTyping(on) {
+    this.typing = !!on;
+    this.ui.syncInputEnabled();
+  }
+
+  refreshHeader() {
+    if (!this.mounted) return;
+    const g = this.game;
+    const c = g.companion;
+    setText(this.title, g.settings?.companionName || c?.name || 'Lyra');
+    let status = '';
+    if (this.thinking) status = 'thinking…';
+    else if (this.dictState === 'listening') status = 'listening to you…';
+    else {
+      try {
+        const mood = c?.mind?.mood?.();
+        status = mood?.label ? `feeling ${mood.label}` : '';
+      } catch {
+        status = '';
+      }
+      const st = (() => {
+        try {
+          return g.brain?.status?.();
+        } catch {
+          return null;
+        }
+      })();
+      if (st?.label) status = status ? `${status} · ${st.label}` : st.label;
+    }
+    setText(this.status, status);
+    toggleClass(this.el, 'is-thinking', this.thinking);
+    const url = portraitUrl(g, 'lyra', this.thinking ? 'neutral' : 'happy');
+    if (url && this.portrait.src !== url) this.portrait.src = url;
+  }
+
+  submit() {
+    const text = this.field.value.trim();
+    if (!text) {
+      this.field.focus();
+      return;
+    }
+    if (this.dictState !== 'idle') this.stopDictation();
+    this.field.value = '';
+    this.dictCommitted = '';
+    this.dictPartial = '';
+    this.send(text);
+  }
+
+  send(text) {
+    const t = cleanLine(text, 400);
+    if (!t) return;
+    const g = this.game;
+    if (!g.brain?.handlePlayerMessage) return;
+    // Echo now so the line appears instantly even if the brain is slow to answer.
+    this.addMessage({ from: 'player', text: t });
+    this.lastPlayerEcho = { text: t, at: Date.now() };
+    g.audio?.play('ui_click');
+    let p;
+    try {
+      p = g.brain.handlePlayerMessage(t);
+    } catch (err) {
+      console.warn('[chat] message failed', err);
+      this.addMessage({ from: 'system', text: "Lyra didn't catch that. Try again in a moment." });
+      return;
+    }
+    Promise.resolve(p).catch((err) => {
+      console.warn('[chat] message failed', err);
+      this.setThinking(false);
+      this.addMessage({ from: 'system', text: "Lyra didn't catch that. Try again in a moment." });
+    });
+  }
+
+  // ---------- dictation ----------
+
+  // Called when the runtime's dictation capability appears or disappears.
+  attachDictation(dict) {
+    if (this.dict === dict) return;
+    for (const off of this.dictOffs) {
+      try {
+        off();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.dictOffs = [];
+    this.dict = dict || null;
+    if (!this.mounted) return;
+    this.mic.hidden = !this.dict;
+    if (!this.dict) return;
+    try {
+      this.dictOffs.push(
+        this.dict.onPartial((e) => {
+          this.dictPartial = e?.text || '';
+          this.showDictation();
+        }),
+      );
+      this.dictOffs.push(
+        this.dict.onFinal((e) => {
+          let t = e?.text || '';
+          if (!this.dictCommitted) t = t.replace(/^\s+/, '');
+          this.dictCommitted += t;
+          this.dictPartial = '';
+          this.showDictation();
+        }),
+      );
+      this.dictOffs.push(
+        this.dict.onState((e) => {
+          this.dictState = e?.state || 'idle';
+          toggleClass(this.mic, 'listening', this.dictState === 'listening' || this.dictState === 'starting');
+          this.mic.title = this.dictState === 'idle' ? 'Speak to Lyra' : 'Stop listening';
+          if (this.dictState === 'idle') {
+            this.dictPartial = '';
+            this.showDictation();
+            this.handleDictationEnd(e?.reason);
+          }
+          this.refreshHeader();
+        }),
+      );
+    } catch (err) {
+      console.warn('[chat] dictation setup failed', err);
+      this.mic.hidden = true;
+    }
+  }
+
+  showDictation() {
+    const partial = this.dictPartial;
+    const base = this.dictCommitted;
+    const sep = base && partial && !/^\s/.test(partial) && !/\s$/.test(base) ? ' ' : '';
+    this.field.value = base + sep + partial;
+    toggleClass(this.field, 'provisional', !!partial);
+  }
+
+  // Must run synchronously inside the click: start() needs the user's gesture.
+  toggleDictation() {
+    const d = this.dict;
+    if (!d) return;
+    let active = false;
+    try {
+      active = d.active();
+    } catch {
+      active = this.dictState !== 'idle';
+    }
+    if (active) {
+      this.stopDictation();
+      return;
+    }
+    this.dictCommitted = this.field.value;
+    this.dictPartial = '';
+    let p;
+    try {
+      p = d.start();
+    } catch (err) {
+      this.handleDictationError(err);
+      return;
+    }
+    Promise.resolve(p).then(
+      () => {},
+      (err) => this.handleDictationError(err),
+    );
+  }
+
+  stopDictation() {
+    try {
+      Promise.resolve(this.dict?.stop()).catch(() => {});
+    } catch {
+      /* ignore */
+    }
+  }
+
+  handleDictationError(err) {
+    const code = err?.code || 'upstream_error';
+    const ui = this.ui;
+    if (code === 'unavailable') {
+      this.mic.hidden = true;
+      ui.toast('Speaking to Lyra is not available here. Typing still works.', 'info');
+    } else if (code === 'not_granted') ui.toast('The microphone is off for this game. You can allow it in the page permissions.', 'warn');
+    else if (code === 'rate_limited') ui.toast('The microphone is busy. Try again in a moment.', 'info');
+    else if (code === 'no_gesture') ui.toast('Tap the microphone again to start speaking.', 'info');
+    else if (code !== 'stopped' && code !== 'dismissed') ui.toast('Listening failed. Try again, or type instead.', 'warn');
+  }
+
+  handleDictationEnd(reason) {
+    if (reason === 'unavailable') {
+      this.mic.hidden = true;
+      this.ui.toast('Speaking to Lyra is not available here. Typing still works.', 'info');
+    } else if (reason === 'time_limit') this.ui.toast('Listening stopped after a long while. Tap the mic to continue.', 'info');
+    else if (reason === 'upstream_error') this.ui.toast('The microphone stopped unexpectedly.', 'warn');
+    if (this.field.value.trim() && this._open) this.field.focus({ preventScroll: true });
+  }
+
+  reset() {
+    this.messages.length = 0;
+    if (this.mounted) {
+      clear(this.log);
+      this.log.append(this.thinkingRow);
+    }
+  }
+
+  update() {
+    // Lyra's header line (mood / provider) follows her state while open.
+    if (this._open && !this.thinking) {
+      this._hdr = (this._hdr || 0) + 1;
+      if (this._hdr >= 90) {
+        this._hdr = 0;
+        this.refreshHeader();
+      }
+    }
+  }
+}
+
