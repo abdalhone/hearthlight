@@ -620,6 +620,10 @@ test('her answers vary: the same refusal never twice in a row', () => {
   const seen = [lp.pick('no_trust', 'cool'), lp.pick('no_trust', 'cool'), lp.pick('no_trust', 'cool')];
   assert.notEqual(seen[0], seen[1]);
   assert.notEqual(seen[1], seen[2]);
+  // Even a bank with a single line (tired: "No.") never repeats back to back.
+  const tired = [lp.pick('no_trust', 'tired'), lp.pick('no_trust', 'tired'), lp.pick('no_trust', 'tired')];
+  assert.notEqual(tired[0], tired[1]);
+  assert.notEqual(tired[1], tired[2]);
 });
 
 // ---------------------------------------------------------------- the gate on the real registry

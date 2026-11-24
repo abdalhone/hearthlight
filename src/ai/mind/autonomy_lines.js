@@ -892,6 +892,17 @@ export class LinePicker {
       text = fill(list[i % list.length], vars);
     }
     this.cursor.set(ck, (i + 1) % list.length);
+    // A one-line bank said twice running: borrow the same thought in another register.
+    if (text === this.last) {
+      for (const other of TONES) {
+        if (other === t || !LINES[key][other]?.length) continue;
+        const alt = LINES[key][other].map((x) => fill(x, vars)).find((x) => x !== this.last);
+        if (alt) {
+          text = alt;
+          break;
+        }
+      }
+    }
     this.last = text;
     return text;
   }
