@@ -8969,3 +8969,7 @@ input[type='range']::-moz-range-thumb {
   overscroll-behavior: auto;
   padding: 0 0 14px;
 }
+.sb-more .sb-tile-name {
+  white-space: normal;
+  overflow: visible;
+}
