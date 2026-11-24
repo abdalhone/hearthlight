@@ -8962,3 +8962,10 @@ input[type='range']::-moz-range-thumb {
 .hud .jobs-menu {
   display: none !important;
 }
+/* An entry of kind "page" carries .codex-page too (codex-${kind}): it is not the
+   scroller, and must not swallow a swipe that starts on it. */
+.codex-entry.codex-page {
+  overflow: visible;
+  overscroll-behavior: auto;
+  padding: 0 0 14px;
+}

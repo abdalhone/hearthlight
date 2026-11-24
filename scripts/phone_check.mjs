@@ -377,6 +377,28 @@ async function run([W, H]) {
     if (!check(top && top !== 'pause', `${tag}: menu → ${id} opens a panel (${top})`)) continue;
     await fits(`${id} (${top})`);
     await shot(`11-${id}`);
+    if (id === 'book') {
+      // A swipe that starts on the words scrolls the page (not only one on the margin).
+      const start = await page.evaluate(() => {
+        const pg = document.querySelector('.codex-book > .codex-page');
+        const list = [...document.querySelectorAll('.codex-entry h4, .codex-entry p')].map((e) => e.getBoundingClientRect()).filter((r) => r.top > innerHeight * 0.55 && r.bottom < innerHeight - 10);
+        const r = list[0];
+        return pg && r ? [r.left + 30, r.top + 6] : null;
+      });
+      if (start) {
+        const cdp = await ctx.newCDPSession(page);
+        const pt = (x, y) => [{ x: Math.round(x), y: Math.round(y), id: 2 }];
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt(start[0], start[1]) });
+        for (let k = 1; k <= 10; k++) {
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: pt(start[0], start[1] - k * 12) });
+          await wait(16);
+        }
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await wait(500);
+        const top = await page.evaluate(() => document.querySelector('.codex-book > .codex-page').scrollTop);
+        check(top > 20, `${tag}: a swipe on the Book's words scrolls it (${top})`);
+      }
+    }
     // ✕: back to play.
     await tapSel('.modal-layer > .panel:last-child .panel-close', `${id} ✕`);
     await wait(400);
