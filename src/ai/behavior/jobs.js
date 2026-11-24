@@ -102,7 +102,7 @@ export const JOBS = {
     noun: 'food',
     unit: ['dish', 'dishes'],
     kind: 'cook',
-    items: ['cooked_fish', 'stew', 'bread'],
+    items: null, // every dish she takes off the fire counts
     defaultAmount: null,
   },
   collect_loot: {
@@ -170,11 +170,32 @@ function recipeAvailable(r, inv) {
   return true;
 }
 
-export function recipesFor(targetRef) {
-  if (!targetRef) return RECIPES;
+// The recipes a fire offers (the world's Fire.recipes: { inputs, out, qty }) in the
+// job's terms, so a dish the world adds is one she can cook too.
+const fireRecipeCache = new WeakMap();
+function recipesOf(fire) {
+  const list = fire?.recipes;
+  if (!Array.isArray(list) || !list.length) return RECIPES;
+  let out = fireRecipeCache.get(list);
+  if (!out) {
+    out = list
+      .filter((r) => r && r.out && r.inputs)
+      .map((r) => {
+        const known = RECIPES.find((k) => k.id === r.out);
+        return { id: r.out, needs: { ...r.inputs }, qty: Math.max(1, r.qty || 1), seconds: known?.seconds ?? 5, words: known?.words ?? new RegExp(`\\b${String(r.out).replace(/_/g, '[ _]')}\\b`) };
+      });
+    if (!out.length) out = RECIPES;
+    fireRecipeCache.set(list, out);
+  }
+  return out;
+}
+
+export function recipesFor(targetRef, fire = null) {
+  const all = recipesOf(fire);
+  if (!targetRef) return all;
   const t = String(targetRef).toLowerCase();
-  const match = RECIPES.filter((r) => r.words.test(t));
-  return match.length ? match : RECIPES;
+  const match = all.filter((r) => r.words.test(t));
+  return match.length ? match : all;
 }
 
 export function cookableCount(inv, targetRef = null) {
@@ -677,7 +698,7 @@ export class JobRunner {
     if (fire) a.faceToward(fire.x, fire.y - 4);
     a.setState('work');
     if (!this.recipe) {
-      this.recipe = recipesFor(this.targetRef).find((r) => recipeAvailable(r, a.inventory)) || null;
+      this.recipe = recipesFor(this.targetRef, fire).find((r) => recipeAvailable(r, a.inventory)) || null;
       this.workT = 0;
       if (!this.recipe) return this.count > 0 ? this.beginDeliver() : this.fail(say.noIngredients());
     }
@@ -695,7 +716,7 @@ export class JobRunner {
     for (const [id, n] of Object.entries(r.needs)) a.inventory.remove(id, n);
     if (this.count === 0) this.b.say(say.cooked(r.id));
     safe('audio.play', () => g.audio?.play?.('pickup', { x: a.x, y: a.y }));
-    this.gain([{ id: r.id, qty: 1 }], fire, true);
+    this.gain([{ id: r.id, qty: r.qty || 1 }], fire, true);
     if (this.amount && this.count >= this.amount) return this.beginDeliver();
     return 'running';
   }
