@@ -150,6 +150,57 @@ export const MAREN_TESTIMONY = {
     learned: 'Maren promised Pip a real spell when he is older. He misses her too.',
     lyra: "I don't know yet, Sprout. I'm finding out.",
   },
+  // Round three's ten (LORE §6): everyone knew Maren nineteen years; none of them knows why she went.
+  hobb: {
+    npc: ['Well now. She promised you supper that night, Star. Nineteen years, and she never once broke a promise to your mother.'],
+    learned: 'Da says Maren never broke a promise to Mam in nineteen years, until midsummer.',
+    lyra: 'I know, Da. That is what frightens me.',
+  },
+  wenna: {
+    npc: ["That woman never did a thing by accident. Whatever she went in for, she went in meaning to. And don't you dare go in after her in the dark, Lyra Ambrel."],
+    learned: 'Mam thinks Maren went into the ruins meaning to.',
+    lyra: 'Not in the dark, Mam. With a key, and a gate I can run through.',
+  },
+  hess: {
+    npc: ["Mm. Her notes said 'the other end'. We went. Found that one instead, two days after she went in. I don't like a trail that crosses itself."],
+    learned: 'Hess does not like that the stranger lay in the Crown Ring two days after Maren went in.',
+    lyra: "Neither do I. That's why I took the key.",
+  },
+  sabeth: {
+    npc: ["She'd sit by my vats some evenings and let me talk. She listened the way you do, sister. I miss it."],
+    learned: 'Beth misses the evenings Maren sat by her vats.',
+    lyra: "So do I, Beth. Come and listen to me instead. I'm worse at it.",
+  },
+  alder: {
+    npc: ["In the Moot's view the wardwright's absence is a grave difficulty. And, if I may say so outside the Moot, a grief. She paid a month ahead at the Kettle; it is in the ledger."],
+    learned: "Alder grieves Maren in his way. The Moot's ledger shows she paid a month ahead at the Kettle.",
+    lyra: "Thank you, Reeve. That's the kindest thing you've said to me in a year.",
+  },
+  petra: {
+    npc: ["The ruins took Maren and the mountain gave us your stranger, kicker. An even trade? We'll see."],
+    learned: 'Petra calls it a trade: the ruins took Maren, the mountain gave the stranger.',
+    lyra: "It's not a trade, Petra. Nobody asked me.",
+  },
+  tilly: {
+    npc: ["Bram sharpened her a silver chisel and wouldn't let me touch it. Silver! For stone! It'd be blunt in a week. She didn't mean to use it long, did she."],
+    learned: "Tilly saw the silver chisel Bram sharpened for Maren, and thinks it wasn't meant to last.",
+    lyra: "Maybe not, Copper. Maybe she only needed it once.",
+  },
+  tansy: {
+    npc: ['She knew more about the old stones than anyone, and she went in anyway. So knowing doesn\'t keep you out, does it.'],
+    learned: "Tansy thinks knowing wasn't what kept anyone out of the ruins.",
+    lyra: 'No. Judgment does. Hers or yours.',
+  },
+  corran: {
+    npc: ["Hm-hmm. The night the blue lights came up in the ruins I was out on the water. Saw them from the lake. Still water keeps its counsel."],
+    learned: 'Corran saw the blue lights come up in the ruins from the lake, the night Maren went in.',
+    lyra: 'Thank you, Corran. From the dock is close enough for me.',
+  },
+  wys: {
+    npc: ["Cit — Lyra. The Captain says she went over the wall against the second law. I'd have stopped her. Probably. If I'd been there. Sorry."],
+    learned: 'Wys was not on watch at the ruins the night Maren went over the wall.',
+    lyra: 'Nobody could have stopped her, Watchman. Not even me.',
+  },
 };
 
 export const MAREN_OPENERS = [
