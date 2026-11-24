@@ -155,6 +155,7 @@ export class Chat {
     this.setTyping(false);
     this.game.audio?.play('ui_close', { volume: 0.7 });
     this.game.bus?.emit('ui_close', { panel: 'chat' });
+    this.frameWorld();
   }
 
   toggle() {
@@ -639,7 +640,30 @@ export class Chat {
       this._scanT = this._open ? SCAN_EVERY : SCAN_EVERY * 4;
       if (this._open) this.refreshPeople();
       else if (this.target !== LYRA) this.checkTarget();
+      this.frameWorld();
     }
+  }
+
+  // On a phone held upright the chat covers the lower half of the world, where the player
+  // (and whoever they talk to) stands: the camera looks a little lower while it is open,
+  // so they stay in sight above it. Restored when the chat closes.
+  frameWorld() {
+    const cam = this.game.camera;
+    const r = this.game.renderer;
+    if (!cam || !Number.isFinite(cam.focusY) || typeof window === 'undefined') return;
+    if (this._baseFocusY === undefined) this._baseFocusY = cam.focusY;
+    let shift = 0;
+    if (this._open && this.el && r?.cssToWorld) {
+      const box = this.el.getBoundingClientRect();
+      const vw = window.innerWidth || 1;
+      const vh = window.innerHeight || 1;
+      if (box.width >= vw * 0.8 && box.top > vh * 0.2 && box.top < vh) {
+        const perCss = r.cssToWorld(0, 1).y - r.cssToWorld(0, 0).y;
+        if (perCss > 0) shift = Math.min(cam.vh * 0.4, ((vh - box.top) / 2) * perCss);
+      }
+    }
+    const want = this._baseFocusY + Math.round(shift);
+    if (cam.focusY !== want) cam.focusY = want;
   }
 
   // ======================================================================== §23: anyone
@@ -1093,7 +1117,12 @@ export class Chat {
     // In a fight a click is a sword stroke, unless the chat is already open to talk.
     if (!this._open && inFight(g)) return false;
     if (e.id === LYRA) {
-      if (!g.companion || g.companion.downed) return false;
+      if (!g.companion) return false;
+      // Never a sword stroke at her by mistake; down, she needs a hand, not words.
+      if (g.companion.downed) {
+        this.ui.toast?.(`${this.targetName(LYRA)} is down. Go to her and help her up.`, 'warn', { key: 'chat-far' });
+        return true;
+      }
       this.selectTarget(LYRA);
       if (!this._open) this.open(pointerType === 'mouse');
       return true;

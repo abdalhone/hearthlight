@@ -1272,7 +1272,8 @@ export class Village {
   briefHistory(id, said) {
     const h = recentExchanges(this, id, 6);
     const last = h[h.length - 1];
-    if (last && !last.they && last.you === said) h.pop();
+    const norm = (x) => String(x || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 120);
+    if (last && !last.they && norm(last.you) === norm(said)) h.pop();
     if (h.length) return h.slice(-5);
     return (this.talks[id] || []).slice(-4).map((x) => ({ you: x.you, they: (x.they || []).join(' '), day: x.day }));
   }
