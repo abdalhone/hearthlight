@@ -1321,7 +1321,8 @@ class WorldBuilder {
     const r = this.ruinsRect;
     this.loc('sunken_ruins', { x: r.x, y: r.y, w: r.w, h: r.h }, [r.x + 20, r.y + 5]);
     this.loc('south_meadow', { x: 48, y: 88, w: 78, h: 31 }, [86, 100]);
-    this.loc('kings_road', { x: 0, y: KINGS_ROAD_Y, w: W, h: 3 }, [70, KINGS_ROAD_Y + 1]);
+    // One row of verge on each side: the painted road wanders a little past its tiles.
+    this.loc('kings_road', { x: 0, y: KINGS_ROAD_Y - 1, w: W, h: 5 }, [70, KINGS_ROAD_Y + 1]);
     this.loc('wilds', { x: 0, y: 0, w: W, h: H }, [140, 100]);
   }
 

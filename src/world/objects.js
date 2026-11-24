@@ -107,7 +107,7 @@ export class WorldObject {
     const atlas = this.game?.atlas;
     const name = this.spriteName(time);
     if (atlas && atlas.draw(ctx, name, 0, Math.round(this.x - ox), Math.round(this.y - oy))) return;
-    // Art missing: a modest placeholder so the object is still visible.
+    // Art missing: a modest stand-in so the object is still visible.
     ctx.fillStyle = '#7d5233';
     ctx.fillRect(Math.round(this.x - ox) - 6, Math.round(this.y - oy) - 10, 12, 10);
   }
