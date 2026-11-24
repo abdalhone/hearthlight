@@ -437,9 +437,12 @@ function drawOrb(R, b, L) {
   c.globalAlpha = 1;
   const g = R.g;
   if (g) {
+    // A glowing rim and a soft halo: the sphere's inside (its turning form) stays legible.
     g.globalAlpha = fade;
-    halo(g, x, y, rr * 3.4, L.halo, 0.6, R.bounds);
-    disc(g, x - rr * 0.2, y - rr * 0.2, rr * 0.5, P.spark);
+    halo(g, x, y, rr * 3, L.halo, 0.36, R.bounds);
+    g.globalAlpha = 0.8 * fade;
+    ring(g, x, y, rr, P.glow, 1, 1);
+    px(g, x - rr * 0.38, y - rr * 0.42, P.core);
     g.globalAlpha = 1;
   }
 }

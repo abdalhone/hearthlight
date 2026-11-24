@@ -616,7 +616,7 @@ export class MagicFx {
     const sy = r.subY || 0;
     const dark = this.game.lighting?.ambient?.darkness ?? 0;
     const prevOp = ctx.globalCompositeOperation;
-    const crispA = Math.min(1, 0.4 + 0.6 * dark);
+    const crispA = Math.min(1, 0.4 + 0.42 * dark);
     // Bloom: the glow buffer halved twice with smoothing, then stretched back softly into
     // the glow buffer itself (all at world resolution, so it is cheap), and the sum is
     // added to the screen in one pass: crisp cores, soft halo, one full-size composite.
@@ -648,7 +648,7 @@ export class MagicFx {
       const g = this.gctx;
       g.globalCompositeOperation = 'lighter';
       g.imageSmoothingEnabled = true;
-      g.globalAlpha = Math.min(1, (0.3 + 0.55 * dark) / crispA);
+      g.globalAlpha = Math.min(1, (0.28 + 0.42 * dark) / crispA);
       g.drawImage(this.b2, qx0, qy0, qw, qh, qx0 * 4 - 2, qy0 * 4 - 2, qw * 4 + 4, qh * 4 + 4);
       g.imageSmoothingEnabled = false;
       g.globalAlpha = 1;
