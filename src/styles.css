@@ -3432,7 +3432,8 @@ input[type='range']::-moz-range-thumb {
 }
 .tagline {
   margin: 0 0 8px;
-  max-width: 420px;
+  max-width: 520px;
+  text-wrap: balance;
   font-size: var(--fs-l);
   font-style: italic;
   color: var(--parch-2);
@@ -3819,6 +3820,10 @@ input[type='range']::-moz-range-thumb {
   }
   .hud-bottom {
     bottom: calc(var(--sa-b) + 98px);
+  }
+  /* The action pad fills the lower right on phones: the prompt rides above it. */
+  .is-touch .hud-bottom {
+    bottom: calc(var(--sa-b) + 196px);
   }
   .tpad {
     width: 150px;

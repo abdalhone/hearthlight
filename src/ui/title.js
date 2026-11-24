@@ -95,6 +95,7 @@ export class TitleScreen {
     let text;
     if (st.provider === 'claude.ai') text = `${name}'s mind: Claude, through claude.ai`;
     else if (st.provider === 'api') text = `${name}'s mind: Claude, with your API key`;
+    else if (st.label && st.label.toLowerCase().includes(name.toLowerCase())) text = st.label;
     else text = `${name}'s mind: ${st.label || 'her offline mind'}`;
     setText(this.mindLine, text);
     this.mindLine.dataset.provider = st.provider || 'local';

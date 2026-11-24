@@ -96,7 +96,7 @@ export class SettingsPanel {
     if (!this.statusEl) return;
     const st = safe(() => this.game.brain?.status?.()) || {};
     const err = st.lastError ? ` · last problem: ${st.lastError}` : '';
-    setText(this.statusEl, `Lyra is thinking with: ${st.label || 'her offline mind'}${st.busy ? ' (thinking…)' : ''}${err}`);
+    setText(this.statusEl, `Her mind right now: ${st.label || 'her offline mind'}${st.busy ? ' (thinking…)' : ''}${err}`);
   }
 
   render() {
