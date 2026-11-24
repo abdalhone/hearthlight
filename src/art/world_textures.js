@@ -252,6 +252,41 @@ function cobbleTexture(rng, { spacing = 7, L = COBBLE_LUT, mortar = 0.12, moss =
   return buf;
 }
 
+// Village paving: flat, worn flagstones of irregular shape, seen from above. Flat tops
+// (no doming), a hairline of light on each stone's upper-left lip and of shade on its
+// lower-right one, and mid-tone joints rather than black gaps, so a street reads as a
+// walkable floor, never as a heap of boulders or a dry-stone wall face (DESIGN §19.8:
+// ground reads true). Stones vary a little in tone; the odd one is worn smooth and pale.
+const PAVE_LUT = lut(['#3e3a44', '#4f4b56', '#615c68', '#736e7a', '#85808c', '#98939e', '#aba7b1', '#bfbbc4']);
+
+function pavingTexture(rng, { L = PAVE_LUT, spacing = 7 } = {}) {
+  const buf = new PixelBuf(TEX, TEX);
+  const cells = tileCells(TEX, spacing, rng);
+  const n1 = tileNoise(TEX, 8, rng, 2);
+  const n2 = tileNoise(TEX, 16, rng, 1);
+  const tones = new Float32Array(cells.count).map(() => {
+    const r = rng.next();
+    return r < 0.08 ? 0.66 : 0.5 + (rng.next() - 0.5) * 0.16;
+  });
+  for (let i = 0; i < TEX * TEX; i++) {
+    const x = i & M;
+    const y = i >> 6;
+    const e = cells.edge[i];
+    let t;
+    if (e < 0.6) t = 0.3 + n1[i] * 0.06;
+    else {
+      t = tones[cells.id[i]] + (n1[i] - 0.5) * 0.05 + (n2[i] - 0.5) * 0.04;
+      if (e < 1.6) {
+        // The lip of the stone: lit on the side facing the upper left, shaded opposite.
+        const toward = -cells.dx[i] - cells.dy[i];
+        t += toward > 0 ? 0.07 : -0.06;
+      }
+    }
+    buf.data[i] = toneAt(L, t, x, y, 0.025);
+  }
+  return buf;
+}
+
 // Big cracked flagstones half lost under moss: the ruins.
 function ruinFloorTexture(rng) {
   const buf = cobbleTexture(rng, { spacing: 13, L: lut(['#22212b', '#33313e', '#474453', '#5d5a69', '#77737f', '#94909b']), mortar: 0.08, moss: 0.45 });
@@ -402,7 +437,7 @@ export function buildTextures(rng) {
     dirt: [dirtTexture(rng.fork(41), { pebbles: 12 }), dirtTexture(rng.fork(42), { base: 0.48, pebbles: 20 })],
     sand: [sandTexture(rng.fork(51))],
     gravel: [gravelTexture(rng.fork(61))],
-    cobble: [cobbleTexture(rng.fork(71)), cobbleTexture(rng.fork(72), { spacing: 6 })],
+    cobble: [pavingTexture(rng.fork(71))],
     ruinfloor: [ruinFloorTexture(rng.fork(81))],
     farmland: [farmlandTexture(rng.fork(91))],
     plank: [plankTexture(rng.fork(101))],

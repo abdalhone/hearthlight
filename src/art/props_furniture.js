@@ -802,6 +802,23 @@ function journalFrames() {
   return frames;
 }
 
+const BED_QUILTS = [
+  ['rose', ['#4a1a2a', '#6e2a3e', '#944058', '#b05a70', '#d08a9a', '#f0c0c8'], '#f6ecdb'],
+  ['patch', ['#3a2a1a', '#5a4026', '#7a5a34', '#9a7a46', '#c0a060', '#e0cc8a'], '#7fae78'],
+  ['guard', ['#1c2230', '#2a3446', '#3c4a62', '#52627e', '#70809a', '#98a6bc'], null],
+  ['herb', ['#1c3020', '#2a4a30', '#3e6a44', '#56885a', '#7aa87a', '#aacca4'], '#e8dcf0'],
+  ['farm', ['#3a2414', '#5a3a1e', '#7a522a', '#9a6c38', '#bc8c4c', '#dcb070'], '#e2d2b0'],
+  ['plain', ['#2e2c34', '#43404a', '#5a5662', '#74707c', '#94909a', '#bcb8c0'], null],
+  ['merchant', ['#30163e', '#4a2260', '#663284', '#8446a4', '#a86cc4', '#d0a4e4'], '#ffe27a'],
+  ['plum', ['#2a1430', '#42204a', '#5e2e66', '#7a4084', '#9c62a4', '#c494c8'], '#f0d68a'],
+  ['honey', ['#4a3010', '#704a18', '#986424', '#c08432', '#e0a848', '#f4d080'], '#fff3c2'],
+  ['hunter', ['#2a2420', '#3e3630', '#564a40', '#706050', '#8e7c68', '#b0a088'], null],
+  ['dyed', ['#1e2a4a', '#2c3e6c', '#4a3a86', '#2f7a86', '#8a4aa0', '#4ab0a8'], '#c8547a'],
+  ['ledger', ['#1a2a2a', '#243c3c', '#305252', '#426a6a', '#5e8a88', '#8ab0ac'], '#e2d2b0'],
+  ['ochre', ['#3a2410', '#5a381a', '#7c5024', '#a06a30', '#c48a44', '#e0b066'], null],
+  ['sea', ['#14283a', '#1e3a54', '#2a5070', '#3a6a8e', '#5a8cac', '#8cb8d0'], '#e8f0f0'],
+];
+
 export function registerFurniture(add) {
   const doors = doorFrames();
   add('prop:door:anim', doors, { ox: 8, oy: 25 });
@@ -827,6 +844,12 @@ export function registerFurniture(add) {
   add('prop:bed:inn', [bed(['#1c3524', '#2c5236', '#43744a', '#5a8e5c', '#7fae78', '#b0d0a0'], { patternC: rgb('#e2d2b0') })], { ox: 8, oy: 35 });
   add('prop:bunk', [bed(['#2b2b35', '#3e3e4c', '#555566', '#6a6a7c', '#8a8a9c', '#b0b0c0'], { simple: true })], { ox: 8, oy: 35 });
   add('prop:bunk:guest', [bed(['#4a1a2e', '#6e2a44', '#94405e', '#b05a76', '#d08aa0', '#f0c0d0'], { patternC: rgb('#f6ecdb') })], { ox: 8, oy: 35 });
+  // Every villager's own quilt (DESIGN §19.8), as a bed and as a cot.
+  for (const [v, ramp, pattern] of BED_QUILTS) {
+    const opts = pattern ? { patternC: rgb(pattern) } : {};
+    add(`prop:bed:${v}`, [bed(ramp, opts)], { ox: 8, oy: 35 });
+    add(`prop:bunk:${v}`, [bed(ramp, { ...opts, simple: true })], { ox: 8, oy: 35 });
+  }
   add('prop:hearth', hearthFrames(), { ox: 16, oy: 31, fps: 6 });
   add('prop:campfire', campfireFrames(), { ox: 10, oy: 19, fps: 8 });
   add('prop:lamp', [lampPost(false)], { ox: 6, oy: 33 });

@@ -4,7 +4,7 @@ import { TileMap } from './map.js';
 import { T, DECO, SOLID, WATERY } from './tiles.js';
 import { ObjectManager, makeObject } from './objects.js';
 import { LocationIndex } from './locations.js';
-import { LOCATION_INFO, NOTICE_BOARD, SIGNS, LOOKS } from './world_content.js';
+import { LOCATION_INFO, NOTICE_BOARD, SIGNS, LOOKS, BED_TEXT } from './world_content.js';
 
 // The world of Hearthvale, laid out by hand. The seed only shapes organic detail:
 // shorelines, forest edges, tree scatter, flowers and grass variety.
@@ -194,9 +194,12 @@ class WorldBuilder {
     this.camp();
     this.ruins();
     this.lakeShore();
+    this.dyeCottage();
     this.forestLandmarks();
+    this.wennaHives();
     this.scatter();
     this.decorate();
+    this.dyeStream();
     this.finishFences();
     this.makeLocations();
     this.makeSpawns();
@@ -249,7 +252,7 @@ class WorldBuilder {
     ];
     this.stroke(this.streamPts, 2.9, (x, y) => this.set(x, y, T.WATER));
     // A little village pond.
-    this.ellipse(62.5, 77.5, 3.4, 2.3, (x, y, r) => {
+    this.ellipse(55.5, 77.6, 3.3, 2.1, (x, y, r) => {
       if (r < 1 + (this.noise(x, y, 0.5, 33) - 0.5) * 0.3) this.set(x, y, T.WATER);
     });
     // Beaches: sand on the lake's western shore and sandbars along the stream.
@@ -464,7 +467,20 @@ class WorldBuilder {
       smoky: !!spec.smoky,
       interior: { x: x + 1, y: y + 1, w: w - 2, h: h - 3 },
     });
-    this.must({ objType: 'door', id: `door_${id}`, tx: door, ty: y + h - 1, building: id, name: `${b.name} door` }, { allowSolidGround: true });
+    this.must(
+      {
+        objType: 'door',
+        id: `door_${id}`,
+        tx: door,
+        ty: y + h - 1,
+        building: id,
+        name: `${b.name} door`,
+        locked: !!spec.locked,
+        keyId: spec.locked ? `key_${id}` : null,
+        lockedText: spec.locked ? spec.lockedText ?? `${b.name}: shut, and nobody answers. Whoever lives here is out, or asleep, or does not know you yet.` : null,
+      },
+      { allowSolidGround: true },
+    );
     // Windows on the front face, either side of the door.
     for (const off of [-2, 2, -5, 5, -8, 8]) {
       const c = door + off;
@@ -485,9 +501,10 @@ class WorldBuilder {
   }
 
   village() {
-    // Clear the village grounds.
+    // Clear the village grounds (and the lane out to the dock and the last house).
     for (let y = 36; y <= 82; y++) for (let x = 44; x <= 110; x++) if (!WATERY[this.get(x, y)]) this.set(x, y, T.GRASS);
-    this.keep(44, 36, 67, 47);
+    for (let y = 36; y <= 58; y++) for (let x = 111; x <= 116; x++) if (this.get(x, y) === T.TALL_GRASS || this.get(x, y) === T.FOREST) this.set(x, y, T.GRASS);
+    this.keep(44, 36, 73, 47);
     // Streets.
     this.fill(70, 54, 20, 13, T.COBBLE); // town square
     this.fill(78, 36, 4, 47, T.COBBLE); // north-south street, gate to the King's Road
@@ -496,207 +513,17 @@ class WorldBuilder {
     this.fill(84, 73, 2, 10, T.COBBLE); // lane down to the King's Road
     // The pond survives the clearing above (water was skipped).
 
-    // --- The Ember Kettle (inn) ---
-    // Two guest rooms at the back (rows 40-44) behind a partition with open doorways;
-    // the taproom fills the front. The east room is the one Lyra rents when she would
-    // rather not sleep under the player's roof (DESIGN §16.1).
-    this.building({ id: 'ember_kettle', x: 64, y: 39, w: 13, h: 15, door: 70, material: 'timber', roof: { style: 'red', chimneys: [66, 74] }, sign: 'inn', smoky: true });
-    for (let c = 65; c <= 75; c++) if (c !== 68 && c !== 72) this.set(c, 45, T.WALL);
-    for (let r = 40; r <= 44; r++) this.set(70, r, T.WALL);
-    // West room: a spare bed Elda lets by the night.
-    this.look('bunk', 0, 0, 'innSpareBed', { footprint: { x: 65, y: 40, w: 1, h: 2 }, name: 'Guest bed', variant: 'guest' });
-    this.decor('chair', 67, 40, { variant: 'left' });
-    this.decor('nightstand', 66, 40, { name: 'Nightstand' });
-    this.rug(66, 42, 3, 2);
-    this.decor('pot', 69, 40, { variant: 'plant' });
-    // East room: Lyra's.
-    this.must({
-      objType: 'bed',
-      id: 'lyra_inn_bed',
-      footprint: { x: 75, y: 40, w: 1, h: 2 },
-      owner: 'lyra',
-      rented: true,
-      name: "Lyra's room at the inn",
-      sleepSide: 'left',
-      words: ['inn bed', 'her room', 'rented room', 'room at the inn', "lyra's room"],
-    });
-    this.look('desk', 73, 40, 'lyraDesk', { name: "Lyra's desk", variant: 'lyra' });
-    this.look('trunk', 71, 40, 'lyraTrunk', { name: "Lyra's trunk" });
-    this.rug(72, 42, 3, 2);
-    this.decor('pot', 71, 44, { variant: 'flower' });
-    // Taproom.
-    this.must({ objType: 'hearth', id: 'inn_hearth', footprint: { x: 65, y: 46, w: 2, h: 1 }, name: 'Inn hearth' });
-    this.rug(65, 47, 4, 2);
-    for (let c = 71; c <= 74; c++) this.decor('counter', c, 48, { variant: c === 71 ? 'left' : c === 74 ? 'right' : 'mid', name: 'Bar counter' });
-    for (const c of [74, 75]) this.look('shelf', c, 46, 'innShelf', { variant: c % 2 ? 'bottles' : 'barrels' });
-    this.decor('barrel', 71, 46, { name: 'Cider barrel' });
-    this.decor('table', 0, 0, { footprint: { x: 66, y: 49, w: 2, h: 1 }, solid: true });
-    this.decor('chair', 65, 49, { variant: 'right' });
-    this.decor('chair', 68, 49, { variant: 'left' });
-    this.decor('table', 0, 0, { footprint: { x: 72, y: 50, w: 2, h: 1 } });
-    this.decor('chair', 71, 50, { variant: 'right' });
-    this.decor('chair', 74, 50, { variant: 'left' });
-    this.decor('table', 0, 0, { footprint: { x: 66, y: 51, w: 2, h: 1 } });
-    this.decor('barrel', 75, 51);
-    this.decor('barrel', 75, 50);
-    this.decor('crate', 65, 51);
-
-    // --- Chapel of the Hearth ---
-    this.building({
-      id: 'chapel',
-      x: 83,
-      y: 42,
-      w: 11,
-      h: 12,
-      door: 88,
-      material: 'stone',
-      floor: T.STONE_FLOOR,
-      roof: { style: 'blue', chimneys: [], belfry: true },
-      windowStyle: 'stained',
-      sign: 'chapel',
-      signSide: -1,
-      rug: 'blue',
-    });
-    this.rug(88, 44, 1, 8);
-    this.look('altar', 0, 0, 'altar', { footprint: { x: 87, y: 43, w: 3, h: 1 }, name: 'Altar' });
-    this.must({ objType: 'lamp', tx: 85, ty: 43, kind: 'candles', name: 'Candle stand', solid: true });
-    this.must({ objType: 'lamp', tx: 91, ty: 43, kind: 'candles', name: 'Candle stand', solid: true });
-    this.look('shelf', 84, 43, 'chapelShelf', { variant: 'books' });
-    this.look('shelf', 92, 43, 'chapelShelf', { variant: 'books' });
-    for (const row of [46, 48, 50]) {
-      this.decor('pew', 0, 0, { footprint: { x: 84, y: row, w: 3, h: 1 }, name: 'Pew' });
-      this.decor('pew', 0, 0, { footprint: { x: 90, y: row, w: 3, h: 1 }, name: 'Pew' });
-    }
-
-    // --- Gale's Goods (general store) ---
-    this.building({ id: 'general_store', x: 54, y: 51, w: 9, h: 8, door: 58, roof: { style: 'blue', chimneys: [60] }, sign: 'store' });
-    for (const c of [55, 56, 60, 61]) this.look('shelf', c, 52, 'storeShelf', { variant: c < 58 ? 'goods' : 'bottles' });
-    for (let c = 55; c <= 57; c++) this.decor('counter', c, 54, { variant: c === 55 ? 'left' : c === 57 ? 'right' : 'mid', name: 'Shop counter' });
-    this.decor('crate', 61, 55);
-    this.decor('crate', 61, 56);
-    this.decor('barrel', 60, 56);
-    this.decor('sack', 55, 56);
-
-    // --- Fennick's Herbs ---
-    this.building({ id: 'herbalist', x: 45, y: 51, w: 8, h: 8, door: 48, roof: { style: 'moss', chimneys: [50] }, sign: 'herbalist', windowStyle: 'flowers' });
-    this.look('cauldron', 50, 53, 'cauldron');
-    this.look('shelf', 46, 52, 'potionShelf', { variant: 'potions' });
-    this.look('shelf', 47, 52, 'potionShelf', { variant: 'herbs' });
-    this.look('shelf', 51, 52, 'potionShelf', { variant: 'potions' });
-    this.decor('table', 0, 0, { footprint: { x: 46, y: 55, w: 2, h: 1 }, variant: 'herbs' });
-    this.decor('pot', 51, 56, { variant: 'plant' });
-    this.decor('pot', 46, 56, { variant: 'plant' });
-    // Mira's herb garden behind the shop.
-    this.fenceLine(45, 44, 52, 48, [[45, 46]]);
-    for (let yy = 45; yy <= 47; yy++) for (let xx = 46; xx <= 51; xx++) this.set(xx, yy, T.FARMLAND);
-    for (const [hx, hy] of [
-      [46, 45],
-      [48, 45],
-      [50, 45],
-      [47, 47],
-      [49, 47],
-      [51, 47],
-    ])
-      this.must({ objType: 'herb', tx: hx, ty: hy, name: 'Silverleaf' });
-
-    // --- Guardhouse ---
-    this.building({
-      id: 'guardhouse',
-      x: 56,
-      y: 63,
-      w: 10,
-      h: 8,
-      door: 60,
-      material: 'stone',
-      floor: T.STONE_FLOOR,
-      roof: { style: 'slate', chimneys: [63] },
-      sign: 'guardhouse',
-    });
-    this.decor('rack', 57, 64, { name: 'Weapon rack' });
-    this.decor('rack', 58, 64, { name: 'Weapon rack' });
-    this.decor('bunk', 0, 0, { footprint: { x: 63, y: 64, w: 1, h: 2 }, name: 'Cot' });
-    this.decor('bunk', 0, 0, { footprint: { x: 64, y: 64, w: 1, h: 2 }, name: 'Cot' });
-    this.look('table', 0, 0, 'mapTable', { footprint: { x: 60, y: 66, w: 2, h: 1 }, variant: 'map' });
-    this.decor('barrel', 57, 68);
-    this.decor('crate', 64, 68);
-    this.look('dummy', 67, 67, 'dummy', { name: 'Training dummy' });
-    this.decor('banner', 66, 63, { name: 'Guard banner' });
-
-    // --- Ironhand Smithy ---
-    this.building({
-      id: 'smithy',
-      x: 95,
-      y: 51,
-      w: 10,
-      h: 8,
-      door: 99,
-      material: 'stone',
-      floor: T.STONE_FLOOR,
-      roof: { style: 'red', chimneys: [102] },
-      sign: 'smithy',
-      smoky: true,
-    });
-    this.look('forge', 0, 0, 'forge', { footprint: { x: 101, y: 52, w: 2, h: 1 }, name: 'Forge' });
-    this.look('anvil', 100, 54, 'anvil', { name: 'Anvil' });
-    this.decor('barrel', 103, 54, { variant: 'water', name: 'Quench barrel' });
-    this.decor('rack', 96, 52, { name: 'Weapon rack', variant: 'tools' });
-    this.decor('rack', 97, 52, { name: 'Weapon rack' });
-    this.decor('crate', 96, 56);
-    this.decor('table', 0, 0, { footprint: { x: 102, y: 56, w: 2, h: 1 }, variant: 'tools', name: 'Workbench' });
-    this.decor('woodpile', 105, 57, { name: 'Woodpile' });
-    this.decor('barrel', 94, 57);
-
-    // --- Your cottage ---
-    this.building({ id: 'player_home', x: 92, y: 74, w: 9, h: 9, door: 96, roof: { style: 'thatch', chimneys: [98] }, windowStyle: 'flowers' });
-    this.must({ objType: 'bed', id: 'home_bed', footprint: { x: 93, y: 75, w: 1, h: 2 }, owner: 'player', name: 'Your bed', sleepSide: 'right' });
-    this.must({ objType: 'bed', id: 'lyra_bed', footprint: { x: 99, y: 75, w: 1, h: 2 }, owner: 'lyra', name: "Lyra's bed", sleepSide: 'left' });
-    this.must({ objType: 'chest', id: 'home_chest', tx: 94, ty: 75, owner: 'player', name: 'Home chest', items: { bread: 2, potion: 1, coin: 10 }, words: ['home chest', 'our chest', 'my chest', 'storage'] });
-    this.must({ objType: 'hearth', id: 'home_hearth', footprint: { x: 96, y: 75, w: 2, h: 1 }, name: 'Cottage hearth' });
-    this.look('shelf', 98, 75, 'homeShelf', { variant: 'books' });
-    this.rug(94, 77, 5, 3);
-    this.decor('table', 0, 0, { footprint: { x: 95, y: 78, w: 2, h: 1 }, name: 'Table', words: ['table', 'kitchen table'] });
-    this.decor('chair', 94, 78, { variant: 'right' });
-    this.decor('chair', 97, 78, { variant: 'left' });
-    this.decor('pot', 93, 80, { variant: 'plant' });
-    this.decor('barrel', 99, 80);
-    this.decor('woodpile', 101, 81, { name: 'Woodpile' });
-    this.decor('barrel', 91, 81);
-
-    // --- Square ---
-    this.look('well', 0, 0, 'well', { footprint: { x: 79, y: 59, w: 2, h: 2 }, name: 'Old well', low: false, interactReach: 8, shadow: { dx: 1, dy: -2, rx: 14, ry: 5 } });
-    this.must({ objType: 'sign', id: 'notice_board', tx: 83, ty: 57, variant: 'board', title: NOTICE_BOARD.title, text: NOTICE_BOARD.text, name: 'Notice board', solid: true, shadow: { dx: 1, dy: -1, rx: 9, ry: 3 } });
-    this.look('bench', 0, 0, 'bench', { footprint: { x: 74, y: 63, w: 2, h: 1 } });
-    this.look('bench', 0, 0, 'bench', { footprint: { x: 85, y: 63, w: 2, h: 1 } });
-    this.decor('stall', 0, 0, { footprint: { x: 72, y: 57, w: 2, h: 1 }, variant: 'red', name: 'Market stall' });
-    this.decor('stall', 0, 0, { footprint: { x: 85, y: 60, w: 2, h: 1 }, variant: 'blue', name: 'Market stall' });
-    for (const [fx, fy, fw] of [
-      [71, 55, 3],
-      [84, 55, 3],
-      [71, 65, 3],
-      [86, 65, 3],
-    ])
-      this.fill(fx, fy, fw, 1, T.FLOWERBED);
-    for (const [lx, ly] of [
-      [74, 54],
-      [89, 54],
-      [70, 66],
-      [89, 66],
-      [77, 37],
-      [82, 37],
-      [66, 58],
-      [52, 62],
-      [93, 62],
-      [107, 58],
-      [75, 70],
-      [90, 70],
-      [55, 73],
-      [83, 81],
-      [102, 82],
-    ])
-      this.must({ objType: 'lamp', tx: lx, ty: ly, name: 'Street lamp' });
-    this.must({ objType: 'sign', id: 'sign_welcome', tx: 77, ty: 81, title: SIGNS.welcome.title, text: SIGNS.welcome.text, name: 'Village sign' });
-    this.must({ objType: 'sign', id: 'sign_crossroads', tx: 82, ty: 86, title: SIGNS.crossroads.title, text: SIGNS.crossroads.text, name: 'Signpost', variant: 'post' });
-    this.must({ objType: 'sign', id: 'sign_forest', tx: 83, ty: 36, title: SIGNS.forest.title, text: SIGNS.forest.text, name: 'Forest sign' });
+    this.emberKettle();
+    this.chapel();
+    this.generalStore();
+    this.herbalist();
+    this.guardhouse();
+    this.smithy();
+    this.lamplightLane();
+    this.ashbyHouse();
+    this.weaversRow();
+    this.cottage();
+    this.square();
 
     // Chicken run, west of the guardhouse.
     this.fenceLine(46, 63, 54, 69, [[50, 63]]);
@@ -713,31 +540,404 @@ class WorldBuilder {
     this.fenceLine(86, 75, 90, 80, [[88, 75]]);
     for (let yy = 76; yy <= 79; yy++) for (let xx = 87; xx <= 89; xx++) this.set(xx, yy, T.FARMLAND);
 
-    // Village green: the old oak, the pond, flower beds.
-    this.must({ objType: 'tree', tx: 71, ty: 78, kind: 'oak', v: 0 });
-    this.look('bench', 0, 0, 'bench', { footprint: { x: 68, y: 80, w: 2, h: 1 } });
-    this.fill(57, 75, 2, 1, T.FLOWERBED);
-    this.fill(67, 76, 1, 2, T.FLOWERBED);
-    this.fill(74, 74, 3, 1, T.FLOWERBED);
-    // Chapel garden: a few old trees and a bench.
+    // Chapel garden: a few old trees north of the lane.
     for (const [tx, ty, v] of [
       [97, 41, 1],
-      [102, 43, 2],
-      [106, 40, 0],
-      [108, 47, 1],
+      [100, 43, 2],
+      [96, 45, 0],
     ])
       this.must({ objType: 'tree', tx, ty, kind: 'oak', v });
-    this.look('bench', 0, 0, 'bench', { footprint: { x: 99, y: 46, w: 2, h: 1 } });
     for (const [tx, ty] of [
       [47, 39],
       [58, 40],
       [62, 38],
       [46, 76],
-      [52, 80],
       [107, 75],
       [109, 69],
     ])
       this.put({ objType: 'tree', tx, ty, kind: 'oak', v: (tx + ty) % 3 });
+    this.villageLamps();
+  }
+
+  // A villager's own bed (DESIGN §19.8): `owner` sleeps in it, in their own home.
+  bed(owner, x, y, extra = {}) {
+    const B = BED_TEXT[owner] || {};
+    return this.must({
+      objType: 'bed',
+      id: extra.id ?? `bed_${owner}`,
+      footprint: { x, y, w: 1, h: 2 },
+      owner,
+      name: extra.name ?? B.name,
+      text: extra.text ?? B.text,
+      variant: extra.variant ?? B.variant ?? null,
+      cot: extra.cot ?? !!B.cot,
+      words: [owner, ...(extra.words || [])],
+    });
+  }
+
+  // Interior partition walls: a run of wall tiles with doorways left open.
+  partition(cells, doorways = []) {
+    const open = new Set(doorways.map(([x, y]) => `${x},${y}`));
+    for (const [x, y] of cells) if (!open.has(`${x},${y}`)) this.set(x, y, T.WALL);
+  }
+
+  row(x0, x1, y) {
+    const out = [];
+    for (let x = x0; x <= x1; x++) out.push([x, y]);
+    return out;
+  }
+
+  col(x, y0, y1) {
+    const out = [];
+    for (let y = y0; y <= y1; y++) out.push([x, y]);
+    return out;
+  }
+
+  // --- The Ember Kettle (inn) ---
+  // Three rooms at the back behind a partition with open doorways: Elda's, Pip's (with
+  // his cot), and Lyra's own room under the eaves (DESIGN §16.1). The taproom fills the front.
+  emberKettle() {
+    this.building({ id: 'ember_kettle', x: 64, y: 39, w: 13, h: 15, door: 70, material: 'timber', roof: { style: 'red', chimneys: [66, 74] }, sign: 'inn', smoky: true });
+    this.partition(this.row(65, 75, 45), [
+      [67, 45],
+      [70, 45],
+      [73, 45],
+    ]);
+    this.partition([...this.col(68, 40, 44), ...this.col(72, 40, 44)]);
+    // Elda's room.
+    this.bed('elda', 65, 40);
+    this.decor('nightstand', 66, 40, { name: 'Nightstand' });
+    this.decor('chair', 67, 42, { variant: 'left' });
+    this.rug(65, 43, 2, 2);
+    // Pip's room, his cot and his treasures.
+    this.bed('pip', 69, 40);
+    this.look('crate', 71, 40, 'pipTreasures', { name: "Pip's treasures" });
+    this.decor('pot', 71, 44, { variant: 'flower' });
+    // Lyra's room.
+    this.must({
+      objType: 'bed',
+      id: 'lyra_inn_bed',
+      footprint: { x: 75, y: 40, w: 1, h: 2 },
+      owner: 'lyra',
+      rented: true,
+      name: "Lyra's room at the inn",
+      sleepSide: 'left',
+      words: ['inn bed', 'her room', 'rented room', 'room at the inn', "lyra's room"],
+    });
+    this.look('desk', 73, 40, 'lyraDesk', { name: "Lyra's desk", variant: 'lyra' });
+    this.look('trunk', 75, 44, 'lyraTrunk', { name: "Lyra's trunk" });
+    this.rug(73, 42, 2, 2);
+    this.decor('pot', 74, 40, { variant: 'plant' });
+    // Taproom.
+    this.must({ objType: 'hearth', id: 'inn_hearth', footprint: { x: 65, y: 46, w: 2, h: 1 }, name: 'Inn hearth' });
+    this.rug(65, 47, 4, 2);
+    for (let c = 71; c <= 74; c++) this.decor('counter', c, 48, { variant: c === 71 ? 'left' : c === 74 ? 'right' : 'mid', name: 'Bar counter' });
+    for (const c of [74, 75]) this.look('shelf', c, 46, 'innShelf', { variant: c % 2 ? 'bottles' : 'barrels' });
+    this.decor('barrel', 71, 46, { name: 'Cider barrel' });
+    this.decor('table', 0, 0, { footprint: { x: 66, y: 49, w: 2, h: 1 }, solid: true });
+    this.decor('chair', 65, 49, { variant: 'right' });
+    this.decor('chair', 68, 49, { variant: 'left' });
+    this.decor('table', 0, 0, { footprint: { x: 72, y: 50, w: 2, h: 1 } });
+    this.decor('chair', 71, 50, { variant: 'right' });
+    this.decor('chair', 74, 50, { variant: 'left' });
+    this.decor('table', 0, 0, { footprint: { x: 66, y: 51, w: 2, h: 1 } });
+    this.decor('barrel', 75, 51);
+    this.decor('barrel', 75, 50);
+    this.decor('crate', 65, 51);
+  }
+
+  // --- Chapel of the Hearth --- with the keeper's cell in its back corner.
+  chapel() {
+    this.building({
+      id: 'chapel',
+      x: 83,
+      y: 41,
+      w: 11,
+      h: 13,
+      door: 88,
+      material: 'stone',
+      floor: T.STONE_FLOOR,
+      roof: { style: 'blue', chimneys: [], belfry: true },
+      windowStyle: 'stained',
+      sign: 'chapel',
+      signSide: -1,
+      rug: 'blue',
+    });
+    this.partition([...this.col(86, 42, 44), [84, 44], [85, 44]], [[85, 44]]);
+    this.bed('aveline', 84, 42);
+    this.look('shelf', 85, 42, 'keeperCell', { variant: 'books', name: "Aveline's shelf" });
+    this.rug(88, 43, 1, 9);
+    this.look('altar', 0, 0, 'altar', { footprint: { x: 87, y: 42, w: 3, h: 1 }, name: 'Altar' });
+    this.must({ objType: 'lamp', tx: 87, ty: 43, kind: 'candles', name: 'Candle stand', solid: true });
+    this.must({ objType: 'lamp', tx: 89, ty: 43, kind: 'candles', name: 'Candle stand', solid: true });
+    this.look('shelf', 91, 42, 'chapelShelf', { variant: 'books' });
+    this.look('shelf', 92, 42, 'chapelShelf', { variant: 'books' });
+    for (const row of [46, 48, 50]) {
+      this.decor('pew', 0, 0, { footprint: { x: 84, y: row, w: 3, h: 1 }, name: 'Pew' });
+      this.decor('pew', 0, 0, { footprint: { x: 90, y: row, w: 3, h: 1 }, name: 'Pew' });
+    }
+  }
+
+  // --- Gale's Goods --- the shop at the front, Garrick's back room behind a partition.
+  generalStore() {
+    this.building({ id: 'general_store', x: 54, y: 51, w: 9, h: 8, door: 58, roof: { style: 'blue', chimneys: [60] }, sign: 'store' });
+    this.partition(this.col(59, 52, 56), [[59, 56]]);
+    this.bed('garrick', 61, 52);
+    this.decor('crate', 60, 52);
+    this.decor('barrel', 61, 55);
+    this.decor('crate', 61, 56);
+    for (const c of [55, 56, 57]) this.look('shelf', c, 52, 'storeShelf', { variant: c < 57 ? 'goods' : 'bottles' });
+    for (let c = 55; c <= 57; c++) this.decor('counter', c, 54, { variant: c === 55 ? 'left' : c === 57 ? 'right' : 'mid', name: 'Shop counter' });
+    this.decor('sack', 55, 56);
+    this.decor('barrel', 56, 56);
+  }
+
+  // --- Fennick's Herbs --- the shop in front, Mira's little room behind.
+  herbalist() {
+    this.building({ id: 'herbalist', x: 45, y: 50, w: 8, h: 9, door: 48, roof: { style: 'moss', chimneys: [50] }, sign: 'herbalist', windowStyle: 'flowers' });
+    this.partition(this.row(46, 51, 53), [[48, 53]]);
+    this.bed('mira', 46, 51);
+    this.look('shelf', 47, 51, 'potionShelf', { variant: 'herbs' });
+    this.decor('pot', 51, 51, { variant: 'plant' });
+    this.look('cauldron', 50, 55, 'cauldron');
+    this.look('shelf', 46, 54, 'potionShelf', { variant: 'potions' });
+    this.look('shelf', 47, 54, 'potionShelf', { variant: 'herbs' });
+    this.look('shelf', 51, 54, 'potionShelf', { variant: 'potions' });
+    this.decor('table', 0, 0, { footprint: { x: 46, y: 56, w: 2, h: 1 }, variant: 'herbs' });
+    this.decor('pot', 51, 56, { variant: 'plant' });
+    // Mira's herb garden behind the shop.
+    this.fenceLine(45, 43, 52, 47, [[45, 45]]);
+    for (let yy = 44; yy <= 46; yy++) for (let xx = 46; xx <= 51; xx++) this.set(xx, yy, T.FARMLAND);
+    for (const [hx, hy] of [
+      [46, 44],
+      [48, 44],
+      [50, 44],
+      [47, 46],
+      [49, 46],
+      [51, 46],
+    ])
+      this.must({ objType: 'herb', tx: hx, ty: hy, name: 'Silverleaf' });
+  }
+
+  // --- Guardhouse --- the watch room, and a bunk room for Rowan and Wys.
+  guardhouse() {
+    this.building({
+      id: 'guardhouse',
+      x: 56,
+      y: 63,
+      w: 10,
+      h: 8,
+      door: 60,
+      material: 'stone',
+      floor: T.STONE_FLOOR,
+      roof: { style: 'slate', chimneys: [63] },
+      sign: 'guardhouse',
+    });
+    this.partition(this.col(62, 64, 68), [[62, 68]]);
+    this.bed('rowan', 63, 64);
+    this.bed('wys', 64, 64);
+    this.decor('trunk', 64, 67, { name: 'Footlocker' });
+    this.decor('rack', 57, 64, { name: 'Weapon rack' });
+    this.decor('rack', 58, 64, { name: 'Weapon rack' });
+    this.look('table', 0, 0, 'mapTable', { footprint: { x: 59, y: 66, w: 2, h: 1 }, variant: 'map' });
+    this.decor('barrel', 57, 68);
+    this.look('dummy', 67, 67, 'dummy', { name: 'Training dummy' });
+    this.decor('banner', 66, 63, { name: 'Guard banner' });
+  }
+
+  // --- Ironhand Smithy --- the forge, and Bram's back room behind a partition.
+  smithy() {
+    this.building({
+      id: 'smithy',
+      x: 97,
+      y: 51,
+      w: 10,
+      h: 8,
+      door: 101,
+      material: 'stone',
+      floor: T.STONE_FLOOR,
+      roof: { style: 'red', chimneys: [104] },
+      sign: 'smithy',
+      smoky: true,
+    });
+    this.partition(this.col(100, 52, 56), [[100, 56]]);
+    this.bed('bram', 98, 52);
+    this.look('shelf', 99, 52, 'bramShelf', { variant: 'books', name: "Bram's shelf" });
+    this.decor('chair', 99, 55, { variant: 'left' });
+    this.look('forge', 0, 0, 'forge', { footprint: { x: 103, y: 52, w: 2, h: 1 }, name: 'Forge' });
+    this.look('anvil', 102, 54, 'anvil', { name: 'Anvil' });
+    this.decor('barrel', 105, 54, { variant: 'water', name: 'Quench barrel' });
+    this.decor('rack', 101, 52, { name: 'Weapon rack', variant: 'tools' });
+    this.decor('rack', 102, 52, { name: 'Weapon rack' });
+    this.decor('crate', 103, 56);
+    this.decor('table', 0, 0, { footprint: { x: 104, y: 56, w: 2, h: 1 }, variant: 'tools', name: 'Workbench' });
+    this.decor('woodpile', 107, 57, { name: 'Woodpile' });
+  }
+
+  // --- Lamplight Lane and the chandlery (LORE §10) ---
+  // The lane runs east from the chapel behind the smithy; an alley between the two
+  // joins it to the main street. The Ambrels' narrow two-storey house stands at its
+  // end, the bench outside, and the far lamps beyond.
+  lamplightLane() {
+    this.fill(94, 48, 15, 1, T.COBBLE);
+    this.fill(94, 49, 3, 10, T.COBBLE);
+    this.building({
+      id: 'chandlery',
+      x: 102,
+      y: 38,
+      w: 7,
+      h: 10,
+      door: 105,
+      material: 'timber',
+      roof: { style: 'thatch', chimneys: [103], lift: 2 },
+      windowStyle: 'flowers',
+      sign: 'chandlery',
+      smoky: true,
+    });
+    // Upstairs (the back): their two beds pushed under the eaves either side of one
+    // nightstand. Downstairs: the workroom with the dipping-vat and the racks.
+    this.partition(this.row(103, 107, 41), [[104, 41]]);
+    this.bed('hobb', 103, 39);
+    this.decor('nightstand', 104, 39, { name: 'Nightstand' });
+    this.bed('wenna', 105, 39);
+    this.decor('pot', 107, 39, { variant: 'flower' });
+    this.look('shelf', 103, 42, 'waxShelf', { variant: 'goods', name: 'Wax shelf' });
+    this.look('candle_rack', 106, 42, 'candleRack', { name: 'Candle rack' });
+    this.look('candle_rack', 107, 42, 'candleRack', { name: 'Candle rack' });
+    this.look('dipping_vat', 0, 0, 'dippingVat', { footprint: { x: 106, y: 44, w: 2, h: 1 }, name: 'Dipping vat' });
+    this.decor('chair', 103, 44, { variant: 'right' });
+    this.decor('chair', 107, 45, { variant: 'left', name: "Hobb's chair" });
+    this.decor('pot', 103, 45, { variant: 'plant' });
+    // Wenna's dormer: its glow under the thatch at night.
+    this.must({ objType: 'window', tx: 105, ty: 38, hidden: true, lightDy: -2, name: 'Dormer' }, { allowSolidGround: true });
+    this.must({ objType: 'lamp', id: 'chandlery_door_lamp', tx: 104, ty: 47, kind: 'wall', name: "The Ambrels' door lantern", area: 'lamplight_lane' }, { allowSolidGround: true });
+    this.look('bench', 0, 0, 'chandleryBench', { footprint: { x: 100, y: 47, w: 2, h: 1 }, name: "The Ambrels' bench" });
+    this.must({ objType: 'sign', id: 'sign_lamplight', tx: 94, ty: 47, title: SIGNS.lamplight.title, text: SIGNS.lamplight.text, name: 'Lane sign', variant: 'post' });
+    this.keep(93, 36, 18, 14);
+  }
+
+  // --- Ashby House --- the tall stone house of the Reeves on the south side of the
+  // square, across from the well: three rooms at the back, the ledger-room in front.
+  ashbyHouse() {
+    this.building({
+      id: 'ashby_house',
+      x: 68,
+      y: 63,
+      w: 10,
+      h: 8,
+      door: 73,
+      material: 'stone',
+      floor: T.FLOOR,
+      roof: { style: 'red', chimneys: [70, 76] },
+      sign: 'ashby',
+      smoky: true,
+    });
+    this.partition([...this.row(69, 76, 66), ...this.col(71, 64, 65), ...this.col(74, 64, 65)], [
+      [70, 66],
+      [73, 66],
+      [75, 66],
+    ]);
+    this.bed('alder', 69, 64);
+    this.decor('nightstand', 70, 64, { name: 'Nightstand' });
+    this.bed('petra', 72, 64);
+    this.decor('pot', 73, 64, { variant: 'flower' });
+    this.bed('tilly', 76, 64);
+    this.look('rack', 75, 64, 'tillyHammers', { variant: 'tools', name: "Tilly's hammers" });
+    this.look('shelf', 69, 67, 'ledgerShelf', { variant: 'books', name: 'Ledger shelf' });
+    this.look('desk', 71, 67, 'ledgerDesk', { name: "The Reeve's desk", words: ['ledger', 'ledger desk', 'desk'] });
+    this.decor('chair', 72, 67, { variant: 'left' });
+    this.decor('pot', 76, 67, { variant: 'plant' });
+    this.rug(69, 68, 8, 1);
+  }
+
+  // --- Weavers' Row --- a short lane south of the square: Nan Pike's house with her
+  // loom, the Holloways' and the Tolleys' (shut: nobody you know lives there yet),
+  // washing on the line and flowers under the windows.
+  weaversRow() {
+    // The village pond sits west of the row now, with its bench.
+    this.fill(60, 80, 18, 2, T.DIRT);
+    this.building({ id: 'pike_house', x: 60, y: 74, w: 6, h: 6, door: 62, material: 'timber', roof: { style: 'red', chimneys: [64] }, windowStyle: 'flowers', smoky: true, sign: 'weavers', signSide: -1 });
+    this.look('loom', 0, 0, 'loom', { footprint: { x: 63, y: 75, w: 2, h: 1 }, name: "Nan Pike's loom" });
+    this.decor('chair', 61, 76, { variant: 'right' });
+    this.decor('pot', 61, 75, { variant: 'flower' });
+    this.decor('barrel', 64, 77);
+    this.building({ id: 'holloway_house', x: 67, y: 74, w: 5, h: 6, door: 68, material: 'timber', roof: { style: 'moss', chimneys: [70] }, windowStyle: 'flowers', smoky: true, locked: true });
+    this.building({ id: 'tolley_house', x: 73, y: 74, w: 5, h: 6, door: 74, material: 'log', roof: { style: 'thatch', chimneys: [76] }, windowStyle: 'flowers', smoky: true, locked: true });
+    // Their homes are shut to you, but somebody lives in them all the same.
+    for (const hx of [67, 73]) {
+      this.decor('bunk', 0, 0, { footprint: { x: hx + 1, y: 75, w: 1, h: 2 }, name: 'Bed', variant: 'guest' });
+      this.decor('barrel', hx + 3, 75);
+      this.decor('chair', hx + 2, 77, { variant: 'left' });
+      this.decor('pot', hx + 3, 77, { variant: 'plant' });
+    }
+    this.look('barrel', 66, 78, 'coopers', { name: "Holloways' barrels" });
+    this.look('barrel', 66, 79, 'coopers', { name: "Holloways' barrels" });
+    this.look('hay', 72, 79, 'thatch', { name: 'Thatching reed' });
+    this.look('washing_line', 0, 0, 'washingLine', { footprint: { x: 62, y: 82, w: 3, h: 1 }, solid: false, name: 'Washing line' });
+    this.look('washing_line', 0, 0, 'washingLine', { footprint: { x: 70, y: 82, w: 3, h: 1 }, solid: false, name: 'Washing line', variant: 'b' });
+    this.look('bench', 0, 0, 'bench', { footprint: { x: 54, y: 81, w: 2, h: 1 } });
+    this.keep(50, 73, 29, 10);
+  }
+
+  // --- Your cottage (the Wayhouse) ---
+  cottage() {
+    this.building({ id: 'player_home', x: 92, y: 74, w: 9, h: 9, door: 96, roof: { style: 'thatch', chimneys: [98] }, windowStyle: 'flowers' });
+    this.must({ objType: 'bed', id: 'home_bed', footprint: { x: 93, y: 75, w: 1, h: 2 }, owner: 'player', name: 'Your bed', sleepSide: 'right' });
+    this.must({ objType: 'bed', id: 'lyra_bed', footprint: { x: 99, y: 75, w: 1, h: 2 }, owner: 'lyra', name: "Lyra's bed", sleepSide: 'left' });
+    this.must({ objType: 'chest', id: 'home_chest', tx: 94, ty: 75, owner: 'player', name: 'Home chest', items: { bread: 2, potion: 1, coin: 10 }, words: ['home chest', 'our chest', 'my chest', 'storage'] });
+    this.must({ objType: 'hearth', id: 'home_hearth', footprint: { x: 96, y: 75, w: 2, h: 1 }, name: 'Cottage hearth' });
+    this.look('shelf', 98, 75, 'homeShelf', { variant: 'books' });
+    this.rug(94, 77, 5, 3);
+    this.decor('table', 0, 0, { footprint: { x: 95, y: 78, w: 2, h: 1 }, name: 'Table', words: ['table', 'kitchen table'] });
+    this.decor('chair', 94, 78, { variant: 'right' });
+    this.decor('chair', 97, 78, { variant: 'left' });
+    this.decor('pot', 93, 80, { variant: 'plant' });
+    this.decor('barrel', 99, 80);
+    this.decor('woodpile', 101, 81, { name: 'Woodpile' });
+    this.decor('barrel', 91, 81);
+    // Hobb's lamp at the door (LORE §10).
+    this.must({ objType: 'lamp', id: 'wayhouse_door_lamp', tx: 97, ty: 82, kind: 'wall', name: "Hobb's lamp", area: 'player_home', text: "A lamp Hobb Ambrel hung by the Wayhouse door the night you were carried in. He comes by at dusk to see that it is lit." }, { allowSolidGround: true });
+  }
+
+  // --- Square ---
+  square() {
+    this.look('well', 0, 0, 'well', { footprint: { x: 79, y: 59, w: 2, h: 2 }, name: 'Old well', low: false, interactReach: 8, shadow: { dx: 1, dy: -2, rx: 14, ry: 5 } });
+    this.must({ objType: 'sign', id: 'notice_board', tx: 83, ty: 57, variant: 'board', title: NOTICE_BOARD.title, text: NOTICE_BOARD.text, name: 'Notice board', solid: true, shadow: { dx: 1, dy: -1, rx: 9, ry: 3 } });
+    this.look('bench', 0, 0, 'bench', { footprint: { x: 71, y: 54, w: 2, h: 1 }, name: 'The Kettle bench' });
+    this.look('bench', 0, 0, 'bench', { footprint: { x: 85, y: 63, w: 2, h: 1 } });
+    this.decor('stall', 0, 0, { footprint: { x: 72, y: 57, w: 2, h: 1 }, variant: 'red', name: 'Market stall' });
+    this.decor('stall', 0, 0, { footprint: { x: 85, y: 60, w: 2, h: 1 }, variant: 'blue', name: 'Market stall' });
+    for (const [fx, fy, fw] of [
+      [74, 55, 2],
+      [84, 55, 3],
+      [86, 65, 3],
+    ])
+      this.fill(fx, fy, fw, 1, T.FLOWERBED);
+    this.must({ objType: 'sign', id: 'sign_welcome', tx: 77, ty: 81, title: SIGNS.welcome.title, text: SIGNS.welcome.text, name: 'Village sign' });
+    this.must({ objType: 'sign', id: 'sign_crossroads', tx: 82, ty: 86, title: SIGNS.crossroads.title, text: SIGNS.crossroads.text, name: 'Signpost', variant: 'post' });
+    this.must({ objType: 'sign', id: 'sign_forest', tx: 83, ty: 36, title: SIGNS.forest.title, text: SIGNS.forest.text, name: 'Forest sign' });
+    // Village green: the old oak by the pond.
+    this.must({ objType: 'tree', tx: 48, ty: 78, kind: 'oak', v: 0 });
+  }
+
+  // Street lamps in the order Hobb walks them at dusk (LORE §5: the square first, then
+  // the lanes, and Lamplight Lane last, ending at his own door).
+  villageLamps() {
+    const route = [
+      ['town_square', [[74, 54], [89, 54], [89, 66], [82, 66]]],
+      ['hearthvale', [[93, 62], [107, 58], [66, 58], [52, 62], [77, 37], [82, 37]]],
+      ['hearthvale', [[67, 70], [90, 70], [55, 73], [83, 81], [102, 82]]],
+      ['weavers_row', [[66, 82], [73, 82]]],
+      ['lamplight_lane', [[95, 47], [99, 47]]],
+      ['lamplight_lane', [[109, 47], [109, 50]], true],
+    ];
+    let k = 0;
+    for (const [area, spots, far] of route) {
+      for (const [lx, ly] of spots) {
+        this.must({ objType: 'lamp', id: `lamp_${k}`, tx: lx, ty: ly, name: far ? 'Far lamp' : 'Street lamp', round: k, area, far: !!far });
+        k++;
+      }
+    }
   }
 
   farm() {
@@ -746,22 +946,30 @@ class WorldBuilder {
       if (g === T.TALL_GRASS || g === T.FOREST) this.set(x, y, T.GRASS);
     }
     this.keep(14, 44, 31, 37);
-    this.building({ id: 'farmhouse', x: 20, y: 48, w: 9, h: 8, door: 24, material: 'log', roof: { style: 'moss', chimneys: [22] } });
+    // The farmhouse: the kitchen at the hearth, and a bedroom behind a partition with
+    // Tobias's bed and Tansy's (DESIGN §19.8).
+    this.building({ id: 'farmhouse', x: 20, y: 48, w: 11, h: 8, door: 24, material: 'log', roof: { style: 'moss', chimneys: [22] }, smoky: true });
+    this.partition(this.col(26, 49, 53), [[26, 53]]);
     this.must({ objType: 'hearth', id: 'farm_hearth', footprint: { x: 21, y: 49, w: 2, h: 1 }, name: 'Farmhouse hearth' });
-    this.decor('bunk', 0, 0, { footprint: { x: 27, y: 49, w: 1, h: 2 }, name: "Tobias's bed" });
+    this.bed('tobias', 27, 49);
+    this.bed('tansy', 29, 49);
+    this.decor('trunk', 28, 49, { name: 'Linen chest' });
     this.decor('shelf', 25, 49, { variant: 'goods' });
-    this.decor('table', 0, 0, { footprint: { x: 24, y: 51, w: 2, h: 1 } });
-    this.decor('chair', 23, 51, { variant: 'right' });
+    this.decor('table', 0, 0, { footprint: { x: 23, y: 51, w: 2, h: 1 } });
+    this.decor('chair', 22, 51, { variant: 'right' });
+    this.decor('chair', 25, 51, { variant: 'left' });
     this.decor('barrel', 21, 53);
-    this.decor('crate', 27, 53, { variant: 'turnips', name: 'Crate of turnips' });
-    this.decor('sack', 26, 53);
+    this.decor('crate', 29, 53, { variant: 'turnips', name: 'Crate of turnips' });
+    this.decor('sack', 22, 53);
     // Farmyard.
     for (let y = 56; y <= 58; y++) for (let x = 21; x <= 31; x++) if (this.hash(x, y, 9) < 0.8) this.set(x, y, T.DIRT);
     this.fill(30, 59, 14, 3, T.DIRT); // farm road east to the village street
     this.decor('hay', 19, 57, { name: 'Hay bale' });
+    // Tansy's hen-house, where Duchess holds court (LORE §10: the coop at Reed Farm).
+    this.decor('coop', 0, 0, { footprint: { x: 21, y: 58, w: 2, h: 1 }, name: 'Hen-house', words: ['hen house', 'coop', 'chicken coop', 'duchess'] });
     this.decor('hay', 20, 58, { name: 'Hay bale' });
     this.decor('cart', 0, 0, { footprint: { x: 25, y: 59, w: 2, h: 1 }, name: 'Farm cart' });
-    this.decor('woodpile', 29, 54, { name: 'Woodpile' });
+    this.decor('woodpile', 31, 55, { name: 'Woodpile' });
     this.decor('barrel', 19, 55);
     this.must({ objType: 'sign', id: 'sign_farm', tx: 33, ty: 58, title: SIGNS.farm.title, text: SIGNS.farm.text, name: 'Farm sign' });
     // The field.
@@ -1005,12 +1213,110 @@ class WorldBuilder {
     for (let x = shore - 1; x <= shore + 4; x++) for (let y = 50; y <= 51; y++) this.set(x, y, T.DOCK);
     this.keep(shore - 3, 48, 9, 6);
     this.must({ objType: 'fishing_spot', id: 'fishing_spot', tx: shore + 4, ty: 51, name: 'Fishing spot' });
-    this.must({ objType: 'campfire', id: 'lake_campfire', tx: shore - 4, ty: 46, name: 'Lakeside campfire' });
-    this.look('log', 0, 0, 'lakeLog', { footprint: { x: shore - 5, y: 48, w: 2, h: 1 }, name: 'Driftwood log' });
+    this.netShed(shore - 1);
+    // The lake campfire, just up the shore from the shed.
+    const fx = shore - 7;
+    this.must({ objType: 'campfire', id: 'lake_campfire', tx: fx, ty: 54, name: 'Lakeside campfire' });
+    this.look('log', 0, 0, 'lakeLog', { footprint: { x: fx - 1, y: 56, w: 2, h: 1 }, name: 'Driftwood log' });
+    this.look('net_rack', fx + 2, 53, 'netRack', { name: 'Net rack' });
     this.must({ objType: 'sign', id: 'sign_dock', tx: shore - 2, ty: 53, title: SIGNS.dock.title, text: SIGNS.dock.text, name: 'Dock sign' });
-    this.decor('barrel', shore - 2, 49);
     this.lakeCenterTile = { x: shore - 2, y: 51 };
     this.bankTrees();
+  }
+
+  // Corran's net-shed at the landward end of the dock (LORE §10): a tarred plank shed
+  // with his cot, a stove and nets; more nets drying on racks outside.
+  netShed(dockX) {
+    // Hand placed like every building; the boardwalk stretches to wherever the dock begins.
+    const x = 110;
+    const y = 44;
+    for (let j = y - 1; j <= y + 7; j++) for (let i = x - 1; i <= x + 5; i++) if (!WATERY[this.get(i, j)] && this.get(i, j) !== T.DOCK) this.set(i, j, j >= y + 6 ? T.SAND : T.GRASS);
+    this.building({ id: 'net_shed', x, y, w: 5, h: 6, door: x + 1, material: 'log', roof: { style: 'slate', chimneys: [x + 3] }, sign: 'netshed', smoky: true });
+    this.bed('corran', x + 1, y + 1);
+    this.look('net_rack', x + 3, y + 1, 'netRack', { name: 'Net rack' });
+    this.decor('barrel', x + 3, y + 3, { name: 'Bait barrel' });
+    this.decor('crate', x + 2, y + 1, { name: 'Floats and twine' });
+    // A boardwalk from the shed door to the dock.
+    for (let i = x + 1; i < dockX; i++) this.set(i, y + 6, T.DOCK);
+    const L = LOOKS.netRack;
+    this.near({ objType: 'net_rack', solid: true, low: true, name: 'Net rack', text: L.text, label: L.label }, dockX - 1, y + 4, 2);
+    this.keep(x - 2, y - 2, 10, 10);
+  }
+
+  // The dye-vats cottage (LORE §10): east of the Wayhouse by the stream just above the
+  // bridge, the last house in Hearthvale. Vats in the yard, cloth on the line, and the
+  // stream below running violet and teal.
+  dyeCottage() {
+    const x = 119;
+    const y = 72;
+    for (let j = 69; j <= 82; j++) for (let i = 112; i <= 130; i++) {
+      const g = this.get(i, j);
+      if (g === T.TALL_GRASS || g === T.FOREST || (g === T.SAND && i < 127)) this.set(i, j, T.GRASS);
+    }
+    this.keep(112, 69, 19, 14);
+    this.building({ id: 'dye_cottage', x, y, w: 7, h: 9, door: x + 3, material: 'timber', roof: { style: 'moss', chimneys: [x + 5] }, windowStyle: 'flowers', sign: 'dye', smoky: true });
+    // Their beds at the back, either side of a nightstand; the room in front is
+    // Sabeth's sewing and Hess's bows.
+    this.partition(this.row(x + 1, x + 5, y + 3), [[x + 2, y + 3]]);
+    this.bed('hess', x + 1, y + 1);
+    this.decor('nightstand', x + 2, y + 1, { name: 'Nightstand' });
+    this.bed('sabeth', x + 3, y + 1);
+    this.decor('pot', x + 5, y + 1, { variant: 'flower' });
+    this.look('table', 0, 0, 'sewingTable', { footprint: { x: x + 1, y: y + 5, w: 2, h: 1 }, name: 'Sewing table' });
+    this.decor('chair', x + 1, y + 6, { variant: 'right' });
+    this.look('rack', x + 5, y + 4, 'hessRack', { name: "Hess's rack", variant: 'tools' });
+    this.decor('crate', x + 5, y + 6);
+    this.decor('barrel', x + 4, y + 6);
+    // A path down to the King's Road.
+    for (let j = y + 9; j < KINGS_ROAD_Y; j++) this.set(x + 3, j, T.DIRT);
+    // The yard: three vats, cloth on the line, a woodpile.
+    this.look('dye_vat', x + 8, y + 2, 'dyeVatViolet', { variant: 'violet', name: 'Violet vat' });
+    this.look('dye_vat', x + 8, y + 4, 'dyeVatTeal', { variant: 'teal', name: 'Teal vat' });
+    this.look('dye_vat', x + 9, y + 6, 'dyeVatMadder', { variant: 'madder', name: 'Madder vat' });
+    this.look('washing_line', 0, 0, 'dyedLine', { footprint: { x: x + 7, y: y - 1, w: 3, h: 1 }, solid: false, variant: 'dyed', name: 'Drying line' });
+    this.decor('woodpile', x - 1, y + 7, { name: 'Woodpile' });
+    this.dyeReach = { x0: x + 9, x1: x + 16, y0: y, y1: KINGS_ROAD_Y + 14 };
+  }
+
+  // Below the vats the stream runs violet and teal, fading downstream. Painted after the
+  // ordinary decorations so reeds and lilies do not hide it.
+  dyeStream() {
+    const R = this.dyeReach;
+    if (!R) return;
+    for (let j = R.y0; j <= R.y1; j++) {
+      for (let i = R.x0; i <= R.x1; i++) {
+        if (!this.map.isWater(i, j) || this.get(i, j) === T.BRIDGE) continue;
+        const k = this.hash(i, j, 97);
+        if (k < 0.75 - Math.max(0, j - R.y0 - 6) * 0.03) this.map.deco[j * W + i] = DECO.DYE;
+      }
+    }
+  }
+
+  // Wenna's hives among the lindens at Whisperwood's near edge, inside the ward.
+  wennaHives() {
+    const cx = 89;
+    const cy = 32.5;
+    this.ellipse(cx, cy, 4.2, 3.0, (x, y, r) => {
+      if (r < 1) {
+        this.clear[y * W + x] = 1;
+        const g = this.get(x, y);
+        if (g === T.FOREST || g === T.TALL_GRASS) this.set(x, y, r < 0.8 ? T.GRASS : T.TALL_GRASS);
+      }
+    });
+    // Remove anything scattered into the clearing later: claim it now.
+    for (const [tx, ty, v] of [
+      [85, 31, 0],
+      [93, 31, 1],
+      [86, 35, 2],
+      [92, 35, 0],
+    ]) {
+      if (this.put({ objType: 'tree', tx, ty, kind: 'linden', v })) this.trunk[ty * W + tx] = 1;
+    }
+    this.look('hive', 87, 32, 'hive', { variant: 'skep', name: 'Skep' });
+    this.look('hive', 89, 31, 'hiveBox', { variant: 'box', name: 'Box hive' });
+    this.look('hive', 91, 33, 'hive', { variant: 'skep', name: 'Skep' });
+    this.look('hive', 89, 34, 'hiveBox', { variant: 'box', name: 'Box hive' });
+    this.look('bench', 0, 0, 'bench', { footprint: { x: 86, y: 34, w: 2, h: 1 }, name: "Wenna's bench" });
   }
 
   // Trees along the north banks of the lake and the village pond, so the still water
@@ -1041,8 +1347,8 @@ class WorldBuilder {
       plant(x, top - back, this.hash(x, top, 94) < 0.35 ? 'pine' : 'oak');
     }
     for (const [x, y] of [
-      [60, 74],
-      [64, 74],
+      [52, 74],
+      [58, 74],
     ])
       plant(x, y, 'oak');
   }
@@ -1297,20 +1603,32 @@ class WorldBuilder {
 
   makeLocations() {
     const bInfo = (id) => this.map.buildings.find((b) => b.id === id);
-    const room = (id, cx, cy) => {
+    const room = (id, cx, cy, parent) => {
       const b = bInfo(id);
-      this.loc(id, { x: b.x, y: b.y, w: b.w, h: b.h }, [cx, cy], { parent: id === 'farmhouse' ? 'reed_farm' : 'hearthvale' });
+      this.loc(id, { x: b.x, y: b.y, w: b.w, h: b.h }, [cx, cy], { parent: parent ?? (id === 'farmhouse' ? 'reed_farm' : 'hearthvale') });
     };
-    this.loc('hearthvale', { x: 44, y: 36, w: 67, h: 47 }, [79, 63]);
+    this.loc('hearthvale', { x: 44, y: 36, w: 73, h: 47 }, [79, 63]);
     this.loc('town_square', { x: 70, y: 54, w: 20, h: 13 }, [78, 62], { parent: 'hearthvale' });
     room('player_home', 96, 80);
     room('ember_kettle', 70, 49);
-    room('smithy', 98, 55);
+    room('smithy', 101, 55);
     room('general_store', 58, 55);
     room('chapel', 88, 49);
     room('herbalist', 48, 55);
     room('guardhouse', 60, 67);
     room('farmhouse', 24, 52);
+    // Round 3 (LORE §10): the lanes and homes of the ten who joined the eight.
+    this.loc('lamplight_lane', { x: 94, y: 46, w: 16, h: 3 }, [99, 48], { parent: 'hearthvale' });
+    room('chandlery', 105, 44, 'lamplight_lane');
+    room('ashby_house', 73, 67);
+    this.loc('weavers_row', { x: 59, y: 73, w: 19, h: 10 }, [70, 80], { parent: 'hearthvale' });
+    room('pike_house', 62, 77, 'weavers_row');
+    room('holloway_house', 69, 76, 'weavers_row');
+    room('tolley_house', 75, 76, 'weavers_row');
+    // The cottage and its yard: Sabeth works at the vats outside the door.
+    this.loc('dye_cottage', { x: 119, y: 71, w: 11, h: 10 }, [122, 77], { parent: 'hearthvale' });
+    room('net_shed', 112, 47, 'mirror_lake');
+    this.loc('wenna_hives', { x: 84, y: 29, w: 10, h: 7 }, [89, 32], { parent: 'whisperwood' });
     this.loc('reed_farm', { x: 14, y: 44, w: 31, h: 36 }, [36, 60]);
     this.loc('whisperwood', { x: 27, y: 0, w: 96, h: 36 }, [76, 25]);
     this.loc('moonpetal_glade', { x: 47, y: 11, w: 11, h: 9 }, [52, 15], { parent: 'whisperwood' });
@@ -1366,6 +1684,23 @@ class WorldBuilder {
       { id: 'aveline', ...at(88, 45) },
       { id: 'garrick', ...at(56, 53) },
     ];
+    // The ten who joined the eight (DESIGN §19.1), at home in the morning. The game
+    // spawns only those with a profile, so these wait quietly until they have one.
+    for (const [id, x, y] of [
+      ['hobb', 106, 44],
+      ['wenna', 105, 43],
+      ['hess', 121, 77],
+      ['sabeth', 122, 76],
+      ['alder', 72, 67],
+      ['petra', 75, 67],
+      ['tilly', 73, 68],
+      ['tansy', 28, 51],
+      ['corran', 112, 47],
+      ['wys', 61, 67],
+    ]) {
+      const t = this.freeNear(x, y, 2);
+      if (t) S.npcs.push({ id, ...at(t.x, t.y) });
+    }
     const C = (species, x, y, opts = {}) => {
       const t = this.freeNear(x, y);
       if (t) S.creatures.push({ species, ...at(t.x, t.y), opts });

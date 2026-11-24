@@ -415,7 +415,7 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
       const ox = (tx - tx0) * TILE + Math.round((ih(tx, ty, 302) - 0.5) * 6);
       const oy = (ty - ty0) * TILE + Math.round((ih(tx, ty, 303) - 0.5) * 4);
       // The wet twin leaves water pixels empty, lily pads included: the dry chunk shows them.
-      blitDeco(out, spr, ox, oy, mat, !wet && (d === DECO.LILY || d === DECO.REEDS));
+      blitDeco(out, spr, ox, oy, mat, !wet && (d === DECO.LILY || d === DECO.REEDS || d === DECO.DYE));
     }
   }
 
@@ -605,7 +605,7 @@ const COBBLE_MOSS = rgb('#46653a');
 const COBBLE_WARM = rgb('#8f7b6b');
 
 function ageCobble(c, raw, mat, k, region) {
-  if (lumOf(raw) < 0.27) {
+  if (lumOf(raw) < 0.36) {
     const near = GRASSY[mat[k - 6]] || GRASSY[mat[k + 6]] || GRASSY[mat[k - 6 * SW]] || GRASSY[mat[k + 6 * SW]] || GRASSY[mat[k - 3 * SW - 3]] || GRASSY[mat[k + 3 * SW + 3]];
     if (near) return mixc(c, COBBLE_MOSS, 0.6);
   }
