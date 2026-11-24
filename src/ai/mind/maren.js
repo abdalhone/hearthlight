@@ -32,7 +32,7 @@ export const STAGE_LINES = {
   ],
   find_key: [
     'She walked to the Sunken Ruins and never came back. Aveline kept the candle burning for her all this time.',
-    "And the gate's been locked since spring. The bandits up north-east have the warden's keys.",
+    "And the gate's been locked since spring. The bandits up north-east took the warden's key.",
     "Bandits. Of course it's bandits. Tides take them. North-east, then.",
   ],
   find_key_told: [
@@ -61,7 +61,7 @@ export const MAREN_JOURNAL = [
   },
   {
     date: '9th of Thawmonth',
-    text: 'The Sunken Ruins are older than anyone here believes. Lanternwright work under the moss: a waygate hall, half drowned, its ring still humming. They never truly closed it. And the hum is wrong. Too low, too slow, like something breathing on the far side. I have set wards. I have not told the Captain; she has bandits enough to worry about.',
+    text: 'The Sunken Ruins are older than anyone here believes. Lanternwright work under the moss: a waygate hall, half drowned, its ring still humming. They never truly closed it. And the hum is wrong. Too low, too slow, like something breathing on the far side. I have set wards. I have not told the Captain; he has bandits enough to worry about.',
   },
   {
     date: '15th of Thawmonth',
@@ -102,7 +102,7 @@ export const MAREN_TESTIMONY = {
     npc: [
       'Maren Ashgrove. Yes. She sat in the third pew most evenings and asked me about the old stones.',
       'The last morning, she asked me to keep the candle burning, and walked toward the Sunken Ruins. She did not come back.',
-      'The ruins gate has been locked since spring. Captain Rowan believes the bandits in the north-east took the warden\'s key ring.',
+      'The ruins gate has been locked since spring. Captain Rowan believes the bandits in the north-east took the warden\'s key.',
     ],
     learned: 'Maren asked Aveline to keep the chapel candle burning, then walked to the Sunken Ruins and never came back. The gate is locked; the bandits may have the warden\'s key.',
     lyra: "Thank you, Sister. For the candle, too. I'll bring her back to see it.",
@@ -115,9 +115,9 @@ export const MAREN_TESTIMONY = {
   rowan: {
     npc: [
       'Your teacher went into the Sunken Ruins against my advice.',
-      "Then the bandits raided the old toll-house and took the warden's keys. I haven't the soldiers to take them back.",
+      "Then the bandits raided the warden's toll-house by the ruins and took the gate key. I haven't the soldiers to take it back.",
     ],
-    learned: "The bandits took the warden's keys from the old toll-house; the ruins key is probably at their camp in the north-east.",
+    learned: "The bandits took the ruins gate key from the warden's toll-house; it is probably at their camp in the north-east.",
     lyra: "Then I'll take them back for you, Captain. With help.",
   },
   garrick: {
@@ -136,9 +136,9 @@ export const MAREN_TESTIMONY = {
     lyra: 'Silverleaf. For wounds. ...Thank you, Mira.',
   },
   tobias: {
-    npc: ["After she came, I saw a light out by the Sunken Ruins some nights. Violet-ish. I didn't go and look. I'm not brave like that."],
-    learned: 'Tobias saw a violet light near the Sunken Ruins at night after Maren arrived.',
-    lyra: "Violet. That's warding light. She was working down there.",
+    npc: ["After she came, I saw lights out by the Sunken Ruins some nights. Blue ones, moving. I didn't go and look. I'm not brave like that."],
+    learned: 'Tobias saw blue lights moving in the Sunken Ruins at night after Maren arrived.',
+    lyra: "Blue. That's warding light. She was working down there.",
   },
   pip: {
     npc: ['The lady in the grey cloak? She showed me how to make a coin float! Then she went to the scary ruins. Is she your friend? Is she coming back?'],

@@ -1,6 +1,6 @@
 import { PLAYER_ID } from '../../core/constants.js';
 import { resolveEntity } from '../resolve.js';
-import { normName, firstName, cap, shorten, pick, joinList, playerRef, lowerFirst, timeAgo, itemPhrase } from './text.js';
+import { normName, firstName, cap, shorten, pick, joinList, playerRef, lowerFirst, timeAgo, itemPhrase, firstSentence } from './text.js';
 import { bondOf } from './relationships.js';
 import { activeGoals } from './goals.js';
 import { FOOD_PREFERENCE } from './needs.js';
@@ -310,21 +310,86 @@ export function thinkingAnswer(ctx) {
 export function memoryAnswer(ctx, query, { lead = true } = {}) {
   const mind = ctx.mind;
   const q = String(query || '').trim();
-  let mems;
-  if (/^(today|this morning|this afternoon|tonight)$/i.test(q)) mems = mind.memory.ofDay(ctx.game?.clock?.day ?? 1).slice(0, 3);
-  else if (/^yesterday$/i.test(q)) mems = mind.memory.ofDay((ctx.game?.clock?.day ?? 1) - 1).slice(0, 3);
-  else mems = mind.recall(q, { limit: 3 });
-  if (!mems.length) {
+  let hits;
+  if (/^(today|this morning|this afternoon|tonight)$/i.test(q)) hits = mind.memory.ofDay(ctx.game?.clock?.day ?? 1).slice(0, 3).map((m) => ({ store: 'episode', ref: m, text: m.text }));
+  else if (/^yesterday$/i.test(q)) hits = mind.memory.ofDay((ctx.game?.clock?.day ?? 1) - 1).slice(0, 3).map((m) => ({ store: 'episode', ref: m, text: m.text }));
+  else hits = mind.recall(q, { limit: 3, stores: ['episode', 'life'] }).filter((h) => h.relevance > 0.1 || h.store === 'episode');
+  if (!hits.length) {
     const who = resolvePerson(ctx, q.replace(/^(about|of)\s+/i, ''));
     if (who?.rel && !who.player) return `I know ${firstName(who.name)}, but nothing in particular stands out yet.`;
     if (/^(today|yesterday)/i.test(q)) return 'Not much worth writing down. Which is its own kind of nice.';
     return pick(['Hm. Nothing comes to mind about that.', "I'm drawing a blank. Remind me?"], ctx.game?.rng);
   }
-  const first = mems[0];
-  const when = first.day > 0 ? timeAgo(ctx.game, first.t) : first.when || '';
+  const first = hits[0];
   const opener = lead ? pick(['I remember.', 'Of course I remember.', 'Mm.'], ctx.game?.rng) : '';
-  const startsWithTime = /^(two days ago|yesterday|today|the morning|the night|my first|maren's last)/i.test(first.text);
-  let out = `${opener} ${!startsWithTime && when && when !== 'a little while ago' ? `${cap(when)}: ` : ''}${first.text}`.trim();
-  if (mems[1] && out.length < 220) out += ` And ${lowerFirst(shorten(mems[1].text, 150))}`;
+  if (first.store === 'life') return shorten(`${opener} ${firstPerson(first.text, mind.name)}`.trim(), 420);
+  const m = first.ref;
+  const when = m.day > 0 ? timeAgo(ctx.game, m.t) : m.when || '';
+  const startsWithTime = /^(two days ago|yesterday|today|the morning|the night|my first|maren's last)/i.test(m.text);
+  let out = `${opener} ${!startsWithTime && when && when !== 'a little while ago' ? `${cap(when)}: ` : ''}${m.text}`.trim();
+  const second = hits[1];
+  if (second && second.store === 'episode' && out.length < 220) out += ` And ${lowerFirst(shorten(second.text, 150))}`;
   return shorten(out, 420);
+}
+
+// Story text about her may be written about "Lyra"; she tells it as her own.
+export function firstPerson(text, name = 'Lyra') {
+  const n = String(name || 'Lyra').replace(/[.*+?^${}()|[\]\\]/g, '');
+  return String(text || '')
+    .replace(new RegExp(`\\b${n}'s\\b`, 'g'), 'my')
+    .replace(new RegExp(`^${n}\\b`, 'g'), 'I')
+    .replace(new RegExp(`\\b${n}\\b`, 'g'), 'me')
+    .replace(/(^|[.!?]\s+)(my|me)\b/g, (m, a, w) => `${a}${w === 'my' ? 'My' : 'Me'}`);
+}
+
+// "Tell me about your childhood / your brother / where did you grow up": her life story.
+export function lifeAnswer(ctx, topic) {
+  const mind = ctx.mind;
+  const q = String(topic || '').trim();
+  let hits = q ? mind.recall(q, { limit: 2, stores: ['life'] }).filter((h) => h.relevance > 0.1) : [];
+  if (!hits.length && /child|grow|young|isles?|home|from|born|family|parents/i.test(q)) {
+    hits = (mind.life || []).slice(0, 2).map((e) => ({ store: 'life', ref: e, text: e.text, label: e.title }));
+  }
+  if (!hits.length) return null;
+  const [a, b] = hits;
+  let out = firstPerson(a.text, mind.name);
+  if (b && out.length < 200) out += ` ${firstPerson(firstSentence(b.text, 160), mind.name)}`;
+  const tender = (a.ref?.feeling === 'sadness' || a.ref?.importance >= 9) && mind.relationships.bond(PLAYER_ID).level < 2;
+  if (tender) out += " ...I don't usually tell people that.";
+  return shorten(out, 460);
+}
+
+// "What do you know about the waygates / Bram / the bandits?"
+export function knowAnswer(ctx, topic) {
+  const mind = ctx.mind;
+  const q = String(topic || '').trim().replace(/[?.!]+$/, '');
+  if (!q) return null;
+  const who = resolvePerson(ctx, q);
+  if (who?.player) return playerAnswer(ctx, 'think');
+  if (who && !who.group && !who.self) {
+    const d = mind.dossier(who.id);
+    if (d) {
+      const n = firstName(d.name);
+      const told = [...d.notes.filter((x) => x.source !== 'self').map((x) => x.text), ...d.facts.filter((f) => f.source !== 'lore').map((f) => f.text)];
+      const parts = [];
+      if (d.role && !/^lyra/i.test(d.role)) parts.push(`${n}, ${String(d.role).replace(/^the /i, 'the ')}.`);
+      if (told.length) parts.push(`${told.length > 1 ? 'What I know: ' : ''}${told.slice(-2).join(' ')}`);
+      else if (d.lore) parts.push(firstPerson(d.lore, mind.name));
+      if (d.opinion) parts.push(shorten(d.opinion, 160));
+      if (parts.length) return shorten(parts.join(' '), 440);
+    }
+  }
+  const look = mind.loreLookup(q);
+  if (!look.entries.length && !look.questions.length) return pick(["Not much, honestly. The villagers know this valley better than I do; I could ask around.", "Less than I'd like. Ask me again once I've asked around."], ctx.game?.rng);
+  const parts = [];
+  for (const e of look.entries.slice(0, 2)) {
+    const text = firstPerson(shorten(e.text, 200), mind.name);
+    if (e.kind === 'theory') parts.push(`I think ${lowerFirst(text.replace(/[.!]+$/, ''))}, but I can't prove it.`);
+    else if (e.kind === 'rumor') parts.push(`I've heard ${lowerFirst(text.replace(/[.!]+$/, ''))}. Only a rumor.`);
+    else if (e.source === 'told' && e.from) parts.push(`${firstName(mind.relationships.get(e.from)?.name || e.from)} told me ${lowerFirst(text)}`);
+    else parts.push(text);
+  }
+  const qn = look.questions[0];
+  if (qn) parts.push(`And I keep coming back to one question: ${lowerFirst(qn.question)}`);
+  return shorten(parts.join(' '), 460);
 }

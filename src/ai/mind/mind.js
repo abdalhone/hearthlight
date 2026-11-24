@@ -392,7 +392,7 @@ export class Mind {
     const stores = Array.isArray(opts.stores) && opts.stores.length ? opts.stores : null;
     const filter = (d) =>
       (!opts.type || d.store !== 'episode' || d.ref.type === opts.type) && (!opts.minImportance || d.store !== 'episode' || d.ref.importance >= opts.minImportance) && (!opts.filter || opts.filter(d));
-    const hits = this.index.search(q, { limit, stores: stores || ['episode'], about: opts.about || null, filter, touch: opts.touch !== false, entities: opts.entities });
+    const hits = this.index.search(q, { limit, stores: stores || ['episode'], about: opts.about || null, filter, touch: opts.touch !== false, entities: opts.entities, spread: opts.spread !== false });
     if (opts.touch !== false) for (const h of hits) if (h.store === 'episode') h.ref.uses = (h.ref.uses || 0) + 1;
     if (stores) return hits;
     return hits.map((h) => h.ref);

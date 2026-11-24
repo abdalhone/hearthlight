@@ -71,16 +71,19 @@ export const feelingsPlugin = {
 
   actions: {
     set_goal: {
+      ungated: true, // asks nothing of her (DESIGN §16.4)
       description: 'Give Lyra a personal goal. She refuses goals that would hurt innocents.',
       params: { value: 'goal text', amount: 'priority 0..1 (default 0.6)' },
       run: setGoal,
     },
     complete_goal: {
+      ungated: true, // asks nothing of her (DESIGN §16.4)
       description: 'Mark one of her goals as done.',
       params: { value: 'goal text or id' },
       run: completeGoalAction,
     },
     express: {
+      ungated: true, // asks nothing of her (DESIGN §16.4)
       description: 'Feel and show an emotion (icon over her head, sometimes an emote).',
       params: { value: 'joy|sadness|fear|anger|trust|surprise|affection|curiosity|pride|embarrassment|calm', amount: 'intensity 0..1' },
       run: express,

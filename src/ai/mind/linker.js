@@ -21,8 +21,10 @@ const ROLE_WORDS = {
   tobias: ['farmer', 'reed'],
   aveline: ['sister', 'chapel keeper', 'priestess', 'the sister'],
   garrick: ['merchant', 'shopkeeper', 'trader', 'hale'],
-  maren: ['my teacher', 'her teacher', 'mentor', 'my mentor', 'ashgrove', 'grey cloak'],
-  cal: ['my brother', 'her brother', 'little brother'],
+  maren: ['my teacher', 'her teacher', 'your teacher', 'mentor', 'my mentor', 'your mentor', 'ashgrove', 'grey cloak'],
+  cal: ['my brother', 'her brother', 'your brother', 'little brother'],
+  odile: ['my mother', 'your mother', 'your mom', 'your mum', 'your parents', 'my parents'],
+  orrin: ['my father', 'your father', 'your dad', 'your parents', 'my parents', 'lighthouse keeper'],
 };
 
 // Contract places and the plain words people use for them (DESIGN §6).

@@ -1,5 +1,5 @@
 import { PLAYER_ID } from '../../core/constants.js';
-import { resolvePerson, memoryAnswer } from '../mind/voice.js';
+import { resolvePerson, memoryAnswer, lifeAnswer, knowAnswer } from '../mind/voice.js';
 import { clamp, cap, pick, shorten, playerRef, firstName } from '../mind/text.js';
 
 // Memory plugin (mind): remembering what the player asks her to, forgetting (unless it
@@ -44,8 +44,10 @@ function forgetAction(args, ctx) {
   const text = String(args.value || args.target || '').trim();
   if (!text) return { ok: false, message: 'Forget what?' };
   if (/\bmaren\b/i.test(text)) return { ok: false, message: 'Forget Maren? Never. Not one word of her.' };
+  const best = mind.recall(text, { limit: 1, stores: ['episode', 'life'], touch: false, spread: false })[0];
+  if (best?.store === 'life' && best.relevance >= 0.3) return { ok: false, message: "That's my life you're asking me to forget. No." };
   const { people, places } = mind.resolveQuery(text);
-  const m = mind.memory.bestMatch(text, { people, places, minRelevance: 0.3 });
+  const m = best?.store === 'episode' && best.relevance >= 0.3 ? best.ref : mind.memory.bestMatch(text, { people, places, minRelevance: 0.3 });
   if (!m) return { ok: false, message: "I don't remember anything like that to forget." };
   if (m.pinned || m.importance >= 8) return { ok: false, message: 'No. Some things I keep, even when they hurt.' };
   mind.memory.remove(m.id);
@@ -67,11 +69,13 @@ export const memoryPlugin = {
 
   actions: {
     remember: {
+      ungated: true, // asks nothing of her (DESIGN §16.4)
       description: 'Store a memory (something the player wants Lyra to remember, or something she decides to keep).',
       params: { target: 'who it is about (optional)', value: 'what to remember', amount: 'importance 1..10 (default 6)' },
       run: rememberAction,
     },
     forget: {
+      ungated: true, // asks nothing of her (DESIGN §16.4)
       description: 'Drop a memory matching the text. Lyra refuses to forget important things.',
       params: { value: 'text to match' },
       run: forgetAction,
@@ -121,6 +125,51 @@ export const memoryPlugin = {
       },
     },
     {
+      id: 'mem.life',
+      examples: [
+        'tell me about your childhood',
+        'tell me about your brother',
+        'where did you grow up?',
+        'where are you from?',
+        'how did you meet Maren?',
+        'do you have any family?',
+        'what were your parents like?',
+        'how did you get your magic?',
+        'tell me about your past',
+      ],
+      patterns: [
+        /\b(?:tell me (?:more )?about|what (?:was|were)) your (?<q>childhood|brother|little brother|parents|mother|father|mum|mom|dad|family|home|past|life before(?: this)?|youth|first lesson|magic)\b/i,
+        /\bwhere (?:did you grow up|were you born|(?:are|'re) you from|do you come from)\b/i,
+        /\bhow did you (?:first )?(?<q>meet maren|find maren|learn magic|get your magic|discover your magic|become a ranger|start out)\b/i,
+        /\bdo you have (?:any )?(?<q>family|siblings|brothers?|sisters?|parents)\b/i,
+        /\bwhat (?:was|were) (?:it|things) like (?<q>growing up|on the isles|at home|back home)\b/i,
+      ],
+      confidence: 0.85,
+      answer(m, ctx) {
+        let q = String(m.groups?.q || m[0]).toLowerCase();
+        if (/where|born|from|grow|childhood|youth|isles|home/.test(q) || /where/.test(m[0].toLowerCase())) q = `${q} Kettlewake Glasswater Isles born`;
+        if (/magic/.test(q)) q = 'magic lamp storm lighthouse';
+        if (/meet maren|find maren|first lesson/.test(q)) q = 'Maren first lesson came beacon';
+        if (/sibling|brother/.test(q)) q = 'Cal brother';
+        if (/parent|mother|father|mum|mom|dad|family/.test(q)) q = `${q} mother father`;
+        return lifeAnswer(ctx, q);
+      },
+    },
+    {
+      id: 'mem.know',
+      examples: ['what do you know about the waygates?', 'what do you know about Bram?', 'have you heard anything about the bandits?', 'do you know anything about the Sunken Ruins?', 'tell me what you know about the Lanternwrights'],
+      patterns: [
+        /\bwhat (?:do|did) you (?:know|learn|find out) about (?<q>.+?)\s*\??$/i,
+        /\b(?:have|did) you (?:hear|heard|learn|learned) (?:anything |something )?(?:about|of) (?<q>.+?)\s*\??$/i,
+        /\bdo you know (?:anything|much|something) (?:about|of) (?<q>.+?)\s*\??$/i,
+        /\btell me what you know about (?<q>.+?)\s*[.?!]*$/i,
+      ],
+      confidence: 0.85,
+      answer(m, ctx) {
+        return knowAnswer(ctx, String(m.groups?.q || '').trim());
+      },
+    },
+    {
       id: 'mem.remember',
       examples: ['remember that Pip loves cats', "don't forget that Bram likes iron ore", 'keep in mind that the bandits come at night', 'remember: I hate spiders'],
       patterns: [
@@ -151,23 +200,13 @@ export const memoryPlugin = {
     },
   ],
 
-  // Memories relevant to the player's message, then the most important recent ones.
+  // A compact recall for the player's message: memories, knowledge, people and past,
+  // each line cited by id ([m12], [k4], [life:cal_dies]) so Claude can say which it used.
+  // (The brain may also send the larger mind.recallContext(message) on its own.)
   promptContext(ctx, query = '') {
     const mind = ctx.mind;
-    if (!mind) return '';
-    const picked = mind.recall(query, { limit: 5, touch: false });
-    const ids = new Set(picked.map((m) => m.id));
-    const recent = mind.memory
-      .all()
-      .slice(-12)
-      .filter((m) => !ids.has(m.id) && m.importance >= 4)
-      .sort((a, b) => b.importance - a.importance || b.t - a.t)
-      .slice(0, 3);
-    const fmt = (m) => `- ${m.day > 0 ? `day ${m.day}` : m.when || 'before'}, importance ${m.importance}: ${shorten(m.text, 150)}`;
-    const lines = [];
-    if (picked.length) lines.push('Recalled:', ...picked.map(fmt));
-    if (recent.length) lines.push('Recent:', ...recent.map(fmt));
-    let out = lines.join('\n');
+    if (!mind?.recallContext) return '';
+    let out = mind.recallContext(query || '', { budget: 880 }).text;
     if (out.length > 880) out = `${out.slice(0, 877)}…`;
     return out;
   },

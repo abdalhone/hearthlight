@@ -1,6 +1,6 @@
 import { PLAYER_ID } from '../../core/constants.js';
 import { normalizeTag, bondOf } from '../mind/relationships.js';
-import { resolvePerson, opinionAnswer, playerAnswer, friendsAnswer, relLine } from '../mind/voice.js';
+import { resolvePerson, opinionAnswer, playerAnswer, friendsAnswer, relLine, firstPerson } from '../mind/voice.js';
 import { clamp, firstName, cap, pick, shorten, isChild, playerRef } from '../mind/text.js';
 
 // Relationships plugin (mind): who Lyra counts as friend or enemy, notes she keeps
@@ -141,6 +141,7 @@ export const relationshipsPlugin = {
       run: setRelationship,
     },
     note_about: {
+      ungated: true, // asks nothing of her (DESIGN §16.4)
       description: 'Add a note about a person to what Lyra knows of them.',
       params: { target: 'who', value: 'the note text' },
       run: noteAbout,
@@ -242,7 +243,12 @@ export const relationshipsPlugin = {
       answer(m, ctx) {
         const ref = String(m.groups?.who || '').trim();
         const who = resolvePerson(ctx, ref);
-        if (!who || who.group) return null;
+        if (!who) {
+          // Someone she only knows of (family, people in stories she has heard).
+          const d = ctx.mind?.dossier?.(ref);
+          return d && !d.met ? shorten(`${firstName(d.name)}${d.role ? `, ${String(d.role).replace(/^lyra's /i, 'my ')}` : ''}. ${firstPerson(d.lore || '', ctx.mind.name)}`, 420) : null;
+        }
+        if (who.group) return null;
         if (who.player) return playerAnswer(ctx, 'think');
         if (who.self) return null;
         const rel = who.rel;
