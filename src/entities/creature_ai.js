@@ -956,7 +956,11 @@ function aiArcher(c, dt, think) {
         ai.jab = true;
         return;
       }
-      if (attackReady(c) && d <= atk.range && ai.sight !== false && d > 26) {
+      // Back off first; shoot from up close only when there is nowhere left to go.
+      if (d < near * 0.75) ai.backT = (ai.backT || 0) + dt;
+      else ai.backT = 0;
+      const cornered = ai.backT > 1.6;
+      if (attackReady(c) && d <= atk.range && ai.sight !== false && d > 26 && (d >= near * 0.75 || cornered)) {
         stopMove(c);
         c.walker.stop();
         c.faceToward(t.x, t.y);
