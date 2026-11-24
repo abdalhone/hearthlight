@@ -369,10 +369,11 @@ export const WILL_LINES = {
     "It stopped being good for me. I'm going my own way.",
     "I can't trust you. I'm going.",
   ],
+  // Gone (DESIGN §19.7): she cuts them out of her life; Hearthvale stays her home.
   gone_farewell: [
     'Goodbye, {player}. I hope you become someone better.',
-    "I'm taking the road. Don't come after me.",
-    "You knocked down what I couldn't forgive. I'm going.",
+    'Stay away from me, and from my family.',
+    "You did the one thing I can't forgive. We're finished.",
     'I stood beside you once. Goodbye.',
   ],
   returning: [
