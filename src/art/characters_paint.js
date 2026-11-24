@@ -48,6 +48,25 @@ export function tri(ramp, offset = 0) {
   return [ramp[mid - 1], ramp[mid], ramp[mid + 1]];
 }
 
+// A cool back light for hair and cloaks (night-blue, so warm lamps still read warm).
+const RIM_COLOR = '#b8c8ff';
+
+// Seven shading levels per 3-tone ramp, as RGB triples (cached per ramp array).
+const LEVELS = new WeakMap();
+export function levelsOf(ramp) {
+  let l = LEVELS.get(ramp);
+  if (l) return l;
+  const a = rgbOf(ramp[0]);
+  const b = rgbOf(ramp[Math.min(1, ramp.length - 1)]);
+  const c = rgbOf(ramp[Math.min(2, ramp.length - 1)]);
+  const o = rgbOf(OUTLINE);
+  const hi = rgbOf('#fff6e8');
+  const mix = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t];
+  l = [mix(a, o, 0.32), a, mix(a, b, 0.5), b, mix(b, c, 0.5), c, mix(c, hi, 0.22)];
+  LEVELS.set(ramp, l);
+  return l;
+}
+
 export class Sprite {
   constructor(w = 32, h = 32) {
     this.w = w;
@@ -213,24 +232,56 @@ export class Sprite {
   }
 
   // Shade, outline and flatten to RGBA bytes.
-  render({ outline = OUTLINE, tintOutline = true } = {}) {
+  //
+  // Shading has two layers. The edge tone (_autoTone) keeps the crisp pixel-art
+  // read: lit top/left edges, dark bottom/right edges, cast shadows from parts in
+  // front. On top of it, every part is shaded as a soft volume: its position inside
+  // its own horizontal and vertical run gives a normal, lit from the upper left, and
+  // the result is quantized over a 7-level ramp (the 3 authored tones, the blends
+  // between them, a deep shadow and a highlight) with a 1-pixel ordered dither where
+  // two levels meet. Ramps listed in `rimRamps` (hair, cloaks) also catch a cool
+  // rim light along their shadow-side silhouette, as if lit from behind.
+  render({ outline = OUTLINE, tintOutline = true, volume = this.volume !== false, dither = this.dither !== false } = {}) {
     const { w, h, part, parts } = this;
     const out = new Uint8ClampedArray(w * h * 4);
-    const toneOf = new Int8Array(w * h).fill(1);
+    const ext = volume ? this._runs() : null;
+    const rim = this.rimRamps || null;
+    const rimRgb = rgbOf(this.rimColor || RIM_COLOR);
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
         const p = part[i];
         if (p < 0) continue;
-        let c = this.color[i];
-        if (!c) {
+        let rgb;
+        const c = this.color[i];
+        if (c) rgb = rgbOf(c);
+        else {
           const ramp = this.ramp[i];
-          let t = this.tone[i];
-          if (t < 0) t = this._autoTone(x, y, p, parts[p]);
-          toneOf[i] = t;
-          c = ramp[Math.max(0, Math.min(ramp.length - 1, t))];
+          const forced = this.tone[i];
+          const opts = parts[p];
+          if (forced >= 0 || !ext || opts.flat || opts.noVolume) {
+            const t = forced >= 0 ? forced : this._autoTone(x, y, p, opts);
+            rgb = rgbOf(ramp[Math.max(0, Math.min(ramp.length - 1, t))]);
+          } else {
+            const edge = this._autoTone(x, y, p, opts);
+            const sx = ext.x1[i] - ext.x0[i];
+            const sy = ext.y1[i] - ext.y0[i];
+            const nx = sx >= 2 ? ((x - ext.x0[i]) / sx) * 2 - 1 : 0;
+            const ny = sy >= 2 ? ((y - ext.y0[i]) / sy) * 2 - 1 : 0;
+            // 3 = the mid tone; light from the upper left; the edge tone sharpens rims.
+            let v = 3 - 1.25 * nx - 0.95 * ny + (edge - 1) * 1.05;
+            if (edge === 0 && opts.noShadow !== true) v -= 0.25;
+            let lv = Math.floor(v);
+            const f = v - lv;
+            if (f > 0.57 || (f > 0.43 && dither && ((x + y) & 1) === 0)) lv++;
+            if (lv < 0) lv = 0;
+            else if (lv > 6) lv = 6;
+            rgb = levelsOf(ramp)[lv];
+            if (rim && rim.has(ramp) && nx > 0.15 && this._backEdge(x, y)) {
+              rgb = [rgb[0] + (rimRgb[0] - rgb[0]) * 0.5, rgb[1] + (rimRgb[1] - rgb[1]) * 0.5, rgb[2] + (rimRgb[2] - rgb[2]) * 0.5];
+            }
+          }
         }
-        const rgb = rgbOf(c);
         const o = i * 4;
         out[o] = rgb[0];
         out[o + 1] = rgb[1];
@@ -240,6 +291,56 @@ export class Sprite {
     }
     if (outline) this._outline(out, outline, tintOutline);
     return out;
+  }
+
+  // Horizontal and vertical extents of each pixel's run within its own part.
+  _runs() {
+    const { w, h, part } = this;
+    const n = w * h;
+    const x0 = new Int16Array(n);
+    const x1 = new Int16Array(n);
+    const y0 = new Int16Array(n);
+    const y1 = new Int16Array(n);
+    for (let y = 0; y < h; y++) {
+      let x = 0;
+      while (x < w) {
+        const p = part[y * w + x];
+        if (p < 0) {
+          x++;
+          continue;
+        }
+        let e = x;
+        while (e + 1 < w && part[y * w + e + 1] === p) e++;
+        for (let k = x; k <= e; k++) {
+          x0[y * w + k] = x;
+          x1[y * w + k] = e;
+        }
+        x = e + 1;
+      }
+    }
+    for (let x = 0; x < w; x++) {
+      let y = 0;
+      while (y < h) {
+        const p = part[y * w + x];
+        if (p < 0) {
+          y++;
+          continue;
+        }
+        let e = y;
+        while (e + 1 < h && part[(e + 1) * w + x] === p) e++;
+        for (let k = y; k <= e; k++) {
+          y0[k * w + x] = y;
+          y1[k * w + x] = e;
+        }
+        y = e + 1;
+      }
+    }
+    return { x0, x1, y0, y1 };
+  }
+
+  // On the silhouette's far side (right or lower right): where a back light would catch.
+  _backEdge(x, y) {
+    return this.partAt(x + 1, y) < 0 || (this.partAt(x + 1, y + 1) < 0 && this.partAt(x, y + 1) < 0);
   }
 
   _autoTone(x, y, p, opts) {

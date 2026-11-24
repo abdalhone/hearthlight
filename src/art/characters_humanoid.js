@@ -313,11 +313,12 @@ function itemPixels(kind, a, opts = {}) {
       add(1, -1, GOLD, 2);
       add(1, 0, GOLD, 1);
       add(1, 1, GOLD, 0);
-      for (let k = 2; k <= 8; k++) {
+      // A sword hanging at rest in a front/back view tilts toward the viewer: shorter.
+      for (let k = 2; k <= 8 - (opts.short || 0); k++) {
         add(k, 0, blade, 2);
         add(k, 1, blade, 0);
       }
-      add(9, 0, blade, 1);
+      add(9 - (opts.short || 0), 0, blade, 1);
       if (a.rust) {
         add(4, 1, ['#6b3a22', '#6b3a22', '#6b3a22'], 1);
         add(6, 0, ['#8c5a35', '#8c5a35', '#8c5a35'], 1);
@@ -452,6 +453,8 @@ class Painter {
     this.g = geometry(app.build);
     this.p = humanoidPose(anim, frame, this.view === 'side' ? 'side' : dir, app);
     this.sp = new Sprite(FRAME, FRAME);
+    // Hair and cloaks catch a cool rim light on their shadow side (DESIGN §18).
+    this.sp.rimRamps = new Set([app.hair, app.cloak, app.hood, app.cloakLining].filter(Boolean));
     this.lateItem = null;
     this.lateHands = [];
   }
@@ -852,7 +855,8 @@ class Painter {
     let [u, v] = p.item || this.restItemDir(kind);
     const sx = u * out; // outward to screen
     const { ax, ay, cx, cy } = axisSteps(sx, v);
-    const pix = itemPixels(kind, a, { bowDraw: p.bowDraw });
+    const short = !p.item && kind === 'sword' && this.view !== 'side' ? 3 : 0;
+    const pix = itemPixels(kind, a, { bowDraw: p.bowDraw, short });
     sp.begin({ shadow: 'none', thinLight: true });
     for (const [k, j, ramp, tone, isString] of pix) {
       const x = gx + ax * k + cx * j;
@@ -1951,7 +1955,8 @@ class Painter {
     const ay = Math.sign(v);
     const crossDx = ax === 0 ? 1 : 0;
     const crossDy = ax === 0 ? 0 : 1;
-    const pix = itemPixels(kind, a, { bowDraw: p.bowDraw });
+    const short = !p.item && kind === 'sword' && this.view !== 'side' ? 3 : 0;
+    const pix = itemPixels(kind, a, { bowDraw: p.bowDraw, short });
     sp.begin({ shadow: 'none', thinLight: true });
     const darkenFar = (ramp) => (far ? [darken(ramp[0], 0.2), ramp[0], ramp[1]] : ramp);
     for (const [k, j, ramp, tone, isString] of pix) {

@@ -6,7 +6,8 @@ import { Sprite, glow, lighten, darken, mixHex } from './characters_paint.js';
 import { normalizeAppearance } from './characters_appearance.js';
 
 export const PORTRAIT_SIZE = 48;
-export const EXPRESSIONS = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'worried', 'love', 'sleepy'];
+// 'afraid' and 'cold' (distant, guarded) are for Lyra when the player frightens or wrongs her.
+export const EXPRESSIONS = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'worried', 'love', 'sleepy', 'afraid', 'cold'];
 
 const C = 24; // symmetric spans are [C - k, C + k - 1]
 const HEAD_TOP = 8;
@@ -36,7 +37,7 @@ function face(sp, a, expr, T) {
   const eyesAt = [C - 8, C + 4]; // left edge of each 4-wide eye
   const h = big ? 4 : 3;
 
-  const drawOpen = (x, wide = false, lookDown = false, half = false) => {
+  const drawOpen = (x, wide = false, lookDown = false, half = false, aside = 0, small = false) => {
     const top = ey - (wide ? 1 : 0);
     const rows = h + (wide ? 1 : 0);
     // lash line
@@ -53,9 +54,16 @@ function face(sp, a, expr, T) {
       }
       sp.dot(x, y, WHITE);
       sp.dot(x + 3, y, mixHex(WHITE, a.skin[0], 0.25));
+      if (aside) sp.dot(x + 1, y, WHITE);
       const ir = lookDown ? r + 0 : r;
-      sp.dot(x + 1, y, ir === 1 ? irisDark : iris);
-      sp.dot(x + 2, y, ir === 1 ? irisDark : r === rows - 1 ? irisLight : iris);
+      if (small) {
+        // pupils shrunk to a point: fright
+        sp.dot(x + 1, y, WHITE);
+        sp.dot(x + 2, y, r === 2 ? irisDark : WHITE);
+        continue;
+      }
+      sp.dot(x + 1 + aside, y, ir === 1 ? irisDark : iris);
+      sp.dot(x + 2 + aside, y, ir === 1 ? irisDark : r === rows - 1 ? irisLight : iris);
     }
     // glint, light from the upper left
     if (!half) sp.dot(x + 1, top + 1, '#ffffff');
@@ -101,6 +109,13 @@ function face(sp, a, expr, T) {
       case 'angry':
         drawOpen(x, false, false, true);
         break;
+      case 'afraid':
+        drawOpen(x, true, false, false, 0, true);
+        break;
+      case 'cold':
+        // half-lidded, looking away: guarded
+        drawOpen(x, false, false, true, 1);
+        break;
       default:
         drawOpen(x);
     }
@@ -132,6 +147,8 @@ function brows(sp, a, expr, T) {
     worried: [0, -2],
     love: [0, -1],
     sleepy: [1, 1],
+    afraid: [-1, -3],
+    cold: [1, 0],
   }[expr] || [0, 0];
   const by = ey - 3;
   for (const [x0, dirn] of [
@@ -217,6 +234,26 @@ function features(sp, a, expr, T) {
       sp.dot(C + 1, my, lipDark);
       sp.dot(C - 1, my + 2, lip);
       break;
+    case 'afraid':
+      // a trembling, half-open mouth
+      sp.dot(C - 3, my + 1, lipDark);
+      sp.dot(C - 2, my, lipDark);
+      sp.dot(C - 1, my, lipDark);
+      sp.dot(C, my, lipDark);
+      sp.dot(C + 1, my, lipDark);
+      sp.dot(C + 2, my + 1, lipDark);
+      sp.dot(C - 2, my + 1, '#5a1a26');
+      sp.dot(C - 1, my + 1, WHITE);
+      sp.dot(C, my + 1, WHITE);
+      sp.dot(C + 1, my + 1, '#5a1a26');
+      sp.dot(C - 1, my + 2, lipDark);
+      sp.dot(C, my + 2, lipDark);
+      break;
+    case 'cold':
+      // a flat line, one corner pulled down
+      for (let x = C - 2; x <= C + 1; x++) sp.dot(x, my, lipDark);
+      sp.dot(C + 2, my + 1, lipDark);
+      break;
     default:
       sp.dot(C - 2, my, lipDark);
       sp.dot(C - 1, my, lipDark);
@@ -227,7 +264,7 @@ function features(sp, a, expr, T) {
   }
 
   // blush
-  const blushAmount = expr === 'love' ? 0.75 : expr === 'happy' ? 0.45 : a.blush ? 0.3 : 0;
+  const blushAmount = expr === 'love' ? 0.75 : expr === 'happy' ? 0.45 : expr === 'afraid' || expr === 'cold' ? 0 : a.blush ? 0.3 : 0;
   if (blushAmount) {
     const pink = '#e8607a';
     for (const x0 of [C - 9, C + 5]) {
@@ -247,6 +284,18 @@ function features(sp, a, expr, T) {
     sp.dot(C + 6, ey + 6, '#8fd0f5');
     sp.dot(C + 5, ey + 7, '#8fd0f5');
     sp.dot(C + 6, ey + 7, '#5aaee0');
+  }
+  if (expr === 'afraid') {
+    // cold sweat at the temple, and the color drained from her cheeks
+    sp.dot(C - 11, ey - 3, '#bfe6ff');
+    sp.dot(C - 11, ey - 2, '#8fd0f5');
+    sp.dot(C - 12, ey - 1, '#8fd0f5');
+    sp.dot(C - 11, ey - 1, '#5aaee0');
+    for (const x0 of [C - 9, C + 5]) for (let i = 0; i < 4; i++) sp.dot(x0 + i, ey + 6, mixHex(a.skin[1], '#a8b4d8', 0.35));
+  }
+  if (expr === 'cold') {
+    // a shadow under the eyes: tired of being hurt
+    for (const x0 of [C - 8, C + 4]) for (let i = 0; i < 4; i++) sp.dot(x0 + i, ey + 5, mixHex(a.skin[0], a.skin[1], 0.45));
   }
   if (expr === 'worried') {
     sp.dot(C + 10, ey - 4, '#bfe6ff');
@@ -320,6 +369,9 @@ export function paintPortrait(appearance, expression = 'neutral') {
   const a = appearance && Array.isArray(appearance.skin) && appearance.top ? appearance : normalizeAppearance(appearance);
   const expr = EXPRESSIONS.includes(expression) ? expression : 'neutral';
   const sp = new Sprite(48, 48);
+  // Portraits are seen large: smooth bands read better than a checker dither.
+  sp.dither = false;
+  sp.rimRamps = new Set([a.hair, a.cloak, a.hood].filter(Boolean));
   const T = HEAD_TOP + (a.build === 'child' ? 3 : 0);
   const hairR = a.hair;
   const style = a.hairStyle;
