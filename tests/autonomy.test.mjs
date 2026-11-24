@@ -956,6 +956,22 @@ test('serialize round trip keeps her state, her day, the ledger and the promises
   assert.equal(w2.mind.ledger.length, 1);
 });
 
+test('saved while knocked out by the player: she still leaves when she comes to', () => {
+  const { game, player, lyra, a } = makeWorld();
+  lyra.downed = true;
+  lyra.hp = 0;
+  game.bus.emit('downed', { entity: lyra, by: player });
+  const data = JSON.parse(JSON.stringify(a.serialize()));
+  const w = makeWorld();
+  w.lyra.downed = true;
+  w.a.deserialize(data);
+  assert.equal(w.a.companionship, 'together');
+  w.lyra.downed = false;
+  w.lyra.hp = 8;
+  step(w.game, 1);
+  assert.equal(w.a.companionship, 'gone');
+});
+
 test('an Autonomy without a game or mind still works (defensive)', () => {
   const a = new Autonomy(null, null);
   const v = a.evaluateRequest({ action: 'follow', args: {}, source: 'player' });

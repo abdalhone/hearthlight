@@ -2694,6 +2694,7 @@ export class Autonomy {
       rentDay: this.rentDay,
       lastJobId: this.lastJobId,
       calibrated: this.calibrated,
+      downedByPlayer: !!this.downed?.byPlayer,
       promiseSeq: this._promiseSeq,
       shadow: { ...this._shadow },
     };
@@ -2732,6 +2733,8 @@ export class Autonomy {
     this.rentDay = d.rentDay ?? -1;
     this.lastJobId = d.lastJobId ?? null;
     this.calibrated = d.calibrated !== false;
+    // Saved while she lay knocked out by the player: she still decides when she comes to.
+    this.downed = d.downedByPlayer ? { t: this.now(), byPlayer: true, abandoned: true, waited: 0 } : null;
     this._promiseSeq = d.promiseSeq || this.promises.length;
     if (d.shadow && typeof d.shadow === 'object') Object.assign(this._shadow, d.shadow);
     this._blockIdx = -2;
