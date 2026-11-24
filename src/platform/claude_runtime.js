@@ -17,6 +17,7 @@ export class ClaudeRuntime {
   constructor() {
     this.hostPresent = typeof window !== 'undefined' && !!window.claude && typeof window.claude.use === 'function';
     this.caps = Object.fromEntries(NAMES.map((n) => [n, null]));
+    this.disabled = new Set(); // capabilities switched off for this visit (see disable)
     this.resolved = false;
     this.listeners = new Set();
     this.ready = this.hostPresent ? this._init() : Promise.resolve(this);
@@ -26,11 +27,14 @@ export class ClaudeRuntime {
   async _init() {
     await Promise.all(
       NAMES.map(async (name) => {
+        let cap = null;
         try {
-          this.caps[name] = (await window.claude.use(name)) || null;
+          cap = (await window.claude.use(name)) || null;
         } catch {
-          this.caps[name] = null;
+          cap = null;
         }
+        // A capability disabled while it was still resolving stays off.
+        this.caps[name] = this.disabled.has(name) ? null : cap;
         this._notify(name);
       }),
     );
@@ -80,7 +84,12 @@ export class ClaudeRuntime {
 
   // Mark a capability unusable for the rest of this visit (e.g. sample -> not_granted).
   disable(name) {
+    this.disabled.add(name);
     this.caps[name] = null;
     this._notify(name);
+  }
+
+  isDisabled(name) {
+    return this.disabled.has(name);
   }
 }
