@@ -583,11 +583,13 @@ export class MindPanel {
     return box;
   }
 
-  // An "edited" mark that unfolds what she used to remember, and why she changed it.
-  editMark(entry, host) {
+  // An "edited" mark that unfolds what she used to remember (or believe, for a piece of
+  // knowledge), and why she changed it.
+  editMark(entry, host, kind = 'memory') {
     const ed = editHistory(entry, this.game.clock?.day || 0);
     if (!ed) return null;
-    const mark = h('button', { type: 'button', class: 'edit-mark', 'aria-expanded': 'false', title: 'She changed how she remembers this' }, 'edited');
+    const fact = kind === 'fact';
+    const mark = h('button', { type: 'button', class: 'edit-mark', 'aria-expanded': 'false', title: fact ? 'She changed what she believes here' : 'She changed how she remembers this' }, 'edited');
     let panel = null;
     mark.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -599,7 +601,7 @@ export class MindPanel {
       }
       panel = h('div', { class: 'edit-history' });
       for (const v of ed.versions.slice(0, 4)) {
-        if (v.text) panel.append(h('p', { class: 'edit-was' }, 'She used to remember it as: ', h('s', { text: `“${v.text}”` })));
+        if (v.text) panel.append(h('p', { class: 'edit-was' }, fact ? 'She used to believe: ' : 'She used to remember it as: ', h('s', { text: `“${v.text}”` })));
         if (v.why) panel.append(h('p', { class: 'edit-why', text: `Why she changed it: ${v.why}` }));
         if (v.when) panel.append(h('p', { class: 'edit-when', text: `Changed ${v.when}` }));
       }
@@ -910,7 +912,7 @@ export class MindPanel {
           const conf = kind === 'theory' || kind === 'rumor' ? confidenceWord(k.confidence) : '';
           const factMain = h('span', { class: 'fact-main' });
           const textEl = h('span', { class: 'fact-text', text: k.text });
-          const mark = this.editMark(k, factMain);
+          const mark = this.editMark(k, factMain, 'fact');
           if (mark) textEl.append(mark);
           factMain.append(textEl);
           if (src || conf) factMain.append(h('span', { class: 'fact-src', text: [src, conf].filter(Boolean).join(' · ') }));

@@ -304,8 +304,9 @@ export class Hud {
     let left = edgeL;
     let beside = false;
     if (lyra.bottom - root.top + gap > top) {
-      // Her card reaches below the buttons: sit beside it if the line still has room.
-      left = lyra.right - root.left + 8;
+      // Her card reaches below the buttons: sit beside it if the line still has room
+      // (clear of the open card's fold tab, whose tap target reaches past its edge).
+      left = lyra.right - root.left + (this.isFolded() ? 8 : 22);
       beside = true;
     }
     if (edgeR - left < 200) {
