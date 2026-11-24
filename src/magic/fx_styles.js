@@ -95,7 +95,9 @@ export function planLook(plan) {
   const maxD = Math.max(...looks.map((l) => l.debris.length));
   for (let k = 0; k < maxD; k++) for (const i of ordered) if (looks[i].debris[k]) debris.push({ style: looks[i].debris[k], pal: defs[i].palette, ess: defs[i].id });
   const dark = looks.some((l) => l.dark);
-  const lightColor = plan?.light?.color || lead.light?.color || lp.glow;
+  // Lights take the lead essence's own light color (a fixed set of a dozen or so): the
+  // renderer caches a light sprite per color, and a color per blend would churn it.
+  const lightColor = lead.light?.color || lp.glow;
   L = {
     key,
     ids: defs.map((d) => d.id),

@@ -276,7 +276,14 @@ function sprite(form, P, frame, flip) {
   const key = `${form}|${P.body}${P.dark}${P.light}${P.core}${P.accent}|${frame}|${flip ? 1 : 0}`;
   let c = cache.get(key);
   if (c) return c;
-  if (cache.size > 600) cache.clear();
+  if (cache.size > 900) {
+    // Drop the oldest third (insertion order), not everything at once.
+    let n = 300;
+    for (const k of cache.keys()) {
+      cache.delete(k);
+      if (--n <= 0) break;
+    }
+  }
   c = makeCanvas(16, 16);
   const g = ctx2d(c);
   const paint = PAINT[form] || PAINT.arcane;

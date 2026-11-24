@@ -21,6 +21,9 @@ export class Effects {
     this.list = [];
     for (let i = 0; i < cap; i++) this.list.push(blank());
     this.live = 0;
+    // How many slots new effects may take (the fx layer lowers it in a crowd of weaves
+    // or on slow frames; the oldest effect is then reused sooner).
+    this.limit = cap;
   }
 
   // A new effect of `type` at (x, y) living `life` seconds (the oldest is reused when full).
@@ -28,7 +31,8 @@ export class Effects {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
     let slot = null;
     let oldest = null;
-    for (let i = 0; i < this.list.length; i++) {
+    const n = Math.max(1, Math.min(this.list.length, this.limit | 0));
+    for (let i = 0; i < n; i++) {
       const e = this.list[i];
       if (!e.active) {
         slot = e;

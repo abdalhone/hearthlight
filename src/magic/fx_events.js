@@ -139,7 +139,7 @@ const H = {
       volleys.set(cast, n);
       ring(fx, hx, hy, 2, 9, P.core, P.glow, 0.18, 1, 10);
     }
-    fx.flash(hx, hy - 10, 26 + (plan.size || 1) * 10, plan.light?.color || P.glow, echo ? 0.35 : 0.6, 0.14);
+    fx.flash(hx, hy - 10, 26 + (plan.size || 1) * 10, L.lightColor, echo ? 0.35 : 0.6, 0.14);
     // A dash cast: afterimages along the path in the weave's colors.
     const d = fx._pendingDash;
     if (d && d.caster === caster) {
@@ -203,7 +203,7 @@ const H = {
     } else {
       const dir = b.kind === 'projectile' && (b.vx || b.vy) ? Math.atan2(b.vy, b.vx) : Math.atan2(y - b.y, x - b.x);
       burstStyles(fx, L.debris, x, y, z, Math.round(6 * big), 1, dir, 1.8);
-      fx.flash(x, y - 8, 22 + 8 * big, plan.light?.color || P.glow, 0.5, 0.1);
+      fx.flash(x, y - 8, 22 + 8 * big, L.lightColor, 0.5, 0.1);
       // The number combat just floated over the target, tinted by the essence.
       const n = g.bubbles?.lastNumber;
       if (n && n.active && n.t === 0 && n.kind === 'damage') n.fill = L.number;
@@ -367,7 +367,7 @@ const H = {
       default:
         break;
     }
-    fx.flash(x, y - 6, r * 2.4, b.plan.light?.color || P.glow, 0.95, 0.3);
+    fx.flash(x, y - 6, r * 2.4, L.lightColor, 0.95, 0.3);
     if (r >= 18) fx.shake(Math.min(4, r / 14), 0.18);
     if (r >= 36 || (b.heavy && r >= 24)) fx.hitStop(0.04);
     fx.sound.explode(b.plan, x, y, r);
@@ -405,7 +405,7 @@ const H = {
       ring(fx, x, y, 2, (p.r || 12) * 1.6, P.core, P.glow, 0.25, 2, 4);
       burstStyles(fx, L.debris, x, y, 8, 8, 1.3, b.angle, 1.4);
       fx.shake(1.2, 0.1);
-      fx.flash(x, y - 8, 36, b.plan.light?.color || P.glow, 0.8, 0.14);
+      fx.flash(x, y - 8, 36, L.lightColor, 0.8, 0.14);
       return;
     }
     // A rain drop landing.
@@ -420,7 +420,7 @@ const H = {
         e.color = P.core;
         e.color2 = P.glow;
       }
-      fx.flash(x, y - 20, 60, P.glow, 0.8, 0.12);
+      fx.flash(x, y - 20, 60, L.lightColor, 0.8, 0.12);
     } else if (fall === 'ray') {
       const e = fx.effects.spawn(FX.PILLAR, x, y, 0.25);
       if (e) {
@@ -659,7 +659,7 @@ const H = {
       star(fx, c.x, c.y, 12, '#ffffff', L.halo, 0.25, 10);
       ring(fx, c.x, c.y, 14, 3, L.pal.core, L.pal.glow, 0.3, 1, 10);
       fx.parts.burst('twinkle', L.pal, c.x, c.y, 10, 8, 1.4);
-      fx.flash(c.x, c.y - 10, 40, p.plan.light?.color || L.pal.glow, 0.7, 0.2);
+      fx.flash(c.x, c.y - 10, 40, L.lightColor, 0.7, 0.2);
       fx.sound.cue('charged', c.x, c.y);
     }
   },

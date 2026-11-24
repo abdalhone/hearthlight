@@ -35,13 +35,24 @@ export class Bounds {
 
 // ------------------------------------------------------------------ cached sprites
 
+// Make room in a sprite cache: drop its oldest quarter (Maps keep insertion order), so
+// a busy frame never throws the whole cache away and rebuilds it.
+function evict(map, cap) {
+  if (map.size < cap) return;
+  let n = map.size >> 2;
+  for (const k of map.keys()) {
+    map.delete(k);
+    if (--n <= 0) break;
+  }
+}
+
 const discs = new Map();
 // A filled pixel disc of radius r (integer, ≤ 14) in one color.
 function discSprite(r, color) {
   const key = `${r}|${color}`;
   let c = discs.get(key);
   if (c) return c;
-  if (discs.size > 900) discs.clear();
+  evict(discs, 1600);
   const d = r * 2 + 1;
   c = makeCanvas(d, d);
   const g = ctx2d(c);
@@ -61,7 +72,7 @@ const halos = new Map();
 export function haloSprite(color) {
   let c = halos.get(color);
   if (c) return c;
-  if (halos.size > 200) halos.clear();
+  evict(halos, 400);
   c = makeCanvas(32, 32);
   const g = c.getContext('2d');
   if (g && g.createRadialGradient) {
@@ -109,68 +120,9 @@ export function disc(ctx, x, y, r, color) {
   ctx.fill();
 }
 
-// Crisp pixel ellipses, cached by size, squash and color: a full ring or a filled
-// ground ellipse is one small blit instead of an anti-aliased path (cheaper on a phone,
-// and true to the pixel look). Bigger ones fall back to paths.
-const SPRITE_MAX_R = 56;
-const ellSprites = new Map();
-const ringSprites = new Map();
-
-function ellSprite(rx, ry, color) {
-  const key = `${rx}|${ry}|${color}`;
-  let c = ellSprites.get(key);
-  if (c) return c;
-  if (ellSprites.size > 260) ellSprites.clear();
-  c = makeCanvas(rx * 2 + 1, ry * 2 + 1);
-  const g = ctx2d(c);
-  g.fillStyle = color;
-  for (let y = -ry; y <= ry; y++) {
-    const k = 1 - (y * y) / ((ry + 0.45) * (ry + 0.45));
-    const w = Math.round(rx * Math.sqrt(k > 0 ? k : 0));
-    g.fillRect(rx - w, y + ry, w * 2 + 1, 1);
-  }
-  ellSprites.set(key, c);
-  return c;
-}
-
-function ringSprite(r, ry, color, width) {
-  const key = `${r}|${ry}|${color}|${width}`;
-  let c = ringSprites.get(key);
-  if (c) return c;
-  if (ringSprites.size > 320) ringSprites.clear();
-  c = makeCanvas(r * 2 + 1, ry * 2 + 1);
-  const g = ctx2d(c);
-  g.fillStyle = color;
-  // Every pixel whose center lies within the band of the ellipse (r, ry) .. inward
-  // by `width`: scanned per row with the inner and outer half-widths.
-  const ri = Math.max(0, r - width);
-  const ryi = Math.max(0, ry - width * (ry / r));
-  for (let y = -ry; y <= ry; y++) {
-    const ko = 1 - (y * y) / ((ry + 0.45) * (ry + 0.45));
-    const wo = Math.round(r * Math.sqrt(ko > 0 ? ko : 0));
-    const ki = ryi > 0.5 ? 1 - (y * y) / ((ryi + 0.45) * (ryi + 0.45)) : -1;
-    const wi = ki > 0 ? Math.round(ri * Math.sqrt(ki)) : -1;
-    if (wi < 0) {
-      g.fillRect(r - wo, y + ry, wo * 2 + 1, 1);
-      continue;
-    }
-    const seg = Math.max(1, wo - wi);
-    g.fillRect(r - wo, y + ry, seg, 1);
-    g.fillRect(r + wo - seg + 1, y + ry, seg, 1);
-  }
-  ringSprites.set(key, c);
-  return c;
-}
-
 // Filled ground ellipse (squashed disc).
 export function ell(ctx, x, y, rx, ry, color) {
   if (!(rx > 0.5) || !(ry > 0.3) || !Number.isFinite(x) || !Number.isFinite(y)) return;
-  if (rx <= SPRITE_MAX_R) {
-    const ix = Math.round(rx);
-    const iy = Math.max(1, Math.round(ry));
-    ctx.drawImage(ellSprite(ix, iy, color), Math.round(x) - ix, Math.round(y) - iy);
-    return;
-  }
   ctx.fillStyle = color;
   ctx.beginPath();
   ctx.ellipse(Math.round(x), Math.round(y), rx, ry, 0, 0, TAU);
@@ -180,13 +132,6 @@ export function ell(ctx, x, y, rx, ry, color) {
 // Stroked ellipse (rings on the ground: squash 0.6), or part of one (a0..a1).
 export function ring(ctx, x, y, r, color, width = 1, squash = 0.6, a0 = 0, a1 = TAU) {
   if (!(r > 0.5) || !Number.isFinite(x) || !Number.isFinite(y)) return;
-  if (a0 === 0 && a1 === TAU && r <= SPRITE_MAX_R && r >= 1.5) {
-    const ir = Math.round(r);
-    const iy = Math.max(1, Math.round(r * squash));
-    const w = Math.max(1, Math.round(width));
-    ctx.drawImage(ringSprite(ir, iy, color, w), Math.round(x) - ir, Math.round(y) - iy);
-    return;
-  }
   ctx.strokeStyle = color;
   ctx.lineWidth = width;
   ctx.beginPath();
@@ -295,7 +240,7 @@ export function glyphSprite(name, color) {
   const key = `${name}|${color}`;
   let c = glyphCache.get(key);
   if (c) return c;
-  if (glyphCache.size > 300) glyphCache.clear();
+  evict(glyphCache, 300);
   const rows = GLYPHS[name] || GLYPHS.diamond;
   c = makeCanvas(7, 7);
   const g = ctx2d(c);
@@ -312,7 +257,7 @@ export function fistSprite(pal) {
   const key = `${pal.core}${pal.glow}${pal.deep}`;
   let c = fistCache.get(key);
   if (c) return c;
-  if (fistCache.size > 120) fistCache.clear();
+  evict(fistCache, 120);
   c = makeCanvas(11, 10);
   const g = ctx2d(c);
   // Outline first, then the fist, then knuckle highlights and finger creases.

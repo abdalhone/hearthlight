@@ -147,6 +147,7 @@ export class MagicFx {
     const crowd = this._viewN > CROWD ? CROWD / this._viewN : 1;
     this.parts.scale = this.q * crowd;
     this.parts.q = this.q;
+    this.effects.limit = Math.max(48, Math.round(this.effects.list.length * this.q * Math.min(1, crowd * 3)));
     let seen = 0;
     for (let i = 0; i < list.length; i++) {
       const b = list[i];
