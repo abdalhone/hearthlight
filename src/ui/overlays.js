@@ -1,7 +1,7 @@
 // Small overlays: the pause menu, sign and diary popups, full-screen fades and the
 // red hit vignette.
 
-import { h, button, setStyle } from './dom.js';
+import { h, button, setStyle, toggleClass } from './dom.js';
 import { makePanel } from './modal.js';
 import { dayLabel } from './format.js';
 
@@ -96,6 +96,6 @@ export class Vignette {
       this.lastOpacity = o;
       setStyle(this.flashEl, 'opacity', String(o));
     }
-    this.lowEl.classList.toggle('on', !!active && hpFrac > 0 && hpFrac < 0.25);
+    toggleClass(this.lowEl, 'on', !!active && hpFrac > 0 && hpFrac < 0.25);
   }
 }

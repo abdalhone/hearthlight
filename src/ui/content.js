@@ -12,7 +12,7 @@ export const COMMANDS = [
 ];
 
 // Asking her to travel with you again, once she is apart or has left (§16.3).
-export const REJOIN = { id: 'rejoin', label: 'Ask her back', icon: 'heart_arcane', action: 'rejoin', hint: 'Ask her to travel with you again', fallbackMessage: 'Will you travel with me again?' };
+export const REJOIN = { id: 'rejoin', label: 'Ask her to come back', short: 'Ask back', icon: 'heart_arcane', action: 'rejoin', hint: 'Ask her to travel with you again', fallbackMessage: 'Will you travel with me again?' };
 
 export const JOBS = [
   { id: 'chop_wood', label: 'Chop wood', icon: 'axe', amount: 5, note: 'Oaks and pines in the Whisperwood' },

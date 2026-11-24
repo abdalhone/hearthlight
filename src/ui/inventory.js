@@ -57,7 +57,7 @@ export class InventoryPanel {
         { class: 'inv' },
         h('section', { class: 'inv-col' }, h('h3', { class: 'col-title' }, h('span', { text: 'Your pack' }), h('span', { class: 'purse' }, h('img', { class: 'item-img tiny', alt: '', src: itemIconUrl(this.game, 'coin') }), this.coinEl)), this.mine),
         h('section', { class: 'inv-col inv-detail-col' }, this.detail),
-        h('section', { class: 'inv-col' }, this.lyraTitle, this.hers),
+        h('section', { class: 'inv-col' }, this.lyraTitle, this.hers, this.buildPay()),
       ),
     );
     this.ui.openModal(panel);
@@ -68,12 +68,42 @@ export class InventoryPanel {
     if (this.isOpen()) this.ui.closeModal(this.panel);
   }
 
+  // She earns her own keep (§16.1): paying her is a hand-over she sees and remembers.
+  buildPay() {
+    this.payBtns = [5, 10].map((n) => {
+      const b = button(`Give her ${n}`, { cls: 'btn-small btn-ghost', onClick: () => this.pay(n) });
+      b.prepend(h('img', { class: 'item-img tiny', alt: '', src: itemIconUrl(this.game, 'coin') }));
+      return b;
+    });
+    this.herPurse = h('span', { class: 'her-purse muted small' });
+    return h('div', { class: 'pay-row' }, h('div', { class: 'pay-btns' }, ...this.payBtns), this.herPurse);
+  }
+
+  pay(n) {
+    const g = this.game;
+    const p = g.player;
+    const c = g.companion;
+    if (!p || !c?.inventory || p.inventory.count('coin') < n) {
+      g.audio?.play('error');
+      return;
+    }
+    p.inventory.transfer(c.inventory, 'coin', n);
+    g.bus.emit('item_given', { from: p, to: c, itemId: 'coin', qty: n });
+    g.audio?.play('coin');
+    this.ui.toast(`You gave ${g.settings?.companionName || c.name || 'Lyra'} ${n} coins.`, 'item', { iconUrl: itemIconUrl(g, 'coin') });
+    this.render();
+  }
+
   render() {
     if (!this.isOpen()) return;
     const g = this.game;
     const p = g.player;
     const c = g.companion;
     const lyraName = g.settings?.companionName || c?.name || 'Lyra';
+    const coins = p?.inventory?.count('coin') || 0;
+    for (const [i, b] of (this.payBtns || []).entries()) b.disabled = !c || coins < (i === 0 ? 5 : 10);
+    const purse = Number(c?.mind?.agenda?.purse);
+    setText(this.herPurse, Number.isFinite(purse) ? `Her own purse: ${Math.max(0, Math.round(purse))} coins` : '');
     setText(this.coinEl, fmtInt(p?.inventory?.count('coin') || 0));
     setText(this.lyraTitle, `${lyraName}'s pack`);
     clear(this.mine);

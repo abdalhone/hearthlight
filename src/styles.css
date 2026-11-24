@@ -1041,7 +1041,7 @@ textarea {
 }
 .cmd-rejoin {
   --bc: var(--arcane-deep);
-  min-width: 112px;
+  min-width: 150px;
   color: var(--arcane-pale);
 }
 .cmd-rejoin:hover {
@@ -1269,6 +1269,9 @@ textarea {
 .toast-body {
   display: flex;
   flex-direction: column;
+}
+.toast-title:empty {
+  display: none;
 }
 .toast-title {
   font-family: var(--font-display);
@@ -2374,6 +2377,21 @@ input[type='range']::-moz-range-thumb {
 .store-arrow {
   color: var(--ember);
   font-family: var(--font-display);
+}
+
+.pay-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 10px;
+}
+.pay-btns {
+  display: flex;
+  gap: 6px;
+}
+.her-purse:empty {
+  display: none;
 }
 
 /* ---------- Lyra's mind ---------- */

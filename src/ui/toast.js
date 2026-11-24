@@ -21,7 +21,16 @@ export class Toasts {
     if (key) {
       const same = this.items.find((t) => t.key === key && !t.leaving);
       if (same) {
+        // A keyed toast is one running notice: its words, title and tone all follow the latest.
         setText(same.textEl, msg);
+        if (same.titleEl) setText(same.titleEl, title || '');
+        if (kind !== same.kind) {
+          same.el.classList.remove(`toast-${same.kind}`);
+          same.el.classList.add(`toast-${kind}`);
+          same.kind = kind;
+          same.life = LIFE[kind] ?? 3.6;
+        }
+        same.text = msg;
         same.age = 0;
         same.el.classList.remove('bump');
         void same.el.offsetWidth; // restart the bump animation
@@ -36,9 +45,11 @@ export class Toasts {
     }
     const ic = iconUrl ? h('img', { class: 'px-icon toast-icon item-img', alt: '', src: iconUrl }) : icon(ICON_FOR[kind] || 'scroll', 'toast-icon');
     const textEl = h('span', { class: 'toast-text', text: msg });
-    const body = title ? h('div', { class: 'toast-body' }, h('strong', { class: 'toast-title', text: title }), textEl) : textEl;
+    // Keyed toasts always carry a title slot, so a later update can add or change it.
+    const titleEl = title || key ? h('strong', { class: 'toast-title', text: title || '' }) : null;
+    const body = titleEl ? h('div', { class: 'toast-body' }, titleEl, textEl) : textEl;
     const el = h('div', { class: `toast toast-${kind}` }, ic, body);
-    const t = { el, textEl, text: msg, kind, key, age: 0, life: LIFE[kind] ?? 3.6, leaving: false };
+    const t = { el, textEl, titleEl, text: msg, kind, key, age: 0, life: LIFE[kind] ?? 3.6, leaving: false };
     this.items.push(t);
     this.el.appendChild(el);
     while (this.items.filter((x) => !x.leaving).length > MAX_VISIBLE) {

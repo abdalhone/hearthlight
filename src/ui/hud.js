@@ -123,7 +123,7 @@ export class Hud {
     // Radial requests (small screens). Which items show depends on the bar mode.
     this.ordersBtn = button('', { icon: 'spark', cls: 'orders-btn', title: 'Ask Lyra', onClick: () => this.toggleRadial() });
     this.radial = h('div', { class: 'radial', 'aria-hidden': 'true' });
-    this.radialItems = [...COMMANDS.map((c) => ({ id: c.id, label: c.label, icon: c.icon })), { id: 'jobs', label: 'Jobs', icon: 'axe' }, { id: REJOIN.id, label: REJOIN.label, icon: REJOIN.icon }, { id: 'talk', label: 'Talk', icon: 'talk' }];
+    this.radialItems = [...COMMANDS.map((c) => ({ id: c.id, label: c.label, icon: c.icon })), { id: 'jobs', label: 'Jobs', icon: 'axe' }, { id: REJOIN.id, label: REJOIN.short, icon: REJOIN.icon }, { id: 'talk', label: 'Talk', icon: 'talk' }];
     for (const it of this.radialItems) {
       const b = button(it.label, { icon: it.icon, cls: `radial-item radial-${it.id}` });
       b.addEventListener('click', (e) => {
