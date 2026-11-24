@@ -412,6 +412,32 @@ test('ward twists: burst explodes when it breaks, orbit circles three small shie
   assert.ok(foe.hp < hp2, 'the small shields bump a foe beside the bearer');
 });
 
+test('a ward aimed at Lyra is care: when it bursts it spares her and every friend', () => {
+  const g = arena();
+  const P = g.player;
+  const l = g.companion;
+  l.x = P.x - 40;
+  l.y = P.y;
+  g.villager.x = l.x + 10;
+  g.villager.y = l.y + 6;
+  const foe = g.foes[0];
+  foe.x = l.x - 14;
+  foe.y = l.y;
+  const w = wardOn(g, l, { shape: 'ward', essences: ['fire'], twists: ['burst'] });
+  assert.ok(w);
+  const vhp = g.villager.hp;
+  const fhp = foe.hp;
+  w.shield = 1;
+  l.invuln = 0;
+  g.combat.damage(foe, l, 4, { kind: 'melee' });
+  run(g, 0.6);
+  assert.ok(g.events.some((e) => e.type === 'ward_broken'));
+  assert.ok(foe.hp < fhp, 'the burst finds the foe');
+  assert.ok(!g.events.some((e) => e.type === 'damage' && e.payload.source === P && (e.payload.target === l || e.payload.target === g.villager)), 'never Lyra, never a villager');
+  assert.equal(g.villager.hp, vhp);
+  assert.ok(!P.crime, 'no crime in it');
+});
+
 test('a second ward thickens the first; another weave takes its place', () => {
   const g = arena();
   const P = g.player;

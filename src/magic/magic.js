@@ -1561,7 +1561,9 @@ export class Magic {
       ax = target.x;
       ay = target.y;
     }
-    const friendly = !!(target && this.isPlayer(caster) && this.isFriendOfPlayer(target));
+    // A shape that shields (benign: a ward) aimed at a friend is care, not harm: its
+    // bursts and answers spare friends like any weave aimed at a foe.
+    const friendly = !!(target && this.isPlayer(caster) && this.isFriendOfPlayer(target)) && !plan.shapeDef?.benign;
     const cast = {
       id: ++this._castSeq,
       caster,

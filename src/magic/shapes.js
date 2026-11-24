@@ -23,6 +23,10 @@ import { defineRegistry } from './registry.js';
 //   emit(ctx),                  makes bodies with ctx.spawn(kind, init); see bodies.js for
 //                               ctx (origin ox/oy, aim aimX/aimY/angle/dist, count, fan(),
 //                               ring(), plan, caster, target, held, chargeK) and body fields
+//   onPlan(plan), onHit…        optional, like a twist's (run before the twists')
+//   adapt: { twistId: { hooks: false, onPlan(plan), clause: [one, many] } }
+//                               a twist that means something else on this shape
+//   benign: true                aimed at a friend it helps them (never a deliberate harm)
 // }
 
 const TAU = Math.PI * 2;
@@ -368,6 +372,8 @@ export const SHAPES = {
     name: 'Ward',
     noun: 'Ward',
     kind: 'ward',
+    benign: true, // aimed at a friend it shields them; it never harms them
+
     base: { dmg: 5, cost: 14, cooldown: 8, speed: 0, range: 110, radius: 13, count: 1, life: 6, shield: 24, tick: 0.5 },
     hits: 2,
     aim: (p) => ({ type: 'shield', range: p.range, radius: p.radius }),
