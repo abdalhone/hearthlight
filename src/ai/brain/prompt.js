@@ -690,9 +690,12 @@ export function buildReflectionTask(game, memories, { day } = {}) {
 
 // ---------------------------------------------------------- conversations
 
+// What a villager might tell Lyra. Never a fact LORE §9.10 hides from her (`hiddenFrom`
+// her, or a `knownBy` that leaves her out): Claude cannot leak what it is never shown.
 export function knownFacts(profile, familiarity = 0) {
   const facts = Array.isArray(profile?.facts) ? profile.facts : [];
-  return facts.filter((f) => f && f.text && (f.minFamiliarity ?? 0) <= familiarity);
+  const hidden = (f) => (Array.isArray(f.hiddenFrom) && f.hiddenFrom.includes('lyra')) || (Array.isArray(f.knownBy) && !f.knownBy.includes('lyra') && !f.knownBy.includes('everyone'));
+  return facts.filter((f) => f && f.text && (f.minFamiliarity ?? 0) <= familiarity && !hidden(f));
 }
 
 // Lore entries this villager knows and could share (DESIGN §17.2), never secrets.

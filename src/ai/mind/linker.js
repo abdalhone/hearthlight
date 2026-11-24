@@ -21,17 +21,26 @@ const ROLE_WORDS = {
   tobias: ['farmer', 'reed'],
   aveline: ['sister', 'chapel keeper', 'priestess', 'the sister'],
   garrick: ['merchant', 'shopkeeper', 'trader', 'hale'],
-  maren: ['my teacher', 'her teacher', 'your teacher', 'mentor', 'my mentor', 'your mentor', 'ashgrove', 'grey cloak'],
-  cal: ['my brother', 'her brother', 'your brother', 'little brother'],
-  odile: ['my mother', 'your mother', 'your mom', 'your mum', 'your parents', 'my parents'],
-  orrin: ['my father', 'your father', 'your dad', 'your parents', 'my parents', 'lighthouse keeper'],
+  maren: ['my teacher', 'her teacher', 'your teacher', 'mentor', 'my mentor', 'your mentor', 'ashgrove', 'grey cloak', 'the wardwright'],
+  // Her family and the rest of the eighteen (LORE §6, §7).
+  hobb: ['my father', 'your father', 'your dad', 'your da', 'her father', 'the lamplighter', 'lamplighter', 'the chandler', 'your parents', 'my parents'],
+  wenna: ['my mother', 'your mother', 'your mom', 'your mum', 'your mam', 'her mother', 'the beekeeper', 'beekeeper', 'your parents', 'my parents'],
+  sabeth: ['the dyer', 'dyer', 'seamstress', 'coll', 'beth', 'your sister', 'my sister', 'foster-sister'],
+  hess: ['huntress', 'the huntress', 'wardrunner', 'the wardrunner', 'morrow'],
+  alder: ['the reeve', 'reeve'],
+  petra: ['the midwife', 'midwife'],
+  tilly: ["smith's apprentice"],
+  tansy: ['farm girl', "tobias's daughter"],
+  corran: ['fisherman', 'the fisherman', 'dell'],
+  wys: ['watchman', 'the watchman'],
+  bryn: ['holloway', 'your oldest friend', 'my oldest friend', 'the scribe'],
 };
 
 // Contract places and the plain words people use for them (DESIGN §6).
 const PLACE_WORDS = {
   hearthvale: ['hearthvale', 'the village', 'village'],
   town_square: ['town square', 'the square', 'square', 'notice board'],
-  player_home: ['your cottage', 'the cottage', 'our cottage', 'your house'],
+  player_home: ['your cottage', 'the cottage', 'our cottage', 'your house', 'the wayhouse', 'wayhouse'],
   ember_kettle: ['ember kettle', 'the kettle', 'kettle', 'inn', 'tavern'],
   smithy: ['ironhand smithy', 'smithy', 'forge'],
   general_store: ["gale's goods", 'gales goods', 'general store', 'store'],
@@ -47,6 +56,14 @@ const PLACE_WORDS = {
   sunken_ruins: ['sunken ruins', 'ruins', 'ruins gate'],
   south_meadow: ['south meadow', 'meadow'],
   kings_road: ["king's road", 'kings road', 'king road', 'the road into hearthvale'],
+  // Round three's homes (DESIGN §19.2), when the world has them.
+  chandlery: ['the chandlery', 'chandlery', 'your parents house', "your parents' house"],
+  lamplight_lane: ['lamplight lane'],
+  ashby_house: ['ashby house'],
+  dye_cottage: ['dye-vats', 'dye vats', 'dye cottage'],
+  weavers_row: ["weavers' row", 'weavers row'],
+  net_shed: ['net-shed', 'net shed'],
+  wenna_hives: ['the hives', 'hives', "wenna's hives"],
 };
 
 const PLACE_LABELS = {
@@ -68,6 +85,13 @@ const PLACE_LABELS = {
   sunken_ruins: 'the Sunken Ruins',
   south_meadow: 'the South Meadow',
   kings_road: "the King's Road",
+  chandlery: 'the chandlery',
+  lamplight_lane: 'Lamplight Lane',
+  ashby_house: 'Ashby House',
+  dye_cottage: 'the dye-vats cottage',
+  weavers_row: "Weavers' Row",
+  net_shed: "Corran's net-shed",
+  wenna_hives: "Wenna's hives",
 };
 
 // Items worth linking; plain materials (stone, wood, coin) would link half of everything.

@@ -902,7 +902,7 @@ export const LINES = {
   past_magic: [
     "Lumencrafter. I make light out of my own warmth and throw it. Maren taught me. It costs a little heat, every time.",
     "Lumencraft. You gather the warmth in your own body, kindle it into light, and give it a shape. Simple. It took me eight years. Hence the tea.",
-    { t: "I'd teach you, but you'd probably singe your eyebrows. I did. Twice.", trait: 'playful' },
+    { t: "Lumencraft. I'd teach you, but you'd probably singe your eyebrows. I did. Twice. Pip's next, when he's eleven.", trait: 'playful' },
   ],
   past_deflect: ["That... another time, {you}. Ask me when we've shared more roads.", "I don't talk about that. Not yet."],
   secret_none: ['Maybe when I know you better.', { t: 'Nice try. Buy me dinner first.', trait: 'playful' }],

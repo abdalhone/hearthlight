@@ -298,7 +298,20 @@ function knownNote(rel, text) {
 }
 
 // Facts this NPC would share at Lyra's familiarity, best first.
-export function availableFacts(npc, rel, topic = null) {
+// Who may be told a fact (LORE §9.10, DESIGN §19.1): never someone in its `hiddenFrom`;
+// and when it carries a `knownBy`, only those it names (or 'everyone') learn it from talk.
+// The player is the exception the LORE makes: they can still learn secrets Lyra never is
+// told, so for them only `hiddenFrom` applies.
+export function factHiddenFrom(f, listener = 'lyra') {
+  if (!f) return true;
+  const who = String(listener || 'lyra');
+  if (Array.isArray(f.hiddenFrom) && f.hiddenFrom.includes(who)) return true;
+  if (who !== 'lyra') return false;
+  return Array.isArray(f.knownBy) && !f.knownBy.includes(who) && !f.knownBy.includes('everyone');
+}
+
+// The facts a villager would share with Lyra now (her familiarity with them, the topic).
+export function availableFacts(npc, rel, topic = null, { listener = 'lyra' } = {}) {
   const facts = Array.isArray(npc?.profile?.facts) ? npc.profile.facts : [];
   const fam = rel?.familiarity ?? 0;
   const topicKey = topic ? topicOfText(topic) : null;
@@ -306,6 +319,7 @@ export function availableFacts(npc, rel, topic = null) {
   const out = [];
   for (const f of facts) {
     if (!f || !f.text) continue;
+    if (factHiddenFrom(f, listener)) continue;
     const need = Number(f.minFamiliarity) || 0;
     // A direct question unlocks things a little early.
     if (need > fam + (topic ? 10 : 0)) continue;
