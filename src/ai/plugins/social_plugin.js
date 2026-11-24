@@ -1,17 +1,20 @@
 import { resolvePerson } from '../mind/voice.js';
 import { localConversation, animalTalk, toSecondPerson } from '../mind/conversation.js';
 import { lineDuration } from '../mind/mind.js';
-import { clamp, firstName, pick, shorten, firstSentence, lowerFirst, cap, placePhrase, normName, isNamedCreature } from '../mind/text.js';
+import { clamp, firstName, pick, shorten, firstSentence, lowerFirst, cap, placePhrase, normName, isNamedCreature, tokenSet } from '../mind/text.js';
 
-// Social plugin (mind): talk_to. Lyra walks over to someone (a goto directive that ends
-// in follow), turns to them and talks: through Claude when it is available and the
-// player asked for the talk, otherwise from the villager's profile and the lore they
-// know. She learns facts and lore, the relationship moves, she remembers it, the
-// `conversation` event goes out, and she goes back to what she was doing.
+// Social plugin (mind): talk_to. Lyra walks over to someone (a goto directive), and
+// talks with them, walking alongside if they are on their way somewhere: through Claude
+// when it is available and the player asked for the talk, otherwise from the villager's
+// profile and the lore they know. She learns facts and lore, the relationship moves, she
+// remembers it, the `conversation` event goes out, and she goes back to what she was doing.
 
 const REACH = 30; // px: close enough to talk
 const WALK_TIMEOUT = 60; // s to get there before giving up
 const THINK_TIMEOUT = 12; // s to wait for Claude before talking from her own head
+const RETRIES = 4; // times she sets off again after someone who walked on
+// Orders that move her: any of these, once accepted, ends a talk or the walk to one.
+const MOVES = new Set(['follow', 'stay', 'wait', 'goto', 'come_here', 'attack', 'retreat', 'guard', 'patrol', 'explore', 'free_will', 'start_job', 'sleep', 'interact', 'give_item', 'flee', 'keep_distance', 'leave_player', 'wait_outside', 'bind']);
 
 const STATE = new WeakMap();
 function state(game) {
@@ -76,22 +79,32 @@ function talkTo(args, ctx) {
   if (s.talk) return { ok: false, message: "Let me finish this conversation first." };
   const topic = args.value ? String(args.value).trim().slice(0, 80) : null;
   const prev = s.pending?.prev ?? copyDirective(ctx.behavior?.directive);
-  s.pending = { id: e.id, topic, prev, t0: rt(ctx), source: 'local', directive: null };
+  s.pending = { id: e.id, topic, prev, t0: rt(ctx), source: 'local', directive: null, tries: 0 };
   const n = firstName(e.name);
   if (dist(o, e) <= REACH) return { ok: true, message: topic ? `Let me ask ${n}.` : '' };
-  const d = { type: 'goto', target: e.id, then: 'follow' };
-  const r = setDirective(ctx, d);
+  const r = walkTo(ctx, e);
   if (r && r.ok === false) {
     s.pending = null;
     return { ok: false, message: r.message || `I can't get to ${n} from here.` };
   }
-  s.pending.directive = ctx.behavior?.directive || d;
   const msg = topic
     ? topicKey(topic) === 'maren'
       ? pick([`I'll ask ${n} about Maren.`, `${n} might know something about Maren. I'll ask.`], ctx.game?.rng)
       : pick([`I'll ask ${n} about ${topic}.`, `Good question for ${n}. Back in a bit.`], ctx.game?.rng)
     : pick([`I'll go say hello to ${n}.`, `Off to bother ${n}. Back soon.`, `${n}? Gladly.`], ctx.game?.rng);
   return { ok: true, message: msg };
+}
+
+// Set off toward someone. The goto ends in 'stay', so arriving never sends her back to
+// the player before the talk begins.
+function walkTo(ctx, npc) {
+  const s = state(ctx.game);
+  const r = setDirective(ctx, { type: 'goto', target: npc.id, then: 'stay' });
+  if (s.pending) {
+    s.pending.directive = r && r.ok === false ? null : ctx.behavior?.directive || null;
+    s.pending.walked = true;
+  }
+  return r;
 }
 
 // ---------------------------------------------------------------- the conversation
@@ -143,12 +156,15 @@ function startTalk(ctx, npc, pend) {
   } catch {
     /* facing is cosmetic */
   }
-  // Stand still while talking.
-  setDirective(ctx, { type: 'stay', x: o.x, y: o.y });
-  const talk = { npc, topic: pend.topic, prev: pend.prev, source: pend.source, lines: null, queue: [], played: [], wait: 0, started: rt(ctx), result: null, thinking: false };
+  // Talk where they stand, or walk alongside if they are on their way somewhere.
+  if (npc.profile) setDirective(ctx, { type: 'follow', target: npc.id, distance: 'close' });
+  else setDirective(ctx, { type: 'stay', x: o.x, y: o.y });
+  const talk = { npc, topic: pend.topic, prev: pend.prev, source: pend.source, lines: null, queue: [], played: [], wait: 0, started: rt(ctx), result: null, thinking: false, directive: ctx.behavior?.directive || null };
   s.talk = talk;
   const brain = ctx.game?.brain;
-  const useClaude = pend.source === 'player' && !!npc.profile && typeof brain?.generateConversation === 'function' && safeBool(() => brain.llmAvailable?.());
+  // Claude only when the player asked for this talk (directly, or through her reply to them).
+  const asked = pend.source === 'player' || pend.source === 'claude';
+  const useClaude = asked && !!npc.profile && typeof brain?.generateConversation === 'function' && safeBool(() => brain.llmAvailable?.());
   if (useClaude) {
     talk.thinking = true;
     try {
@@ -164,7 +180,8 @@ function startTalk(ctx, npc, pend) {
         const lines = Array.isArray(r?.lines) ? r.lines.filter((l) => l && l.text).slice(0, 10) : [];
         if (!lines.length) return begin(ctx, talk, buildLocal(ctx, npc, pend.topic));
         const learned = Array.isArray(r.learned) ? r.learned.filter(Boolean).map((x) => (typeof x === 'string' ? { text: x, about: null } : x)) : [];
-        begin(ctx, talk, { lines: lines.map((l) => ({ speaker: l.speaker === 'lyra' ? 'lyra' : 'npc', text: String(l.text) })), learned, affinity: Number(r.affinity) || 2, topic: pend.topic, lore: [], claude: true });
+        const said = lines.map((l) => ({ speaker: l.speaker === 'lyra' ? 'lyra' : 'npc', text: String(l.text) }));
+        begin(ctx, talk, { lines: said, learned, affinity: Number.isFinite(Number(r.affinity)) ? Number(r.affinity) : 2, topic: pend.topic, lore: loreHeard(ctx, npc, said, pend.topic), claude: true });
       })
       .catch((err) => {
         console.error('[social] conversation failed', err);
@@ -176,6 +193,29 @@ function startTalk(ctx, npc, pend) {
   } else {
     begin(ctx, talk, buildLocal(ctx, npc, pend.topic));
   }
+}
+
+// Lore a villager actually told her in a conversation Claude wrote: the entries they know
+// (and she does not) whose words turn up in what they said.
+function loreHeard(ctx, npc, lines, topic) {
+  const mind = ctx.mind;
+  const rel = mind.relationships.get(npc.id);
+  const pool = mind.loreFrom(npc.id, { topic, familiarity: rel?.familiarity ?? 0, limit: 8 });
+  if (!pool.length) {
+    const any = mind.loreFrom(npc.id, { familiarity: rel?.familiarity ?? 0, limit: 8 });
+    pool.push(...any);
+  }
+  const heard = tokenSet(lines.filter((l) => l.speaker === 'npc').map((l) => l.text).join(' '));
+  if (!heard.size) return [];
+  const out = [];
+  for (const e of pool) {
+    const words = tokenSet(e.text);
+    if (words.size < 4) continue;
+    let hit = 0;
+    for (const w of words) if (heard.has(w)) hit++;
+    if (hit / words.size >= 0.35 && hit >= 3) out.push(e);
+  }
+  return out.slice(0, 2);
 }
 
 function safeBool(fn) {
@@ -200,6 +240,8 @@ function playLine(ctx, talk, line) {
   const text = String(line.text || '').trim();
   if (!text) return 0;
   if (line.speaker === 'lyra') {
+    // The villager's answer is already in the script; keep their own "hello back" quiet.
+    if (npc.profile && 'talkingUntil' in npc) npc._heardAt = g?.clock?.t ?? 0;
     mind.say(text, { target: npc, kind: 'say' });
   } else if (typeof npc.say === 'function') {
     try {
@@ -282,25 +324,43 @@ export function applyConversation(ctx, npc, result, { topic = null } = {}) {
   return { learned, memory: mem };
 }
 
-function finish(ctx, talk) {
+// interrupted: someone gave her another order mid-talk; she keeps what was said so far
+// and leaves her new orders alone.
+function finish(ctx, talk, { interrupted = false } = {}) {
   const s = state(ctx.game);
   s.talk = null;
   const npc = talk.npc;
+  if (!talk.played.length) return;
+  let result = talk.result;
+  if (interrupted && result) {
+    // Only what was actually said counts: facts from lines never spoken stay unlearned.
+    const spoken = new Set(talk.played.map((l) => l.text));
+    const heard = (result.lines || []).filter((l) => spoken.has(String(l.text || '').trim()));
+    const half = heard.length < (result.lines || []).length * 0.6;
+    result = { ...result, learned: half ? [] : result.learned, lore: half ? [] : result.lore, affinity: Math.min(1, Number(result.affinity) || 1) };
+  }
   try {
-    applyConversation(ctx, npc, talk.result, { topic: talk.topic });
+    applyConversation(ctx, npc, result, { topic: talk.topic });
   } catch (err) {
     console.error('[social] applying the conversation failed', err);
   }
   ctx.bus?.emit?.('conversation', { a: ctx.companion, b: npc, lines: talk.played, topic: talk.topic || null });
+  if (interrupted) return;
+  const d = ctx.behavior?.directive;
+  if (talk.directive && d && d !== talk.directive) return; // something else took over already
   if (talk.prev) setDirective(ctx, talk.prev);
   else setDirective(ctx, { type: 'follow', target: 'player', distance: 'normal' });
 }
 
+// Give up on a talk she was walking to. If what she is doing is still the leftover of
+// that walk (the goto, or the spot where it ended), she goes back to what she was doing.
 function cancel(ctx, why) {
   const s = state(ctx.game);
   const pend = s.pending;
   s.pending = null;
-  if (pend?.prev && pend.directive && ctx.behavior?.directive === pend.directive) setDirective(ctx, pend.prev);
+  const d = ctx.behavior?.directive;
+  const leftover = !!d && !!pend && (d === pend.directive || (d.type === 'goto' && d.target === pend.id) || (d.type === 'stay' && pend.walked));
+  if (pend?.prev && leftover) setDirective(ctx, pend.prev);
   if (why) ctx.mind?.say?.(why);
 }
 
@@ -330,9 +390,20 @@ export const socialPlugin = {
   },
 
   onEvent(type, p, ctx) {
-    if (type === 'companion_action' && p?.name === 'talk_to') {
-      const s = state(ctx.game);
+    if (type !== 'companion_action' || !p) return;
+    const s = state(ctx.game);
+    if (p.name === 'talk_to') {
       if (s.pending && p.ok) s.pending.source = p.source || 'local';
+      return;
+    }
+    // Another order that moves her wins over a talk (or the walk to one).
+    if (!p.ok || !MOVES.has(p.name)) return;
+    if (s.pending) s.pending = null;
+    if (s.talk) {
+      const talk = s.talk;
+      talk.thinking = false;
+      talk.queue.length = 0;
+      finish(ctx, talk, { interrupted: true });
     }
   },
 
@@ -351,14 +422,18 @@ export const socialPlugin = {
       const pend = s.pending;
       const npc = ctx.game?.entities?.get?.(pend.id);
       if (!npc || npc.dead || npc.removed) return cancel(ctx, null);
-      const d = ctx.behavior?.directive;
-      // Someone gave her another order on the way: that one wins.
-      if (pend.directive && d && d !== pend.directive && !(d.type === 'follow' && (d.target === pend.id || d.target?.id === pend.id))) {
-        s.pending = null;
-        return;
-      }
+      if (npc.downed) return cancel(ctx, null);
       if (dist(o, npc) <= REACH) return startTalk(ctx, npc, pend);
       if (rt(ctx) - pend.t0 > WALK_TIMEOUT) return cancel(ctx, `I couldn't reach ${firstName(npc.name)}. Another time.`);
+      // The walk ended (she got where they were, or the way was blocked) but they have
+      // moved on: set off again, a few times, then give up.
+      const d = ctx.behavior?.directive;
+      if (!pend.directive || d !== pend.directive) {
+        if (pend.tries >= RETRIES) return cancel(ctx, `${firstName(npc.name)} keeps walking off. Another time.`);
+        pend.tries++;
+        const r = walkTo(ctx, npc);
+        if (r && r.ok === false) return cancel(ctx, r.message || `I can't get to ${firstName(npc.name)} from here.`);
+      }
       return;
     }
     const talk = s.talk;

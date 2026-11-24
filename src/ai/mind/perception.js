@@ -254,6 +254,14 @@ export class Perception {
         return this.onPlanChanged(p);
       case 'conversation':
         return this.onConversation(p);
+      case 'new_day':
+        return this.onNewDay(p);
+      case 'quest':
+        return this.onQuest(p);
+      case 'enter_location':
+        // Polling notices her own moves; the event only speeds it up.
+        if (this.isSelf(p.actor)) this._placeT = 0;
+        return;
       default:
         return;
     }
@@ -982,6 +990,23 @@ export class Perception {
     this.mind.thinker.nudge(8);
   }
 
+  // A new morning: yesterday's fear of the dark is gone, and she thinks about the day.
+  onNewDay() {
+    const m = this.mind;
+    m.feel('joy', 0.05, 'a new day');
+    m.thinker.nudge(10);
+  }
+
+  // A turn in the Maren arc brings Maren, and the places involved, to the front of her mind.
+  onQuest({ id, stage }) {
+    if (id !== 'maren') return;
+    const m = this.mind;
+    m.notice('person:maren', { source: 'quest', amount: 0.9, reminisce: false, label: 'Maren' });
+    const place = { find_key: 'bandit_camp', enter_ruins: 'sunken_ruins', find_journal: 'sunken_ruins' }[stage];
+    if (place) m.notice(`place:${place}`, { source: 'quest', amount: 0.6, reminisce: false });
+    if (stage === 'read_journal' || stage === 'waygate') m.notice('item:maren_journal', { source: 'quest', amount: 0.8, reminisce: false });
+  }
+
   onConversation({ a, b, topic }) {
     const other = this.isSelf(a) ? b : this.isSelf(b) ? a : null;
     if (!other?.id || this.isPlayer(other)) return;
@@ -1215,6 +1240,18 @@ export class Perception {
     const g = this.game;
     const rels = m.relationships;
     const t = g?.clock?.t ?? 0;
+    // Pip's stray may come back under another id (a reloaded world): same cat, same bond.
+    if (e.species === 'cat' && !e.profile && !rels.map.has(e.id)) {
+      const old = [...rels.map.values()].find((r) => r.species === 'cat' && r.tags.includes('pet') && !g?.entities?.get?.(r.id));
+      if (old) {
+        rels.map.delete(old.id);
+        old.id = e.id;
+        rels.map.set(e.id, old);
+        old.lastSeen = t;
+        rels._emit(old, { met: true }, 'found again');
+        return old;
+      }
+    }
     const rel = rels.ensure(e);
     if (rel.firstMet == null) rel.firstMet = t;
     rel.lastSeen = t;

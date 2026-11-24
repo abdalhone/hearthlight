@@ -1,9 +1,10 @@
 import { PLAYER_ID } from '../../core/constants.js';
-import { pick, cap, firstName, playerRef, partOfDay, shorten, firstSentence, placePhrase, joinList, lowerFirst } from './text.js';
+import { pick, cap, firstName, playerRef, partOfDay, shorten, firstSentence, placePhrase, joinList } from './text.js';
 import { STAGE_THOUGHTS } from './maren.js';
 import { bondOf } from './relationships.js';
 import { activeGoals } from './goals.js';
 import { jobId } from './perception.js';
+import { describeBlock } from './autonomy_agenda.js';
 
 // Spontaneous thoughts. Every 25-45 s of play she may think something drawn from what
 // is really around her: the place, the weather and hour, the people near her, her
@@ -44,6 +45,11 @@ const KIND_THOUGHTS = {
   home: ['A roof, a bed, a fire. Most of what anybody needs.'],
 };
 
+function rand(mind) {
+  const r = mind?.game?.rng;
+  return r && typeof r.next === 'function' ? r.next() : Math.random();
+}
+
 function fill(text, ctx, extra = {}) {
   return String(text).replace(/\{(\w+)\}/g, (m, k) => {
     if (extra[k] != null) return extra[k];
@@ -58,7 +64,7 @@ function fill(text, ctx, extra = {}) {
 export class ThoughtGenerator {
   constructor(mind) {
     this.mind = mind;
-    this.timer = 18 + Math.random() * 10;
+    this.timer = 18 + rand(mind) * 10;
     this.recentKeys = [];
     this.recentTexts = [];
     this.pending = [];
@@ -92,7 +98,7 @@ export class ThoughtGenerator {
     }
     this.timer -= dt;
     if (this.timer > 0) return;
-    this.timer = 25 + Math.random() * 20;
+    this.timer = 25 + rand(this.mind) * 20;
     const o = this.mind.owner;
     if (!o || o.downed || o.state === 'sleep' || this.mind.game?.state !== 'playing') return;
     const t = this.generate();
@@ -333,9 +339,17 @@ export class ThoughtGenerator {
     }
     const plan = m.currentPlan?.();
     if (plan?.activity) {
-      const where = plan.at ? ctx.game?.locations?.get?.(plan.at)?.name || String(plan.at).replace(/_/g, ' ') : null;
-      const what = lowerFirst(String(plan.activity).replace(/_/g, ' ').replace(/[.!]+$/, ''));
-      add(`self:plan:${plan.activity}`, `My plan for now: ${what}${where ? `, ${placePhrase({ id: plan.at, name: where })}` : ''}.${plan.why ? ` ${cap(String(plan.why).replace(/[.!]*$/, '.'))}` : ''} My day, my choice.`, 1.2);
+      const place = plan.at ? ctx.game?.locations?.get?.(plan.at)?.name || String(plan.at).replace(/_/g, ' ') : null;
+      let what = '';
+      try {
+        what = describeBlock(plan, { place, npcName: plan.npc ? firstName(m.relationships.get(plan.npc)?.name || plan.npc) : null });
+      } catch {
+        what = '';
+      }
+      what = String(what || String(plan.activity).replace(/_/g, ' ')).replace(/[.!]+$/, '');
+      const why = plan.why ? ` ${cap(String(plan.why).replace(/[.!]*$/, '.'))}` : '';
+      const mine = plan.with !== 'player';
+      add(`self:plan:${plan.activity}:${plan.from}`, mine ? `${cap(what)}: that's my plan for now.${why} My day, my choice.` : `${cap(what)}, for now.${why} Suits me.`, 1.2);
     }
   }
 
@@ -435,7 +449,18 @@ export class ThoughtGenerator {
       cook: "If this burns, I'm blaming the fire.",
     };
     if (job && lines[job]) add(`job:${job}`, lines[job], 2);
-    if (ctx.sitting) add('sit:fire', 'A fire, a full stomach and quiet company. Kettlewake nights felt like this.', 1.4);
+    if (ctx.sitting) {
+      const o = ctx.owner;
+      let fire = null;
+      try {
+        fire = o ? ctx.game?.objects?.nearest?.((x) => /campfire|hearth/.test(String(x.objType || '')), o.x, o.y, 72) : null;
+      } catch {
+        fire = null;
+      }
+      if (fire && ctx.needs.hunger > 0.45) add('sit:fire', 'A fire, a full stomach and quiet company. Kettlewake nights felt like this.', 1.4);
+      else if (fire) add('sit:fire_hungry', 'Warm hands, empty stomach. One out of two.', 1.2);
+      else add('sit:rest', 'Off my feet for a moment. My boots and I are no longer on speaking terms.', 1);
+    }
     const since = this.mind.perception.rt() - this.mind.perception.lastEncounterEnd;
     if (since < 40) add('after_fight', "Still shaking a little. Good shaking. Mostly.", 1.6);
   }

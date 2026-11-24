@@ -84,9 +84,9 @@ export const STORY = {
     {
       id: 'stolen_key',
       title: 'The stolen key',
-      text: "In the spring the bandits raided the old warden's toll-house beside the Sunken Ruins and carried off the rusted key to the ruins gate. The gate has stayed locked ever since.",
+      text: "In the spring the bandits raided the old ruins-keeper's lodge beside the Sunken Ruins and carried off the rusted key to the ruins gate, stamped with the ruins crest. The gate has stayed locked ever since.",
       tags: ['ruins', 'bandits', 'ruins_key', 'maren'],
-      aliases: ['the rusted key', 'the gate key', 'the warden\'s key'],
+      aliases: ['the rusted key', 'the gate key', "the ruins-keeper's key"],
       knownBy: ['rowan', 'aveline', 'garrick', 'bram'],
       secret: false,
     },
@@ -122,6 +122,7 @@ export const STORY = {
     { id: 'p_bandit_camp', locationId: 'bandit_camp', title: 'The bandit camp', text: "Varek One-Eye's camp in the north-east hills: tents, a pile of stolen goods and a fire that never quite goes out.", tags: ['bandits', 'danger'], knownBy: ['rowan', 'garrick'] },
     { id: 'p_quarry', locationId: 'stonecut_quarry', title: 'Stonecut Quarry', text: "The quarry that built Hearthvale's walls. Slimes have crept into its rain pools.", tags: ['quarry', 'ore', 'slimes'], knownBy: ['bram', 'rowan'] },
     { id: 'p_kings_road', locationId: 'kings_road', title: "The King's Road", text: 'It runs from the coast to the mountains. North of Hearthvale it is barely a road at all, and wolves hunt along it at dusk.', tags: ['road', 'wolves'], knownBy: ['everyone'] },
+    { id: 'p_moonpetal_glade', locationId: 'moonpetal_glade', title: 'Moonpetal Glade', text: 'A hollow deep in the Whisperwood where the moonpetals grow thickest. On a clear night the whole glade glows like a pond full of stars.', tags: ['forest', 'moonpetal', 'glade'], knownBy: ['mira', 'pip'] },
     { id: 'p_reed_farm', locationId: 'reed_farm', title: 'Reed Farm', text: "Tobias's turnips and wheat feed half the valley, when the boars leave him any.", tags: ['farm', 'tobias'], knownBy: VILLAGE },
   ],
 
@@ -242,6 +243,16 @@ export const STORY = {
       feeling: 'fear',
       importance: 7,
     },
+    {
+      id: 'the_wolves',
+      age: 24,
+      title: 'The wolves on the King\'s Road',
+      text: "A day's walk from Hearthvale, at dusk, a wolf pack caught me with my sparks nearly spent. A stranger came running with a drawn sword and stood beside me without even asking my name. We walked into Hearthvale together the next day, and I took the spare bed in their cottage: my choice, for my own reasons, for as long as it stays a good one.",
+      people: ['player'],
+      places: ['kings_road', 'hearthvale'],
+      feeling: 'trust',
+      importance: 9,
+    },
   ],
 
   mysteries: [
@@ -261,6 +272,7 @@ export const STORY = {
       clues: [
         { text: 'Maren bought rope, lamp oil and a hooded miner\'s lantern the day before she vanished, and paid without haggling.', foundAt: 'garrick' },
         { text: 'Maren asked Aveline to tell her apprentice not to follow.', foundAt: 'aveline' },
+        { text: 'Under a crescent moon carved into a post in the Moonpetal Glade, in Maren\'s neat hand: "M.A. was here — look up." She only marks the places she means to come back to.', foundAt: 'moonpetal_glade' },
         { text: "Maren's last journal entry is addressed to me.", foundAt: 'maren_journal' },
       ],
       truth: 'Maren stopped writing to keep Lyra away from the waygate: she believed whoever followed her through would be pulled into the song with her.',

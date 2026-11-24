@@ -176,9 +176,11 @@ export function dossier(mind, personRef) {
   const rel = mind.relationships.map.get(id) || null;
   const loreEntry = (mind.lorebook?.all('person') || []).find((e) => (e.npcId || e.id) === id && mind.knowsLore(e)) || null;
   const known = !!rel && (rel.firstMet != null || rel.absent || id === PLAYER_ID);
-  if (!known && !loreEntry) return null;
-  const name = rel?.name || loreEntry?.name || id;
-  const role = rel?.role || loreEntry?.role || null;
+  // Someone who lives here but she has not met: a name and a trade, nothing more.
+  const ent = !known && !loreEntry ? mind.game?.entities?.get?.(id) : null;
+  if (!known && !loreEntry && !ent?.profile) return null;
+  const name = rel?.name || loreEntry?.name || ent?.name || id;
+  const role = rel?.role || loreEntry?.role || ent?.profile?.role || ent?.role || null;
   const key = `person:${id}`;
   const facts = mind.knowledgeStore.all().filter((k) => k.about.includes(id) || (k.loreId && (k.loreId === loreEntry?.id))).slice(-6);
   // The memories that matter most about them, then the most recent.
@@ -210,6 +212,10 @@ export function dossier(mind, personRef) {
     firstMet: rel?.firstMet ?? null,
     lastSeen: rel?.lastSeen ?? null,
   };
+  if (!known && !loreEntry) {
+    d.text = `${name}${role ? `, ${role}` : ''}. She has not met them yet.`;
+    return d;
+  }
   const head = `${name}${role ? `, ${role}` : ''}`;
   const stats = rel ? ` ${bond.label}; affinity ${Math.round(rel.affinity)}, trust ${Math.round(rel.trust)}, respect ${Math.round(rel.respect)}${rel.fear >= 10 ? `, fear ${Math.round(rel.fear)}` : ''}${rel.tags.length ? `, ${rel.tags.join('/')}` : ''}.` : '';
   const bits = [`${head}.${stats}`];

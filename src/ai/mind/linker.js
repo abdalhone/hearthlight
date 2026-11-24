@@ -109,20 +109,33 @@ const KIND_LABELS = { wolf: 'wolves', bandit: 'bandits', slime: 'slimes', skelet
 // The player's own words: "me", "we" mean the player when they are the one asking.
 const QUERY_PRONOUNS = ['me', 'my', 'mine', 'myself', 'we', 'us', 'our', 'i'];
 
+// Place aliases too plain to trust inside her own memories ("salt roads", "my home on the
+// Isles", "the end of the pier"): they still work when the player says them.
+const LOOSE_ALIASES = new Set([
+  'road', 'roads', 'home', 'house', 'wood', 'woods', 'mine', 'pier', 'dock', 'vale', 'wilds', 'countryside',
+  'guards', 'bandits', 'crops', 'market', 'glade', 'pub', 'ruin', 'shop', 'store', 'town', 'highway', 'plaza',
+  'church', 'temple', 'shrine', 'wildflowers', 'blacksmith', 'smith', 'herbalist', 'apothecary', 'barracks',
+  'well', 'the well', 'the road', 'main road', 'camp', 'fields', 'farm', 'forest', 'square', 'lake', 'meadow',
+]);
+// Words never to link at all: they are ordinary English far more often than places.
+const NEVER_LINK = new Set(['mine', 'well', 'wood', 'will', 'may', 'lead', 'stray']);
+
 function norm(s) {
   return normName(s).replace(/^(the|a|an) /, '');
 }
 
 export class EntityLinker {
   constructor() {
-    this.dict = new Map(); // normalized phrase -> Set(entity key)
+    this.dict = new Map(); // normalized phrase -> Set(entity key), for everything
+    this.qdict = new Map(); // phrases that only count when the player is speaking
     this.labels = new Map(); // entity key -> label
     this.maxWords = 1;
   }
 
   // exact: curated phrases are registered as written ("the cottage" does not also
   // register "cottage"); names from data also register without a leading article.
-  add(key, label, surfaces, { exact = false } = {}) {
+  // queryOnly: the phrase links only in what the player says, never in stored records.
+  add(key, label, surfaces, { exact = false, queryOnly = false } = {}) {
     if (!key) return;
     if (label && (!this.labels.has(key) || this.labels.get(key) === key)) this.labels.set(key, String(label));
     else if (!this.labels.has(key)) this.labels.set(key, key);
@@ -130,13 +143,31 @@ export class EntityLinker {
       if (!raw) continue;
       const full = normName(raw);
       for (const s of exact ? [full] : [full, norm(raw)]) {
-        if (!s || s.length < 3) continue;
-        let set = this.dict.get(s);
-        if (!set) this.dict.set(s, (set = new Set()));
+        if (!s || s.length < 3 || NEVER_LINK.has(s)) continue;
+        const loose = queryOnly || LOOSE_ALIASES.has(s);
+        const dict = loose && !this.dict.has(s) ? this.qdict : this.dict;
+        let set = dict.get(s);
+        if (!set) dict.set(s, (set = new Set()));
         set.add(key);
         const words = s.split(' ').length;
         if (words > this.maxWords) this.maxWords = Math.min(MAX_WORDS, words);
       }
+    }
+  }
+
+  // Curated phrases always link, even where a loose alias would not.
+  addStrict(key, label, surfaces) {
+    if (!key) return;
+    this.add(key, label, [], {});
+    for (const raw of surfaces || []) {
+      const s = normName(raw);
+      if (!s || s.length < 3 || NEVER_LINK.has(s)) continue;
+      let set = this.dict.get(s);
+      if (!set) this.dict.set(s, (set = new Set()));
+      set.add(key);
+      this.qdict.delete(s);
+      const words = s.split(' ').length;
+      if (words > this.maxWords) this.maxWords = Math.min(MAX_WORDS, words);
     }
   }
 
@@ -156,7 +187,7 @@ export class EntityLinker {
       let hit = 0;
       for (let n = Math.min(this.maxWords, words.length - i); n >= 1; n--) {
         const phrase = n === 1 ? words[i] : words.slice(i, i + n).join(' ');
-        const set = this.dict.get(phrase);
+        const set = this.dict.get(phrase) || (query ? this.qdict.get(phrase) : null);
         if (set) {
           for (const k of set) out.add(k);
           hit = n;
@@ -207,12 +238,14 @@ export function buildLinker(mind) {
   const game = mind?.game;
   const lore = mind?.lorebook;
 
-  for (const [id, words] of Object.entries(PLACE_WORDS)) L.add(`place:${id}`, PLACE_LABELS[id], words, { exact: true });
+  for (const [id, words] of Object.entries(PLACE_WORDS)) L.addStrict(`place:${id}`, PLACE_LABELS[id], words);
   for (const loc of game?.locations?.all?.() || []) {
-    L.add(`place:${loc.id}`, loc.name, [loc.name, String(loc.id).replace(/_/g, ' '), ...(loc.aliases || [])]);
+    L.add(`place:${loc.id}`, loc.name, [loc.name, String(loc.id).replace(/_/g, ' ')]);
+    // Aliases are how people talk; the plain ones only count when the player says them.
+    L.add(`place:${loc.id}`, loc.name, loc.aliases || [], { exact: true });
   }
-  for (const [id, words] of Object.entries(ITEM_WORDS)) L.add(`item:${id}`, ITEMS[id]?.name || id, words, { exact: true });
-  for (const [id, words] of Object.entries(KINDS)) L.add(`kind:${id}`, KIND_LABELS[id], words, { exact: true });
+  for (const [id, words] of Object.entries(ITEM_WORDS)) L.addStrict(`item:${id}`, ITEMS[id]?.name || id, words);
+  for (const [id, words] of Object.entries(KINDS)) L.addStrict(`kind:${id}`, KIND_LABELS[id], words);
 
   // People: the player, villagers in the world, everyone she has a relationship with.
   const pname = game?.settings?.playerName || game?.player?.name;
@@ -223,12 +256,16 @@ export function buildLinker(mind) {
 
   const addPerson = (id, name, role) => {
     const surfaces = [name, firstName(name), id];
-    const parts = String(name || '').split(/\s+/).filter((p) => p.length >= 4 && /^[A-Z]/.test(p));
+    // 'Garrick "Gale" Hale': the nickname is a name too.
+    const parts = String(name || '')
+      .split(/\s+/)
+      .map((p) => p.replace(/^["'“‘]+|["'”’]+$/g, ''))
+      .filter((p) => p.length >= 4 && /^[A-Z]/.test(p));
     surfaces.push(...parts);
     if (role && String(role).split(/\s+/).length <= 3) surfaces.push(role, `the ${role}`);
     L.add(`person:${id}`, name || id, surfaces);
   };
-  for (const [id, words] of Object.entries(ROLE_WORDS)) L.add(`person:${id}`, null, words, { exact: true });
+  for (const [id, words] of Object.entries(ROLE_WORDS)) L.addStrict(`person:${id}`, null, words);
   for (const e of game?.entities?.all?.() || []) {
     if (e?.profile) addPerson(e.id, e.name, e.profile.role || e.role);
   }
@@ -246,11 +283,17 @@ export function buildLinker(mind) {
   if (lore) {
     for (const e of lore.all('person')) {
       const id = e.npcId || e.id;
-      const role = e.role ? String(e.role).replace(/^(lyra's|maren's|her|his|the)\s+/i, '') : null;
+      // "Lyra's father" is her family, not every father in the valley: those roles are
+      // the curated "my father" / "your father" phrases above.
+      const own = /^(lyra|her|my)['’]?s?\s/i.test(String(e.role || ''));
+      const role = e.role && !own ? String(e.role).replace(/^(maren's|his|the)\s+/i, '') : null;
       addPerson(id, e.name, role && role.split(/\s+/).length <= 2 ? role : null);
     }
     for (const e of lore.all('place')) if (e.locationId) L.add(`place:${e.locationId}`, e.title, [e.title]);
-    for (const e of lore.all('world')) L.add(`lore:${e.id}`, e.title, [e.title, ...e.aliases]);
+    for (const e of lore.all('world')) {
+      L.add(`lore:${e.id}`, e.title, [e.title]);
+      L.add(`lore:${e.id}`, e.title, e.aliases, { exact: true });
+    }
     for (const e of lore.all('life')) for (const p of e.places) if (!L.has(`place:${p}`)) L.add(`place:${p}`, p.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()), [p.replace(/_/g, ' ')]);
   }
   return L;
