@@ -1485,17 +1485,24 @@ export class Behavior {
       this.jobs.stop();
       if (next.type !== 'wait' && !opts.restoring) g.bus?.emit?.('job_failed', { actor: a, job: snap?.job ?? prev.job, reason: 'Stopped to do something else.', stopped: true });
     }
-    this.own.clear();
-    this.cancelTask();
-    this.idle.reset();
-    if (next.type !== 'goto') this.steering.reset();
-    this.steering.stop();
+    // Her mind revising her day re-issues the same kind of directive: she carries on
+    // with what she is doing (a job half done, a seat by the fire) instead of starting over.
+    const carry = this.own.canCarry(prev, next);
+    if (carry) {
+      if (this.task && !this.task.own) this.cancelTask();
+    } else {
+      this.own.clear();
+      this.cancelTask();
+      this.idle.reset();
+      if (next.type !== 'goto') this.steering.reset();
+      this.steering.stop();
+    }
     this.directive = next;
     this.goal = goal;
     this.patrol = patrol;
     this.explore = explore;
-    if (ownState) this.own.begin(ownState);
-    this.idleAnchor = null;
+    if (ownState) this.own.begin(ownState, carry);
+    if (!carry) this.idleAnchor = null;
     this.gotoBlockedT = 0;
     this.holdReturning = false;
     this.freeReturning = false;

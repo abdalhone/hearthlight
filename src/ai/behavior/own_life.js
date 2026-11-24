@@ -256,14 +256,26 @@ export class OwnLife {
     }
   }
 
-  begin(state) {
+  // carry: the same kind of directive again (a revised plan): keep today's state.
+  begin(state, carry = false) {
+    if (carry && this.st) return;
     this.st = state || {};
     this.day = null;
   }
 
+  // Is `next` the same life as `prev`, only re-issued (her day re-planned, the same
+  // person to keep away from, the same way of leaving)?
+  canCarry(prev, next) {
+    if (!prev || !next || prev.type !== next.type || !this.st) return false;
+    if (next.type === 'independent') return (prev.avoid || null) === (next.avoid || null);
+    if (next.type === 'keep_away') return prev.from === next.from && !!prev.follow === !!next.follow;
+    if (next.type === 'leave') return prev.mode === next.mode && next.mode !== 'gone';
+    return false;
+  }
+
   setupIndependent(d) {
     let plan = null;
-    if (Array.isArray(d.plan)) plan = d.plan.filter((e) => e && Number.isFinite(hourOf(e.from)) && Number.isFinite(hourOf(e.to))).map((e) => ({ from: e.from, to: e.to, activity: String(e.activity || 'wander'), at: e.at ?? null, why: e.why ?? null, with: e.with ?? null, job: e.job ?? null, deliverTo: e.deliverTo ?? null }));
+    if (Array.isArray(d.plan)) plan = d.plan.filter((e) => e && Number.isFinite(hourOf(e.from)) && Number.isFinite(hourOf(e.to))).map(planEntry);
     else if (typeof d.plan === 'string' && d.plan.trim() && !/^(today|agenda|her own|own|default|plan|day|her day|my day)$/i.test(d.plan.trim())) {
       // One activity named in words: do it for the next three hours, then her usual day.
       const h = this.game.clock?.hour ?? 12;
@@ -308,7 +320,7 @@ export class OwnLife {
     const follow = typeof d.follow === 'boolean' ? d.follow : isPlayer && ['together', 'wary'].includes(companionshipOf(g));
     const next = { type: 'keep_away', from: isPlayer ? 'player' : from.id, tiles, follow };
     // Her own plan for the day, lived at that distance (when she has left the player).
-    if (Array.isArray(d.plan) && d.plan.length) next.plan = d.plan.map((e) => ({ ...e }));
+    if (Array.isArray(d.plan) && d.plan.length) next.plan = d.plan.filter((e) => e && Number.isFinite(hourOf(e.from)) && Number.isFinite(hourOf(e.to))).map(planEntry);
     if (Number.isFinite(d.seconds) && d.seconds > 0) {
       next.seconds = Math.min(600, d.seconds);
       next.then = plain(d.then || (prev?.type === 'keep_away' ? prev.then : prev) || { type: 'follow', target: 'player', distance: 'normal' });
@@ -393,6 +405,11 @@ export class OwnLife {
     // Someone she has left behind: keep well away from them.
     const avoid = d.avoid ? this.resolveWho(d.avoid) : null;
     if (avoid && this.avoidStep(dt, avoid, (d.tiles || LEFT_AVOID_TILES) * TILE)) return true;
+    // A haul already on its way to whoever pays for it is delivered before anything new.
+    if (this.day?.jobOn && b.jobs.active && b.jobs.phase === 'deliver') {
+      b.jobs.update(dt);
+      return true;
+    }
     let entry = activeEntry(this.plan(d), hour);
     if (!entry && (hour >= 22 || hour < 6)) entry = NIGHT_ENTRY;
     // Plans are rebuilt now and then; an entry that reads the same is the same entry.
@@ -636,9 +653,12 @@ export class OwnLife {
       day.jobRuns++;
     }
     const remaining = hoursLeft(day.entry, hour) * HOURS_TO_SECONDS;
-    if (day.jobRuns >= 3 || remaining < 15 || day.jobFailed) return this.ownIdle(dt, day.spot);
+    // One bundle for whoever pays for it, maybe a second if the morning is long; then
+    // the rest of the time is hers.
+    if (day.jobRuns >= 2 || remaining < 15 || day.jobFailed) return this.ownIdle(dt, day.spot);
     const buyer = day.buyer ? this.resolveWho(day.buyer) : null;
-    const amount = { fish: 3, cook: null }[day.job] ?? 4;
+    const planned = Number(day.entry?.amount);
+    const amount = Number.isFinite(planned) && planned > 0 ? Math.min(12, Math.round(planned)) : ({ fish: 3, cook: null }[day.job] ?? 4);
     const r = jobs.start({ job: day.job, amount, deliverTo: buyer ? buyer.id : 'keep', targetRef: day.place?.id ?? null, quiet: true, own: true });
     if (!r.ok) {
       day.jobFailed = true;
@@ -844,10 +864,12 @@ export class OwnLife {
     const ex = st.exit;
     const p = g.player;
     const seen = onScreen(g, a.x, a.y, 16);
-    // Out of sight and far from the player for a while: she is simply gone.
+    // She walks the whole way; only after a long while out of anyone's sight, far
+    // from the player, is she simply gone (a player who runs after her can still
+    // catch a last glimpse of her on the road).
     if (!seen && (!p || dist(a.x, a.y, p.x, p.y) > 28 * TILE)) st.farT += dt;
     else st.farT = 0;
-    if (st.farT > 4) return this.vanish(d);
+    if (st.farT > 30) return this.vanish(d);
     if (ex.none || dist(a.x, a.y, ex.x, ex.y) < 10 || atMapEdge(g, a, 0)) {
       const ux = ex.none ? a.x - (p?.x ?? a.x - 1) : ex.x - (g.map?.w ? (g.map.w * TILE) / 2 : a.x - 1);
       const uy = ex.none ? a.y - (p?.y ?? a.y) : 0;
@@ -989,8 +1011,16 @@ export class OwnLife {
     const d = this.b.directive;
     const g = this.game;
     switch (d.type) {
-      case 'independent':
-        return this.day?.skipped ? 'keeping to the village today' : this.day?.label || 'living her own day';
+      case 'independent': {
+        const day = this.day;
+        if (day?.skipped) return 'keeping to the village today';
+        const jobs = this.b.jobs;
+        if (day?.jobOn && jobs.active) {
+          if (jobs.phase === 'deliver') return jobs.status();
+          if (jobs.amount) return `${day.label} (${jobs.count}/${jobs.amount})`;
+        }
+        return day?.label || 'living her own day';
+      }
       case 'flee': {
         const from = this.st?.from;
         const dest = this.st?.dest;
@@ -1009,6 +1039,18 @@ export class OwnLife {
         return '';
     }
   }
+}
+
+// A plan entry as plain data: every simple field her mind gave it (npc, kind, bed,
+// amount...), nothing live.
+function planEntry(e) {
+  const out = {};
+  for (const [k, v] of Object.entries(e)) {
+    if (v == null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') out[k] = v;
+  }
+  out.activity = String(e.activity || 'wander');
+  out.at = e.at ?? null;
+  return out;
 }
 
 function plain(d) {
