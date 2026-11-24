@@ -423,6 +423,8 @@ export class Village {
 
   // Something the villager would tell her at her familiarity, asked and answered.
   lyraLearns(npc, mind, mood) {
+    // Her own family she has known all her life: nothing to learn there as news.
+    if (this.isFamily('lyra', npc.id)) return null;
     const rel = safe(() => mind.relationships.ensure(npc));
     if (!rel) return null;
     const facts = (npc.profile?.facts || []).filter((f) => {
@@ -1098,7 +1100,8 @@ export class Village {
       const c = coerceSay(r);
       if (c) {
         // Threats and insults weigh what they weigh, whoever words the answer.
-        const delta = local.intent === 'threat' || local.intent === 'insult' ? Math.min(local.delta, c.opinionDelta) : c.opinionDelta;
+        // (An apology mends through amend(), slowly, whatever Claude makes of it.)
+        const delta = local.intent === 'threat' || local.intent === 'insult' ? Math.min(local.delta, c.opinionDelta) : local.intent === 'apology' ? 0 : c.opinionDelta;
         reply = { lines: [c.say], mood: c.mood || local.mood, delta, told: c.learned.filter((id) => (e.profile.facts || []).some((f) => f.id === id)), mentioned: c.rumorTold && this.rumors.get(c.rumorTold) ? [c.rumorTold] : [], source: 'claude', rumor: c.rumor };
       }
     }
@@ -1112,6 +1115,11 @@ export class Village {
     if (reply.delta) e.adjustOpinion?.(round1(reply.delta), `the player said: ${said.slice(0, 40)}`);
     if (local.intent === 'apology') this.amend(id, 'apology');
     if (local.intent === 'threat') this.addRumor('threat', { victim: id, witnesses: [id, ...this.witnessesNear(e.x, e.y, 90)] });
+    // Something said that they will repeat (Claude's judgement, only when it moved them).
+    if (reply.rumor && Math.abs(reply.delta || 0) >= 3) {
+      const r = this.rumors.add({ kind: 'said', text: reply.rumor, valence: Math.sign(reply.delta) * 0.3, severity: 0.3, source: id, heardBy: [id], t: this.now(), day: this.day() });
+      if (r) this.emit('rumor', { rumor: r });
+    }
     for (const fid of reply.told || []) e.told?.add?.(fid);
     if (reply.mentioned?.length) {
       const m = (this.mentioned[id] ||= []);
