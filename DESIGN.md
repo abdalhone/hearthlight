@@ -1450,6 +1450,23 @@ Two more shapes, plain registry entries like the rest:
   longer, orbit = a ring of small shields, burst = explodes when it breaks). It is earned
   through a mission (fit it to the watch or the chapel).
 
+*As built (r7/weave2).* Both are entries in `SHAPES` with their flavor tables
+(`BIND_FLAVORS`, `WARD_FLAVORS`). Shapes may now carry hooks and `onPlan` like twists, and
+`adapt: { twistId: { hooks: false, onPlan, clause } }` for a twist that means something
+else on them (compile.js, naming.js). Two body kinds join the list: `bind` (the ring
+holding its `target`) and `ward` (a shield on its `target`, with `shield`/`shieldMax`).
+A bind's missile is a homing ring; whatever a bind weave touches is held through
+`magic.holdTarget(body, target)` (status `bound`: root + disable; bosses BOSS_HOLD of
+the time, halved per bind in a row, shrugged off after three, forgotten after 14 s;
+children hold 55%; a lingering patch only roots). `combat.damage` asks
+`magic.absorb(target, amount, source, opts)` before a blow lands (a blow taken whole still
+emits `damage` with `amount: 0, absorbed`). Wards stop foes' `Projectile`s, foes' weave
+missiles and boss `glob`/`bubble` hazards; bosses held by `disabled` pause their moves.
+Bus: `bind {source, target, seconds, plan, resisted}`, `ward {caster, bearer, shield,
+plan}`, `ward_broken {bearer, caster, plan}`. Missions: Lyra's *The Polite Way to Say
+Stop* (trust 72; its lesson waits while she is unsure: a talk step's `trust`) and Wys's
+*Two Is a Patrol* (the King's Road, the afternoon, wolves).
+
 ## 23. Talk to anyone, the way you talk to Lyra (the author: "I want to be able to talk to all the NPCs, and talk to them like I talk with this girl")
 
 - The chat panel addresses whoever the player chooses: Lyra by default, or any villager
