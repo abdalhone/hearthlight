@@ -28,6 +28,7 @@ export const SELF_DEFENSE_WINDOW = 60; // how long someone who hurt you stays a 
 // The characters module gets knocked-out villagers up after 30 s; this is only a safety net.
 export const NPC_REVIVE_FALLBACK = 40;
 export const NPC_REVIVE_FRACTION = 0.5;
+const SHARED_XP_RANGE = 260; // px: kills made this close count as a fight fought together
 const PROVOKE_MEMORY = 45; // game seconds a creature stays angry at whoever hurt it
 const DEFAULT_MELEE_CD = 0.4;
 const MIN_SHOT_GAP = 0.15; // guards against accidental per-frame shooting
@@ -600,10 +601,11 @@ export class Combat {
       this._xpPopup(target, xp);
       this.giveXp(player, xp);
       // Lyra learns from fights she stands in, at half the rate.
-      if (lyra && lyra.isAlive?.() && lyra.distTo?.(target) < 220) this.giveXp(lyra, Math.max(1, Math.floor(xp / 2)));
+      if (lyra && lyra.isAlive?.() && lyra.distTo?.(target) < SHARED_XP_RANGE) this.giveXp(lyra, Math.max(1, Math.floor(xp / 2)));
     } else if (killer === lyra) {
       this.giveXp(lyra, xp);
-      if (player && !player.removed) {
+      // You share in fights you stand in; not in what she hunts on her own across the map.
+      if (player && !player.removed && !player.dead && Math.hypot(player.x - target.x, player.y - target.y) < SHARED_XP_RANGE) {
         this._xpPopup(target, xp);
         this.giveXp(player, xp);
       }

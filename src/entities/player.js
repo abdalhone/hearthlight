@@ -440,6 +440,22 @@ export class Player extends Actor {
     return true;
   }
 
+  // Where the next swing would land, for anyone who wants to stay out of it (Lyra steps
+  // aside, villagers flinch). Returns one reused object: { x, y, fx, fy, range, arc, active },
+  // `active` while a swing is in progress or the attack button is held.
+  swingZone() {
+    const z = this._zone || (this._zone = { x: 0, y: 0, fx: 0, fy: 1, range: 0, arc: 0, active: false });
+    const c = COMBO[this.combo] || COMBO[0];
+    z.x = this.x;
+    z.y = this.y;
+    z.fx = this.facing.x;
+    z.fy = this.facing.y;
+    z.range = c.range + 6;
+    z.arc = c.arc;
+    z.active = this.isAlive() && (!!this.swing || this.state === 'attack' || this._heldAttack || this.attackBuffer > 0);
+    return z;
+  }
+
   // ------------------------------------------------------------ harvesting
 
   _findWorkTarget() {
@@ -522,7 +538,7 @@ export class Player extends Actor {
     } catch {
       /* effects are optional */
     }
-    if (res) {
+    if (res && !res.failed) {
       const progress = res.done ? 1 : Math.max(0, Math.min(1, Number(res.progress) || 0));
       this.workBar = { progress, t: res.done ? 0.6 : 1.5 };
     }
@@ -913,42 +929,53 @@ export class Player extends Actor {
     if (this.workBar) this._drawWorkBar(ctx, sx, sy - hz);
   }
 
-  // Lyra's Binding Light: a ring of gold runes at the feet with bands of light that wrap
-  // the legs. The back half of the ring is drawn before the body, the front half after,
-  // so the ring reads as circling the player. Plain rects, no allocations per frame.
+  // Lyra's Binding Light: a spinning ring of gold light with brighter runes at the feet,
+  // and bands of light wrapping the shins. The back half of the ring is drawn before the
+  // body and the front half after, so it reads as circling the player. Plain rects only.
   _drawBinding(ctx, sx, sy, time, front) {
     const grow = Math.min(1, this._rootShown / 0.18);
     const fade = Math.min(1, this.rootTime / 0.35);
     const a = grow * fade;
     if (a <= 0.02) return;
-    const rx = 4 + 6 * grow;
-    const ry = rx * 0.42;
-    const spin = time * 2.6;
+    const rx = 5 + 6 * grow;
+    const ry = rx * 0.45;
+    const spin = time * 2.4;
     const prev = ctx.globalAlpha;
-    for (let i = 0; i < 14; i++) {
-      const ang = spin + (i / 14) * Math.PI * 2;
+    const N = 30;
+    for (let i = 0; i < N; i++) {
+      const ang = (i / N) * Math.PI * 2;
       const s = Math.sin(ang);
       if (front ? s < 0 : s >= 0) continue;
       const x = Math.round(sx + Math.cos(ang) * rx);
       const y = Math.round(sy + s * ry);
-      const rune = i % 3 === 0;
-      ctx.globalAlpha = prev * a * (front ? 1 : 0.7);
-      ctx.fillStyle = rune ? '#fff4c0' : '#ffe08a';
+      // Runes ride around the ring; the ring itself shimmers between them.
+      const u = (((ang - spin) / (Math.PI * 2)) % 1 + 1) % 1;
+      const rune = (u * 5) % 1 < 0.2;
+      ctx.globalAlpha = prev * a * (front ? 1 : 0.65);
+      ctx.fillStyle = rune ? '#fff4c0' : '#ffb047';
       ctx.fillRect(x, y, 1, 1);
       if (rune) {
-        ctx.fillStyle = '#ffb047';
+        ctx.globalAlpha = prev * a * (front ? 0.8 : 0.5);
+        ctx.fillStyle = '#ffe08a';
         ctx.fillRect(x, y - 1, 1, 1);
       }
     }
     if (front) {
-      // Two thin bands of light wrapping the shins, shimmering.
       const pulse = 0.6 + 0.4 * Math.sin(time * 11);
       ctx.globalAlpha = prev * a * pulse;
       ctx.fillStyle = '#fff4c0';
       ctx.fillRect(sx - 4, sy - 3, 9, 1);
       ctx.globalAlpha = prev * a * pulse * 0.6;
       ctx.fillStyle = '#ffe08a';
-      ctx.fillRect(sx - 3, sy - 6, 7, 1);
+      ctx.fillRect(sx - 3, sy - 7, 7, 1);
+      // Motes rising off the ring.
+      ctx.globalAlpha = prev * a * 0.8;
+      ctx.fillStyle = '#fff4c0';
+      for (let k = 0; k < 3; k++) {
+        const ph = (time * 0.9 + k / 3) % 1;
+        const mx = Math.round(sx + Math.cos(spin * 0.7 + k * 2.1) * rx * 0.8);
+        ctx.fillRect(mx, Math.round(sy - ph * 14), 1, 1);
+      }
     }
     ctx.globalAlpha = prev;
   }

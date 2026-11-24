@@ -481,6 +481,12 @@ test('when Lyra lands the killing blow the player gets the xp too', () => {
   g.combat.damage(lyra, wolf, 50);
   assert.equal(lyra.xp, 10);
   assert.equal(p.xp, 10);
+  // What she hunts alone, far from you, is hers.
+  const far = actor(g, { faction: 'monster', x: 2000, maxHp: 2 });
+  far.xpValue = 6;
+  g.combat.damage(lyra, far, 50);
+  assert.equal(lyra.xp, 16);
+  assert.equal(p.xp, 10);
 });
 
 test('level ups raise max HP and attack, heal fully, emit and toast', () => {
