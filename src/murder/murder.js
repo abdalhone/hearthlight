@@ -1284,6 +1284,8 @@ export class Murder {
       if (rec.state === 'buried') v.hidden = true;
     }
     for (const gr of this.graves) this.addGrave(gr);
+    // The shop and the forge stay with whoever took them on.
+    safe(() => Grief.applyHeirs(this));
   }
 }
 
