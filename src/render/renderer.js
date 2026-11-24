@@ -264,6 +264,17 @@ export class Renderer {
       }
     }
     g.particles?.drawGlow?.(ctx, this);
+    // The Weave's glow (src/magic/fx.js): bright spell cores and their bloom.
+    if (g.magicFx?.drawGlow) {
+      try {
+        g.magicFx.drawGlow(ctx, this);
+      } catch (err) {
+        this._report('magic glow', err);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+      ctx.imageSmoothingEnabled = false;
+    }
 
     // 4. Weather overlay.
     const W = g.weather;
