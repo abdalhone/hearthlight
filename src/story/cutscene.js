@@ -112,7 +112,14 @@ export class CutscenePlayer {
       this.skip();
     });
     this.skipBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-    this.hint = el('div', 'cs-hint', '');
+    // How to move on (hidden by the stylesheet unless the UI chooses to show it).
+    let touch = false;
+    try {
+      touch = !!window.matchMedia?.('(pointer: coarse)').matches;
+    } catch {
+      touch = false;
+    }
+    this.hint = el('div', 'cs-hint', touch ? 'Tap to continue · hold to skip' : 'Click or Space to continue · Esc to skip');
     r.append(this.canvas, this.fadeEl, this.barTop, this.barBottom, this.titleEl, this.box, this.skipBtn, this.hint);
     r.addEventListener('pointerdown', (e) => {
       if (!this.active) return;
