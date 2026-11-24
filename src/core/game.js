@@ -38,6 +38,7 @@ import { ActionRegistry } from '../ai/brain/actions.js';
 import { PluginRegistry } from '../ai/plugins/registry.js';
 import { BUILTIN_PLUGINS } from '../ai/plugins/index.js';
 import { Brain } from '../ai/brain/brain.js';
+import { VillageLife } from '../ai/village_life/village_life.js';
 
 import { ClaudeRuntime } from '../platform/claude_runtime.js';
 import { UI } from '../ui/ui.js';
@@ -165,6 +166,13 @@ export class Game {
     }
     this.spawner = new Spawner(this, world.spawns.spawnZones || []);
     this.plugins.installAll();
+    // Errands, sightings, problems and the missing (DESIGN §28): after the village exists.
+    try {
+      this.villageLife = new VillageLife(this);
+    } catch (err) {
+      console.error('[world] village life failed to start', err);
+      this.villageLife = null;
+    }
     this.camera.follow(this.player);
     this.camera.snap();
   }
@@ -266,6 +274,7 @@ export class Game {
       this.combat.update(dt);
       this.spawner.update(dt);
       this.plugins.update(dt);
+      this.villageLife?.update(dt);
       this.brain.update(dt);
       this.lighting.update(dt);
       this.particles.update(dt);
@@ -312,6 +321,7 @@ export class Game {
       spawner: this.spawner?.serialize(),
       plugins: this.plugins.serialize(),
       brain: this.brain.serialize?.() ?? null,
+      villageLife: this.villageLife?.serialize?.() ?? null,
     };
   }
 
@@ -326,5 +336,10 @@ export class Game {
     this.spawner?.deserialize(d.spawner);
     this.plugins.deserialize(d.plugins);
     this.brain.deserialize?.(d.brain);
+    try {
+      this.villageLife?.deserialize?.(d.villageLife);
+    } catch (err) {
+      console.error('[game] village life could not be restored', err);
+    }
   }
 }

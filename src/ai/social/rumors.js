@@ -35,6 +35,12 @@ export const RUMOR_KINDS = {
   lyra_back: { text: "{lyra}'s back on the road with {stranger}", you: "Lyra's back on the road with you", valence: 0.25, severity: 0.3, about: 'lyra' },
   threat: { text: '{stranger} threatened {v}', you: 'you threatened {v}', valence: -0.55, severity: 0.55 },
   apology: { text: '{stranger} said sorry to {v}, and meant it, by the look of it', you: 'you said sorry to {v}', valence: 0.3, severity: 0.25 },
+  // Errands and the missing (DESIGN §28, village_life): news about villagers, not the player.
+  asking_after: { text: 'people are asking after {v}: nobody can find them', you: 'people are asking after {v}', valence: -0.1, severity: 0.45, about: 'village' },
+  missing: { text: '{v} has gone missing, and nobody knows why', you: '{v} has gone missing', valence: -0.35, severity: 0.8, about: 'village' },
+  found_safe: { text: '{v} has turned up safe', you: '{v} has turned up safe', valence: 0.35, severity: 0.6, about: 'village' },
+  found_dead: { text: '{v} was found dead', you: '{v} was found dead', valence: -1, severity: 1, about: 'village' },
+  lied_about: { text: '{stranger} lied about {v}', you: 'you lied about {v}', valence: -0.5, severity: 0.55 },
 };
 
 // Retellings grow. Each rule: a pattern on the clause and what it may become.
@@ -52,6 +58,7 @@ const GROWTH = [
   [/\bhas been asking after Maren\b/, ['is hunting for Maren', 'knows something about Maren']],
   [/\bisn't travelling with \{stranger\} any more\b/, ['has had it with {stranger}', 'walked out on {stranger}']],
   [/\bhelped \{v\} up when they were down\b/, ['carried {v} home', 'saved {v}']],
+  [/\bhas gone missing, and nobody knows why\b/, ['has vanished clean away', 'has gone missing, and nobody can say where']],
 ];
 
 export function distort(text, rng) {

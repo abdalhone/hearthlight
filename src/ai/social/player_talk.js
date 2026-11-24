@@ -129,6 +129,19 @@ export function localReply(v, npc, text) {
     return { lines: [l], mood: 'sleepy', delta: 0, intent: 'asleep' };
   }
 
+  // Their day (DESIGN §28): "what's wrong?", "have you seen Garrick?", an answer to their
+  // own question — from what they really know.
+  let life = null;
+  try {
+    life = g?.villageLife?.answerPlayer?.(npc, u, text) || null;
+  } catch {
+    life = null;
+  }
+  if (life?.lines?.length && !u.intents.has('threat') && !u.intents.has('insult')) {
+    const said = life.lines.filter((l) => typeof l === 'string' && l.trim() && speakable(l));
+    if (said.length) return { lines: said, mood: life.mood || mood, delta: 0, intent: life.intent || 'life', told: [], mentioned: [] };
+  }
+
   // Raw: they have heard what the player did to someone they love.
   const grave = st.grievance && st.grievance.grave && st.grievance.fresh;
   const toYou = TO_YOU[id] || {};
