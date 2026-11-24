@@ -8,7 +8,6 @@
 import { h, setText, toggleClass } from './dom.js';
 import { portraitUrl } from './art.js';
 import { firstName, moodExpression } from './village_view.js';
-import { voicePitch } from './format.js';
 
 export const LYRA = 'lyra';
 const TILE = 16;
@@ -186,76 +185,6 @@ export function villagerChips(game, id, knows = false) {
   if (!knows && name && !/^travell?er$/i.test(name)) out.splice(1, 0, `I'm ${name}.`);
   out.push('Goodbye!');
   return out;
-}
-
-// ---------------------------------------------------------------------------- the voice
-
-const TTS_VOICES = ['buttery', 'airy', 'glassy', 'rounded'];
-
-// A claude.ai voice for a villager: never Lyra's own, men and women apart.
-export function ttsVoiceFor(id, lyraVoice = 'airy') {
-  const he = HE.has(id);
-  const pool = (he ? ['rounded', 'buttery'] : ['glassy', 'airy', 'buttery']).filter((x) => x !== lyraVoice && TTS_VOICES.includes(x));
-  let hsh = 0;
-  for (const c of String(id)) hsh = (hsh * 31 + c.charCodeAt(0)) >>> 0;
-  return pool[hsh % pool.length] || 'rounded';
-}
-
-// Speak a villager's chat line that has no recorded clip: claude.ai's voice when the
-// player reads replies aloud, else the browser's voice when they turned that on. Resolves
-// { ok, reason }; never rejects.
-export function speakVillagerLine(game, id, text, { kind = 'say', priority = 2 } = {}) {
-  const s = game?.settings || {};
-  const tts = game?.runtime?.tts;
-  const gv = game?.voice;
-  const claim = () => (gv?.claim ? gv.claim({ speaker: id, kind, priority, stop: () => stopOutside(game) }) : { release() {} });
-  if (s.voice && tts && typeof tts.speak === 'function') {
-    const hold = claim();
-    if (!hold) return Promise.resolve({ ok: false, reason: 'busy' });
-    let p;
-    try {
-      p = tts.speak(text, { voice: ttsVoiceFor(id, s.voiceName || 'airy') });
-    } catch (err) {
-      p = Promise.reject(err);
-    }
-    return Promise.resolve(p).then(
-      () => (hold.release?.(), { ok: true, reason: 'tts' }),
-      () => (hold.release?.(), { ok: false, reason: 'tts_failed' }),
-    );
-  }
-  if (s.browserVoice && typeof window !== 'undefined' && window.speechSynthesis && typeof window.SpeechSynthesisUtterance === 'function') {
-    const hold = claim();
-    if (!hold) return Promise.resolve({ ok: false, reason: 'busy' });
-    return new Promise((resolve) => {
-      try {
-        const u = new window.SpeechSynthesisUtterance(text);
-        u.pitch = Math.max(0.5, Math.min(1.8, (voicePitch(id) - 0.8) * 2 + 0.7 + (id === 'pip' || id === 'tansy' ? 0.35 : 0)));
-        u.rate = id === 'hobb' || id === 'corran' || id === 'petra' || id === 'wenna' ? 0.86 : id === 'pip' || id === 'tilly' ? 1.12 : 0.98;
-        u.volume = Math.max(0, Math.min(1, Number(s.voiceVol ?? 0.85)));
-        u.onend = () => (hold.release?.(), resolve({ ok: true, reason: 'browser' }));
-        u.onerror = () => (hold.release?.(), resolve({ ok: false, reason: 'browser_failed' }));
-        window.speechSynthesis.speak(u);
-      } catch {
-        hold.release?.();
-        resolve({ ok: false, reason: 'browser_failed' });
-      }
-    });
-  }
-  return Promise.resolve({ ok: false, reason: 'no_voice' });
-}
-
-function stopOutside(game) {
-  const tts = game?.runtime?.tts;
-  try {
-    if (tts && typeof tts.stop === 'function') Promise.resolve(tts.stop()).catch(() => {});
-  } catch {
-    /* ignore */
-  }
-  try {
-    if (typeof window !== 'undefined' && window.speechSynthesis?.speaking) window.speechSynthesis.cancel();
-  } catch {
-    /* ignore */
-  }
 }
 
 // ---------------------------------------------------------------------------- the "To:" row

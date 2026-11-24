@@ -1,18 +1,23 @@
-// Voices (DESIGN.md §21): key normalization shared by the collector and the runtime,
-// clip lookup and fallback, muting, priority, and the order of Lyra's fallback voices.
+// Voices (DESIGN.md §21): only cutscenes are spoken. Keys shared by the collector and the
+// runtime, the collector gathering only cutscene lines, packs that slice back out with
+// their word times, the player (play, stop, muted, unknown lines, the word clock), and the
+// cutscene captions following the voice word by word.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, mkdtempSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, mkdtempSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { normalizeLine, lineKey, isFixedLine, speakerIdOf, hash53, clipSegments, sentencesOf } from '../src/audio/voice_key.js';
-import { VoicePlayer, readManifest, priorityOf, PRIORITY } from '../src/audio/voice.js';
-import { lyraVoiceChain, groupEnabled, groupOf } from '../src/audio/voice_chain.js';
+import { normalizeLine, lineKey, hash53 } from '../src/audio/voice_key.js';
+import { VoicePlayer, readManifest, voicesOn } from '../src/audio/voice.js';
 import { planPacks, packVoices } from '../scripts/voice/pack.mjs';
 import { EventBus } from '../src/core/events.js';
+import { SCRIPTS, isSpoken } from '../src/story/scripts.js';
+import '../src/story/scripts_missions.js';
+import { BOSS_SCRIPTS } from '../src/story/scripts_bosses.js';
+import { DEFAULT_SETTINGS } from '../src/core/settings.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -23,135 +28,98 @@ test('normalization folds typography, case, spacing and stage directions', () =>
   for (const s of same) assert.equal(normalizeLine(s), 'hmph. you again.');
   assert.equal(normalizeLine('“Well now.” Flame’s lit?'), normalizeLine("Well now. Flame's lit?"));
   assert.equal(normalizeLine('*sighs* Fine — go on…'), 'fine - go on...');
-  assert.equal(normalizeLine('♪ La la ♪ 🐝'), 'la la');
   assert.notEqual(normalizeLine('Hello.'), normalizeLine('Hello?'));
 });
 
 test('keys are stable, short and speaker-specific', () => {
-  const k = lineKey('bram', 'Hmph. You again.');
-  assert.match(k, /^bram-[0-9a-z]{6,12}$/);
-  assert.equal(k, lineKey('BRAM', 'hmph. you  again.'));
-  assert.notEqual(k, lineKey('elda', 'Hmph. You again.'));
+  const k = lineKey('hess', 'Mm. Then we climb.');
+  assert.match(k, /^hess-[0-9a-z]{6,12}$/);
+  assert.equal(k, lineKey('HESS', 'mm.  then we climb.'));
+  assert.notEqual(k, lineKey('lyra', 'Mm. Then we climb.'));
   // pinned: a change here orphans every rendered clip, so it must be deliberate
-  assert.equal(hash53('bram\nhmph. you again.').toString(36), k.slice(5));
-  assert.equal(k, 'bram-2emdk7gxv8j');
+  assert.equal(lineKey('bram', 'Hmph. You again.'), 'bram-2emdk7gxv8j');
+  assert.equal(hash53('bram\nhmph. you again.').toString(36), '2emdk7gxv8j');
   assert.equal(lineKey('', 'x'), null);
   assert.equal(lineKey('lyra', '   '), null);
 });
 
-test('templated lines are not fixed', () => {
-  assert.equal(isFixedLine('Hi, {you}.'), false);
-  assert.equal(isFixedLine('[Stay|Go] close.'), false);
-  assert.equal(isFixedLine('{#oath}! That hurt.'), false);
-  assert.equal(isFixedLine('Mind the sparks.'), true);
-  assert.equal(isFixedLine('...'), false);
-});
-
-test('speaker ids: Lyra by identity, villagers by profile, bandits by kind', () => {
-  const lyra = { name: 'Starling' };
-  const game = { companion: lyra };
-  assert.equal(speakerIdOf(lyra, game), 'lyra');
-  assert.equal(speakerIdOf({ id: 'bram', profile: { id: 'bram' } }, game), 'bram');
-  assert.equal(speakerIdOf({ id: 'e12', species: 'bandit_archer' }, game), 'bandit');
-  assert.equal(speakerIdOf({ id: 'e13', species: 'bandit_chief' }, game), 'varek');
-  assert.equal(speakerIdOf({ id: 'e14', species: 'wolf' }, game), null);
-  assert.equal(speakerIdOf('Narrator', game), 'narrator');
-});
-
-test('collect.mjs and the runtime agree on keys', () => {
-  const out = path.join(mkdtempSync(path.join(tmpdir(), 'hl-voice-')), 'lines.json');
-  execFileSync(process.execPath, [path.join(ROOT, 'scripts/voice/collect.mjs'), '--out', out, '--quiet'], { cwd: ROOT });
-  const doc = JSON.parse(readFileSync(out, 'utf8'));
-  assert.ok(doc.lines.length > 500, `only ${doc.lines.length} lines collected`);
-  const speakers = new Set(doc.lines.map((l) => l.speaker));
-  assert.ok(speakers.has('lyra') && speakers.has('bram'));
-  for (const l of doc.lines) {
-    assert.equal(l.key, lineKey(l.speaker, l.text));
-    assert.ok(isFixedLine(l.text), l.text);
+test('collect.mjs gathers every spoken cutscene line, and only those', () => {
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts/voice/collect.mjs')], { cwd: ROOT, stdio: 'pipe' });
+  const doc = JSON.parse(readFileSync(path.join(ROOT, 'scripts/voice/lines.json'), 'utf8'));
+  const want = new Set();
+  for (const s of Object.values({ ...SCRIPTS, ...BOSS_SCRIPTS })) {
+    if (!s?.steps) continue;
+    for (const st of s.steps) if (isSpoken(st)) want.add(lineKey(st.narrate != null ? 'narrator' : st.say, st.narrate ?? st.text));
   }
-  // A greeting Bram really says, found under the key the game will compute.
-  const bram = doc.lines.find((l) => l.speaker === 'bram' && l.text === 'Mind the sparks.');
-  assert.ok(bram);
-  assert.equal(bram.key, lineKey('bram', 'mind the sparks.'));
+  const got = new Set(doc.lines.map((l) => l.key));
+  assert.deepEqual([...want].filter((k) => !got.has(k)), [], 'every cutscene line is collected');
+  assert.deepEqual([...got].filter((k) => !want.has(k)), [], 'nothing but cutscene lines');
+  for (const l of doc.lines) assert.equal(l.key, lineKey(l.speaker, l.text));
+  // The cast covers every speaker.
+  const cast = JSON.parse(readFileSync(path.join(ROOT, 'scripts/voice/cast.json'), 'utf8'));
+  for (const sp of new Set(doc.lines.map((l) => l.speaker))) assert.ok(cast.voices[sp], `${sp} has a cast voice`);
 });
 
-test('the committed sample manifest points at real clips', () => {
-  const dir = path.join(ROOT, 'assets/voice');
-  if (!existsSync(path.join(dir, 'manifest.json'))) return;
-  const m = readManifest(JSON.parse(readFileSync(path.join(dir, 'manifest.json'), 'utf8')));
+test('the rendered clips cover the cutscenes, with word times for the captions', () => {
+  const file = path.join(ROOT, 'assets/voice/manifest.json');
+  if (!existsSync(file)) return;
+  const doc = JSON.parse(readFileSync(file, 'utf8'));
+  const m = readManifest(doc);
   assert.ok(m.size > 0);
-  for (const [key, v] of m) {
-    assert.ok(existsSync(path.join(dir, v.file)), v.file);
-    assert.ok(v.dur > 0.2 && v.dur < 30, `${key} ${v.dur}`);
-    assert.ok(key.startsWith(`${v.speaker}-`));
+  for (const [key, c] of m) {
+    assert.ok(existsSync(path.join(ROOT, 'assets/voice', c.file)), `${key} has its file`);
+    const raw = doc.clips[key];
+    assert.equal(c.words.length, raw.text.split(/\s+/).filter(Boolean).length, `${key}: one time per word`);
+    for (let i = 1; i < c.words.length; i++) assert.ok(c.words[i][1] >= c.words[i - 1][1], `${key}: words in order`);
+    assert.ok(c.words[c.words.length - 1][1] <= c.dur + 0.05, `${key}: words inside the clip`);
   }
 });
 
-test('a line made of recorded lines is spoken as those clips in a row', async () => {
-  assert.deepEqual(sentencesOf('Fine. Attack mode! Anything... goes?'), ['Fine.', 'Attack mode!', 'Anything...', 'goes?']);
-  const have = new Set([lineKey('lyra', 'Fine. I will stay at range.'), lineKey('lyra', 'Attack mode.'), lineKey('lyra', 'Anything that is not a friend is fair game.')]);
-  const text = 'Fine. I will stay at range. Attack mode. Anything that is not a friend is fair game.';
-  assert.deepEqual(clipSegments('lyra', text, (k) => have.has(k)), [...have]);
-  assert.equal(clipSegments('lyra', `${text} And one more.`, (k) => have.has(k)), null);
-  assert.equal(clipSegments('lyra', 'Attack mode.', (k) => have.has(k)), null); // one clip is a plain hit
-  // the runtime joins them into one voice
-  const { vp, ctx } = makePlayer();
-  vp.manifest = new Map([...have].map((k) => [k, { speaker: 'lyra', dur: 1, file: `${k}.mp3` }]));
-  vp._manifestP = Promise.resolve(vp.manifest);
-  vp._fetch = async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(4) });
-  ctx.decodeAudioData = async () => ({ sampleRate: 24000, length: 10, getChannelData: () => new Float32Array(10) });
-  ctx.createBuffer = (ch, len, rate) => {
-    const data = new Float32Array(len);
-    return { sampleRate: rate, length: len, duration: len / rate, getChannelData: () => data };
-  };
-  const p = vp.say({ speaker: 'lyra', text });
-  await new Promise((r) => setTimeout(r, 20));
-  assert.equal(ctx.started.length, 1);
-  assert.equal(ctx.started[0].buffer.length, 30 + 2 * Math.round(24000 * 0.12));
-  ctx.started[0].onended();
-  assert.equal((await p).ok, true);
+test('voices are only for cutscenes: no villager, Lyra or live-voice settings remain', () => {
+  for (const k of ['voiceLyra', 'voiceVillagers', 'voiceNarrator', 'kokoroLive', 'browserVoice', 'voice', 'voiceName']) assert.equal(k in DEFAULT_SETTINGS, false, k);
+  assert.equal(DEFAULT_SETTINGS.voices, true);
+  assert.ok(voicesOn({}));
+  assert.equal(voicesOn({ voices: false }), false);
+  assert.equal(voicesOn({ voiceVol: 0 }), false);
+  for (const f of ['src/audio/kokoro_live.js', 'src/audio/voice_chain.js', 'src/ai/brain/voice.js']) assert.equal(existsSync(path.join(ROOT, f)), false, f);
 });
 
 // ------------------------------------------------------------------ packs
 
-test('packs keep speakers apart and stay near the target size', () => {
+test('packs keep scenes apart, in story order, near the target size', () => {
   const entries = [];
-  for (let i = 0; i < 30; i++) entries.push({ key: `lyra-${i}`, speaker: 'lyra', size: 20000 });
-  for (let i = 0; i < 5; i++) entries.push({ key: `bram-${i}`, speaker: 'bram', size: 20000 });
+  for (let i = 0; i < 12; i++) entries.push({ key: `p-${i}`, script: 'prologue', size: 30000 });
+  for (let i = 0; i < 3; i++) entries.push({ key: `m-${i}`, script: 'meet', size: 30000 });
   const plan = planPacks(entries, 100000);
-  for (const p of plan) {
-    assert.ok(p.size <= 100000);
-    assert.ok(p.keys.every((k) => k.startsWith(p.speaker)));
-  }
-  assert.equal(plan.reduce((n, p) => n + p.keys.length, 0), 35);
-  assert.deepEqual(plan.filter((p) => p.speaker === 'lyra').map((p) => p.n), [0, 1, 2, 3, 4, 5]);
+  for (const p of plan) assert.ok(p.size <= 100000 && p.keys.every((k) => k[0] === p.script[0]));
+  assert.deepEqual(plan.map((p) => p.keys.length), [3, 3, 3, 3, 3]);
+  assert.deepEqual(plan.filter((p) => p.script === 'prologue').map((p) => p.n), [0, 1, 2, 3]);
 });
 
-test('a packed clip slices back out byte for byte', async () => {
+test('a packed clip slices back out byte for byte, with its words', async () => {
   const src = mkdtempSync(path.join(tmpdir(), 'hl-vsrc-'));
   const out = path.join(src, 'out');
-  const clips = { 'bram-a': Buffer.from('AAAA'), 'bram-b': Buffer.from('BBBBBB'), 'lyra-c': Buffer.from('CC') };
-  const manifest = {};
-  for (const [k, b] of Object.entries(clips)) {
+  const bytes = { 'hess-a': Buffer.from('AAAA'), 'lyra-b': Buffer.from('BBBBBB'), 'narrator-c': Buffer.from('CC') };
+  const clips = {};
+  let order = 0;
+  for (const [k, b] of Object.entries(bytes)) {
     writeFileSync(path.join(src, `${k}.mp3`), b);
-    manifest[k] = { speaker: k.split('-')[0], dur: 1.5 };
+    clips[k] = { file: `${k}.mp3`, dur: 1.5, script: k === 'narrator-c' ? 'other' : 'prologue', order: order++, words: [['Hi.', 0.1, 0.4]] };
   }
-  writeFileSync(path.join(src, 'manifest.json'), JSON.stringify(manifest));
+  writeFileSync(path.join(src, 'manifest.json'), JSON.stringify({ format: 'x', clips }));
   await packVoices({ src, out, log: null });
-  const doc = JSON.parse(readFileSync(path.join(out, 'manifest.json'), 'utf8'));
-  const m = readManifest(doc);
-  for (const [k, b] of Object.entries(clips)) {
+  const m = readManifest(JSON.parse(readFileSync(path.join(out, 'manifest.json'), 'utf8')));
+  for (const [k, b] of Object.entries(bytes)) {
     const e = m.get(k);
-    const pack = readFileSync(path.join(out, e.file));
-    assert.deepEqual(pack.subarray(e.off, e.off + e.len), b);
+    assert.deepEqual(readFileSync(path.join(out, e.file)).subarray(e.off, e.off + e.len), b);
     assert.equal(e.dur, 1.5);
+    assert.deepEqual(e.words, [['Hi.', 0.1, 0.4]]);
   }
-  assert.equal(readdirSync(out).length, 3); // two packs + manifest
+  assert.equal(readdirSync(out).length, 3); // a pack per scene + manifest
 });
 
-// ------------------------------------------------------------------ runtime
+// ------------------------------------------------------------------ the player
 
-// A fake WebAudio context: enough to decode, start, end and count.
 function fakeCtx() {
   const ctx = {
     state: 'running',
@@ -160,9 +128,6 @@ function fakeCtx() {
     started: [],
     createGain() {
       return { context: ctx, gain: { value: 1, setTargetAtTime(v) { this.value = v; } }, connect() {}, disconnect() {} };
-    },
-    createStereoPanner() {
-      return { pan: { value: 0 }, connect() {} };
     },
     createBufferSource() {
       const s = {
@@ -179,270 +144,86 @@ function fakeCtx() {
       return s;
     },
     decodeAudioData(bytes) {
-      return Promise.resolve({ duration: 1, bytes: new Uint8Array(bytes).length });
+      return Promise.resolve({ duration: 1.2, bytes: new Uint8Array(bytes).length });
     },
   };
   return ctx;
 }
 
+const LINE = 'Mm. Then we climb.';
 function makePlayer(settings = {}) {
   const bus = new EventBus();
-  const known = lineKey('bram', 'Mind the sparks.');
-  const lyraKnown = lineKey('lyra', 'Lead on.');
-  const eldaKnown = lineKey('elda', 'Sit, sit.');
-  const manifest = { [known]: { speaker: 'bram', dur: 1.2 }, [lyraKnown]: { speaker: 'lyra', dur: 0.8 }, [eldaKnown]: { speaker: 'elda', dur: 0.7 } };
+  const key = lineKey('hess', LINE);
+  const manifest = { format: 'hearthlight-cutscene-voice/1', clips: { [key]: { file: `${key}.mp3`, dur: 1.2, words: [['Mm.', 0, 0.3], ['Then', 0.5, 0.7], ['we', 0.7, 0.8], ['climb.', 0.8, 1.1]] } } };
   const fetched = [];
   const fetchImpl = async (url) => {
     fetched.push(url);
     if (url.endsWith('manifest.json')) return { ok: true, json: async () => manifest };
-    if (url.endsWith('.mp3') && Object.keys(manifest).some((k) => url.endsWith(`${k}.mp3`))) return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
+    if (url.endsWith(`${key}.mp3`)) return { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
     return { ok: false };
   };
   const ctx = fakeCtx();
   let t = 0;
-  const game = { bus, settings: { ...settings }, state: 'playing', audio: { duck() {} } };
+  let ducked = 0;
+  const game = { bus, settings: { ...settings }, state: 'playing', audio: { duck: (on) => (ducked += on ? 1 : 0) } };
   const vp = new VoicePlayer(game, { fetch: fetchImpl, ctx, now: () => t });
-  return { vp, game, ctx, bus, fetched, known, advance: (s) => (t += s) };
+  return { vp, game, ctx, bus, fetched, key, advance: (s) => (t += s), ducked: () => ducked };
 }
 
-test('the runtime plays the clip of a known line and finishes when it ends', async () => {
-  const { vp, ctx, fetched, known } = makePlayer();
-  const p = vp.say({ speaker: 'bram', text: 'Mind  the sparks.' });
-  await new Promise((r) => setTimeout(r, 10));
+const tick = () => new Promise((r) => setTimeout(r, 10));
+
+test('a cutscene line plays its clip, says when it starts with its word times, and ends', async () => {
+  const { vp, ctx, fetched, key, ducked } = makePlayer();
+  let started = null;
+  const p = vp.play({ speaker: 'hess', text: 'Mm.  Then we climb.', onStart: (s) => (started = s) });
+  await tick();
   assert.equal(ctx.started.length, 1);
-  assert.ok(fetched.some((u) => u === `voice/${known}.mp3`));
-  assert.ok(vp.busy());
+  assert.ok(fetched.includes(`voice/${key}.mp3`));
+  assert.equal(started.duration, 1.2);
+  assert.deepEqual(started.words.map((w) => w[0]), ['Mm.', 'Then', 'we', 'climb.']);
+  assert.ok(vp.speaking() && ducked() === 1, 'the music dips under the voice');
+  ctx.currentTime = 0.6;
+  assert.ok(Math.abs(vp.elapsed() - 0.6) < 1e-9, 'the words follow the audio clock');
+  assert.deepEqual(vp.clip('hess', LINE).words.length, 4);
   ctx.started[0].onended();
   assert.deepEqual(await p, { ok: true, reason: 'done' });
   assert.equal(vp.busy(), false);
-  // a cutscene passes its own id for the line: the clip is still found by speaker and text
-  const q = vp.play({ speaker: 'bram', text: 'Mind the sparks.', key: 'prologue.07' });
-  await new Promise((r) => setTimeout(r, 10));
-  assert.equal(ctx.started.length, 2);
-  ctx.started[1].onended();
-  assert.deepEqual(await q, { ok: true, reason: 'done' });
+  assert.equal(vp.elapsed(), -1);
 });
 
-test('an unknown line falls back cleanly: no clip, no fetch, no error', async () => {
+test('no clip, muted, stopped, or moved on: nothing plays and nothing breaks', async () => {
   const { vp, ctx, fetched } = makePlayer();
-  const r = await vp.say({ speaker: 'bram', text: 'A line nobody recorded.' });
-  assert.deepEqual(r, { ok: false, reason: 'no_clip' });
-  assert.equal(ctx.started.length, 0);
+  assert.deepEqual(await vp.play({ speaker: 'hess', text: 'A line nobody recorded.' }), { ok: false, reason: 'no_clip' });
   assert.ok(fetched.every((u) => !u.endsWith('.mp3')));
-  // Lyra's unrecorded lines go to her fallback (the live voice chain).
-  const heard = [];
-  vp.setFallback('lyra', (text, opts) => {
-    heard.push([text, opts.kind]);
-    return { ok: true, reason: 'tts' };
-  });
-  assert.deepEqual(await vp.say({ speaker: 'lyra', text: 'Something Claude wrote just now.', kind: 'reply' }), { ok: true, reason: 'tts' });
-  assert.deepEqual(heard, [['Something Claude wrote just now.', 'reply']]);
-});
-
-test('no voice plays while muted, per group or altogether', async () => {
-  for (const settings of [{ voices: false }, { voiceVillagers: false }, { voiceVol: 0 }]) {
-    const { vp, ctx } = makePlayer(settings);
-    const r = await vp.say({ speaker: 'bram', text: 'Mind the sparks.' });
-    assert.equal(r.reason, 'muted');
-    assert.equal(ctx.started.length, 0);
-  }
-  const { vp, ctx } = makePlayer({ voiceLyra: false });
-  let fell = false;
-  vp.setFallback('lyra', () => (fell = true));
-  assert.equal((await vp.say({ speaker: 'lyra', text: 'Lead on.' })).reason, 'muted');
-  assert.equal((await vp.say({ speaker: 'lyra', text: 'Unrecorded.' })).reason, 'muted');
-  assert.equal(fell, false);
-  assert.equal(ctx.started.length, 0);
-  // muted mid-line: the voice stops
-  const m = makePlayer();
-  const p = m.vp.say({ speaker: 'bram', text: 'Mind the sparks.' });
-  await new Promise((r) => setTimeout(r, 10));
-  m.game.settings.voices = false;
-  m.bus.emit('settings_changed', { key: 'voices', value: false });
-  assert.equal((await p).reason, 'stopped');
-  assert.ok(m.ctx.started[0].stopped);
-});
-
-test('one voice at a time: Lyra outranks villagers, villagers never overlap, duplicates are said once', async () => {
-  const { vp, ctx, advance } = makePlayer();
-  const bram = vp.say({ speaker: 'bram', text: 'Mind the sparks.' });
-  await new Promise((r) => setTimeout(r, 10));
-  assert.equal(ctx.started.length, 1);
-  advance(3);
-  // another villager's bubble while Bram talks is dropped
-  assert.equal((await vp.say({ speaker: 'elda', text: 'Sit, sit.' })).reason, 'busy');
-  // Lyra cuts in
-  const lyra = vp.say({ speaker: 'lyra', text: 'Lead on.' });
-  assert.equal((await bram).reason, 'interrupted');
-  await new Promise((r) => setTimeout(r, 10));
-  assert.equal(ctx.started.length, 2);
+  assert.deepEqual(await vp.play({ speaker: 'hess', text: LINE, wanted: () => false }), { ok: false, reason: 'unwanted' });
+  const p = vp.play({ speaker: 'hess', text: LINE });
+  await tick();
+  vp.stop();
+  assert.deepEqual(await p, { ok: false, reason: 'stopped' });
   assert.ok(ctx.started[0].stopped);
-  // the same line again at once is a duplicate (the bubble and the chat both asked)
-  assert.equal((await vp.say({ speaker: 'lyra', text: 'Lead on.' })).reason, 'duplicate');
-  // a cutscene outranks her; an outside voice cannot take the floor from a cutscene
-  const scene = vp.claim({ speaker: 'narrator', kind: 'cutscene' });
-  assert.ok(scene);
-  assert.equal((await lyra).reason, 'interrupted');
-  assert.equal(vp.claim({ speaker: 'lyra' }), null);
-  scene.release();
-  assert.equal(vp.busy(), false);
-  // a line played directly (a cutscene, an open dialogue) is in the foreground: it cuts
-  // in over Lyra and waits for its clip
-  advance(5);
-  const l2 = vp.say({ speaker: 'lyra', text: 'Lead on.' });
-  await new Promise((r) => setTimeout(r, 10));
-  assert.ok(vp.speaking('lyra'));
-  const dlg = vp.play({ speaker: 'elda', text: 'Sit, sit.' });
-  assert.equal((await l2).reason, 'interrupted');
-  await new Promise((r) => setTimeout(r, 10));
-  ctx.started[ctx.started.length - 1].onended();
-  assert.equal((await dlg).reason, 'done');
-  assert.equal(priorityOf('narrator'), PRIORITY.cutscene);
-  assert.equal(priorityOf('lyra_young'), PRIORITY.lyra);
-  assert.equal(priorityOf('hobb'), PRIORITY.villager);
+  for (const settings of [{ voices: false }, { voiceVol: 0 }]) {
+    const m = makePlayer(settings);
+    assert.deepEqual(await m.vp.play({ speaker: 'hess', text: LINE }), { ok: false, reason: 'muted' });
+    assert.equal(m.ctx.started.length, 0);
+  }
+  // Lyra under another name says other words: no clip, the caption types itself.
+  assert.equal(vp.clip('lyra', 'Starling. It isn’t her.'), null);
 });
 
-test('a foreground line says when its clip really starts, and a caller that moved on gets nothing', async () => {
-  // onStart reports the clip's length the moment it plays
-  const a = makePlayer();
-  let startedWith = null;
-  const p = a.vp.play({ speaker: 'bram', text: 'Mind the sparks.', onStart: (info) => (startedWith = info) });
-  await new Promise((r) => setTimeout(r, 10));
-  assert.deepEqual(startedWith, { duration: 1 });
-  a.ctx.started[0].onended();
-  assert.equal((await p).reason, 'done');
-  // a caller that no longer wants it (a cutscene tapped past the line) gets it dropped unplayed
-  const b = makePlayer();
-  let want = true;
-  let began = false;
-  const q = b.vp.play({ speaker: 'bram', text: 'Mind the sparks.', wanted: () => want, onStart: () => (began = true) });
-  want = false;
-  assert.equal((await q).reason, 'unwanted');
-  assert.equal(b.ctx.started.length, 0);
-  assert.equal(began, false);
-  // a suspended context (an iPhone before any tap) never holds a clip silent: it is skipped
-  const c = makePlayer();
-  let resumed = 0;
-  c.ctx.state = 'suspended';
-  c.ctx.resume = () => (resumed++, Promise.resolve());
-  const r = await c.vp.play({ speaker: 'bram', text: 'Mind the sparks.' });
-  assert.equal(r.reason, 'suspended');
-  assert.equal(c.ctx.started.length, 0);
-  assert.equal(resumed, 1);
-  assert.equal(c.vp.busy(), false);
-  // a clip slower than the caller's latency is dropped as late
-  const d = makePlayer();
-  const late = d.vp.play({ speaker: 'bram', text: 'Mind the sparks.', maxLatency: 0.5 });
-  d.advance(1);
-  assert.equal((await late).reason, 'late');
-  assert.equal(d.ctx.started.length, 0);
-});
-
-test('bubbles are voiced only near the player and on screen', async () => {
+test('turning voices off stops the line that is playing', async () => {
   const { vp, game, bus, ctx } = makePlayer();
-  game.player = { x: 0, y: 0 };
-  game.camera = { x: -200, y: -120, vw: 400, vh: 240, inView(x, y, m = 0) { return x >= this.x - m && x <= this.x + this.vw + m && y >= this.y - m && y <= this.y + this.vh + m; } };
-  const far = { x: 900, y: 0, profile: { id: 'bram' } };
-  bus.emit('speech', { speaker: far, text: 'Mind the sparks.', kind: 'say' });
-  await new Promise((r) => setTimeout(r, 10));
+  const p = vp.play({ speaker: 'hess', text: LINE });
+  await tick();
+  game.settings.voices = false;
+  bus.emit('settings_changed', { key: 'voices', value: false });
+  assert.deepEqual(await p, { ok: false, reason: 'stopped' });
+  assert.ok(ctx.started[0].stopped);
+});
+
+test('a clip the browser may not play yet (an iPhone before a tap) is skipped, not held', async () => {
+  const { vp, ctx } = makePlayer();
+  ctx.state = 'suspended';
+  ctx.resume = () => Promise.resolve();
+  assert.deepEqual(await vp.play({ speaker: 'hess', text: LINE }), { ok: false, reason: 'suspended' });
   assert.equal(ctx.started.length, 0);
-  const near = { x: 40, y: 10, profile: { id: 'bram' } };
-  bus.emit('speech', { speaker: near, text: 'Mind the sparks.', kind: 'thought' });
-  await new Promise((r) => setTimeout(r, 10));
-  assert.equal(ctx.started.length, 0);
-  bus.emit('speech', { speaker: near, text: 'Mind the sparks.', kind: 'say' });
-  await new Promise((r) => setTimeout(r, 10));
-  assert.equal(ctx.started.length, 1);
-  assert.equal(vp.stats.played, 1);
-});
-
-test('a clip that arrives too late for its bubble is dropped', async () => {
-  const { vp, ctx, advance } = makePlayer();
-  const orig = vp._buffer.bind(vp);
-  vp._buffer = (k) => orig(k).then((b) => (advance(5), b));
-  const r = await vp.say({ speaker: 'bram', text: 'Mind the sparks.' });
-  assert.equal(r.reason, 'late');
-  assert.equal(ctx.started.length, 0);
-});
-
-// ------------------------------------------------------------------ fallback chain
-
-test("Lyra's fallback chain: clip, then live Kokoro, then claude.ai, then the browser, then silence", () => {
-  const all = { voice: true, kokoroLive: true, browserVoice: true };
-  assert.deepEqual(lyraVoiceChain({ settings: all, hasClip: true, tts: true, synth: true }), ['clip']);
-  assert.deepEqual(lyraVoiceChain({ settings: all, tts: true, synth: true }), ['kokoro', 'tts', 'browser']);
-  assert.deepEqual(lyraVoiceChain({ settings: all, kokoro: { failed: true }, tts: true, synth: true }), ['tts', 'browser']);
-  assert.deepEqual(lyraVoiceChain({ settings: all, kokoro: { supported: false }, tts: false, synth: true }), ['browser']);
-  // the browser's voice only when the player asked for it
-  assert.deepEqual(lyraVoiceChain({ settings: { voice: true }, tts: false, synth: true }), []);
-  // claude.ai's voice only with the old "read her replies aloud" switch
-  assert.deepEqual(lyraVoiceChain({ settings: { voice: false, browserVoice: true }, tts: true, synth: true }), ['browser']);
-  // a passing bark never takes a voice that is not hers
-  assert.deepEqual(lyraVoiceChain({ settings: all, kind: 'bark', tts: true, synth: true }), ['kokoro']);
-  // muted: nothing at all
-  assert.deepEqual(lyraVoiceChain({ settings: { ...all, voices: false }, hasClip: true, tts: true }), []);
-  assert.deepEqual(lyraVoiceChain({ settings: { ...all, voiceLyra: false }, tts: true }), []);
-});
-
-test('the brain voice tries each voice in order and never blocks', async () => {
-  const { Voice } = await import('../src/ai/brain/voice.js');
-  const bus = new EventBus();
-  const calls = [];
-  const game = {
-    bus,
-    settings: { voice: true, kokoroLive: true, browserVoice: true, voices: true },
-    runtime: { tts: { speak: async (t) => calls.push(['tts', t]) } },
-  };
-  const v = new Voice(game);
-  // Kokoro cannot run under node: it is skipped as unavailable, claude.ai's voice speaks.
-  const r = await v.speakLive('A reply from Claude.', { kind: 'reply' });
-  assert.deepEqual(r, { ok: true, reason: 'tts' });
-  assert.deepEqual(calls, [['tts', 'A reply from Claude.']]);
-  // claude.ai refuses: the switch turns off and nothing else speaks that line
-  game.setSetting = (k, val) => (game.settings[k] = val);
-  game.runtime.tts.speak = async () => {
-    throw Object.assign(new Error('no'), { code: 'not_granted' });
-  };
-  const r2 = await v.speakLive('Another.', { kind: 'reply' });
-  assert.equal(r2.reason, 'not_granted');
-  assert.equal(game.settings.voice, false);
-  assert.equal(groupOf('lyra_young'), 'lyra');
-  assert.equal(groupEnabled({}, 'narrator'), true);
-});
-
-// ------------------------------------------------------------------ live Kokoro text pipeline
-
-test("the live voice's phonemes match kokoro-onnx's for her lines", async () => {
-  const { phonemize, tokenize, splitSentences, styleFor, VOCAB } = await import('../src/audio/kokoro_text.js');
-  const { phonemize: espeak } = await import('phonemizer');
-  // Reference phonemes from kokoro-onnx 0.6.1 (scripts/voice/voicelib.py Synth.phonemes).
-  const ref = {
-    "Wicks and ashes! You walked straight past the lamp again, didn't you?": 'wˈɪks ænd ˈæʃᵻz! juː wˈɔːkt stɹˈeɪt pˈæst ðə lˈæmp ɐɡˈɛn, dˈɪdnt juː?',
-    'Hmph. You again.': 'hˈʌmf. juː ɐɡˈɛn.',
-    "Mm. Wind's wrong.": 'ˈmmm. wˈɪndz ɹˈɔŋ.',
-    'Bandits. Of course it\'s bandits.': 'bˈændɪts. ʌv kˈɔːɹs ɪts bˈændɪts.',
-  };
-  for (const [text, want] of Object.entries(ref)) assert.equal(await phonemize(text, espeak), want, text);
-  const ids = tokenize('hˈʌmf.');
-  assert.deepEqual(ids, [...'hˈʌmf.'].map((c) => VOCAB[c]));
-  assert.deepEqual(splitSentences("Hi. Wicks and ashes! You walked past the lamp, didn't you?"), ['Hi. Wicks and ashes!', "You walked past the lamp, didn't you?"]);
-  assert.deepEqual(splitSentences("Wicks and ashes, you walked right past the lamp again, didn't you?", { firstClause: true }), [
-    'Wicks and ashes,',
-    "you walked right past the lamp again, didn't you?",
-  ]);
-  const long = `${'word '.repeat(80)}end.`;
-  assert.ok(splitSentences(long).every((s) => s.length <= 220));
-  const styles = new Float32Array(510 * 256).map((_, i) => Math.floor(i / 256));
-  assert.equal(styleFor(styles, 5)[0], 4);
-  assert.equal(styleFor(styles, 9999)[0], 509);
-});
-
-test('the live voice is offered only where the build published it', async () => {
-  const { LiveKokoro } = await import('../src/audio/kokoro_live.js');
-  const lk = new LiveKokoro({ settings: { kokoroLive: true } });
-  assert.equal(lk.available(), false);
-  assert.equal(lk.supported(), false);
-  assert.equal((await lk.speak('Hello there, love.')).reason, 'unavailable');
-  const lk2 = new LiveKokoro({ settings: {} }, { base: 'kokoro/' });
-  assert.equal(lk2.available(), true);
 });

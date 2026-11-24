@@ -5578,6 +5578,50 @@ input[type='range']::-moz-range-thumb {
   min-height: 2.84em;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
 }
+/* Words that follow the voice: each pops in the moment it is spoken (src/story/cutscene.js).
+   Hidden words keep their place, so the line never re-wraps as it fills. */
+.cs-text .cw {
+  visibility: hidden;
+}
+.cs-text .cw.on {
+  visibility: visible;
+  animation: cs-word 170ms ease-out;
+}
+@keyframes cs-word {
+  from {
+    opacity: 0;
+    filter: blur(1.5px);
+  }
+}
+.cs-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  animation: cs-flash 620ms ease-out forwards;
+}
+@keyframes cs-flash {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.cs-root.cs-shaking .cs-canvas {
+  animation: cs-shake 420ms ease-out;
+}
+@keyframes cs-shake {
+  20% {
+    transform: translate(var(--cs-shake, 4px), calc(var(--cs-shake, 4px) * -0.5));
+  }
+  45% {
+    transform: translate(calc(var(--cs-shake, 4px) * -0.8), calc(var(--cs-shake, 4px) * 0.4));
+  }
+  70% {
+    transform: translate(calc(var(--cs-shake, 4px) * 0.4), 0);
+  }
+}
 .cs-narration {
   background: linear-gradient(180deg, rgba(5, 4, 14, 0.55), rgba(5, 4, 14, 0.78));
   box-shadow: none;
@@ -7504,9 +7548,6 @@ input[type='range']::-moz-range-thumb {
 .key-status {
   display: block;
   margin-bottom: 2px;
-}
-.voice-live-status {
-  margin: 4px 0 0;
 }
 .set-link {
   margin-top: 4px;

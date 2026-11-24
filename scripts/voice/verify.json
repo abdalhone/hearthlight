@@ -1,0 +1,745 @@
+{
+ "problems": [
+  "prologue.06: no clip",
+  "prologue.07: no clip",
+  "prologue.08: no clip",
+  "prologue.09: no clip",
+  "prologue.10: no clip",
+  "prologue.11: no clip",
+  "prologue.12: no clip",
+  "prologue.13: no clip",
+  "prologue.14: no clip",
+  "prologue.16: no clip",
+  "prologue.17: no clip",
+  "prologue.18: no clip",
+  "prologue.20: -17.2 LUFS",
+  "prologue.21: no clip",
+  "prologue.23: no clip",
+  "prologue.24: no clip",
+  "prologue.25: no clip",
+  "prologue.26: no clip",
+  "prologue.27: no clip",
+  "prologue.28: no clip",
+  "prologue.29: no clip",
+  "prologue.30: no clip",
+  "prologue.31: no clip",
+  "prologue.32: no clip",
+  "meet_ambrels.00: -17.1 LUFS",
+  "meet_ambrels.01: no clip",
+  "meet_ambrels.02: no clip",
+  "meet_ambrels.03: no clip",
+  "meet_ambrels.04: no clip",
+  "meet_ambrels.05: no clip",
+  "meet_ambrels.06: no clip",
+  "meet_ambrels.07: no clip",
+  "meet_ambrels.08: no clip",
+  "meet_ambrels.09: no clip",
+  "meet_ambrels.10: no clip",
+  "chapel_candles.00: no clip",
+  "chapel_candles.01: no clip",
+  "chapel_candles.02: no clip",
+  "chapel_candles.03: no clip",
+  "chapel_candles.04: no clip",
+  "night_of_lamps.00: no clip",
+  "night_of_lamps.01: no clip",
+  "night_of_lamps.02: no clip",
+  "night_of_lamps.03: no clip",
+  "night_of_lamps.04: no clip",
+  "night_of_lamps.05: no clip",
+  "night_of_lamps.06: no clip",
+  "night_of_lamps.07: no clip",
+  "weeping_cut.00: no clip",
+  "weeping_cut.01: no clip",
+  "weeping_cut.02: no clip",
+  "weeping_cut.03: no clip",
+  "weeping_cut.04: no clip",
+  "weeping_cut.05: no clip",
+  "weeping_cut.06: no clip",
+  "weeping_cut.07: no clip",
+  "weeping_cut.08: no clip",
+  "weeping_cut.09: no clip",
+  "maren_aveline.00: no clip",
+  "maren_aveline.01: no clip",
+  "maren_aveline.02: no clip",
+  "maren_aveline.03: no clip",
+  "maren_aveline.04: no clip",
+  "maren_aveline.05: no clip",
+  "maren_gate.00: no clip",
+  "maren_gate.01: no clip",
+  "maren_gate.02: no clip",
+  "maren_gate.03: no clip",
+  "maren_gate.04: no clip",
+  "maren_journal.00: no clip",
+  "maren_journal.01: no clip",
+  "maren_journal.02: no clip",
+  "maren_journal.03: no clip",
+  "first_weave.00: no clip",
+  "first_weave.01: no clip",
+  "first_weave.02: no clip",
+  "first_weave.03: no clip",
+  "first_weave.04: no clip",
+  "first_weave.05: no clip",
+  "flames_rise.00: no clip",
+  "flames_rise.01: no clip",
+  "flames_rise.02: no clip",
+  "flames_rise.03: no clip",
+  "boss_varek.00: no clip",
+  "boss_varek.01: no clip",
+  "boss_varek.02: no clip",
+  "boss_varek.03: no clip",
+  "boss_greyjaw.00: no clip",
+  "boss_greyjaw.01: no clip",
+  "boss_greyjaw.02: no clip",
+  "boss_mother.00: no clip",
+  "boss_mother.01: no clip",
+  "boss_mother.02: no clip",
+  "boss_lake.00: no clip",
+  "boss_lake.01: no clip",
+  "boss_lake.02: no clip",
+  "boss_lake.03: no clip",
+  "boss_warden.00: no clip",
+  "boss_warden.01: no clip",
+  "boss_warden.02: no clip",
+  "boss_warden.03: no clip"
+ ],
+ "rows": [
+  {
+   "dur": 7.73,
+   "kb": 60.4,
+   "line": "prologue.00",
+   "lufs": -16.5,
+   "seed": 37,
+   "speaker": "narrator",
+   "strength": 1.0,
+   "take_errors": 0,
+   "tp": -2.06,
+   "voiced": 0.81
+  },
+  {
+   "dur": 5.02,
+   "kb": 39.2,
+   "line": "prologue.01",
+   "lufs": -16.4,
+   "seed": 11,
+   "speaker": "narrator",
+   "strength": 0.6,
+   "take_errors": 0,
+   "tp": -2.28,
+   "voiced": 0.89
+  },
+  {
+   "dur": 6.36,
+   "kb": 49.7,
+   "line": "prologue.02",
+   "lufs": -16.7,
+   "seed": 23,
+   "speaker": "narrator",
+   "strength": 0.15,
+   "take_errors": 0,
+   "tp": -2.36,
+   "voiced": 0.75
+  },
+  {
+   "dur": 6.55,
+   "kb": 51.2,
+   "line": "prologue.03",
+   "lufs": -16.7,
+   "seed": 11,
+   "speaker": "narrator",
+   "strength": 1.0,
+   "take_errors": 0,
+   "tp": -1.94,
+   "voiced": 0.93
+  },
+  {
+   "dur": 9.77,
+   "kb": 76.3,
+   "line": "prologue.04",
+   "lufs": -16.6,
+   "seed": 23,
+   "speaker": "narrator",
+   "strength": 0.6,
+   "take_errors": 1,
+   "tp": -1.72,
+   "voiced": 0.74
+  },
+  {
+   "dur": 9.43,
+   "kb": 73.7,
+   "line": "prologue.05",
+   "lufs": -16.5,
+   "seed": 37,
+   "speaker": "narrator",
+   "strength": 1.0,
+   "take_errors": 0,
+   "tp": -2.18,
+   "voiced": 0.9
+  },
+  {
+   "line": "prologue.06",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "prologue.07",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "prologue.08",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "prologue.09",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "prologue.10",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "prologue.11",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "prologue.12",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "prologue.13",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "prologue.14",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "dur": 1.51,
+   "kb": 11.8,
+   "line": "prologue.15",
+   "lufs": -16.7,
+   "seed": 11,
+   "speaker": "hess",
+   "strength": 1.0,
+   "take_errors": 0,
+   "tp": -3.21,
+   "voiced": 0.75
+  },
+  {
+   "line": "prologue.16",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "prologue.17",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "prologue.18",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "dur": 0.53,
+   "kb": 4.1,
+   "line": "prologue.19",
+   "lufs": -15.9,
+   "seed": 23,
+   "speaker": "hess",
+   "strength": 1.0,
+   "take_errors": 0,
+   "tp": -2.31,
+   "voiced": 0.88
+  },
+  {
+   "dur": 1.7,
+   "kb": 13.3,
+   "line": "prologue.20",
+   "lufs": -17.2,
+   "seed": 37,
+   "speaker": "hess",
+   "strength": 1.0,
+   "take_errors": 0,
+   "tp": -2.36,
+   "voiced": 0.68
+  },
+  {
+   "line": "prologue.21",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "dur": 2.11,
+   "kb": 16.5,
+   "line": "prologue.22",
+   "lufs": -16.8,
+   "seed": 11,
+   "speaker": "hess",
+   "strength": 1.0,
+   "take_errors": 0,
+   "tp": -1.74,
+   "voiced": 0.8
+  },
+  {
+   "line": "prologue.23",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "prologue.24",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "prologue.25",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "prologue.26",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "prologue.27",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "prologue.28",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "prologue.29",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "prologue.30",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "prologue.31",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "prologue.32",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "dur": 2.78,
+   "kb": 21.8,
+   "line": "meet_ambrels.00",
+   "lufs": -17.1,
+   "seed": 11,
+   "speaker": "wenna",
+   "strength": 1.0,
+   "take_errors": 0,
+   "tp": -2.13,
+   "voiced": 0.73
+  },
+  {
+   "line": "meet_ambrels.01",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "meet_ambrels.02",
+   "missing": true,
+   "speaker": "wenna"
+  },
+  {
+   "line": "meet_ambrels.03",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "meet_ambrels.04",
+   "missing": true,
+   "speaker": "wenna"
+  },
+  {
+   "line": "meet_ambrels.05",
+   "missing": true,
+   "speaker": "wenna"
+  },
+  {
+   "line": "meet_ambrels.06",
+   "missing": true,
+   "speaker": "hobb"
+  },
+  {
+   "line": "meet_ambrels.07",
+   "missing": true,
+   "speaker": "hobb"
+  },
+  {
+   "line": "meet_ambrels.08",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "meet_ambrels.09",
+   "missing": true,
+   "speaker": "hobb"
+  },
+  {
+   "line": "meet_ambrels.10",
+   "missing": true,
+   "speaker": "wenna"
+  },
+  {
+   "line": "chapel_candles.00",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "chapel_candles.01",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "chapel_candles.02",
+   "missing": true,
+   "speaker": "aveline"
+  },
+  {
+   "line": "chapel_candles.03",
+   "missing": true,
+   "speaker": "aveline"
+  },
+  {
+   "line": "chapel_candles.04",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "night_of_lamps.00",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "night_of_lamps.01",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "night_of_lamps.02",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "night_of_lamps.03",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "night_of_lamps.04",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "night_of_lamps.05",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "night_of_lamps.06",
+   "missing": true,
+   "speaker": "maren"
+  },
+  {
+   "line": "night_of_lamps.07",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "weeping_cut.00",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "weeping_cut.01",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "weeping_cut.02",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "weeping_cut.03",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "weeping_cut.04",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "weeping_cut.05",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "weeping_cut.06",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "weeping_cut.07",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "weeping_cut.08",
+   "missing": true,
+   "speaker": "maren"
+  },
+  {
+   "line": "weeping_cut.09",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "maren_aveline.00",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "maren_aveline.01",
+   "missing": true,
+   "speaker": "aveline"
+  },
+  {
+   "line": "maren_aveline.02",
+   "missing": true,
+   "speaker": "aveline"
+  },
+  {
+   "line": "maren_aveline.03",
+   "missing": true,
+   "speaker": "aveline"
+  },
+  {
+   "line": "maren_aveline.04",
+   "missing": true,
+   "speaker": "aveline"
+  },
+  {
+   "line": "maren_aveline.05",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "maren_gate.00",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "maren_gate.01",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "maren_gate.02",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "maren_gate.03",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "maren_gate.04",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "maren_journal.00",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "maren_journal.01",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "maren_journal.02",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "maren_journal.03",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "first_weave.00",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "first_weave.01",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "first_weave.02",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "first_weave.03",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "first_weave.04",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "first_weave.05",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "flames_rise.00",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "flames_rise.01",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "flames_rise.02",
+   "missing": true,
+   "speaker": "aveline"
+  },
+  {
+   "line": "flames_rise.03",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "boss_varek.00",
+   "missing": true,
+   "speaker": "varek"
+  },
+  {
+   "line": "boss_varek.01",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "boss_varek.02",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "boss_varek.03",
+   "missing": true,
+   "speaker": "varek"
+  },
+  {
+   "line": "boss_greyjaw.00",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "boss_greyjaw.01",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "boss_greyjaw.02",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "boss_mother.00",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "boss_mother.01",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "boss_mother.02",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "boss_lake.00",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "boss_lake.01",
+   "missing": true,
+   "speaker": "corran"
+  },
+  {
+   "line": "boss_lake.02",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "boss_lake.03",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "boss_warden.00",
+   "missing": true,
+   "speaker": "narrator"
+  },
+  {
+   "line": "boss_warden.01",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "boss_warden.02",
+   "missing": true,
+   "speaker": "lyra"
+  },
+  {
+   "line": "boss_warden.03",
+   "missing": true,
+   "speaker": "lyra"
+  }
+ ],
+ "summary": {
+  "lines": 110,
+  "lufs": [
+   -17.2,
+   -15.9
+  ],
+  "max_tp": -1.72,
+  "mb": 0.43,
+  "minutes": 0.89,
+  "voiced": 11
+ }
+}

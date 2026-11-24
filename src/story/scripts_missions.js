@@ -10,11 +10,12 @@ export const MISSION_SCRIPTS = {
   first_weave: {
     title: 'Raw light',
     steps: [
+      { bed: 'drone', level: 0.6 },
       { camera: { to: 'lyra', ms: 700 } },
       { actor: 'lyra', face: 'player' },
       { actor: 'lyra', emote: '!' },
       { say: 'lyra', text: 'Wait. Wait. What was that?', mood: 'surprised' },
-      { narrate: 'Light gathers between your hands out of nothing: no flame, no breath spent. For a heartbeat there are marks in it, sharp little shapes, there and gone.' },
+      { narrate: 'Light gathers between your hands out of nothing: no flame, no breath spent. For a heartbeat there are marks in it, sharp little shapes, there and gone.', cues: [{ word: 'Light', sfx: 'weave' }, { word: 'marks', sfx: 'shimmer', volume: 0.6 }] },
       { say: 'lyra', text: "That isn't a spark. I make sparks. I know what they cost me, every one.", mood: 'surprised' },
       { say: 'lyra', text: 'Those marks. Maren used to copy marks like that off the ruins wall by candlelight. Lanternwright letters.', mood: 'worried' },
       { say: 'lyra', text: 'Wicks and ashes. Right. Breathe, Lyra.' },
@@ -26,9 +27,10 @@ export const MISSION_SCRIPTS = {
   flames_rise: {
     title: 'The flames stand up',
     steps: [
+      { bed: 'chapel' },
       { panel: 'chapel_candles', pan: 'none' },
-      { narrate: 'You open your hand before the altar, and the light comes.' },
-      { narrate: 'Thirty-eight flames stand up tall, every one, and bend toward you like flowers to a window.' },
+      { narrate: 'You open your hand before the altar, and the light comes.', cues: [{ word: 'light', sfx: 'flash', volume: 0.5, flash: '#ffe9b8' }] },
+      { narrate: 'Thirty-eight flames stand up tall, every one, and bend toward you like flowers to a window.', cues: [{ word: 'stand', sfx: ['candle_lean', 'ignite'], volume: 0.8 }] },
       { say: 'aveline', text: 'There. I sat eighty-one nights wondering what they would do. Now I know, and I understand it less.', when: 'npc_near:aveline' },
       { say: 'lyra', text: "They've never done that for me. Not once. I'm not jealous. I'm a little jealous.", mood: 'surprised', when: 'lyra_near' },
     ],

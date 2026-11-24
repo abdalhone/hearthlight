@@ -19,6 +19,8 @@ export class Score {
     this.cueName = null;
     this.timer = null;
     this.step = 0;
+    this.bus = null;
+    this.hushed = false;
   }
 
   ready() {
@@ -49,13 +51,7 @@ export class Score {
     const out = ctx.createGain();
     out.gain.setValueAtTime(0.0001, ctx.currentTime);
     out.gain.linearRampToValueAtTime(0.9 * spec.gain, ctx.currentTime + 2.5);
-    out.connect(a.musicBus);
-    if (a.reverbIn) {
-      const wet = ctx.createGain();
-      wet.gain.value = 0.7;
-      out.connect(wet);
-      wet.connect(a.reverbIn);
-    }
+    out.connect(this._bus());
     this.out = out;
     this.spec = spec;
     this.cueName = name;
@@ -64,6 +60,33 @@ export class Score {
     this.next = ctx.currentTime + 0.1;
     this.schedule();
     this.timer = setInterval(() => this.schedule(), 400);
+  }
+
+  // Every cue plays through one gain, so the silence before a big moment can take the
+  // whole score down and the slam bring it back (src/story/sfx.js).
+  _bus() {
+    const a = this.audio;
+    if (this.bus && this.bus.context === a.ctx) return this.bus;
+    const ctx = a.ctx;
+    this.bus = ctx.createGain();
+    this.bus.gain.value = this.hushed ? 0.03 : 1;
+    this.bus.connect(a.musicBus);
+    if (a.reverbIn) {
+      const wet = ctx.createGain();
+      wet.gain.value = 0.7;
+      this.bus.connect(wet);
+      wet.connect(a.reverbIn);
+    }
+    return this.bus;
+  }
+
+  hush(on, tc = 0.12) {
+    this.hushed = !!on;
+    if (!this.ready()) return;
+    const ctx = this.audio.ctx;
+    const g = this._bus().gain;
+    g.cancelScheduledValues(ctx.currentTime);
+    g.setTargetAtTime(on ? 0.03 : 1, ctx.currentTime, tc);
   }
 
   schedule() {
@@ -108,6 +131,18 @@ export class Score {
       }, 3500);
     }
     this.out = null;
+    const bus = this.bus;
+    this.bus = null;
+    this.hushed = false;
+    if (bus) {
+      setTimeout(() => {
+        try {
+          bus.disconnect();
+        } catch {
+          /* gone */
+        }
+      }, 3600);
+    }
     if (this.cueName) {
       try {
         a?.setMusic?.(null);

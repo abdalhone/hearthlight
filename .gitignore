@@ -12,3 +12,4 @@ scripts/voice/__pycache__/
 scripts/voice/lines.json
 assets/voice/*.tmp
 assets/voice/*.tmp.mp3
+assets/voice/manifest.lock

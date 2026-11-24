@@ -12,7 +12,7 @@ import { portraitUrl } from './art.js';
 import { cleanLine, capitalize } from './format.js';
 import { memoryRefs, findMemory, memoryChipLabel, STORE_LABELS, companionshipOf, companionshipLabel } from './lyra_view.js';
 import { TalkSession, villageOf, firstName, lineBeat } from './village_view.js';
-import { LYRA, ChatTargetBar, moodWord, earshotPeople, whyNotHeard, canHear, chipFor, standingOf, faceOf, partingLine, villagerChips, pickActorAt, inFight, isVillager, speakVillagerLine, EARSHOT_LOSE } from './chat_target.js';
+import { LYRA, ChatTargetBar, moodWord, earshotPeople, whyNotHeard, canHear, chipFor, standingOf, faceOf, partingLine, villagerChips, pickActorAt, inFight, isVillager, EARSHOT_LOSE } from './chat_target.js';
 import { chatOf, recordChat, knownName } from '../ai/social/player_talk.js';
 import { STORY } from '../lore/story.js';
 
@@ -49,7 +49,6 @@ export class Chat {
     this.unreadBy = new Map(); // id -> unread lines from someone not selected
     this.moods = new Map(); // villager id -> their mood word from the last answer
     this.seenAt = new Map(); // villager id -> {nx, ny, px, py} when last in earshot
-    this.voiced = new Map(); // text -> villager id: chat lines that may use a live voice
     this.local = {}; // villager threads when the village is not in this build
     this.unsaid = new Map(); // villager id -> [{ show, timer }]: lines of an answer still to come
     this._scanT = 0;
@@ -117,7 +116,6 @@ export class Chat {
     this.game.bus?.on?.('interact', (p) => {
       if (p?.target && p.target === this.game.companion) this.selectTarget(LYRA);
     });
-    this.installVoice();
     return this.el;
   }
 
@@ -1056,13 +1054,11 @@ export class Chat {
     }
   }
 
-  // Their answer: in the log, as bubbles over their head one line at a time, and in
-  // their voice (a recorded clip when the line has one).
+  // Their answer: in the log and as bubbles over their head, one line at a time.
   villagerReplied(e, reply, late = false) {
     if (!e || !reply?.lines?.length) return;
     const g = this.game;
     const id = e.id;
-    this.installVoice();
     if (reply.mood) this.moods.set(id, String(reply.mood).toLowerCase());
     if (!reply.ok) {
       // No words came: what the player sees them do instead.
@@ -1083,8 +1079,6 @@ export class Chat {
         queue.splice(k, 1);
         clearTimeout(item.timer);
         this.pushVillager(id, { from: 'npc', text: line });
-        this.voiced.set(line, id);
-        if (this.voiced.size > 24) this.voiced.delete(this.voiced.keys().next().value);
         try {
           g.bubbles?.clear?.(e);
           if (typeof e.say === 'function') e.say(line, { target: g.player || null, kind: 'say' });
@@ -1109,24 +1103,6 @@ export class Chat {
     const q = this.unsaid.get(id);
     if (!q?.length) return;
     for (const it of [...q]) it.show();
-  }
-
-  // A villager's chat line with no recorded clip may still be heard: claude.ai's voice
-  // (when replies are read aloud) or the browser's (when the player turned it on).
-  installVoice() {
-    const gv = this.game.voice;
-    if (!gv?.setFallback || this._voiceOn) return;
-    this._voiceOn = true;
-    try {
-      gv.setFallback('villagers', (text, opts) => {
-        const id = this.voiced.get(text);
-        if (!id || id !== opts?.speaker) return { ok: false, reason: 'no_clip' };
-        this.voiced.delete(text);
-        return speakVillagerLine(this.game, id, text, { kind: opts?.kind || 'say', priority: opts?.priority });
-      });
-    } catch {
-      this._voiceOn = false;
-    }
   }
 
   // A tap or click in the world: on Lyra or a villager, the chat turns to them.

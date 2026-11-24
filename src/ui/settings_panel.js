@@ -27,9 +27,8 @@ export const SETTINGS_LAYOUT = {
     { id: 'mouse', title: 'Mouse', keys: ['aimGuides'], howTo: true },
   ],
   sound: [
-    { id: 'volume', title: 'Volume', keys: ['musicVol', 'sfxVol', 'voiceVol'] },
-    { id: 'recorded', title: 'Recorded voices', keys: ['voices', 'voiceLyra', 'voiceVillagers', 'voiceNarrator'] },
-    { id: 'unrecorded', title: 'Her other words', note: 'Lines with no recording, like her replies from Claude. The first voice that can speak them does.', keys: ['kokoroLive', 'voice', 'voiceName', 'browserVoice'] },
+    { id: 'volume', title: 'Volume', keys: ['musicVol', 'sfxVol'] },
+    { id: 'voices', title: 'Voices in the cutscenes', note: 'The story scenes are spoken. Everywhere else, words are text.', keys: ['voices', 'voiceVol'] },
   ],
   minds: [
     { id: 'lyra', title: "Lyra's mind", keys: ['brain', 'modelTier'] },
@@ -57,13 +56,6 @@ const BRAIN_CHOICES = [
   ['claude', 'Claude via claude.ai', 'Only when the game runs on claude.ai; otherwise her offline mind.'],
   ['apikey', 'Claude via your API key', 'For copies of the game you host yourself.'],
   ['local', 'Offline mind', 'Her built-in mind. No network, instant replies.'],
-];
-
-const VOICES = [
-  ['airy', 'Airy'],
-  ['buttery', 'Buttery'],
-  ['glassy', 'Glassy'],
-  ['rounded', 'Rounded'],
 ];
 
 // The plain rows: kind, label, one-line note, options. `on`: a toggle that is on until
@@ -98,15 +90,8 @@ export const SETTING_ROWS = {
   aimGuides: { kind: 'toggle', on: true, label: 'Aim guide', note: 'Shows where a weave will go, under the mouse.' },
   musicVol: { kind: 'range', label: 'Music' },
   sfxVol: { kind: 'range', label: 'Effects' },
-  voiceVol: { kind: 'range', label: 'Voices' },
-  voices: { kind: 'toggle', label: 'Spoken lines', note: 'Characters speak the lines recorded for them.' },
-  voiceLyra: { kind: 'toggle', label: 'Lyra', note: 'Her recorded lines.' },
-  voiceVillagers: { kind: 'toggle', label: 'Villagers', note: 'The people of Hearthvale.' },
-  voiceNarrator: { kind: 'toggle', label: 'Narrator', note: 'The storyteller in the cutscenes.' },
-  kokoroLive: { kind: 'toggle', label: 'Her own voice', note: 'Kokoro speaks everything she says, in this browser. Downloads about 90 MB once.' },
-  voice: { kind: 'toggle', label: "claude.ai's voice", note: 'Reads her replies aloud on claude.ai.' },
-  voiceName: { kind: 'select', label: 'Which voice', note: "The claude.ai voice she uses.", options: VOICES },
-  browserVoice: { kind: 'toggle', label: "Your browser's voice", note: 'Reads her replies when nothing else can.' },
+  voices: { kind: 'toggle', label: 'Spoken scenes', note: 'The narrator, Lyra and the others speak their lines.' },
+  voiceVol: { kind: 'range', label: 'Voice volume' },
   modelTier: {
     kind: 'select',
     label: 'On claude.ai',
@@ -204,7 +189,6 @@ export class SettingsPanel {
     panel.onClose = () => {
       this.panel = null;
       this.statusEl = null;
-      this.liveEl = null;
     };
     this.ui.openModal(panel);
     this.render();
@@ -272,8 +256,6 @@ export class SettingsPanel {
     if (this.statusT < 0.5) return;
     this.statusT = 0;
     this.refreshStatus();
-    const live = this.game.brain?.voice?.live;
-    if (this.liveEl && live) setText(this.liveEl, live.statusText());
   }
 
   refreshStatus() {
@@ -292,17 +274,10 @@ export class SettingsPanel {
     switch (key) {
       case 'cloudSave':
         return rt?.db && rt?.user ? null : 'Only when you play on claude.ai.';
-      case 'kokoroLive':
-        return g.brain?.voice?.live?.available?.() ? null : 'Not available in this browser.';
-      case 'voice':
-      case 'voiceName':
-        return rt?.tts ? null : 'Only when you play on claude.ai.';
       case 'modelTier':
         return s.brain === 'apikey' || s.brain === 'local' ? 'Used when her mind is Claude on claude.ai.' : null;
-      case 'voiceLyra':
-      case 'voiceVillagers':
-      case 'voiceNarrator':
-        return s.voices === false ? 'Turn on spoken lines first.' : null;
+      case 'voiceVol':
+        return s.voices === false ? 'Turn on spoken scenes first.' : null;
       case 'deathMode':
         return safe(() => g.survival?.isFallen?.(g.player), false) ? 'Not while you lie bleeding. Ask again once you are on your feet.' : null;
       default:
@@ -329,7 +304,6 @@ export class SettingsPanel {
   noteFor(key) {
     const def = SETTING_ROWS[key];
     if (!def) return '';
-    if (key === 'voiceLyra') return `${this.name()}'s recorded lines.`;
     return def.note || '';
   }
 
@@ -403,11 +377,6 @@ export class SettingsPanel {
       sec.append(this.statusEl);
     }
     for (const key of g.keys) sec.append(this.rowFor(key));
-    if (g.id === 'unrecorded') {
-      const live = this.game.brain?.voice?.live;
-      this.liveEl = live?.available?.() ? h('p', { class: 'set-group-note voice-live-status', role: 'status', text: live.statusText() }) : null;
-      if (this.liveEl) sec.querySelector('[data-setting="kokoroLive"]')?.after(this.liveEl);
-    }
     if (g.howTo) sec.append(this.howToRow());
     return sec;
   }
@@ -418,7 +387,7 @@ export class SettingsPanel {
     if (key === 'apiModel') return this.apiKeyBlock();
     const def = SETTING_ROWS[key];
     if (!def) return h('div', { class: 'set-row', 'data-setting': key, text: key });
-    const label = key === 'voiceLyra' ? this.name() : def.label;
+    const label = def.label;
     if (def.kind === 'toggle') return this.toggleRow(label, key, def.on);
     if (def.kind === 'range') return this.rangeRow(label, key);
     if (def.kind === 'select') return this.selectRow(label, key, def.options, def.fallback ?? def.options[0][0]);
@@ -486,11 +455,7 @@ export class SettingsPanel {
         return;
       }
       this.set(key, v);
-      if (key === 'companionName') {
-        const lyra = this.panel?.body.querySelector('[data-setting="voiceLyra"] .set-label');
-        if (lyra) setText(lyra, v);
-        this.refreshDeps();
-      }
+      if (key === 'companionName') this.refreshDeps();
     });
     return this.row(key, 'text', label, input);
   }
