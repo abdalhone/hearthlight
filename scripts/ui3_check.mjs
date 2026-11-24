@@ -365,6 +365,29 @@ for (const view of VIEWS) {
   await page.screenshot({ path: `${SHOTS}/ui3-${label}-settings.png` });
   await page.evaluate(() => window.__game.ui.closeAll());
 
+  // ---------- notices over a full-screen panel never cover its title or close button ----------
+  const over = await page.evaluate(async () => {
+    const g = window.__game;
+    const ui = g.ui;
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    ui.closeAll();
+    ui.openMind('people');
+    await wait(150);
+    ui.toast('A notice while her mind is open.', 'info');
+    ui.toast('Another one, longer, the kind that wraps on a narrow phone screen.', 'good', { title: 'Something happened' });
+    await wait(300);
+    const top = ui.top();
+    const close = top?.closeBtn?.getBoundingClientRect();
+    const head = top?.head?.getBoundingClientRect();
+    const shown = [...document.querySelectorAll('.toasts .toast:not(.leaving)')].filter((el) => el.getBoundingClientRect().width > 0).map((el) => el.getBoundingClientRect());
+    const hit = (t, r) => r && t.left < r.right && t.right > r.left && t.top < r.bottom && t.bottom > r.top;
+    const onClose = shown.filter((t) => hit(t, close)).length;
+    const below = shown.filter((t) => t.bottom > head.bottom + 8).length;
+    ui.closeAll();
+    return { shown: shown.length, onClose, below, small: innerWidth <= 640 || innerHeight <= 520 };
+  });
+  check(`[${label}] notices over her open mind keep off the close button${over.small ? ' and stay on the title row' : ''}`, over.shown > 0 && over.onClose === 0 && (!over.small || (over.below === 0 && over.shown === 1)), JSON.stringify(over));
+
   // ---------- the phone HUD: compact, the world visible ----------
   const hud = await page.evaluate(async () => {
     const g = window.__game;
