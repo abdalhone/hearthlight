@@ -49,8 +49,8 @@ export class DeathFx {
     const s = g.survival?.fxState?.() || null;
     const reduce = !!g.settings?.reduceMotion;
     const k = Math.min(1, dt * 2.2);
-    const wantDrain = s ? 0.45 + 0.5 * (1 - s.frac) : 0;
-    const wantClose = s ? 0.25 + 0.6 * (1 - s.frac) : 0;
+    const wantDrain = s ? 0.62 + 0.36 * (1 - s.frac) : 0;
+    const wantClose = s ? 0.32 + 0.6 * (1 - s.frac) : 0;
     const wantBars = s?.carried ? 1 : 0;
     if (s && !this.was) this.flash = reduce ? 0 : 0.55;
     this.was = !!s;

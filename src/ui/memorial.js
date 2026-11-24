@@ -6,6 +6,11 @@ import { h, button } from './dom.js';
 import { makePanel } from './modal.js';
 import { readPastLives } from '../survival/past_lives.js';
 
+function cap(s) {
+  const t = String(s || '');
+  return t ? t[0].toUpperCase() + t.slice(1) : t;
+}
+
 function dateLabel(ms) {
   try {
     return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
@@ -18,7 +23,7 @@ const STYLE_ID = 'sv-styles';
 
 const CSS = `
 .sv-layer { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
-.sv-fallen { position: absolute; left: 50%; bottom: calc(18% + var(--sa-b, 0px)); transform: translateX(-50%);
+.sv-fallen { position: absolute; left: 50%; top: calc(50% + 34px); transform: translateX(-50%);
   width: min(360px, calc(100vw - 32px)); display: flex; flex-direction: column; align-items: center; gap: 6px;
   text-align: center; font-family: var(--font-body, system-ui, sans-serif); color: var(--parch, #f4ead7);
   text-shadow: 0 1px 0 #000, 0 0 8px rgba(0,0,0,.8); transition: opacity .6s ease; }
@@ -63,7 +68,7 @@ const CSS = `
 .sv-life-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sv-life-name { font-family: var(--font-display, system-ui); color: var(--parch, #f4ead7); }
 .sv-life-meta { font-size: var(--fs-xs, 12px); color: var(--parch-dim, #b9ad99); }
-@media (max-height: 430px) { .sv-fallen { bottom: calc(8% + var(--sa-b, 0px)); gap: 3px; } .sv-ecg { height: 30px; } .sv-call { min-height: 46px; } }
+@media (max-height: 430px) { .sv-fallen { top: calc(50% + 22px); gap: 2px; } .sv-ecg { height: 26px; } .sv-call { min-height: 44px; margin-top: 2px; } .sv-flame { display: none; } }
 @media (prefers-reduced-motion: reduce) { .sv-words p, .sv-curtain { transition-duration: .01s; } }
 `;
 
@@ -140,7 +145,7 @@ export function openPastLives(ui) {
       h(
         'li',
         { class: 'sv-life' },
-        h('div', { class: 'sv-life-text' }, h('span', { class: 'sv-life-name', text: m.name }), h('span', { class: 'sv-life-meta', text: `Day ${m.day ?? 1} · ${m.place || 'the wilds'}${m.diedAt ? ` · ${dateLabel(m.diedAt)}` : ''}` })),
+        h('div', { class: 'sv-life-text' }, h('span', { class: 'sv-life-name', text: cap(m.name) }), h('span', { class: 'sv-life-meta', text: `Day ${m.day ?? 1} · ${m.place || 'the wilds'}${m.diedAt ? ` · ${dateLabel(m.diedAt)}` : ''}` })),
         read,
       ),
     );

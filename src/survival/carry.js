@@ -5,7 +5,8 @@ import { drawCharacter } from '../art/characters_art.js';
 // and is drawn lying across their shoulders (the renderer skips the actor itself and draws
 // this pair instead). The carrier walks slowly and cannot fight.
 
-const SHOULDER_LIFT = 12; // px above the carrier's feet that the body lies across
+const SHOULDER_LIFT = 7; // px the lying frame is raised: its body then lies across the shoulders
+const HEAD_ROWS = 16; // rows from the top of the carrier's frame redrawn over the body (the head)
 const ARM = '#2a2233';
 
 export class CarryDrawable {
@@ -19,8 +20,10 @@ export class CarryDrawable {
     return this.carry.carrier.y + 0.3;
   }
 
-  // The body over the shoulders: the lying frame (head to the left) lifted to shoulder
-  // height, turned so the head hangs behind the carrier, rocking with their stride.
+  // The body over the shoulders: the lying frame (head to the left) lowered to shoulder
+  // height, turned so the head hangs behind the carrier, rocking with their stride; then
+  // the carrier's own head is drawn again on top, so the body lies across the shoulders
+  // behind the neck instead of over the face.
   draw(ctx, ox, oy, time) {
     const { carrier, carried } = this.carry;
     if (!carrier || !carried) return;
@@ -31,22 +34,29 @@ export class CarryDrawable {
     let dx = 0;
     let flip = false;
     if (dir === 'left') {
-      dx = 3;
+      dx = 2;
       flip = true;
     } else if (dir === 'right') {
-      dx = -3;
+      dx = -2;
     } else if (dir === 'up') {
       flip = true;
     }
-    const sx = Math.round(carrier.x - ox) + dx;
-    const sy = Math.round(carrier.y - oy - (carrier.z || 0)) - SHOULDER_LIFT + bob;
-    drawCharacter(ctx, atlas, carried.spriteKey, 'down', 'down', 0, sx, sy, { flip });
-    // The carrier's arm across the back of the knees: a short dark band holding them on.
+    const cx = Math.round(carrier.x - ox);
+    const cy = Math.round(carrier.y - oy - (carrier.z || 0));
+    drawCharacter(ctx, atlas, carried.spriteKey, 'down', 'down', 0, cx + dx, cy - SHOULDER_LIFT + bob, { flip });
     if (dir !== 'up') {
-      const ax = Math.round(carrier.x - ox) + (flip ? -4 : 2);
-      const ay = sy - 6;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(cx - 9, cy - 32, 18, HEAD_ROWS);
+      ctx.clip();
+      try {
+        carrier.draw(ctx, ox, oy, time);
+      } finally {
+        ctx.restore();
+      }
+      // The carrier's arm across the back of the knees, holding them on.
       ctx.fillStyle = ARM;
-      ctx.fillRect(ax, ay, 3, 2);
+      ctx.fillRect(cx + (flip ? -6 : 3), cy - 13 + bob, 3, 2);
     }
   }
 }

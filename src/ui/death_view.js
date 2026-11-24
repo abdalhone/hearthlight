@@ -188,14 +188,17 @@ export class DeathView {
       setText(this.statusEl, frac < 0.25 ? 'Your heart is slowing' : 'You are bleeding out');
       const coming = [];
       const kneeling = [];
+      const running = [];
       for (const [a, j] of sv.jobs || []) {
         if (j.fall !== rec) continue;
-        if (j.phase === 'kneel') kneeling.push(firstName(a));
-        else if (j.phase === 'go' || j.phase === 'fetch') coming.push(firstName(a));
+        if (j.phase === 'kneel' || j.phase === 'lift') kneeling.push(firstName(a));
+        else if (j.phase === 'fetch') running.push(firstName(a));
+        else if (j.phase === 'go') coming.push(firstName(a));
       }
       let sub = '';
       if (kneeling.length) sub = `${joinNames(kneeling)} ${kneeling.length === 1 ? 'is' : 'are'} with you.`;
       if (coming.length) sub += `${sub ? ' ' : ''}${joinNames(coming.slice(0, 3))} ${coming.length === 1 ? 'is' : 'are'} coming.`;
+      if (running.length && !sub) sub = `${joinNames(running)} ran for help.`;
       if (!sub) sub = rec.calls ? 'Nobody answers. Call again.' : 'Nobody has seen you fall.';
       setText(this.subEl, sub);
     }
@@ -207,7 +210,7 @@ export class DeathView {
     this.callBtn.disabled = performance.now() < this.callUntil;
     const crawlLeft = rec.crawled < 72;
     this.hintEl.hidden = !!carrier;
-    setText(this.hintEl, crawlLeft ? (touch ? 'Drag to crawl a little.' : 'Move to crawl a little · H or E to call') : 'You cannot drag yourself any further.');
+    setText(this.hintEl, crawlLeft ? (touch ? 'Drag to crawl a little.' : 'Move to crawl a little · E or H calls out') : 'You cannot drag yourself any further.');
   }
 
   // ---------------------------------------------------------------- dying

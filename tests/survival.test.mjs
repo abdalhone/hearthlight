@@ -27,6 +27,16 @@ function lyraStays(g, x, y, state = null) {
   if (state) L.mind.autonomy.companionship = state;
 }
 
+// Send villagers to the far corner of the map and keep them there (their routines would
+// walk them home): the test decides who is near.
+function banish(g, keep = []) {
+  for (const v of villagers(g)) {
+    if (keep.includes(v.id)) continue;
+    placeAt(g, v, 141 * TILE, 101 * TILE);
+    v.think = () => {};
+  }
+}
+
 // Nobody else in the world can hear: the window runs on its own.
 function alone(g) {
   g.survival.alert = () => {};
@@ -116,7 +126,7 @@ test('Lyra carries the player to the sickroom when it is past saving on the spot
   const L = g.companion;
   const sq = at(g, 'town_square');
   // Everyone else is busy elsewhere; she is hurt (no warmth to spare) and has cut them off.
-  for (const v of villagers(g)) placeAt(g, v, 141 * TILE, 101 * TILE);
+  banish(g);
   placeAt(g, P, sq.x, sq.y);
   lyraStays(g, sq.x + 200, sq.y, 'gone');
   L.hp = Math.round(L.maxHp * 0.3);
@@ -156,7 +166,7 @@ test('a villager answers: Mira revives the player on the spot with her salves', 
   const g = makeGame({ hour: 14 });
   const P = g.player;
   const sq = at(g, 'town_square');
-  for (const v of villagers(g)) placeAt(g, v, 141 * TILE, 101 * TILE);
+  banish(g, ['mira']);
   lyraStays(g, 20 * TILE, 20 * TILE, 'gone');
   placeAt(g, P, sq.x, sq.y);
   const mira = g.entities.get('mira');
@@ -178,7 +188,7 @@ test('villagers carry the player to the sickroom when Mira is away; calling for 
   const sq = at(g, 'town_square');
   lyraStays(g, 20 * TILE, 20 * TILE, 'gone');
   placeAt(g, g.entities.get('mira'), 25 * TILE, 53 * TILE);
-  for (const v of villagers(g)) if (v.id !== 'rowan' && v.id !== 'mira') placeAt(g, v, 141 * TILE, 101 * TILE);
+  banish(g, ['rowan', 'mira']);
   const rowan = g.entities.get('rowan');
   placeAt(g, rowan, sq.x + 280, sq.y);
   placeAt(g, P, sq.x, sq.y);
@@ -297,7 +307,7 @@ test('the player rescues Lyra: carries her (slowly, no sword) to a sickroom cot;
   const P = g.player;
   const L = g.companion;
   const sq = at(g, 'town_square');
-  for (const v of villagers(g)) placeAt(g, v, 141 * TILE, 101 * TILE);
+  banish(g);
   P.inventory.remove('potion', P.inventory.count('potion'));
   placeAt(g, P, sq.x, sq.y);
   lyraStays(g, sq.x + 14, sq.y);
@@ -355,7 +365,7 @@ test('the player carries a villager to Mira’s: they remember who saved them, a
   const P = g.player;
   const hobb = g.entities.get('hobb');
   const sq = at(g, 'town_square');
-  for (const v of villagers(g)) if (v !== hobb) placeAt(g, v, 141 * TILE, 101 * TILE);
+  banish(g, ['hobb']);
   lyraStays(g, 20 * TILE, 20 * TILE, 'gone');
   P.inventory.remove('potion', P.inventory.count('potion'));
   placeAt(g, hobb, sq.x, sq.y);
@@ -388,7 +398,7 @@ test('wanted when you fall: the watch carries you to the guardhouse cell, then M
   const P = g.player;
   const sq = at(g, 'town_square');
   lyraStays(g, 20 * TILE, 20 * TILE, 'gone');
-  for (const v of villagers(g)) if (!v.isGuard) placeAt(g, v, 141 * TILE, 101 * TILE);
+  banish(g, ['rowan', 'wys']);
   const rowan = g.entities.get('rowan');
   placeAt(g, rowan, sq.x + 200, sq.y + 40);
   const wys = g.entities.get('wys');
@@ -433,7 +443,7 @@ test('edge cases: water pulls you to the bank; hostiles stop at a fallen body; b
   const g2 = makeGame({ hour: 10 });
   const P2 = g2.player;
   const farm = at(g2, 'reed_farm');
-  for (const v of villagers(g2)) placeAt(g2, v, 141 * TILE, 101 * TILE);
+  banish(g2);
   placeAt(g2, P2, farm.x, farm.y);
   lyraStays(g2, farm.x + 16, farm.y);
   step(g2, 0.3);
@@ -450,7 +460,7 @@ test('edge cases: water pulls you to the bank; hostiles stop at a fallen body; b
   const g3 = makeGame({ hour: 23 });
   const P3 = g3.player;
   const wood = at(g3, 'whisperwood');
-  for (const v of villagers(g3)) placeAt(g3, v, 141 * TILE, 101 * TILE);
+  banish(g3);
   placeAt(g3, P3, wood.x, wood.y);
   lyraStays(g3, wood.x + 16, wood.y);
   step(g3, 0.3);

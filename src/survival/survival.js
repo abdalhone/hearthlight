@@ -586,7 +586,8 @@ export class Survival {
 
   promptFor(player = this.game.player) {
     if (!player) return null;
-    if (this.falls.has(player)) return player.carriedBy ? '' : 'Call for help';
+    // Fallen: the fall's own panel has the Call for help button (E and H call too).
+    if (this.falls.has(player)) return '';
     const c = this.carries.get(player);
     if (!c) return null;
     const name = c.carried.name?.split(' ')[0] || 'them';
@@ -656,7 +657,8 @@ export class Survival {
     const lyra = this.game.companion;
     const mind = lyra?.mind;
     if (!mind) return;
-    const P = this.game.player?.name && this.game.player.name !== 'Traveler' ? this.game.player.name : 'the stranger';
+    const named = this.game.player?.name && this.game.player.name !== 'Traveler' ? this.game.player.name : null;
+    const P = named || 'The stranger';
     const where = this.falls.get(F)?.place || placeName(this.game, F.x, F.y);
     let text = '';
     if (kind === 'warmth') text = isPlayer(this, F) ? `${P} went down in ${where}. I gave them my warmth to get them up. I'm cold to the bone, and I don't care.` : `I gave ${F.name} some of my warmth to get them up.`;
@@ -822,7 +824,15 @@ export class Survival {
     else if (rec.crawling) rate = RATE.crawling;
     if (rec.wet && !F.carriedBy) rate *= RATE.water;
     rec.left -= dt * rate;
-    if (player) this.patrol(rec);
+    if (player) {
+      // Whoever walks by and sees you lying there comes, call or no call.
+      rec.lookT = (rec.lookT ?? 1) - dt;
+      if (rec.lookT <= 0 && !F.carriedBy) {
+        rec.lookT = 1;
+        this.alert(rec, SEE_RADIUS, { sight: true });
+      }
+      this.patrol(rec);
+    }
     else if (!isLyra(this, F) && rec.t >= rec.lyraAt) this.lyraForVillager(rec);
     if (rec.left <= 0) this.expire(rec);
   }

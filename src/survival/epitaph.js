@@ -44,22 +44,31 @@ export function causePhrase(game, rec) {
   return `They bled out in ${where}${night ? ', at night' : ''}${alone ? ', alone' : ''}.`;
 }
 
-// Her best memory of them: the most important thing she remembers about the player.
+// Her best memory of them: the most important thing they did together in play (not the
+// story she was born knowing), short enough to quote whole.
 function bestMemory(mind) {
   const all = safe(() => mind?.memory?.all?.(), []) || [];
-  let best = null;
-  for (const m of all) {
-    if (!m || !Array.isArray(m.about) || !m.about.includes(PLAYER_ID)) continue;
-    if (m.type === 'reflection') continue;
-    if (!best || (m.importance ?? 0) > (best.importance ?? 0)) best = m;
+  const list = all
+    .filter((m) => m && Array.isArray(m.about) && m.about.includes(PLAYER_ID) && m.type !== 'reflection' && !m.pinned && (m.day ?? 1) > 0)
+    .sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
+  for (const m of list) {
+    const s = firstSentence(m.text, 400);
+    if (s.length <= 140 && !s.endsWith('…')) return s;
   }
-  return best ? firstSentence(best.text, 150) : '';
+  return '';
+}
+
+// The name the village knows them by: their own, once they have one.
+export function strangerName(game) {
+  const n = String(game?.player?.name || game?.settings?.playerName || '').trim();
+  return n && n !== 'Traveler' ? n : null;
 }
 
 // Lyra's last diary entry about the stranger.
 export function lyraLastEntry(game, rec) {
   const lyra = game?.companion;
-  const P = game?.player?.name || 'the stranger';
+  const P = strangerName(game) || 'The stranger';
+  const Pm = strangerName(game) || 'the stranger';
   const where = rec?.place || placeName(game, game?.player?.x ?? 0, game?.player?.y ?? 0);
   const days = game?.clock?.day ?? 1;
   const tone = lyra ? lyraTone(lyra) : 'steady';
@@ -67,7 +76,7 @@ export function lyraLastEntry(game, rec) {
   const came = !!rec?.lyraCame;
   const parts = [];
   if (tone === 'warm') {
-    parts.push(came ? `I got to ${P} and it wasn't enough. I had them, and then I didn't.` : `${P} died today in ${where}, and I wasn't there.`);
+    parts.push(came ? `I got to ${Pm} and it wasn't enough. I had them, and then I didn't.` : `${P} died today in ${where}, and I wasn't there.`);
     if (mem) parts.push(`I keep thinking about the day ${lower(mem.replace(/[.!?…]$/, ''))}.`);
     parts.push(`We had ${days} ${days === 1 ? 'day' : 'days'}. It should have been more.`);
     parts.push('No flame was kept in their name. I should have made them go to Aveline. I should have made them.');
@@ -132,7 +141,7 @@ export function villageSays(game, rec, max = 5) {
 
 export function composeMemorial(game, rec = {}) {
   const P = game?.player;
-  const name = P?.name || game?.settings?.playerName || 'The stranger';
+  const name = strangerName(game) || 'the stranger from the mountain';
   const day = game?.clock?.day ?? 1;
   const lyra = lyraLastEntry(game, rec);
   return {
