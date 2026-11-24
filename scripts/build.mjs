@@ -62,3 +62,19 @@ await writeFile(path.join(root, 'dist/index.html'), standalone);
 await writeFile(path.join(root, 'dist/artifact.html'), artifact);
 const kb = (s) => `${(Buffer.byteLength(s) / 1024).toFixed(0)} KB`;
 console.log(`built dist/index.html (${kb(standalone)}) and dist/artifact.html (${kb(artifact)})`);
+
+// Voices (DESIGN.md §21): rendered clips go next to the page as dist/voice/ (packed so an
+// Artifact's file limit holds them all); `--kokoro` also builds her live voice into dist/kokoro/.
+if (!process.argv.includes('--no-voices')) {
+  const { packVoices } = await import('./voice/pack.mjs');
+  await packVoices({
+    src: path.join(root, 'assets/voice'),
+    out: path.join(root, 'dist/voice'),
+    lines: path.join(root, 'scripts/voice/lines.json'),
+    loose: process.argv.includes('--loose-voices'),
+  });
+}
+if (process.argv.includes('--kokoro')) {
+  const { buildKokoro } = await import('./voice/kokoro_build.mjs');
+  await buildKokoro({ root, out: path.join(root, 'dist/kokoro') });
+}

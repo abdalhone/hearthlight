@@ -9,6 +9,7 @@
 import { SFX, SFX_GAP } from '../ui/sfx.js';
 import { MusicPlayer } from '../ui/music.js';
 import { tone, noise, fm, makeNoiseBuffer, makeImpulse } from '../ui/synth.js';
+import { VoicePlayer } from '../audio/voice.js';
 
 const MAX_VOICES = 28; // concurrent effects; quieter extras are dropped
 const FULL_RADIUS = 90; // world px around the camera center heard at full volume
@@ -59,6 +60,13 @@ export class Audio {
     this.checkTimer = 0;
     this.forced = null; // setMusic() override ('none' silences until cleared with null)
     this._visBound = false;
+    this.ducking = false; // music dips while a voice speaks (src/audio/voice.js)
+    // Character voices share this context and master bus (DESIGN.md §21).
+    try {
+      if (game && !game.voice) game.voice = new VoicePlayer(game);
+    } catch (err) {
+      console.warn('[audio] voices unavailable', err);
+    }
   }
 
   unlock() {
@@ -112,6 +120,7 @@ export class Audio {
     // Start whatever the current moment calls for.
     this.wantTrack = 'none';
     this._refreshMusic(true);
+    this.game.voice?.loadManifest?.();
   }
 
   _bindVisibility() {
@@ -130,8 +139,20 @@ export class Audio {
     const now = this.ctx.currentTime;
     const music = Math.max(0, Math.min(1, Number(s.musicVol ?? 0.45)));
     const sfx = Math.max(0, Math.min(1, Number(s.sfxVol ?? 0.7)));
-    this.musicBus.gain.setTargetAtTime(music * music * 0.9, now, 0.05);
+    const duck = this.ducking ? 0.4 : 1;
+    this.musicBus.gain.setTargetAtTime(music * music * 0.9 * duck, now, this.ducking ? 0.08 : this._unduck ? 0.35 : 0.05);
+    this._unduck = false;
     this.sfxBus.gain.setTargetAtTime(sfx * sfx, now, 0.05);
+    this.game.voice?.applyVolume?.();
+  }
+
+  // Lower the music under a voice, and bring it back slowly afterwards.
+  duck(on) {
+    const v = !!on;
+    if (v === this.ducking) return;
+    this.ducking = v;
+    this._unduck = !v;
+    this.applyVolumes();
   }
 
   // play(name, { x, y, volume, pitch }): x/y in world px enable positional falloff.
