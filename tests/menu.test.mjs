@@ -174,3 +174,13 @@ test('menu arrow keys: nearest row that way, then the most in line; -1 at the ed
   assert.equal(go(0, 'up'), -1);
   assert.equal(go(7, 'left'), 6);
 });
+
+test('menu: the places’ hints are short enough for two to a row on an upright phone', () => {
+  const { game, ui } = fakeUi({ character: true });
+  game.villageLife = {};
+  ui.openVillageLife = () => {};
+  for (const it of pauseItems(game, ui)) {
+    if (it.group !== 'go' || it.id === 'book') continue; // the Book spans the row
+    assert.ok(String(it.hint || '').length <= 18, `${it.id}: "${it.hint}" is too long for half of a 390 px menu`);
+  }
+});

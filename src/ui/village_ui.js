@@ -38,6 +38,7 @@ export class VillageUI {
     this.queue = []; // lines the UI plays: [{ speaker, target, text, at }]
     this.queueT = 0;
     this.recent = new Map(); // conversation key -> when it was listened to (game seconds)
+    this.after = null; // { speakers, until }: the exchange listened to is still being said
     this.night = null; // { day, state: 'none'|'waiting'|'ready'|'empty', lines, sections }
   }
 
@@ -58,9 +59,11 @@ export class VillageUI {
 
   convKey(conv) {
     if (!conv) return '';
-    if (conv.id != null) return `id:${conv.id}`;
+    // By the two people, not the conversation's id: listening in starts a new
+    // conversation between them, which must not be offered again at once.
     const ids = conversationSpeakers(conv, this.game).map((e) => e.id).sort();
-    return ids.join('+') || 'conv';
+    if (ids.length) return ids.join('+');
+    return conv.id != null ? `id:${conv.id}` : 'conv';
   }
 
   recentlyHeard(conv) {
@@ -78,8 +81,11 @@ export class VillageUI {
     let busy = false;
     this.conv = null;
     if (g.state === 'playing' && !this.ui.stack.length && g.player && !g.player.downed) {
-      if (this.listening) {
-        label = `Listening · ${namesTogether(this.listening.speakers.map((e) => nameOfSpeaker(e, g, this.lyraName)))}`;
+      const hearing = this.listening || (this.after && (g.time || 0) < this.after.until ? this.after : null);
+      if (!hearing) this.after = null;
+      if (hearing) {
+        // Listening until they have said it all (not only while it is being written).
+        label = `Listening · ${namesTogether(hearing.speakers.map((e) => nameOfSpeaker(e, g, this.lyraName)))}`;
         busy = true;
       } else if (!this.queue.length) {
         const v = villageOf(g);
@@ -171,6 +177,12 @@ export class VillageUI {
       }
       const villagePlays = !!heard && lines.some((l) => heard.has(norm(l.text)));
       if (!villagePlays) this.play(lines, speakers);
+      // The prompt says "Listening" while the lines are said, and the same two are not
+      // offered again until a while after.
+      const speed = g.settings?.textSpeed ?? 1;
+      const said = lines.reduce((t, l) => t + lineBeat(l.text, speed), 0);
+      this.after = { speakers, until: (g.time || 0) + said };
+      this.recent.set(this.convKey(conv), (g.time || 0) + said);
       this.ui.chat?.addOverheard?.(`You listened in on ${names || 'a conversation'}`, lines.map((l) => ({ name: l.name, text: l.text })));
     }, 160);
   }
