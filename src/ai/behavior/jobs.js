@@ -383,7 +383,7 @@ export class JobRunner {
       const list = safe('objects.inRadius', () => g.objects?.inRadius?.(a.x, a.y, 90 * TILE, isFire), []) || [];
       for (const o of list) out.push({ obj: o, score: dist(a.x, a.y, o.x, o.y) });
     } else if (job.kind === 'fish') {
-      for (const s of this.fishingSpots()) out.push({ obj: null, spot: s, score: s.score });
+      for (const s of this.fishingSpots()) if (!this.isBlacklisted(s.obj || spotKey(s))) out.push({ obj: null, spot: s, score: s.score });
     }
     out.sort((p, q) => p.score - q.score);
     return out.slice(0, 12);
@@ -536,7 +536,8 @@ export class JobRunner {
     if (res === 'blocked' || res === 'locked' || res === 'stuck') {
       this.blockedT += dt;
       if (this.blockedT > 2.5 || res === 'locked' || res === 'stuck') {
-        if (t) this.blacklist.set(t, this.b.t + 30);
+        const key = t || (this.spot ? this.spot.obj || spotKey(this.spot) : null);
+        if (key) this.blacklist.set(key, this.b.t + 30);
         this.beginSearch();
       }
     } else this.blockedT = 0;
@@ -922,6 +923,11 @@ export class JobRunner {
     if (d.delivering) this.beginDeliver();
     return this.active;
   }
+}
+
+// Shore spots are places, not objects: remembered by their tile.
+function spotKey(s) {
+  return `${Math.round(s.x)},${Math.round(s.y)}`;
 }
 
 function moveItems(from, to, id, qty) {

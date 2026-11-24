@@ -40,6 +40,8 @@ export class Steering {
     this.failure = null; // { reason: 'locked'|'unreachable'|'stuck', door?, message? }
     this.stuckT = 0;
     this.stuckCount = 0;
+    this.stuckGoalX = NaN; // where she was going when she got stuck
+    this.stuckGoalY = NaN;
     this.sidestepT = 0;
     this.sideX = 0;
     this.sideY = 0;
@@ -64,6 +66,7 @@ export class Steering {
     this.failCd = 0;
     this.stuckT = 0;
     this.stuckCount = 0;
+    this.stuckGoalX = NaN;
     this.sidestepT = 0;
     this.followMoving = false;
   }
@@ -101,6 +104,10 @@ export class Steering {
     this.goalY = gy;
     this.failure = null;
     this.failCd = 0;
+    // A new destination is a fresh attempt.
+    this.stuckCount = 0;
+    this.stuckT = 0;
+    this.stuckGoalX = NaN;
     this.skipReached();
   }
 
@@ -175,6 +182,7 @@ export class Steering {
       this.stop();
       this.stuckCount = 0;
       this.stuckT = 0;
+      this.stuckGoalX = NaN;
       this.path = null;
       return 'arrived';
     }
@@ -203,14 +211,30 @@ export class Steering {
       return 'blocked';
     }
     if (this.stuckCount >= 6) {
-      this.stop();
-      this.failure = { reason: 'stuck' };
-      return 'stuck';
+      // Stuck stays stuck for this goal (callers give up on it); a goal somewhere else
+      // is a fresh attempt.
+      if (Number.isNaN(this.stuckGoalX)) {
+        this.stuckGoalX = gx;
+        this.stuckGoalY = gy;
+      }
+      if (dist(gx, gy, this.stuckGoalX, this.stuckGoalY) <= 3 * TILE) {
+        this.stop();
+        this.failure = { reason: 'stuck' };
+        return 'stuck';
+      }
+      this.stuckCount = 0;
+      this.stuckGoalX = NaN;
+      this.forceRepath = true;
     }
 
-    // Advance along the path.
+    // Advance along the path. A waypoint someone is standing on counts as reached.
     const p = this.path;
-    while (this.idx < p.length - 1 && dist(a.x, a.y, p[this.idx].x, p[this.idx].y) < 6) this.idx++;
+    while (this.idx < p.length - 1) {
+      const w = p[this.idx];
+      const dw = dist(a.x, a.y, w.x, w.y);
+      if (dw < 6 || (dw < 20 && this.occupied(w.x, w.y, opts.ignore))) this.idx++;
+      else break;
+    }
     const last = this.idx >= p.length - 1;
     const wp = p[Math.min(this.idx, p.length - 1)];
     // The final waypoint is the tile center of the goal; aim at the true goal instead.
@@ -262,6 +286,17 @@ export class Steering {
     }
     if (this.stuckT > STUCK_TIME) {
       this.stuckT = 0;
+      // Standing inside something solid (set down there by a teleport, a knockback, the
+      // game moving her): step out onto open ground first.
+      if (!walkable(this.game, tileOf(a.x), tileOf(a.y), a)) {
+        const spot = nearestWalkable(this.game, a.x, a.y, 3, a);
+        if (spot) {
+          a.x = spot.x;
+          a.y = spot.y;
+          this.forceRepath = true;
+          return;
+        }
+      }
       this.stuckCount++;
       this.forceRepath = true;
       if (this.stuckCount >= 2) {
@@ -379,6 +414,18 @@ export class Steering {
       safe('door.close', () => door.close(a));
       doors.splice(i, 1);
     }
+  }
+
+  // Is a solid actor (other than her and `ignore`) standing on (x, y)?
+  occupied(x, y, ignore = null) {
+    const a = this.actor;
+    const list = this.game.entities?.list || [];
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (e === a || e === ignore || e.type !== 'actor' || !e.solid || e.removed || e.dead) continue;
+      if (Math.abs(e.x - x) < 9 && Math.abs(e.y - y) < 9) return true;
+    }
+    return false;
   }
 
   someoneNear(x, y, r) {
