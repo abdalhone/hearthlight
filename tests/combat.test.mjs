@@ -455,10 +455,12 @@ test('guards are hostile to the player only while a crime is active', () => {
   assert.equal(g.combat.isHostile(rowan, p), false, 'guards calm down');
   assert.ok(g.toasts.some((t) => t.text.includes('stopped looking')));
   assert.equal(of(ev, 'crime').length, 1);
+  assert.deepEqual(of(ev, 'crime_cleared'), [{ actor: p, reason: 'expired' }]);
 });
 
 test('a crime survives a save, and being beaten by the guard settles it', async () => {
   const g = makeGame();
+  const ev = log(g);
   g.objects = { get: (id) => (id === 'home_bed' ? { x: 400, y: 300 } : null), inRadius: () => [] };
   const p = addPlayer(g);
   const rowan = actor(g, { name: 'Captain Rowan Vale', faction: 'guard', x: 116, maxHp: 60 });
@@ -476,6 +478,7 @@ test('a crime survives a save, and being beaten by the guard settles it', async 
   g.combat.damage(rowan, p, 999);
   assert.equal(p.downed, true);
   assert.equal(p.crime, null, 'the matter is settled where you fell');
+  assert.equal(of(ev, 'crime_cleared').at(-1).reason, 'arrested');
   assert.equal(g.combat.isHostile(rowan, p), false);
   step(g, 1.5);
   await flushPromises();
@@ -500,7 +503,7 @@ test('when Lyra lands the killing blow the player gets the xp too', () => {
   assert.equal(p.xp, 10);
 });
 
-test('level ups raise max HP and attack, heal fully, emit and toast', () => {
+test('level ups raise max HP and attack, heal fully, emit and show a banner', () => {
   const g = makeGame();
   const ev = log(g);
   const p = addPlayer(g);
@@ -519,7 +522,8 @@ test('level ups raise max HP and attack, heal fully, emit and toast', () => {
       [p, 3],
     ],
   );
-  assert.ok(g.toasts.some((t) => t.text.includes('Level 3')));
+  assert.equal(g.numbers.filter((n) => n === 'LEVEL UP!').length, 2, 'a banner rises for each level');
+  assert.equal(g.toasts.length, 0, 'the HUD words level_up itself');
   assert.equal(p.xpNext, xpToNext(3));
   assert.ok(xpToNext(2) > xpToNext(1));
 });

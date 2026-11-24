@@ -1,5 +1,6 @@
 import { Entity } from './entity.js';
 import { itemDef } from './items.js';
+import { itemIconURL } from '../art/items_art.js';
 
 // Items lying on the ground: loot, harvest, things dropped from the inventory.
 // They pop out with a little bounce, glint now and then, drift to the player when
@@ -223,15 +224,18 @@ export function dropItem(game, itemId, qty = 1, x = 0, y = 0, opts = {}) {
   return game.entities.add(new Pickup(game, { itemId, qty, x, y, ...opts }));
 }
 
-// "+2 Wood" toasts, merged when several of the same item arrive together (three logs
-// from one tree read as one line, not three).
-const toastState = new WeakMap(); // game -> { pending: Map<itemId, qty>, t }
+// "+2 Wood" toasts. Several of the same item arriving together read as one line (three logs
+// from one tree), and a running total keeps growing for a few seconds, in one toast keyed
+// `gain:<itemId>`: the HUD keys its own item_gained notices the same way, so they merge.
+const TOAST_BATCH = 0.35; // s: gather a burst of pickups before showing it
+const TOAST_TOTAL = 3; // s: keep adding to the same line while pickups keep coming
+const toastState = new WeakMap(); // game -> { pending: Map<itemId, qty>, totals: Map<itemId, {qty, at}>, t }
 
 export function notePickupToast(game, itemId, qty) {
   let st = toastState.get(game);
-  if (!st) toastState.set(game, (st = { pending: new Map(), t: 0 }));
+  if (!st) toastState.set(game, (st = { pending: new Map(), totals: new Map(), t: 0 }));
   st.pending.set(itemId, (st.pending.get(itemId) || 0) + qty);
-  st.t = 0.35;
+  st.t = TOAST_BATCH;
 }
 
 export function updatePickupToasts(game, dt) {
@@ -239,7 +243,19 @@ export function updatePickupToasts(game, dt) {
   if (!st || !st.pending.size) return;
   st.t -= dt;
   if (st.t > 0) return;
-  for (const [id, n] of st.pending) game.ui?.toast?.(pickupToastText(id, n), 'good');
+  const now = game.time ?? 0;
+  for (const [id, n] of st.pending) {
+    const acc = st.totals.get(id);
+    const total = (acc && now - acc.at < TOAST_TOTAL ? acc.qty : 0) + n;
+    st.totals.set(id, { qty: total, at: now });
+    let iconUrl = null;
+    try {
+      iconUrl = itemIconURL(game.atlas, id) || null;
+    } catch {
+      iconUrl = null;
+    }
+    game.ui?.toast?.(pickupToastText(id, total), 'item', { key: `gain:${id}`, iconUrl });
+  }
   st.pending.clear();
 }
 

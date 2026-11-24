@@ -708,7 +708,13 @@ export class Player extends Actor {
     if (this._down) return;
     // Beaten by the guard while wanted: the matter is settled where you fell.
     const arrested = !!by && by.faction === 'guard' && !!this.crime;
-    if (arrested) this.crime = null;
+    if (arrested) {
+      try {
+        if (!this.game.combat?.clearCrime?.(this, 'arrested')) this.crime = null;
+      } catch {
+        this.crime = null;
+      }
+    }
     this._down = { t: 0, fading: false, woke: false, by: by || null, arrested };
     this.rolling = false;
     this.swing = null;
@@ -813,7 +819,7 @@ export class Player extends Actor {
     else text = `Someone from the village found you and carried you home. ${text}`;
     if (lost > 0) text += ` ${lost} ${lost === 1 ? 'coin' : 'coins'} went missing on the way.`;
     try {
-      g.ui?.toast?.(text, 'warn');
+      g.ui?.toast?.(text, 'warn', { key: 'wake', title: 'Knocked out' });
       const p = g.ui?.fadeIn?.(1.2);
       if (p && typeof p.catch === 'function') p.catch(() => {});
     } catch {

@@ -113,8 +113,19 @@ export class Combat {
     const p = this.game.player;
     const c = p?.crime;
     if (!c || c.until > this.now()) return;
-    p.crime = null;
-    if (p.isAlive?.()) this._toast('The guards have stopped looking for you. Hearthvale breathes out.', 'info');
+    this.clearCrime(p, 'expired');
+  }
+
+  // Wipe the slate: the crime ran out ('expired') or was paid for ('arrested').
+  // Emits crime_cleared {actor, reason} so guards and the HUD can stand down.
+  clearCrime(actor = this.game.player, reason = 'expired') {
+    if (!actor?.crime) return false;
+    actor.crime = null;
+    if (this.isPlayer(actor) && reason === 'expired' && actor.isAlive?.()) {
+      this._toast('The guards have stopped looking for you. Hearthvale breathes out.', 'info', { key: 'crime' });
+    }
+    this.game.bus?.emit('crime_cleared', { actor, reason });
+    return true;
   }
 
   _updateDying(dt) {
@@ -491,7 +502,8 @@ export class Combat {
     } else {
       actor.crime = { level, kind, until, victimId: victim.id ?? null, since: now, t: now };
     }
-    if (escalated && this.isPlayer(actor)) this._toast(crimeLine(victim, kind), 'warn');
+    // The HUD also reports 'crime' events; the shared key keeps it to one notice.
+    if (escalated && this.isPlayer(actor)) this._toast(crimeLine(victim, kind), 'warn', { key: 'crime', title: 'Crime' });
   }
 
   // One 'crime' event per victim and kind in CRIME_EVENT_GAP seconds, not one per hit.
@@ -779,12 +791,8 @@ export class Combat {
     this._sound('levelup', actor.x, actor.y);
     this._particles('levelup', actor.x, actor.y - 10, { count: 24, color: '#ffe27a', speed: 40, life: 1.1 });
     this._flash({ x: actor.x, y: actor.y - 10, r: 90, color: '#ffe08a', intensity: 0.9, duration: 0.8 });
-    this._number(actor.x, actor.y - 34, 'LEVEL UP!', COLORS.level, { crit: true });
-    if (actor === g.player) {
-      this._toast(`Level ${actor.level}! You feel steadier on your feet. (+${LEVEL_HP} max HP, +${LEVEL_ATK} attack)`, 'good');
-    } else if (actor === g.companion) {
-      this._toast(`${actor.name || 'Lyra'} reached level ${actor.level}. Her spells burn a little brighter.`, 'lyra');
-    }
+    // The HUD announces level_up in words; here it is felt: light, sound, a rising banner.
+    if (actor === g.player || actor === g.companion) this._number(actor.x, actor.y - 34, 'LEVEL UP!', COLORS.level, { crit: true });
   }
 
   // After loading a save, Actor.deserialize restores level but not attack; rebuild it
@@ -840,9 +848,9 @@ export class Combat {
     }
   }
 
-  _toast(text, kind) {
+  _toast(text, kind, opts) {
     try {
-      this.game.ui?.toast?.(text, kind);
+      this.game.ui?.toast?.(text, kind, opts);
     } catch (err) {
       this._warn('toast', err);
     }
