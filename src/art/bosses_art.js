@@ -13,7 +13,7 @@
 //
 // Sprite names: `boss:<id>:<anim>` and `boss:<id>:<anim>:<variant>`; meta `boss:<id>`.
 
-import { Sprite, glow, rampFrom, tri, mixHex, lighten, darken } from './characters_paint.js';
+import { Sprite, tri, darken } from './characters_paint.js';
 import { RAMPS, OUTLINE } from './palette.js';
 
 const A = (frames, fps, loop = true) => [frames, fps, loop];
@@ -21,9 +21,9 @@ const A = (frames, fps, loop = true) => [frames, fps, loop];
 export const BOSS_ART = {
   varek: {
     w: 48,
-    h: 48,
+    h: 56,
     ox: 24,
-    oy: 45,
+    oy: 53,
     variants: [null, 'fire'],
     anims: {
       idle: A(4, 3),
@@ -39,9 +39,9 @@ export const BOSS_ART = {
     },
   },
   greyjaw: {
-    w: 64,
+    w: 72,
     h: 48,
-    ox: 32,
+    ox: 36,
     oy: 44,
     variants: [null],
     anims: {
@@ -74,6 +74,7 @@ export const BOSS_ART = {
     h: 64,
     ox: 24,
     oy: 60,
+    noFlip: true,
     variants: [null],
     anims: {
       rise: A(4, 4.5, false),
@@ -88,9 +89,9 @@ export const BOSS_ART = {
   },
   bone_warden: {
     w: 48,
-    h: 56,
+    h: 60,
     ox: 24,
-    oy: 52,
+    oy: 56,
     variants: [null],
     anims: {
       idle: A(4, 3),
@@ -108,24 +109,59 @@ export const BOSS_ART = {
 
 // ---------------------------------------------------------------- shared tools
 
-const SKIN_TAN = ['#8f5a3c', '#c48460', '#e2ad84'];
-const LEATHER = ['#2e1c14', '#553522', '#7d5236'];
-const RUST = ['#4a1a12', '#7a2c1c', '#a8452a'];
-const FUR = ['#3a3430', '#635a50', '#958a7c'];
-const BEARD = ['#24160f', '#43291c', '#6b4430'];
+const SKIN_TAN = ['#8f5a3c', '#c98f66', '#eab48a'];
+const LEATHER = ['#3b2418', '#6b4128', '#97633e'];
+const TROUSER = ['#232233', '#363548', '#504e66'];
+const BOOT = ['#1e140f', '#36241a', '#523726'];
+const RUST = ['#5a1a14', '#932f20', '#c4533a'];
+const FUR = ['#3e3833', '#6e655b', '#a39787'];
+const BEARD = ['#24160f', '#4a2e20', '#704632'];
 const IRON = tri(RAMPS.iron, 0);
 const WOOD = tri(RAMPS.wood, 0);
 const EMBER = ['#c4501f', '#ffb047', '#ffe08a'];
-const BONE = tri(RAMPS.bone, 0);
-const BONE_DARK = ['#3d3630', '#6e6455', '#9c917a'];
-const RUST_IRON = ['#2a2328', '#4a3f45', '#76686c'];
-const CLOAK = ['#141220', '#24203a', '#3a3456'];
+const BONE = ['#8a7f6c', '#d2c7ad', '#f6f0de'];
+const BONE_DARK = ['#4a4238', '#7d7362', '#a89c84'];
+const PLATE = ['#262a38', '#4a5266', '#8590a8'];
+const CLOAK = ['#12101c', '#221e36', '#3a3454'];
 const GRAVE = ['#2c4a8a', '#7fb2ff', '#e0f0ff'];
 const EYE_GOLD = '#ffd75e';
 const WHITE = '#fff8ee';
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
+}
+
+// Paint with an offset (so a tall pose fits a taller frame without moving every number).
+// Works with the helpers below, which only use begin/set/dot/rect/ellipse/solid.
+function shifted(raw, dx, dy) {
+  return {
+    raw,
+    set rimRamps(v) {
+      raw.rimRamps = v;
+    },
+    begin: (o) => raw.begin(o),
+    set: (x, y, r, t) => raw.set(x + dx, y + dy, r, t),
+    dot: (x, y, c, a) => raw.dot(x + dx, y + dy, c, a),
+    rect: (x, y, w, h, r, t) => raw.rect(x + dx, y + dy, w, h, r, t),
+    ellipse: (cx, cy, rx, ry, r, t) => raw.ellipse(cx + dx, cy + dy, rx, ry, r, t),
+    solid: (x, y) => {
+      const X = x + dx;
+      const Y = y + dy;
+      return raw.isSet(X, Y) && raw.alpha[Y * raw.w + X] >= 0.5;
+    },
+  };
+}
+
+// Soft light around a point, under nothing solid.
+function halo(sp, cx, cy, r, color, strength = 0.6) {
+  sp.begin({ flat: true, noOutline: true, shadow: 'none' });
+  for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
+    for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
+      const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / r;
+      if (d > 1 || sp.solid(x, y)) continue;
+      sp.dot(x, y, color, Math.max(0.1, strength * (1 - d) * (1 - d) + 0.08));
+    }
+  }
 }
 
 // A thick limb between two points (round joints).
@@ -137,6 +173,23 @@ function limb(sp, x0, y0, x1, y1, w, ramp, tone = -1) {
     const t = i / n;
     const cx = lerp(x0, x1, t);
     const cy = lerp(y0, y1, t);
+    for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
+      for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
+        if (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) <= r + 0.05) sp.set(x, y, ramp, tone);
+      }
+    }
+  }
+}
+
+// A limb that tapers from w0 to w1.
+function taper(sp, x0, y0, x1, y1, w0, w1, ramp, tone = -1) {
+  const d = Math.hypot(x1 - x0, y1 - y0);
+  const n = Math.max(1, Math.ceil(d * 2));
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const cx = lerp(x0, x1, t);
+    const cy = lerp(y0, y1, t);
+    const r = lerp(w0, w1, t) / 2;
     for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
       for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
         if (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) <= r + 0.05) sp.set(x, y, ramp, tone);
@@ -172,6 +225,10 @@ function poly(sp, pts, ramp, tone = -1) {
   }
 }
 
+function darkerRamp(r) {
+  return [darken(r[0], 0.25), darken(r[1], 0.25), darken(r[2], 0.3)];
+}
+
 // ---------------------------------------------------------------- Varek One-Eye
 
 // The axe: an ash haft from the hand, a bearded iron head at the end.
@@ -186,57 +243,57 @@ function axe(sp, hx, hy, ang, len, fire, side = 1) {
   sp.begin({ band: 1, noShadow: !!fire });
   const hx2 = hx + ux * len;
   const hy2 = hy + uy * len;
-  const pts = [
-    [hx2 - ux * 7 + px * 1, hy2 - uy * 7 + py * 1],
-    [hx2 - ux * 9 + px * 7, hy2 - uy * 9 + py * 7],
-    [hx2 + ux * 2 + px * 8, hy2 + uy * 2 + py * 8],
-    [hx2 + ux * 1 + px * 1, hy2 + uy * 1 + py * 1],
-  ];
-  poly(sp, pts, head);
+  poly(
+    sp,
+    [
+      [hx2 - ux * 6 - px * 1, hy2 - uy * 6 - py * 1],
+      [hx2 - ux * 9 + px * 7, hy2 - uy * 9 + py * 7],
+      [hx2 + ux * 2 + px * 8, hy2 + uy * 2 + py * 8],
+      [hx2 + ux * 1 - px * 1, hy2 + uy * 1 - py * 1],
+    ],
+    head,
+  );
   // The edge catches the light (or the fire).
-  sp.begin({ flat: true, noOutline: false, shadow: 'none' });
+  sp.begin({ flat: true, shadow: 'none' });
   for (let t = -8; t <= 1; t++) {
     const k = (t + 8) / 9;
-    const ex = hx2 + ux * t + px * (7 + k);
-    const ey = hy2 + uy * t + py * (7 + k);
-    sp.dot(Math.round(ex), Math.round(ey), fire ? '#fff4c0' : '#e8ecf4', 0.95);
+    sp.dot(Math.round(hx2 + ux * t + px * (7 + k)), Math.round(hy2 + uy * t + py * (7 + k)), fire ? '#fff4c0' : '#e8ecf4', 0.95);
   }
-  if (fire) {
-    glow(sp, hx2 + px * 4, hy2 + py * 4, 9, '#ff9a4a', 0.55);
-  }
+  if (fire) halo(sp, hx2 + px * 4, hy2 + py * 4, 10, '#ff9a4a', 0.6);
 }
 
 function varekPose(anim, f) {
-  const P = { bob: 0, lean: 0, legs: [0, 0, 0, 0], hand: [31, 26], ang: -2.05, len: 21, behind: false, free: [18, 30], headDy: 0, mouth: false, kneel: 0, dropAxe: false, side: 1, smear: false };
+  const P = { bob: 0, lean: 0, legs: [0, 0, 0, 0], hand: [31, 27], ang: 1.2, len: 18, behind: false, free: [18, 31], headDy: 0, mouth: false, kneel: 0, dropAxe: false, side: -1, smear: false };
   switch (anim) {
     case 'idle':
+      // Leaning on his axe, head down in the dirt in front of him.
       P.bob = [0, 0, 1, 1][f];
-      P.free = [18, 30 + P.bob];
+      P.free = [18, 31 + P.bob];
       break;
     case 'move': {
       const t = (f / 6) * Math.PI * 2;
       P.bob = [0, 1, 0, 0, 1, 0][f];
       P.legs = [Math.round(3 * Math.sin(t)), Math.cos(t) > 0.3 ? 2 : 0, Math.round(-3 * Math.sin(t)), Math.cos(t) < -0.3 ? 2 : 0];
-      P.hand = [33, 29];
-      P.ang = 0.45;
-      P.len = 19;
+      P.hand = [32, 29];
+      P.ang = 0.55;
+      P.len = 18;
       P.free = [19 + Math.round(2 * Math.cos(t)), 30];
       break;
     }
     case 'telegraph':
       P.lean = -2;
       P.bob = f;
-      P.hand = [19, 10];
-      P.ang = -2.65;
+      P.hand = [19, 9];
+      P.ang = -2.6;
       P.len = 20;
       P.behind = true;
       P.free = [31, 24];
-      P.side = -1;
+      P.side = 1;
       break;
     case 'attack':
       P.lean = [2, 3, 2][f];
       P.hand = [
-        [32, 14],
+        [32, 13],
         [36, 25],
         [33, 32],
       ][f];
@@ -245,6 +302,7 @@ function varekPose(anim, f) {
       P.free = [27, 28];
       P.smear = f === 1;
       P.legs = [-2, 0, 3, 0];
+      P.side = 1;
       break;
     case 'charge':
       P.lean = 4;
@@ -256,13 +314,14 @@ function varekPose(anim, f) {
       P.len = 19;
       P.behind = true;
       P.free = [33, 24];
+      P.side = 1;
       break;
     case 'raise':
       P.bob = -f;
-      P.hand = [26, 7];
+      P.hand = [26, 6];
       P.ang = -1.72;
-      P.len = 20;
-      P.free = [23, 8];
+      P.len = 18;
+      P.free = [23, 7];
       P.legs = [-2, 0, 2, 0];
       P.side = 1;
       break;
@@ -271,24 +330,25 @@ function varekPose(anim, f) {
       P.lean = 3;
       P.hand = [34, 32];
       P.ang = 0.95;
-      P.len = 17;
+      P.len = 16;
       P.free = [31, 31];
       P.legs = [-3, 0, 4, 0];
+      P.side = 1;
       break;
     case 'call':
-      P.free = [22 + f, 4 + f];
+      P.free = [22 + f, 2 + f];
       P.mouth = true;
       P.headDy = -1;
       P.hand = [32, 30];
-      P.ang = 0.6;
-      P.len = 19;
+      P.ang = 0.7;
+      P.len = 18;
       break;
     case 'hurt':
       P.lean = -3;
       P.headDy = -1;
       P.hand = [29, 31];
       P.ang = 1.35;
-      P.len = 19;
+      P.len = 18;
       P.free = [17, 27];
       break;
     case 'defeat':
@@ -297,7 +357,6 @@ function varekPose(anim, f) {
         P.headDy = -1;
         P.hand = [29, 32];
         P.ang = 1.4;
-        P.len = 19;
       } else {
         P.kneel = f === 1 ? 1 : 2;
         P.bob = f === 1 ? 4 : 7;
@@ -314,8 +373,55 @@ function varekPose(anim, f) {
   return P;
 }
 
+function varekHead(sp, hx, hy, mouth) {
+  // Shaved head, a dark topknot and braid, a short black beard, the patch over the eye.
+  sp.begin({ band: 1 });
+  disc(sp, hx, hy, 4.6, 5, SKIN_TAN);
+  sp.begin({ band: 1 });
+  disc(sp, hx - 2.5, hy - 4, 2, 1.8, BEARD);
+  limb(sp, hx - 4, hy - 3, hx - 6, hy + 2, 1.6, BEARD);
+  sp.begin({ band: 1 });
+  poly(
+    sp,
+    [
+      [hx, hy + 2],
+      [hx + 5.5, hy + 2],
+      [hx + 4.5, hy + 6.5],
+      [hx + 1.5, hy + 7.5],
+      [hx - 1.5, hy + 4.5],
+    ],
+    BEARD,
+  );
+  sp.begin({ flat: true, shadow: 'none' });
+  // brow, nose, the patch and its strap
+  sp.dot(hx + 2, hy - 2, SKIN_TAN[0]);
+  sp.dot(hx + 3, hy - 2, SKIN_TAN[0]);
+  sp.dot(hx + 4, hy - 2, SKIN_TAN[0]);
+  sp.dot(hx + 5, hy, SKIN_TAN[1]);
+  sp.dot(hx + 5, hy + 1, SKIN_TAN[0]);
+  sp.dot(hx + 2, hy - 1, '#141018');
+  sp.dot(hx + 3, hy - 1, '#141018');
+  sp.dot(hx + 2, hy, '#141018');
+  sp.dot(hx + 3, hy, '#2a2228');
+  sp.dot(hx + 1, hy - 2, '#141018');
+  sp.dot(hx, hy - 3, '#141018');
+  sp.dot(hx - 1, hy - 3, '#141018');
+  sp.dot(hx - 2, hy - 2, '#141018');
+  sp.dot(hx - 3, hy - 2, '#141018');
+  // a white scar running out from under the patch
+  sp.dot(hx + 3, hy + 1, '#f2d2b6');
+  sp.dot(hx + 4, hy + 2, '#f2d2b6');
+  if (mouth) {
+    sp.dot(hx + 3, hy + 3, '#3a0d16');
+    sp.dot(hx + 4, hy + 3, '#3a0d16');
+    sp.dot(hx + 3, hy + 4, '#6b1424');
+    sp.dot(hx + 4, hy + 4, '#6b1424');
+  }
+}
+
 function paintVarek(anim, f, variant) {
-  const sp = new Sprite(48, 48);
+  const raw = new Sprite(48, 56);
+  const sp = shifted(raw, 0, 8);
   sp.rimRamps = new Set([FUR, BEARD]);
   const fire = variant === 'fire';
   const P = varekPose(anim, f);
@@ -325,167 +431,153 @@ function paintVarek(anim, f, variant) {
   const hip = [23 + L * 0.3, 32 + b];
   const shN = [28 + L, 20 + b];
   const shF = [19 + L, 20 + b];
-  // A dropped axe lies in the dirt in front of him.
   if (P.dropAxe) axe(sp, 22, 44, 0.05, 20, false, -1);
   // Far arm (behind the body).
+  const fe = [lerp(shF[0], P.free[0], 0.5) - 1, lerp(shF[1], P.free[1], 0.5) + 1];
   sp.begin({ band: 0 });
-  limb(sp, shF[0], shF[1], lerp(shF[0], P.free[0], 0.5) - 1, lerp(shF[1], P.free[1], 0.5) + 1, 4, darkerRamp(RUST));
-  limb(sp, lerp(shF[0], P.free[0], 0.5) - 1, lerp(shF[1], P.free[1], 0.5) + 1, P.free[0], P.free[1], 4, darkerRamp(SKIN_TAN));
+  limb(sp, shF[0], shF[1], fe[0], fe[1], 4.4, darkerRamp(RUST));
+  limb(sp, fe[0], fe[1], P.free[0], P.free[1], 4, darkerRamp(SKIN_TAN));
   if (P.behind && !P.dropAxe) axe(sp, P.hand[0] + L, P.hand[1] + b, P.ang, P.len, fire, P.side);
-  // Legs.
+  // Legs: dark trousers, heavy boots.
   if (P.kneel === 2) {
     sp.begin({ band: 0 });
-    limb(sp, hip[0] - 1, hip[1], 16, G - 1, 5, darkerRamp(LEATHER));
-    limb(sp, 16, G - 1, 11, G, 4, darkerRamp(LEATHER));
+    limb(sp, hip[0] - 1, hip[1], 16, G - 1, 5, darkerRamp(TROUSER));
+    limb(sp, 16, G - 1, 11, G, 4, darkerRamp(BOOT));
     sp.begin({ band: 1 });
-    limb(sp, hip[0] + 2, hip[1], 29, hip[1] + 1, 5, LEATHER);
-    limb(sp, 29, hip[1] + 1, 30, G - 1, 5, LEATHER);
-    limb(sp, 29, G - 1, 33, G - 1, 3, BEARD);
+    limb(sp, hip[0] + 2, hip[1], 29, hip[1] + 1, 5, TROUSER);
+    limb(sp, 29, hip[1] + 1, 30, G - 2, 5, TROUSER);
+    sp.rect(28, G - 2, 6, 3, BOOT);
   } else {
     const [fd, fl, nd, nl] = P.legs;
-    const kneeDip = P.kneel ? 3 : 0;
+    const kd = P.kneel ? 3 : 0;
     sp.begin({ band: 0 });
-    limb(sp, hip[0] - 2, hip[1], 20 + fd * 0.5, 39 + kneeDip, 5, darkerRamp(LEATHER));
-    limb(sp, 20 + fd * 0.5, 39 + kneeDip, 20 + fd, G - 1 - fl, 5, darkerRamp(LEATHER));
+    limb(sp, hip[0] - 2, hip[1], 20 + fd * 0.5, 39 + kd, 5, darkerRamp(TROUSER));
+    limb(sp, 20 + fd * 0.5, 39 + kd, 20 + fd, G - 2 - fl, 5, darkerRamp(TROUSER));
     sp.begin({ band: 1 });
-    sp.rect(Math.round(18 + fd), G - 2 - fl, 6, 3, darkerRamp(BEARD));
+    sp.rect(Math.round(18 + fd), G - 3 - fl, 6, 4, darkerRamp(BOOT));
     sp.begin({ band: 1 });
-    limb(sp, hip[0] + 2, hip[1], 26 + nd * 0.5, 39 + kneeDip, 5, LEATHER);
-    limb(sp, 26 + nd * 0.5, 39 + kneeDip, 26 + nd, G - 1 - nl, 5, LEATHER);
+    limb(sp, hip[0] + 2, hip[1], 26 + nd * 0.5, 39 + kd, 5, TROUSER);
+    limb(sp, 26 + nd * 0.5, 39 + kd, 26 + nd, G - 2 - nl, 5, TROUSER);
     sp.begin({ band: 1 });
-    sp.rect(Math.round(24 + nd), G - 2 - nl, 7, 3, BEARD);
+    sp.rect(Math.round(24 + nd), G - 3 - nl, 7, 4, BOOT);
   }
-  // Torso: a leather jerkin over a rust shirt, a broad belt.
-  sp.begin({ band: 2 });
+  // Torso: a leather jerkin, a rust sash, a broad belt.
   const tx = 23.5 + L * 0.7;
   const ty = 25.5 + b;
+  sp.begin({ band: 2 });
   disc(sp, tx, ty, 8, 8.5, LEATHER);
   sp.rect(Math.round(tx - 7), Math.round(ty), 14, 7, LEATHER);
-  sp.begin({ flat: false, band: 1 });
-  for (let k = 0; k < 9; k++) {
-    sp.set(Math.round(tx + 4 - k * 0.9), Math.round(ty - 6 + k * 1.2), RUST);
-    sp.set(Math.round(tx + 5 - k * 0.9), Math.round(ty - 6 + k * 1.2), RUST);
+  sp.begin({ band: 1 });
+  for (let k = 0; k < 10; k++) {
+    sp.set(Math.round(tx + 5 - k * 1.1), Math.round(ty - 6 + k * 1.15), RUST);
+    sp.set(Math.round(tx + 6 - k * 1.1), Math.round(ty - 6 + k * 1.15), RUST);
+    sp.set(Math.round(tx + 4 - k * 1.1), Math.round(ty - 6 + k * 1.15), RUST);
   }
   sp.begin({ flat: true, shadow: 'none' });
-  sp.rect(Math.round(tx - 7), Math.round(ty + 4), 15, 2, [OUTLINE, '#2a1a14', '#3b2418'], 1);
-  sp.dot(Math.round(tx + 3), Math.round(ty + 4), '#e4b83d');
+  sp.rect(Math.round(tx - 7), Math.round(ty + 4), 15, 2, ['#1a1008', '#2a1a10', '#3b2418'], 1);
+  sp.dot(Math.round(tx + 3), Math.round(ty + 4), '#ffe27a');
   sp.dot(Math.round(tx + 3), Math.round(ty + 5), '#b58726');
+  sp.dot(Math.round(tx + 4), Math.round(ty + 4), '#b58726');
   // Fur mantle on the shoulders.
   sp.begin({ band: 1 });
   disc(sp, 23.5 + L, 19 + b, 9, 3.6, FUR);
   sp.begin({ flat: true, shadow: 'none' });
-  for (let k = 0; k < 6; k++) sp.dot(Math.round(16 + L + k * 3), Math.round(21 + b + (k % 2)), FUR[0]);
-  // Head: shaved sides, a dark topknot, a beard, the patch over the eye.
-  const hx = 26 + L;
-  const hy = 11 + b + P.headDy;
+  for (let k = 0; k < 6; k++) sp.dot(Math.round(16 + L + k * 3), Math.round(22 + b + (k % 2)), FUR[0]);
+  varekHead(sp, 26 + L, 11 + b + P.headDy, P.mouth);
+  // Near arm, then the axe in front.
+  const hx = P.hand[0] + L;
+  const hy = P.hand[1] + b;
+  const el = [lerp(shN[0], hx, 0.5) + 1, lerp(shN[1], hy, 0.5) + 1];
   sp.begin({ band: 1 });
-  disc(sp, hx, hy, 4.6, 5, SKIN_TAN);
+  limb(sp, shN[0], shN[1], el[0], el[1], 4.8, RUST);
+  limb(sp, el[0], el[1], hx, hy, 4.2, SKIN_TAN);
   sp.begin({ band: 1 });
-  disc(sp, hx - 1.5, hy - 3.2, 3.6, 2.2, BEARD);
-  limb(sp, hx - 4, hy - 3, hx - 7, hy + 1, 2, BEARD);
-  sp.begin({ band: 1 });
-  poly(
-    sp,
-    [
-      [hx - 1, hy + 1],
-      [hx + 5, hy + 1],
-      [hx + 4, hy + 7],
-      [hx + 1, hy + 8],
-      [hx - 2, hy + 5],
-    ],
-    BEARD,
-  );
-  sp.begin({ flat: true, shadow: 'none' });
-  // nose and the one good eye (facing us he would have one; from the side, the patch)
-  sp.dot(hx + 5, hy, SKIN_TAN[1]);
-  sp.dot(hx + 2, hy - 2, OUTLINE);
-  sp.dot(hx + 3, hy - 1, OUTLINE);
-  sp.dot(hx + 4, hy - 1, '#1a1423');
-  sp.dot(hx + 3, hy - 2, '#2a2228');
-  sp.dot(hx, hy - 3, '#2a2228');
-  sp.dot(hx - 1, hy - 4, '#2a2228');
-  sp.dot(hx + 1, hy - 3, '#2a2228');
-  if (P.mouth) {
-    sp.dot(hx + 3, hy + 3, '#3a0d16');
-    sp.dot(hx + 4, hy + 3, '#3a0d16');
-    sp.dot(hx + 3, hy + 4, '#6b1424');
-  }
-  // Near arm and the axe in front.
-  const el = [lerp(shN[0], P.hand[0] + L, 0.5) + 1, lerp(shN[1], P.hand[1] + b, 0.5) + 1];
-  sp.begin({ band: 1 });
-  limb(sp, shN[0], shN[1], el[0], el[1], 4.6, RUST);
-  limb(sp, el[0], el[1], P.hand[0] + L, P.hand[1] + b, 4.2, SKIN_TAN);
-  sp.begin({ band: 1 });
-  limb(sp, lerp(el[0], P.hand[0] + L, 0.4), lerp(el[1], P.hand[1] + b, 0.4), lerp(el[0], P.hand[0] + L, 0.75), lerp(el[1], P.hand[1] + b, 0.75), 4.6, LEATHER);
-  if (!P.behind && !P.dropAxe) axe(sp, P.hand[0] + L, P.hand[1] + b, P.ang, P.len, fire, P.side);
+  limb(sp, lerp(el[0], hx, 0.35), lerp(el[1], hy, 0.35), lerp(el[0], hx, 0.7), lerp(el[1], hy, 0.7), 4.8, LEATHER);
+  if (!P.behind && !P.dropAxe) axe(sp, hx, hy, P.ang, P.len, fire, P.side);
   if (P.smear) {
     sp.begin({ flat: true, noOutline: true, shadow: 'none' });
-    for (let a = -0.9; a < 0.2; a += 0.06) {
-      for (let r = 17; r < 26; r++) {
-        const x = P.hand[0] + L + Math.cos(a) * r;
-        const y = P.hand[1] + b + Math.sin(a) * r;
-        sp.dot(Math.round(x), Math.round(y), fire ? '#ffd08a' : '#e8ecf4', 0.35 * (1 - Math.abs(a + 0.35) / 0.6));
-      }
+    for (let a = -0.9; a < 0.2; a += 0.05) {
+      for (let r = 17; r < 27; r++) sp.dot(Math.round(hx + Math.cos(a) * r), Math.round(hy + Math.sin(a) * r), fire ? '#ffd08a' : '#e8ecf4', 0.4 * (1 - Math.abs(a + 0.35) / 0.6));
     }
   }
-  return sp;
-}
-
-function darkerRamp(r) {
-  return [darken(r[0], 0.25), darken(r[1], 0.25), darken(r[2], 0.3)];
+  return raw;
 }
 
 // ---------------------------------------------------------------- Greyjaw
 
-const GJ_BODY = ['#2e2c3a', '#555366', '#878599'];
-const GJ_SADDLE = ['#18171f', '#2b2936', '#424052'];
-const GJ_BELLY = ['#6b6a7c', '#9c9aae', '#cfcedd'];
+const GJ_BODY = ['#34323f', '#5d5b6e', '#8f8da2'];
+const GJ_SADDLE = ['#16151d', '#2a2834', '#423f50'];
+const GJ_MANE = ['#4a4856', '#7e7c90', '#bab8c8'];
+const GJ_BELLY = ['#7a788c', '#aeacbe', '#dcdbe6'];
 const GJ_FAR = darkerRamp(GJ_BODY);
 
+// One leg: upper bone at a1 (from straight down, + = forward), lower at a2; the paw lands
+// on the ground unless lifted.
+function gjLeg(sp, x, y, l1, a1, a2, w1, w2, ground, lift, ramp) {
+  const kx = x + Math.sin(a1) * l1;
+  const ky = y + Math.cos(a1) * l1;
+  const footY = ground - 1 - lift;
+  const l2 = Math.max(2, (footY - ky) / Math.max(0.35, Math.cos(a2)));
+  const px = kx + Math.sin(a2) * l2;
+  const py = Math.min(footY, ky + Math.cos(a2) * l2);
+  taper(sp, x, y, kx, ky, w1, w2 + 0.6, ramp);
+  taper(sp, kx, ky, px, py, w2 + 0.4, w2, ramp);
+  sp.rect(Math.round(px) - 1, Math.round(py) - 1, 4, 2, ramp);
+  return [px, py];
+}
+
 function greyjawPose(anim, f) {
-  const P = { bob: 0, lunge: 0, lower: 0, rear: 0, head: [0, 0], jaw: 0, legs: [0, 0, 0, 0, 0, 0, 0, 0], tail: 0, sit: false, lie: 0, howl: false, stretch: 0 };
+  const P = { bob: 0, lower: 0, lunge: 0, head: [0, 0], jaw: 0, tail: 0, sit: false, lie: 0, fn: [0.05, -0.05, 0], ff: [0.05, -0.05, 0], hn: [-0.35, 0.3, 0], hf: [-0.35, 0.3, 0], stretch: 0 };
   switch (anim) {
     case 'idle':
       P.bob = [0, 0, 1, 1][f];
       P.tail = [0, 1, 1, 0][f];
+      P.head = [0, [0, 0, 1, 1][f]];
       break;
     case 'move': {
       const t = (f / 6) * Math.PI * 2;
-      P.bob = [0, 1, 2, 0, 1, 2][f];
-      const a = Math.round(4 * Math.sin(t));
-      const la = Math.cos(t) > 0.2 ? 2 : 0;
-      const lb = Math.cos(t) < -0.2 ? 2 : 0;
-      P.legs = [a, la, -a, lb, -a, lb, a, la];
+      P.bob = [0, 1, 2, 1, 0, 1][f];
+      const sw = (p) => 0.62 * Math.sin(t + p);
+      const up = (p) => Math.max(0, Math.cos(t + p)) * 3;
+      P.fn = [sw(0), sw(0) * 0.3 - 0.25, up(0)];
+      P.ff = [sw(0.9), sw(0.9) * 0.3 - 0.25, up(0.9)];
+      P.hn = [-0.35 - sw(0), 0.3, up(Math.PI)];
+      P.hf = [-0.35 - sw(0.9), 0.3, up(Math.PI + 0.9)];
       P.tail = -1;
-      P.stretch = Math.round(2 * Math.sin(t));
+      P.stretch = Math.round(1.5 * Math.sin(t));
       break;
     }
     case 'crouch':
-      P.lower = 4;
-      P.rear = -1;
-      P.head = [1, 3];
+      P.lower = 5;
+      P.head = [1, 4];
       P.tail = -2;
-      P.jaw = f ? 1 : 0;
-      P.legs = [-2, 0, -2, 0, 2, 0, 2, 0];
+      P.jaw = f ? 2 : 1;
+      P.fn = [0.55, -0.45, 0];
+      P.ff = [0.5, -0.45, 0];
+      P.hn = [-0.8, 0.7, 0];
+      P.hf = [-0.8, 0.7, 0];
       break;
     case 'attack':
       P.lunge = f ? 3 : 5;
-      P.bob = f ? 1 : -3;
+      P.bob = f ? 0 : -4;
       P.stretch = f ? 2 : 4;
-      P.legs = [6, 2, 5, 3, -6, 3, -5, 2];
+      P.fn = [1.15, 0.9, 5];
+      P.ff = [1.0, 0.8, 4];
+      P.hn = [-1.15, -0.5, 3];
+      P.hf = [-1.0, -0.4, 3];
       P.jaw = 3;
       P.tail = -1;
-      P.head = [2, f ? 0 : -1];
+      P.head = [2, f ? 1 : -1];
       break;
     case 'howl':
       P.sit = true;
-      P.howl = true;
       P.jaw = f ? 3 : 2;
       break;
     case 'hurt':
       P.lunge = -2;
-      P.head = [-1, -2];
-      P.jaw = 1;
+      P.head = [-1, -3];
+      P.jaw = 2;
+      P.fn = [-0.2, 0.1, 0];
       break;
     case 'defeat':
       P.lie = f + 1;
@@ -496,18 +588,102 @@ function greyjawPose(anim, f) {
   return P;
 }
 
+function gjHead(sp, hx, hy, jaw, up = false) {
+  sp.begin({ band: 1 });
+  disc(sp, hx, hy, 5, 4.6, GJ_BODY);
+  if (up) {
+    poly(
+      sp,
+      [
+        [hx - 1, hy - 3],
+        [hx + 4, hy - 11],
+        [hx + 6, hy - 10],
+        [hx + 4, hy - 2],
+      ],
+      GJ_BODY,
+    );
+    sp.begin({ flat: true, shadow: 'none' });
+    sp.dot(hx + 5, hy - 11, OUTLINE);
+    for (let k = 0; k < jaw; k++) sp.dot(hx + 5 - k, hy - 7 + k, '#3a0d16');
+  } else {
+    poly(
+      sp,
+      [
+        [hx + 2, hy - 3],
+        [hx + 10, hy - 1],
+        [hx + 12, hy + 1],
+        [hx + 11, hy + 2.5],
+        [hx + 2, hy + 3],
+      ],
+      GJ_BODY,
+    );
+    if (jaw) {
+      sp.begin({ band: 0 });
+      poly(
+        sp,
+        [
+          [hx + 2, hy + 2.5],
+          [hx + 10, hy + 2.5 + jaw],
+          [hx + 9, hy + 4 + jaw],
+          [hx + 2, hy + 5],
+        ],
+        GJ_BODY,
+      );
+      sp.begin({ flat: true, shadow: 'none' });
+      // A dark mouth with fangs at the front, top and bottom.
+      for (let k = 0; k < 6; k++) for (let j = 0; j <= jaw; j++) sp.dot(hx + 3 + k, hy + 3 + j, j === 0 ? '#6b1424' : '#3a0d16');
+      sp.dot(hx + 8, hy + 3, WHITE);
+      sp.dot(hx + 6, hy + 3, WHITE);
+      sp.dot(hx + 7, hy + 3 + jaw, WHITE);
+      sp.dot(hx + 5, hy + 3 + jaw, WHITE);
+    }
+    sp.begin({ flat: true, shadow: 'none' });
+    sp.dot(hx + 12, hy + 1, OUTLINE);
+    sp.dot(hx + 11, hy + 1, OUTLINE);
+  }
+  // Ears laid back a little, a scar through the eye, gold eyes.
+  sp.begin({ band: 0 });
+  poly(
+    sp,
+    [
+      [hx - 4, hy - 1],
+      [hx - 4, hy - 8],
+      [hx - 0.5, hy - 2],
+    ],
+    GJ_BODY,
+  );
+  poly(
+    sp,
+    [
+      [hx - 1, hy - 2],
+      [hx, hy - 8],
+      [hx + 2.5, hy - 2],
+    ],
+    GJ_BODY,
+  );
+  sp.begin({ flat: true, shadow: 'none' });
+  sp.dot(hx - 1, hy - 5, '#2a2834');
+  sp.dot(hx + 3, hy - 1, EYE_GOLD);
+  sp.dot(hx + 4, hy - 1, OUTLINE);
+  sp.dot(hx + 2, hy - 3, '#d6d4e0');
+  sp.dot(hx + 3, hy - 2, '#d6d4e0');
+  sp.dot(hx + 4, hy, '#d6d4e0');
+  sp.dot(hx + 5, hy + 1, '#d6d4e0');
+}
+
 function paintGreyjaw(anim, f) {
-  const sp = new Sprite(64, 48);
-  sp.rimRamps = new Set([GJ_BODY, GJ_SADDLE]);
+  const raw = new Sprite(72, 48);
+  const sp = shifted(raw, 0, 0);
+  sp.rimRamps = new Set([GJ_BODY, GJ_SADDLE, GJ_MANE]);
   const P = greyjawPose(anim, f);
   const G = 44;
-  const cx = 30 + P.lunge;
+  const cx = 33 + P.lunge;
   if (P.lie) {
     // On his side, legs out, then still.
     const k = P.lie;
     const by = G - 6 + Math.min(2, k - 1);
     sp.begin({ band: 1 });
-    limb(sp, cx - 14, by, cx - 22, by - 3 + k, 4, GJ_BODY);
+    taper(sp, cx - 14, by, cx - 26, by - 2 + k, 6, 3, GJ_BODY);
     sp.begin({ band: 0 });
     limb(sp, cx - 6, by + 2, cx - 1, G, 3, GJ_FAR);
     limb(sp, cx + 8, by + 2, cx + 13, G, 3, GJ_FAR);
@@ -516,139 +692,104 @@ function paintGreyjaw(anim, f) {
     sp.begin({ band: 1 });
     disc(sp, cx - 3, by - 4, 10, 2.5, GJ_SADDLE);
     sp.begin({ band: 1 });
-    disc(sp, cx + 15, by + 1, 5.5, 4.5, GJ_BODY);
-    limb(sp, cx + 18, by + 3, cx + 24, by + 4, 4, GJ_BODY);
+    disc(sp, cx + 12, by - 2, 6, 5, GJ_MANE);
+    disc(sp, cx + 17, by + 1, 5, 4.2, GJ_BODY);
+    poly(
+      sp,
+      [
+        [cx + 19, by - 1],
+        [cx + 27, by + 1],
+        [cx + 27, by + 3],
+        [cx + 19, by + 4],
+      ],
+      GJ_BODY,
+    );
     sp.begin({ band: 0 });
     limb(sp, cx - 4, by + 4, cx + 2, G, 3, GJ_BODY);
     limb(sp, cx + 6, by + 4, cx + 12, G, 3, GJ_BODY);
     sp.begin({ flat: true, shadow: 'none' });
-    sp.dot(cx + 17, by - 1, k >= 3 ? OUTLINE : EYE_GOLD);
-    sp.dot(cx + 18, by - 1, OUTLINE);
-    return sp;
+    sp.dot(cx + 19, by, k >= 3 ? OUTLINE : EYE_GOLD);
+    sp.dot(cx + 20, by, OUTLINE);
+    return raw;
   }
-  const top = 22 + P.bob + P.lower;
-  // Tail.
+  if (P.sit) {
+    // Sitting back on his haunches, muzzle to the sky.
+    sp.begin({ band: 1 });
+    taper(sp, cx - 10, G - 3, cx - 22, G - 2, 5, 3, GJ_BODY);
+    sp.begin({ band: 0 });
+    limb(sp, cx + 2, G - 12, cx + 2, G - 1, 3.5, GJ_FAR);
+    sp.begin({ band: 2 });
+    disc(sp, cx - 6, G - 7, 8, 6.5, GJ_BODY);
+    disc(sp, cx + 1, G - 15, 6.5, 8, GJ_BODY);
+    sp.begin({ band: 1 });
+    disc(sp, cx - 6, G - 12, 5, 2.4, GJ_SADDLE);
+    sp.begin({ band: 1 });
+    disc(sp, cx + 3, G - 20, 6.5, 6, GJ_MANE);
+    sp.begin({ band: 1 });
+    limb(sp, cx + 4, G - 12, cx + 5, G - 1, 4, GJ_BODY);
+    sp.rect(cx + 4, G - 2, 4, 2, GJ_BODY);
+    disc(sp, cx - 7, G - 3, 5, 3, GJ_BODY);
+    gjHead(sp, cx + 4, G - 26, P.jaw, true);
+    return raw;
+  }
+  const top = 21 + P.bob + P.lower;
+  const st = P.stretch;
+  // Bushy tail.
   sp.begin({ band: 1 });
   const tl = P.tail;
-  limb(sp, cx - 16, top + 3, cx - 23, top + 1 - tl * 2, 4.5, GJ_BODY);
-  limb(sp, cx - 23, top + 1 - tl * 2, cx - 28, top + 4 - tl * 3, 3.5, GJ_BODY);
+  taper(sp, cx - 17, top + 3, cx - 24, top + 1 - tl * 2, 6, 5, GJ_BODY);
+  taper(sp, cx - 24, top + 1 - tl * 2, cx - 30, top + 5 - tl * 3, 5, 3, GJ_BODY);
   sp.begin({ flat: true, shadow: 'none' });
-  sp.dot(cx - 28, top + 4 - tl * 3, GJ_BELLY[2]);
+  sp.dot(cx - 30, top + 5 - tl * 3, GJ_BELLY[2]);
+  sp.dot(cx - 29, top + 5 - tl * 3, GJ_BELLY[1]);
   // Far legs.
-  const L = P.legs;
-  if (P.sit) {
-    sp.begin({ band: 0 });
-    limb(sp, cx + 6, top + 6, cx + 8, G, 3.5, GJ_FAR);
-  } else {
-    sp.begin({ band: 0 });
-    limb(sp, cx + 8 + P.stretch, top + 6, cx + 9 + L[2] + P.stretch, G - L[3], 3.5, GJ_FAR);
-    limb(sp, cx - 10, top + 6 + P.rear, cx - 11 + L[6], G - L[7], 4, GJ_FAR);
-  }
-  // Body: a long barrel, the dark saddle down the back, the pale belly.
+  sp.begin({ band: 0 });
+  gjLeg(sp, cx + 7 + st, top + 9, 6, P.ff[0], P.ff[1], 4, 3, G, P.ff[2], GJ_FAR);
+  gjLeg(sp, cx - 15, top + 8, 6, P.hf[0], P.hf[1], 5, 3, G, P.hf[2], GJ_FAR);
+  // Body: hips, barrel, deep chest; the dark saddle; a paler fringe of belly fur below.
+  sp.begin({ band: 0, noShadow: true });
+  disc(sp, cx - 1 + st * 0.4, top + 9.5, 10, 2.2, GJ_MANE);
   sp.begin({ band: 2 });
-  if (P.sit) {
-    disc(sp, cx - 4, top + 10, 9, 8, GJ_BODY);
-    disc(sp, cx + 3, top + 3, 6, 9, GJ_BODY);
-  } else {
-    disc(sp, cx - 3 + P.stretch * 0.3, top + 4, 15 + P.stretch * 0.5, 6.4, GJ_BODY);
-    disc(sp, cx + 8 + P.stretch, top + 3, 6.5, 7, GJ_BODY);
-  }
+  disc(sp, cx - 13, top + 5, 6.5, 6, GJ_BODY);
+  disc(sp, cx - 3 + st * 0.4, top + 5, 12 + st * 0.4, 6, GJ_BODY);
+  disc(sp, cx + 8 + st, top + 6, 7.5, 7.5, GJ_BODY);
   sp.begin({ band: 1 });
-  if (!P.sit) disc(sp, cx - 4 + P.stretch * 0.3, top - 1, 12, 2.6, GJ_SADDLE);
-  else disc(sp, cx, top + 1, 5, 4, GJ_SADDLE);
-  sp.begin({ flat: false, band: 0, noShadow: true });
-  if (!P.sit) for (let d = -12; d <= 8; d++) sp.set(cx + d + Math.round(P.stretch * 0.3), top + 9, GJ_BELLY, d % 3 === 0 ? 1 : 2);
-  // Ruff of fur at the neck.
+  disc(sp, cx - 5, top + 0.5, 10, 2.6, GJ_SADDLE);
+  // Mane: a heavy ruff over the shoulders.
   sp.begin({ band: 1 });
-  if (!P.sit) {
-    for (let k = 0; k < 5; k++) limb(sp, cx + 6 + P.stretch + k, top - 2 + k, cx + 3 + P.stretch + k, top + 1 + k, 2, GJ_BODY);
+  disc(sp, cx + 10 + st, top + 1, 7, 6.5, GJ_MANE);
+  for (let k = 0; k < 4; k++) {
+    poly(
+      sp,
+      [
+        [cx + 4 + st + k * 3, top - 3 + k],
+        [cx + 3 + st + k * 3, top + 8 + k * 0.5],
+        [cx + 6 + st + k * 3, top + 6],
+      ],
+      GJ_MANE,
+    );
   }
   // Near legs.
-  if (P.sit) {
-    sp.begin({ band: 1 });
-    limb(sp, cx + 4, top + 7, cx + 4, G, 4, GJ_BODY);
-    disc(sp, cx - 6, G - 3, 6, 3, GJ_BODY);
-    limb(sp, cx - 2, G - 1, cx + 2, G, 3, GJ_BODY);
-  } else {
-    sp.begin({ band: 1 });
-    limb(sp, cx + 10 + P.stretch, top + 6, cx + 10 + L[0] + P.stretch, G - L[1], 4, GJ_BODY);
-    limb(sp, cx - 8, top + 7 + P.rear, cx - 7 + L[4], G - 4 - L[5], 5, GJ_BODY);
-    limb(sp, cx - 7 + L[4], G - 4 - L[5], cx - 9 + L[4], G - L[5], 3.5, GJ_BODY);
-    sp.begin({ flat: true, shadow: 'none' });
-    sp.dot(cx + 11 + L[0] + P.stretch, G - L[1], GJ_SADDLE[0]);
-    sp.dot(cx - 8 + L[4], G - L[5], GJ_SADDLE[0]);
-  }
-  // Head: long muzzle, tall ears, a scar across the eye, gold eyes.
-  let hx;
-  let hy;
-  if (P.howl) {
-    hx = cx + 6;
-    hy = top - 9;
-  } else if (P.sit) {
-    hx = cx + 8;
-    hy = top - 5;
-  } else {
-    hx = cx + 14 + P.stretch + P.head[0];
-    hy = top - 4 + P.head[1];
-  }
   sp.begin({ band: 1 });
-  disc(sp, hx, hy + 2, 5, 4.5, GJ_BODY);
-  if (P.howl) {
-    // Muzzle to the sky.
-    limb(sp, hx + 2, hy - 1, hx + 6, hy - 7, 4, GJ_BODY);
-    sp.begin({ flat: true, shadow: 'none' });
-    sp.dot(hx + 7, hy - 8, OUTLINE);
-    for (let k = 0; k < P.jaw; k++) sp.dot(hx + 6 - k, hy - 4 + k, '#3a0d16');
-  } else {
-    sp.begin({ band: 1 });
-    sp.rect(hx + 3, hy + 1, 7, 3, GJ_BODY);
-    if (P.jaw) sp.rect(hx + 3, hy + 4 + P.jaw, 6, 2, GJ_BODY);
-    sp.begin({ flat: true, shadow: 'none' });
-    sp.dot(hx + 10, hy + 1, OUTLINE);
-    if (P.jaw) {
-      for (let k = 0; k < 5; k++) sp.dot(hx + 4 + k, hy + 4, k % 2 ? WHITE : '#6b1424');
-      for (let j = 0; j < P.jaw; j++) for (let k = 0; k < 5; k++) sp.dot(hx + 4 + k, hy + 4 + j, j === 0 && k % 2 ? WHITE : '#3a0d16');
-    }
-  }
-  // Ears.
-  sp.begin({ band: 0 });
-  poly(
-    sp,
-    [
-      [hx - 3, hy - 1],
-      [hx - 2, hy - 7],
-      [hx + 1, hy - 1],
-    ],
-    GJ_BODY,
-  );
-  poly(
-    sp,
-    [
-      [hx, hy - 1],
-      [hx + 2, hy - 6],
-      [hx + 3, hy - 1],
-    ],
-    GJ_BODY,
-  );
-  sp.begin({ flat: true, shadow: 'none' });
-  sp.dot(hx + 2, hy + 1, EYE_GOLD);
-  sp.dot(hx + 3, hy + 1, OUTLINE);
-  sp.dot(hx + 1, hy - 1, '#c9c6cf');
-  sp.dot(hx + 2, hy, '#c9c6cf');
-  sp.dot(hx + 4, hy + 2, '#c9c6cf');
-  sp.dot(hx - 2, hy + 4, GJ_BELLY[2]);
-  sp.dot(hx - 1, hy + 5, GJ_BELLY[2]);
-  return sp;
+  gjLeg(sp, cx + 10 + st, top + 9, 6, P.fn[0], P.fn[1], 5, 3.4, G, P.fn[2], GJ_BODY);
+  sp.begin({ band: 1 });
+  disc(sp, cx - 13, top + 7, 4.5, 4.5, GJ_BODY);
+  gjLeg(sp, cx - 12, top + 9, 6, P.hn[0], P.hn[1], 5, 3.4, G, P.hn[2], GJ_BODY);
+  gjHead(sp, cx + 17 + st + P.head[0], top - 2 + P.head[1], P.jaw, false);
+  return raw;
 }
 
 // ---------------------------------------------------------------- the Mother of Slimes
 
-const MOTHER = ['#6a2242', '#c0577e', '#f6a8c6'];
-const MOTHER_CORE = ['#4a1430', '#8a3058', '#c0577e'];
+const MOTHER = ['#a63a6a', '#e8689c', '#ffb8d4'];
+const MOTHER_EDGE = ['#5e1a3a', '#8e2c58', '#b8467a'];
+const MOTHER_CORE = ['#f08ab6', '#ffc4dc', '#fff0f6'];
+const KID = ['#b04a7e', '#e88ab4', '#ffd0e4'];
 const MOTHER_SIZE = { L: [22, 17], M: [18, 14], S: [14, 11] };
 
 function paintMother(anim, f, variant) {
-  const sp = new Sprite(64, 52);
+  const raw = new Sprite(64, 52);
+  const sp = shifted(raw, 0, 0);
   const [RX, RY] = MOTHER_SIZE[variant] || MOTHER_SIZE.L;
   let rx = RX;
   let ry = RY;
@@ -662,7 +803,7 @@ function paintMother(anim, f, variant) {
         [RX + 1, RY - 0.6],
         [RX + 1.4, RY - 1],
         [RX + 0.6, RY - 0.4],
-      ][f].map((v, i) => (i ? v : v));
+      ][f];
       break;
     case 'move':
       [rx, ry, lift] = [
@@ -699,57 +840,64 @@ function paintMother(anim, f, variant) {
   const CX = 32;
   const base = 49 - lift;
   const cy = base - ry * 0.62;
-  // The great dome: translucent, flat where it sits.
-  sp.begin({ alpha: 0.82, band: 2 });
+  const inside = (x, y) => {
+    const dx = (x + 0.5 - CX) / rx;
+    return y + 0.5 < cy ? dx * dx + ((y + 0.5 - cy) / ry) ** 2 <= 1 : dx * dx + ((y + 0.5 - cy) / (ry * 0.62 + 0.5)) ** 4 <= 1;
+  };
+  // The great dome: translucent, a darker skin at its rim, flat where it sits.
+  sp.begin({ alpha: 0.88, band: 2 });
   for (let y = Math.floor(cy - ry - 1); y < base; y++) {
     for (let x = Math.floor(CX - rx - 2); x <= Math.ceil(CX + rx + 2); x++) {
-      const dx = (x + 0.5 - CX) / rx;
-      const inside = y + 0.5 < cy ? dx * dx + ((y + 0.5 - cy) / ry) ** 2 <= 1 : dx * dx + ((y + 0.5 - cy) / (ry * 0.62 + 0.5)) ** 4 <= 1;
-      if (inside) sp.set(x, y, MOTHER);
+      if (!inside(x, y)) continue;
+      const edge = !inside(x - 2, y) || !inside(x + 2, y) || !inside(x, y + 2);
+      sp.set(x, y, edge ? MOTHER_EDGE : MOTHER);
     }
   }
-  // A darker heart, and the shapes of little slimes floating inside her.
-  sp.begin({ flat: true, alpha: 0.8 });
-  disc(sp, CX + 1, cy + ry * 0.22, rx * 0.55, ry * 0.42, MOTHER_CORE, 1);
-  if (!melt || melt < 3) {
-    sp.begin({ flat: true, alpha: 0.75 });
+  // A glowing heart, and little slimes floating inside her.
+  sp.begin({ flat: true, alpha: 0.88, noOutline: true });
+  disc(sp, CX - 1, cy + ry * 0.18, rx * 0.42, ry * 0.36, ['#f08ab6', '#f49cc2', '#f8b4d0'], 0);
+  sp.begin({ flat: true, alpha: 0.92, noOutline: true });
+  disc(sp, CX - 1, cy + ry * 0.15, rx * 0.22, ry * 0.2, MOTHER_CORE, 1);
+  if (melt < 3) {
     const kids = variant === 'S' ? 2 : variant === 'M' ? 3 : 4;
     for (let k = 0; k < kids; k++) {
-      const a = (k / kids) * Math.PI * 2 + f * 0.4;
-      const kx = CX + Math.cos(a) * rx * 0.4;
-      const ky = cy + ry * 0.15 + Math.sin(a) * ry * 0.25;
-      disc(sp, kx, ky, 2.2, 1.7, ['#f09ab8', '#f6b8d0', '#ffe0ec'], 1);
-      sp.dot(Math.round(kx), Math.round(ky), '#4a1430', 0.8);
+      const a = (k / kids) * Math.PI * 2 + f * 0.5;
+      const kx = CX + Math.cos(a) * rx * 0.48;
+      const ky = cy + ry * 0.12 + Math.sin(a) * ry * 0.3;
+      sp.begin({ flat: true, alpha: 0.85 });
+      disc(sp, kx, ky, 2.4, 1.9, KID, 1);
+      sp.dot(Math.round(kx) - 1, Math.round(ky), '#3a0d26', 0.9);
+      sp.dot(Math.round(kx) + 1, Math.round(ky), '#3a0d26', 0.9);
+      sp.dot(Math.round(kx) - 1, Math.round(ky) - 1, '#ffffff', 0.8);
     }
   }
-  // Glossy light on the dome.
+  // Glossy light: a curved streak on the upper left, a glint on the right.
   sp.begin({ flat: true, shadow: 'none' });
-  const hx = Math.round(CX - rx * 0.55);
-  const hy = Math.round(cy - ry * 0.55);
-  sp.dot(hx, hy, WHITE, 0.95);
-  sp.dot(hx + 1, hy - 1, WHITE, 0.9);
-  sp.dot(hx + 2, hy - 1, WHITE, 0.7);
-  sp.dot(hx - 1, hy + 1, WHITE, 0.7);
-  sp.dot(hx, hy + 2, WHITE, 0.5);
-  sp.dot(hx + 3, hy - 2, '#ffe0ec', 0.7);
-  sp.dot(Math.round(CX + rx * 0.55), Math.round(cy + ry * 0.1), '#ffe0ec', 0.6);
-  // A crown of bubbles on top.
-  if (!melt) {
-    sp.begin({ alpha: 0.85, band: 0 });
-    for (const [dx, dy, r] of [
-      [-6, -1, 2.4],
-      [0, -2, 3],
-      [6, -1, 2.2],
-    ])
-      disc(sp, CX + dx * (rx / 22), cy - ry + dy + 1, r, r, MOTHER);
-    sp.begin({ flat: true, shadow: 'none' });
-    sp.dot(CX - 1, Math.round(cy - ry - 2), WHITE, 0.9);
+  for (let a = 3.5; a < 4.4; a += 0.08) {
+    sp.dot(Math.round(CX + Math.cos(a) * rx * 0.72), Math.round(cy + Math.sin(a) * ry * 0.72), WHITE, 0.9);
+    sp.dot(Math.round(CX + Math.cos(a) * rx * 0.62), Math.round(cy + Math.sin(a) * ry * 0.62), '#ffe0ec', 0.6);
   }
-  // Face.
+  sp.dot(Math.round(CX + rx * 0.6), Math.round(cy - ry * 0.3), WHITE, 0.8);
+  sp.dot(Math.round(CX + rx * 0.66), Math.round(cy - ry * 0.18), '#ffe0ec', 0.7);
+  // A crown of bubbles.
+  if (!melt) {
+    for (const [dx, dy, r] of [
+      [-7, 0, 2.6],
+      [0, -2, 3.2],
+      [7, 0, 2.4],
+    ]) {
+      sp.begin({ alpha: 0.9, band: 0 });
+      disc(sp, CX + dx * (rx / 22), cy - ry + dy + 1.5, r, r, MOTHER);
+      sp.begin({ flat: true, shadow: 'none' });
+      sp.dot(Math.round(CX + dx * (rx / 22) - r * 0.4), Math.round(cy - ry + dy + 1.5 - r * 0.4), WHITE, 0.95);
+    }
+  }
+  // Face: big wet eyes and a small mouth.
   if (eyes !== 'none') {
     sp.begin({ flat: true, shadow: 'none' });
     const ey = Math.round(cy - ry * 0.12);
-    const ex = [Math.round(CX + rx * 0.05), Math.round(CX + rx * 0.45)];
+    const sx = rx / 22;
+    const ex = [Math.round(CX - 1 + 3 * sx), Math.round(CX + 9 * sx + 2)];
     for (const x of ex) {
       if (eyes === 'x') {
         for (const [a, c] of [
@@ -760,86 +908,91 @@ function paintMother(anim, f, variant) {
           [-1, 1],
         ])
           sp.dot(x + a, ey + c, OUTLINE);
-      } else {
-        sp.dot(x, ey - 1, eyes === 'angry' ? OUTLINE : WHITE);
-        sp.dot(x, ey, OUTLINE);
-        sp.dot(x, ey + 1, OUTLINE);
-        sp.dot(x + 1, ey, OUTLINE);
-        sp.dot(x + 1, ey + 1, OUTLINE);
-        sp.dot(x, ey - 1 + (eyes === 'angry' ? 0 : 0), eyes === 'angry' ? OUTLINE : WHITE);
-        if (eyes === 'angry') {
-          sp.dot(x - 1, ey - 3, OUTLINE);
-          sp.dot(x, ey - 2, OUTLINE);
-          sp.dot(x + 1, ey - 2, OUTLINE);
-        }
+        continue;
+      }
+      for (let j = -2; j <= 1; j++) for (let i = -1; i <= 1; i++) sp.dot(x + i, ey + j, OUTLINE);
+      sp.dot(x - 1, ey - 2, WHITE);
+      sp.dot(x, ey - 1, '#ffd0e4');
+      if (eyes === 'angry') {
+        sp.dot(x - 2, ey - 4, OUTLINE);
+        sp.dot(x - 1, ey - 4, OUTLINE);
+        sp.dot(x, ey - 3, OUTLINE);
+        sp.dot(x + 1, ey - 3, OUTLINE);
       }
     }
     const my = ey + 4;
-    const mx = Math.round(CX + rx * 0.25);
-    sp.dot(mx, my, OUTLINE);
+    const mx = Math.round((ex[0] + ex[1]) / 2);
+    sp.dot(mx - 1, my, OUTLINE);
+    sp.dot(mx, my + 1, OUTLINE);
     sp.dot(mx + 1, my, OUTLINE);
     if (anim === 'attack' || anim === 'telegraph') {
       sp.dot(mx, my + 1, '#3a0d16');
+      sp.dot(mx - 1, my + 1, '#3a0d16');
       sp.dot(mx + 1, my + 1, '#3a0d16');
+      sp.dot(mx, my + 2, '#3a0d16');
     }
   }
-  // Melting: drips and a spreading puddle.
   if (melt) {
-    sp.begin({ alpha: 0.7, flat: true });
+    sp.begin({ alpha: 0.75, flat: true });
     disc(sp, CX, base - 1, rx + 4 + melt * 2, 2.5, MOTHER, 1);
     sp.begin({ flat: true, shadow: 'none' });
-    for (let k = 0; k < 5; k++) sp.dot(CX - rx + k * (rx / 2.5), base - 2, '#ffe0ec', 0.6);
+    for (let k = 0; k < 6; k++) sp.dot(Math.round(CX - rx + k * (rx / 2.6)), base - 2, '#ffe0ec', 0.7);
   }
-  return sp;
+  return raw;
 }
 
 // ---------------------------------------------------------------- the Lake's Hum
 
-const HUM = ['#1d3a63', '#3a86bd', '#9ad6f0'];
-const HUM_DEEP = ['#10213f', '#1d3a63', '#2f74ad'];
-const HUM_MASK = ['#7aa6c8', '#cfe6f4', '#f4fbff'];
+// Facing you, arms out of the water: a figure of lake water with a pale face and a mouth
+// held open on one long note. Symmetric, so it is never mirrored.
+const HUM = ['#245a92', '#4ea2d8', '#b4e6fa'];
+const HUM_DEEP = ['#163c6a', '#2a6ea8', '#6ab6e4'];
+const HUM_FACE = ['#6aa8d0', '#bfe4f6', '#f2fbff'];
+const HUM_HAIR = ['#1d4a80', '#3a86c4', '#8ccbe6'];
 
 function humPose(anim, f) {
-  // h: how far it has risen (0..1); arms: [farAngle, nearAngle] (radians from the shoulder, down = π/2)
-  const P = { h: 1, sway: 0, arms: [2.2, 1.0], reach: 11, mouth: 1, glow: 0, dissolve: 0, lean: 0 };
+  // arms: angle of each arm from straight down (+ = outward), reach, h: how far it has risen
+  const P = { h: 1, sway: 0, arm: 0.7, elbow: 0.5, reach: 12, mouth: 2, glow: 0, dissolve: 0, hairUp: 0 };
   switch (anim) {
     case 'rise':
       P.h = [0.25, 0.5, 0.78, 1][f];
-      P.arms = [2.6, 1.6];
+      P.arm = 0.3;
       break;
     case 'sink':
       P.h = [1, 0.75, 0.48, 0.2][f];
-      P.arms = [2.6, 1.6];
+      P.arm = 0.3;
       break;
     case 'idle':
     case 'move':
       P.sway = [0, 1, 0, -1][f];
-      P.arms = [2.25 + 0.1 * Math.sin(f), 1.0 - 0.1 * Math.sin(f)];
-      P.mouth = f % 2 ? 2 : 1;
+      P.arm = 0.75 + 0.08 * [0, 1, 0, -1][f];
+      P.mouth = f % 2 ? 3 : 2;
       break;
     case 'telegraph':
-      P.arms = [-2.4, -0.7];
-      P.reach = 12;
+      P.arm = 2.6;
+      P.elbow = 0.3;
+      P.reach = 13;
       P.glow = 1;
-      P.mouth = 2 + f;
-      P.sway = f ? 1 : 0;
+      P.mouth = 3 + f;
+      P.hairUp = 1 + f;
       break;
     case 'attack':
-      P.arms = [0.2, f ? 0.35 : 0.1];
-      P.reach = 13;
-      P.lean = 3;
-      P.mouth = 3;
+      P.arm = 1.25 + f * 0.15;
+      P.elbow = -0.6;
+      P.reach = 14;
+      P.mouth = 4;
+      P.hairUp = 1;
       break;
     case 'hurt':
-      P.lean = -3;
-      P.arms = [2.7, 2.4];
-      P.mouth = 0;
+      P.arm = 0.25;
+      P.mouth = 1;
+      P.sway = -1;
       break;
     case 'defeat':
       P.h = [0.95, 0.75, 0.5, 0.25][f];
       P.dissolve = f + 1;
-      P.arms = [2.8, 2.8];
-      P.mouth = 2;
+      P.arm = 0.2;
+      P.mouth = 3;
       break;
     default:
       break;
@@ -848,146 +1001,152 @@ function humPose(anim, f) {
 }
 
 function paintHum(anim, f) {
-  const sp = new Sprite(48, 64);
-  sp.rimRamps = new Set([HUM]);
+  const raw = new Sprite(48, 64);
+  const sp = shifted(raw, 0, 0);
+  sp.rimRamps = new Set([HUM, HUM_HAIR]);
   const P = humPose(anim, f);
   const G = 60;
-  const fullH = 40;
-  const top = G - fullH * P.h;
-  const cx = 24 + P.sway + P.lean * 0.5;
-  // Water rings where it meets the lake.
-  sp.begin({ flat: true, alpha: 0.55 });
-  disc(sp, 24, G - 1, 13 + P.dissolve * 2, 2.6, HUM, 2);
-  sp.begin({ flat: true, alpha: 0.75, noOutline: true });
-  for (let x = -14; x <= 14; x++) if (Math.abs(x) > 9) sp.dot(24 + x, G - 1 + (Math.abs(x) % 3 === 0 ? 0 : -1) * 0, '#cfeeff', 0.5);
-  // The column: wide at the water, narrowing to a waist, swelling to shoulders.
-  sp.begin({ alpha: 0.82, band: 2 });
-  for (let y = Math.floor(top + 12); y < G; y++) {
-    const k = (y - (top + 12)) / Math.max(1, G - (top + 12));
-    const w = lerp(5.5, 11, k * k) + Math.sin(y * 0.7 + f) * 0.8;
-    const sx = cx + (G - y) * 0.03 * P.sway;
-    for (let x = Math.floor(sx - w); x <= Math.ceil(sx + w); x++) sp.set(x, y, HUM);
+  const top = G - 42 * P.h;
+  const cx = 24 + P.sway;
+  // Foam where it meets the lake.
+  sp.begin({ flat: true, alpha: 0.6 });
+  disc(sp, 24, G - 1, 14 + P.dissolve * 2, 2.8, HUM_DEEP, 1);
+  sp.begin({ flat: true, noOutline: true, shadow: 'none' });
+  for (let x = -15; x <= 15; x += 2) sp.dot(24 + x + (f % 2), G - 2 + (x % 4 === 0 ? 1 : 0), '#e8faff', 0.75);
+  // Hair of water streaming from the head down behind the shoulders.
+  if (P.h > 0.35) {
+    sp.begin({ alpha: 0.85, band: 1 });
+    for (const s of [-1, 1]) {
+      for (let k = 0; k < 4; k++) {
+        const x0 = cx + s * (2 + k);
+        const y0 = top + 3;
+        const x1 = cx + s * (7 + k * 1.5);
+        const y1 = top + 15 + k * 2 - P.hairUp * 8;
+        taper(sp, x0, y0, x1, y1, 3, 1.4, HUM_HAIR);
+      }
+    }
+  }
+  // The column: wide at the water, a waist, then shoulders.
+  sp.begin({ alpha: 0.86, band: 2 });
+  const waist = top + 20;
+  for (let y = Math.floor(waist); y < G; y++) {
+    const k = (y - waist) / Math.max(1, G - waist);
+    const w = lerp(4.5, 11.5, k * k) + Math.sin(y * 0.8 + f) * 0.7;
+    for (let x = Math.floor(cx - w); x <= Math.ceil(cx + w); x++) sp.set(x, y, HUM);
   }
   if (P.h > 0.35) {
-    // Shoulders and chest.
-    sp.begin({ alpha: 0.85, band: 2 });
-    disc(sp, cx, top + 15, 9.5, 6, HUM);
-    // Far arm behind.
-    sp.begin({ alpha: 0.75, band: 1 });
-    const fa = P.arms[0];
-    limb(sp, cx - 6, top + 13, cx - 6 + Math.cos(fa) * P.reach, top + 13 + Math.sin(fa) * P.reach, 3.6, HUM_DEEP);
-    // Head: a pale mask with hollow eyes and a humming mouth; hair of water falling back.
-    sp.begin({ alpha: 0.8, band: 1 });
-    for (let k = 0; k < 7; k++) limb(sp, cx - 2 - k, top + 2 + k * 0.5, cx - 6 - k * 1.2, top + 10 + k * 1.5, 2.6, HUM);
-    sp.begin({ band: 1 });
-    disc(sp, cx + 1, top + 5, 5, 5.6, HUM_MASK);
-    sp.begin({ flat: true, shadow: 'none' });
-    sp.dot(cx + 2, top + 4, '#14233f');
-    sp.dot(cx + 2, top + 5, '#14233f');
-    sp.dot(cx + 4, top + 4, '#14233f');
-    sp.dot(cx + 4, top + 5, '#14233f');
-    if (P.glow) {
-      sp.dot(cx + 2, top + 4, '#e8faff');
-      sp.dot(cx + 4, top + 4, '#e8faff');
+    sp.begin({ alpha: 0.88, band: 2 });
+    disc(sp, cx, top + 15, 7.5, 7, HUM);
+    disc(sp, cx, top + 19, 5, 4, HUM);
+    // A cold light at its heart.
+    sp.begin({ flat: true, noOutline: true, shadow: 'none' });
+    for (const [dx, dy, c] of [[0, -1, '#e8faff'], [-1, 0, '#bfe9ff'], [0, 0, '#ffffff'], [1, 0, '#bfe9ff'], [0, 1, '#bfe9ff']]) sp.dot(cx + dx, top + 15 + dy, c, P.glow ? 1 : 0.8);
+    // Arms.
+    for (const s of [-1, 1]) {
+      const sx = cx + s * 6.5;
+      const sy = top + 11;
+      const a = P.arm;
+      const ex = sx + s * Math.sin(a) * P.reach * 0.55;
+      const ey = sy + Math.cos(a) * P.reach * 0.55;
+      const a2 = a + P.elbow * (a > 1.6 ? -1 : 1) * 0.6;
+      const hx = ex + s * Math.sin(a2) * P.reach * 0.5;
+      const hy = ey + Math.cos(a2) * P.reach * 0.5;
+      sp.begin({ alpha: 0.88, band: 1 });
+      taper(sp, sx, sy, ex, ey, 4.4, 3.6, HUM);
+      taper(sp, ex, ey, hx, hy, 3.6, 3, HUM);
+      sp.begin({ flat: true, alpha: 0.9 });
+      disc(sp, hx, hy, 2.4, 2.4, HUM_FACE, 1);
     }
-    for (let m = 0; m < P.mouth; m++) {
-      sp.dot(cx + 3, top + 8 + m, '#14233f');
-      if (m > 0) sp.dot(cx + 4, top + 8 + m, '#14233f');
-    }
-    // A crown of reeds and a lily.
-    sp.begin({ band: 0 });
-    for (const [dx, h] of [
-      [-3, 6],
-      [-1, 8],
-      [1, 7],
-    ])
-      limb(sp, cx + dx, top + 1, cx + dx - 1, top + 1 - h * P.h, 1.4, ['#2c5236', '#43744a', '#6fa34c']);
+    // Head: a pale face of still water, hollow eyes, the mouth on its long note.
+    sp.begin({ band: 1, alpha: 0.95 });
+    disc(sp, cx, top + 4, 5, 5.8, HUM_FACE);
     sp.begin({ flat: true, shadow: 'none' });
-    sp.dot(cx + 3, top, '#f6a8c6');
-    sp.dot(cx + 4, top, '#ffe0ec');
-    sp.dot(cx + 3, top - 1, '#f6a8c6');
-    // Near arm.
-    sp.begin({ alpha: 0.85, band: 1 });
-    const na = P.arms[1];
-    const ex = cx + 7 + Math.cos(na) * P.reach;
-    const ey = top + 13 + Math.sin(na) * P.reach;
-    limb(sp, cx + 6, top + 13, ex, ey, 4, HUM);
-    sp.begin({ flat: true, alpha: 0.9 });
-    disc(sp, ex, ey, 2.6, 2.6, HUM, 2);
+    const eyeC = P.glow ? '#ffffff' : '#163c6a';
+    for (const s of [-1, 1]) {
+      sp.dot(cx + s * 2 - (s > 0 ? 1 : 0), top + 3, eyeC);
+      sp.dot(cx + s * 2 - (s > 0 ? 1 : 0) + s, top + 3, eyeC);
+      sp.dot(cx + s * 2 - (s > 0 ? 1 : 0), top + 4, '#163c6a');
+    }
+    for (let m = 0; m < Math.min(4, P.mouth); m++) {
+      sp.dot(cx - 1, top + 7 + Math.floor(m / 2), '#163c6a');
+      if (m % 2) sp.dot(cx, top + 7 + Math.floor(m / 2), '#163c6a');
+    }
+    // A single white lily caught in its hair.
+    sp.dot(cx + 4, top - 1, '#ffffff');
+    sp.dot(cx + 5, top - 1, '#ffe0ec');
+    sp.dot(cx + 4, top, '#f6a8c6');
+    sp.dot(cx + 5, top, '#ffffff');
+    if (P.glow) halo(sp, cx, top + 4, 11, '#9ad6f0', 0.5);
   } else {
-    // Just rising: a swell with a pale face breaking the surface.
     sp.begin({ band: 1 });
-    disc(sp, cx + 1, top + 7, 4.5, 4, HUM_MASK);
+    disc(sp, cx, top + 7, 4.5, 4, HUM_FACE);
     sp.begin({ flat: true, shadow: 'none' });
-    sp.dot(cx + 2, top + 6, '#14233f');
-    sp.dot(cx + 4, top + 6, '#14233f');
+    sp.dot(cx - 2, top + 6, '#163c6a');
+    sp.dot(cx + 1, top + 6, '#163c6a');
   }
   // Light running down the water.
   sp.begin({ flat: true, shadow: 'none', noOutline: true });
-  for (let y = Math.floor(top + 14); y < G - 2; y += 3) sp.dot(Math.round(cx - 3 + Math.sin(y * 0.5 + f * 1.3) * 2), y, '#e8faff', 0.7);
-  if (P.glow) glow(sp, cx + 3, top + 6, 10, '#9ad6f0', 0.5);
-  if (P.dissolve) {
-    sp.begin({ flat: true, noOutline: true, shadow: 'none' });
-    for (let k = 0; k < 10 * P.dissolve; k++) {
-      const x = Math.round(cx + Math.sin(k * 2.3) * 12);
-      const y = Math.round(top + 6 + ((k * 7) % 40));
-      sp.dot(x, y, '#cfeeff', 0.8);
-    }
+  for (let y = Math.floor(top + 18); y < G - 3; y += 3) {
+    sp.dot(Math.round(cx - 4 + Math.sin(y * 0.5 + f * 1.3) * 1.5), y, '#e8faff', 0.75);
+    sp.dot(Math.round(cx + 3 + Math.cos(y * 0.4 + f) * 1.5), y + 1, '#b4e6fa', 0.6);
   }
-  return sp;
+  if (P.dissolve) {
+    for (let k = 0; k < 10 * P.dissolve; k++) sp.dot(Math.round(cx + Math.sin(k * 2.3) * 13), Math.round(top + 4 + ((k * 7) % 40)), '#cfeeff', 0.85);
+  }
+  return raw;
 }
 
 // ---------------------------------------------------------------- the Bone Warden
 
 function wardenPose(anim, f) {
-  const P = { bob: 0, lean: 0, legs: [0, 0, 0, 0], sword: [31, 34], swAng: 1.35, swLen: 17, lantern: [16, 35], lampUp: false, kneel: false, slump: 0, headDy: 0, glow: 0.6, pile: 0, smear: false, swordBehind: false };
+  const P = { bob: 0, lean: 0, legs: [0, 0, 0, 0], sword: [31, 34], swAng: 1.3, swLen: 17, lamp: [33, 33], kneel: false, slump: 0, headDy: 0, glow: 0.6, pile: 0, smear: false, swordBehind: false };
   switch (anim) {
     case 'idle':
       P.bob = [0, 0, 1, 1][f];
-      P.lantern = [16, 35 + [0, 1, 1, 0][f]];
+      P.lamp = [34, 31 + [0, 1, 1, 0][f]];
       break;
     case 'move': {
       const t = (f / 6) * Math.PI * 2;
       P.bob = [0, 1, 0, 0, 1, 0][f];
       P.legs = [Math.round(3 * Math.sin(t)), Math.cos(t) > 0.3 ? 2 : 0, Math.round(-3 * Math.sin(t)), Math.cos(t) < -0.3 ? 2 : 0];
-      P.lantern = [16 + Math.round(Math.cos(t)), 35];
+      P.lamp = [34 + Math.round(Math.cos(t)), 31];
       break;
     }
     case 'telegraph':
       P.lean = -2;
-      P.sword = [22, 12];
+      P.sword = [20, 10];
       P.swAng = -2.3;
       P.swLen = 18;
       P.bob = f;
       P.swordBehind = true;
       P.glow = 0.8;
+      P.lamp = [33, 32];
       break;
     case 'attack':
       P.lean = [2, 3, 2][f];
       P.sword = [
-        [31, 16],
-        [35, 28],
-        [32, 34],
+        [31, 14],
+        [35, 26],
+        [32, 33],
       ][f];
       P.swAng = [-0.9, 0.2, 1.2][f];
       P.smear = f === 1;
       P.legs = [-2, 0, 3, 0];
+      P.lamp = [27, 33];
       break;
     case 'lantern':
-      P.lampUp = true;
-      P.lantern = [33, 22 - f];
+      P.lamp = [36, 19 - f];
       P.glow = 1;
-      P.sword = [18, 36];
+      P.sword = [20, 35];
       P.swAng = 1.9;
       break;
     case 'shield':
       P.kneel = true;
       P.bob = 7;
-      P.sword = [31, 38];
+      P.sword = [31, 37];
       P.swAng = 1.57;
       P.swLen = 15;
-      P.lantern = [25, 18 + f];
-      P.lampUp = true;
+      P.lamp = [35, 17 + f];
       P.glow = 1;
       break;
     case 'stagger':
@@ -995,9 +1154,9 @@ function wardenPose(anim, f) {
       P.lean = -2;
       P.headDy = 3;
       P.bob = 2 + f;
-      P.sword = [29, 44];
+      P.sword = [29, 42];
       P.swAng = 1.1;
-      P.lantern = [18, 41];
+      P.lamp = [31, 40];
       P.glow = 0.3;
       break;
     case 'hurt':
@@ -1019,7 +1178,7 @@ function sword(sp, hx, hy, ang, len) {
   const ux = Math.cos(ang);
   const uy = Math.sin(ang);
   sp.begin({ band: 0 });
-  limb(sp, hx - ux * 3 - uy * 3, hy - uy * 3 + ux * 3, hx - ux * 3 + uy * 3, hy - uy * 3 - ux * 3, 1.6, RUST_IRON);
+  limb(sp, hx - ux * 3 - uy * 3, hy - uy * 3 + ux * 3, hx - ux * 3 + uy * 3, hy - uy * 3 - ux * 3, 1.6, PLATE);
   sp.begin({ band: 1 });
   limb(sp, hx - ux * 2, hy - uy * 2, hx + ux * len, hy + uy * len, 2.6, IRON);
   sp.begin({ flat: true, shadow: 'none' });
@@ -1028,17 +1187,19 @@ function sword(sp, hx, hy, ang, len) {
 
 function lantern(sp, x, y, glowK) {
   sp.begin({ band: 0 });
-  sp.rect(Math.round(x) - 2, Math.round(y) - 6, 5, 1, RUST_IRON);
-  limb(sp, x, y - 9, x, y - 6, 1, RUST_IRON);
+  limb(sp, x, y - 9, x, y - 6, 1, PLATE);
+  sp.rect(Math.round(x) - 3, Math.round(y) - 6, 7, 1, PLATE);
   sp.begin({ band: 1 });
-  sp.rect(Math.round(x) - 2, Math.round(y) - 5, 5, 6, RUST_IRON);
+  sp.rect(Math.round(x) - 2, Math.round(y) - 5, 5, 6, PLATE);
+  sp.rect(Math.round(x) - 3, Math.round(y) + 1, 7, 1, PLATE);
   sp.begin({ flat: true, shadow: 'none' });
   for (let j = 0; j < 4; j++) for (let i = 0; i < 3; i++) sp.dot(Math.round(x) - 1 + i, Math.round(y) - 4 + j, j === 1 && i === 1 ? '#ffffff' : GRAVE[glowK > 0.5 ? 2 : 1]);
-  if (glowK > 0.05) glow(sp, x, y - 2, 6 + glowK * 6, '#7fb2ff', 0.35 + 0.35 * glowK);
+  if (glowK > 0.05) halo(sp, x, y - 2, 7 + glowK * 6, '#7fb2ff', 0.35 + 0.35 * glowK);
 }
 
 function paintWarden(anim, f) {
-  const sp = new Sprite(48, 56);
+  const raw = new Sprite(48, 60);
+  const sp = shifted(raw, 0, 4);
   sp.rimRamps = new Set([CLOAK]);
   const P = wardenPose(anim, f);
   const G = 52;
@@ -1050,14 +1211,15 @@ function paintWarden(anim, f) {
     sp.begin({ band: 1 });
     for (let i = 0; i < 5 + k; i++) limb(sp, 14 + i * 3, G - 4 - ((i * 5) % 4), 17 + i * 3, G - 2 - ((i * 3) % 3), 2, BONE);
     sp.begin({ band: 1 });
-    disc(sp, 20 + k * 2, G - 6 + k, 5, 3.5, RUST_IRON);
+    disc(sp, 20 + k * 2, G - 6 + k, 5, 3.5, PLATE);
     sp.begin({ band: 1 });
     disc(sp, 30 - k, G - 9 + k * 2, 4, 3.6, BONE);
     sp.begin({ flat: true, shadow: 'none' });
     sp.dot(31 - k, G - 9 + k * 2, OUTLINE);
+    sp.dot(29 - k, G - 9 + k * 2, OUTLINE);
     sword(sp, 10, G - 2, -0.05, 18);
     lantern(sp, 38 + k * 2, G - 1, P.glow);
-    return sp;
+    return raw;
   }
   const b = P.bob;
   const L = P.lean;
@@ -1069,104 +1231,105 @@ function paintWarden(anim, f) {
     [
       [17 + L, 21 + b],
       [27 + L, 21 + b],
-      [26 + L * 0.5, G - 6 + (P.kneel ? 0 : 0)],
-      [23, G - 3],
-      [21, G - 6],
-      [18, G - 3],
-      [14 + L * 0.3, G - 7],
+      [26 + L * 0.5, G - 7],
+      [24, G - 3],
+      [22, G - 7],
+      [19, G - 2],
+      [17, G - 6],
+      [13 + L * 0.3, G - 4],
     ],
     CLOAK,
   );
-  // Far arm (the lantern hand), behind the body unless raised.
-  const shF = [19 + L, 23 + b];
-  if (!P.lampUp) {
-    sp.begin({ band: 0 });
-    limb(sp, shF[0], shF[1], P.lantern[0] + 1, P.lantern[1] - 9 + b, 2, BONE_DARK);
-    lantern(sp, P.lantern[0], P.lantern[1] + b, P.glow);
-  }
   if (P.swordBehind) sword(sp, P.sword[0] + L, P.sword[1] + b, P.swAng, P.swLen);
-  // Legs: bone shins under plate greaves.
+  // Legs: bone under battered greaves.
   if (P.kneel) {
     sp.begin({ band: 0 });
     limb(sp, hip[0] - 1, hip[1], 15, G - 1, 3, BONE_DARK);
     sp.begin({ band: 1 });
     limb(sp, hip[0] + 2, hip[1], 30, hip[1] + 1, 3.5, BONE);
-    limb(sp, 30, hip[1] + 1, 30, G - 1, 3.5, RUST_IRON);
+    limb(sp, 30, hip[1] + 1, 30, G - 1, 4, PLATE);
   } else {
     const [fd, fl, nd, nl] = P.legs;
     sp.begin({ band: 0 });
-    limb(sp, hip[0] - 2, hip[1], 20 + fd, G - 1 - fl, 3, BONE_DARK);
-    sp.begin({ band: 0 });
-    limb(sp, 20 + fd * 0.6, G - 9, 20 + fd, G - 1 - fl, 4, darkerRamp(RUST_IRON));
+    limb(sp, hip[0] - 2, hip[1], 20 + fd * 0.6, G - 9, 2.4, BONE_DARK);
+    limb(sp, 20 + fd * 0.6, G - 9, 20 + fd, G - 1 - fl, 4, darkerRamp(PLATE));
     sp.begin({ band: 1 });
-    limb(sp, hip[0] + 2, hip[1], 26 + nd, G - 1 - nl, 3, BONE);
+    limb(sp, hip[0] + 2, hip[1], 26 + nd * 0.6, G - 9, 2.6, BONE);
     sp.begin({ band: 1 });
-    limb(sp, 26 + nd * 0.6, G - 9, 26 + nd, G - 1 - nl, 4, RUST_IRON);
+    limb(sp, 26 + nd * 0.6, G - 9, 26 + nd, G - 1 - nl, 4.4, PLATE);
   }
-  // Ribs under a cracked breastplate; a pelvis of bone.
+  // Ribs behind a broken breastplate; a bone pelvis; a far arm of bone.
   const tx = 23 + L * 0.7;
   const ty = 28 + b + P.slump;
   sp.begin({ band: 1 });
-  disc(sp, tx, ty + 7, 4.5, 2.5, BONE);
+  disc(sp, tx, ty + 7, 4.5, 2.4, BONE);
+  sp.begin({ band: 0 });
+  limb(sp, 19 + L, 23 + b, lerp(19 + L, P.lamp[0], 0.5), lerp(23 + b, P.lamp[1] - 8 + b, 0.5) + 3, 2.2, BONE_DARK);
   sp.begin({ band: 2 });
-  disc(sp, tx, ty, 7, 7.5, RUST_IRON);
+  disc(sp, tx, ty, 6.6, 7.2, PLATE);
+  // The plate is split down the front: ribs show through.
   sp.begin({ flat: true, shadow: 'none' });
-  for (let k = 0; k < 3; k++) {
-    sp.dot(Math.round(tx - 4 + k), Math.round(ty - 3 + k * 2), OUTLINE);
-    sp.dot(Math.round(tx - 3 + k), Math.round(ty - 3 + k * 2), BONE[1]);
+  for (let k = 0; k < 4; k++) {
+    sp.dot(Math.round(tx + 1), Math.round(ty - 4 + k * 2), '#1a1423');
+    sp.dot(Math.round(tx + 2), Math.round(ty - 4 + k * 2), BONE[2]);
+    sp.dot(Math.round(tx + 3), Math.round(ty - 4 + k * 2), BONE[1]);
+    sp.dot(Math.round(tx + 2), Math.round(ty - 3 + k * 2), '#1a1423');
   }
-  sp.dot(Math.round(tx + 2), Math.round(ty - 1), '#9aa0ad');
+  sp.dot(Math.round(tx - 3), Math.round(ty - 3), '#4f8a7e');
+  sp.dot(Math.round(tx - 2), Math.round(ty + 2), '#4f8a7e');
   // Pauldrons.
   sp.begin({ band: 1 });
-  disc(sp, tx - 5, ty - 6, 4, 3, RUST_IRON);
-  disc(sp, tx + 5, ty - 6, 4.4, 3.2, RUST_IRON);
-  // Skull in a dented helm with a glowing slit.
+  disc(sp, tx - 5, ty - 6, 4, 3, PLATE);
+  disc(sp, tx + 5, ty - 6, 4.4, 3.2, PLATE);
+  // A skull in a dented helm, a gravelight slit, a bone jaw beneath.
   const hx = 25 + L;
   const hy = 15 + b + P.headDy;
   sp.begin({ band: 1 });
-  disc(sp, hx, hy, 5, 5.6, RUST_IRON);
-  sp.rect(hx - 5, hy - 1, 10, 3, RUST_IRON);
+  disc(sp, hx + 1, hy + 4, 3.4, 2.4, BONE);
+  sp.begin({ band: 1 });
+  disc(sp, hx, hy, 5, 5.2, PLATE);
+  sp.rect(hx - 5, hy - 1, 10, 3, PLATE);
   sp.begin({ band: 0 });
   poly(
     sp,
     [
       [hx - 4, hy - 4],
-      [hx - 9, hy - 9],
+      [hx - 10, hy - 10],
       [hx - 3, hy - 6],
     ],
     BONE,
   );
   sp.begin({ flat: true, shadow: 'none' });
-  for (let i = 0; i < 5; i++) sp.dot(hx + i, hy, i >= 2 ? GRAVE[P.glow > 0.7 ? 2 : 1] : OUTLINE);
-  sp.dot(hx + 3, hy + 3, BONE[2]);
-  sp.dot(hx + 4, hy + 3, BONE[1]);
-  sp.dot(hx + 2, hy + 4, BONE[1]);
-  if (P.glow > 0.7) glow(sp, hx + 4, hy, 4, '#7fb2ff', 0.5);
-  // Near arm with the sword (or the raised lantern).
-  const shN = [28 + L, 23 + b];
-  if (P.lampUp) {
+  for (let i = 0; i < 5; i++) sp.dot(hx + i, hy, i >= 1 ? GRAVE[P.glow > 0.7 ? 2 : 1] : OUTLINE);
+  for (let i = 0; i < 3; i++) sp.dot(hx + 1 + i, hy + 5, i % 2 ? BONE[0] : BONE[2]);
+  sp.dot(hx - 1, hy - 3, '#8590a8');
+  if (P.glow > 0.7) halo(sp, hx + 4, hy, 5, '#7fb2ff', 0.5);
+  // The lantern, held out in front, then the sword arm.
+  lantern(sp, P.lamp[0] + (anim === 'shield' || anim === 'lantern' ? 0 : L), P.lamp[1] + b, P.glow);
+  if (anim === 'lantern' || anim === 'shield') {
+    // The lantern arm is raised: draw its forearm over the body.
     sp.begin({ band: 1 });
-    limb(sp, shN[0], shN[1], P.lantern[0], P.lantern[1] - 8 + b, 2.2, BONE);
-    lantern(sp, P.lantern[0], P.lantern[1] + b, P.glow);
-    sp.begin({ band: 0 });
-    limb(sp, shF[0], shF[1], P.sword[0] - 2, P.sword[1] - 3 + b, 2, BONE_DARK);
-    if (!P.swordBehind) sword(sp, P.sword[0], P.sword[1] + b, P.swAng, P.swLen);
-  } else {
-    sp.begin({ band: 1 });
-    const el = [lerp(shN[0], P.sword[0] + L, 0.5) + 1, lerp(shN[1], P.sword[1] + b, 0.5)];
-    limb(sp, shN[0], shN[1], el[0], el[1], 2.2, BONE);
-    limb(sp, el[0], el[1], P.sword[0] + L, P.sword[1] + b, 2.2, BONE);
-    sp.begin({ band: 1 });
-    disc(sp, el[0], el[1], 2, 2, RUST_IRON);
-    if (!P.swordBehind) sword(sp, P.sword[0] + L, P.sword[1] + b, P.swAng, P.swLen);
+    limb(sp, 28 + L, 24 + b, P.lamp[0], P.lamp[1] - 8 + b, 2.2, BONE);
   }
+  const shN = [28 + L, 23 + b];
+  const sx = P.sword[0] + L;
+  const sy = P.sword[1] + b;
+  if (anim !== 'lantern' && anim !== 'shield') {
+    const el = [lerp(shN[0], sx, 0.5) + 1, lerp(shN[1], sy, 0.5)];
+    sp.begin({ band: 1 });
+    limb(sp, shN[0], shN[1], el[0], el[1], 2.4, BONE);
+    limb(sp, el[0], el[1], sx, sy, 2.4, BONE);
+    sp.begin({ band: 1 });
+    disc(sp, el[0], el[1], 2, 2, PLATE);
+  }
+  if (!P.swordBehind) sword(sp, anim === 'lantern' || anim === 'shield' ? P.sword[0] : sx, anim === 'lantern' || anim === 'shield' ? P.sword[1] + b : sy, P.swAng, P.swLen);
   if (P.smear) {
     sp.begin({ flat: true, noOutline: true, shadow: 'none' });
-    for (let a = -0.9; a < 0.3; a += 0.06) {
-      for (let r = 14; r < 20; r++) sp.dot(Math.round(P.sword[0] + L + Math.cos(a) * r), Math.round(P.sword[1] + b + Math.sin(a) * r), '#cfe0ff', 0.35);
+    for (let a = -0.9; a < 0.3; a += 0.05) {
+      for (let r = 14; r < 21; r++) sp.dot(Math.round(sx + Math.cos(a) * r), Math.round(sy + Math.sin(a) * r), '#cfe0ff', 0.4);
     }
   }
-  return sp;
+  return raw;
 }
 
 // ---------------------------------------------------------------- registry
@@ -1258,7 +1421,8 @@ export function drawBossSprite(ctx, atlas, id, anim, t, x, y, opts = {}) {
     const n = s.frames.length;
     let i = Math.floor((t || 0) * (info?.fps || 4));
     i = info && !info.loop ? Math.min(i, n - 1) : ((i % n) + n) % n;
-    return atlas.draw(ctx, name, i, x, y, { flip: !!opts.flip, flash: opts.flash || 0, alpha: opts.alpha ?? 1 });
+    const flip = !!opts.flip && !BOSS_ART[id]?.noFlip;
+    return atlas.draw(ctx, name, i, x, y, { flip, flash: opts.flash || 0, alpha: opts.alpha ?? 1 });
   } catch {
     return false;
   }
@@ -1270,22 +1434,24 @@ export function drawBossSprite(ctx, atlas, id, anim, t, x, y, opts = {}) {
 const GLYPHS = {
   fire: [
     [
-      [8, 14],
-      [8, 4],
-    ],
-    [
-      [8, 9],
-      [4, 6],
-      [5, 2],
+      [8, 1],
+      [11, 5],
+      [13, 9],
+      [12, 12],
+      [9, 14],
+      [6, 14],
+      [3, 12],
+      [3, 9],
+      [5, 6],
+      [6, 9],
+      [8, 1],
     ],
     [
       [8, 8],
-      [12, 5],
-      [11, 2],
-    ],
-    [
-      [4, 14],
-      [12, 14],
+      [10, 11],
+      [8, 13],
+      [6, 11],
+      [8, 8],
     ],
   ],
   wind: [
@@ -1553,7 +1719,4 @@ export function drawGlyph(ctx, atlas, kind, id, x, y, opts = {}) {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(c, Math.round(x - w / 2), Math.round(y - 8 - c.height / 2), w, c.height);
   void atlas;
-  void mixHex;
-  void lighten;
-  void rampFrom;
 }
