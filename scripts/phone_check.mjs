@@ -9,6 +9,10 @@
 //   - the chat closes by ✕ and by a tap on the world;
 //   - the magic lessons appear and can be finished with taps on the real controls;
 //   - cutscenes advance on a tap and skip on Skip;
+//   - a villager's "more" says to tap; trading keeps the wares and "Done trading" in view;
+//   - every control in every panel is finger-sized (40 px+);
+//   - the world's news waits while a panel is open, and shows once it closes;
+//   - fallen: the fight buttons are put away, Call for help is in view, clear of the stick;
 //   - no page errors, and the page never scrolls sideways.
 //
 //   node scripts/phone_check.mjs              (build first: npm run build)
@@ -500,10 +504,138 @@ async function run([W, H]) {
       }).map((b) => b.textContent.trim()),
     );
     check(!hidden.length, `${tag}: no dialog choice is covered (${hidden.join(', ')})`);
+    // "Chat": while they have more to say, the choices wait behind a ▼ that says so.
+    const chatOpt = await page.evaluate(() => {
+      const b = [...document.querySelectorAll('.panel-dialog .dlg-opt')].find((x) => /^chat/i.test(x.textContent.trim()));
+      const r = b?.getBoundingClientRect();
+      return r ? [r.left + r.width / 2, r.top + r.height / 2] : null;
+    });
+    if (chatOpt) {
+      await tap(...chatOpt);
+      await wait(1500);
+      const more = await page.evaluate(() => {
+        const m = document.querySelector('.panel-dialog .dlg-more');
+        return m && !m.hidden ? m.textContent : null;
+      });
+      if (more !== null) check(/tap/i.test(more), `${tag}: the dialog's ▼ says to tap for more (${more})`);
+    }
     await tapSel('.modal-layer > .panel:last-child .panel-close', 'dialog ✕');
     await wait(400);
     check(!(await stack()).includes('dialog'), `${tag}: the dialog closes by ✕`);
   }
+
+  // ---------- trading: the wares and "Done trading" in view ----------
+  await quiet();
+  const trader = await page.evaluate(() => {
+    const g = window.__game;
+    const t = g.entities.all().find((e) => e.type === 'actor' && typeof e.getDialogue === 'function' && !e.downed && (e.profile?.shop?.sells?.length || e.shop?.sells?.length));
+    if (!t) return null;
+    g.ui.openDialog(t);
+    return t.id;
+  });
+  if (trader) {
+    await wait(2500);
+    const tr = await page.evaluate(() => {
+      const b = [...document.querySelectorAll('.panel-dialog .dlg-opt')].find((x) => /trade|buy|shop|wares/i.test(x.textContent));
+      const r = b?.getBoundingClientRect();
+      return r ? [r.left + r.width / 2, r.top + r.height / 2] : null;
+    });
+    if (check(!!tr, `${tag}: ${trader} offers to trade`)) {
+      await tap(...tr);
+      await wait(700);
+      await fits(`trading with ${trader}`);
+      await shot('15-trade');
+      const view = await page.evaluate(() => {
+        const inView = (e) => {
+          const r = e.getBoundingClientRect();
+          const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return r.width > 0 && r.top >= 0 && r.bottom <= innerHeight && !!at && (at === e || e.contains(at));
+        };
+        const done = [...document.querySelectorAll('.panel-dialog .shop > .btn')].find((b) => /done/i.test(b.textContent));
+        const rows = [...document.querySelectorAll('.panel-dialog .shop-list > *')];
+        return { done: !!done && inView(done), firstRow: rows.length ? inView(rows[0]) : true };
+      });
+      check(view.done, `${tag}: "Done trading" is in view and not covered`);
+      check(view.firstRow, `${tag}: the first ware is in view`);
+    }
+    await page.evaluate(() => window.__game.ui.closeAll());
+    await wait(300);
+  }
+
+  // ---------- finger-sized: every control in every panel ----------
+  const small = await page.evaluate(async () => {
+    const u = window.__game.ui;
+    const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+    const vis = (e) => {
+      for (let p = e; p; p = p.parentElement) {
+        const cs = getComputedStyle(p);
+        if (p.hidden || cs.display === 'none' || cs.visibility === 'hidden') return false;
+      }
+      return true;
+    };
+    // A control inside a taller tappable row (a switch in its label) is that row's size.
+    const hitBox = (e) => {
+      const row = e.closest('label, .set-main, .choice, .set-toggle');
+      const r = (row && row !== e ? row : e).getBoundingClientRect();
+      const before = getComputedStyle(e, '::before');
+      if (before.content !== 'none' && before.position === 'absolute') {
+        const t = parseFloat(before.top) || 0;
+        const b = parseFloat(before.bottom) || 0;
+        return { width: r.width, height: r.height - t - b };
+      }
+      return r;
+    };
+    const out = [];
+    const opens = [
+      ['spellbook', () => u.openSpellbook()],
+      ['bag', () => u.openInventory()],
+      ['missions', () => u.openMissions('active')],
+      ['mind', () => u.openMind('now')],
+      ['settings', () => u.openSettings('game')],
+      ['village', () => u.openVillageLife?.()],
+      ['menu', () => u.openPause()],
+    ];
+    for (const [name, open] of opens) {
+      try {
+        open();
+      } catch {
+        continue;
+      }
+      await pause(450);
+      const p = [...document.querySelectorAll('.modal-layer > .panel')].pop();
+      const tabs = p ? [...p.querySelectorAll('.set-tab, .settings-tabs [role=tab]')] : [];
+      for (let i = 0; i <= tabs.length; i++) {
+        if (i) {
+          tabs[i - 1].click();
+          await pause(200);
+        }
+        for (const b of p?.querySelectorAll('button, [role=tab], select, input:not([type=hidden]), summary') || []) {
+          const r = b.getBoundingClientRect();
+          if (!r.width || !r.height || !vis(b)) continue;
+          const hb = hitBox(b);
+          if (hb.height < 40 || hb.width < 36) out.push(`${name}: ${(b.className || b.tagName).toString().slice(0, 30)} "${(b.textContent || '').trim().slice(0, 16)}" ${Math.round(hb.width)}×${Math.round(hb.height)}`);
+        }
+      }
+      u.closeAll();
+      await pause(150);
+    }
+    return [...new Set(out)];
+  });
+  check(!small.length, `${tag}: every control in every panel is finger-sized (${small.slice(0, 6).join(' | ')})`);
+
+  // ---------- the world's news waits while a panel is open ----------
+  await quiet();
+  await page.evaluate(() => window.__game.ui.openInventory());
+  await wait(2800); // longer than a tap's answer window
+  await page.evaluate(() => window.__game.ui.toast('News from the world', 'warn'));
+  await wait(400);
+  const held = await page.evaluate(() => [...document.querySelectorAll('.toast:not(.queued):not(.leaving)')].some((t) => /News from the world/.test(t.textContent)));
+  check(!held, `${tag}: a notice from the world waits while a panel is open`);
+  await tapSel('.modal-layer > .panel:last-child .panel-close', 'bag ✕');
+  await wait(500);
+  const after = await page.evaluate(() => [...document.querySelectorAll('.toast:not(.queued):not(.leaving)')].some((t) => /News from the world/.test(t.textContent)));
+  check(after, `${tag}: it shows once the panel closes`);
+  await page.evaluate(() => window.__game.ui.toasts.clear());
 
   // ---------- the chat: ✕ and a tap on the world ----------
   await quiet();
@@ -574,6 +706,44 @@ async function run([W, H]) {
     await wait(500);
     const left = await page.evaluate(() => [...document.querySelectorAll('.toast:not(.leaving)')].map((t) => t.textContent));
     check(!left.some((t) => /First notice/.test(t)), `${tag}: a tap puts a notice away`);
+  }
+
+  // ---------- fallen: no fight buttons; the call and the heartbeat in view, clear of the stick ----------
+  await page.evaluate(() => window.__game.ui.toasts.clear());
+  await page.evaluate(() => window.__game.player.fall({ cause: 'test' }));
+  await wait(1500);
+  const fallen = await page.evaluate(() => {
+    const vis = (e) => {
+      if (!e) return false;
+      const r = e.getBoundingClientRect();
+      if (!r.width || !r.height) return false;
+      for (let p = e; p; p = p.parentElement) {
+        const cs = getComputedStyle(p);
+        if (p.hidden || cs.display === 'none' || cs.visibility === 'hidden') return false;
+      }
+      return true;
+    };
+    const call = document.querySelector('.sv-call');
+    const block = document.querySelector('.sv-fallen');
+    const fight = [...document.querySelectorAll('.tcluster .wbtn, .tbtn-attack, .tbtn-dodge')].filter(vis).length;
+    const b = block?.getBoundingClientRect();
+    const c = call?.getBoundingClientRect();
+    const stick = document.querySelector('.stick-zone .stick')?.getBoundingClientRect();
+    const hit = (a, s) => !!a && !!s && s.width > 0 && a.left < s.right && a.right > s.left && a.top < s.bottom && a.bottom > s.top;
+    return {
+      downed: !!window.__game.player.downed,
+      call: vis(call) && c.height >= 44,
+      inside: !!b && b.top >= 0 && b.bottom <= innerHeight && b.left >= 0 && b.right <= innerWidth,
+      fight,
+      onStick: hit(c, stick),
+    };
+  });
+  if (fallen.downed) {
+    await shot('17-fallen');
+    check(fallen.call, `${tag}: fallen: Call for help shows, 44 px+`);
+    check(fallen.inside, `${tag}: fallen: the heartbeat block is on screen`);
+    check(fallen.fight === 0, `${tag}: fallen: the fight buttons are put away (${fallen.fight})`);
+    check(!fallen.onStick, `${tag}: fallen: Call for help is clear of the move stick`);
   }
 
   check(!errors.length, `${tag}: no page errors (${errors.slice(0, 3).join(' | ')})`);

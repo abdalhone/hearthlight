@@ -9009,3 +9009,41 @@ body {
     display: none;
   }
 }
+
+/* One close control: the chat's ✕ is the panels' ✕ (same box, same mark). */
+.chat-head .chat-close .px-icon {
+  --isc: 3;
+}
+.is-touch .chat-head .chat-close {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+}
+
+/* The last small targets on a touch screen: "Use your own key" and her stance chip in
+   her Mind (its tap area grows past its outline). */
+.is-touch .set-group .api-key summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+.is-touch .hero-bond .cs-chip-btn {
+  position: relative;
+}
+.is-touch .hero-bond .cs-chip-btn::before {
+  content: '';
+  position: absolute;
+  inset: -14px -8px;
+}
+
+/* A switch in Settings: its whole row is the target (the label stretches over it, the
+   switch included), so a thumb a little above or below it still flips it. */
+.set-row.set-toggle {
+  position: relative;
+}
+.set-row.set-toggle > .set-main::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
