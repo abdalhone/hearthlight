@@ -1470,3 +1470,70 @@ Two more shapes, plain registry entries like the rest:
   title. Settings are grouped into a few tabs (Game, Controls, Sound & voices, Minds
   (Claude), Display), each option exactly once, with short plain explanations; nothing
   duplicated between the settings, the menu and the HUD.
+
+## 25. Prices: power with a cost (the author: "side effects, where I can choose… for 15 seconds my attack power +20%, but my HP goes down 40% for 2 minutes… or Berserk: strength 200%, speed, but I die at the end")
+
+A fourth family in the Weave (`PRICES` in `src/magic/prices.js`), plain registry entries
+that work with any weave: attach a price to a weave in the Spellbook (or weave a `surge`,
+a self-cast shape whose essences choose what it empowers) and every cast pays it. Each price
+is a **gain** and a **cost**, both timed modifiers on the shared stat pipeline (§26):
+- `bloodprice` — +20% damage for 15 s; max HP −40% for 2 min.
+- `berserk` — the last measure: 200% strength, +40% speed, faster swings and casts, no
+  stagger, for 2 min; when it ends the heart gives out and the player falls (§27, with a
+  short 30 s window).
+- `glass` — +50% weave power for 30 s; take +50% damage for 30 s.
+- `overdraw` — weaves cost no mana for 10 s; then no mana regeneration for 30 s.
+- `emberblood` — while active, lose 2% HP per second and cast 30% faster (toggle).
+- `lastlight` — when the player would fall, heal fully once; max HP −50% until the next
+  sleep.
+- `oath` — +30% to everything while Lyra is near; if she is hurt, the player is too.
+Prices are earned like other components (missions, bosses, a few found), shown with their
+cost in red in the Spellbook and on the hotbar button, and their timers on the HUD. Lyra
+notices and has opinions (berserk frightens her).
+
+## 26. Stats, levels and gear (the author: "I'm really interested to improve my gear and improve my health. And make stat points.")
+
+- **One stat pipeline** (`src/core/stats.js`): every actor's derived stats = base + level +
+  stat points + gear + timed modifiers (statuses, prices, food, potions). Combat, magic,
+  movement and the HUD read derived stats only.
+- **Levels and points**: xp from fights, missions, bosses and good deeds; each level gives
+  3 points to spend: Vitality (max HP, regen), Might (sword and strike damage), Weave
+  (spell power), Focus (max mana, mana regen, cooldowns), Grace (speed, dodge, crit),
+  Resolve (status resistance, longer bleed-out window, carry speed). A character sheet in
+  the menu; respec at the chapel for a price.
+- **Gear**: slots weapon, armor, cloak, boots, two charms. Items have stats and a rarity
+  color; Bram forges and upgrades weapons and armor (with ore, crystals and coin), Sabeth
+  sews cloaks, Garrick sells charms, bosses and missions drop special pieces, Mira and Elda
+  sell potions and food that give timed buffs. Equipping shows on the player's sprite where
+  it reasonably can (weapon, cloak color, armor tint).
+
+## 27. Death is dangerous (the author: "if I die, I would not be able to come back… except if I have some certain place to get me back… I lay down on the ground, so Lyra and other people can pick me up and help me… get me to a hospital… and I can do the same… just before I die… so cinematic")
+
+- **Falling.** At 0 HP the player falls and lies on the ground, alive, with a **bleed-out
+  timer** (75 s; Resolve lengthens it; berserk's end gives 30 s). The scene turns
+  cinematic: a beat of slow motion, the color drains, a heartbeat, muffled sound, a
+  closing vignette, the timer as a fading heartbeat line. The player can crawl a little and
+  **call for help** (a button; the shout reaches whoever is in earshot).
+- **Rescue.** Lyra comes for the player whatever their quarrel (LORE: she never leaves a
+  living person to die when she could carry them; how she speaks to them while doing it
+  depends on everything between them), and so do villagers in earshot (the watch, Hess,
+  Mira, Hobb…). A rescuer can **revive on the spot** if they have the means (Mira's salves,
+  Lyra's lending warmth — partial health and a *bruised* weakness) or **pick the player up
+  and carry them** to a place of healing — **Mira's herbalist (the village's sickroom)** or
+  **the chapel** — before the timer runs out. Carrying is shown (the rescuer carries the
+  player; the camera follows in letterbox; Lyra talks to them on the way). Reaching a
+  sickroom bed in time: the player wakes there hours later, tended, with Mira's bill and a
+  weakness for a while.
+- **The player can do the same.** Villagers and Lyra who fall (they never die) lie with
+  their own window; the player can revive them (potion, a healing weave) or pick them up
+  and carry them to the sickroom (slow walk, no attacking, can drop them), then go back to
+  the fight. Saving someone is remembered: big trust and affection, rumors, Lyra's diary.
+  If nobody comes in time they are carried off gravely hurt and out for a day.
+- **Death.** If the window closes, the player dies. **A kept flame brings them back**: at
+  the chapel, Sister Aveline can relight the stranger's family flame for them (a rite, a
+  price; one at a time). Dying with a kept flame: they wake at the chapel at dawn, the flame
+  spent, coin lost, *flame-thin* (weaker) for a day, and the village knows. Dying without
+  one ends the story: a memorial (Lyra's last diary entry about them, what the village
+  says), and that save can never be continued — it moves to *Past lives* on the title
+  screen. New Game explains this clearly. A setting (Game tab) can soften it to "wake at
+  home" for players who want that; it is off by default, as the author wants.
