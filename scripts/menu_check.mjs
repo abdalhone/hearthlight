@@ -299,6 +299,32 @@ async function run(v) {
     await page.keyboard.press('ArrowDown');
     const f2 = await page.evaluate(() => document.activeElement?.dataset?.item);
     check(`[${L}] menu: arrow keys walk the grid`, f1 === 'spellbook' && f2 === 'lyra', `${f1}, ${f2}`);
+    // A gamepad: the d-pad walks, A presses, Start comes back, B resumes.
+    const pad = await page.evaluate(async () => {
+      const g = window.__game;
+      const inp = g.input;
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const press = async (a) => {
+        inp.lastDevice = 'gamepad';
+        inp.edge.add(a);
+        await sleep(120);
+      };
+      document.activeElement?.blur?.();
+      await press('down');
+      await press('down');
+      const f = document.activeElement?.dataset?.item;
+      await press('attack');
+      const opened = g.ui.stack.map((p) => p.id).join();
+      await press('menu');
+      const back = g.ui.stack.map((p) => p.id).join();
+      await press('dodge');
+      const out = { f, opened, back, after: g.ui.stack.length };
+      inp.lastDevice = 'keyboard';
+      return out;
+    });
+    check(`[${L}] menu: a gamepad walks it (d-pad, A, Start back, B resumes)`, pad.f === 'spellbook' && pad.opened === 'pause,spellbook' && pad.back === 'pause' && pad.after === 0, JSON.stringify(pad));
+    await page.keyboard.press('Escape');
+    await wait(page, 250);
     await page.focus('.pause-menu [data-item="resume"]');
     await page.keyboard.press('Enter');
     await wait(page, 300);

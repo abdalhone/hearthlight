@@ -937,6 +937,8 @@ export class UI {
       return;
     }
     const top = this.top();
+    // A panel that can be walked with a gamepad (the menu) gets the pad's presses.
+    if (top?.padNav && inp.lastDevice === 'gamepad') top.padNav(inp);
     if (inp.uiPressed('mind')) {
       inp.consume('mind');
       if (!top || top === this.mind.panel || top === this.inventory.panel) this.toggleMind();

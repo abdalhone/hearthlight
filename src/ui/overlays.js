@@ -48,7 +48,7 @@ export function pauseItems(game, ui) {
   const items = [{ id: 'resume', group: 'main', label: 'Resume', hint: '', key: 'Esc', run: (ctx) => ctx.close() }];
   if (spellbookReady(game, ui)) items.push({ id: 'spellbook', group: 'go', label: 'Spellbook', hint: 'Your weaves and slots', key: 'B', run: () => ui.openSpellbook() });
   if (typeof ui?.openMissions === 'function') items.push({ id: 'missions', group: 'go', label: 'Missions', hint: 'What you took on', key: '', run: () => ui.openMissions('active') });
-  items.push({ id: 'lyra', group: 'go', label: name, hint: 'Her mind: mood, memories, you', key: 'Tab', run: () => ui.openMind?.(ui.mind?.tab || 'now') });
+  items.push({ id: 'lyra', group: 'go', label: name, hint: 'Her mind and memories', key: 'Tab', run: () => ui.openMind?.(ui.mind?.tab || 'now') });
   const character = characterOpener(ui);
   if (character) items.push({ id: 'character', group: 'go', label: 'Character', hint: 'Your stats and gear', key: '', run: character });
   const book = bookAction(game, ui) || (() => openCodex(ui));
@@ -177,6 +177,32 @@ export function buildPause(ui) {
   menu.addEventListener('keydown', (e) => moveFocus(menu, e));
   panel.body.append(menu);
   panel.onClose = () => clearTimeout(saveTimer);
+  // A gamepad walks it too: the d-pad or a push of the stick moves, A presses, B resumes.
+  let stickWas = null;
+  panel.padNav = (inp) => {
+    let dir = null;
+    for (const a of ['up', 'down', 'left', 'right']) {
+      if (inp.uiPressed(a)) {
+        inp.consume(a);
+        dir = a;
+      }
+    }
+    const v = inp.padVec || { x: 0, y: 0 };
+    const stick = Math.abs(v.x) > Math.abs(v.y) ? (v.x > 0.6 ? 'right' : v.x < -0.6 ? 'left' : null) : v.y > 0.6 ? 'down' : v.y < -0.6 ? 'up' : null;
+    if (stick && stick !== stickWas) dir = dir || stick;
+    stickWas = stick;
+    if (dir) stepFocus(menu, dir);
+    if (inp.uiPressed('attack')) {
+      inp.consume('attack');
+      const at = document.activeElement;
+      if (at && menu.contains(at)) at.click();
+      else stepFocus(menu, 'down');
+    }
+    if (inp.uiPressed('dodge')) {
+      inp.consume('dodge');
+      ctx.close();
+    }
+  };
   return panel;
 }
 
@@ -207,16 +233,14 @@ export function nextInDirection(rects, from, dir) {
   return best.i;
 }
 
-function moveFocus(menu, e) {
-  const dirs = { ArrowDown: 'down', ArrowUp: 'up', ArrowRight: 'right', ArrowLeft: 'left' };
-  const dir = dirs[e.key];
-  if (!dir && e.key !== 'Home' && e.key !== 'End') return;
+// Move focus one step: 'up' | 'down' | 'left' | 'right' | 'home' | 'end'.
+function stepFocus(menu, dir) {
   const list = [...menu.querySelectorAll('button')].filter((b) => !b.disabled && b.offsetParent !== null);
   if (!list.length) return;
   const i = list.indexOf(document.activeElement);
   let n;
-  if (e.key === 'Home') n = 0;
-  else if (e.key === 'End') n = list.length - 1;
+  if (dir === 'home') n = 0;
+  else if (dir === 'end') n = list.length - 1;
   else if (i < 0) n = 0;
   else {
     const rects = list.map((b) => {
@@ -228,6 +252,13 @@ function moveFocus(menu, e) {
     if (n < 0) n = dir === 'down' || dir === 'right' ? (i + 1) % list.length : (i - 1 + list.length) % list.length;
   }
   list[n].focus();
+}
+
+function moveFocus(menu, e) {
+  const dirs = { ArrowDown: 'down', ArrowUp: 'up', ArrowRight: 'right', ArrowLeft: 'left', Home: 'home', End: 'end' };
+  const dir = dirs[e.key];
+  if (!dir) return;
+  stepFocus(menu, dir);
   e.preventDefault();
   e.stopPropagation();
 }
