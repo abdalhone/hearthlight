@@ -10,3 +10,5 @@ assets/voice/_sample/
 scripts/voice/__pycache__/
 *.pyc
 scripts/voice/lines.json
+assets/voice/*.tmp
+assets/voice/*.tmp.mp3
