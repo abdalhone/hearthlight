@@ -587,12 +587,12 @@ class Harvestable extends WorldObject {
 
 export class Tree extends Harvestable {
   constructor(game, o = {}) {
-    const kind = o.kind === 'pine' ? 'pine' : 'oak';
+    const kind = o.kind === 'pine' ? 'pine' : o.kind === 'linden' ? 'linden' : 'oak';
     super(game, {
       ...o,
       objType: 'tree',
       solid: true,
-      name: o.name ?? (kind === 'pine' ? 'Pine tree' : 'Oak tree'),
+      name: o.name ?? (kind === 'pine' ? 'Pine tree' : kind === 'linden' ? 'Linden tree' : 'Oak tree'),
       shadow: o.shadow ?? (kind === 'pine' ? { dx: 2, dy: -2, rx: 9, ry: 5 } : { dx: 2, dy: -2, rx: 14, ry: 6 }),
       workSeconds: 3,
       yields: [{ id: 'wood', min: 2, max: 3 }],
@@ -600,7 +600,7 @@ export class Tree extends Harvestable {
     });
     this.kind = kind;
     this.v = o.v ?? 0; // art variant
-    this.words = ['tree', kind, 'wood', 'timber', 'log', ...(this.words || [])];
+    this.words = ['tree', kind, 'wood', 'timber', 'log', ...(kind === 'linden' ? ['lindens', 'lime tree'] : []), ...(this.words || [])];
     this.workVerb = 'Chop';
     this.workSound = 'chop';
     this.workFx = 'wood_chip';
@@ -1040,8 +1040,11 @@ export class Bed extends WorldObject {
     // A room Lyra pays for herself at the Ember Kettle (DESIGN §16.1): hers, not the player's.
     this.rented = !!o.rented;
     this.name = o.name ?? (this.owner === 'lyra' ? "Lyra's bed" : 'Bed');
-    this.sprite = this.rented ? 'prop:bed:inn' : this.owner === 'lyra' ? 'prop:bed:lyra' : 'prop:bed';
-    const ownWords = this.owner === 'lyra' ? ['lyra', 'her bed', 'your bed'] : this.owner === 'player' ? ['my bed', 'home bed'] : [];
+    this.sprite = o.sprite ?? (this.rented ? 'prop:bed:inn' : this.variant ? `prop:${o.cot ? 'bunk' : 'bed'}:${this.variant}` : o.cot ? 'prop:bunk' : this.owner === 'lyra' ? 'prop:bed:lyra' : 'prop:bed');
+    // A villager's own bed (LORE §10 homes): they sleep in it; the player only looks.
+    this.villagerBed = !!this.owner && this.owner !== 'player' && this.owner !== 'lyra';
+    this.text = o.text ?? null;
+    const ownWords = this.owner === 'lyra' ? ['lyra', 'her bed', 'your bed'] : this.owner === 'player' ? ['my bed', 'home bed'] : this.villagerBed ? [`${this.owner}'s bed`, `${this.owner} bed`] : [];
     this.words = ['bed', 'sleep', ...ownWords, ...(o.words || [])];
     // A free spot beside the bed for whoever sleeps here.
     this.sleepSpot = { x: this.x + (o.sleepSide === 'left' ? -TILE : TILE), y: this.y - 6 };
@@ -1054,6 +1057,7 @@ export class Bed extends WorldObject {
   interactLabel(actor) {
     const player = isPlayer(this.game, actor);
     if (player && this.rented) return "Lyra's room";
+    if (player && this.villagerBed) return this.name;
     const h = this.game?.clock?.hour ?? 22;
     if (player && h >= 6 && h < 18) return 'Rest (sleep from 6 PM)';
     return this.owner === 'lyra' && player ? "Sleep in Lyra's bed" : 'Sleep';
@@ -1064,6 +1068,10 @@ export class Bed extends WorldObject {
     if (isPlayer(g, actor)) {
       if (this.rented) {
         this._toast(actor, "This is Lyra's room. She pays Elda for it out of her own purse, and what is in here is hers.", 'info');
+        return;
+      }
+      if (this.villagerBed) {
+        this._toast(actor, this.text || `${this.name}. Not yours, and somebody would notice.`, 'info');
         return;
       }
       try {
@@ -1179,25 +1187,122 @@ export class Fire extends WorldObject {
   }
 }
 
+// Village lamps (LORE §5: every dusk an Ambrel lights the lamps around the square and
+// along the lanes). A street lamp is lit or not: `state.lit`, saved with the world.
+//   lamp.light(by)  -> true when it was dark and is now lit; emits 'lamp_lit' {id, lamp, by}
+//   lamp.douse(by)  -> true when it was lit; emits 'lamp_out' {id, lamp, by}
+//   lamp.round      -> its place in the lamplighter's round (0 first; null = not on it)
+//   lamp.area       -> the location id it stands in ('town_square', 'lamplight_lane'...)
+//   lamp.far        -> one of the far lamps at the end of Lamplight Lane
+//   lamp.needsLighting() -> on the round, still dark, and dusk has come
+// Nobody has to light them: whatever is still dark at LAMP_HOURS.selfLight lights itself
+// (Hobb may be downed), and every lamp goes out at dawn. Chapel candles never go out.
+export const LAMP_HOURS = { dusk: 17.5, selfLight: 21, out: 6, roundStart: 18.25, roundStep: 0.07 };
+
 export class Lamp extends WorldObject {
   constructor(game, o = {}) {
-    super(game, { ...o, objType: 'lamp', solid: o.solid ?? true, low: false, name: o.name ?? 'Street lamp', shadow: { dx: 1, dy: -1, rx: 3, ry: 2 } });
-    this.kind = o.kind ?? 'post'; // post | candles | lantern
-    this.sprite = `prop:lamp${this.kind === 'post' ? '' : ':' + this.kind}`;
-    this.words = ['lamp', 'lantern', 'light', ...(this.kind === 'candles' ? ['candle', 'candles'] : [])];
-    this.alwaysLit = this.kind === 'candles';
+    const kind = o.kind ?? 'post'; // post | candles | wall
+    const wall = kind === 'wall';
+    super(game, {
+      ...o,
+      objType: 'lamp',
+      solid: o.solid ?? !wall,
+      low: false,
+      name: o.name ?? (wall ? 'Door lantern' : 'Street lamp'),
+      shadow: wall ? null : { dx: 1, dy: -1, rx: 3, ry: 2 },
+      interactReach: o.interactReach ?? (wall ? 8 : 0),
+    });
+    this.kind = kind;
+    this.sprite = `prop:lamp${kind === 'post' ? '' : ':' + kind}`;
+    this.words = ['lamp', 'lantern', 'light', ...(kind === 'candles' ? ['candle', 'candles'] : ['street lamp', 'lamp post']), ...(o.words || [])];
+    this.alwaysLit = kind === 'candles';
+    this.round = Number.isFinite(o.round) ? o.round : null;
+    this.area = o.area ?? null;
+    this.far = !!o.far;
+    this.text = o.text ?? null;
+    this.state = { lit: false, ...(o.state || {}) };
+    this._checkT = this.phase; // lamps look at the clock a few times a second, not every step
   }
 
   get lit() {
-    return this.alwaysLit || this._darkness() > 0.3;
+    return this.alwaysLit || !!this.state.lit;
+  }
+
+  get isStreetLamp() {
+    return !this.alwaysLit;
+  }
+
+  light(by = null) {
+    if (this.alwaysLit || this.state.lit) return false;
+    this.state.lit = true;
+    this.markDirty();
+    if (this._inView(24)) this._fx('ember', this.x, this.y - (this.kind === 'wall' ? 20 : 28), { count: 3 });
+    this.game?.bus?.emit('lamp_lit', { id: this.id, lamp: this, by: by || null });
+    return true;
+  }
+
+  douse(by = null) {
+    if (this.alwaysLit || !this.state.lit) return false;
+    this.state.lit = false;
+    this.markDirty();
+    this.game?.bus?.emit('lamp_out', { id: this.id, lamp: this, by: by || null });
+    return true;
+  }
+
+  needsLighting(hour = this.game?.clock?.hour) {
+    if (this.alwaysLit || this.state.lit || this.round == null || hour == null) return false;
+    return hour >= LAMP_HOURS.dusk || hour < 2;
+  }
+
+  // Seconds-cheap clock rules: out at dawn (staggered a little, lamp by lamp), and
+  // self-lighting once full dark comes. With no lamplighter in the world at all, the
+  // round still happens at dusk, one lamp after another, so the village never waits.
+  update(dt) {
+    if (this.alwaysLit) return;
+    this._checkT -= dt;
+    if (this._checkT > 0) return;
+    this._checkT = 0.5;
+    const h = this.game?.clock?.hour;
+    if (h == null) return;
+    if (this.state.lit) {
+      if (h >= LAMP_HOURS.out + this.phase * 0.6 && h < 12) this.douse(null);
+      return;
+    }
+    if (h >= 12 && h < LAMP_HOURS.dusk) return;
+    if (h >= LAMP_HOURS.out && h < 12) return;
+    const late = h >= LAMP_HOURS.selfLight + this.phase * 0.08 || h < LAMP_HOURS.out;
+    let due = late;
+    if (!due && this.round != null && !this._lamplighter()) due = h >= LAMP_HOURS.roundStart + this.round * LAMP_HOURS.roundStep;
+    else if (!due && this.round == null) due = h >= LAMP_HOURS.roundStart + 0.5 + this.phase * 0.5;
+    if (due) this.light(null);
+  }
+
+  // Is there a lamplighter in the world to do the round (alive, not knocked down)?
+  _lamplighter() {
+    const e = this.game?.entities?.get?.('hobb');
+    return !!e && !e.removed && !e.dead;
   }
 
   getLight(time) {
     if (!this.lit) return null;
-    const dark = this.alwaysLit ? Math.max(0.55, this._darkness()) : Math.min(1, (this._darkness() - 0.3) / 0.4);
+    const night = this._darkness();
+    const dark = this.alwaysLit ? Math.max(0.55, night) : Math.max(0.18, Math.min(1, (night - 0.1) / 0.5));
     const f = 0.92 + 0.08 * Math.sin(time * 7 + this.phase * 13);
     if (this.kind === 'candles') return this._setLight(this.x, this.y - 10, 42, '#ffc26b', 0.75 * f * dark, 0.3);
+    if (this.kind === 'wall') return this._wetReflection(this._setLight(this.x, this.y - 20, 50, '#ffcf7a', 0.82 * f * dark, 0.15), 22);
     return this._wetReflection(this._setLight(this.x, this.y - 26, 64, '#ffcf7a', 0.9 * f * dark, 0.15), 30);
+  }
+
+  canInteract(actor) {
+    return !!this.text && isPlayer(this.game, actor);
+  }
+
+  interactLabel() {
+    return 'Look';
+  }
+
+  interact(actor) {
+    if (this.text) this._toast(actor, this.text, 'info');
   }
 
   draw(ctx, ox, oy, time) {
@@ -1206,8 +1311,18 @@ export class Lamp extends WorldObject {
     const sx = Math.round(this.x - ox);
     const sy = Math.round(this.y - oy);
     if (this.lit && atlas.has(`${this.sprite}:lit`)) atlas.drawAnim(ctx, `${this.sprite}:lit`, time + this.phase, sx, sy);
-    else atlas.draw(ctx, this.sprite, 0, sx, sy);
+    else atlas.draw(ctx, this.sprite, 0, sx, sy) || atlas.draw(ctx, 'prop:lamp', 0, sx, sy);
   }
+
+  serialize() {
+    return { id: this.id, state: { lit: !!this.state.lit } };
+  }
+}
+
+// The village's street lamps in the order of the lamplighter's round.
+export function lampRound(game) {
+  const list = game?.objects?.all?.() || [];
+  return list.filter((o) => o.objType === 'lamp' && o.round != null && !o.removed).sort((a, b) => a.round - b.round);
 }
 
 export class Sign extends WorldObject {
@@ -1243,16 +1358,21 @@ export class Window extends WorldObject {
   constructor(game, o = {}) {
     super(game, { ...o, objType: 'window', solid: false });
     this.sprite = `prop:window${this.variant ? ':' + this.variant : ''}`;
+    this.lightDy = o.lightDy ?? null;
   }
 
   getLight(time) {
     const dark = this._darkness();
     if (dark < 0.25) return null;
     const f = 0.9 + 0.1 * Math.sin(time * 3 + this.phase * 20);
-    return this._wetReflection(this._setLight(this.x, this.y - 18, 30, '#ffc46b', Math.min(1, (dark - 0.25) * 1.6) * 0.7 * f, 0.12), 20);
+    const k = Math.min(1, (dark - 0.25) * 1.6) * f;
+    // A dormer is painted into its roof: only its glow comes from here.
+    if (this.hidden) return this._setLight(this.x, this.y - (this.lightDy ?? 8), 24, '#ffc46b', k * 0.55, 0.12);
+    return this._wetReflection(this._setLight(this.x, this.y - 18, 30, '#ffc46b', k * 0.7, 0.12), 20);
   }
 
   draw(ctx, ox, oy, time) {
+    if (this.hidden) return;
     const atlas = this.game?.atlas;
     if (!atlas) return;
     const sx = Math.round(this.x - ox);
@@ -1331,9 +1451,10 @@ const DECOR_LIGHTS = {
   altar: { r: 50, color: '#ffc26b', intensity: 0.8, flicker: 0.25, dy: -14 },
   cauldron: { r: 30, color: '#8cff9c', intensity: 0.55, flicker: 0.2, dy: -8 },
   brazier: { r: 60, color: '#ff9a3c', intensity: 0.9, flicker: 0.35, dy: -14 },
+  dipping_vat: { r: 34, color: '#ffb35c', intensity: 0.6, flicker: 0.25, dy: -6 },
 };
 
-const ANIMATED_DECOR = new Set(['forge', 'altar', 'cauldron', 'brazier', 'banner']);
+const ANIMATED_DECOR = new Set(['forge', 'altar', 'cauldron', 'brazier', 'banner', 'hive', 'dipping_vat', 'washing_line']);
 
 export class Decor extends WorldObject {
   constructor(game, o = {}) {
@@ -1482,6 +1603,20 @@ const WORD_ALIASES = {
   pier: ['fishing_spot'],
   book: ['journal'],
   trees: ['tree'],
+  hives: ['hive'],
+  beehive: ['hive'],
+  beehives: ['hive'],
+  bees: ['hive'],
+  skep: ['hive'],
+  vat: ['dipping_vat', 'dye_vat'],
+  vats: ['dye_vat', 'dipping_vat'],
+  nets: ['net_rack'],
+  net: ['net_rack'],
+  laundry: ['washing_line'],
+  washing: ['washing_line'],
+  lamps: ['lamp'],
+  linden: ['tree'],
+  lindens: ['tree'],
 };
 
 export class ObjectManager {
