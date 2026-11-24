@@ -7218,6 +7218,19 @@ input[type='range']::-moz-range-thumb {
 .menu-sys-item.is-busy {
   opacity: 0.75;
 }
+/* An upright phone: the three side by side, each as wide as its words. */
+@media (max-width: 640px) {
+  .menu-sys {
+    display: flex;
+    gap: 6px;
+  }
+  .menu-sys-item {
+    flex: 1 1 auto;
+    width: auto;
+    gap: 5px;
+    padding: 6px 7px;
+  }
+}
 /* Keys mean nothing under a thumb. */
 .is-touch .pause-menu .keycap {
   display: none;
@@ -7302,7 +7315,7 @@ input[type='range']::-moz-range-thumb {
 /* Settings: five tabs over one pane at a time. */
 .panel-settings {
   width: min(760px, 100%);
-  height: min(640px, 100%);
+  height: min(580px, 100%);
 }
 .panel-settings .settings-body {
   display: flex;
@@ -7427,6 +7440,7 @@ input[type='range']::-moz-range-thumb {
 }
 .set-radio {
   display: flex;
+  align-items: stretch;
   padding: 2px 0 8px;
   margin: 0;
   border-bottom: 0;
@@ -7468,21 +7482,19 @@ input[type='range']::-moz-range-thumb {
   }
   /* Upright phone: the five tabs in two rows, nothing scrolls sideways. */
   .settings-tabs {
-    display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    flex-wrap: wrap;
     gap: 4px;
     padding: 6px 8px;
     overflow: visible;
   }
   .set-tab {
-    grid-column: span 2;
+    flex: 1 1 auto;
     justify-content: center;
-    padding: 6px 4px;
+    gap: 5px;
+    padding: 6px 6px;
     font-size: var(--fs-xs);
+    white-space: nowrap;
     box-shadow: inset 0 0 0 1px var(--line-dim);
-  }
-  .set-tab:nth-child(n + 4) {
-    grid-column: span 3;
   }
   .set-tab.active::after {
     display: none;

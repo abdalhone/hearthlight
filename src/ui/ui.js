@@ -180,6 +180,11 @@ export class UI {
       },
       true,
     );
+    // Enter or Space on a panel's button presses that button and nothing else: the game's
+    // input must not also hear "talk" or "attack" (Resume would open the chat).
+    this.modalLayer.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && !isTextTarget(e.target) && e.target.closest?.('button, summary, [role=tab], [role=radio], input, select, a')) e.stopPropagation();
+    });
     // HUD and touch buttons should never keep keyboard focus (Space would re-press them).
     for (const el of [this.hud.el, this.touch.el]) el.addEventListener('mousedown', (e) => e.target.closest?.('button') && e.preventDefault());
     // On window, not the UI root: taps on the game canvas must close popovers too.

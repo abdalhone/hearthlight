@@ -206,7 +206,6 @@ export class TitleScreen {
       if (sec.id === section) target = box;
       panel.body.append(box);
     }
-    panel.foot.append(button('Got it', { cls: 'btn-ember', onClick: () => this.ui.closeModal(panel) }));
     this.ui.openModal(panel);
     if (target && target !== panel.body.firstElementChild) requestAnimationFrame(() => (panel.body.scrollTop = target.offsetTop - panel.body.offsetTop));
     return panel;

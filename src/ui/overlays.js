@@ -46,7 +46,7 @@ function spellbookReady(game, ui) {
 export function pauseItems(game, ui) {
   const name = game?.settings?.companionName || game?.companion?.name || 'Lyra';
   const items = [{ id: 'resume', group: 'main', label: 'Resume', hint: '', key: 'Esc', run: (ctx) => ctx.close() }];
-  if (spellbookReady(game, ui)) items.push({ id: 'spellbook', group: 'go', label: 'Spellbook', hint: 'Make weaves, fill your slots', key: 'B', run: () => ui.openSpellbook() });
+  if (spellbookReady(game, ui)) items.push({ id: 'spellbook', group: 'go', label: 'Spellbook', hint: 'Your weaves and slots', key: 'B', run: () => ui.openSpellbook() });
   if (typeof ui?.openMissions === 'function') items.push({ id: 'missions', group: 'go', label: 'Missions', hint: 'What you have taken on', key: '', run: () => ui.openMissions('active') });
   items.push({ id: 'lyra', group: 'go', label: name, hint: 'Her mind: mood, memories, you', key: 'Tab', run: () => ui.openMind?.(ui.mind?.tab || 'now') });
   const character = characterOpener(ui);
@@ -180,30 +180,31 @@ export function buildPause(ui) {
   return panel;
 }
 
-// Arrow keys walk the menu by where the buttons are on screen (it is a grid); Home and
-// End jump to its ends.
+// Arrow keys walk the menu by where the buttons are on screen (it is a grid): the
+// nearest row (or column) that way, then the button most in line with this one. Home and
+// End jump to its ends. Pure: rects [{ x, y, w, h }] → index, or -1 at the edge.
 export function nextInDirection(rects, from, dir) {
   const a = rects[from];
-  if (!a) return 0;
-  const ax = a.x + a.w / 2;
-  const ay = a.y + a.h / 2;
-  let best = -1;
-  let bestScore = Infinity;
+  if (!a) return -1;
+  const vertical = dir === 'down' || dir === 'up';
+  const sign = dir === 'down' || dir === 'right' ? 1 : -1;
+  const mid = (r) => [r.x + r.w / 2, r.y + r.h / 2];
+  const [ax, ay] = mid(a);
+  const cands = [];
   for (let i = 0; i < rects.length; i++) {
     if (i === from) continue;
     const r = rects[i];
-    const dx = r.x + r.w / 2 - ax;
-    const dy = r.y + r.h / 2 - ay;
-    const main = dir === 'down' ? dy : dir === 'up' ? -dy : dir === 'right' ? dx : -dx;
-    if (main <= 2) continue;
-    const side = dir === 'down' || dir === 'up' ? Math.abs(dx) : Math.abs(dy);
-    const score = main + side * 2;
-    if (score < bestScore) {
-      bestScore = score;
-      best = i;
-    }
+    // Edges, not centres, decide "that way": a wide button below counts as below.
+    const gap = vertical ? (sign > 0 ? r.y - (a.y + a.h) : a.y - (r.y + r.h)) : sign > 0 ? r.x - (a.x + a.w) : a.x - (r.x + r.w);
+    if (gap < -2) continue;
+    const [cx, cy] = mid(r);
+    cands.push({ i, gap, side: vertical ? Math.abs(cx - ax) : Math.abs(cy - ay) });
   }
-  return best;
+  if (!cands.length) return -1;
+  const near = Math.min(...cands.map((c) => c.gap));
+  let best = null;
+  for (const c of cands) if (c.gap <= near + 6 && (!best || c.side < best.side)) best = c;
+  return best.i;
 }
 
 function moveFocus(menu, e) {
