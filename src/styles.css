@@ -8965,6 +8965,26 @@ input[type='range']::-moz-range-thumb {
     height: 100%;
   }
 }
+/* Sideways, typing to a villager (the keyboard leaves ~140 px): only their last words,
+   full width, above the field (the words column was squeezed to a 10-px sliver). The
+   ✕ comes back with the keyboard down; a tap outside or the back gesture still close. */
+@media (max-height: 520px) and (min-width: 600px) {
+  .kb-open.dlg-typing .panel-dialog .panel-head,
+  .dlg-typing .panel-dialog .dlg-portrait,
+  .dlg-typing .panel-dialog .dlg-you,
+  .dlg-typing .panel-dialog .dlg-options,
+  .dlg-typing .panel-dialog .dlg-extra {
+    display: none;
+  }
+  .dlg-typing .panel-dialog .dlg {
+    display: flex;
+    flex-direction: column;
+  }
+  .dlg-typing .panel-dialog .dlg-box {
+    flex: 1;
+    min-height: 40px;
+  }
+}
 .kb-open .panel-dialog {
   height: auto;
 }
