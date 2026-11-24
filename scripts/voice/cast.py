@@ -1,13 +1,15 @@
-"""Casting checks for Hearthlight's voices (DESIGN.md §21).
+"""Audition the cast: one or two real lines per character, measured (CASTING.md).
 
-  python scripts/voice/cast.py audition [--out DIR]     every English Kokoro voice, raw
-  python scripts/voice/cast.py check [--out DIR] [--only a,b] [--json FILE]
-                                                         every cast voice, shaped and normalized
+    $PY scripts/voice/cast.py audition [--only hess,wenna] [--n 1] [--default]
 
-Nobody can listen from a script, so voices are judged by measurement: the same test
-sentence per voice, then median pitch and pitch range, speaking rate, loudness, peaks,
-timbre (MFCC means) and artifact checks (clipping, long gaps, cut-off ends). `check`
-prints each voice's nearest neighbour so two characters never sound alike.
+Each audition line is rendered exactly as the full render would (first seed only, so its
+take is reused later) and finished. Then, per character: median pitch and range, speaking
+rate, brightness (spectral centroid), how close Chatterbox came to the character's
+reference (voice-encoder cosine), whether Whisper heard every word — and, for every pair
+of characters, how alike they sound (voice-encoder cosine of the finished clips). A woman
+in the cutscenes must never sound like Lyra: her similarity to Lyra must stay well under
+Lyra's similarity to herself. --default also auditions Chatterbox's own built-in voice.
+Clips land in ~/.cache/hearthlight-voice/audition/ to listen to.
 """
 
 from __future__ import annotations
@@ -21,109 +23,87 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import voicelib as vl  # noqa: E402
-
-ENGLISH = [
-    "af_alloy", "af_aoede", "af_bella", "af_heart", "af_jessica", "af_kore", "af_nicole", "af_nova",
-    "af_river", "af_sarah", "af_sky", "am_adam", "am_echo", "am_eric", "am_fenrir", "am_liam",
-    "am_michael", "am_onyx", "am_puck", "am_santa", "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
-    "bm_daniel", "bm_fable", "bm_george", "bm_lewis",
-]
+import render as R  # noqa: E402
 
 
-def fmt_row(name: str, a: dict) -> str:
-    return (
-        f"{name:<14} f0 {a['f0_med']:6.1f} Hz [{a['f0_p10']:5.1f}-{a['f0_p90']:5.1f}] "
-        f"range {a.get('f0_range_st', 0):4.1f} st  rate {a.get('syl_per_s', 0):4.2f} syl/s  "
-        f"dur {a['dur']:5.2f}s  {a['lufs']:6.1f} LUFS  tp {a['true_peak_db']:5.1f}  "
-        f"hnr {a.get('hnr_db', 0):4.1f}  voiced {a.get('voiced', 0):.2f}  gap {a['longest_gap_s']:.2f}s  tail {a['tail_db']:6.1f} dB  clip {a['clipped']}"
-    )
-
-
-def audition(args) -> None:
-    cast = vl.load_cast()
-    text = cast["test"]
-    synth = vl.Synth(args.threads)
-    out = Path(args.out)
-    rows = {}
-    for v in ENGLISH:
-        spec = {"voice": v, "lang": "en-gb" if v.startswith("b") else "en-us"}
-        raw = synth.raw(text, spec)
-        a = vl.analyze(raw, synth.phonemes(vl.tts_text(text), spec["lang"]))
-        a["raw_clipped"] = int(np.sum(np.abs(raw) >= 0.999))
-        rows[v] = a
-        vl.write_wav(raw, out / f"{v}.wav")
-        print(fmt_row(v, a), flush=True)
-    (out / "audition.json").write_text(json.dumps(rows, indent=1))
-
-
-def check(args) -> int:
-    cast = vl.load_cast()
-    texts = [cast["test"]] + ([cast["test2"]] if cast.get("test2") and args.both else [])
-    synth = vl.Synth(args.threads)
-    out = Path(args.out)
-    only = set(args.only.split(",")) if args.only else None
-    results = {}
-    if only and args.json and Path(args.json).exists():
-        # Re-check a few voices against the last full run.
-        prev = json.loads(Path(args.json).read_text())
-        results = {k: v for k, v in prev.items() if k.split("#")[0] in cast["voices"]}
-    problems = []
-    for sid, spec in cast["voices"].items():
-        if only and sid not in only:
-            continue
-        for ti, text in enumerate(texts):
-            raw = synth.raw(text, spec)
-            shaped = vl.shape(raw, spec)
-            done = vl.finish(shaped)
-            a = vl.analyze(done, synth.phonemes(vl.tts_text(text), spec.get("lang", "en-us")))
-            a["raw_clipped"] = int(np.sum(np.abs(raw) >= 0.999))
-            key = sid if ti == 0 else f"{sid}#2"
-            results[key] = a
-            vl.write_wav(done, out / f"{key}.wav")
-            print(fmt_row(key, a), flush=True)
-            if a["clipped"]:
-                problems.append(f"{key}: {a['clipped']} clipped samples")
-            if a["longest_gap_s"] > 0.9:
-                problems.append(f"{key}: a {a['longest_gap_s']}s silence inside the line")
-            if a["tail_db"] > -25:
-                problems.append(f"{key}: the end may be cut off (last 30 ms at {a['tail_db']} dB)")
-            if abs(a["lufs"] - vl.TARGET_LUFS) > 1.0:
-                problems.append(f"{key}: loudness {a['lufs']} LUFS")
-    print("\nNearest neighbours (timbre + pitch distance; under 3.0 is too close):")
-    ids = [k for k in results if "#" not in k]
-    if only:
-        problems = [p for p in problems if p.split(":")[0].split("#")[0] in only]
-    close = []
-    for a in ids:
-        best = min(((vl.voice_distance(results[a], results[b]), b) for b in ids if b != a), default=(0, "-"))
-        print(f"  {a:<10} -> {best[1]:<10} {best[0]:5.2f}")
-        if best[0] < 3.0:
-            close.append((a, best[1], best[0]))
-    if close:
-        problems += [f"{a} and {b} are close ({d:.2f})" for a, b, d in close]
-    if args.json:
-        Path(args.json).write_text(json.dumps(results, indent=1))
-    print("\nProblems:" if problems else "\nNo problems found.")
-    for p in problems:
-        print("  -", p)
-    return 1 if problems and args.strict else 0
+def pick_lines(lines: list[dict], speaker: str, n: int) -> list[dict]:
+    mine = [l for l in lines if l["speaker"] == speaker]
+    mine.sort(key=lambda l: abs(len(l["text"]) - 80))  # medium-length lines measure best
+    return mine[:n]
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["audition", "check"])
-    ap.add_argument("--out", default=str(vl.CACHE / "casting"))
-    ap.add_argument("--only")
-    ap.add_argument("--json")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("cmd", choices=["audition"])
+    ap.add_argument("--only", default="")
+    ap.add_argument("--n", type=int, default=1)
     ap.add_argument("--threads", type=int, default=2)
-    ap.add_argument("--both", action="store_true", help="also render the second test sentence")
-    ap.add_argument("--strict", action="store_true", help="exit 1 on any problem")
+    ap.add_argument("--default", action="store_true")
     args = ap.parse_args()
-    if args.cmd == "audition":
-        audition(args)
-        return 0
-    return check(args)
+
+    lines = R.collect()
+    cast = R.load_cast()
+    names = sorted(vl.glossary_of([l["text"] for l in lines]))
+    R._init(args.threads, names)
+    out = vl.cache_dir() / "audition"
+    out.mkdir(parents=True, exist_ok=True)
+    speakers = [s for s in cast["voices"] if not args.only or s in args.only.split(",")]
+    if "lyra" not in speakers:
+        speakers.insert(0, "lyra")
+    rows, embs = {}, {}
+    for sp in speakers:
+        for l in pick_lines(lines, sp, args.n):
+            job = R.plan_line(l, cast)
+            job["takes"] = job["takes"][:1]
+            info = R.take_for(job, job["takes"][0])
+            audio, _ = R.finish_line(job, info)
+            vl.write_wav(audio, out / f"{sp}-{l['line']}.wav")
+            emb = R._W["mouth"].embed(audio)
+            embs.setdefault(sp, []).append(emb)
+            f0 = vl.f0_stats(audio)
+            words = len(vl.norm_tokens(l["text"]))
+            row = rows.setdefault(sp, {"f0": [], "range": [], "wps": [], "centroid": [], "sim_ref": [], "errors": 0, "n": 0})
+            row["f0"].append(f0["f0"])
+            row["range"].append(f0["range"])
+            row["wps"].append(words / max(0.5, info["dur"]))
+            row["centroid"].append(vl.timbre(audio)["centroid"])
+            row["sim_ref"].append(info["sim"])
+            row["errors"] += info["errors"]
+            row["n"] += info["n"]
+            print(f"  {sp:8s} {l['line']:18s} errors {info['errors']} sim {info['sim']:.3f} heard: {info['heard']}", flush=True)
+    if args.default:
+        # Chatterbox's own voice, unconditioned, on one of Aveline's lines.
+        l = pick_lines(lines, "aveline", 1)[0]
+        m = R._W["mouth"]
+        import torch
+        from chatterbox.tts import Conditionals
+        from huggingface_hub import hf_hub_download
+
+        m.tts.conds = Conditionals.load(hf_hub_download("ResembleAI/chatterbox", "conds.pt")).to("cpu")
+        m._cond_key = None
+        torch.manual_seed(11)
+        a = m.tts.generate(vl.tts_text(l["text"]), exaggeration=0.3, cfg_weight=0.3, temperature=0.7).squeeze(0).numpy()
+        clip, _ = vl.cut_line(a, R._W["ears"].words(a))
+        audio = vl.finish(clip)
+        vl.write_wav(audio, out / "default-voice.wav")
+        embs["(default)"] = [m.embed(audio)]
+        f0 = vl.f0_stats(audio)
+        rows["(default)"] = {"f0": [f0["f0"]], "range": [f0["range"]], "wps": [len(vl.norm_tokens(l["text"])) / (len(audio) / vl.SR)], "centroid": [vl.timbre(audio)["centroid"]], "sim_ref": [0], "errors": 0, "n": 0}
+    print()
+    print(f"{'who':10s} {'F0 Hz':>6s} {'range':>6s} {'w/s':>5s} {'bright':>7s} {'~ref':>5s} {'~Lyra':>6s} {'nearest':>18s}")
+    mean = {k: (lambda v: v / np.linalg.norm(v))(np.mean(v, axis=0)) for k, v in embs.items()}
+    report = {}
+    for sp, row in rows.items():
+        others = {o: float(np.dot(mean[sp], mean[o])) for o in mean if o != sp}
+        near = max(others, key=others.get) if others else "-"
+        to_lyra = float(np.dot(mean[sp], mean["lyra"])) if sp != "lyra" and "lyra" in mean else 1.0
+        r = {k: round(float(np.mean(v)), 3) for k, v in row.items() if isinstance(v, list)}
+        r.update({"errors": row["errors"], "to_lyra": round(to_lyra, 3), "nearest": near, "nearest_sim": round(others.get(near, 0), 3)})
+        report[sp] = r
+        print(f"{sp:10s} {r['f0']:6.0f} {r['range']:6.1f} {r['wps']:5.2f} {r['centroid']:7.0f} {r['sim_ref']:5.2f} {to_lyra:6.3f} {near:>10s} {others.get(near, 0):.3f}")
+    vl.write_json(out / "report.json", report, indent=1)
+    return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())

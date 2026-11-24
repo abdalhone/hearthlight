@@ -1,186 +1,298 @@
-"""Render Hearthlight's fixed lines with their cast voices (DESIGN.md §21).
+"""Render every cutscene line, the author's way (README.md here).
 
-  python scripts/voice/render.py                       # every line in scripts/voice/lines.json
-  python scripts/voice/render.py --lines scripts/voice/lines.sample.json
-  python scripts/voice/render.py --only lyra,bram --jobs 2 --threads 1
-  python scripts/voice/render.py --prune               # also delete clips no line uses any more
+    node scripts/voice/collect.mjs                      # -> scripts/voice/lines.json
+    $PY scripts/voice/render.py --jobs 2                 # -> assets/voice/<key>.mp3 + manifest.json
+    $PY scripts/voice/verify.py                          # Whisper, loudness, peaks: the table
 
-Each line becomes assets/voice/<key>.mp3: Kokoro with the speaker's cast voice, gentle
-shaping, -16 LUFS, trimmed, mono 24 kHz MP3 at 48 kbps (plays everywhere, iOS included).
-Rendering is incremental: a clip is skipped when it exists and its speaker's cast entry
-has not changed since it was made (fingerprints in assets/voice/render_state.json).
-assets/voice/manifest.json maps key -> {speaker, dur} for every clip in the folder.
+Per line: Chatterbox speaks it three times (three seeds) in the cast voice; Whisper
+transcribes each take; the take where every word is right wins (ties go to the take that
+sounds most like the character's reference, with no long gaps and the clearest words);
+it is cut on its real loudness, shaped (the Void's chain for the narrator), set to -16
+LUFS, encoded as mono MP3, and transcribed again for the word times the captions use.
+
+Incremental: takes are cached by speaker voice + text + generation settings + seed
+(~/.cache/hearthlight-voice/takes), finished clips by their takes + shaping, so changing a
+voice's shaping re-finishes in seconds and only changed lines are spoken again.
+  --only lyra,hess     these speakers      --script prologue   this scene
+  --limit N            the first N lines   --force             finish everything again
+  --jobs 2 --threads 2 two workers, two CPU threads each (the machine is shared)
 """
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import multiprocessing as mp
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
 
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import voicelib as vl  # noqa: E402
 
-_synth = None
-_cast = None
+OUT = vl.ROOT / "assets" / "voice"
+LINES = vl.HERE / "lines.json"
+CAST = vl.HERE / "cast.json"
+MODEL = "chatterbox-0.1.7"
 
 
-def fingerprint(spec: dict) -> str:
-    blob = json.dumps({k: spec.get(k) for k in ("voice", "lang", "speed", "fx", "sentencePause", "clausePause")}, sort_keys=True)
-    return hashlib.sha1((blob + "|lufs=%s|kbps=%s" % (vl.TARGET_LUFS, KBPS)).encode()).hexdigest()[:10]
+def load_cast() -> dict:
+    return json.loads(CAST.read_text())
 
 
-KBPS = 48
+def voice_for(cast: dict, speaker: str) -> dict:
+    v = cast["voices"].get(speaker)
+    if not v:
+        raise SystemExit(f"no cast voice for '{speaker}' in cast.json")
+    return v
 
 
-def _init(threads: int, cast: dict, kbps: int = 48) -> None:
-    global _synth, _cast, KBPS
-    KBPS = kbps
-    os.environ.setdefault("OMP_NUM_THREADS", str(threads))
-    _synth = vl.Synth(threads)
-    _cast = cast
+def gen_for(v: dict, mood: str | None) -> dict:
+    g = dict(v.get("gen", {}))
+    g.update((v.get("moods") or {}).get(mood or "", {}))
+    return {"exaggeration": float(g.get("exaggeration", 0.5)), "cfg": float(g.get("cfg", 0.5)), "temperature": float(g.get("temperature", 0.8))}
 
 
-def _render_one(job: tuple[str, str, str, str]) -> tuple[str, float, int, str | None]:
-    key, speaker, text, out = job
+def plan_line(line: dict, cast: dict) -> dict:
+    """Everything a worker needs for one line, with the fingerprints that decide what is
+    already done."""
+    v = voice_for(cast, line["speaker"])
+    ref = vl.shaped_ref(v["ref"], v.get("refShape"))
+    gen = gen_for(v, line.get("mood"))
+    text = vl.tts_text(line["text"])
+    ref_sha = vl.file_sha(ref)
+    seeds = list(v.get("seeds") or cast.get("seeds") or [11, 23, 37])
+    takes = [{"seed": s, "fp": vl.sha({"model": MODEL, "ref": ref_sha, "text": text, "gen": gen, "seed": s})} for s in seeds]
+    post = {"fx": v.get("fx") or {}, "void": v.get("void"), "place": line.get("place"), "pipeline": vl.PIPELINE}
+    fp = vl.sha({"takes": [t["fp"] for t in takes], "post": post, "kbps": vl.KBPS})
+    return {**line, "tts": text, "ref": str(ref), "ref_sha": ref_sha, "gen": gen, "takes": takes, "post": post, "fp": fp}
+
+
+# --------------------------------------------------------------------------- worker
+
+_W: dict = {}
+
+
+def _init(threads: int, names: list[str]) -> None:
+    os.environ["OMP_NUM_THREADS"] = str(threads)
+    import warnings
+
+    warnings.filterwarnings("ignore")
+    _W["mouth"] = vl.Mouth(threads)
+    _W["ears"] = vl.Ears("base.en", threads, set(names))
+    _W["names"] = set(names)
+    _W["refemb"] = {}
+
+
+def _ref_emb(ref: str, ref_sha: str) -> np.ndarray:
+    e = _W["refemb"].get(ref_sha)
+    if e is None:
+        e = _W["mouth"].embed(vl.read_wav(Path(ref)))
+        _W["refemb"][ref_sha] = e
+    return e
+
+
+def take_for(job: dict, t: dict) -> dict:
+    """One take: spoken (or from the cache), heard, scored."""
+    d = vl.cache_dir() / "takes"
+    wav, meta = d / f"{t['fp']}.wav", d / f"{t['fp']}.json"
+    info = vl.load_json(meta)
+    if info and wav.exists():
+        return info
+    t0 = time.time()
+    if wav.exists():
+        audio = vl.read_wav(wav)
+    else:
+        g = job["gen"]
+        audio = _W["mouth"].say(job["tts"], Path(job["ref"]), t["seed"], g["exaggeration"], g["cfg"], g["temperature"])
+        vl.write_wav(audio, wav)
+    gen_s = time.time() - t0
+    words = _W["ears"].words(audio)
+    errors, n = vl.word_errors(job["text"], [w[0] for w in words], _W["names"])
+    emb = _W["mouth"].embed(audio)
+    sim = float(np.dot(emb, _ref_emb(job["ref"], job["ref_sha"])))
+    clip, off = vl.cut_line(audio, words)
+    info = {
+        "seed": t["seed"], "fp": t["fp"], "errors": errors, "n": n, "heard": " ".join(w[0] for w in words),
+        "words": words, "sim": round(sim, 4), "gap": round(vl.longest_gap(clip), 3), "dur": round(len(clip) / vl.SR, 3),
+        "prob": round(float(np.mean([w[3] for w in words])) if words else 0.0, 3), "gen_s": round(gen_s, 1),
+    }
+    vl.write_json(meta, info)
+    return info
+
+
+def score(info: dict) -> float:
+    """Lower is better: every word right first, then the voice, no long holes, clear words."""
+    gap_pen = max(0.0, info["gap"] - 0.9) * 0.5
+    return info["errors"] * 10 + (1 - info["sim"]) * 5 + gap_pen + (1 - info["prob"]) * 2
+
+
+def finish_line(job: dict, best: dict) -> tuple[np.ndarray, list]:
+    audio = vl.read_wav(vl.cache_dir() / "takes" / f"{best['fp']}.wav")
+    clip, off = vl.cut_line(audio, best["words"])
+    post = job["post"]
+    if post.get("void"):
+        x = vl.void_chain(clip, best["words"], off, post["void"])
+    else:
+        x = vl.shape(clip, post.get("fx") or {}, post.get("place"))
+    return vl.finish(x), best["words"]
+
+
+def caption_words(text: str, heard: list, fallback: list, offset: float = 0.0) -> list:
+    """Each word of the line as the caption shows it, with when it is spoken: Whisper's
+    words on the finished clip aligned to the script's words; a word it missed sits between
+    its neighbours."""
+    disp = vl.display_tokens(text)
+    owner: list[int] = []  # norm token -> display token
+    ref: list[str] = []
+    for i, tok in enumerate(disp):
+        for w in vl.norm_tokens(tok):
+            ref.append(w)
+            owner.append(i)
+    hyp: list[str] = []
+    times: list[tuple[float, float]] = []
+    for w in heard:
+        sub = vl.norm_tokens(w[0])
+        if not sub:
+            continue
+        s, e = float(w[1]) - offset, float(w[2]) - offset
+        step = (e - s) / len(sub)
+        for k, x in enumerate(sub):
+            hyp.append(x)
+            times.append((s + k * step, s + (k + 1) * step))
+    _, pairs = vl.align(ref, hyp, set())
+    span: list[list[float] | None] = [None] * len(disp)
+    for r, hs in enumerate(pairs):
+        if not hs:
+            continue
+        i = owner[r]
+        s, e = times[hs[0]][0], times[hs[-1]][1]
+        span[i] = [min(span[i][0], s), max(span[i][1], e)] if span[i] else [s, e]
+    # Fill the gaps (a word Whisper missed, or a dash) from the neighbours.
+    out = []
+    for i, tok in enumerate(disp):
+        if span[i] is None:
+            prev = next((span[j][1] for j in range(i - 1, -1, -1) if span[j]), 0.0)
+            nxt = next((span[j][0] for j in range(i + 1, len(disp)) if span[j]), prev)
+            span[i] = [prev, max(prev, nxt)]
+        out.append([tok, round(max(0.0, span[i][0]), 3), round(max(0.0, span[i][1]), 3)])
+    for i in range(1, len(out)):  # starts never go backwards
+        if out[i][1] < out[i - 1][1]:
+            out[i][1] = out[i - 1][1]
+        if out[i][2] < out[i][1]:
+            out[i][2] = out[i][1]
+    return out
+
+
+def render_job(job: dict) -> dict:
+    t0 = time.time()
     try:
-        audio = vl.render(_synth, text, _cast["voices"][speaker])
-        path = Path(out) / f"{key}.mp3"
-        audio, _tp = vl.encode_checked(audio, path, KBPS)
-        return key, round(len(audio) / vl.SR, 2), path.stat().st_size, None
-    except Exception as e:  # one bad line must not stop the batch
-        return key, 0.0, 0, f"{type(e).__name__}: {e}"
+        infos = [take_for(job, t) for t in job["takes"]]
+        best = min(infos, key=score)
+        audio, _ = finish_line(job, best)
+        out = Path(job["out"]) / f"{job['key']}.mp3"
+        dec, tp = vl.encode_checked(audio, out)
+        heard = _W["ears"].words(dec)
+        final_errors, n = vl.word_errors(job["text"], [w[0] for w in heard], _W["names"])
+        words = caption_words(job["text"], heard, best["words"])
+        return {
+            "key": job["key"], "ok": True, "fp": job["fp"], "seed": best["seed"], "takes": [{k: i[k] for k in ("seed", "errors", "sim", "gap", "prob", "dur")} for i in infos],
+            "errors": best["errors"], "n": n, "final_errors": final_errors, "heard": " ".join(w[0] for w in heard),
+            "dur": round(len(dec) / vl.SR, 3), "lufs": round(vl.lufs(dec), 2), "tp": round(tp, 2), "bytes": out.stat().st_size,
+            "words": words, "secs": round(time.time() - t0, 1),
+        }
+    except Exception as err:  # one bad line never stops the render
+        import traceback
+
+        traceback.print_exc()
+        return {"key": job["key"], "ok": False, "error": repr(err)}
 
 
-def load_json(path: Path, default):
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return default
+# --------------------------------------------------------------------------- main
+
+def collect() -> list[dict]:
+    subprocess.run(["node", str(vl.HERE / "collect.mjs")], check=True, cwd=vl.ROOT)
+    return json.loads(LINES.read_text())["lines"]
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--lines", default=str(vl.HERE / "lines.json"))
-    ap.add_argument("--out", default=str(vl.ROOT / "assets" / "voice"))
-    ap.add_argument("--jobs", type=int, default=2, help="parallel renderers (keep to 2 on a shared 4-CPU machine)")
-    ap.add_argument("--threads", type=int, default=1, help="onnxruntime threads per renderer")
-    ap.add_argument("--only", help="comma-separated speakers")
-    ap.add_argument("--limit", type=int, default=0, help="render at most N new clips (0 = all)")
-    ap.add_argument("--force", action="store_true", help="re-render even when up to date")
-    ap.add_argument("--prune", action="store_true", help="delete clips whose line is gone")
-    ap.add_argument("--budget-mb", type=float, default=90.0, help="warn when the clips exceed this")
-    ap.add_argument("--kbps", type=int, default=48, help="MP3 bitrate (MPEG-2 Layer III at 24 kHz: 32-64 is sensible for speech)")
+    ap.add_argument("--jobs", type=int, default=2)
+    ap.add_argument("--threads", type=int, default=2)
+    ap.add_argument("--only", default="")
+    ap.add_argument("--script", default="")
+    ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--force", action="store_true")
+    ap.add_argument("--no-prune", action="store_true")
     args = ap.parse_args()
-    global KBPS
-    KBPS = args.kbps
 
-    cast = vl.load_cast()
-    doc = load_json(Path(args.lines), None)
-    if not doc:
-        print(f"No lines at {args.lines}. Run: node scripts/voice/collect.mjs", file=sys.stderr)
-        return 2
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    manifest_path, state_path = out / "manifest.json", out / "render_state.json"
-    manifest: dict = load_json(manifest_path, {})
-    state: dict = load_json(state_path, {})
-    fps = {sid: fingerprint(spec) for sid, spec in cast["voices"].items()}
-    only = set(args.only.split(",")) if args.only else None
+    lines = collect()
+    cast = load_cast()
+    names = sorted(vl.glossary_of([l["text"] for l in lines]))
+    manifest_path = OUT / "manifest.json"
+    manifest = vl.load_json(manifest_path, {}) or {}
+    if not isinstance(manifest.get("clips"), dict):
+        manifest = {"format": "hearthlight-cutscene-voice/1", "clips": {}}
+    clips = manifest["clips"]
 
-    jobs, unknown = [], set()
-    for line in doc["lines"]:
-        sp, key = line["speaker"], line["key"]
-        if sp not in cast["voices"]:
-            unknown.add(sp)
-            continue
-        if only and sp not in only:
-            continue
-        clip = out / f"{key}.mp3"
-        fresh = clip.exists() and state.get(key) == fps[sp] and key in manifest
-        if fresh and not args.force:
-            continue
-        jobs.append((key, sp, line["text"], str(out)))
+    want = [l for l in lines if (not args.only or l["speaker"] in args.only.split(",")) and (not args.script or l["script"] in args.script.split(","))]
     if args.limit:
-        jobs = jobs[: args.limit]
-    if unknown:
-        print(f"[render] no cast voice for {sorted(unknown)}: skipped (add them to cast.json)")
+        want = want[: args.limit]
+    jobs = []
+    for l in want:
+        j = plan_line(l, cast)
+        j["out"] = str(OUT)
+        have = clips.get(l["key"])
+        if not args.force and have and have.get("fp") == j["fp"] and (OUT / have["file"]).exists():
+            continue
+        jobs.append(j)
+    print(f"render: {len(lines)} lines, {len(want)} asked, {len(jobs)} to render ({args.jobs} jobs x {args.threads} threads)", flush=True)
 
+    OUT.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
-    errors = []
-    speech_s = 0.0
+    done = 0
     if jobs:
-        print(f"[render] {len(jobs)} clips to render with {args.jobs} x {args.threads} threads ...", flush=True)
-        speaker_of = {j[0]: j[1] for j in jobs}
-        with mp.get_context("fork").Pool(args.jobs, initializer=_init, initargs=(args.threads, cast, KBPS)) as pool:
-            for i, (key, dur, size, err) in enumerate(pool.imap_unordered(_render_one, jobs, chunksize=2), 1):
-                if err:
-                    errors.append((key, err))
+        ctx = mp.get_context("spawn")
+        with ctx.Pool(max(1, min(args.jobs, len(jobs))), initializer=_init, initargs=(args.threads, names)) as pool:
+            for r in pool.imap_unordered(render_job, jobs):
+                done += 1
+                if not r.get("ok"):
+                    print(f"  FAILED {r['key']}: {r.get('error')}", flush=True)
                     continue
-                sp = speaker_of[key]
-                manifest[key] = {"speaker": sp, "dur": dur}
-                state[key] = fps[sp]
-                speech_s += dur
-                if i % 25 == 0 or i == len(jobs):
-                    el = time.time() - t0
-                    print(f"[render] {i}/{len(jobs)}  {el:5.0f}s elapsed, real-time factor {el / max(speech_s, 0.01):.2f}", flush=True)
-                if i % 100 == 0:  # survive an interruption with the work so far
-                    write_json(manifest_path, manifest)
-                    write_json(state_path, state)
-    else:
-        print("[render] everything is up to date")
+                l = next(x for x in want if x["key"] == r["key"])
+                clips[r["key"]] = {
+                    "file": f"{r['key']}.mp3", "speaker": l["speaker"], "line": l["line"], "script": l["script"], "order": l["order"],
+                    "text": l["text"], "dur": r["dur"], "words": r["words"], "fp": r["fp"], "seed": r["seed"], "takes": r["takes"],
+                    "errors": r["errors"], "final_errors": r["final_errors"], "n": r["n"], "heard": r["heard"],
+                    "lufs": r["lufs"], "tp": r["tp"], "bytes": r["bytes"],
+                }
+                vl.write_json(manifest_path, manifest)
+                flag = "" if r["errors"] == 0 else f"  << {r['errors']} word error(s) in the best take"
+                el = time.time() - t0
+                print(f"  [{done}/{len(jobs)}] {l['line']:18s} {l['speaker']:8s} {r['dur']:5.1f}s seed {r['seed']} takes {[t['errors'] for t in r['takes']]} final {r['final_errors']} {r['secs']:5.0f}s  eta {el / done * (len(jobs) - done) / 60:4.0f} min{flag}", flush=True)
 
-    # The manifest lists exactly the clips on disk.
-    wanted = {l["key"] for l in doc["lines"]}
-    for key in list(manifest):
-        clip = out / f"{key}.mp3"
-        if not clip.exists():
-            manifest.pop(key, None)
-            state.pop(key, None)
-        elif args.prune and key not in wanted:
-            clip.unlink()
-            manifest.pop(key, None)
-            state.pop(key, None)
-    write_json(manifest_path, dict(sorted(manifest.items())))
-    write_json(state_path, dict(sorted(state.items())))
-
-    report(out, manifest, args.budget_mb)
-    if errors:
-        print(f"[render] {len(errors)} lines failed:")
-        for key, err in errors[:20]:
-            print(f"   {key}: {err}")
-    return 1 if errors else 0
-
-
-def write_json(path: Path, data) -> None:
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, separators=(",", ":"), ensure_ascii=False) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
-
-
-def report(out: Path, manifest: dict, budget_mb: float) -> None:
-    by: dict[str, list[float]] = {}
-    total_bytes = 0
-    for key, m in manifest.items():
-        size = (out / f"{key}.mp3").stat().st_size
-        total_bytes += size
-        b = by.setdefault(m["speaker"], [0, 0.0, 0])
-        b[0] += 1
-        b[1] += m["dur"]
-        b[2] += size
-    total_s = sum(v[1] for v in by.values())
-    print(f"\n[render] {len(manifest)} clips, {total_s / 60:.1f} min, {total_bytes / 1e6:.2f} MB "
-          f"({total_bytes * 8 / max(total_s, 0.01) / 1000:.0f} kbps average) in {out}")
-    for sp, (n, s, b) in sorted(by.items(), key=lambda kv: -kv[1][2]):
-        print(f"   {sp:<11} {n:5d} clips  {s / 60:6.1f} min  {b / 1e6:6.2f} MB  avg {s / max(n, 1):4.1f}s")
-    if total_bytes / 1e6 > budget_mb:
-        print(f"[render] WARNING: {total_bytes / 1e6:.1f} MB is over the {budget_mb:.0f} MB budget")
+    # Lines that are gone take their clips with them.
+    keys = {l["key"] for l in lines}
+    if not args.no_prune and not args.only and not args.script and not args.limit:
+        for k in [k for k in clips if k not in keys]:
+            del clips[k]
+        for f in OUT.glob("*.mp3"):
+            if f.stem not in keys:
+                f.unlink()
+    vl.write_json(manifest_path, manifest)
+    have = [clips[k] for k in keys if k in clips]
+    mb = sum(c["bytes"] for c in have) / 1e6
+    flagged = [c for c in have if c["errors"]]
+    print(f"render: {len(have)}/{len(lines)} lines voiced, {sum(c['dur'] for c in have) / 60:.1f} min, {mb:.1f} MB; "
+          f"{len(flagged)} with a word wrong in every take; {time.time() - t0:.0f} s", flush=True)
+    for c in flagged:
+        print(f"  flagged {c['line']}: '{c['text']}' heard '{c['heard']}'")
+    return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())
