@@ -61,7 +61,31 @@ async function startGame(page) {
       window.__stubTimer = setInterval(() => g.magic.update?.(0.1), 100);
       stub = true;
     } else {
-      g.magic.unlockAll?.();
+      // The real runtime: the same unlocks and slots as the stub, and a record of calls.
+      const m = g.magic;
+      const give = { shape: ['bolt', 'blast', 'throw', 'beam', 'nova', 'strike'], essence: ['fire', 'frost', 'storm'], twist: ['multishot', 'split', 'charge', 'homing'] };
+      for (const [k, ids] of Object.entries(give)) for (const id of ids) m.unlock(k, id, 'test');
+      const weaves = [
+        { shape: 'bolt', essences: ['fire'], twists: ['multishot'] },
+        { shape: 'throw', essences: ['frost'], twists: [] },
+        { shape: 'beam', essences: ['storm'], twists: [] },
+        { shape: 'nova', essences: [], twists: [] },
+      ];
+      weaves.forEach((w, i) => m.setSlot(i, w));
+      m.mana.cur = m.mana.max = Math.max(m.mana.max, 120);
+      m.calls = [];
+      for (const fn of ['cast', 'castStart', 'castHold', 'castRelease', 'castCancel']) {
+        const raw = m[fn].bind(m);
+        m[fn] = (caster, a, b, ...rest) => {
+          const slot = fn === 'cast' || fn === 'castStart' ? a : m.holds?.get?.(caster)?.r?.slot ?? -1;
+          const aim = fn === 'cast' || fn === 'castStart' ? b : a;
+          m.calls.push({ fn, slot, aim: aim ? { x: aim.x, y: aim.y, target: aim.target || null } : null });
+          return raw(caster, a, b, ...rest);
+        };
+      }
+      window.__stubTimer = setInterval(() => {
+        m.mana.cur = m.mana.max;
+      }, 200);
     }
     g.ui.hud.weaving.invalidate();
     // Toasts from the start of the game cover the HUD in screenshots: clear them.
@@ -166,7 +190,7 @@ async function phone(label, w, h) {
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [{ x: stick.x + 48, y: stick.y, id: 1 }] });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await page.waitForTimeout(250);
-  const after = await page.evaluate(() => ({ x: window.__game.player.x, calls: (window.__game.magic.calls || []).slice(-3), move: { ...window.__game.input.touchVec } }));
+  const after = await page.evaluate(() => ({ x: window.__game.player.x, calls: (window.__game.magic.calls || []).slice(-3).map((c) => ({ fn: c.fn, slot: c.slot, aim: c.aim && { x: c.aim.x, y: c.aim.y } })), move: { ...window.__game.input.touchVec } }));
   check(`${label}: the player walked`, after.x > before.x + 4, `${Math.round(before.x)} -> ${Math.round(after.x)}`);
   const cast = after.calls.find((c) => c.fn === 'cast');
   check(`${label}: release cast the weave toward the drag`, !!cast && cast.aim && cast.aim.x < before.x, JSON.stringify(cast || after.calls));
@@ -180,7 +204,10 @@ async function phone(label, w, h) {
     await page.waitForTimeout(60);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.waitForTimeout(150);
-    const tap = await page.evaluate(() => (window.__game.magic.calls || []).slice(-1)[0]);
+    const tap = await page.evaluate(() => {
+      const c = (window.__game.magic.calls || []).filter((x) => x.fn === 'cast').slice(-1)[0];
+      return c ? { fn: c.fn, aim: { target: !!c.aim?.target } } : null;
+    });
     check(`${label}: a tap auto-aims at a foe`, tap?.fn === 'cast' && !!tap.aim?.target, JSON.stringify(tap && { fn: tap.fn, target: !!tap.aim?.target }));
   }
 
@@ -248,7 +275,7 @@ async function desktop() {
   const k = await page.evaluate(() => {
     const g = window.__game;
     const c = (g.magic.calls || []).filter((x) => x.fn === 'cast' || x.fn === 'castStart').slice(-1)[0];
-    return { c, px: g.player.x, sel: g.ui.hud.weaving.selected };
+    return { c: c && { fn: c.fn, slot: c.slot, aim: { x: c.aim.x, y: c.aim.y } }, px: g.player.x, sel: g.ui.hud.weaving.selected };
   });
   check('desktop: number key casts that slot toward the mouse', k.c?.slot === 1 && k.c.aim.x > k.px, JSON.stringify(k));
   check('desktop: number key selects the slot', k.sel === 1);
@@ -261,7 +288,7 @@ async function desktop() {
   await page.keyboard.up('Digit3');
   await page.waitForTimeout(120);
   const beam = await page.evaluate((from) => [...new Set((window.__game.magic.calls || []).slice(from).map((c) => c.fn))], c0);
-  if (info.stub) check('desktop: holding a beam key starts, holds and releases', beam.includes('castStart') && beam.includes('castHold') && beam.includes('castRelease'), beam.join(','));
+  check('desktop: holding a beam key starts, holds and releases', beam.includes('castStart') && beam.includes('castHold') && beam.includes('castRelease'), beam.join(','));
 
   // Wheel and Q / R change the selected slot.
   const sel0 = await page.evaluate(() => window.__game.ui.hud.weaving.selected);
@@ -278,7 +305,10 @@ async function desktop() {
   const n0 = await page.evaluate(() => (window.__game.magic.calls || []).length);
   await page.mouse.click(900, 300, { button: 'right' });
   await page.waitForTimeout(120);
-  const rc = await page.evaluate(() => (window.__game.magic.calls || []).slice(-1)[0]);
+  const rc = await page.evaluate(() => {
+    const c = (window.__game.magic.calls || []).slice(-1)[0];
+    return c && { fn: c.fn, slot: c.slot };
+  });
   check('desktop: right click casts the selected weave', rc && rc.slot === sel0, JSON.stringify(rc));
   await page.mouse.move(400, 360);
   await page.mouse.down();

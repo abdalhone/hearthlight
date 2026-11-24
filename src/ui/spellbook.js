@@ -311,6 +311,8 @@ export class Spellbook {
     this.hint = null;
     const w = this.weaving;
     const d = { ...this.draft, essences: [...this.draft.essences], twists: [...this.draft.twists] };
+    // The first weave came with a name ("Spark"); once it changes, it names itself.
+    if (d.id === 'spark' && d.name === 'Spark') delete d.name;
     if (kind === 'shapes') d.shape = id;
     else {
       const list = d[kind];
