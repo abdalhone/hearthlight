@@ -231,4 +231,4 @@ if (failures.length) {
   console.error('FAILED:', failures.join(', '));
   process.exit(1);
 }
-console.log('cutscene check: all runs finished the prologue by tapping');
+console.log(LISTEN_S ? 'cutscene check: the prologue played untouched, words with the voice, sound under it, no stall' : 'cutscene check: all runs finished the prologue by tapping');

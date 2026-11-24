@@ -23,6 +23,7 @@ import { tone, noise, fm } from '../ui/synth.js';
 
 const DUCK = 0.42; // effects under a voice (about -7.5 dB)
 const HUSH = 0.03; // the bed and the score in the silence before the slam
+const BED = 1.8; // the beds' level: about 25 dB under the voice, quiet but never dead air
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 
@@ -333,7 +334,7 @@ export class SceneSound {
     if (!build) return;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, ctx.currentTime);
-    g.gain.setTargetAtTime(Math.max(0, level), ctx.currentTime, 0.5);
+    g.gain.setTargetAtTime(Math.max(0, level) * BED, ctx.currentTime, 0.5);
     g.connect(this.bedOut);
     const nodes = [];
     const intervals = [];
