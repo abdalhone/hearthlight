@@ -135,6 +135,7 @@ NAMES = {
     "crownfells", "saltmere", "lowmarch", "whisperwood", "wayhouse", "lyra", "hess", "hobb", "wenna", "maren",
     "aveline", "davin", "bryn", "greyjaw", "brightfall", "gravelight", "varek", "corran", "glimmer", "longwatch",
     "hearthwatch", "lumencrafter", "wardrunner", "wardwright",
+    "da",  # Lyra's father; Whisper writes it "Daa" or "Dah"
 }
 
 

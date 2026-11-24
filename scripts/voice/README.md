@@ -65,7 +65,7 @@ npm run build                             # packs the clips into dist/voice/ (st
 - **render.py** is incremental: takes are cached by voice + text + generation settings +
   seed (`$CACHE/takes`), finished clips by their takes + shaping. Change a voice's shaping and
   only its clips are re-finished (seconds); change a line and only it is spoken again.
-  `--only lyra,hess`, `--script prologue`, `--limit N`, `--force`. `--jobs 2 --threads 2`
+  `--only lyra,hess`, `--script prologue`, `--line prologue.11`, `--limit N`, `--force`. `--jobs 2 --threads 2`
   keeps it polite on a shared 4-CPU machine.
 - **Output:** mono MP3, 24 kHz, 64 kbps CBR (MPEG-2 Layer III: decodes everywhere, iPhones
   included), -16 LUFS, true peak under -1.5 dBTP. `manifest.json`:

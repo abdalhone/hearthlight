@@ -223,10 +223,14 @@ def finish_take(job: dict, info: dict, out: Path) -> dict:
         dec, tp = vl.encode_checked(audio, out)
         heard = _W["ears"].words(dec)
         e, n = vl.word_errors(job["text"], [w[0] for w in heard], _W["names"])
-        tried.append({"final_errors": e, "n": n, "k": k, "audio": audio, "dec": dec, "tp": tp, "heard": heard, "info": info})
-        if e <= info["errors"] or e == 0:
+        # Words the effects changed: the finished clip heard against the raw take. The same
+        # count of errors can hide a different word ("thirteen" heard as "thirty" once the
+        # Void's chain is on), so the take's own hearing is the yardstick too.
+        drift, _ = vl.word_errors(info["heard"], [w[0] for w in heard], _W["names"])
+        tried.append({"final_errors": e, "drift": drift, "n": n, "k": k, "audio": audio, "dec": dec, "tp": tp, "heard": heard, "info": info})
+        if e == 0 or (e <= info["errors"] and drift == 0):
             break
-    return min(tried, key=lambda t: (t["final_errors"], -t["k"]))
+    return min(tried, key=lambda t: (t["final_errors"], t["drift"], -t["k"]))
 
 
 def render_job(job: dict) -> dict:
@@ -252,7 +256,7 @@ def render_job(job: dict) -> dict:
             info = cand[0]
             done.add(info["fp"])
             r = finish_take(job, info, out)
-            if result is None or (r["final_errors"], score(r["info"])) < (result["final_errors"], score(result["info"])):
+            if result is None or (r["final_errors"], r["drift"], score(r["info"])) < (result["final_errors"], result["drift"], score(result["info"])):
                 result = r
             if result["final_errors"] == 0 or len(done) >= 6:
                 break
@@ -305,6 +309,7 @@ def main() -> int:
     ap.add_argument("--only", default="")
     ap.add_argument("--script", default="")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--line", default="", help="only these lines, e.g. prologue.11,night_of_lamps.02")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--no-prune", action="store_true")
     args = ap.parse_args()
@@ -322,7 +327,7 @@ def main() -> int:
         manifest = {"format": "hearthlight-cutscene-voice/1", "clips": {}}
     clips = manifest["clips"]
 
-    want = [l for l in lines if (not args.only or l["speaker"] in args.only.split(",")) and (not args.script or l["script"] in args.script.split(","))]
+    want = [l for l in lines if (not args.only or l["speaker"] in args.only.split(",")) and (not args.script or l["script"] in args.script.split(",")) and (not args.line or l["line"] in args.line.split(","))]
     if args.limit:
         want = want[: args.limit]
     jobs = []
