@@ -803,6 +803,12 @@ export class Player extends Actor {
         lyra.knock.y = 0;
       }
       lyra.faceToward?.(this.x, this.y);
+      // The fight she was in is miles away now.
+      try {
+        lyra.behavior?.clearFocus?.();
+      } catch {
+        /* behavior is optional */
+      }
     }
     try {
       g.camera?.snap?.();
