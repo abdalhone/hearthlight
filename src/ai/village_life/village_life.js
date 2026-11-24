@@ -700,7 +700,7 @@ export class VillageLife {
 
   errandProblem(e, inst, step, t) {
     this.endStep(e);
-    const shopkeeper = SHOPKEEPERS[inst.at] === inst.to;
+    const shopkeeper = SHOPKEEPERS[inst.at] === inst.to && !this.sameWork(e.id, inst.to);
     this.newProblemFor(e, {
       kind: shopkeeper ? 'shut' : 'absent',
       about: inst.to,
@@ -1087,7 +1087,7 @@ export class VillageLife {
     // Searched: nothing.
     this.endStep(e);
     const c = about ? this.cases.get(about) : null;
-    if (c) {
+    if (c && c.status !== 'found' && c.status !== 'dead') {
       c.searched[step.place] = { by: e.id, t: Math.round(t) };
       if (c.searchers) delete c.searchers[e.id];
       this.cases.note(c, t, `${this.name(e.id)} searched ${placePhrase(step.place, this.placeName(step.place))}: nothing.`, 'search');
@@ -1143,7 +1143,7 @@ export class VillageLife {
   }
 
   // What `who` can tell about `about`, from their own eyes first, then what they were told.
-  answerFor(who, about, askerId) {
+  answerFor(who, about, askerId, { exclude = null } = {}) {
     const t = this.now();
     const s = this.sight.lastSeen(who, about);
     const k = this.know[who]?.[about];
@@ -1174,7 +1174,7 @@ export class VillageLife {
       vars.when = whenPhrase(k.t, t);
       vars.placeId = k.heading || k.place;
       info = { kind: 'heard', place: k.place, placeName: this.placeName(k.place), t: k.t, when: vars.when, with: k.with || null, heading: k.heading || null, via: k.from };
-    } else if (this.care(who, about) >= 0.6 && habitAt(this.profile(about), this.hour())?.at) {
+    } else if (this.care(who, about) >= 0.6 && habitAt(this.profile(about), this.hour())?.at && habitAt(this.profile(about), this.hour()).at !== exclude) {
       const h = habitAt(this.profile(about), this.hour()).at;
       key = 'guess';
       vars.placeId = h;
@@ -1204,7 +1204,7 @@ export class VillageLife {
 
   askExchange(e, tgt, step, prob, t) {
     const about = step.about || prob?.about;
-    let ans = this.answerFor(tgt.id, about, e.id);
+    let ans = this.answerFor(tgt.id, about, e.id, { exclude: prob?.place || null });
     if (tgt.id === 'lyra') {
       const { own, claim } = this.lyraKnowledge(about);
       if (!own || t - own.t > 900) {
@@ -1379,7 +1379,10 @@ export class VillageLife {
     if (open && this.serious(c)) return this.found(x.id, e.id);
     // Not a village matter (or already found): they walk over and get on with it.
     this.closeProblem(prob, 'resolved', `found ${this.name(x.id)}`);
-    if (open && !this.problems.some((p) => p.status === 'open' && p.about === x.id)) this.closeCase(c, 'found', e.id, this.placeOf(x));
+    if (open && !this.problems.some((p) => p.status === 'open' && p.about === x.id)) {
+      this.closeCase(c, 'found', e.id, this.placeOf(x));
+      this.cases.note(c, this.now(), `${this.name(e.id)} found ${this.name(x.id)} ${placeAt(this.placeOf(x), this.placeName(this.placeOf(x)))}.`, 'found');
+    }
     this.meet(e, x, prob);
   }
 
@@ -1443,10 +1446,11 @@ export class VillageLife {
   }
 
   standDown(c) {
-    for (const id of Object.keys(c.searchers || {})) {
+    // Everyone out looking for them comes home: the party, and those searching on their own.
+    for (const [id, s] of [...this.steps.entries()]) {
+      if (s.kind !== 'search' || s.about !== c.about) continue;
       const e = this.entity(id);
-      const s = this.steps.get(id);
-      if (e && s && (s.kind === 'search' || s.party)) this.endStep(e);
+      if (e) this.endStep(e);
     }
     c.searchers = {};
   }

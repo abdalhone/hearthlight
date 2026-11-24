@@ -48,10 +48,11 @@ export class Cases {
   // Open (or reopen) the case for someone the village is missing.
   open(about, opts = {}) {
     let c = this.map.get(about);
-    if (c && (c.status === 'found' || c.status === 'dead') && opts.t - (c.closedAt ?? c.foundAt ?? 0) > 60) {
-      if (c.status === 'dead') return c;
-      this.map.delete(about);
-      c = null;
+    if (c && c.status === 'found' && opts.t - (c.closedAt ?? c.foundAt ?? 0) > 60) {
+      // Missed again: the same case reopens, and keeps what happened before.
+      const fresh = newCase(about, opts);
+      Object.assign(c, { ...fresh, timeline: c.timeline, reports: c.reports, lyra: c.lyra });
+      return c;
     }
     if (!c) {
       c = newCase(about, opts);
