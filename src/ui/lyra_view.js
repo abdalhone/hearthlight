@@ -79,7 +79,7 @@ export function handReach(game, maxTiles = HAND_REACH_TILES) {
 // The line under her pack when nothing can be handed over.
 export function reachNote(r, name = 'Lyra') {
   if (!r || r.ok) return '';
-  if (r.why === 'gone') return `${name} won't take anything from you.`;
+  if (r.why === 'gone') return `${name} is gone from your life. She won't take anything from you.`;
   if (r.why === 'downed') return `${name} is knocked out. Help her up first.`;
   if (r.why === 'far') return `${name} is ${r.tiles} paces away. Walk over to her to hand anything across.`;
   return '';
