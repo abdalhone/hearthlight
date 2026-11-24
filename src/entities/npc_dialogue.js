@@ -107,6 +107,17 @@ export function mainOptions(npc, player, tone = dialogueTone(npc, player)) {
   if (tone === 'afraid') return [{ id: 'bye', label: 'Back away' }];
   const opts = [{ id: 'talk', label: tone === 'sleepy' ? "Sorry, I'll let you sleep" : 'Chat' }];
   if (tone === 'sleepy') return [opts[0], { id: 'bye', label: 'Goodbye' }];
+  // Missions (DESIGN §22.3): "Need a hand?", a talk step, a turn-in. Not from someone the
+  // player hurt or frightened today.
+  if (tone === 'normal' || tone === 'warm' || tone === 'wary') {
+    let mo = [];
+    try {
+      mo = npc.game?.missions?.npcOptions?.(npc) || [];
+    } catch {
+      mo = [];
+    }
+    opts.push(...mo);
+  }
   opts.push({ id: 'ask', label: 'Ask about…' });
   opts.push({ id: 'gift', label: 'Give a gift' });
   if (p.shop && (p.shop.sells?.length || Object.keys(p.shop.buys || {}).length)) opts.push({ id: 'shop', label: p.id === 'elda' ? 'Food and drink' : 'Trade' });
@@ -157,6 +168,15 @@ export function chooseOption(npc, id, player) {
     return { lines: l ? [l] : [], close: true };
   }
   if (key === '__back' || key === 'back') return { lines: ['Anything else?'], options: opts };
+  if (key.startsWith('mission:')) {
+    let r = null;
+    try {
+      r = g.missions?.npcChoose?.(npc, key);
+    } catch (err) {
+      console.error('[npc] mission option failed', err);
+    }
+    return { lines: r?.lines?.length ? r.lines : ['…'], options: r?.options || mainOptions(npc, player, dialogueTone(npc, player)) };
+  }
   if (tone === 'afraid') return { lines: [line(npc, p.crime, 'Get away from me!')], options: opts };
   if (key === 'talk') return { lines: talkLines(npc, player, tone), options: opts };
   if (key === 'ask') {

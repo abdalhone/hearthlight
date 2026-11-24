@@ -43,6 +43,7 @@ import { Brain } from '../ai/brain/brain.js';
 import { ClaudeRuntime } from '../platform/claude_runtime.js';
 import { UI } from '../ui/ui.js';
 import { StoryDirector } from '../story/director.js';
+import { missionsPlugin, ensureMissions } from '../missions/plugin.js';
 
 export const SAVE_VERSION = 1;
 
@@ -89,6 +90,8 @@ export class Game {
     this.actions = new ActionRegistry(this);
     this.plugins = new PluginRegistry(this);
     for (const p of BUILTIN_PLUGINS) this.plugins.register(p);
+    this.plugins.register(missionsPlugin); // missions (DESIGN §22.3); saved with the plugins
+    ensureMissions(this); // game.missions
     this.brain = new Brain(this);
     this.save = new SaveManager(this);
     this.ui = new UI(this, this.uiRoot);

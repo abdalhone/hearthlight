@@ -31,6 +31,12 @@ export function buildPause(ui) {
       ui.closeModal(panel, true);
       ui.openInventory();
     } }),
+    ...(typeof ui.openMissions === 'function'
+      ? [button('Missions', { icon: 'scroll', onClick: () => {
+          ui.closeModal(panel, true);
+          ui.openMissions('active');
+        } })]
+      : []),
     button('The Book of Halcyre', { icon: 'book', onClick: () => {
       ui.closeModal(panel, true);
       openCodex(ui);
