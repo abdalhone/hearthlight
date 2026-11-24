@@ -4,7 +4,7 @@
 
 import { h, icon, button, clear, setText, setStyle, toggleClass, meter, copyText, appendAll } from './dom.js';
 import { makePanel } from './modal.js';
-import { portraitUrl } from './art.js';
+import { portraitUrl, personArtKey } from './art.js';
 import {
   moodEmoji,
   moodToExpression,
@@ -529,10 +529,10 @@ export class MindPanel {
     const tags = Array.isArray(rel.tags) ? rel.tags : [];
     const isPlayer = rel.id === 'player';
     const name = isPlayer ? g.settings?.playerName || rel.name || 'You' : rel.name || rel.id;
-    const img = h('img', { class: 'portrait portrait-md', alt: '', draggable: 'false', loading: 'lazy' });
-    const url = portraitUrl(g, rel.id, rel.affinity > 40 ? 'happy' : rel.affinity < -30 ? 'angry' : 'neutral');
-    if (url) img.src = url;
-    else img.classList.add('no-art');
+    const artKey = personArtKey(g, rel);
+    const url = artKey ? portraitUrl(g, artKey, rel.affinity > 40 ? 'happy' : rel.affinity < -30 ? 'angry' : 'neutral') : '';
+    // Someone without a face of their own (a group, a stranger she only heard of): their initial.
+    const img = url ? h('img', { class: 'portrait portrait-md', alt: '', draggable: 'false', src: url }) : h('span', { class: 'portrait portrait-md monogram', 'aria-hidden': 'true', text: String(name || '?').trim().charAt(0).toUpperCase() || '?' });
 
     const pips = h('span', { class: 'pips', title: `Bond ${level}/5` });
     for (let i = 1; i <= 5; i++) pips.append(h('i', { class: i <= level ? 'on' : '' }));
@@ -826,8 +826,8 @@ export class MindPanel {
     const suggest = () => {
       const text = field.value.trim();
       if (!text) return;
-      const r = safe(() => this.game.actions.run('set_goal', { value: text, amount: 0.6 }, 'player'), { ok: false, message: '' });
-      this.ui.toast(r.ok ? r.message || "I'll keep that in mind. It's a good one." : r.message || "That isn't something I want to chase.", 'lyra');
+      // A suggestion, not an order: she answers in her own words, and the goal is hers to keep.
+      this.ui.ask('set_goal', { value: text, amount: 0.6 }, 'goal', "I'll keep that in mind. It's a good one.");
       field.value = '';
       this.showTab('goals');
     };
@@ -978,6 +978,15 @@ export class MindPanel {
 
     const status = h('p', { class: 'data-status', role: 'status' });
     const exportRow = h('div', { class: 'data-actions' });
+    const manual = h('textarea', { class: 'field mono', rows: '5', readonly: true, hidden: true, 'aria-label': 'Mind export' });
+    // Last resort when neither a file nor the clipboard is allowed: the text itself.
+    const showManual = (data, why) => {
+      manual.hidden = false;
+      manual.value = data;
+      manual.focus();
+      manual.select();
+      setText(status, why);
+    };
     const fileName = () => `${(g.settings?.companionName || 'lyra').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-mind-day${g.clock?.day || 1}.json`;
     if (rt?.downloads) {
       exportRow.append(
@@ -991,11 +1000,13 @@ export class MindPanel {
               (res) => setText(status, res?.status === 'delivered' ? 'Sent where you chose.' : 'Saved. Keep it somewhere safe.'),
               (err) => {
                 const code = err?.code;
-                if (code === 'declined') setText(status, 'Not saved.');
-                else if (code === 'rate_limited') setText(status, 'A save prompt is already open.');
+                if (code === 'declined') setText(status, 'Not saved. Her mind stays only in this game.');
+                else if (code === 'rate_limited') setText(status, 'A save prompt is already open. Answer it first.');
                 else {
-                  setText(status, 'Saving files is not available here; copied to the clipboard instead.');
-                  copyText(data);
+                  copyText(data).then((ok) => {
+                    if (ok) setText(status, `Saving files is not available here, so ${bytesLabel(utf8Bytes(data))} went to the clipboard instead.`);
+                    else showManual(data, 'Saving files is not available here. Select the text below and copy it yourself.');
+                  });
                 }
               },
             );
@@ -1025,7 +1036,6 @@ export class MindPanel {
         }),
       );
     }
-    const manual = h('textarea', { class: 'field mono', rows: '5', readonly: true, hidden: true, 'aria-label': 'Mind export' });
     exportRow.append(
       button('Copy to clipboard', {
         icon: 'scroll',
@@ -1035,13 +1045,7 @@ export class MindPanel {
           if (!data) return;
           copyText(data).then((ok) => {
             if (ok) setText(status, `Copied ${bytesLabel(utf8Bytes(data))} to the clipboard.`);
-            else {
-              manual.hidden = false;
-              manual.value = data;
-              manual.focus();
-              manual.select();
-              setText(status, 'Copying was blocked. Select the text below and copy it yourself.');
-            }
+            else showManual(data, 'Copying was blocked. Select the text below and copy it yourself.');
           });
         },
       }),

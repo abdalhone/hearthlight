@@ -383,6 +383,8 @@ export class SaveManager {
     if (!r.ok) return r;
     try {
       c.mind.deserialize(r.mind);
+      // Exports leave out a soul that was never changed: she gets her own back.
+      if (!r.mind.soul && typeof c.mind.resetSoul === 'function') c.mind.resetSoul();
     } catch (err) {
       console.warn('[save] mind import failed', err);
       return { ok: false, message: 'That mind could not be restored. The file may be from an incompatible version.' };

@@ -6,6 +6,7 @@ import { itemIconUrl } from './art.js';
 import { itemDef, itemName } from '../entities/items.js';
 import { sortItems, isUsable, fmtInt, capitalize } from './format.js';
 import { dropItem } from '../entities/pickups.js';
+import { handReach, reachNote, companionshipOf } from './lyra_view.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -76,14 +77,15 @@ export class InventoryPanel {
       return b;
     });
     this.herPurse = h('span', { class: 'her-purse muted small' });
-    return h('div', { class: 'pay-row' }, h('div', { class: 'pay-btns' }, ...this.payBtns), this.herPurse);
+    this.reachEl = h('p', { class: 'reach-note small', hidden: true });
+    return h('div', { class: 'pay-row' }, this.reachEl, h('div', { class: 'pay-btns' }, ...this.payBtns), this.herPurse);
   }
 
   pay(n) {
     const g = this.game;
     const p = g.player;
     const c = g.companion;
-    if (!p || !c?.inventory || p.inventory.count('coin') < n) {
+    if (!p || !c?.inventory || p.inventory.count('coin') < n || !handReach(g).ok) {
       g.audio?.play('error');
       return;
     }
@@ -101,7 +103,11 @@ export class InventoryPanel {
     const c = g.companion;
     const lyraName = g.settings?.companionName || c?.name || 'Lyra';
     const coins = p?.inventory?.count('coin') || 0;
-    for (const [i, b] of (this.payBtns || []).entries()) b.disabled = !c || coins < (i === 0 ? 5 : 10);
+    const reach = handReach(g);
+    this.reach = reach;
+    for (const [i, b] of (this.payBtns || []).entries()) b.disabled = !c || !reach.ok || coins < (i === 0 ? 5 : 10);
+    setText(this.reachEl, reachNote(reach, lyraName));
+    this.reachEl.hidden = reach.ok;
     const purse = Number(c?.mind?.agenda?.purse);
     setText(this.herPurse, Number.isFinite(purse) ? `Her own purse: ${Math.max(0, Math.round(purse))} coins` : '');
     setText(this.coinEl, fmtInt(p?.inventory?.count('coin') || 0));
@@ -109,7 +115,8 @@ export class InventoryPanel {
     clear(this.mine);
     clear(this.hers);
     const mineList = sortItems(p?.inventory?.list() || []).filter((it) => it.id !== 'coin');
-    const herList = sortItems(c?.inventory?.list() || []);
+    const gone = companionshipOf(g) === 'gone';
+    const herList = gone ? [] : sortItems(c?.inventory?.list() || []);
     if (this.selected) {
       const inv = this.selected.owner === 'player' ? p?.inventory : c?.inventory;
       if (!inv?.has(this.selected.id)) this.selected = null;
@@ -117,7 +124,7 @@ export class InventoryPanel {
     if (!this.selected && mineList.length) this.selected = { owner: 'player', id: mineList[0].id };
     if (!mineList.length) this.mine.append(h('p', { class: 'empty', text: 'Your pack is empty. Gather, loot and trade to fill it.' }));
     for (const it of mineList) this.mine.append(slot(g, it, this.selected?.owner === 'player' && this.selected.id === it.id, () => this.select('player', it.id)));
-    if (!herList.length) this.hers.append(h('p', { class: 'empty', text: `${lyraName} carries nothing but her focus and a dagger.` }));
+    if (!herList.length) this.hers.append(h('p', { class: 'empty', text: gone ? `${lyraName} took her pack with her.` : `${lyraName} carries nothing but her focus and a dagger.` }));
     for (const it of herList) this.hers.append(slot(g, it, this.selected?.owner === 'lyra' && this.selected.id === it.id, () => this.select('lyra', it.id)));
     this.renderDetail();
   }
@@ -149,9 +156,10 @@ export class InventoryPanel {
     const actions = h('div', { class: 'detail-actions' });
     if (sel.owner === 'player') {
       if (isUsable(def)) actions.append(button(def.type === 'potion' ? 'Drink' : 'Eat', { cls: 'btn-ember', onClick: () => this.use(sel.id) }));
-      if (c) {
-        actions.append(button(`Give to ${lyraName}`, { icon: 'heart_arcane', onClick: () => this.give(sel.id, 1) }));
-        if (qty > 1) actions.append(button(`Give all ${qty}`, { cls: 'btn-ghost', onClick: () => this.give(sel.id, qty) }));
+      const reach = this.reach || handReach(g);
+      if (c && reach.why !== 'gone') {
+        actions.append(button(`Give to ${lyraName}`, { icon: 'heart_arcane', disabled: !reach.ok, title: reachNote(reach, lyraName) || null, onClick: () => this.give(sel.id, 1) }));
+        if (qty > 1) actions.append(button(`Give all ${qty}`, { cls: 'btn-ghost', disabled: !reach.ok, onClick: () => this.give(sel.id, qty) }));
       }
       if (def.type !== 'quest' && def.type !== 'key') actions.append(button('Drop', { cls: 'btn-ghost', onClick: () => this.drop(sel.id) }));
     } else {
@@ -182,7 +190,7 @@ export class InventoryPanel {
     const g = this.game;
     const p = g.player;
     const c = g.companion;
-    if (!p || !c) return;
+    if (!p || !c || !handReach(g).ok) return;
     const n = p.inventory.transfer(c.inventory, id, qty);
     if (!n) return;
     g.bus.emit('item_given', { from: p, to: c, itemId: id, qty: n });

@@ -252,6 +252,16 @@ textarea {
 .portrait.no-art {
   background: linear-gradient(180deg, var(--ink-4), var(--ink-2));
 }
+.portrait.monogram {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(180deg, var(--ink-4), var(--ink-2));
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1;
+  color: var(--arcane-pale);
+  text-shadow: 2px 2px 0 rgba(4, 3, 14, 0.8);
+}
 .portrait-hud {
   width: 48px;
   height: 48px;
@@ -1198,11 +1208,16 @@ textarea {
 
 /* ---------- toasts ---------- */
 
-/* While a panel is open, notices rise from the bottom so they never cover its header. */
+/* While a panel is open, notices sit along its top edge: over the title, never over
+   the close button or the action buttons in its footer. */
 .modal-open .toasts {
-  top: auto !important;
-  bottom: calc(var(--sa-b) + 18px);
-  flex-direction: column-reverse;
+  top: calc(var(--sa-t) + 8px) !important;
+  bottom: auto !important;
+  flex-direction: column;
+  gap: 6px;
+}
+.modal-open .toast {
+  box-shadow: 0 6px 18px rgba(4, 3, 14, 0.6);
 }
 .toasts {
   position: absolute;
@@ -2232,6 +2247,10 @@ input[type='range']::-moz-range-thumb {
   gap: 10px;
   padding: 4px;
 }
+.item-grid > .empty {
+  grid-column: 1 / -1;
+  margin: 6px 2px;
+}
 .item-grid.compact {
   grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
   margin-bottom: 10px;
@@ -2392,6 +2411,15 @@ input[type='range']::-moz-range-thumb {
 }
 .her-purse:empty {
   display: none;
+}
+.reach-note {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 6px 8px;
+  border-left: 2px solid var(--arcane-deep);
+  background: rgba(106, 82, 201, 0.1);
+  color: var(--arcane-pale);
+  font-style: italic;
 }
 
 /* ---------- Lyra's mind ---------- */
@@ -3743,6 +3771,14 @@ input[type='range']::-moz-range-thumb {
 /* ---------- responsive ---------- */
 
 /* Medium screens: tighter cards; chat docks to the right edge. */
+/* Wide screens: the chat can run down to the bottom edge beside the request bar. */
+@media (min-width: 1250px) {
+  .chat {
+    bottom: calc(var(--sa-b) + var(--edge));
+    width: 352px;
+  }
+}
+
 @media (max-width: 1100px) {
   .hud-center {
     top: calc(var(--sa-t) + 128px);
@@ -3776,6 +3812,13 @@ input[type='range']::-moz-range-thumb {
 @media (max-width: 640px) {
   :root {
     --edge: 8px;
+  }
+  /* Panels fill the screen: keep notices clear of the close button at top right. */
+  .modal-open .toasts {
+    left: 12px;
+    transform: none;
+    width: calc(100% - 88px);
+    align-items: flex-start;
   }
   .hud-top {
     gap: 8px;
