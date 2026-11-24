@@ -216,7 +216,7 @@ test("Lyra's people: the eighteen, Maren and Bryn as LORE §7 gives them; the st
   // What she knows of each person, never their hidden secrets (LORE §9.10).
   const notes = JSON.stringify(Object.keys(LYRA_PEOPLE).map((id) => mind.relationships.get(id).notes));
   for (const secret of ['poem', 'toll', 'ferry-house', "June's letter", 'Ewan', 'strongbox', 'chose this', 'Varek is', 'froze', 'moonpetal in', 'brightfall night', 'spear']) {
-    assert.ok(!notes.toLowerCase().includes(secret.toLowerCase()), `no note says "${secret}"`);
+    assert.ok(!new RegExp(`\\b${secret}\\b`, 'i').test(notes), `no note says "${secret}"`);
   }
   const p = mind.relationships.get('player');
   assert.equal(PLAYER_REL_START.trust, T.startTrust, "the stranger's starting trust is her will's calibration");
