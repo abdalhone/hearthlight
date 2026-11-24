@@ -104,6 +104,12 @@ export class Player extends Actor {
     this.ghostT = 0;
     this.ghostIdx = 0;
     this.hurtBlink = 0;
+    // Weaving (DESIGN §22): a short cast pose toward the aim, and a slower walk while a
+    // beam pours or a charge builds (game.magic sets castMoveMul).
+    this.castPoseT = 0;
+    this.castAngle = 0;
+    this._castAnimT = 0;
+    this.castMoveMul = 1;
 
     this.workBar = null; // { progress, t } shown above the head while harvesting
     this.stepDist = 0;
@@ -161,6 +167,37 @@ export class Player extends Actor {
     return this.atk + this.weaponBonus;
   }
 
+  // The Weave's mana (game.magic owns it).
+  get mana() {
+    return this.game.magic?.mana ?? null;
+  }
+
+  // Weave the spell in a hotbar slot (or a weave object). aim { x, y, target? } in world
+  // px; leave it out to aim at the nearest foe. -> { ok, reason?, message?, plan }
+  castWeave(slot, aim) {
+    const m = this.game.magic;
+    if (!m?.cast) return { ok: false, reason: 'busy', message: 'Magic is not ready.' };
+    if (!this.isAlive()) return { ok: false, reason: 'down', message: "You can't weave right now." };
+    return m.cast(this, slot, aim);
+  }
+
+  // Called by game.magic on every cast: face the aim and raise the hands for a moment,
+  // without stopping the feet (move with one thumb, weave with the other).
+  castPose(angle, seconds = 0.24) {
+    if (!Number.isFinite(angle)) return;
+    if (!(this.castPoseT > 0)) this._castAnimT = 0;
+    this.castPoseT = Math.max(this.castPoseT || 0, seconds);
+    this.castAngle = angle;
+    this._faceCast();
+  }
+
+  _faceCast() {
+    const fx = Math.cos(this.castAngle);
+    const fy = Math.sin(this.castAngle);
+    this.facing = { x: fx, y: fy };
+    this.dir = dirFromVec(fx, fy, this.dir);
+  }
+
   // ------------------------------------------------------------ step
 
   update(dt) {
@@ -168,6 +205,10 @@ export class Player extends Actor {
     if (this.comboRest > 0) this.comboRest -= dt;
     if (this.attackBuffer > 0) this.attackBuffer -= dt;
     if (this.hurtBlink > 0) this.hurtBlink -= dt;
+    if (this.castPoseT > 0) {
+      this.castPoseT -= dt;
+      this._castAnimT += dt;
+    }
     if (this.comboTimer > 0) {
       this.comboTimer -= dt;
       if (this.comboTimer <= 0) this.combo = 0;
@@ -245,7 +286,7 @@ export class Player extends Actor {
   }
 
   _accelerate(dt, mx, my) {
-    const max = this.speed * (this.speedMul || 1);
+    const max = this.speed * (this.speedMul || 1) * (this.castMoveMul || 1);
     const v = this.vel;
     let tx = 0;
     let ty = 0;
@@ -282,8 +323,10 @@ export class Player extends Actor {
   }
 
   _afterMove(dt) {
-    // Face the stick at once, even while the body is still turning around.
-    if ((this._inX || this._inY) && this.lockTime <= 0 && !this.rolling && this.isAlive()) {
+    // Face the stick at once, even while the body is still turning around; while a
+    // weave leaves the hands, face where it goes.
+    if (this.castPoseT > 0 && !this.rolling && this.isAlive()) this._faceCast();
+    else if ((this._inX || this._inY) && this.lockTime <= 0 && !this.rolling && this.isAlive()) {
       const l = Math.hypot(this._inX, this._inY);
       this.facing.x = this._inX / l;
       this.facing.y = this._inY / l;
@@ -563,6 +606,7 @@ export class Player extends Actor {
 
   tryDodge(mx = 0, my = 0) {
     if (this.dodgeCd > 0 || this.rolling || !this.isAlive()) return false;
+    if (this.statusFlags?.disabled) return false; // frozen or stunned by a weave
     if (this.rootTime > 0) {
       this._strain();
       return false;
@@ -937,7 +981,10 @@ export class Player extends Actor {
     const slashBehind = sw && this.dir === 'up';
     if (slashBehind) this._drawSlash(ctx, sx, sy - hz);
     const blink = this.hurtBlink > 0 && !this.rolling && !this.downed;
-    drawCharacter(ctx, atlas, this.spriteKey, animForState(this.state), this.dir, this.rolling ? this.animTime * 2.2 : this.animTime, sx, sy - hz, {
+    const casting = this.castPoseT > 0 && !this.rolling && !this.downed && (this.state === 'idle' || this.state === 'walk' || this.state === 'cast');
+    const anim = casting ? 'cast' : animForState(this.state);
+    const animT = casting ? this._castAnimT : this.rolling ? this.animTime * 2.2 : this.animTime;
+    drawCharacter(ctx, atlas, this.spriteKey, anim, this.dir, animT, sx, sy - hz, {
       flash: this.flash,
       alpha: blink ? (Math.floor(this.hurtBlink * 20) % 2 ? 0.5 : 1) : 1,
       state: this.state,

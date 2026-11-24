@@ -101,9 +101,13 @@ export function describeWeave(plan) {
     if (t.clause) clauses.push(n === 1 ? t.clause[0] : t.clause[1]);
     if (t.sentence) sentences.push(t.sentence);
   }
+  // "Fires 3 bolts of fire that split on impact." reads well; heads that already end in
+  // a phrase of their own ("...around you") get the twists as a sentence: "They split...".
   let text = head;
-  if (clauses.length) text += ` that ${joinList(clauses.slice(0, 3))}`;
-  text += '.';
+  const list = joinList(clauses.slice(0, 3));
+  if (clauses.length && shape?.clauseStyle === 'that') text += ` that ${list}.`;
+  else if (clauses.length) text += `. ${n === 1 ? 'It' : 'They'} ${list}.`;
+  else text += '.';
   if (sentences.length) text += ` ${sentences.join(' ')}`;
   return text;
 }

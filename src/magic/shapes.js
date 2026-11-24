@@ -17,7 +17,9 @@ import { defineRegistry } from './registry.js';
 //   hits: 1,                    expected targets hit per body (for the power budget)
 //   input: 'tap' | 'hold',      'hold' = held while the button is down (beam)
 //   aim(plan) -> { type: 'line'|'cone'|'circle'|'ring'|'arc'|'point', range, width, radius, ... },
-//   describe(n, noun) -> 'Fires 3 bolts of fire',
+//   describe(n, noun, plan) -> 'Fires 3 bolts of fire',
+//   clauseStyle: 'that' | 'sentence',   twists read '...bolts of fire that split' or, after a
+//                               head with an ending of its own ('...around you'), 'They split...'
 //   emit(ctx),                  makes bodies with ctx.spawn(kind, init); see bodies.js for
 //                               ctx (origin ox/oy, aim aimX/aimY/angle/dist, count, fan(),
 //                               ring(), plan, caster, target, held, chargeK) and body fields
@@ -31,6 +33,7 @@ export const SHAPES = {
     name: 'Bolt',
     noun: 'Bolt',
     kind: 'projectile',
+    clauseStyle: 'that',
     base: { dmg: 9, cost: 5, cooldown: 0.32, speed: 240, range: 210, radius: 4, count: 1, life: 1.0 },
     hits: 1,
     aim: (p) => ({ type: 'line', range: p.range, width: p.radius * 2 }),

@@ -19,6 +19,11 @@ const BARK_GAP = 3; // seconds between any two bandit barks
 let lastBarkAt = -Infinity;
 
 export function runCreatureAI(c, dt) {
+  // Frozen, stunned or staggered by a weave: no thinking, no moving (DESIGN §22.1).
+  if (c.statusFlags?.disabled) {
+    stopMove(c);
+    return;
+  }
   const ai = c.ai;
   ai.t += dt;
   c.thinkT -= dt;

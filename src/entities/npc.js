@@ -93,6 +93,12 @@ function crimeLog(game) {
 
 const NPC_CONTROLLER = {
   update(npc, dt) {
+    // Frozen or stunned by a weave (DESIGN §22.1): the day waits until it wears off.
+    if (npc.statusFlags?.disabled) {
+      npc.moveIntent.x = 0;
+      npc.moveIntent.y = 0;
+      return;
+    }
     npc.think(dt);
   },
 };
