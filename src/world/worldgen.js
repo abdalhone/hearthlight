@@ -322,22 +322,19 @@ class WorldBuilder {
       for (let y = KINGS_ROAD_Y; y < KINGS_ROAD_Y + 3; y++) if (!WATERY[this.get(x, y)]) this.set(x, y, T.DIRT);
     }
     this.keep(0, KINGS_ROAD_Y - 1, W, 5);
-    // The bridge over the stream, with a plank on each bank.
+    // The bridge over the stream: one straight deck spanning every row of the road,
+    // resting a plank's width on each bank.
+    let x0 = Infinity;
+    let x1 = -Infinity;
     for (let y = KINGS_ROAD_Y; y < KINGS_ROAD_Y + 3; y++) {
-      let x0 = Infinity;
-      let x1 = -Infinity;
       for (let x = 118; x < 145; x++) {
         if (WATERY[this.get(x, y)]) {
-          this.set(x, y, T.BRIDGE);
           x0 = Math.min(x0, x);
           x1 = Math.max(x1, x);
         }
       }
-      if (x0 < Infinity) {
-        this.set(x0 - 1, y, T.BRIDGE);
-        this.set(x1 + 1, y, T.BRIDGE);
-      }
     }
+    if (x0 < Infinity) this.fill(x0 - 1, KINGS_ROAD_Y, x1 - x0 + 3, 3, T.BRIDGE);
     // Forest road from the village's north gate to the heart of Whisperwood.
     this.path(
       [

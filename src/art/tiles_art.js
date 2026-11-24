@@ -806,7 +806,7 @@ function paintRock(art, out, lx, ly, map, tx, ty, wet) {
   const w = rock(tx - 1, ty);
   const e = rock(tx + 1, ty);
   const r = 6;
-  const tex = art.tex.cobble[0].data;
+  const tex = (art.tex.rock || art.tex.cobble)[0].data;
   for (let y = 0; y < TILE; y++) {
     const wy = ty * TILE + y;
     for (let x = 0; x < TILE; x++) {
@@ -833,12 +833,14 @@ function paintRock(art, out, lx, ly, map, tx, ty, wet) {
         if (fy === 0) t += 0.2;
         c = pickL(ROCK_LUT, t);
       } else {
-        const base = tex[(((wy * 1) & 63) << 6) | ((wx * 1) & 63)];
+        const base = tex[((wy & 63) << 6) | (wx & 63)];
         let f = 1.0;
         if (!n && y < 3) f = 1.22 - y * 0.06;
         if (!w && x < 3) f *= 1.1;
         if (!e && x > 12) f *= 0.72;
-        c = shade(mixc(base, ROCK_LUT[40], 0.35), f);
+        // The top darkens a touch toward the lip of the face below.
+        if (!s && y >= 16 - 7 - 2) f *= 0.9;
+        c = shade(base, f);
       }
       if (wet) c = mixc(shade(c, 0.66), WET.spec, !s && y >= 9 ? 0.04 : 0.18);
       out.data[(ly + y) * CPX + lx + x] = c;
@@ -914,11 +916,14 @@ function paintRubble(art, out, lx, ly, map, tx, ty, wet) {
 function paintPlanks(art, out, lx, ly, map, tx, ty, g, wet) {
   const tex = art.tex.bridge[0].data;
   const water = (x, y) => map.isWater(x, y);
-  const wN = water(tx, ty - 1);
-  const wS = water(tx, ty + 1);
-  const wW = water(tx - 1, ty);
-  const wE = water(tx + 1, ty);
   const bridge = g === T.BRIDGE;
+  // A bridge deck has rails along its open sides and beams at its ends; a dock is
+  // edged wherever it meets the water.
+  const deck = (x, y) => map.tileAt(x, y) === g;
+  const wN = bridge ? !deck(tx, ty - 1) : water(tx, ty - 1);
+  const wS = bridge ? !deck(tx, ty + 1) : water(tx, ty + 1);
+  const wW = bridge ? !deck(tx - 1, ty) : water(tx - 1, ty);
+  const wE = bridge ? !deck(tx + 1, ty) : water(tx + 1, ty);
   for (let y = 0; y < TILE; y++) {
     const wy = ty * TILE + y;
     for (let x = 0; x < TILE; x++) {
@@ -931,11 +936,16 @@ function paintPlanks(art, out, lx, ly, map, tx, ty, g, wet) {
       if (!bridge && wE && x > 13) f *= x === 15 ? 0.55 : 0.8;
       c = shade(c, f);
       if (bridge) {
-        // Rails along the water sides, with posts every tile.
+        // End beams where the deck meets the road, rails with a post every tile along the sides.
+        if ((wW && x < 3) || (wE && x > 12)) {
+          const ex = wW ? x : 15 - x;
+          c = pickL(BRIDGE_RAIL, (ex === 0 ? (wW ? 0.66 : 0.2) : ex === 1 ? 0.5 : 0.36) + (y % 5 === 0 ? -0.1 : 0));
+        }
         const rail = (wN && y >= 1 && y <= 3) || (wS && y >= 11 && y <= 13);
         const post = (wN && y <= 4) || (wS && y >= 10 && y <= 14);
-        if (post && (x === 0 || x === 1)) c = pickL(BRIDGE_RAIL, x === 0 ? 0.62 : 0.3);
-        else if (rail) c = pickL(BRIDGE_RAIL, y === 1 || y === 11 ? 0.82 : y === 3 || y === 13 ? 0.3 : 0.58);
+        if (post && (x === 7 || x === 8)) c = pickL(BRIDGE_RAIL, x === 7 ? 0.66 : 0.3);
+        else if (rail) c = pickL(BRIDGE_RAIL, y === 1 || y === 11 ? 0.84 : y === 3 || y === 13 ? 0.26 : 0.58);
+        if (wN && y === 4 && !post) c = shade(c, 0.72); // the rail's shadow on the deck
       } else {
         // Mooring posts at the outer corners of the dock.
         const corner = (wN && y < 3) || (wS && y > 12);

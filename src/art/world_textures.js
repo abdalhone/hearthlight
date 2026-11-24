@@ -352,6 +352,43 @@ function flagTexture(rng, { L = lut(['#2a2832', '#3c3a46', '#54525f', '#6c6a78',
   return buf;
 }
 
+// Chiselled bedrock for cliffs and outcrops: big facets, each tilted its own way and
+// lit from the upper left, split by dark cracks, with lichen in the hollows.
+const ROCK_LUT = lut(['#1f1d28', '#2e2c39', '#42404f', '#595667', '#716e81', '#8c899c', '#a9a7b7', '#c8c7d3']);
+
+function rockTexture(rng) {
+  const buf = new PixelBuf(TEX, TEX);
+  const cells = tileCells(TEX, 11, rng);
+  const fine = tileCells(TEX, 5, rng);
+  const n1 = tileNoise(TEX, 8, rng, 3);
+  const lichen = tileNoise(TEX, 4, rng, 2);
+  const tilt = Array.from({ length: cells.count }, () => {
+    const a = rng.next() * Math.PI * 2;
+    const k = 0.35 + rng.next() * 0.65;
+    return [Math.cos(a) * k, Math.sin(a) * k, (rng.next() - 0.5) * 0.12];
+  });
+  const lichenC = rgb('#6f8a4a');
+  for (let i = 0; i < TEX * TEX; i++) {
+    const x = i & M;
+    const y = i >> 6;
+    const [tx, ty, base] = tilt[cells.id[i]];
+    // A facet facing up-left catches the light; one facing down-right falls into shade.
+    let t = 0.47 + base - (tx + ty) * 0.21 + (n1[i] - 0.5) * 0.16;
+    const e = cells.edge[i];
+    // Cracks open and close along each seam instead of tracing every facet evenly.
+    const open = n1[(i + 2080) & (TEX * TEX - 1)] > 0.42;
+    if (e < 0.55 && open) t = 0.1 + e * 0.12;
+    else if (e < 1.4) t -= (1.4 - e) * (open ? 0.09 : 0.05);
+    // Finer chips inside each facet.
+    if (fine.edge[i] < 0.45) t -= 0.07;
+    else t += (-fine.dx[i] - fine.dy[i]) * 0.012;
+    let c = toneAt(ROCK_LUT, t, x, y, 0.04);
+    if (e >= 0.55 && lichen[i] > 0.7 && t < 0.5) c = mixc(c, lichenC, Math.min(0.55, (lichen[i] - 0.7) * 3));
+    buf.data[i] = c;
+  }
+  return buf;
+}
+
 // The full set, plus a mid-tone per texture for quick fallbacks.
 export function buildTextures(rng) {
   const t = {
@@ -372,6 +409,7 @@ export function buildTextures(rng) {
     plankDark: [plankTexture(rng.fork(102), { L: lut(['#221510', '#352117', '#4a2e1f', '#5f3d29', '#744d33', '#8a6040']) })],
     flag: [flagTexture(rng.fork(111))],
     flagWarm: [flagTexture(rng.fork(112), { L: lut(['#30282a', '#463a3a', '#5f504c', '#78665e', '#917d72', '#ab9788']) })],
+    rock: [rockTexture(rng.fork(131))],
     bridge: [plankTexture(rng.fork(121), { L: lut(['#2a1a12', '#41291b', '#5a3a25', '#734c30', '#8c603e', '#a6774f']), h: 4 })],
   };
   return t;
