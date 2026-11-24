@@ -108,12 +108,8 @@ export function compileWeave(weave, opts = {}) {
     cache.set(key, base);
   }
   if (!w.name && !w.id) return base;
-  // The player's own name and id ride on a thin copy; numbers stay shared.
-  const named = Object.create(base);
-  named.weave = { ...base.weave, id: w.id, name: w.name };
-  named.id = w.id || base.id;
-  named.name = w.name || base.autoName;
-  return named;
+  // The player's own name and id ride on a shallow copy; numbers and hooks stay shared.
+  return Object.assign({}, base, { weave: { ...base.weave, id: w.id, name: w.name }, id: w.id || base.id, name: w.name || base.autoName });
 }
 
 export function clearCompileCache() {

@@ -272,7 +272,7 @@ export class Magic {
   }
 
   nearestFoe(b, x, y, r, exclude, skipHitsOf) {
-    const list = this.cands;
+    const list = this._ensureCands();
     let best = null;
     let bd = r * r;
     for (let i = 0; i < list.length; i++) {
@@ -720,7 +720,7 @@ export class Magic {
   // Reaction bursts and spreads: hurt (and mark) foes of `src` near a point.
   reactionArea(src, x, y, r, amount, opts = {}) {
     const g = this.game;
-    const list = this.cands;
+    const list = this._ensureCands();
     let n = 0;
     const max = opts.max ?? 99;
     for (let i = 0; i < list.length && n < max; i++) {
@@ -749,7 +749,7 @@ export class Magic {
   }
 
   healFriends(src, x, y, r, amount) {
-    const list = this.cands;
+    const list = this._ensureCands();
     for (let i = 0; i < list.length; i++) {
       const a = list[i];
       if (Math.hypot(a.x - x, a.y - y) > r + (a.radius ?? 5)) continue;
@@ -1469,6 +1469,12 @@ export class Magic {
     return list.filter((e) => e && e.type === 'actor' && !e.removed);
   }
 
+  // Outside a step (a boss or a test applying a status directly) the list is rebuilt.
+  _ensureCands() {
+    if (!this._inStep) this._buildCandidates();
+    return this.cands;
+  }
+
   _buildCandidates() {
     const out = this.cands;
     const shots = this.shots;
@@ -1498,6 +1504,15 @@ export class Magic {
   }
 
   _step(dt) {
+    this._inStep = true;
+    try {
+      this._stepInner(dt);
+    } finally {
+      this._inStep = false;
+    }
+  }
+
+  _stepInner(dt) {
     this.t += dt;
     for (let i = 0; i < this.cooldowns.length; i++) if (this.cooldowns[i] > 0) this.cooldowns[i] = Math.max(0, this.cooldowns[i] - dt);
     this._regen(dt);
