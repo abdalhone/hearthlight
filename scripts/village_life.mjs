@@ -184,6 +184,22 @@ if (searching?.searchers?.length) {
   await standAt(searching.searchers[0]);
   await watchFor(15, 'search', 3);
 }
+// Away somewhere unexpected: stand where he is and watch the search reach him.
+if (MODE === 'away') {
+  await standAt(WHO);
+  for (let i = 0; i < 12; i++) {
+    await page.waitForTimeout(3000);
+    await snap(`found-watch-${i + 1}`);
+    const st = await page.evaluate((WHO) => window.__game.villageLife.cases.get(WHO)?.status, WHO);
+    if (st === 'found') {
+      await page.waitForTimeout(2500);
+      await snap('found');
+      await page.waitForTimeout(3000);
+      await snap('found-2');
+      break;
+    }
+  }
+}
 await fastTo(15.2);
 await followTrouble('afternoon');
 

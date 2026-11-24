@@ -286,6 +286,28 @@ test('the player can lie to Lyra, and the lie can be found out', () => {
   assert.ok(game.companion.mind.memories.some((m) => /lied/.test(m.text)));
 });
 
+test('Lyra answers "have you seen X?" from her own eyes, and reacts to the answer to her question', () => {
+  const game = makeWorld({ hour: 12.4 });
+  const life = game.villageLife;
+  const lyra = game.companion;
+  const elda = game.entities.get('elda');
+  lyra.x = elda.x + 30;
+  lyra.y = elda.y;
+  run(game, 2);
+  const m = life.seenPattern('Have you seen Elda today?');
+  assert.equal(m?.groups?.who, 'elda');
+  assert.equal(life.seenPattern('Have you seen the ruins?'), null);
+  const line = life.lyraAnswer('elda');
+  assert.ok(/just now|kettle|ago|noon|morning/i.test(line), line);
+  // Her question, the player's answer, her reaction (the offline brain uses the intent).
+  life.pending.lyra = { about: 'elda', t: game.clock.t, rt: game.time };
+  game.bus.emit('player_message', { text: 'I saw her down by the lake' });
+  assert.ok(life.answerPattern('I saw her down by the lake'));
+  assert.match(life.lyraReact(), /lake/i);
+  assert.equal(life.claims[0].kind, 'seen_at');
+  assert.ok(life.promptContext().length < 600);
+});
+
 test('the player’s answers are understood', () => {
   assert.equal(parseClaim("No, I haven't seen him", 'garrick').kind, 'not_seen');
   assert.deepEqual(parseClaim('I saw him down by the lake this morning', 'garrick'), { kind: 'seen_at', place: 'mirror_lake' });

@@ -1026,14 +1026,16 @@ export class VillageLife {
 
   // ------------------------------------------------------------------ looking, waiting, searching
 
-  // Can e see `about` from where they are (or are they in the same small place)?
-  findsHere(e, aboutId) {
+  // Can e see `about` from where they are (or are they in the same small place)? A proper
+  // search of a place (thorough) covers all of it, however big: the lake shore, the farm.
+  findsHere(e, aboutId, placeId = null) {
     const x = this.entity(aboutId);
     if (!x || !this.isHere(x)) return false;
     if (this.sight.canSee(e, x)) return true;
-    const here = this.placeOf(e);
+    const here = placeId || this.placeOf(e);
     const loc = here && safe(() => this.game?.locations?.get?.(here));
-    return !!loc && loc.indoor && inLoc(loc, x);
+    if (!loc || !inLoc(loc, x)) return false;
+    return !!placeId || loc.indoor || (loc.bounds && loc.bounds.w * loc.bounds.h < 200);
   }
 
   look(e, step, t) {
@@ -1069,7 +1071,9 @@ export class VillageLife {
       step.callAt = t;
     }
     const about = step.about;
-    if (about && this.findsHere(e, about)) {
+    // Searching a big place takes a while to cover: halfway through, the whole of it.
+    const thorough = t - step.searchStart > (step.dur || SEARCH_SECONDS) * 0.5 ? step.place : null;
+    if (about && this.findsHere(e, about, thorough)) {
       this.endStep(e);
       const prob = this.problemById(step.prob);
       if (prob && prob.status === 'open') return this.problemFound(prob, e, this.entity(about));
