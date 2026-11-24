@@ -124,10 +124,16 @@ export function pickActorAt(game, wx, wy, { pad = 3 } = {}) {
 export const TONES = {
   hostile: 'cold to you',
   wary: 'wary of you',
-  neutral: 'neutral',
-  friendly: 'friendly',
+  neutral: 'unsure of you',
+  friendly: 'likes you',
   fond: 'fond of you',
 };
+
+// A villager's mood word (theirs or Claude's) as the header says it, or '' when it says nothing new.
+const MOOD_WORDS = { warm: 'warm', happy: 'cheerful', amused: 'amused', angry: 'angry', wary: 'guarded', worried: 'worried', sad: 'sad', sleepy: 'sleepy', cold: 'cold', curious: 'curious', proud: 'proud', embarrassed: 'flustered', nervous: 'nervous', fond: 'tender' };
+export function moodWord(mood) {
+  return MOOD_WORDS[String(mood || '').toLowerCase()] || '';
+}
 
 export function toneOf(opinion) {
   const o = num(opinion, 30);

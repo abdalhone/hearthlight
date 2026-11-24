@@ -12,7 +12,7 @@ import { portraitUrl } from './art.js';
 import { cleanLine, capitalize } from './format.js';
 import { memoryRefs, findMemory, memoryChipLabel, STORE_LABELS, companionshipOf, companionshipLabel } from './lyra_view.js';
 import { TalkSession, villageOf, firstName, lineBeat } from './village_view.js';
-import { LYRA, ChatTargetBar, earshotPeople, whyNotHeard, canHear, chipFor, standingOf, faceOf, partingLine, villagerChips, pickActorAt, inFight, isVillager, speakVillagerLine, EARSHOT_LOSE } from './chat_target.js';
+import { LYRA, ChatTargetBar, moodWord, earshotPeople, whyNotHeard, canHear, chipFor, standingOf, faceOf, partingLine, villagerChips, pickActorAt, inFight, isVillager, speakVillagerLine, EARSHOT_LOSE } from './chat_target.js';
 import { chatOf, recordChat, knownName } from '../ai/social/player_talk.js';
 import { STORY } from '../lore/story.js';
 
@@ -51,6 +51,7 @@ export class Chat {
     this.seenAt = new Map(); // villager id -> {nx, ny, px, py} when last in earshot
     this.voiced = new Map(); // text -> villager id: chat lines that may use a live voice
     this.local = {}; // villager threads when the village is not in this build
+    this.unsaid = new Map(); // villager id -> [{ show, timer }]: lines of an answer still to come
     this._scanT = 0;
   }
 
@@ -846,8 +847,8 @@ export class Chat {
     else if (st.asleep) bits.push('asleep');
     else {
       bits.push(st.cold ? 'cold to you' : st.label);
-      const mood = this.moods.get(id);
-      if (mood && !['neutral', 'calm'].includes(mood)) bits.push(mood);
+      const mood = moodWord(this.moods.get(id));
+      if (mood) bits.push(mood);
     }
     if (this.dictState === 'listening') bits.push('listening to you…');
     setText(this.status, bits.join(' · '));
@@ -942,6 +943,8 @@ export class Chat {
       this.checkTarget();
       return;
     }
+    // The rest of their last answer is said before the player's next line, never after.
+    this.flushUnsaid(id);
     this.pushVillager(id, { from: 'player', text: t });
     this.lastSentAt = Date.now();
     g.audio?.play('ui_click');
@@ -1010,10 +1013,18 @@ export class Chat {
       if (this.target === id) this.refreshHeader();
       return;
     }
+    this.flushUnsaid(id);
     let delay = 0;
     const speed = Math.max(0.25, Number(g.settings?.textSpeed) || 1);
+    const queue = [];
+    this.unsaid.set(id, queue);
     reply.lines.forEach((line, i) => {
+      const item = { show: null, timer: null };
       const show = () => {
+        const k = queue.indexOf(item);
+        if (k < 0) return;
+        queue.splice(k, 1);
+        clearTimeout(item.timer);
         this.pushVillager(id, { from: 'npc', text: line });
         this.voiced.set(line, id);
         if (this.voiced.size > 24) this.voiced.delete(this.voiced.keys().next().value);
@@ -1026,12 +1037,21 @@ export class Chat {
         }
         if (!this._open || this.target !== id) g.audio?.play('talk_blip', { volume: 0.6 });
       };
-      if (i === 0 || late) show();
-      else setTimeout(show, delay * 1000);
+      item.show = show;
+      queue.push(item);
+      if (i > 0 && !late) item.timer = setTimeout(show, delay * 1000);
       delay += Math.min(3.2, lineBeat(line, speed) * 0.6);
     });
+    // The first line at once (and all of a late answer); the rest in their own time.
+    for (const it of late ? [...queue] : queue.slice(0, 1)) it.show();
     if (this.target === id) this.refreshHeader();
     this.refreshPeople(true);
+  }
+
+  flushUnsaid(id) {
+    const q = this.unsaid.get(id);
+    if (!q?.length) return;
+    for (const it of [...q]) it.show();
   }
 
   // A villager's chat line with no recorded clip may still be heard: claude.ai's voice
