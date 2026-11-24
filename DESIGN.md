@@ -1431,3 +1431,42 @@ glyph-shards with a short reveal ("You can weave fire").
 - **The Spellbook**: craft and edit weaves (pick a shape, essences, twists from what is
   unlocked; see cost, cooldown and damage; a live preview casts it at a training dummy),
   assign them to slots, name them. Works on a phone in both orientations.
+
+### 22.5 Bind and Ward (the author: "even the binding spell that the girl has, I can have it as well, or a shield spell that would save me from spells")
+
+Two more shapes, plain registry entries like the rest:
+- `bind` — the player's own Stillring: a ring of light that closes on the aimed target and
+  holds it (rooted, unable to attack or cast) for a short time; essences flavor it (fire
+  ring burns, frost freezes the hold longer, storm shocks, dark drains, song lulls, nature
+  roots with vines…); bosses resist it (shorter hold, diminishing returns). Lyra teaches it
+  at high trust as "the polite way to say stop" (a mission); binding a villager or Lyra is
+  an attack with all of §19.7's weight.
+- `ward` — a shield around the caster (or an ally it is aimed at) that absorbs a set amount
+  of damage and blocks enemy projectiles and spells for a few seconds; essences flavor it
+  (light reflects bolts back, fire burns whoever strikes it, frost chills them, earth and
+  iron absorb more but slow you, water heals a little, wind deflects missiles, storm
+  shocks, dark drinks a little health, nature grows thorns, poison stings, song shields
+  nearby friends too); twists apply where they make sense (big = wider, linger = lasts
+  longer, orbit = a ring of small shields, burst = explodes when it breaks). It is earned
+  through a mission (fit it to the watch or the chapel).
+
+## 23. Talk to anyone, the way you talk to Lyra (the author: "I want to be able to talk to all the NPCs, and talk to them like I talk with this girl")
+
+- The chat panel addresses whoever the player chooses: Lyra by default, or any villager
+  near the player (a "To:" chip row with the portraits of who is within earshot; tapping a
+  villager in the world or their portrait selects them; the field reads "Say something to
+  Hobb…"). The same typing, mic and history as with Lyra; each villager keeps their own
+  conversation history (saved), and the panel shows it when they are selected.
+- Replies come from `village.playerSays` (§19.3): Claude with that villager's mind — profile,
+  voice, opinion of the player, what they know and would share, rumors, their own memories
+  of the player — on the player's action, with the local fallback. Villagers remember what
+  the player said, talk about it to others, and it shapes their opinion; Lyra overhears
+  when near. The villager dialog's own "Say something…" field stays as a shortcut.
+
+## 24. One clean menu (the author: "the settings [are] so multiplied… when I press the menu I see all the things that I see in the HUD")
+
+- The pause menu never repeats what the HUD already gives one tap away. One menu: Resume,
+  Spellbook, Missions, Lyra (her Mind panel), The Book of Halcyre, Settings, Save, Quit to
+  title. Settings are grouped into a few tabs (Game, Controls, Sound & voices, Minds
+  (Claude), Display), each option exactly once, with short plain explanations; nothing
+  duplicated between the settings, the menu and the HUD.
