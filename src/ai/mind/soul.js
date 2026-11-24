@@ -320,6 +320,7 @@ export const LYRA_PEOPLE = {
       'His parents, Ned and Lissy Tarrow, drowned when the ferry went down. Corran pulled him out.',
       'Follows Biscuit everywhere and practices spells with a stick in the square.',
       'Has a hideout behind the chapel woodpile with glass beads and a wolf tooth.',
+      'Pip reminds me of me at nine. Nobody should find magic alone on a frozen square.',
       'We are counting down to eleven. I keep him away from the lake.',
     ],
     thought: "Sprout's watching my hands again. Two more years, Pip.",

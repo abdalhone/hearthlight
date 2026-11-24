@@ -257,7 +257,7 @@ export const NPC_PROFILES = [
       { id: 'pip_rowan', text: 'Captain Rowan lets Pip hold his helmet sometimes, and once let him blow the patrol whistle.', minFamiliarity: 10, topic: 'people' },
       { id: 'pip_bandits', text: "Pip swears he saw a bandit with a big axe and one eye on the King's Road at dusk.", minFamiliarity: 20, topic: 'bandits' },
       { id: 'pip_tobias', text: 'Tobias pays Pip one copper per boar track he finds near the farm.', minFamiliarity: 5, topic: 'people' },
-      { id: 'pip_fear', text: 'Pip is afraid Lyra will leave Hearthvale the way Maren did, and not come back.', minFamiliarity: 55, topic: 'secret', knownBy: ['pip'], hiddenFrom: ['lyra'] },
+      { id: 'pip_fear', text: 'Pip is afraid Lyra will go into the ruins the way Maren did, and not come back.', minFamiliarity: 55, topic: 'secret', knownBy: ['pip'], hiddenFrom: ['lyra'] },
     ],
     likes: ['honey_cake', 'berries', 'crystal', 'bone', 'wolf_pelt'],
     dislikes: ['herb', 'turnip', 'stone'],
