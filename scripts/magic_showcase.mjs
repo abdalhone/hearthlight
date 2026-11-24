@@ -60,25 +60,24 @@ await page.evaluate(() => {
   const Creature = proto.constructor;
   const S = (window.__show = { ESS, cells: [], dummies: [], casters: [] });
 
-  // An open stretch of ground near the start: no blocked tile, no props.
-  function openAt(tx, ty, w, h) {
-    for (let y = ty; y < ty + h; y++) for (let x = tx; x < tx + w; x++) if (g.isBlockedTile(x, y, null)) return false;
-    return true;
-  }
+  // An open meadow: the screen of grass with the fewest props, the closest to the start.
+  const map = g.map;
+  const GRASSY = new Set([1, 7]); // GRASS, TALL_GRASS
   const cam = g.camera;
   const vw = Math.ceil(cam.vw / T);
   const vh = Math.ceil(cam.vh / T);
   const p = g.player;
   let spot = null;
-  const px0 = Math.floor(p.x / T);
-  const py0 = Math.floor(p.y / T);
-  for (let r = 0; r < 70 && !spot; r++) {
-    for (let dy = -r; dy <= r && !spot; dy++) {
-      for (let dx = -r; dx <= r && !spot; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-        const tx = px0 + dx * 2;
-        const ty = py0 + dy * 2;
-        if (openAt(tx, ty, vw + 2, vh + 2)) spot = { x: (tx + 1) * T, y: (ty + 1) * T };
+  let best = Infinity;
+  for (let ty = 2; ty < map.h - vh - 2; ty += 2) {
+    for (let tx = 2; tx < map.w - vw - 2; tx += 2) {
+      let bad = 0;
+      for (let y = ty; y < ty + vh && bad < best; y++) {
+        for (let x = tx; x < tx + vw; x++) if (!GRASSY.has(map.tileAt(x, y)) || g.objects.objectsAt(x, y)) bad++;
+      }
+      if (bad < best) {
+        best = bad;
+        spot = { x: tx * T, y: ty * T };
       }
     }
   }
