@@ -279,6 +279,25 @@ export class SettingsPanel {
     const nameSec = h('section', { class: 'box' }, h('h3', { text: 'Names' }));
     nameSec.append(this.textRow('Your name', 'playerName', 20), this.textRow("Your companion's name", 'companionName', 20));
 
+    // --- Death (DESIGN §27) ---
+    const deathSec = h('section', { class: 'box' }, h('h3', { text: 'Death' }));
+    const fallen = !!safe(() => g.survival?.isFallen?.(g.player), false);
+    const deathRow = this.selectRow('When I die', 'deathMode', [
+      ['final', 'It ends, unless a kept flame burns'],
+      ['home', 'Wake at home'],
+    ]);
+    const deathSel = deathRow.querySelector('select');
+    if (deathSel && fallen) deathSel.disabled = true;
+    deathSec.append(
+      deathRow,
+      h('p', {
+        class: 'muted small',
+        text: fallen
+          ? 'Not while you lie bleeding. Ask again once you are on your feet.'
+          : 'Ends: if nobody gets you to Mira in time and no flame burns for you at the chapel, your story is over and this save closes for good (it moves to Past lives). Wake at home: you lose a little coin and wake in your bed.',
+      }),
+    );
+
     // --- Saving ---
     const saveSec = h('section', { class: 'box' }, h('h3', { text: 'Saving' }));
     if (rt?.db && rt?.user) saveSec.append(this.toggleRow('Also keep my save in my claude.ai account', 'cloudSave'));
@@ -307,7 +326,7 @@ export class SettingsPanel {
     for (const [k, v] of CONTROLS_SUMMARY) dl.append(h('div', { class: 'control' }, h('dt', null, h('kbd', { class: 'keycap', text: k })), h('dd', { text: v })));
     ctrlSec.append(dl, h('p', { class: 'muted small', text: CONTROLS_NOTE }));
 
-    body.append(h('div', { class: 'settings-grid' }, mindSec, h('div', { class: 'settings-col' }, voiceSec, soundSec, dispSec), h('div', { class: 'settings-col' }, nameSec, saveSec, ctrlSec)));
+    body.append(h('div', { class: 'settings-grid' }, mindSec, h('div', { class: 'settings-col' }, voiceSec, soundSec, dispSec), h('div', { class: 'settings-col' }, nameSec, deathSec, saveSec, ctrlSec)));
 
     this.panel.foot.replaceChildren();
     if (g.state === 'playing') this.panel.foot.append(button('Quit to title', { cls: 'btn-danger btn-small', onClick: () => this.ui.quitToTitle() }));

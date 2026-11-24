@@ -128,7 +128,9 @@ test('beds are in rooms of their own, not in the middle of a shop or chapel floo
       seen.add(k);
       q.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
     }
-    for (const bed of W.objects.all().filter((o) => o.objType === 'bed' && o.owner && o.owner !== 'player')) {
+    // Places of healing (DESIGN §27: the infirmary cot, the cell) stand where the hurt are carried in.
+    const healing = new Set(['sickroom', 'infirmary', 'cell']);
+    for (const bed of W.objects.all().filter((o) => o.objType === 'bed' && o.owner && o.owner !== 'player' && !healing.has(o.owner))) {
       if (W.map.buildingAt(bed.tx, bed.ty) !== b) continue;
       for (const [x, y] of bed.occupiedTiles()) assert.ok(!seen.has(`${x},${y}`), `${bed.id} is behind a partition in ${b.id}, not in its front room`);
     }

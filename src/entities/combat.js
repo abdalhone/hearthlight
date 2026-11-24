@@ -171,7 +171,8 @@ export class Combat {
       }
       // The player wakes at home (player.js); Lyra gets up alone after a minute; villagers
       // are helped up by their own logic, and this only catches one that was forgotten.
-      if (this.isPlayer(a)) continue;
+      // Anyone game.survival holds lies with a bleed-out window of their own (§27).
+      if (this.isPlayer(a) || g.survival?.owns?.(a)) continue;
       const down = this.t - t0;
       if (this.isCompanion(a) || a.downable === true) {
         if (down >= SELF_REVIVE_SECONDS) this.revive(a, a, SELF_REVIVE_FRACTION);

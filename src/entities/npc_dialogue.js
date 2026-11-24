@@ -3,6 +3,7 @@ import { factTellable } from './npc_data_more.js';
 import { GONE_STAYS } from './npc_lines.js';
 import { itemName } from './items.js';
 import { pickLine, now, rand } from './creature_util.js';
+import { hasKeptFlame, flamePrice, lightKeptFlame } from '../survival/kept_flame.js';
 
 // Villager dialogue: what they say when the player walks up, the options they offer,
 // what they answer, how they take gifts. Pure functions over an NPC (npc.js wires
@@ -121,8 +122,64 @@ export function mainOptions(npc, player, tone = dialogueTone(npc, player)) {
   opts.push({ id: 'ask', label: 'Ask about…' });
   opts.push({ id: 'gift', label: 'Give a gift' });
   if (p.shop && (p.shop.sells?.length || Object.keys(p.shop.buys || {}).length)) opts.push({ id: 'shop', label: p.id === 'elda' ? 'Food and drink' : 'Trade' });
+  // The kept flame (DESIGN §27): Sister Aveline relights the stranger's family flame.
+  if (p.id === 'aveline' && tone !== 'wronged') opts.push({ id: 'flame', label: hasKeptFlame(npc.game) ? 'Your flame on the altar' : 'Ask about a kept flame' });
+  const owed = Number(npc.game?.flags?.miraOwed) || 0;
+  if (p.id === 'mira' && owed > 0) opts.push({ id: 'pay_mira', label: `Pay what you owe (${owed})` });
   opts.push({ id: 'bye', label: 'Goodbye' });
   return opts;
+}
+
+// Aveline's rite: what a kept flame is, its price, and lighting it. One at a time.
+function flameRite(npc, key, player, opts) {
+  const g = npc.game;
+  const price = flamePrice(g);
+  if (hasKeptFlame(g)) {
+    return {
+      lines: ['It burns, child. Third from the left, beside the Wayhouse road-candle. I trim it myself.', 'If the dark takes you before your time, it will bring you back to this chapel at dawn — once. Then it is spent, and you must ask again.'],
+      options: opts,
+    };
+  }
+  if (key === 'flame:light') {
+    const r = lightKeptFlame(g, player);
+    if (!r.ok && r.reason === 'coin') return { lines: [`The wax is Hobb's and the rite is old, and both cost ${price} coin. You have ${r.coins ?? 0}. Come back when you can; I will be here.`], options: opts };
+    if (!r.ok) return { lines: ['Not now, child.'], options: opts };
+    try {
+      g.particles?.emit?.('sparkle', npc.x, npc.y - 18, { count: 10, color: '#ffe08a', speed: 18, life: 0.9 });
+      g.audio?.play?.('heal', { x: npc.x, y: npc.y, pitch: 0.8 });
+      g.ui?.toast?.(`A kept flame burns for you on the chapel altar. If you die, it brings you back once. (${price} coins)`, 'good', { key: 'flame', title: 'The kept flame' });
+    } catch {
+      /* cosmetic */
+    }
+    return {
+      lines: ['Hold out your hand. Closer. There.', 'I lit it from the road-candle, the one that leaned toward you the night they carried you in. It will burn for you now.', 'One flame, one return. Try not to need it.'],
+      options: opts,
+    };
+  }
+  return {
+    lines: [
+      'Every household keeps a flame on this altar, child. It holds the ward up, and it holds them.',
+      'For you I can do a little more: a flame kept in your name, lit from the road-candle. If the dark takes you before your time, it brings you back here at dawn. Once. Then it is spent.',
+      `The wax is Hobb's and the rite is old. ${price} coin. Without it, if you fall and nobody reaches you, there is no coming back.`,
+    ],
+    options: [
+      { id: 'flame:light', label: `Light it (${price} coins)` },
+      { id: 'back', label: 'Not today' },
+    ],
+  };
+}
+
+// Paying Mira back for the tending you could not pay for at the time.
+function payMira(npc, player, opts) {
+  const g = npc.game;
+  const owed = Number(g.flags?.miraOwed) || 0;
+  const have = player?.inventory?.count?.('coin') ?? 0;
+  const pay = Math.min(owed, have);
+  if (pay <= 0) return { lines: ["Oh — no, not now. When you can. Really. Sorry."], options: opts };
+  player.inventory.remove('coin', pay);
+  g.flags.miraOwed = owed - pay;
+  npc.adjustOpinion?.(3, 'paid her back');
+  return { lines: [pay < owed ? `Oh! Thank you. That's ${pay}. The rest whenever. Sorry.` : "Oh! You didn't have to — thank you. We're square. Sorry. Good."], options: mainOptions(npc, player) };
 }
 
 // Topics this villager can speak to: the shared list, filtered to ones they have
@@ -191,6 +248,8 @@ export function chooseOption(npc, id, player) {
     if (tone === 'wronged') return { lines: [line(npc, p.wronged, "I don't want anything from you.")], options: opts };
     return { lines: [p.id === 'pip' ? 'For me? Is it a treasure?' : tone === 'cold' ? "...What is it?" : 'Oh? For me?'], open: 'gift', options: opts };
   }
+  if (key === 'flame' || key.startsWith('flame:')) return flameRite(npc, key, player, opts);
+  if (key === 'pay_mira') return payMira(npc, player, opts);
   if (key === 'shop') {
     if (!p.shop) return { lines: ["I've nothing to sell, I'm afraid."], options: opts };
     if (refusesTrade(npc, player)) return { lines: [line(npc, p.refuse?.length ? p.refuse : p.cold, 'Not today.')], options: opts.filter((o) => o.id !== 'shop') };

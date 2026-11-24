@@ -904,7 +904,10 @@ export class UI {
     if (this.promptTimer <= 0) {
       this.promptTimer = 0.1;
       let label = '';
-      if (g.state === 'playing' && !this.stack.length && g.player && !g.player.downed) {
+      // Fallen or carrying someone (§27): "Call for help", "Lay Lyra in the cot"…
+      const own = g.state === 'playing' && !this.stack.length ? safe(() => g.survival?.promptFor?.(g.player)) : null;
+      if (own != null) label = own;
+      else if (g.state === 'playing' && !this.stack.length && g.player && !g.player.downed) {
         const best = safe(() => g.interactions?.best?.(g.player));
         label = best?.label || '';
       }

@@ -8,6 +8,8 @@ import { HOW_TO_PLAY, TITLE_TAGLINES } from './content.js';
 import { SAVE_KEY, DAY_SECONDS } from '../core/constants.js';
 import { storyEntries, runEntry } from './story_menu.js';
 import { openCodex } from './codex.js';
+import { openPastLives } from './memorial.js';
+import { readPastLives } from '../survival/past_lives.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -49,6 +51,9 @@ export class TitleScreen {
     // The story: watch the prologue again, or read what is known of the world.
     const prologueBtn = button('Prologue', { icon: 'flame', cls: 'btn-ghost', onClick: () => this.onPrologue() });
     const bookBtn = button('The Book of Halcyre', { icon: 'scroll', cls: 'btn-ghost', onClick: () => openCodex(this.ui) });
+    // Stories that ended in death with no kept flame (DESIGN §27).
+    this.pastBtn = button('Past lives', { icon: 'flame', cls: 'btn-ghost', onClick: () => openPastLives(this.ui) });
+    this.pastBtn.hidden = true;
     this.mindLine = h('p', { class: 'mind-line' });
     const tagline = TITLE_TAGLINES[0];
     this.el = h(
@@ -61,7 +66,7 @@ export class TitleScreen {
         { class: 'title-card' },
         h('div', { class: 'logo' }, h('span', { class: 'logo-flame', 'aria-hidden': 'true' }, icon('flame')), h('h1', { class: 'logo-text', text: 'Hearthlight' })),
         h('p', { class: 'tagline', text: tagline }),
-        h('nav', { class: 'title-menu', 'aria-label': 'Main menu' }, this.continueBtn, this.newBtn, h('div', { class: 'title-row' }, settingsBtn, howBtn), h('div', { class: 'title-row' }, prologueBtn, bookBtn)),
+        h('nav', { class: 'title-menu', 'aria-label': 'Main menu' }, this.continueBtn, this.newBtn, h('div', { class: 'title-row' }, settingsBtn, howBtn), h('div', { class: 'title-row' }, prologueBtn, bookBtn), h('div', { class: 'title-row' }, this.pastBtn)),
         this.mindLine,
       ),
       h('footer', { class: 'title-foot', text: 'All art and sound are made in your browser as you play.' }),
@@ -78,6 +83,7 @@ export class TitleScreen {
     this.refreshMindLine();
     this.refreshStory();
     this.checkSave();
+    this.pastBtn.hidden = !safe(() => readPastLives().length, 0);
     this.game.runtime?.onChange?.((name) => {
       if (name === '*' || name === 'sample' || name === 'db' || name === 'user') {
         this.refreshMindLine();
@@ -171,9 +177,13 @@ export class TitleScreen {
         this.newBtn.disabled = false;
       }
     };
-    if (this.hasSave) {
-      this.ui.confirm({ title: 'Start a new journey?', text: 'Your saved game will be replaced the next time this new one saves. Lyra will not remember the old one.', yes: 'Start fresh', no: 'Go back', danger: true }).then((yes) => yes && start());
-    } else start();
+    // Death is dangerous (§27): say so before the journey starts, every time.
+    const soft = this.game.settings?.deathMode === 'home';
+    const death = soft
+      ? 'If you fall, someone may carry you to Mira in time. If not, you wake at home, a little poorer (you chose this in Settings).'
+      : 'If you fall, you lie bleeding: call for help, and Lyra or the village may carry you to Mira in time. If nobody does, you die — and unless Sister Aveline keeps a flame for you at the chapel, your story ends for good: this save closes and moves to Past lives. You can soften this in Settings.';
+    const text = this.hasSave ? `${death} Your saved game will be replaced the next time this new one saves; Lyra will not remember the old one.` : death;
+    this.ui.confirm({ title: this.hasSave ? 'Start a new journey?' : 'Death is dangerous here', text, yes: this.hasSave ? 'Start fresh' : 'Begin', no: 'Go back', danger: this.hasSave }).then((yes) => yes && start());
   }
 
   onPrologue() {

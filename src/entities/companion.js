@@ -152,7 +152,9 @@ export class Companion extends Actor {
     this.moveIntent.x = 0;
     this.moveIntent.y = 0;
     this.downedFor += dt;
-    if (this.downedFor >= AUTO_REVIVE_SECONDS) this.reviveBy(this, SELF_REVIVE_HP);
+    // With game.survival (§27) she lies with her own window until someone revives or
+    // carries her; otherwise she gets up alone after a minute.
+    if (this.downedFor >= AUTO_REVIVE_SECONDS && !this.game.survival?.owns?.(this)) this.reviveBy(this, SELF_REVIVE_HP);
   }
 
   // Revive through combat (its effects and event); fall back to doing it here.
@@ -179,15 +181,21 @@ export class Companion extends Actor {
   }
 
   canInteract(actor) {
-    return !!actor && actor === this.game.player && !this.leftWorld;
+    return !!actor && actor === this.game.player && !this.leftWorld && !this.carriedBy;
   }
 
-  interactLabel() {
-    return this.downed ? `Help ${this.name} up` : `Talk to ${this.name}`;
+  interactLabel(actor) {
+    if (this.downed) return this.game.survival?.downedLabel?.(this, actor) || `Help ${this.name} up`;
+    return `Talk to ${this.name}`;
   }
 
   interact(actor) {
     if (this.downed) {
+      // A potion, or her weight on your shoulders (§27); the old free hand up without it.
+      if (this.game.survival) {
+        this.game.survival.interactDowned?.(this, actor);
+        return;
+      }
       this.reviveBy(actor, PLAYER_REVIVE_HP);
       return;
     }

@@ -201,7 +201,9 @@ export class NPC extends Actor {
     }
     if (this.downed) {
       this.downedFor += dt;
-      if (this.downedFor >= KNOCKOUT_SECONDS) this.getUp();
+      // With game.survival (§27) a villager lies with a window of their own until someone
+      // helps them up or carries them in; otherwise they get up alone after 30 s.
+      if (this.downedFor >= KNOCKOUT_SECONDS && !this.game.survival?.owns?.(this)) this.getUp();
       return;
     }
     // Hit to zero by something that does not know villagers only get knocked out.
@@ -220,6 +222,11 @@ export class NPC extends Actor {
       tick = true;
       this.thinkT = 0.33 + this.jitter * 0.1;
       this.perceive();
+    }
+    // Answering someone who fell, or resting in a sickroom cot (§27, src/survival).
+    if (this.mode === 'rescue' || this.mode === 'patient') {
+      if (this.game.survival?.stepActor?.(this, dt)) return;
+      if (this.mode === 'rescue' || this.mode === 'patient') this.mode = 'routine';
     }
     if (this.mode === 'flee') return this.fleeStep(dt, tick);
     if (this.mode === 'fight') return this.fightStep(dt, tick);
@@ -936,6 +943,8 @@ export class NPC extends Actor {
   perceive() {
     const g = this.game;
     const p = g.player;
+    // Someone on their shoulders, or abed in the sickroom: they do not stop for a fight.
+    if (this.carrying || this.mode === 'patient') return;
     const list = g.entities?.list || g.entities?.all?.() || [];
     let threat = null;
     let td = Infinity;
@@ -1410,6 +1419,7 @@ export class NPC extends Actor {
     const victim = p?.victim;
     if (!victim || victim === this || p.attacker === this || victim.removed) return;
     if (!this.isAlive() || this.downed || this.mode === 'downed') return;
+    if (this.mode === 'rescue' || this.mode === 'patient') return; // already carrying someone in (§27)
     const attacker = p.attacker && p.attacker !== victim && !p.attacker.removed ? attackerOf(p.attacker) : null;
     const sev = Math.max(1, Math.min(3, Math.round(Number(p.severity) || 1)));
     const x = Number.isFinite(p.x) ? p.x : victim.x;
@@ -1974,19 +1984,27 @@ export class NPC extends Actor {
   // ------------------------------------------------------------ interaction
 
   canInteract(actor) {
+    if (this.carriedBy) return false;
     return !!actor && actor === this.game.player && !this.dead && !this.removed;
   }
 
   interactLabel() {
     const n = this.shortName;
-    if (this.downed) return `Help ${n} up`;
+    if (this.downed) return this.game.survival?.downedLabel?.(this, this.game.player) || `Help ${n} up`;
     if (this.state === 'sleep') return `Wake ${n}`;
     return `Talk to ${n}`;
   }
 
   interact(actor) {
     const g = this.game;
-    if (this.downed) return this.helpUp(actor);
+    if (this.downed) {
+      // A potion, or carry them to Mira's (§27); the old hand up without game.survival.
+      if (g.survival) {
+        g.survival.interactDowned?.(this, actor);
+        return;
+      }
+      return this.helpUp(actor);
+    }
     if (this.mode === 'flee' && this.fleeFrom === actor) {
       this.say(pickLine(g, this.profile.crime) || 'Stay back!', { kind: 'shout', target: actor });
       return;

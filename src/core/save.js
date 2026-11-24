@@ -1,5 +1,6 @@
 import { SAVE_KEY } from './constants.js';
 import { utf8Bytes, hash32 } from '../ui/format.js';
+import { isClosedSave, addPastLife, readPastLives } from '../survival/past_lives.js';
 
 // Saving (DESIGN.md §14): local storage always, plus the player's own claude.ai
 // document when the `db` and `user` capabilities are available. Load picks the newer.
@@ -188,8 +189,10 @@ export class SaveManager {
 
   // ---------- reading ----------
 
+  // A save whose life has ended (DESIGN §27) is kept for its memorial but never continued.
   hasLocalSave() {
-    return !!this._readLocal();
+    const d = this._readLocal();
+    return !!d && !isClosedSave(d);
   }
 
   _readLocal() {
@@ -217,7 +220,9 @@ export class SaveManager {
     const rt = this.game.runtime;
     if (rt?.ready && !rt.resolved) await withTimeout(rt.ready, 3500, null);
     if (!this.cloudAvailable()) return false;
-    return !!(await this._readCloud(3500));
+    // The newer copy decides: a life that ended on this device stays ended.
+    const { data } = pickNewer(this._readLocal(), await this._readCloud(3500));
+    return !!data && !isClosedSave(data);
   }
 
   async load() {
@@ -233,7 +238,46 @@ export class SaveManager {
       // Keep the device copy in step with the newer cloud copy.
       this._writeLocal(serializeSave(cloud));
     }
+    if (isClosedSave(data)) {
+      // That story ended (§27): keep its memorial, never load it.
+      if (data.memorial) addPastLife(data.memorial);
+      return null;
+    }
     return data;
+  }
+
+  // The player died with no kept flame (DESIGN §27): this save is closed for good. The final
+  // state is written once more with its memorial, here and in the cloud, so neither copy
+  // can be continued; the memorial joins Past lives.
+  async closeLife(memorial) {
+    const g = this.game;
+    let data = null;
+    try {
+      data = g.player && g.map ? g.serialize() : null;
+    } catch (err) {
+      console.warn('[save] could not serialize the last moment', err);
+    }
+    if (!data) data = { version: 1, player: { id: 'player' } };
+    data.savedAt = Date.now();
+    data.closed = true;
+    data.flags = { ...(data.flags || {}), life_closed: true };
+    data.memorial = memorial || null;
+    const json = serializeSave(data);
+    this._writeLocal(json);
+    this.pending = null;
+    if (memorial) addPastLife(memorial);
+    try {
+      this.lastCloudAt = 0;
+      this.lastCloudHash = null;
+      await this._saveCloud(data, json, 'closed');
+    } catch {
+      /* the device copy is closed; the cloud tries again never */
+    }
+    return true;
+  }
+
+  pastLives() {
+    return readPastLives();
   }
 
   // ---------- writing ----------
