@@ -18,6 +18,7 @@ import { ProviderSet, BrainError, toBrainError, PROVIDER_LABELS } from './provid
 import { buildChatPrompt, buildRules, buildReflectionTask, buildConversationTask, RESPONSE_SCHEMA, REFLECTION_SCHEMA, CONVERSATION_SCHEMA, clip } from './prompt.js';
 import { coerceResponse, coerceReflection, coerceConversation, dedupeActions, MAX_ACTIONS } from './claude_brain.js';
 import { applyEffects, logConversation, resolvePerson } from './effects.js';
+import { VILLAGERS } from './soul_fallback.js';
 import { Voice } from './voice.js';
 import { Barker } from './barks.js';
 import { composeDiary } from './diary.js';
@@ -103,6 +104,28 @@ export class Brain {
     g.bus?.on('ui_open', (p) => {
       if (p?.panel === 'chat') this._chatTip();
     });
+    g.bus?.on('game_start', () => this._ensureConsentGate());
+  }
+
+  // Her own will installs the consent gate (DESIGN §16.4). If the world is running and no
+  // gate is in place, every request from the player would simply run, so a stand-in asks
+  // her mind directly. A gate installed later (by the autonomy plugin) replaces it.
+  _ensureConsentGate() {
+    const actions = this.game?.actions;
+    if (!actions?.setConsentGate || actions.consentGate) return false;
+    if (typeof this.game.companion?.mind?.evaluateRequest !== 'function') return false;
+    const gate = (name, args, source) => {
+      const mind = this.game.companion?.mind;
+      if (typeof mind?.evaluateRequest !== 'function') return null;
+      const req = { action: name, args: { ...(args || {}) }, source };
+      const coins = this.currentOffer?.coins;
+      if (coins > 0) req.pay = coins;
+      const v = mind.evaluateRequest(req);
+      return v && typeof v === 'object' && v.decision ? v : null;
+    };
+    gate.standIn = 'brain';
+    actions.setConsentGate(gate);
+    return true;
   }
 
   now() {
@@ -316,6 +339,7 @@ export class Brain {
   _request(name, args, source, offer = null) {
     const g = this.game;
     if (!g.actions?.has?.(name)) return { ok: false, message: `I don't know how to "${name}".` };
+    if (source === 'player') this._ensureConsentGate();
     const state = companionshipOf(g);
     // Without a consent gate installed, a Lyra who broke off still says no (DESIGN §16.4).
     if (source === 'player' && (state === 'left' || state === 'gone') && !g.actions.consentGate && !g.actions.get?.(name)?.ungated) {
@@ -335,7 +359,8 @@ export class Brain {
     if (isRefusal(res)) this.noteRefusal(name, args, res);
     else if (res.ok) {
       if (this.lastRefusal?.name === name) this.lastRefusal = null;
-      if (offer?.coins && !offer.paid) this._promisePay(name, args, offer.coins);
+      // The mind records a paid deal itself when its verdict weighed the coin.
+      if (offer?.coins && !offer.paid && !(res.verdict?.pay > 0)) this._promisePay(name, args, offer.coins);
     }
     return res;
   }
@@ -481,10 +506,19 @@ export class Brain {
         execute: (input) => {
           const who = String(input?.name ?? '').slice(0, 60);
           if (!who.trim()) throw new Error('name is empty');
-          const d = mind.dossier(resolvePerson(this.game, who) || who);
-          if (!d) return `You don't know anyone called ${who}.`;
-          for (const m of (d && typeof d === 'object' && (d.memories || d.items)) || []) remember(m?.id, m?.label || m?.text);
-          return smallResult(d, 1600);
+          const id = resolvePerson(this.game, who);
+          const d = mind.dossier(id || who);
+          if (d && typeof d === 'object') {
+            const mems = Array.isArray(d.memories) ? d.memories.filter((m) => m?.id != null && m.text).slice(0, 4) : [];
+            for (const m of mems) remember(m.id, m.label || m.text);
+            const text = typeof d.text === 'string' && d.text ? d.text : smallResult(d, 900);
+            return { text: clip(typeof text === 'string' ? text : JSON.stringify(text), 900), memories: mems.map((m) => ({ id: String(m.id), text: clip(m.text, 160) })) };
+          }
+          if (typeof d === 'string' && d.trim()) return clip(d, 900);
+          // Not met yet: what anyone in the valley could tell her.
+          const sketch = VILLAGERS[id] || VILLAGERS[String(who).toLowerCase().split(/\s+/)[0]];
+          if (sketch) return `You have not really met ${sketch.name} yet. People say: ${sketch.role}.`;
+          return `You don't know anyone called ${who}.`;
         },
       });
     }
@@ -497,7 +531,12 @@ export class Brain {
           const topic = String(input?.topic ?? '').slice(0, 80);
           if (!topic.trim()) throw new Error('topic is empty');
           const r = mind.loreLookup(topic);
-          if (!r || (Array.isArray(r) && !r.length)) return `You don't know anything about ${topic}.`;
+          const entries = Array.isArray(r) ? r : Array.isArray(r?.entries) ? r.entries : [];
+          if (!r || (!entries.length && !r.text && !r.questions?.length)) return `You don't know anything about ${topic}.`;
+          for (const e of entries) remember(e?.id, e?.subject || e?.title || e?.text);
+          if (typeof r === 'object' && !Array.isArray(r) && typeof r.text === 'string' && r.text) {
+            return { text: clip(r.text, 1200), ids: entries.slice(0, 6).map((e) => (e?.id != null ? String(e.id) : null)).filter(Boolean) };
+          }
           return smallResult(r, 1600);
         },
       });
@@ -716,7 +755,7 @@ export class Brain {
   }
 
   // ------------------------------------------------------------- reflection
-  _dayMemories() {
+  _dayMemories(day = null) {
     const g = this.game;
     const mind = g.companion?.mind;
     if (!mind) return [];
@@ -742,6 +781,8 @@ export class Brain {
       seen.add(m.id ?? m.text);
       if (Number.isFinite(m.t) && m.t < since) continue;
       if (m.type === 'reflection') continue;
+      // Her first memories (seeded "two days ago", "yesterday") are not today's.
+      if ((Number.isFinite(m.daysAgo) && m.daysAgo > 0) || (day != null && Number.isFinite(m.day) && m.day < day)) continue;
       out.push(m);
     }
     out.sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0) || (b.t ?? 0) - (a.t ?? 0));
@@ -754,7 +795,7 @@ export class Brain {
     // Gone for good: her last diary entry was written when she left.
     if (!mind || companionshipOf(g) === 'gone') return null;
     const day = this._sleepT != null ? Math.floor(this._sleepT / DAY_SECONDS) + 1 : g.clock?.day ?? 1;
-    const memories = this._dayMemories();
+    const memories = this._dayMemories(day);
     const offline = composeDiary(g, memories, { day });
     const entry = { day, text: offline.text, t: g.clock?.t ?? 0, source: 'local', reason };
     let summary = offline.summary;

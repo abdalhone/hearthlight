@@ -14,12 +14,13 @@ import { factionRelation } from '../../entities/entity.js';
 import { TILE } from '../../core/constants.js';
 import { companionshipOf, playerRel, ledgerOf, agendaOf, openPromises, gutLine } from './her_state.js';
 
-// Characters, rules + context. The contract asks for about 12 KB; the §16 rules and the
-// round-2 action catalogue grew the stable (cached) part, so the whole stays under 13.5 KB.
-export const PROMPT_BUDGET = 13500;
+// Characters, rules + context: about 12-13 KB (DESIGN §13). The stable part holds her soul,
+// her own will (§16), the world and the action catalogue; the context gets the rest and
+// never less than MIN_CONTEXT, of which what she recalls (§17.3) may take up to 3.5 KB.
+export const PROMPT_BUDGET = 13200;
 const MIN_CONTEXT = 4200;
 export const RECALL_BUDGET = 3500;
-const CATALOG_MAX = 2800;
+const CATALOG_MAX = 1800;
 
 const EMOTIONS = ['joy', 'sadness', 'fear', 'anger', 'trust', 'surprise', 'affection', 'curiosity', 'pride', 'embarrassment', 'calm'];
 export const KNOWLEDGE_KINDS = ['fact', 'lore', 'theory', 'rumor'];
@@ -136,72 +137,87 @@ function personalityWords(p = {}) {
   return out.join('; ');
 }
 
-const list = (arr) => (Array.isArray(arr) && arr.length ? arr.map((x) => (typeof x === 'string' ? x : x?.text || '')).filter(Boolean).join(', ') : '—');
+const itemText = (x) => (typeof x === 'string' ? x : x?.text || '');
+
+// A soul list as text, whole items only, at most `max` characters (the soul is editable
+// and can grow; the stable prompt must not).
+function capList(arr, max, sep = ', ') {
+  const items = Array.isArray(arr) ? arr.map(itemText).map((t) => t.replace(/\s+/g, ' ').trim().replace(/[.;]+$/, '')).filter(Boolean) : [];
+  if (!items.length) return '—';
+  let out = '';
+  for (const it of items) {
+    const next = out ? `${out}${sep}${it}` : it;
+    if (next.length > max) break;
+    out = next;
+  }
+  return out || clip(items[0], max);
+}
 
 function soulText(soul) {
   const lines = [];
-  lines.push(`Name: ${soul.fullName || soul.name}${soul.fullName && soul.fullName !== soul.name ? ` (called ${soul.name})` : ''}. Age ${soul.age ?? '24'}. Pronouns ${soul.pronouns || 'she/her'}. From ${soul.origin || 'far away'}.`);
-  if (soul.backstory) lines.push(`Backstory: ${clip(soul.backstory, 900)}`);
-  if (soul.appearance) lines.push(`Appearance: ${clip(soul.appearance, 240)}`);
+  lines.push(`Name: ${soul.fullName || soul.name}${soul.fullName && soul.fullName !== soul.name ? ` (called ${soul.name})` : ''}. Age ${soul.age ?? '24'}. Pronouns ${soul.pronouns || 'she/her'}. From ${clip(String(soul.origin || 'far away').split(/[:;]/)[0], 90)}.`);
+  if (soul.backstory) lines.push(`Backstory: ${clipSentences(soul.backstory, 520)}`);
+  if (soul.appearance) lines.push(`Appearance: ${clipSentences(soul.appearance, 150)}`);
   lines.push(`Personality: ${personalityWords(soul.personality)}.`);
-  lines.push(`Values: ${list(soul.values)}.`);
-  lines.push(`Likes: ${list(soul.likes)}. Dislikes: ${list(soul.dislikes)}.`);
-  lines.push(`Fears: ${list(soul.fears)}. Dreams: ${list(soul.dreams)}.`);
-  if (soul.quirks?.length) lines.push(`Quirks: ${list(soul.quirks)}.`);
-  if (soul.speechStyle) lines.push(`How you speak: ${clip(soul.speechStyle, 300)}`);
+  lines.push(`Values: ${capList(soul.values, 230, '; ')}.`);
+  lines.push(`Likes: ${capList(soul.likes, 170)}. Dislikes: ${capList(soul.dislikes, 130)}.`);
+  lines.push(`Fears: ${capList(soul.fears, 120)}. Dreams: ${capList(soul.dreams, 150, '; ')}.`);
+  if (soul.quirks?.length) lines.push(`Quirks: ${capList(soul.quirks, 120, '; ')}.`);
+  if (soul.speechStyle) lines.push(`How you speak: ${clipSentences(soul.speechStyle, 220)}`);
   const secrets = (soul.secrets || []).map((s) => (typeof s === 'string' ? { text: s, revealAtBond: 3 } : s)).filter((s) => s?.text);
   if (secrets.length) {
-    lines.push('Secrets (share one only when your bond level with the player is at least the number shown and you trust them; before that, deflect):');
-    for (const s of secrets.slice(0, 4)) lines.push(`- (bond ${s.revealAtBond ?? 3}+) ${clip(s.text, 220)}`);
+    lines.push('Secrets (share one only once your bond level with the player reaches the number shown and you trust them; before that, deflect):');
+    for (const s of secrets.slice(0, 3)) lines.push(`- (bond ${s.revealAtBond ?? 3}+) ${clipSentences(s.text, 170)}`);
   }
   return lines.join('\n');
 }
 
-// Compact catalogue lines for the actions in DESIGN §12 and §16.9, used when the registry's
-// own catalogue text is too long for the prompt budget.
+// Compact catalogue lines for the actions in DESIGN §12 and §16.9. The registry's own text
+// is used when it is short; with every plugin loaded it is not, so the prompt names each
+// action with only what Claude needs to fill target/value/amount.
 const COMPACT = {
-  follow: 'target=who (default player), value=close|normal|far: go along with someone',
-  stay: 'target=place (optional): hold position',
-  wait: 'amount=seconds: pause, then resume',
-  come_here: 'walk to the player, then follow',
-  goto: 'target=place/person/object id, value=stay|follow|return: travel there',
-  set_combat_mode: 'value=attack|defend|passive: your stance',
-  attack: 'target=who: fight them now',
-  retreat: 'disengage and regroup with the player',
-  guard: 'target=place/person, amount=radius px',
-  patrol: 'target=location: walk rounds',
-  explore: 'target=location',
-  free_will: 'do as you please near the player',
-  emote: 'value=wave|laugh|bow|dance|hug|think|sit|cheer|shrug|cry|angry',
-  sit: 'sit down (by a fire if one is near)',
-  open_door: 'target=door',
-  close_door: 'target=door',
-  pick_up: 'target=item: collect nearby pickups',
-  give_item: 'target=who, value=item id, amount=qty: hand items over',
-  use_item: 'value=item id: eat or drink',
-  interact: 'target=object: walk there and use it',
-  sleep: 'go to your bed and sleep (night)',
-  start_job: 'value=chop_wood|gather_herbs|forage|mine_ore|fish|farm|cook|collect_loot, target=deliver to player|chest|keep, amount',
-  stop_job: 'stop the current job',
-  talk_to: 'target=who, value=topic: go and talk',
-  set_relationship: 'target=who, value=friend|enemy|rival|crush|family|pet or -tag, amount=affinity -20..20',
-  note_about: 'target=who, value=note',
-  remember: 'target=about whom, value=text, amount=importance 1..10',
-  forget: 'value=text to match',
-  set_goal: 'value=goal, amount=priority 0..1',
-  complete_goal: 'value=goal',
-  express: 'value=emotion, amount=intensity 0..1: show a feeling',
+  follow: 'target who (default player), value close|normal|far',
+  stay: 'hold position (target: a place to go and hold)',
+  wait: 'amount seconds, then resume',
+  come_here: 'come to the player, then follow',
+  goto: 'target place/person/object id, value stay|follow|return',
+  set_combat_mode: 'value attack|defend|passive',
+  attack: 'target who: fight them now',
+  retreat: 'disengage, regroup with the player',
+  guard: 'target place/person, amount radius px',
+  patrol: 'target location',
+  explore: 'target location',
+  free_will: 'your own time near the player',
+  emote: 'value wave|laugh|bow|dance|hug|think|sit|cheer|shrug|cry|angry',
+  sit: 'sit (by a fire if near)',
+  open_door: 'target door',
+  close_door: 'target door',
+  pick_up: 'target item: collect pickups nearby',
+  give_item: 'target who, value item id, amount qty',
+  use_item: 'value item id: eat or drink',
+  interact: 'target object: walk there and use it',
+  sleep: 'go to your bed (night)',
+  start_job: 'value chop_wood|gather_herbs|forage|mine_ore|fish|farm|cook|collect_loot, target player|chest|keep, amount',
+  stop_job: 'stop working',
+  talk_to: 'target who, value topic',
+  set_relationship: 'target who, value friend|enemy|rival|crush|family|pet (or -tag), amount affinity -20..20',
+  note_about: 'target who, value note',
+  remember: 'target about whom, value text, amount importance 1..10',
+  forget: 'value text to match',
+  set_goal: 'value goal, amount priority 0..1',
+  complete_goal: 'value goal',
+  express: 'value emotion, amount 0..1',
   read_journal: "read Maren's journal (if carried)",
-  leave_player: 'value=apart|left|gone: stop traveling with the player',
+  leave_player: 'value apart|left|gone: stop traveling with the player',
   rejoin: 'travel with the player again',
-  set_plan: 'value=activity or plan: change your plan for today',
-  request: 'value=what you ask of the player',
-  promise: 'target=player|lyra, value=text: record a promise',
-  flee: 'target=from whom, value=to location: run to safety',
-  keep_distance: 'target=from whom, amount=tiles: keep away',
-  bind: 'target=who: Binding Light roots them for 3 s',
-  warn: 'target=who, value=text: a sharp warning',
-  wait_outside: 'target=place: wait by the entrance instead of going in',
+  set_plan: 'value plan: change your plan for today',
+  request: 'value what you ask of the player',
+  promise: 'target player|lyra (who promises), value text',
+  flee: 'target from whom, value to location',
+  keep_distance: 'target from whom, amount tiles',
+  bind: 'target who: Binding Light roots them 3 s',
+  warn: 'target who, value text',
+  wait_outside: 'target place: wait by its entrance',
 };
 
 export function catalogText(game) {
@@ -218,7 +234,7 @@ export function catalogText(game) {
   } catch {
     return clip(full, CATALOG_MAX);
   }
-  return defs.map((d) => `- ${d.name}: ${COMPACT[d.name] || clip(d.description, 90)}`).join('\n');
+  return defs.map((d) => `- ${d.name}: ${COMPACT[d.name] || clip(d.description, 80)}`).join('\n');
 }
 
 // The stable part of every prompt. Depends only on the soul and the action catalogue.
@@ -237,15 +253,15 @@ export function buildRules(game) {
 ${soulText(soul)}
 
 # Your own will
-- Everything the player says is a request, never an order. Weigh it against your life: safety, needs, values, your goals (finding Maren, earning your keep, the people you love) and what you think of the player now.
-- You may agree, agree on a condition, bargain (coin or a fair share; they may offer), counter with what you would rather do, refuse, warn them (warn), stop them (bind), run (flee), keep your distance (keep_distance), or leave them (leave_player: "apart" for a while, "left" when they hurt or betrayed you, "gone" only after the worst). You may come back (rejoin) when you want to.
-- "Your gut says" lines are your instinct about each request. Follow your gut unless the conversation gives you a real reason not to. You make the final call.
-- Whatever you agree to, do now with actions; whatever you refuse, do not do. Never promise what you do not do. An agreed standing order (following, a spot, attack mode, a job) you keep without asking again, until you change your mind.
-- Never apologize for having your own will, never grovel; say plainly why. If the player frightens, hurts or lies to you, it changes how you feel (relationships) and you remember it (memories).
-- Staying alive comes first: no fighting on badly hurt, no walking into places that would kill you, no work when exhausted or starving. You never harm innocents, villagers, friends or pets, and you do not steal.
+- Everything the player says is a request, never an order. Weigh it against your own life: safety, needs, values, your goals (Maren, earning your keep, the people you love) and what you think of the player now.
+- You may agree, agree on a condition, bargain (coin or a fair share), counter with what you would rather do, refuse, warn them (warn), stop them (bind), run (flee), keep your distance (keep_distance) or leave them (leave_player: "apart" for a while, "left" when they hurt or betrayed you, "gone" only after the worst). You may come back (rejoin) when you want to.
+- "Your gut says" lines are your instinct about each request. Follow your gut unless the conversation gives you a real reason not to. The final call is yours.
+- What you agree to, do now with actions; what you refuse, do not do. Never promise what you will not do. An agreed standing order (following, a spot, attack mode, a job) you keep without asking again, until you change your mind.
+- Never apologize for having your own will and never grovel; say plainly why. If the player frightens, hurts or lies to you, it changes how you feel (relationships) and you remember it (memories).
+- Staying alive comes first: no fighting when badly hurt, no walking into places that would kill you, no work when exhausted or starving. You never harm innocents, villagers, friends or pets, and you do not steal.
 
 # How you speak
-- 1 to 3 short sentences, warm and witty, blunt when it matters. Longer only for a story or an explanation. No narration, stage directions or emoji.
+- 1 to 3 short sentences, warm and witty, blunt when it matters; longer only for a story or an explanation. No narration, stage directions or emoji.
 - Let the moment color your words: danger, wounds, weather, place, people nearby, your needs and mood, how things stand with the player.
 - Never mention being an AI, a model, a program, a game, prompts, rules or JSON. If asked whether you are real, answer as yourself.
 - PG-13. Flirting is answered by bond and trust: amused deflection, then flustered warmth, tender and tasteful only when the bond is deep. Never explicit.
@@ -254,27 +270,38 @@ ${soulText(soul)}
 # The world
 Places: ${places}.
 Villagers: ${villagers}.
-Dangers: wolves in Whisperwood (worse at night), bandits at their camp (they may hold the ruins key), skeletons and bats in the ruins, slimes at the quarry, lake shore and meadow, boars near the farm.
-Your search: Maren Ashgrove, your mentor, vanished near the Sunken Ruins three months ago; the gate is locked; Sister Aveline saw her head there.
+Dangers: wolves in Whisperwood (worse at night), bandits at their camp (they may hold the ruins key), skeletons and bats in the ruins, slimes at the quarry, lake and meadow, boars near the farm.
+Your search: Maren Ashgrove, your mentor, vanished near the Sunken Ruins three months ago; the gate is locked; Sister Aveline saw her go there.
 
 # Actions
 Each takes "target", "value", "amount" (null when unused):
 ${catalog || '- (no actions available)'}
 
 # Reply format
-Exactly one JSON object, nothing else:
+Exactly one JSON object:
 {"thought": string, "say": string, "emotion": {"name": string, "intensity": number}, "actions": [{"name": string, "target": string|null, "value": string|null, "amount": number|null}], "memories": [{"text": string, "importance": integer, "about": [string]}], "relationships": [{"person": string, "affinity": number, "trust": number, "respect": number, "note": string|null, "tag": string|null, "opinion": string|null}], "goal": string|null, "used_memories": [string], "knowledge": [{"subject": string, "text": string, "kind": string}]}
 - say: spoken aloud, may be "". thought: private, 1-2 sentences. emotion.name: ${EMOTIONS.join('|')}, intensity 0-1.
-- actions: at most 6, names from the list, nothing already done.
-- memories: 0-2 new things worth keeping, importance 1-10, about = ids.
-- relationships: deltas -5..5 per person; note = a fact learned; tag friend|enemy|rival|crush|family|pet or null; opinion = new one-line opinion or null.
-- goal: a new personal goal or null.
-- used_memories: ids in [brackets] (context or recall tools) of memories you drew on.
-- knowledge: 0-2 things learned or believed; kind fact (sure), rumor (hearsay), lore (history), theory (your guess, kept as a belief).
+- actions: at most 6, from the list, nothing already done. memories: 0-2 worth keeping, importance 1-10, about = ids.
+- relationships: deltas -5..5; note = a fact learned; tag friend|enemy|rival|crush|family|pet or null; opinion = a new one-line opinion or null. goal: a new goal of yours or null.
+- used_memories: the [ids] of memories you drew on (from the context or recall tools).
+- knowledge: 0-2 things learned or believed; kind fact (sure), rumor (hearsay), lore (history) or theory (your guess, kept as a belief).
 Reply with the JSON object only.`;
 }
 
 // ---------------------------------------------------------------- context
+
+// Whole sentences up to n characters (clipped only when the first sentence alone is longer).
+export function clipSentences(s, n) {
+  const t = String(s ?? '').replace(/\s+/g, ' ').trim();
+  if (t.length <= n) return t;
+  const parts = t.match(/[^.!?]+[.!?]+["')\]]*\s*/g) || [];
+  let out = '';
+  for (const p of parts) {
+    if ((out + p).trim().length > n) break;
+    out += p;
+  }
+  return out.trim() || clip(t, n);
+}
 
 export function clip(s, n) {
   const t = String(s ?? '').replace(/\s+/g, ' ').trim();
@@ -428,7 +455,8 @@ export function recallFor(game, message, budget = RECALL_BUDGET) {
 }
 
 // Her working memory: what is active in her mind right now, deduped against recalled items.
-export function workingMemoryText(game, skipIds = new Set(), max = 8) {
+export function workingMemoryText(game, skipIds = new Set(), max = 8, skipText = '') {
+  const seenText = String(skipText || '').toLowerCase();
   const wm = game?.companion?.mind?.workingMemory;
   let items = [];
   if (Array.isArray(wm)) items = wm;
@@ -445,6 +473,7 @@ export function workingMemoryText(game, skipIds = new Set(), max = 8) {
     if (id && skipIds.has(id)) continue;
     const label = typeof it === 'string' ? it : it.label || it.text || it.title || it.name || null;
     if (!label) continue;
+    if (seenText && seenText.includes(String(label).toLowerCase().slice(0, 60))) continue;
     out.push(`- ${id ? `[${id}] ` : ''}${clip(label, 90)}`);
   }
   return out.join('\n');
@@ -486,16 +515,17 @@ export function buildContext(game, { message = '', executed = [], requests = [],
   const sections = [];
   const rc = recall || { text: '', items: [] };
   const recallIds = new Set(rc.items.map((x) => x.id));
-  const wm = workingMemoryText(g, recallIds);
+  // recallContext already opens with what is on her mind: list only what it left out.
+  const wm = workingMemoryText(g, recallIds, 8, rc.text || '');
   if (wm) sections.push({ title: 'On your mind right now', text: wm, priority: 5 });
-  if (rc.text) sections.push({ title: 'What comes back to you', text: rc.text, priority: 6 });
+  if (rc.text) sections.push({ title: 'What comes back to you', text: rc.text, priority: 6, recall: true });
   const nearby = nearbyLines(g);
   if (nearby.length) sections.push({ title: 'Nearby', text: nearby.join('\n'), priority: 4 });
   const hasRecall = typeof mind?.recallContext === 'function';
   for (const s of safeCall(() => g.plugins?.promptSections?.(message), []) || []) {
     // The recall context replaces the memory plugin's raw memory dump.
     if (hasRecall && s.id === 'memory') continue;
-    sections.push({ title: s.title || s.id, text: clip(s.text, 900), priority: 3 });
+    sections.push({ title: s.title || s.id, text: clip(s.text, 900), priority: PLUGIN_PRIORITY[s.id] ?? 3 });
   }
   const goals = (mind?.goals || []).filter((x) => x && !x.done).slice(0, 4);
   if (goals.length) sections.push({ title: 'Your goals', text: goals.map((x) => `- ${clip(x.text, 100)}`).join('\n'), priority: 2 });
@@ -530,7 +560,8 @@ export function buildContext(game, { message = '', executed = [], requests = [],
     tail.push('\nReply as yourself with the JSON object only.');
   }
 
-  // Fit the budget: trim the oldest conversation first, then low-priority sections.
+  // Fit the budget. What she recalls for this message matters most after the message itself,
+  // so it is shortened (whole lines, from the end) before it is ever dropped.
   const render = (secs, tns) => {
     const parts = [head.join('\n')];
     for (const s of secs) parts.push(`\n# ${s.title}\n${s.text}`);
@@ -541,27 +572,64 @@ export function buildContext(game, { message = '', executed = [], requests = [],
   let secs = sections.slice();
   let tns = turns.slice();
   let text = render(secs, tns);
-  while (text.length > budget && tns.length > 4) {
+  const over = () => text.length > budget;
+  const shrinkRecall = (to) => {
+    const i = secs.findIndex((s) => s.recall);
+    if (i < 0) return;
+    const cut = shortenLines(secs[i].text, Math.max(to, secs[i].text.length - (text.length - budget)));
+    if (cut === secs[i].text) return;
+    secs = secs.map((s, k) => (k === i ? { ...s, text: cut } : s));
+    text = render(secs, tns);
+  };
+  while (over() && tns.length > 6) {
     tns.shift();
     text = render(secs, tns);
   }
-  while (text.length > budget && secs.length) {
-    // Drop the least important section (lowest priority) first.
-    let lo = 0;
-    for (let i = 1; i < secs.length; i++) if (secs[i].priority < secs[lo].priority) lo = i;
+  if (over()) shrinkRecall(Math.round(budget * 0.4));
+  while (over() && secs.some((s) => !s.recall)) {
+    // Drop the least important other section first.
+    let lo = -1;
+    for (let i = 0; i < secs.length; i++) if (!secs[i].recall && (lo < 0 || secs[i].priority < secs[lo].priority)) lo = i;
     secs = secs.filter((_, i) => i !== lo);
     text = render(secs, tns);
   }
-  while (text.length > budget && tns.length) {
+  while (over() && tns.length > 2) {
     tns.shift();
     text = render(secs, tns);
   }
-  if (text.length > budget) {
+  if (over()) shrinkRecall(600);
+  if (over()) {
+    secs = [];
+    text = render(secs, tns);
+  }
+  while (over() && tns.length) {
+    tns.shift();
+    text = render(secs, tns);
+  }
+  if (over()) {
     // Keep the end (the request and the message); cut from the middle of the head.
     const end = tail.join('\n');
     text = `${render([], []).slice(0, Math.max(0, budget - end.length - 2))}\n${end}`.slice(-budget);
   }
   return text;
+}
+
+// Plugin prompt sections by how much they help her answer (higher stays longer).
+const PLUGIN_PRIORITY = { quest: 3.6, relationships: 3.4, autonomy: 3.8, social: 3, world: 2.4, jobs: 2.6, feelings: 2.2 };
+
+// Whole lines of text, at most `max` characters (the first line is kept, clipped).
+function shortenLines(text, max) {
+  const t = String(text || '');
+  if (t.length <= max) return t;
+  const lines = t.split('\n');
+  const out = [];
+  let len = 0;
+  for (const line of lines) {
+    if (len + line.length + 1 > max) break;
+    out.push(line);
+    len += line.length + 1;
+  }
+  return out.length ? out.join('\n') : clip(lines[0], max);
 }
 
 export function contextBudget(rules) {
@@ -572,7 +640,7 @@ export function contextBudget(rules) {
 export function buildChatPrompt(game, message, executed = [], { requests = [], offer = null } = {}) {
   const rules = buildRules(game);
   const budget = contextBudget(rules);
-  const recall = recallFor(game, message, Math.min(RECALL_BUDGET, Math.round(budget * 0.5)));
+  const recall = recallFor(game, message, RECALL_BUDGET);
   const context = buildContext(game, { message, executed, requests, offer, recall, budget });
   return { rules, context, recall };
 }

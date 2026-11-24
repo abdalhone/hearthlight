@@ -9,12 +9,12 @@ import { Inventory } from '../src/entities/items.js';
 import { LocationIndex } from '../src/world/locations.js';
 import { DEFAULT_SETTINGS } from '../src/core/settings.js';
 
-import { parseMessage, splitClauses, normalize, extractQuantityItem, detectOffer, COMMAND_THRESHOLD } from '../src/ai/brain/nlu.js';
+import { parseMessage, splitClauses, normalize, extractQuantityItem, detectOffer, cleanRef, COMMAND_THRESHOLD } from '../src/ai/brain/nlu.js';
 import { SpeechGen } from '../src/ai/brain/speech_gen.js';
 import { LINES, BARK_SITUATIONS } from '../src/ai/brain/lines.js';
 import { coerceResponse, coerceReflection, coerceConversation, coerceKnowledge, coerceIds, dedupeActions, extractJson, looksLikeSpeech } from '../src/ai/brain/claude_brain.js';
 import { buildRules, buildChatPrompt, buildContext, PROMPT_BUDGET, RESPONSE_SCHEMA } from '../src/ai/brain/prompt.js';
-import { refusalSituation, firstPersonReason } from '../src/ai/brain/local_brain.js';
+import { refusalSituation, firstPersonReason, reasonsAgainst, toFirstPerson } from '../src/ai/brain/local_brain.js';
 import { chooseProvider, ProviderSet, ApiKeyProvider, BrainError, classifyApiError, scrub } from '../src/ai/brain/providers.js';
 import { Brain } from '../src/ai/brain/brain.js';
 import { composeDiary } from '../src/ai/brain/diary.js';
@@ -1285,4 +1285,108 @@ test('"yes" to something she asked of the player becomes their promise; "no" is 
   const n = await brain.handlePlayerMessage('no');
   assert.ok(bankTexts('ask_declined').map((t) => t.replace('{you}', 'Traveler')).includes(n.say) || n.say.length > 3, n.say);
   assert.equal(game.log.filter((a) => a.name === 'promise').length, 1);
+});
+
+test('prompt: her will in the dynamic context (§16.10), recall instead of dumps (§17.3), stable rules', () => {
+  const game = makeGame();
+  const mind = game.companion.mind;
+  const rules0 = buildRules(game);
+  mind.companionship = 'wary';
+  Object.assign(mind.relationships.get('player'), { trust: 22, fear: 31, affinity: -4 });
+  mind.ledger = [
+    { t: 400, day: 2, deed: 'hit_lyra', severity: -3, text: 'Struck me with their sword, on purpose.' },
+    { t: 450, day: 2, deed: 'gift_loved', severity: 2, text: 'Gave me a honey cake.' },
+  ];
+  mind.agenda = { purse: 14, today: [{ from: 13, to: 17, activity: 'work', at: 'herbalist', why: 'Mira pays for silverleaf' }, { from: 18, to: 19, activity: 'eat', at: 'ember_kettle', why: 'Stew' }] };
+  mind.promises = [{ text: 'Buy me a honey cake', by: 'player', state: 'open', due: 3 }, { text: 'Old one', by: 'lyra', state: 'kept' }];
+  const asked = [];
+  mind.recallContext = (text, opts) => {
+    asked.push(opts.budget);
+    return { text: 'On her mind now:\n- [m2] Bram paid fairly for the pelts.', items: [{ id: 'm2', store: 'episode', label: 'Bram paid fairly' }] };
+  };
+  const { rules, context } = buildChatPrompt(game, 'will you help me?', [], { requests: [{ text: 'explore the ruins', name: 'explore', args: { target: 'sunken_ruins' }, verdict: verdict('refuse', ['the ruins are deadly at night', 'she is wary of you']) }] });
+  assert.equal(rules, rules0, 'how things stand never enters the stable rules');
+  assert.equal(asked[0], 3500, 'recallContext asked with the §17.3 budget');
+  for (const bit of ['Companionship: wary', 'trust 22/100', 'fear 31/100', 'affinity -4', 'hit_lyra (-3)', 'Struck me with their sword', 'gift_loved (+2)', 'Your purse: 14 coins', '1 PM-5 PM: work at herbalist (Mira pays for silverleaf)', 'Open promises:', 'Buy me a honey cake', '[m2] Bram paid fairly']) {
+    assert.ok(context.includes(bit), `context has "${bit}"`);
+  }
+  assert.ok(!context.includes('Old one'), 'kept promises are not open');
+  assert.ok(context.includes('your gut says: refuse, because the ruins are deadly at night, and she is wary of you'), 'gut verdict');
+  assert.ok(!/\b(?:AI|language model)\b/.test(rules.replace('Never mention being an AI, a model', '')), 'no AI talk beyond the rule against it');
+  assert.ok(/PG-13/.test(rules) && /JSON/.test(rules));
+  // A long soul stays inside its caps; the rules never swallow the context budget.
+  mind.soul = { name: 'Lyra', backstory: 'She walked. '.repeat(400), values: Array.from({ length: 40 }, (_, i) => `value number ${i}`), likes: Array.from({ length: 50 }, (_, i) => `like ${i}`), secrets: Array.from({ length: 9 }, (_, i) => ({ text: `secret ${i} `.repeat(40), revealAtBond: 3 })) };
+  const long = buildChatPrompt(game, 'hello', []);
+  assert.ok(long.rules.length < 9000, `rules ${long.rules.length}`);
+  assert.ok(long.rules.length + long.context.length <= PROMPT_BUDGET + 200, `whole ${long.rules.length + long.context.length}`);
+});
+
+test('a stand-in consent gate asks her mind when her will installed none (§16.4)', async () => {
+  const game = makeGame();
+  const brain = brainFor(game);
+  const mind = game.companion.mind;
+  const reqs = [];
+  mind.evaluateRequest = (req) => {
+    reqs.push(req);
+    if (req.action === 'set_combat_mode') return verdict('refuse', ['trust in you is low (4)'], 'No. That gets one of us killed.');
+    return verdict('accept', [], '');
+  };
+  assert.equal(game.actions.consentGate, undefined);
+  game.bus.emit('game_start', { loaded: false });
+  assert.equal(typeof game.actions.consentGate, 'function', 'installed once the world runs');
+  const r = await brain.handlePlayerMessage('attack mode');
+  assert.equal(game.log.filter((a) => a.name === 'set_combat_mode').length, 0, 'refused, never run');
+  assert.equal(r.say, 'No. That gets one of us killed.');
+  assert.ok(!bankTexts('stance_attack').includes(r.say), 'never an acknowledgement');
+  const why = await brain.handlePlayerMessage('why not?');
+  assert.ok(/I don't trust you enough right now/.test(why.say) && !/\(4\)/.test(why.say), why.say);
+  await brain.handlePlayerMessage("I'll pay you 10 coins to follow me");
+  const pay = reqs.find((q) => q.action === 'follow');
+  assert.equal(pay.pay, 10, 'the offer reaches her mind');
+  assert.equal(pay.source, 'player');
+  // Her will's own gate, installed later, replaces the stand-in and is never overwritten.
+  const own = () => null;
+  game.actions.setConsentGate(own);
+  game.bus.emit('game_start', { loaded: true });
+  await brain.handlePlayerMessage('stay here');
+  assert.equal(game.actions.consentGate, own);
+});
+
+test("her own questions are answered from her will even when a plugin matched the words first", async () => {
+  const chatty = { id: 'chatty', intents: [{ id: 'chatty.trust', patterns: [/\bdo you trust me\b/i], confidence: 0.9, answer: () => 'PLUGIN ANSWER' }, { id: 'chatty.weather', patterns: [/\bnice weather\b/i], answer: () => 'PLUGIN WEATHER' }] };
+  const game = makeGame({ plugins: [chatty] });
+  const brain = brainFor(game);
+  const mind = game.companion.mind;
+  mind.companionship = 'wary';
+  const r = await brain.handlePlayerMessage('do you trust me?');
+  assert.ok(bankTexts('trust_player_wary').includes(r.say), r.say);
+  const w = await brain.handlePlayerMessage('nice weather, huh');
+  assert.equal(w.say, 'PLUGIN WEATHER', 'other plugin questions keep their answers');
+  mind.companionship = 'together';
+  mind.ledger = [];
+  Object.assign(mind.relationships.get('player'), { trust: 32, fear: 0 });
+  const early = await brain.handlePlayerMessage('do you trust me?');
+  assert.ok(bankTexts('trust_player_new').includes(early.say), `early days, nothing went wrong: ${early.say}`);
+  mind.agenda = { today: [{ from: 0, to: 24, activity: 'travel', why: 'Out with you, listening for Maren' }] };
+  const plan = await brain.handlePlayerMessage('what are your plans today?');
+  assert.ok(/on the road with you/.test(plan.say) && /listening for Maren/.test(plan.say), plan.say);
+});
+
+test('her words: first person, reasons against, places without company, distinct diary memories', () => {
+  assert.equal(toFirstPerson('Lyra came north alone to find her.'), 'I came north alone to find her.');
+  assert.equal(toFirstPerson('Maren took her as an apprentice when she was twelve.'), 'Maren took me as an apprentice when I was twelve.');
+  assert.equal(toFirstPerson('She could not save her little brother.'), 'I could not save my little brother.');
+  assert.equal(firstPersonReason('she is afraid of you (41)'), "I'm afraid of you");
+  assert.deepEqual(reasonsAgainst(['she trusts you (70)', 'it’s late', '20 coins offered']), ['it’s late']);
+  assert.equal(refusalSituation(verdict('refuse', ['she trusts you (70)', 'too dangerous at night'])), 'refuse_danger');
+  assert.equal(cleanRef('the sunken ruins with me tonight'), 'sunken ruins');
+  const game = makeGame();
+  const parsed = parseMessage('come with me to the forest?', envFor(game));
+  assert.equal(parsed.commands[0].intent.actions[0].name, 'follow');
+  const lets = parseMessage("let's go to the inn", envFor(game));
+  assert.deepEqual(lets.commands[0].intent.actions[0].args, { target: 'inn', value: 'follow', amount: null });
+  const mem = (text, importance) => ({ text, importance, emotion: 'joy', about: ['player'] });
+  const d = composeDiary(game, [mem('The traveler gave me a honey cake. I could have cried.', 7), mem('Then the traveler gave me honey cake. I could have cried.', 6), mem('Bram showed me his forge.', 5)], { day: 2, rnd: () => 0 });
+  assert.equal((d.text.match(/honey cake/g) || []).length, 1, d.text);
+  assert.ok(/Bram showed me his forge/i.test(d.text));
 });

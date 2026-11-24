@@ -305,6 +305,8 @@ export function tidy(s) {
     .replace(/\.{4,}/g, '...')
     .replace(/,\s*([.!?])/g, '$1')
     .replace(/([!?…])\.(?!\.)/g, '$1')
+    // A slot at the start of a sentence ("You remembered! {item} is...") starts it with a capital.
+    .replace(/(^|[^.])([.!?]["')’”]?\s+)([a-z])/g, (m, pre, a, b) => pre + a + b.toUpperCase())
     .trim();
   if (out) out = out[0].toUpperCase() + out.slice(1);
   return out;
@@ -315,7 +317,7 @@ export function lowerFirst(s) {
   const t = String(s || '').trim();
   if (!t) return t;
   if (/^(I\b|I'|[A-Z][a-z]+ [A-Z])/.test(t)) return t;
-  const firstWord = t.split(/\s+/)[0];
+  const firstWord = t.split(/\s+/)[0].replace(/['’]s$/, '').replace(/[,.;:!?]+$/, '');
   if (/^[A-Z][a-z]+$/.test(firstWord) && PROPER.has(firstWord.toLowerCase())) return t;
   return t[0].toLowerCase() + t.slice(1);
 }
@@ -328,6 +330,6 @@ export function bare(s) {
 }
 
 const PROPER = new Set([
-  'lyra', 'maren', 'bram', 'elda', 'pip', 'rowan', 'mira', 'tobias', 'aveline', 'garrick', 'gale', 'cal',
+  'lyra', 'maren', 'bram', 'elda', 'pip', 'rowan', 'mira', 'tobias', 'aveline', 'garrick', 'gale', 'cal', 'odile', 'orrin', 'kettlewake',
   'hearthvale', 'whisperwood', 'glasswater', 'mirror', 'sunken', 'stonecut', 'king', "king's",
 ]);

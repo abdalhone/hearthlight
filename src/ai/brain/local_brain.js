@@ -77,18 +77,37 @@ function pickSentence(text, re) {
   return sentences(text).find((s) => re.test(s)) || null;
 }
 
-// Third-person soul text ("She could not save her brother") -> first person.
+function shortestSentence(text, re, max = 200) {
+  let best = null;
+  for (const s of sentences(text)) if (re.test(s) && s.length <= max && (!best || s.length < best.length)) best = s;
+  return best;
+}
+
+// Third-person soul text ("She could not save her brother") -> first person, a sentence at
+// a time: "her" before a noun is "my"; before a preposition it is "me"; at the end of a
+// sentence whose subject is Lyra it is someone else ("Lyra came north to find her").
 export function toFirstPerson(text) {
-  return String(text || '')
+  const parts = String(text || '').match(/[^.!?]+[.!?]*["')]*\s*/g) || [String(text || '')];
+  return parts.map(sentenceToFirstPerson).join('').trim();
+}
+
+function sentenceToFirstPerson(sentence) {
+  const selfSubject = /^\s*(?:Lyra|She)\b/.test(sentence);
+  return sentence
+    .replace(/\bher\b(?=\s+(?:as|to|in|on|at|with|for|and|from|into|by|up|down|out|off|back|away|again|alone|home)\b)/g, 'me')
+    .replace(/\bher\b(?=\s*(?:[.,;:!?"')]|$))/g, selfSubject ? '\u0001' : 'me')
     .replace(/\bShe\b/g, 'I')
     .replace(/\bshe\b/g, 'I')
     .replace(/\bherself\b/g, 'myself')
     .replace(/\bI is\b/g, 'I am')
     .replace(/\bI has\b/g, 'I have')
     .replace(/\bI does\b/g, 'I do')
-    .replace(/\b(I|still|also|never|always|and) (blame|love|hate|miss|want|keep|think|wish|fear|hope|dream|feel|carr(?:y|ie)|lie)s\b/g, (m, a, b) => `${a} ${b.replace(/ie$/, 'y')}`)
+    .replace(/\b(I|still|also|never|always|and) (blame|love|hate|miss|want|keep|think|wish|fear|hope|dream|feel|carr(?:y|ie)|lie|decide|owe|pay)s\b/g, (m, a, b) => `${a} ${b.replace(/ie$/, 'y')}`)
     .replace(/\bher\b/g, 'my')
-    .replace(/\bLyra\b/g, 'I');
+    .replace(/\bHer\b/g, 'My')
+    .replace(/\bLyra's\b/g, 'my')
+    .replace(/\bLyra\b/g, 'I')
+    .replace(/\u0001/g, 'her');
 }
 
 const AFFINITY_TAKES = [
@@ -163,7 +182,14 @@ export class LocalBrain {
   }
 
   answer(clause, reply, env, state = 'together') {
-    const it = clause.intent;
+    let it = clause.intent;
+    // Questions about where she stands with the player and about her own day (DESIGN §16)
+    // are hers to answer: when a plugin question uses the same words, she answers from
+    // her companionship, trust, fear and plan instead.
+    if (it?.source === 'plugin' && !it.actions?.length && env) {
+      const own = matchBuiltinClause(clause, env);
+      if (own && WILL_QUESTIONS.has(own.id) && HANDLERS[own.id]) it = own;
+    }
     // Gone or broken off: she does not chat like a companion. Requests still get her refusal,
     // and a few things (an apology, "why did you leave?") still reach her.
     if (state === 'left' && !(it && (it.actions?.length || LEFT_HEARS.has(it.id)))) {
@@ -184,7 +210,11 @@ export class LocalBrain {
           console.error(`[brain] intent ${it.id} answer failed`, err);
         }
         // A plugin answer that ignores a refusal would read as obedience: her refusal wins.
-        if (typeof text === 'string' && text.trim() && !(clause.results || []).some(isRefusal)) return text.trim();
+        if (typeof text === 'string' && text.trim() && !(clause.results || []).some(isRefusal)) {
+          // The plugin says what she does; her terms (a condition, a paid deal) still come first.
+          const terms = this.consentTerms(clause);
+          return terms && !text.includes(terms) ? `${terms} ${text.trim()}` : text.trim();
+        }
       }
       if (it.actions.length) return this.ack(clause, reply);
       // A plugin question without an answer: let the built-ins try the same words.
@@ -230,12 +260,44 @@ export class LocalBrain {
       if (v.message) return String(v.message).trim();
       extra = cond ? this.line('accept_condition', { condition: cond }) : '';
     } else if (v?.decision === 'accept' && v.message && String(v.message).trim().length > 3) {
-      // Her own words for agreeing beat a generic acknowledgement.
-      return String(v.message).trim();
+      const said = String(v.message).trim();
+      // A paid deal, a guarded yes, or nothing specific of her own to say: her words for
+      // agreeing carry it. Otherwise her own acknowledgement says what she is about to do.
+      if (offer?.coins || v.pay > 0 || this.guarded() || !base) return said;
     }
     if (offer?.coins && (!res || res.ok)) extra = `${extra} ${this.line('accept_paid', { coins: offer.coins })}`.trim();
     else if (offer?.share && (!res || res.ok)) extra = `${extra} ${this.line('accept_share')}`.trim();
     return `${base || ''} ${extra}`.replace(/\s+/g, ' ').trim();
+  }
+
+  // Is she holding the player at arm's length (wary, hurt, afraid, low trust)?
+  guarded() {
+    const state = companionshipOf(this.game);
+    if (state !== 'together') return true;
+    const rel = playerRel(this.game);
+    return rel.trust < 30 || rel.fear >= 25;
+  }
+
+  // Her terms for requests she agreed to in this clause: a condition or a paid deal, in
+  // her words (empty for a plain yes, which the action's own answer covers).
+  consentTerms(clause) {
+    const results = clause.results || [];
+    const offer = clause.offer || null;
+    const parts = [];
+    for (const res of results) {
+      const v = res?.verdict;
+      if (!res?.ok || !v) continue;
+      let t = '';
+      if (v.decision === 'accept_conditional') {
+        const cond = sentenceBody(v.condition);
+        t = String(v.message || '').trim() || (cond ? this.line('accept_condition', { condition: cond }) : '');
+      } else if (offer?.coins || v.pay > 0) {
+        t = String(v.message || '').trim() || this.line('accept_paid', { coins: offer?.coins || v.pay });
+      } else if (offer?.share) t = this.line('accept_share');
+      if (t && !parts.includes(t)) parts.push(t);
+    }
+    if (!parts.length && offer?.coins && results.some((r) => r?.ok && !r.verdict)) parts.push(this.line('accept_paid', { coins: offer.coins }));
+    return parts.join(' ');
   }
 
   // Her refusal / counter-offer for a refused request, in her voice.
@@ -247,7 +309,7 @@ export class LocalBrain {
       return this.line('counter_offer', { counter: this.describeAction(v.counter.name, v.counter.args || {}) });
     }
     if (message) return message;
-    const reason = capitalize(firstPersonReason(reasonText(v.reasons)));
+    const reason = capitalize(firstPersonReason(reasonText(reasonsAgainst(v.reasons))));
     const situation = refusalSituation(v, companionshipOf(this.game), offer);
     if (situation === 'refuse_left' || situation === 'refuse_and_act') return this.line(situation, { reason });
     if (!reason) return this.line('refuse_noreason');
@@ -582,6 +644,9 @@ export class LocalBrain {
   }
 }
 
+// Her own questions, answered from her will even when a plugin matched the words first.
+const WILL_QUESTIONS = new Set(['ask.trust_me', 'ask.fear_me', 'ask.plan', 'ask.why_left', 'ask.why_refused']);
+
 // What still reaches her when she has left the player.
 const LEFT_HEARS = new Set(['ask.decline', 'social.apology', 'social.greet', 'social.farewell', 'social.insult', 'ask.why_left', 'ask.trust_me', 'ask.fear_me', 'ask.why_refused', 'counter.take', 'counter.decline']);
 
@@ -589,7 +654,7 @@ const LEFT_HEARS = new Set(['ask.decline', 'social.apology', 'social.greet', 'so
 export function refusalSituation(verdict, state = 'together', offer = null) {
   if (verdict?.decision === 'refuse_and_act') return 'refuse_and_act';
   if (state === 'left' || state === 'gone') return 'refuse_left';
-  const r = `${(verdict?.reasons || []).join(' ')} ${verdict?.message || ''}`.toLowerCase();
+  const r = `${reasonsAgainst(verdict?.reasons || []).join(' ')} ${verdict?.message || ''}`.toLowerCase();
   if (/\b(?:again|already (?:said|told)|push|keep asking|asked (?:me )?(?:twice|before))\b/.test(r)) return 'refuse_pushed';
   if (/exhaust|tired|energy|sleep|barely stand|rest\b|worn out/.test(r)) return 'refuse_tired';
   if (/hungry|hunger|starv|\beat\b|food/.test(r)) return 'refuse_hungry';
@@ -604,7 +669,13 @@ export function refusalSituation(verdict, state = 'together', offer = null) {
 
 // Reasons may be written about her ("Lyra is exhausted"); she says them as herself.
 export function firstPersonReason(text) {
-  const t = String(text || '').trim();
+  // Scores and asides the mind attaches ("trust in you is low (12)") are for Claude, not
+  // for her lips.
+  const t = String(text || '')
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\btrust in you is low\b/gi, "I don't trust you enough right now")
+    .replace(/\b(?:Lyra|she) trusts you\b/gi, 'I trust you')
+    .trim();
   if (!t) return '';
   if (!/\b(?:lyra|she|her|herself)\b/i.test(t)) return t;
   return t
@@ -616,6 +687,15 @@ export function firstPersonReason(text) {
     .replace(/\bherself\b/g, 'myself')
     .replace(/\bher\b/g, 'my')
     .replace(/\b(?:Lyra|She|she)\b/g, 'I');
+}
+
+// Reasons that weigh FOR a request (the mind lists both kinds); a refusal is explained by
+// the ones against it.
+const IN_FAVOR = /\b(?:trusts you|coins? offered|the coin is good|it pays|fair (?:pay|share)|moonpetals open|keeps what she gathers|kindness to|meant to do that anyway|a loan to|wants .{1,40} safe|knew Maren|enjoys your company|for Maren|on Maren.s trail|you are hurt|hungry enough|she is hurt|likes her freedom|glad of a day|made amends)\b/i;
+
+export function reasonsAgainst(reasons) {
+  const list = Array.isArray(reasons) ? reasons.filter((r) => r && !IN_FAVOR.test(String(r))) : [];
+  return list.length ? list : Array.isArray(reasons) ? reasons : [];
 }
 
 // A condition as a clause: "Half the wood is mine." -> "half the wood is mine".
@@ -799,12 +879,18 @@ const HANDLERS = {
     reply.thought = reply.thought || this.line('thought_question');
     switch (s.topic) {
       case 'self': {
-        const mentor = pickSentence(bs, /maren|mentor|vanish/i);
-        return `I'm ${name}${soul.age ? `, ${soul.age}` : ''}, from ${soul.origin || 'far away'}. ${mentor ? toFirstPerson(mentor) : ''}`.trim();
+        // Who she is in three beats: where from, who made her, why she is here.
+        const home = shortOrigin(soul.origin);
+        const mentor = shortestSentence(bs, /\bMaren (?:became|taught|took|found|raised)\b|\bapprentice/i, 170);
+        const search = shortestSentence(bs, /came (?:north|here|to Hearthvale)|went ahead|vanish|disappear|to find (?:her|Maren)/i, 170);
+        const parts = [`I'm ${name}${soul.age ? `, ${soul.age}` : ''}, from ${home}.`];
+        if (mentor) parts.push(toFirstPerson(mentor));
+        parts.push(search && search !== mentor ? toFirstPerson(search) : 'Maren, my teacher, vanished near the Sunken Ruins, and I came to find her.');
+        return clipWords(parts.join(' '), 330);
       }
       case 'origin': {
         const s1 = pickSentence(bs, /grew up|island|born|home/i);
-        return `${capitalize(soul.origin || 'Far from here')}. ${s1 ? toFirstPerson(s1) : ''} I miss the sound of it.`.replace(/\s+/g, ' ').trim();
+        return `${capitalize(shortOrigin(soul.origin) || 'Far from here')}. ${s1 ? toFirstPerson(s1) : ''} I miss the sound of it.`.replace(/\s+/g, ' ').trim();
       }
       case 'age':
         return `${soul.age || 'Old enough'}. ${this.speech.pick(['Old enough to know better, young enough not to care.', "Don't ask a ranger her age. Ask her kill count. ...Don't ask that either."])}`;
@@ -948,17 +1034,23 @@ const HANDLERS = {
 
   'ask.trust_me'(s, clause, reply, state) {
     const rel = playerRel(this.game);
-    if (state === 'left' || rel.trust < 35) return this.line('trust_player_low');
-    return this.line(rel.trust >= 65 && state !== 'wary' ? 'trust_player_high' : 'trust_player_mid');
+    const day = this.game.clock?.day ?? 1;
+    const hurt = ledgerOf(this.game, 8).some((d) => d && d.severity < 0 && (d.day == null || day - d.day <= 3));
+    if (state === 'left' || state === 'gone' || rel.trust < 15) return this.line('trust_player_low');
+    if (state === 'wary' || hurt || rel.fear > 25) return this.line('trust_player_wary');
+    if (rel.trust >= 65) return this.line('trust_player_high');
+    if (rel.trust >= 40) return this.line('trust_player_mid');
+    return this.line('trust_player_new');
   },
 
-  'ask.fear_me'(s, clause, reply) {
+  'ask.fear_me'(s, clause, reply, state) {
     const f = playerRel(this.game).fear;
     if (f >= 45) {
       reply.emotion = { name: 'fear', intensity: 0.2 };
       return this.line('fear_player_high');
     }
-    return this.line(f >= 15 ? 'fear_player_some' : 'fear_player_none');
+    if (f >= 15) return this.line('fear_player_some');
+    return this.line(state === 'wary' || state === 'left' ? 'fear_player_wary' : 'fear_player_none');
   },
 
   'ask.why_left'(s, clause, reply, state) {
@@ -969,7 +1061,7 @@ const HANDLERS = {
 
   'ask.why_refused'() {
     const r = this.game.brain?.recentRefusal?.();
-    const why = r ? firstPersonReason(reasonText(r.verdict?.reasons)) : '';
+    const why = r ? firstPersonReason(reasonText(reasonsAgainst(r.verdict?.reasons))) : '';
     if (why) return this.line('why_refused', { reasons: why[0].toLowerCase() === why[0] ? why : lowerFirst(why) });
     if (r?.message) return this.line('why_refused', { reasons: lowerFirst(bare(r.message)) });
     return this.line('why_refused_none');
@@ -1206,7 +1298,8 @@ const ACTIVITY_PHRASES = {
   rest: 'resting', free: 'my own time', wander: 'wandering', socialize: 'catching up with people', visit: 'visiting friends',
   study: 'studying', read: 'reading', train: 'practicing my bolts', lead: 'following a lead about Maren',
   follow_lead: 'following a lead about Maren', maren: 'looking for Maren', search: 'looking for Maren', pray: 'sitting in the chapel',
-  shop: 'buying supplies', stargaze: 'watching the stars',
+  shop: 'buying supplies', stargaze: 'watching the stars', travel: 'out on the road with you', escort: 'out on the road with you',
+  explore: 'exploring', hunt: 'hunting', errand: 'running errands', bath: 'a proper wash', bathe: 'a proper wash',
 };
 
 function activityPhrase(activity) {
@@ -1215,6 +1308,21 @@ function activityPhrase(activity) {
   if (JOB_LABELS[key]) return JOB_LABELS[key];
   if (ACTIVITY_PHRASES[key]) return ACTIVITY_PHRASES[key];
   return lowerFirst(a.replace(/_/g, ' '));
+}
+
+// "Kettlewake, the smallest of the Glasswater Isles: a scatter of..." -> the part before the gloss.
+function shortOrigin(origin) {
+  const t = String(origin || 'far away').split(/[:;(—]/)[0].replace(/[.,\s]+$/, '').trim();
+  return t || 'far away';
+}
+
+// At most n characters, cut after a whole sentence when one fits.
+function clipWords(text, n) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (t.length <= n) return t;
+  const cut = t.slice(0, n);
+  const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+  return end > 40 ? cut.slice(0, end + 1) : `${cut.replace(/\s+\S*$/, '')}…`;
 }
 
 function hpText(r) {

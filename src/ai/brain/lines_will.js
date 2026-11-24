@@ -166,6 +166,25 @@ export const WILL_LINES = {
     "No. Not after what you did.",
     { t: "I want to. That's not the same thing.", trait: 'warm' },
   ],
+  // Early days: nothing has gone wrong, there just has not been much road yet.
+  trust_player_new: [
+    "I'm getting there. You ran at a wolf pack for a stranger — that counts for a lot.",
+    "Trust is paid in deeds. You've made a good first payment.",
+    "More than most people I've known two days. Less than I will, I hope.",
+    { t: "Ask me again in a week. So far? You're doing well.", trait: 'playful' },
+  ],
+  // Hurt or guarded: she has not given up on them, but she is watching.
+  trust_player_wary: [
+    "I want to. That's not the same thing.",
+    'Less than I did. You know why.',
+    "I'm watching. That's the honest answer.",
+    { t: "I'd like to go back to trusting you. You'll have to help with that.", trait: 'warm' },
+  ],
+  fear_player_wary: [
+    "Not afraid. Careful. There's a difference.",
+    "I'm keeping an eye on your sword hand. Call it what you like.",
+    { t: 'Afraid? No. Wiser, maybe.', trait: 'playful' },
+  ],
   fear_player_none: [
     'Afraid of you? Ha. No.',
     { t: "You? You fall over your own feet. No.", trait: 'playful' },
