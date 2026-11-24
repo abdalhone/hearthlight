@@ -965,6 +965,8 @@ class WorldBuilder {
     for (let y = 56; y <= 58; y++) for (let x = 21; x <= 31; x++) if (this.hash(x, y, 9) < 0.8) this.set(x, y, T.DIRT);
     this.fill(30, 59, 14, 3, T.DIRT); // farm road east to the village street
     this.decor('hay', 19, 57, { name: 'Hay bale' });
+    // Tansy's hen-house, where Duchess holds court (LORE §10: the coop at Reed Farm).
+    this.decor('coop', 0, 0, { footprint: { x: 21, y: 58, w: 2, h: 1 }, name: 'Hen-house', words: ['hen house', 'coop', 'chicken coop', 'duchess'] });
     this.decor('hay', 20, 58, { name: 'Hay bale' });
     this.decor('cart', 0, 0, { footprint: { x: 25, y: 59, w: 2, h: 1 }, name: 'Farm cart' });
     this.decor('woodpile', 31, 55, { name: 'Woodpile' });
@@ -1623,7 +1625,8 @@ class WorldBuilder {
     room('pike_house', 62, 77, 'weavers_row');
     room('holloway_house', 69, 76, 'weavers_row');
     room('tolley_house', 75, 76, 'weavers_row');
-    room('dye_cottage', 122, 77);
+    // The cottage and its yard: Sabeth works at the vats outside the door.
+    this.loc('dye_cottage', { x: 119, y: 71, w: 11, h: 10 }, [122, 77], { parent: 'hearthvale' });
     room('net_shed', 112, 47, 'mirror_lake');
     this.loc('wenna_hives', { x: 84, y: 29, w: 10, h: 7 }, [89, 32], { parent: 'whisperwood' });
     this.loc('reed_farm', { x: 14, y: 44, w: 31, h: 36 }, [36, 60]);
