@@ -232,6 +232,19 @@ async function phone(label, w, h) {
     check(`${label}: dragging back onto the button cancels`, n1 === n0, `${n0} -> ${n1}`);
   }
 
+  // Upright, once: "Turn your phone sideways for fights."
+  if (h > w) {
+    const tip = await page.waitForFunction(() => !document.querySelector('.turn-tip')?.hidden, null, { timeout: 8000 }).then(
+      () => true,
+      () => false,
+    );
+    check(`${label}: the one-time tip suggests turning the phone`, tip);
+    if (tip) await page.screenshot({ path: `${OUT}/controls-${label}-tip.png` });
+    await page.evaluate(() => document.querySelector('.turn-tip')?.click());
+    const gone = await page.evaluate(() => document.querySelector('.turn-tip').hidden);
+    check(`${label}: a tap puts the tip away`, gone);
+  }
+
   // Night look of the layout.
   await page.evaluate(() => window.__game.clock.skipTo(22));
   await page.waitForTimeout(500);
