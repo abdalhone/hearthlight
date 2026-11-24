@@ -140,6 +140,12 @@ await page.evaluate(() => {
 
   S.reset = () => {
     const m = g.magic;
+    // Lyra watches from far off (her own healing and spells stay out of the pictures).
+    if (g.companion) {
+      g.companion.x = spot.x - 420;
+      g.companion.y = spot.y - 300;
+      g.companion.hidden = true;
+    }
     for (const b of m.bodies) if (b.active) m.end(b, 'dismiss');
     m.pending.length = 0;
     for (const k of [...m.holds.keys()]) m.castCancel(k);
