@@ -673,3 +673,38 @@ test("what's on her mind comes up with the people she is close to", () => {
   }
   assert.ok(found, 'she told her mother what is on her mind');
 });
+
+import { NPC } from '../src/entities/npc.js';
+
+test('a call for help after the player strikes Lyra becomes fast news', () => {
+  const { game, people, v } = makeGame({ hour: 14 });
+  const lyra = game.entities.add(new Actor(game, { id: 'lyra', name: 'Lyra', faction: 'player', x: people.hobb.x + 20, y: people.hobb.y, maxHp: 45 }));
+  game.companion = lyra;
+  v.onEvent('call_for_help', { victim: lyra, attacker: game.player, x: lyra.x, y: lyra.y, severity: 0.6 });
+  const r = v.rumors.list.find((x) => x.kind === 'hit_lyra');
+  assert.ok(r && r.heardBy.includes('hobb'), 'those in earshot heard it');
+  lyra.downed = true;
+  v.onEvent('call_for_help', { victim: lyra, attacker: game.player, x: lyra.x, y: lyra.y, severity: 2 });
+  assert.ok(v.rumors.list.some((x) => x.kind === 'downed_lyra'));
+  // Someone else's fight is not the player's news.
+  const n = v.rumors.list.length;
+  v.onEvent('call_for_help', { victim: lyra, attacker: { id: 'wolf_1' }, x: lyra.x, y: lyra.y, severity: 0.5 });
+  assert.equal(v.rumors.list.length, n);
+});
+
+test('npc.js: villagers leave each other to the village and still answer the player', () => {
+  const { game, v } = makeGame({ hour: 12 });
+  game.combat = { hasCrime: () => false, isHostile: () => false };
+  const bram = new NPC(game, NPC_PROFILES.find((p) => p.id === 'bram'), { x: 300, y: 300 });
+  const elda = new NPC(game, NPC_PROFILES.find((p) => p.id === 'elda'), { x: 320, y: 300 });
+  game.entities.add(bram);
+  game.entities.add(elda);
+  assert.equal(bram.hears(elda, 'Hello, Bram!'), null, 'neighbour chatter goes through the village');
+  game.player.x = 310;
+  game.player.y = 300;
+  const reply = bram.hears(game.player, 'hello bram');
+  assert.ok(typeof reply === 'string' && reply.length > 1, 'the player still gets a greeting');
+  const started = bram.chatWith(elda);
+  assert.equal(typeof started, 'boolean');
+  if (started) assert.ok(v.log.some((c) => (c.a === 'bram' && c.b === 'elda') || (c.a === 'elda' && c.b === 'bram')));
+});
