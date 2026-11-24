@@ -7543,8 +7543,9 @@ input[type='range']::-moz-range-thumb {
 
 /* How to play: the device switch over its list of controls. */
 .how-devices {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
+  max-width: 100%;
   margin: 0 0 10px;
 }
 .how-devices .seg {
