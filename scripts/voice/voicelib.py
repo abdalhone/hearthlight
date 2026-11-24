@@ -77,7 +77,7 @@ def write_json(path: Path, data, indent=None) -> None:
 
 ONES = "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split()
 TENS = "_ _ twenty thirty forty fifty sixty seventy eighty ninety".split()
-SPELLING = {"gray": "grey", "color": "colour", "colors": "colours", "neighbor": "neighbour", "neighbors": "neighbours", "favor": "favour",
+SPELLING = {"steaks": "stakes", "gray": "grey", "color": "colour", "colors": "colours", "neighbor": "neighbour", "neighbors": "neighbours", "favor": "favour",
             "honor": "honour", "toward": "towards", "okay": "ok", "alright": "all right", "whiskey": "whisky", "theater": "theatre"}
 FILLERS = {"hm": "hm", "hmm": "hm", "hmmm": "hm", "mm": "hm", "mmm": "hm", "mhm": "hm", "mmhm": "hm", "hmhm": "hm", "hmhmm": "hm", "um": "hm", "uh": "hm", "ah": "ah", "oh": "oh"}
 
@@ -180,8 +180,12 @@ def align(ref: list[str], hyp: list[str], names: set[str] | None = None):
                 c, o = d[i - 1, j] + 1, 2
             if d[i, j - 1] + 1 < c:
                 c, o = d[i, j - 1] + 1, 3
-            if j >= 2 and fz and _close(r, hyp[j - 2] + hyp[j - 1], True) and d[i - 1, j - 2] < c:
+            # One written word heard as two ("hearth vale"), or two heard as one
+            # ("roadguard", "everyone"): the same sounds.
+            if j >= 2 and (r == hyp[j - 2] + hyp[j - 1] or (fz and _close(r, hyp[j - 2] + hyp[j - 1], True))) and d[i - 1, j - 2] < c:
                 c, o = d[i - 1, j - 2], 4
+            if i >= 2 and ref[i - 2] + r == hyp[j - 1] and d[i - 2, j - 1] < c:
+                c, o = d[i - 2, j - 1], 5
             d[i, j], op[i, j] = c, o
     pairs: list[list[int]] = [[] for _ in range(n)]
     i, j = n, m
@@ -193,6 +197,10 @@ def align(ref: list[str], hyp: list[str], names: set[str] | None = None):
         elif o == 4:
             pairs[i - 1] = [j - 2, j - 1]
             i, j = i - 1, j - 2
+        elif o == 5:
+            pairs[i - 2] = [j - 1]
+            pairs[i - 1] = [j - 1]
+            i, j = i - 2, j - 1
         elif o == 2:
             i -= 1
         else:
