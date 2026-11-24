@@ -315,6 +315,8 @@ function shopLine(npc, tone) {
       return "Eggs. Three coppers. Don't tell Duchess.";
     case 'corran':
       return "Fish this morning's, eel from the shed. Hm-hmm. I'll buy what you catch, too.";
+    case 'mira':
+      return "Potions, tonics, salves. Sorry, the bark one is bitter. It works, though. And I'll buy herbs, if you've any.";
     default:
       return 'Take a look.';
   }
