@@ -5,6 +5,23 @@ import { bondOf } from './relationships.js';
 import { activeGoals } from './goals.js';
 import { FOOD_PREFERENCE } from './needs.js';
 import { itemName } from '../../entities/items.js';
+import { CLOSED_PEOPLE, GUARDED_LIFE } from './soul.js';
+
+const bondLevelOf = (mind) => bondOf(mind.relationships.get(PLAYER_ID)).level;
+
+// What she says of someone she does not talk about yet (soul.js CLOSED_PEOPLE), or null.
+export function closedAbout(mind, id) {
+  const c = CLOSED_PEOPLE[id];
+  if (!c) return null;
+  return bondLevelOf(mind) >= c.openAtBond ? null : c.line;
+}
+
+// A life memory as she would tell it to the player now: the parts she keeps for a deep
+// bond (soul.js GUARDED_LIFE) come out as the village's version until then.
+export function lifeText(mind, id, text) {
+  const g = GUARDED_LIFE[id];
+  return g && bondLevelOf(mind) < g.openAtBond ? g.text : text;
+}
 
 // Shared by the mind's plugins: who a phrase refers to, and answers in Lyra's voice
 // built from her real state (mood, needs, goals, memories, relationships).
@@ -274,12 +291,17 @@ export function tiredAnswer(ctx) {
   return "Not a bit. I could walk to Saltmere and back. Well. Halfway.";
 }
 
-export function fearAnswer(ctx) {
+// "Are you scared?" is about now; "what are you afraid of?" is about her life (LORE §7,
+// "Dreams and fears"). She has never once admitted she is afraid of deep water: that is a
+// secret she tells at a deep bond, so until then it stays off the list.
+export function fearAnswer(ctx, { what = false } = {}) {
   const mind = ctx.mind;
-  const fears = mind.soul.fears || [];
   const f = mind.emotions.fear;
-  const now = f > 0.35 ? "Right now? Yes. A little. Don't let go of your sword." : 'Not right now.';
-  return `${now} Deep, dark water scares me. Losing people scares me more. ${fears.includes('that Maren is already dead') ? "And that I'm too late for Maren." : ''}`.trim();
+  const now = f > 0.35 ? "Right now? Yes. A little. Don't let go of your sword." : 'Not right now. Ask me again at the ruins gate.';
+  if (!what) return now;
+  const told = bondOf(mind.relationships.get(PLAYER_ID)).level >= 4;
+  const list = 'Sickbeds. Losing Mam and Da. Being too late again, for anyone. Finding Maren dead.';
+  return `${list}${told ? ' And deep water. Since the ice. ...There. Now you know.' : ' Marrying a stone, some days.'}${f > 0.35 ? ' And right now, a little, whatever is out there.' : ''}`;
 }
 
 export function wantAnswer(ctx) {
@@ -288,16 +310,17 @@ export function wantAnswer(ctx) {
   const top = goals[0];
   const parts = [];
   if (top?.id === 'find_maren' || top?.id === 'follow_maren' || top?.source === 'quest') parts.push(`To find Maren. Everything else comes after that.`);
-  else if (top) parts.push(`${cap(lowerFirst(top.text.replace(/[.!]$/, '')))}.`);
+  else if (top) parts.push(`${cap(lowerFirst(toListener(top.text).replace(/[.!]$/, '')))}.`);
   const second = goals.find((g) => g !== top && g.source !== 'quest' && g.id !== 'find_maren');
-  if (second) parts.push(`And ${lowerFirst(second.text.replace(/[.!]$/, ''))}.`);
+  if (second) parts.push(`And ${lowerFirst(toListener(second.text).replace(/[.!]$/, ''))}.`);
   const pressing = mind.needsEngine.pressing(0.35);
   if (pressing === 'hunger') parts.push('Right now, though? Food.');
   else if (pressing === 'energy') parts.push('Right now, though? Sleep.');
   else if (pressing === 'fun') parts.push('Right now, somewhere I have never been.');
   else if (pressing === 'social') parts.push('Right now, just talk to me for a bit.');
-  const dream = mind.soul.dreams?.find((d) => /teach/i.test(d));
-  if (dream && parts.length < 3) parts.push(`One day: ${lowerFirst(dream)}.`);
+  // Her calling first (LORE §7: the dead waystones, all the way to the sea), then Pip.
+  const dream = mind.soul.dreams?.find((d) => /waystone/i.test(d)) || mind.soul.dreams?.find((d) => /teach/i.test(d));
+  if (dream && parts.length < 3) parts.push(`One day: ${lowerFirst(String(dream).replace(/[.!]$/, ''))}.`);
   return parts.join(' ');
 }
 
@@ -326,7 +349,7 @@ export function memoryAnswer(ctx, query, { lead = true } = {}) {
   }
   const first = hits[0];
   const opener = lead ? pick(['I remember.', 'Of course I remember.', 'Mm.'], ctx.game?.rng) : '';
-  if (first.store === 'life') return shorten(`${opener} ${toListener(firstPerson(first.text, mind.name))}`.trim(), 420);
+  if (first.store === 'life') return shorten(`${opener} ${toListener(firstPerson(lifeText(mind, first.ref?.id, first.text), mind.name), { aboutPlayer: aboutPlayerOnly(first.ref) })}`.trim(), 420);
   const m = first.ref;
   const when = m.day > 0 ? timeAgo(ctx.game, m.t) : m.when || '';
   const startsWithTime = /^(two days ago|six days ago|three months ago|on the fortieth night|yesterday|today|the morning|the night|my first|maren's last)/i.test(m.text);
@@ -340,13 +363,44 @@ export function memoryAnswer(ctx, query, { lead = true } = {}) {
 const FIRST_MEETING =
   "Depends what you call meeting. Hess and I found you in the Crown Ring on the Hollowcrown three months ago, asleep in a circle of melted snow, and carried you down. You slept eighty-one days. The first time you were awake for it: two days ago, wolves on the King's Road, and you stood beside me. I noticed.";
 
-// Her life story names the player "the stranger"; told to the player, it is "you".
-export function toListener(text) {
-  return String(text || '')
+// Her life story names the player "the stranger"; told to the player, it is "you". With
+// `aboutPlayer` (a memory whose people include the player and no one else spoken of as
+// "they"), the player's they/them/their become you/your too.
+export function toListener(text, { aboutPlayer = false } = {}) {
+  let t = String(text || '')
+    .replace(/\b[Ww]ho is the stranger from the mountain\?/g, 'who you are, and where you came from.')
     .replace(/\bthe stranger's\b/g, 'your')
     .replace(/\bThe stranger's\b/g, 'Your')
     .replace(/\bthe stranger\b/g, 'you')
     .replace(/\bThe stranger\b/g, 'You');
+  if (aboutPlayer) {
+    t = t
+      .replace(/\bthey were\b/g, 'you were')
+      .replace(/\bThey were\b/g, 'You were')
+      .replace(/\bthem\b/g, 'you')
+      .replace(/\btheir\b/g, 'your')
+      .replace(/\bTheir\b/g, 'Your')
+      .replace(/\bthey\b/g, 'you')
+      .replace(/\bThey\b/g, 'You');
+  }
+  // "you was", "you lives" never stand: keep the grammar of the second person.
+  const VERB = { was: 'were', is: 'are', has: 'have', does: 'do', lives: 'live', sleeps: 'sleep', wakes: 'wake', stands: 'stand', knows: 'know', says: 'say', remembers: 'remember', comes: 'come', moves: 'move' };
+  return t.replace(/\b([Yy]ou) (was|is|has|does|lives|sleeps|wakes|stands|knows|says|remembers|comes|moves)\b/g, (m, y, v) => `${y} ${VERB[v]}`);
+}
+
+const aboutPlayerOnly = (ref) => Array.isArray(ref?.people) && ref.people.includes('player');
+
+// Whole sentences under a length, never a word cut in half.
+function clipSentences(text, max) {
+  const t = String(text || '').trim();
+  if (t.length <= max) return t;
+  const parts = t.match(/[^.!?]+[.!?]+["')]*\s*/g) || [t];
+  let out = '';
+  for (const p of parts) {
+    if ((out + p).trim().length > max) break;
+    out += p;
+  }
+  return out.trim() || shorten(t, max);
 }
 
 // "Tell me about your parents": who they are to her, from her own people (LORE §7).
@@ -399,21 +453,24 @@ export function lifeAnswer(ctx, topic) {
   }
   if (!hits.length) return null;
   const [a, b] = hits;
-  let out = toListener(firstPerson(a.text, mind.name));
-  if (b && out.length < 200) out += ` ${toListener(firstPerson(firstSentence(b.text, 160), mind.name))}`;
+  let out = toListener(firstPerson(lifeText(mind, a.ref?.id, a.text), mind.name), { aboutPlayer: aboutPlayerOnly(a.ref) });
+  if (b && out.length < 200) out += ` ${toListener(firstPerson(firstSentence(lifeText(mind, b.ref?.id, b.text), 160), mind.name), { aboutPlayer: aboutPlayerOnly(b.ref) })}`;
   const tender = (a.ref?.feeling === 'sadness' || a.ref?.importance >= 9) && mind.relationships.bond(PLAYER_ID).level < 2;
   if (tender) out += " ...I don't usually tell people that.";
   return shorten(out, 460);
 }
 
 // "What do you know about the waygates / Bram / the bandits?"
-export function knowAnswer(ctx, topic) {
+// `define`: a "what is X?" question, where the lore of X comes before her memory of it.
+export function knowAnswer(ctx, topic, { define = false } = {}) {
   const mind = ctx.mind;
   const q = String(topic || '').trim().replace(/[?.!]+$/, '');
   if (!q) return null;
   const who = resolvePerson(ctx, q);
   if (who?.player) return playerAnswer(ctx, 'think');
   if (who && !who.group && !who.self) {
+    const closed = closedAbout(mind, who.id);
+    if (closed) return closed;
     const d = mind.dossier(who.id);
     if (d) {
       const n = firstName(d.name);
@@ -426,6 +483,12 @@ export function knowAnswer(ctx, topic) {
       if (parts.length) return shorten(parts.join(' '), 440);
     }
   }
+  for (const id of Object.keys(CLOSED_PEOPLE)) {
+    if (new RegExp(`\\b${id}\\b`, 'i').test(q)) {
+      const closed = closedAbout(mind, id);
+      if (closed) return closed;
+    }
+  }
   const look = mind.loreLookup(q);
   if (!look.entries.length && !look.questions.length) return pick(["Not much, honestly. Somebody in this valley will know; I could ask around.", "Less than I'd like. Ask me again once I've asked around."], ctx.game?.rng);
   const parts = [];
@@ -433,23 +496,40 @@ export function knowAnswer(ctx, topic) {
   // the history of it); then one answer, and a second only when the first is short.
   const key = (t) => String(t || '').toLowerCase().replace(/[^a-z' ]+/g, ' ').replace(/^(?:the|a|an) /, '').replace(/\s+/g, ' ').trim();
   const qk = key(q);
-  const rank = (e) => {
+  // The valley's history is told in the present tense of a chronicle; what she knows of the
+  // thing itself comes first.
+  // A chronicle line about her ("eleven-year-old Lyra lights...") comes after her own memory.
+  const entryOf = (e) => (e.loreId && e.kind !== 'life' ? mind.lorebook?.get?.(e.loreId) : null);
+  const chronicle = (e) => {
+    const le = entryOf(e);
+    if (le?.kind !== 'timeline') return 0;
+    return new RegExp(`\\b${mind.name || 'Lyra'}\\b`).test(e.text) ? 3 : 0.5;
+  };
+  const rank = (e) => chronicle(e) + rankOf(e);
+  const rankOf = (e) => {
     const k = key(e.subject).replace(/^(?:the|a|an) /, '');
     const life = e.kind === 'life';
-    if (k && k === qk) return life ? 0 : 1;
+    // Named by one of its aliases ("moonpetals" is Greenwit's): as good as its title.
+    if (!life && (entryOf(e)?.aliases || []).some((a) => key(a).replace(/s$/, '') === qk.replace(/s$/, ''))) return 1;
+    if (k && k === qk) return life ? (define ? 2.5 : 0) : 1;
     if (k && qk.length >= 4 && k.includes(qk)) return life ? 3 : 2;
     return 4;
   };
   const entries = look.entries.map((e, i) => ({ e, r: rank(e), i })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.e);
   const shown = entries[0] && entries[0].text.length < 140 ? entries.slice(0, 2) : entries.slice(0, 1);
   for (const e of shown) {
-    const text = toListener(firstPerson(shorten(e.text, shown.length > 1 ? 200 : 300), mind.name));
+    const life = e.kind === 'life' ? (mind.life || []).find((l) => l.id === e.loreId) : null;
+    const said = life ? lifeText(mind, life.id, e.text) : e.text;
+    // Her life memories with the stranger in them, and the lore of the stranger itself, speak
+    // of the player as "they": told to the player, that is "you".
+    const aboutPlayer = life ? aboutPlayerOnly(life) : (entryOf(e)?.tags || []).includes('player');
+    const text = toListener(firstPerson(clipSentences(said, shown.length > 1 ? 200 : 300), mind.name), { aboutPlayer });
     if (e.kind === 'theory') parts.push(`I think ${lowerFirst(text.replace(/[.!]+$/, ''))}, but I can't prove it.`);
     else if (e.kind === 'rumor') parts.push(`I've heard ${lowerFirst(text.replace(/[.!]+$/, ''))}. Only a rumor.`);
     else if (e.source === 'told' && e.from) parts.push(`${firstName(mind.relationships.get(e.from)?.name || e.from)} told me ${lowerFirst(text)}`);
     else parts.push(text);
   }
   const qn = look.questions[0];
-  if (qn) parts.push(`And I keep coming back to one question: ${lowerFirst(String(qn.question).replace(new RegExp(`^Is ${mind.name || 'Lyra'}\\b`), 'am I'))}`);
+  if (qn) parts.push(`And I keep coming back to one question: ${toListener(lowerFirst(String(qn.question).replace(new RegExp(`^Is ${mind.name || 'Lyra'}\\b`), 'am I')))}`);
   return shorten(parts.join(' '), 460);
 }

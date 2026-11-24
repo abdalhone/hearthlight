@@ -656,7 +656,7 @@ export const NPC_PROFILES = [
       tobias: 'Tobias worries the way others pray. The field answers him.',
       garrick: 'Garrick has walked every road and confessed none of them. He will, one day.',
       lyra: 'She climbed a mountain for her teacher and came down with a stranger. She may find something larger yet.',
-      maren: 'My friend. She chose the dark on purpose. I pray she found what she sought.',
+      maren: 'My friend. She went into the dark with her eyes open. I light a candle for her every night.',
     },
   },
 

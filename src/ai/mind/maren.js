@@ -164,7 +164,7 @@ export const MAREN_TESTIMONY = {
   hess: {
     npc: ["Mm. Her notes said 'the other end'. We went. Found that one instead, two days after she went in. I don't like a trail that crosses itself."],
     learned: 'Hess does not like that the stranger lay in the Crown Ring two days after Maren went in.',
-    lyra: "Neither do I. That's why I took the key.",
+    lyra: "Neither do I. That's half of why I took the hearthwatch.",
   },
   sabeth: {
     npc: ["She'd sit by my vats some evenings and let me talk. She listened the way you do, sister. I miss it."],

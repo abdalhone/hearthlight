@@ -141,7 +141,15 @@ test('the Book of Halcyre: every chapter page is a story entry, and no truth is 
   const keys = BOOK_CHAPTERS.flatMap((c) => c.entries);
   for (const k of keys) assert.ok(book.get(k), `${k} resolves`);
   const listed = new Set(keys);
+  assert.equal(listed.size, keys.length, 'every page is in exactly one chapter');
   for (const e of book.all()) assert.ok(listed.has(e.key), `${e.key} has a chapter`);
+  // A page nobody knows at the start (the inside of the ruins) never sits in a chapter open from the start.
+  for (const c of BOOK_CHAPTERS.filter((x) => x.unlock === 'start')) {
+    for (const k of c.entries) {
+      const kb = book.get(k).knownBy;
+      assert.ok(!Array.isArray(kb) || kb.length > 0, `${k} is known to someone before it opens at the start`);
+    }
+  }
   for (const c of BOOK_CHAPTERS) assert.ok(['start', 'seen', 'met', 'told', 'clue'].includes(c.unlock) && c.title && c.blurb);
 });
 
@@ -290,5 +298,43 @@ test('offline, she answers questions about her life, her people, Maren and the w
     for (const re of res) assert.match(a, re, `"${q}" -> ${a}`);
     assert.ok(!/Kettlewake|Tidewell|Odile|Orrin|\bCal\b|the Isles|arcane ranger|island/i.test(a), `"${q}" never uses the retired canon: ${a}`);
     assert.ok(!/\bI is\b|\bI has\b|the stranger/.test(a), `"${q}" is in her own voice: ${a}`);
+  }
+});
+
+test('offline, she keeps her pride, her secrets and her home; the stranger is "you" in every telling', async () => {
+  const W = generateWorld({ bus: new EventBus(), rng: new RNG(7), flags: {}, time: 0, clock: { t: 300, hour: 8, daylight: 1, weather: { type: 'clear' } }, entities: { list: [], nearest: () => null }, atlas: null, ui: null }, 1337);
+  const { game } = makeGame(W);
+  const ask = async (q) => (await game.brain.handlePlayerMessage(q))?.say || '';
+  const CASES = [
+    // Family words are her family, never "a thing she likes".
+    ['what about your mother?', [/fiercest|nearly blind/], [/\bI love mother\b|mother — yes/i]],
+    ['what about your parents?', [/Lamplight Lane/], []],
+    // Her opinion of the stranger, not a yes or no.
+    ['what do you think of me?', [/wolves/], [/^Yes\./]],
+    // LORE §7: she has never admitted she is afraid of deep water (a deep-bond secret).
+    ['what are you afraid of?', [/Sickbeds/], [/water/i]],
+    ['can you swim?', [/swim/], [/afraid|scares me/i]],
+    // DESIGN §19.7: Hearthvale is her home; the road is a dream, not a door.
+    ['are you going to leave Hearthvale?', [/born here/, /dream/], []],
+    ['would you ever leave the village?', [/born here/], []],
+    // She does not talk about Davin, and keeps the inside of the Cut for a deep bond.
+    ['tell me about Davin', [/don't talk about Davin/], [/first love/]],
+    ['what happened in the Weeping Cut?', [/Bryn/, /Davin/], [/said no, and then yes|made his life small/]],
+    // Told to the player, the stranger is "you".
+    ['what happened on the mountain?', [/you/, /carried you down/], [/\bthem\b|the stranger/]],
+    ['tell me about the long sleep', [/You sleep eighty-one days/, /sits with you/], [/\bthem\b|her turns/]],
+    ['tell me about the wolves', [/You stood beside me/], [/the stranger/]],
+    ['what do you dream of?', [/waystones/], [/the stranger/]],
+    ['why did you take the hearthwatch?', [/stipend/], [/^Here\?/]],
+    // People and places by what the valley knows (LORE §6, §10), not a stranger's shrug.
+    ['who is Varek?', [/bandits|axe/], [/haven't met properly/]],
+    ['tell me about the Sunken Ruins', [/marsh/, /Blue lights/], []],
+    ['tell me about the chapel', [/Thirty-eight family flames/], [/when they kneel/]],
+    ['who is Bryn?', [/Saltmere/], [/saltmere/]],
+  ];
+  for (const [q, want, never] of CASES) {
+    const a = await ask(q);
+    for (const re of want) assert.match(a, re, `"${q}" -> ${a}`);
+    for (const re of never) assert.doesNotMatch(a, re, `"${q}" -> ${a}`);
   }
 });

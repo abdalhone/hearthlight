@@ -480,7 +480,7 @@ export const LINES = {
   ],
   idle_rain: [
     'Rain on the leaves. The forest sounds like it is whispering.',
-    { t: 'If this keeps up Corran can row me home.', trait: 'playful' },
+    { t: 'If this keeps up, Corran will be fishing in the square by supper.', trait: 'playful' },
     { t: 'Rain on leaves... my favorite sound, after rain on roofs.', mood: ['happy', 'calm', 'low'] },
     "My hair's going to be a disaster.",
   ],

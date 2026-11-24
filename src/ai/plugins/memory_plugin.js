@@ -147,7 +147,9 @@ export const memoryPlugin = {
       confidence: 0.85,
       answer(m, ctx) {
         let q = String(m.groups?.q || m[0]).toLowerCase();
-        if (/where|born|from|grow|childhood|youth|hearthvale|home/.test(q) || /where/.test(m[0].toLowerCase())) q = `${q} Hearthvale Lamplight Lane chandlery born`;
+        // Childhood is the old folks' girl on the lamp-round; where she is from is her birth.
+        if (/childhood|youth|growing up/.test(q)) q = `${q} old folks girl lamp-round hives first lamp`;
+        else if (/where|born|from|grow|hearthvale|home/.test(q) || /where/.test(m[0].toLowerCase())) q = `${q} Hearthvale Lamplight Lane chandlery born`;
         if (/magic/.test(q)) q = 'magic lamps Longwatch night violet Maren';
         if (/meet maren|find maren|first lesson/.test(q)) q = 'Maren night of the lamps nightgown apprentice';
         if (/sibling|brother/.test(q)) q = 'Ansel Bee Jem Sabeth sister';
@@ -166,7 +168,7 @@ export const memoryPlugin = {
       ],
       confidence: 0.85,
       answer(m, ctx) {
-        return knowAnswer(ctx, String(m.groups?.q || '').trim());
+        return knowAnswer(ctx, String(m.groups?.q || '').trim(), { define: m.groups?.mode === 'what' });
       },
     },
     {

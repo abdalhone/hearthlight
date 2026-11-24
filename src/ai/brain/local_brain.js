@@ -771,6 +771,9 @@ const HANDLERS = {
       const loc = this.currentLocation();
       return this.line('place_opinion', { place: loc?.name || 'Here', take: this.placeTake(loc) || 'I like it.' });
     }
+    // "What about your mother?": her family, not a thing she likes (LORE §7).
+    if (/^(?:mother|mom|mum|mam|ma|father|dad|da|pa)$/.test(who) && s.verb !== 'know') return this.opinionOf(/^(?:mother|mom|mum|mam|ma)$/.test(who) ? 'wenna' : 'hobb', s.verb, reply);
+    if (/^(?:parents|folks|family|siblings|brothers?|sisters?)$/.test(who)) return HANDLERS['ask.past'].call(this, { topic: 'family' }, clause, reply);
     const id = resolvePerson(this.game, who);
     const key = String(who).split(/\s+/)[0];
     if (id || VILLAGERS[key]) {
@@ -902,7 +905,7 @@ const HANDLERS = {
         return soul.fullName && soul.fullName !== name ? `${soul.fullName}. But ${name} is fine — everyone calls me ${name}.` : `Just ${name}. Short, easy to shout in a fight.`;
       case 'family':
       case 'secret': {
-        const sec = this.revealableSecret(s.topic === 'family' ? /brother|sister|mother|father|family|cal\b/i : null);
+        const sec = this.revealableSecret(s.topic === 'family' ? /brother|sister|mother|father|family/i : null);
         if (sec?.ok) {
           reply.emotion = { name: 'sadness', intensity: 0.4 };
           reply.memories.push({ text: `I told ${this.game.settings?.playerName || 'the traveler'} something I don't tell people: ${bare(toFirstPerson(sec.text))}.`, importance: 8, about: ['player'] });
@@ -924,9 +927,15 @@ const HANDLERS = {
       }
       case 'meet':
         return this.line('meet_story');
-      case 'why':
+      case 'why': {
         // Born here; with the player by her own choice (LORE §7, "This year").
-        return "Here? I was born here. Hearthvale's mine. If you mean here with you: the hearthwatch, the stipend, a second blade for the ruins, and whatever ties you to that ring and to Maren. And you stood with me against the wolves. I noticed.";
+        const reasons = 'the stipend, a second blade for the ruins, whatever ties you to that ring and to Maren, plain curiosity, and a door to close on the Moot\'s questions';
+        if (/hearthwatch|\bkey\b|watching me|with me/.test(clause.core)) return `The Moot needed somebody, and I chose to be it, for my own reasons: ${reasons}. I could hand the key back tomorrow. I haven't.`;
+        return `Here? I was born here. Hearthvale's mine. If you mean here with you: ${reasons}. And you stood with me against the wolves. I noticed.`;
+      }
+      case 'leave':
+        // DESIGN §19.7: Hearthvale is her home; the road to the sea is a dream, never a way out.
+        return "Leave Hearthvale? I was born here. Mam and Da are on Lamplight Lane, and I can hear the Wellstone from the square. One day I'd like to walk the King's Road to the sea, relighting the waystones as I go, and walk home again. That's a dream, not a door.";
       case 'magic':
         return this.line('past_magic');
       case 'likes': {
@@ -936,9 +945,14 @@ const HANDLERS = {
       case 'dislikes':
         return `${capitalize(listJoin((soul.dislikes || []).slice(0, 4)))}. ${/bandit/i.test((soul.dislikes || []).join(' ')) ? 'Bandits most of all — they tend to be all three.' : ''}`.trim();
       case 'fears': {
-        if (/swim/.test(clause.core) && /water/i.test((soul.fears || []).join(' '))) return "Technically. Do I want to? Absolutely not. Deep water and I have an understanding: it stays down there, I stay up here.";
+        // LORE §7: she has never once admitted she is afraid of deep water. It is a secret
+        // she tells only at a deep bond; until then she deflects, and leaves it off the list.
+        const told = bondLevel(this.mind) >= 4;
+        const fears = (soul.fears || ['losing people']).map((f) => bare(toFirstPerson(String(f).replace(/\s*\([^)]*\)/g, ''))));
+        const shown = told ? fears : fears.filter((f) => !/water/i.test(f));
+        if (/swim/.test(clause.core) && fears.some((f) => /water/i.test(f))) return told ? "I can. I don't. Not since the ice. You know why." : "Of course I can swim. I just don't. There's a difference, and I'd thank you not to look into it.";
         reply.emotion = { name: 'fear', intensity: 0.1 };
-        return `${capitalize(listJoin(soul.fears || ['losing people']))}. Don't laugh.`;
+        return `${capitalize(listJoin(shown.slice(0, 4).map(lowerFirst)))}. Don't laugh.`;
       }
       case 'dreams':
         return `${capitalize(listJoin(soul.dreams || ['find Maren']))}. Someday.`;

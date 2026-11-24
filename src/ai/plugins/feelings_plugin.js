@@ -168,7 +168,7 @@ export const feelingsPlugin = {
       patterns: [/\bare (?:you|u) (?:scared|afraid|frightened|nervous|worried)\b/i, /\bwhat (?:are you (?:afraid|scared|frightened) of|scares you|frightens you)\b/i],
       confidence: 0.85,
       answer(m, ctx) {
-        return fearAnswer(ctx);
+        return fearAnswer(ctx, { what: /\bwhat\b/i.test(m.input || m[0] || '') });
       },
     },
     {

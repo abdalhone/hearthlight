@@ -431,7 +431,7 @@ export const LYRA_PEOPLE = {
   wys: {
     name: 'Wys Pike', role: 'watchman', faction: 'guard', call: 'Watchman', years: 20,
     affinity: 25, trust: 45, familiarity: 60, respect: 35, tags: [],
-    opinion: "Wys has had his heart on his sleeve for me since he was twelve. I've been clear. He's been less clear. Since the stranger moved in he's been sour, and I'm letting it pass.",
+    opinion: "Wys has had his heart on his sleeve for me since he was twelve. I've been clear. He's been less clear. Since you moved in he's been sour, and I'm letting it pass.",
     notes: [
       'Joined the watch this spring to fill a dead man\'s place. Man of a house of sisters since he could walk.',
       'Someone plays a flute on the guardhouse roof at night. Everyone says it\'s him.',
@@ -439,6 +439,26 @@ export const LYRA_PEOPLE = {
     ],
     thought: '"Citizen!" ...Yes, Watchman. Hello.',
   },
+};
+
+// People she does not talk about until the bond is deep (LORE §7: Davin "is dead... She has
+// not decided what she feels, and she does not talk about it"). Asked before then, she
+// says this much and no more.
+export const CLOSED_PEOPLE = {
+  davin: {
+    openAtBond: 4,
+    line: "Davin Morrow. Hess's brother. He was killed in the ambush on the King's Road this spring. ...I don't talk about Davin.",
+  },
+};
+
+// Parts of her life she tells only at a deep bond (her secrets, above). Asked sooner, she
+// tells the village's version, which everyone in Hearthvale already knows.
+export const GUARDED_LIFE = {
+  went_into_the_cut: {
+    openAtBond: 3,
+    text: "Five years ago Davin, Bryn and I went into the Weeping Cut without the Moot's leave. It woke around us. Bryn dragged me out, and falling stone crushed her leg; it never came straight. The rest of it is mine.",
+  },
+  davin_dies: { openAtBond: 4, text: CLOSED_PEOPLE.davin.line },
 };
 
 // Maren, who is not in the world but lives in every part of Lyra.
