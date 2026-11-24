@@ -2,7 +2,7 @@
 // Pure helpers: no game state beyond what the caller passes in.
 
 import { VOICES, ALIASES } from './voices.js';
-import { SHORT_NAMES } from './bonds_data.js';
+import { SHORT_NAMES, PEOPLE } from './bonds_data.js';
 import { speakable } from './hidden.js';
 
 export function voiceOf(id) {
@@ -72,6 +72,16 @@ export function names(text, id) {
   return !!re && re.test(String(text || ''));
 }
 
+// Does a line name someone other than the listener (and the speaker)? Lines written for
+// one particular person ("I did not water it, Petra.") are only said to them.
+export function namesOther(text, speakerId, listenerId) {
+  for (const id of PEOPLE) {
+    if (id === listenerId || id === speakerId) continue;
+    if (names(text, id)) return true;
+  }
+  return false;
+}
+
 // Remove a {n} the speaker has no name for, with the comma or full stop around it.
 function dropName(text) {
   return text
@@ -118,7 +128,7 @@ export function varsFor(speakerId, listenerId, extra = {}) {
 
 // Pick and fill a line from a pool, skipping lines that talk about the listener in the
 // third person (unless `direct`: lines written to that listener), and recently said ones.
-export function say(pool, speakerId, listenerId, { rng, vars = null, direct = false, avoid = null, extra = {} } = {}) {
+export function say(pool, speakerId, listenerId, { rng, vars = null, direct = false, onlyFor = false, avoid = null, extra = {} } = {}) {
   if (!Array.isArray(pool) || !pool.length) return null;
   const v = vars || varsFor(speakerId, listenerId, extra);
   const order = pool.length === 1 ? [0] : shuffledIdx(pool.length, rng);
@@ -133,6 +143,7 @@ export function say(pool, speakerId, listenerId, { rng, vars = null, direct = fa
     }
     if (!direct && listenerId && listenerId !== 'player' && names(raw, listenerId)) continue;
     if (listenerId === 'lyra' && /\{lyra\}/.test(raw)) continue;
+    if (onlyFor && namesOther(raw, speakerId, listenerId)) continue;
     // Never tell someone about themselves as "the stranger".
     if (listenerId === 'player' && /\{stranger\}|\{P\}/.test(raw) && !extra.aboutPlayer) continue;
     const out = fill(raw, v);

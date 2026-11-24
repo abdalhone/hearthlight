@@ -264,7 +264,7 @@ export class Village {
     const ctx = this.talkCtx({ a, b });
     let ex;
     if (Array.isArray(opts.lines) && opts.lines.length) ex = { topic: opts.topic || 'own', lines: opts.lines, effects: null };
-    else ex = buildExchange(ctx, a, b, { topic: opts.topic, passing: opts.passing, maxLines: opts.maxLines, playerName: this.game?.settings?.playerName || '' });
+    else ex = buildExchange(ctx, a, b, { topic: opts.topic, passing: opts.passing, continuing: opts.continuing, maxLines: opts.maxLines, playerName: this.game?.settings?.playerName || '' });
     return this.finishExchange(a, b, ex, opts);
   }
 
@@ -342,6 +342,8 @@ export class Village {
     const threat = safe(() => g.entities?.nearest?.(lyra.x, lyra.y, 150, (e) => e.species && alive(e) && (e.faction === 'monster' || e.faction === 'bandit' || e.faction === 'undead' || e.target === lyra)));
     if (threat) return false;
     if (passing) return true;
+    // A proper talk needs her to have stopped somewhere, not be on her way.
+    if (Math.hypot(lyra.moveIntent?.x || 0, lyra.moveIntent?.y || 0) > 0.05) return false;
     const st = safe(() => mind.companionship, 'together') || 'together';
     if (st !== 'together' && st !== 'wary') return true;
     const p = g.player;
@@ -374,7 +376,7 @@ export class Village {
     if (!ex) {
       const first = opts.lyraFirst === false ? otherId : opts.lyraFirst === true || rnd(this.rng()) < 0.55 ? 'lyra' : otherId;
       const second = first === 'lyra' ? otherId : 'lyra';
-      ex = buildExchange(ctx, first, second, { topic: opts.topic, passing: opts.passing, maxLines, playerName: g?.settings?.playerName || '' });
+      ex = buildExchange(ctx, first, second, { topic: opts.topic, passing: opts.passing, continuing: opts.continuing, maxLines, playerName: g?.settings?.playerName || '' });
       if (ex.topic === 'maren' && ctx.avoidTopics.has('maren')) ex = buildExchange(ctx, first, second, { topic: 'howare', maxLines, playerName: '' });
     }
     if (ctx.avoidTopics.has('maren')) ex.lines = ex.lines.filter((l) => !/\bmaren\b/i.test(l.text));
@@ -472,7 +474,9 @@ export class Village {
     const a = this.entity(p.conv.a);
     const b = this.entity(p.conv.b);
     // Someone was knocked down, ran, or walked off: the talk ends there.
-    if (!alive(a) || !alive(b) || dist(a, b) > 96 || a.mode === 'flee' || b.mode === 'flee' || a.mode === 'fight' || b.mode === 'fight') {
+    // (Lyra keeps living her evening while she talks: she may drift a little further.)
+    const reach = p.conv.a === 'lyra' || p.conv.b === 'lyra' ? 150 : 120;
+    if (!alive(a) || !alive(b) || dist(a, b) > reach || a.mode === 'flee' || b.mode === 'flee' || a.mode === 'fight' || b.mode === 'fight') {
       this.stopPlaying();
       return;
     }
@@ -545,6 +549,11 @@ export class Village {
     return dist(e, p) < SEEN;
   }
 
+  // Is a conversation waiting for a quiet moment near the player?
+  wantsSlot() {
+    return this.now() - (this.wantSlotAt ?? -Infinity) < 8 && !this.playing;
+  }
+
   quietNearPlayer() {
     const g = this.game;
     return this.now() - (g?._npcSayAt ?? -Infinity) >= SAY_GAP && !this.playing;
@@ -552,30 +561,37 @@ export class Village {
 
   // Pick two people near each other and let them talk.
   startSomething(t) {
-    const all = this.villagers().filter((e) => this.awake(e) && !this.busyWithPlayer(e));
+    const all = this.villagers().filter((e) => this.awake(e) && !this.busyWithPlayer(e) && !this.isTalking(e));
     if (all.length < 2) return null;
     const cands = [];
     const evening = this.hour() >= 18 && this.hour() < 22.5;
+    const where = new Map();
+    for (const e of all) where.set(e, safe(() => this.game?.locations?.at?.(e.x, e.y)?.id, null));
     for (let i = 0; i < all.length; i++) {
       const a = all[i];
-      if (t - (this.personAt.get(a.id) ?? -Infinity) < 20) continue;
+      if (t - (this.personAt.get(a.id) ?? -Infinity) < 12) continue;
       for (let j = i + 1; j < all.length; j++) {
         const b = all[j];
-        if (t - (this.personAt.get(b.id) ?? -Infinity) < 20) continue;
+        if (t - (this.personAt.get(b.id) ?? -Infinity) < 12) continue;
         const d = dist(a, b);
+        // Close enough to talk: side by side, or under the same roof.
+        const sameRoom = where.get(a) && where.get(a) === where.get(b) && d < 130;
         const social = (a.activity === 'socialize' || a.activity === 'eat') && (b.activity === 'socialize' || b.activity === 'eat');
-        if (d > (social ? 110 : NEAR)) continue;
+        if (d > NEAR && !sameRoom && !(social && d < 110)) continue;
         const since = t - (this.pairAt.get(pairKey(a.id, b.id)) ?? -Infinity);
         if (since < HOUR * 1.5) continue;
         const fam = this.bond(a.id, b.id)?.familiarity ?? 30;
         let w = 0.5 + fam / 100;
-        if (social) w += evening ? 1.2 : 0.6;
+        if (social || sameRoom) w += evening ? 1.2 : 0.6;
         if (this.isFamily(a.id, b.id)) w += 0.6;
         if (this.rumors.tellable(a.id, b.id, t).length || this.rumors.tellable(b.id, a.id, t).length) w += 0.8;
         cands.push([a, b, w]);
       }
     }
-    if (!cands.length) return null;
+    if (!cands.length) {
+      this.nextAt = Math.min(this.nextAt, t + 3);
+      return null;
+    }
     // Weighted order; a pair the player can see waits for a quiet moment, and someone
     // else in the village talks instead.
     const order = [];
@@ -607,7 +623,12 @@ export class Village {
   talkPair(a, b, { topic = null } = {}) {
     const seen = this.onScreen(a) || this.onScreen(b);
     if (seen) {
-      if (!this.quietNearPlayer()) return null;
+      if (!this.quietNearPlayer()) {
+        // Ask the villagers' lone lines to leave the next quiet moment to a conversation.
+        this.wantSlotAt = this.now();
+        return null;
+      }
+      this.wantSlotAt = -Infinity;
       const passing = !this.stationary(a) || !this.stationary(b);
       if (!passing && this.ambientClaudeOk()) return this.ambientClaude(a, b);
       return this.converse(a.id, b.id, { onScreen: true, passing, topic });
@@ -1174,7 +1195,7 @@ export class Village {
     if (!c) return null;
     const a = this.entity(c.a);
     const b = this.entity(c.b);
-    if (!alive(a) || !alive(b) || dist(a, b) > 90) return null;
+    if (!alive(a) || !alive(b) || dist(a, b) > 130) return null;
     if (dist(a, p) > SEEN && dist(b, p) > SEEN) return null;
     return { id: c.id, a: c.a, b: c.b, topic: c.topic, summary: c.summary };
   }
@@ -1208,14 +1229,15 @@ export class Village {
   localListen(aId, bId) {
     if (aId === 'lyra' || bId === 'lyra') {
       const other = aId === 'lyra' ? bId : aId;
-      const first = this.lyraConverse(other, { onScreen: false, maxLines: 4 });
-      const second = this.lyraConverse(other, { onScreen: false, maxLines: 4, lyraFirst: false });
+      const first = this.lyraConverse(other, { onScreen: false, maxLines: 4, continuing: true });
+      const second = this.lyraConverse(other, { onScreen: false, maxLines: 4, lyraFirst: false, continuing: true });
       return mergeConvs(first, second, this);
     }
     const ctx = this.talkCtx({ a: aId, b: bId });
     const t1 = chooseTopic(ctx, bId, aId);
-    const first = this.converse(bId, aId, { topic: t1, onScreen: false, maxLines: 4 });
-    const second = this.converse(aId, bId, { onScreen: false, maxLines: 4 });
+    const first = this.converse(bId, aId, { topic: t1, onScreen: false, maxLines: 4, continuing: true });
+    this.pairAt.delete(pairKey(aId, bId));
+    const second = this.converse(aId, bId, { onScreen: false, maxLines: 4, continuing: true });
     return mergeConvs(first, second, this);
   }
 
@@ -1269,7 +1291,7 @@ export class Village {
     this.askClaude(provider, VILLAGER_RULES, buildListenTask(this.listenBrief(a.id, b.id, conv)), LINES_SCHEMA, 'ambient')
       .then((r) => {
         const lines = coerceLines(r, [a.id, b.id], { min: 2, max: 6 });
-        if (!lines || !this.awake(a) || !this.awake(b) || dist(a, b) > 96 || this.playing) return;
+        if (!lines || !this.awake(a) || !this.awake(b) || dist(a, b) > 120 || this.playing) return;
         const c = this.converse(a.id, b.id, { lines, onScreen: this.onScreen(a) || this.onScreen(b), source: 'claude' });
         return c;
       })
@@ -1312,10 +1334,13 @@ export class Village {
     // Fallings out and warm moments.
     const notable = today.filter((c) => c.a !== 'lyra' && c.b !== 'lyra' && c.topic !== 'small' && c.topic !== 'rumor');
     const scenes = notable.filter((c) => scenesFor(c.a, c.b).length);
-    for (const c of [...scenes, ...notable].slice(0, 3)) {
-      if (out.includes(c.summary)) continue;
+    const pairs = new Set();
+    for (const c of [...scenes, ...notable]) {
+      const k = pairKey(c.a, c.b);
+      if (pairs.has(k) || out.includes(c.summary)) continue;
+      pairs.add(k);
       out.push(c.summary);
-      if (out.length >= 5) break;
+      if (out.length >= 5 || pairs.size >= 3) break;
     }
     const bar = this.barred('ember_kettle');
     if (bar) out.push(`${bar.by === 'elda' ? 'Elda' : 'The watch'} won't have you at the Ember Kettle for ${bar.daysLeft >= 1.5 ? 'a couple of days' : 'a day or so'}.`);

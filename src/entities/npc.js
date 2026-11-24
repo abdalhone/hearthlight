@@ -1003,7 +1003,7 @@ export class NPC extends Actor {
       return;
     }
     // Word about Lyra when she is not with the player (once a day each).
-    if (dp < 80 && this._aboutLyraDay !== day && !quiet && rand(g) < 0.3) {
+    if (dp < 80 && this._aboutLyraDay !== day && !quiet && !village?.wantsSlot?.() && rand(g) < 0.3) {
       const l = D.aboutLyraLine(this);
       if (l) {
         this._aboutLyraDay = day;
@@ -1016,8 +1016,10 @@ export class NPC extends Actor {
     // through the village (both voices, their bond, their news); a lone line otherwise.
     if (dp < 130 && t - this.ambientAt > 40 + this.jitter * 30 && !quiet && this.visibleToPlayer(0)) {
       this.ambientAt = t;
-      const other = this.activity === 'socialize' || this.activity === 'eat' || this.activity === 'work' ? this.nearestPerson(48, true) : null;
-      if (other && rand(g) < 0.7 && this.chatWith(other)) return;
+      const other = this.nearestPerson(48, true);
+      if (other && rand(g) < 0.8 && this.chatWith(other)) return;
+      // A conversation is waiting for this quiet moment: leave it to them.
+      if (village?.wantsSlot?.()) return;
       g._npcSayAt = t;
       const k = g.clock?.weather?.type === 'rain' ? 'rain' : g.clock?.isNight ? 'night' : 'day';
       const tone = D.dialogueTone(this, p);

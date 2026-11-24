@@ -154,7 +154,7 @@ function greetBack(ctx, b, a, extra) {
   if (!v) return null;
   const tag = mainTag(ctx.bond(b, a));
   if (tag && v.as?.[tag]?.length && rnd(ctx.rng) < 0.5) {
-    const l = say(v.as[tag], b, a, { rng: ctx.rng, direct: true, avoid: ctx.recent, extra });
+    const l = say(v.as[tag], b, a, { rng: ctx.rng, direct: true, onlyFor: true, avoid: ctx.recent, extra });
     if (l) return l;
   }
   return helloBack(ctx, b, a, extra);
@@ -212,14 +212,15 @@ export function buildExchange(ctx, a, b, opts = {}) {
   }
   const va = voiceOf(a);
   const vb = voiceOf(b);
-  push(line(a, opener(ctx, a, b, extra)));
+  // Carrying on a talk already going: no second hello.
+  if (!opts.continuing) push(line(a, opener(ctx, a, b, extra)));
   let rumor = null;
   if (topic === 'rumor') {
     rumor = opts.rumor || ctx.tellable?.(a, b)?.[0] || null;
     const clause = rumor ? ctx.renderRumor?.(rumor, a) : null;
     const tell = clause ? say(va?.rumor?.tell, a, b, { rng, vars: { ...varsFor(a, b, extra), rumor: clause } }) : null;
     if (tell) {
-      push(line(b, rnd(rng) < 0.5 ? greetBack(ctx, b, a, extra) : null));
+      if (!opts.continuing) push(line(b, rnd(rng) < 0.5 ? greetBack(ctx, b, a, extra) : null));
       push(line(a, tell));
       const trust = ctx.bond(b, a)?.trust ?? 50;
       const kind = trust < 40 && rnd(rng) < 0.6 ? 'doubt' : rumor.valence > 0.15 ? 'good' : rumor.valence < -0.15 ? 'bad' : rnd(rng) < 0.5 ? 'doubt' : 'good';
@@ -245,7 +246,7 @@ export function buildExchange(ctx, a, b, opts = {}) {
     const pool = topicPool(a, topic, { weather: weatherKey(ctx), stance: ctx.stance?.(a) });
     const said = say(pool, a, b, { rng, avoid: ctx.recent, extra });
     if (said) {
-      if (rnd(rng) < 0.6) push(line(b, greetBack(ctx, b, a, extra)));
+      if (!opts.continuing && rnd(rng) < 0.6) push(line(b, greetBack(ctx, b, a, extra)));
       push(line(a, said));
       push(line(b, answer(ctx, b, a, { topic, extra })));
       if (lines.length < maxLines - 1 && rnd(rng) < 0.4) push(line(a, answer(ctx, a, b, { extra })));
