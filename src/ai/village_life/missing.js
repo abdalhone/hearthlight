@@ -92,7 +92,11 @@ export class Cases {
       return same;
     }
     c.reports.push({ public: false, ...r });
-    if (c.reports.length > REPORTS_CAP) c.reports.splice(0, c.reports.length - REPORTS_CAP);
+    while (c.reports.length > REPORTS_CAP) {
+      // Real sightings outlast everything else.
+      const i = c.reports.findIndex((x) => x.kind !== 'seen' && x.kind !== 'player');
+      c.reports.splice(i >= 0 ? i : 0, 1);
+    }
     return c.reports[c.reports.length - 1];
   }
 

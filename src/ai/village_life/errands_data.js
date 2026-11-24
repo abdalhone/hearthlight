@@ -546,26 +546,28 @@ export const MORNING_GOODS = {
 
 // Who minds whose work once someone is missing (schedules adapt).
 export const COVER = {
-  garrick: { by: 'alder', at: 'general_store', hours: [8, 17], doing: "minding Gale's Goods while Garrick is missing" },
-  bram: { by: 'tilly', at: 'smithy', hours: [6, 17.5], doing: 'keeping the forge lit while Bram is missing' },
-  elda: { by: 'sabeth', at: 'ember_kettle', hours: [7, 20], doing: 'keeping the Kettle while Elda is missing' },
-  mira: { by: 'aveline', at: 'herbalist', hours: [8, 12], doing: "minding Mira's shelves while she is missing" },
-  tobias: { by: 'tansy', at: 'reed_farm', hours: [6, 17], doing: 'doing her da’s work as well as her own' },
-  aveline: { by: 'petra', at: 'chapel', hours: [11, 16], doing: 'tending the flames while Aveline is missing' },
-  rowan: { by: 'wys', at: 'guardhouse', hours: [6, 9], doing: 'keeping the watch alone' },
-  wys: { by: 'rowan', at: 'town_square', hours: [7, 12], doing: "walking Pike's rounds himself" },
-  hobb: { by: 'wys', at: 'town_square', hours: [17.5, 19.5], doing: "lighting Hobb's lamps" },
-  wenna: { by: 'hobb', at: 'wenna_hives', hours: [8, 10], doing: "minding Wenna's hives, badly" },
-  tansy: { by: 'tobias', at: 'reed_farm', hours: [5, 7], doing: "feeding Tansy's hens" },
-  hess: { by: 'wys', at: 'kings_road', hours: [8, 11], doing: "walking Hess's road himself" },
-  sabeth: { by: 'hess', at: 'dye_cottage', hours: [8, 11], doing: 'stirring the vats, wrongly' },
-  alder: { by: 'petra', at: 'ashby_house', hours: [8, 12], doing: "keeping Alder's ledger, in her own way" },
+  garrick: { by: 'alder', at: 'general_store', hours: [8, 17], doing: "minding Gale's Goods while Garrick is missing", say: ['As Reeve, I am minding the shop. I do not know what anything costs. Ahem.', "Garrick's ledger is… creative. I am keeping it straight until he comes back."] },
+  bram: { by: 'tilly', at: 'smithy', hours: [6, 17.5], doing: 'keeping the forge lit while Bram is missing', say: ["Forge stays lit. He'd want it lit.", "Hinges, nails, ferrules. Same as if he were here. He's not here."] },
+  elda: { by: 'sabeth', at: 'ember_kettle', hours: [7, 20], doing: 'keeping the Kettle while Elda is missing', say: ["Kettle's open. Sit. That's what she'd say.", "I can't cook like her. Nobody's complained. Nobody's eating much."] },
+  mira: { by: 'aveline', at: 'herbalist', hours: [8, 12], doing: "minding Mira's shelves while she is missing", say: ['I know the old names of these, child. Not the prices.'] },
+  tobias: { by: 'tansy', at: 'reed_farm', hours: [6, 17], doing: 'doing her da’s work as well as her own', say: ["Da's field and my hens. Fine. FINE."] },
+  aveline: { by: 'petra', at: 'chapel', hours: [11, 16], doing: 'tending the flames while Aveline is missing', say: ["Somebody has to keep the flames, duckling. I'm old, not useless."] },
+  rowan: { by: 'wys', at: 'guardhouse', hours: [6, 9], doing: 'keeping the watch alone', say: ['On duty. Alone. Very alert. Very.'] },
+  wys: { by: 'rowan', at: 'town_square', hours: [7, 12], doing: "walking Pike's rounds himself", say: ["Pike's round. I'll walk it."] },
+  hobb: { by: 'wys', at: 'town_square', hours: [17.5, 19.5], doing: "lighting Hobb's lamps", say: ["Hobb's lamps. I'll light them. I hope I'm doing it right."] },
+  wenna: { by: 'hobb', at: 'wenna_hives', hours: [8, 10], doing: "minding Wenna's hives, badly", say: ["Well now. Her bees don't know me. They're learning."] },
+  tansy: { by: 'tobias', at: 'reed_farm', hours: [5, 7], doing: "feeding Tansy's hens", say: ['Oh dear. They know I’m not her.'] },
+  hess: { by: 'wys', at: 'kings_road', hours: [8, 11], doing: "walking Hess's road himself", say: ['Her road. I can read tracks. Some of them.'] },
+  sabeth: { by: 'hess', at: 'dye_cottage', hours: [8, 11], doing: 'stirring the vats, wrongly', say: ["Mm. Her vats. I'm stirring. Wrongly."] },
+  alder: { by: 'petra', at: 'ashby_house', hours: [8, 12], doing: "keeping Alder's ledger, in her own way", say: ["My son's ledger. I'm improving it."] },
 };
 
 // Places worth searching outside the houses, nearest first from the square (never past
 // the ward: nobody goes outside it alone).
 export const OUTSKIRTS = ['whisperwood', 'wenna_hives', 'mirror_lake', 'south_meadow', 'reed_farm', 'stonecut_quarry', 'kings_road'];
 export const BEYOND_WARD = new Set(['bandit_camp', 'sunken_ruins', 'wilds']);
+// Busy places nobody needs to search: if they were there, someone would have seen them.
+export const PUBLIC = new Set(['ember_kettle', 'town_square', 'hearthvale']);
 
 // Who the watch is, in order of who takes charge.
 export const WATCH = ['rowan', 'wys'];

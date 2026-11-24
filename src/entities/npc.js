@@ -1829,14 +1829,7 @@ export class NPC extends Actor {
       g._npcSayAt = t;
       const k = g.clock?.weather?.type === 'rain' ? 'rain' : g.clock?.isNight ? 'night' : 'day';
       const tone = D.dialogueTone(this, p);
-      // Someone missing or a day gone wrong comes before small talk (DESIGN §28).
-      let life = null;
-      try {
-        life = g.villageLife?.ambientLine?.(this) || null;
-      } catch {
-        life = null;
-      }
-      const l = life || (tone === 'cold' || tone === 'wronged' ? null : pickLine(g, this.profile.lines?.[k] || this.profile.lines?.day));
+      const l = tone === 'cold' || tone === 'wronged' ? null : pickLine(g, this.profile.lines?.[k] || this.profile.lines?.day);
       if (l) this.say(l);
     }
   }

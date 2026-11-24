@@ -68,7 +68,8 @@ export function fillLine(template, speaker, vars = {}) {
     .replace(/\s{2,}/g, ' ')
     .trim();
   s = cap(s);
-  // "The square's never shut" — places open a sentence capitalised.
+  // A filled-in phrase that starts a sentence starts with a capital ("Oh, this morning. At the Kettle.").
+  s = s.replace(/([.!?]["”’]?\s+)([a-z])/g, (m, a, b) => a + b.toUpperCase());
   if (!speakable(s)) return null;
   return s;
 }

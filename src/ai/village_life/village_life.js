@@ -27,8 +27,7 @@ import { Cases, Absences } from './missing.js';
 import { searchLeader, searchPlaces, chooseSearchers, SEARCH_SECONDS } from './search.js';
 import { lifeLine, thoughtLine, fillLine, linesFor } from './voice.js';
 import { VILLAGERS, SHORT_NAMES } from '../social/bonds_data.js';
-import { thirdName } from '../social/lines.js';
-import { voiceOf } from '../social/lines.js';
+import { thirdName, callName, voiceOf } from '../social/lines.js';
 import { profileById } from '../../entities/npc_data.js';
 import { TILE } from '../../core/constants.js';
 
@@ -483,6 +482,28 @@ export class VillageLife {
       safe(() => this.checkClaims());
     }
     safe(() => this.icons());
+    safe(() => this.murmur());
+  }
+
+  // Now and then, someone near the player says what is on their mind: a worry, a grief,
+  // the shop they are minding. One line at a time, never over other talk.
+  murmur() {
+    const g = this.game;
+    const p = g?.player;
+    if (!p) return;
+    const rt = this.rt();
+    if (rt - (this.murmurAt ?? -Infinity) < 14) return;
+    if (this.now() - (g._npcSayAt ?? -Infinity) < 6 || safe(() => this.village?.playing, null)) return;
+    for (const e of this.villagers()) {
+      if (dist(e, p) > 140 || !this.free(e) || !this.visible(e) || this.steps.get(e.id)?.phase === 'talk') continue;
+      if (rt - (this.murmured?.get(e.id) ?? -Infinity) < 50) continue;
+      const line = this.ambientLine(e);
+      if (!line) continue;
+      (this.murmured ||= new Map()).set(e.id, rt);
+      this.murmurAt = rt;
+      this.sayAloud(e, line);
+      return;
+    }
   }
 
   // Who the village is looking for right now (cheap filter for each fresh sighting).
@@ -720,7 +741,7 @@ export class VillageLife {
     const onScreen = !!v && (safe(() => v.onScreen?.(a), false) || safe(() => v.onScreen?.(b), false));
     let conv = null;
     if (v?.converse && clean.length && (VILLAGERS.includes(a.id) || a.id === 'lyra') && (VILLAGERS.includes(b.id) || b.id === 'lyra')) {
-      conv = safe(() => v.converse(a.id, b.id, { lines: clean.map(([speaker, text]) => ({ speaker, text })), topic, onScreen, source: 'village_life' }));
+      conv = safe(() => v.converse(a.id, b.id, { lines: clean.map(([speaker, text]) => ({ speaker, text })), topic, onScreen, source: 'village_life', summary }));
       if (conv && summary) conv.summary = summary;
     } else {
       // No village to play it: each says their line in turn.
@@ -988,10 +1009,7 @@ export class VillageLife {
     (prob.checkedAt ||= {})[step.place] = t;
     if (prob.about && this.findsHere(e, prob.about)) return this.problemFound(prob, e, this.entity(prob.about));
     const c = prob.about ? this.cases.get(prob.about) : null;
-    if (c) {
-      this.cases.report(c, { by: e.id, kind: 'checked', place: step.place, t });
-      c.searched[step.place] ||= { by: e.id, t: Math.round(t) };
-    }
+    if (c) c.searched[step.place] ||= { by: e.id, t: Math.round(t) };
     this.sayAloud(e, this.line(e.id, 'nothing', { about: prob.about }));
     prob.due = t + BEAT;
   }
@@ -1033,7 +1051,6 @@ export class VillageLife {
     if (c) {
       c.searched[step.place] = { by: e.id, t: Math.round(t) };
       if (c.searchers) delete c.searchers[e.id];
-      this.cases.report(c, { by: e.id, kind: 'checked', place: step.place, t });
       this.cases.note(c, t, `${this.name(e.id)} searched ${placePhrase(step.place, this.placeName(step.place))}: nothing.`, 'search');
     }
     const prob = step.prob ? this.problemById(step.prob) : null;
@@ -1463,7 +1480,7 @@ export class VillageLife {
         .slice(0, 2)
         .map(([id, place]) => {
           const list = linesFor(leader, 'watchAssign') || ['{a}: {place}.'];
-          return fillLine(list[Math.floor(this.rng()() * list.length)], leader, { a: this.nameFor(leader, id), place: placePhrase(place, this.placeName(place)) });
+          return fillLine(list[Math.floor(this.rng()() * list.length)], leader, { a: callName(leader, id) || this.name(id), place: placePhrase(place, this.placeName(place)) });
         })
         .filter(Boolean)
         .join(' ');
@@ -1821,6 +1838,12 @@ export class VillageLife {
     const id = npc?.id;
     if (!id) return null;
     const r = this.rng()();
+    // Minding someone else's work.
+    const vl = String(npc.r?.entry?.vl || '');
+    if (vl.startsWith('cover-') && r < 0.6) {
+      const cov = COVER[vl.slice(6)];
+      if (cov?.say?.length) return cov.say[Math.floor(this.rng()() * cov.say.length)];
+    }
     const prob = this.openProblem(id);
     if (prob?.about && r < 0.6) return this.line(id, prob.kind === 'worried' ? 'worry' : 'absent', { about: prob.about, shop: prob.shop });
     const m = this.mourning[id];
@@ -2144,7 +2167,7 @@ export class VillageLife {
     }
     const cases = this.cases
       .all()
-      .filter((c) => c.status !== 'noticed' || c.noticers.length >= 2)
+      .filter((c) => c.rumor || c.alarmAt != null || c.status === 'missing' || c.status === 'dead' || c.foundRumor)
       .filter((c) => !(c.status === 'found' && t - (c.foundAt ?? 0) > 900))
       .map((c) => {
         const last = this.cases.lastKnown(c);
@@ -2156,7 +2179,7 @@ export class VillageLife {
           lastSeen: last ? `${whenPhrase(last.t, t)}, ${placeAt(last.place, this.placeName(last.place))}${last.by && last.by !== 'player' ? ` (${this.name(last.by)} saw ${pronoun(c.about, 'him')})` : ''}` : null,
           searching: Object.entries(c.searchers || {}).map(([id, p]) => ({ id, name: this.name(id), place: this.placeName(p) })),
           searched: Object.keys(c.searched || {}).map((p) => this.placeName(p)),
-          timeline: c.timeline.slice(-14).map((x) => ({ time: clockText(x.t), text: x.text, kind: x.kind })),
+          timeline: storyOf(c.timeline).map((x) => ({ time: clockText(x.t), text: x.text, kind: x.kind })),
         };
       });
     const events = this.events
@@ -2239,6 +2262,15 @@ export class VillageLife {
     const c = this.cases.get(about);
     return c ? c.timeline.map((x) => `${clockText(x.t)}  ${x.text}`) : [];
   }
+}
+
+// The case as a story: every turning point, and the latest of the asking and searching.
+const TURNS = new Set(['notice', 'alarm', 'search', 'missing', 'found', 'dead', 'claim', 'lie']);
+function storyOf(timeline, max = 18) {
+  const turns = timeline.filter((x) => TURNS.has(x.kind) && !/: nothing\.$/.test(x.text));
+  const rest = timeline.filter((x) => !turns.includes(x));
+  const keep = new Set([...turns.slice(-12), ...rest.slice(-Math.max(4, max - Math.min(12, turns.length)))]);
+  return timeline.filter((x) => keep.has(x));
 }
 
 function activityText(activity, place) {

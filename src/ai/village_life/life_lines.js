@@ -14,7 +14,7 @@
 
 export const ANY = {
   absent: ['Nobody here. Odd.', "{who}'s not here. That's not like {him}."],
-  shut: ["Shut? {shop}'s never shut at this hour.", "{shop}, shut, in the middle of the day?"],
+  shut: ['Shut? {shop} is never shut at this hour.', '{shop}, shut, in the middle of the day?'],
   wait: ["I'll give {him} a minute.", "{He}'ll be back. Surely."],
   ask: ['{n}, have you seen {who}?', 'Have you seen {who} today, {n}?'],
   askPlayer: ['Have you seen {who}? Nobody can find {him}.', "You haven't seen {who}, have you?"],
@@ -53,7 +53,7 @@ export const ANY = {
 export const LIFE = {
   hobb: {
     absent: ["Well now. Nobody minding the shop.", "Well now. Where's {who} got to?"],
-    shut: ["Well now. {shop}, shut? At this hour?", "Shut. Well now. Forty years, and {shop}'s never shut on me."],
+    shut: ['Well now. {shop}, shut? At this hour?', 'Shut. Well now. Forty years, and {shop} has never once been shut on me.'],
     wait: ["I'll wait a while. I'm good at waiting. Ask Wenna."],
     ask: ["Well now, {n}. You've not seen {who} about?", "{n}. Seen {who} today? My eyes aren't what they were."],
     seen: ["{who}? {When}, {at}. Walking like a man with somewhere to be.", "Saw {him} {when}, {at}. Or someone in {his} coat."],
@@ -93,7 +93,7 @@ export const LIFE = {
     absent: ["Oh, where's {he} got to?", "Not here? Oh, love."],
     shut: ['{shop}, shut? At this hour? Oh, that\'s not right.'],
     wait: ["I'll give {him} a minute. Kettle'll keep."],
-    ask: ["Love, have you seen {who}? Don't tell {him} I asked.", "{n}, love. Have you seen {who} today?"],
+    ask: ["Love, have you seen {who}? Don't tell {him} I asked.", '{n}. Have you seen {who} today?'],
     seen: ['{When}, love, {at}. Why?', "Oh, {when}. {at}. Is something wrong?"],
     seenWith: ['{When}, love, {at}. With {with}. Why do you ask?'],
     heard: ["{from} told me {he} was {at}, {when}. Don't tell {from} I told you."],
@@ -159,8 +159,8 @@ export const LIFE = {
     thanks: ['Noted.'],
     worry: ["{who}'s been missing since {when}. I don't like it.", "Still nothing of {who}."],
     alarm: ['Pike. {who}\'s not been seen since {when}.'],
-    watchStart: ["Right. We look for {who}. Pike, Morrow, with me. Volunteers to the square.", 'Search for {who}. Now. Everyone who can walk.'],
-    watchAssign: ['{a}: {place}.', '{a} — take {place}.'],
+    watchStart: ['Right. We look for {who}. Everyone who can walk.', 'Search for {who}. Now. Every hedge in the bell-reach.'],
+    watchAssign: ['{a}: {place}.', '{a}, take {place}.'],
     search: ['{WHO}! Answer the watch!', '{who}! Can you hear me?'],
     found: ['There you are. Report. Where were you?'],
     relief: ["{who}'s found. Stand the search down."],

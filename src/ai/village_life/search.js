@@ -4,7 +4,7 @@
 // Nobody is sent past the ward, children are not sent out after dark, and the frail ask
 // and wait rather than search.
 
-import { OUTSKIRTS, BEYOND_WARD, WATCH, TRACKERS, NO_SEARCH, CHILDREN } from './errands_data.js';
+import { OUTSKIRTS, BEYOND_WARD, PUBLIC, WATCH, TRACKERS, NO_SEARCH, CHILDREN } from './errands_data.js';
 
 export const SEARCH_SECONDS = 24; // clock seconds spent searching one place (about 40 game minutes)
 export const MAX_SEARCHERS = 5;
@@ -25,7 +25,7 @@ export function searchPlaces(life, kase) {
   const out = [];
   const seen = new Set(Object.keys(kase.searched || {}));
   const add = (id) => {
-    if (!id || seen.has(id) || BEYOND_WARD.has(id) || id === 'hearthvale') return;
+    if (!id || seen.has(id) || BEYOND_WARD.has(id) || PUBLIC.has(id)) return;
     if (!life.game?.locations?.get?.(id)) return;
     seen.add(id);
     out.push(id);

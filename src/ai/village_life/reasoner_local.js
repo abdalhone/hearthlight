@@ -73,7 +73,7 @@ export function decideLocal(I, { rng = Math.random, say = () => '', think = () =
   }
 
   // Back to where they should have been: they may be there by now.
-  if (I.origin && I.origin !== I.here && I.originAgo >= 0.6 && I.kind !== 'worried' && I.steps >= 2) {
+  if (I.origin && I.origin !== I.here && I.originAgo >= 0.6 && I.kind !== 'worried' && I.steps >= 2 && (I.backs ?? 0) < 2 && !I.caseSearching) {
     return out('go', I.origin, 'goBack', null, { place: I.originName, placeId: I.origin });
   }
 
@@ -83,7 +83,7 @@ export function decideLocal(I, { rng = Math.random, say = () => '', think = () =
   // The watch is already searching: those who love them join in; others leave it to the watch.
   if (I.caseSearching && !I.isWatch) {
     if (care >= 0.6 && (I.options || []).includes('search')) {
-      const p = (I.places || []).find((x) => !x.checked && !x.origin);
+      const p = (I.places || []).find((x) => !x.checked && !x.origin && !x.public);
       if (p) return out('search', p.id, I.joined ? 'search' : 'joined', null, placeVars(p));
     }
     if (asked.size >= 1 || I.steps >= 3) return out('give_up', null, 'giveUp', 'giveUp', {});
@@ -117,7 +117,7 @@ export function decideLocal(I, { rng = Math.random, say = () => '', think = () =
 
   // Go and look properly, if they matter to you.
   if (worried && (I.options || []).includes('search')) {
-    const p = (I.places || []).find((x) => !x.checked && !x.origin);
+    const p = (I.places || []).find((x) => !x.checked && !x.origin && !x.public);
     if (p) return out('search', p.id, 'search', null, placeVars(p));
   }
   if (!I.watchKnows && (worried || I.elapsedH >= 3)) return out('alarm', null, 'alarm', null, { when: I.ownSeen?.when || 'this morning' });

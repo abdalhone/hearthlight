@@ -5,7 +5,7 @@
 // turns that into the compact picture both reasoners decide from.
 
 import { habitAt } from './errands.js';
-import { OUTSKIRTS, BEYOND_WARD, WATCH, CHILDREN, NO_SEARCH } from './errands_data.js';
+import { OUTSKIRTS, BEYOND_WARD, PUBLIC, WATCH, CHILDREN, NO_SEARCH } from './errands_data.js';
 import { FAMILY_TAGS } from '../social/bonds_data.js';
 
 export const ACTIONS = ['go', 'ask', 'search', 'wait', 'alarm', 'give_up', 'tell_lyra'];
@@ -139,7 +139,7 @@ export function placeCandidates(life, prob, { max = 7 } = {}) {
     if (!id || seen.has(id) || BEYOND_WARD.has(id) || id === 'hearthvale') return;
     seen.add(id);
     if (!life.game?.locations?.get?.(id)) return;
-    out.push({ id, name: life.placeName(id), why, checked: checked.has(id) });
+    out.push({ id, name: life.placeName(id), why, checked: checked.has(id), public: PUBLIC.has(id) });
   };
   // Where they were meant to be, when it has been a while: they may be back.
   if (prob.place && t - (prob.checkedAt?.[prob.place] ?? prob.since) > 0.6 * HOUR) {
@@ -265,6 +265,7 @@ export function buildInput(life, prob) {
     child: CHILDREN.has(prob.owner),
     night,
     joined: prob.history.some((h) => h.action === 'search'),
+    backs: prob.history.filter((h) => h.action === 'go' && h.target === prob.place).length,
     lyraNear: !!(lyra && npc && Math.hypot(lyra.x - npc.x, lyra.y - npc.y) < 160),
     lyraAsked: prob.asked.includes('lyra'),
     belief: prob.belief,
