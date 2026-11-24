@@ -343,6 +343,7 @@ test('offline, she keeps her pride, her secrets and her home; the stranger is "y
 test('every story text she may tell reads right in her mouth: Lyra is I, the stranger is you (story.js header)', () => {
   for (const kind of ['world', 'timeline', 'places', 'people']) {
     for (const e of STORY[kind]) {
+      assert.ok(e.text.length <= 240, `${kind}:${e.id} fits her knowledge whole (${e.text.length} > 240)`);
       const said = toListener(firstPerson(e.text, 'Lyra'), { aboutPlayer: (e.tags || []).includes('player') });
       assert.doesNotMatch(said, /\bme (?!included\b)(?:[a-z]+ed|came|went|took|saw|heard|paid|made|can|could|will|would|lights?)\b|\bI (?:as|a)\b/, `${kind}:${e.id} -> ${said}`);
       assert.doesNotMatch(said, /\bthe stranger\b/i, `${kind}:${e.id} -> ${said}`);
