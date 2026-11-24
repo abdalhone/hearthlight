@@ -4837,3 +4837,15 @@ input[type='range']::-moz-range-thumb {
 .toast.deferred {
   display: none;
 }
+.people-sub {
+  margin: 14px 0 4px;
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--parch-dim);
+}
+.rumor-list li::before {
+  margin-right: 2px;
+}

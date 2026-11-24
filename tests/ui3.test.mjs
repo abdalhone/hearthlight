@@ -312,7 +312,7 @@ test("her worth-it judgment as a clear breakdown of what staying gives and costs
     ["You're the best thread to Maren I have.", 'the hearthwatch wage'],
   );
   assert.equal(v.gives[0].quote, true, 'her own words are quoted');
-  assert.equal(v.gives[1].quote, false);
+  assert.equal(v.gives[1].quote, false, 'a bare label is not');
   assert.deepEqual(
     v.costs.map((r) => r.text),
     ['You pushed after I said no.', 'time away from Mam and Da'],

@@ -479,7 +479,8 @@ export function readWorth(mind) {
   return w && typeof w === 'object' ? w : null;
 }
 
-const FIRST_PERSON = /\b(I|I'm|I've|I'd|me|my|mine|myself)\b/;
+// Spoken words (to or about herself) are quoted; bare labels are not.
+const FIRST_PERSON = /\b(I|I'm|I've|I'd|me|my|mine|myself|you|your|you're|you've)\b/i;
 
 // A clear breakdown: what staying gives her, what it costs her, and the balance.
 export function worthView(w) {
