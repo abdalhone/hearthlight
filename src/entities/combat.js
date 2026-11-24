@@ -472,6 +472,7 @@ export class Combat {
     const endOfDay = (Math.floor(now / DAY_SECONDS) + 1) * DAY_SECONDS;
     const until = kind === 'knockout' ? Math.max(endOfDay, now + ASSAULT_SECONDS) : now + ASSAULT_SECONDS;
     const prev = this.hasCrime(actor) ? actor.crime : null;
+    const escalated = !prev || level > prev.level;
     if (prev) {
       if (level >= prev.level) {
         prev.level = level;
@@ -480,18 +481,10 @@ export class Combat {
       prev.until = Math.max(prev.until, until);
       prev.victimId = victim.id ?? null;
       prev.t = now;
-      return;
+    } else {
+      actor.crime = { level, kind, until, victimId: victim.id ?? null, since: now, t: now };
     }
-    actor.crime = { level, kind, until, victimId: victim.id ?? null, since: now, t: now };
-    if (this.isPlayer(actor)) {
-      const who = shortName(victim.name);
-      this._toast(
-        kind === 'knockout'
-          ? `You knocked ${who} out cold. The guard will be after you until the day is done.`
-          : `You struck ${who}. The guard will be after you for a while.`,
-        'warn',
-      );
-    }
+    if (escalated && this.isPlayer(actor)) this._toast(crimeLine(victim, kind), 'warn');
   }
 
   // One 'crime' event per victim and kind in CRIME_EVENT_GAP seconds, not one per hit.
@@ -847,6 +840,14 @@ export class Combat {
     this._warned.add(what);
     console.warn(`[combat] ${what} failed`, err);
   }
+}
+
+// What the player is told when they become wanted (or more wanted).
+function crimeLine(victim, kind) {
+  const who = shortName(victim?.name);
+  if (kind === 'knockout') return `You knocked ${who} out cold. The guard will hunt you until the day is done.`;
+  if (victim?.faction === 'guard') return `You struck ${who}. Now the guard is after you.`;
+  return `You struck ${who}. The guard will be after you for a while.`;
 }
 
 // "Captain Rowan Vale" -> "Rowan", "Garrick "Gale" Hale" -> "Garrick", for short lines.
