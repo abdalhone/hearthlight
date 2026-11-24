@@ -2671,7 +2671,14 @@ input[type='range']::-moz-range-thumb {
 }
 .pay-btns {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+}
+/* In a narrow column (Lyra's pack on a 667-px-wide phone) the two buttons stack, each
+   on one line: they wrapped into three ("Give / her / 5"). */
+.pay-btns .btn {
+  flex: 1 1 auto;
+  white-space: nowrap;
 }
 .her-purse:empty {
   display: none;
@@ -3763,6 +3770,19 @@ input[type='range']::-moz-range-thumb {
   text-align: center;
   font-size: var(--fs-xs);
   color: var(--parch-faint);
+}
+
+/* A short sideways phone (844×340 in the claude.ai app): the line about where the art
+   comes from gives its room to the one about her mind, which fitted only half on. */
+@media (max-height: 420px) {
+  .title-foot {
+    display: none;
+  }
+  .mind-line {
+    margin-top: 6px;
+    padding: 2px 10px;
+    font-size: var(--fs-xs);
+  }
 }
 
 /* ---------- touch ---------- */
