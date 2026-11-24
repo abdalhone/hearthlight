@@ -13,7 +13,7 @@
 
 import { SpeechGen, speechContext } from './speech_gen.js';
 import { parseMessage, nluEnv, AMOUNT_FREE, COMMAND_THRESHOLD } from './nlu.js';
-import { LocalBrain } from './local_brain.js';
+import { LocalBrain, usedMemories } from './local_brain.js';
 import { ProviderSet, BrainError, toBrainError, PROVIDER_LABELS } from './providers.js';
 import { buildChatPrompt, buildRules, buildReflectionTask, buildConversationTask, RESPONSE_SCHEMA, REFLECTION_SCHEMA, CONVERSATION_SCHEMA, clip } from './prompt.js';
 import { coerceResponse, coerceReflection, coerceConversation, dedupeActions, MAX_ACTIONS } from './claude_brain.js';
@@ -402,12 +402,21 @@ export class Brain {
     const all = executed.concat(more);
     const env = nluEnv(g);
     let reply;
+    // What she recalls while she composes her answer becomes its "remembered" chips, the
+    // same as Claude's used_memories (DESIGN §17.3).
+    const index = g.companion?.mind?.index;
+    const since = g.clock?.t ?? null;
+    let recalled = [];
     try {
+      index?.beginTrace?.();
       reply = this.local.compose(parsed, env);
     } catch (err) {
       console.error('[brain] offline reply failed', err);
       reply = { say: this.line('unknown_statement') || 'Hm.', thought: null, emotion: null, memories: [], relationships: [], goal: null, actions: [] };
+    } finally {
+      recalled = index?.endTrace?.() || [];
     }
+    reply.chips = this._localChips(reply, recalled, since);
     for (const a of reply.actions || []) {
       if (all.length >= MAX_ACTIONS + 2) break;
       if (!g.actions?.has?.(a.name)) continue;
@@ -421,7 +430,30 @@ export class Brain {
     }
     this._deliver(reply, 'local');
     this._apologyEvent(parsed, reply.apology);
-    return { say: reply.say, thought: reply.thought || null, actions: all, provider: 'local' };
+    return { say: reply.say, thought: reply.thought || null, actions: all, provider: 'local', memories: reply.chips || [] };
+  }
+
+  // Chips for an offline reply: what she recalled for it, plus today's memories (answers
+  // about the day read them straight from the store), kept when the reply carries them.
+  _localChips(reply, recalled, since) {
+    const mind = this.game.companion?.mind;
+    if (!mind || !reply?.say) return [];
+    const cands = [...recalled];
+    try {
+      for (const m of mind.memory?.recent?.(14) || []) cands.push({ store: 'episode', id: m.id, text: m.text, label: m.gist || m.text, ref: m });
+    } catch {
+      /* a partial mind has no recent() */
+    }
+    for (const id of reply.used_memories || []) {
+      const r = mind.lookup?.(id);
+      if (r) cands.unshift({ store: r.store, id: r.store === 'life' ? String(r.id).replace(/^life:/, '') : r.id, text: r.text, label: r.label, ref: r.ref });
+    }
+    try {
+      return usedMemories(reply.say, cands, { since });
+    } catch (err) {
+      console.error('[brain] chips failed', err);
+      return [];
+    }
   }
 
   // What her gut says about requests in the message that did not run at once (§16.10).

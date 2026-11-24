@@ -212,8 +212,12 @@ export class LocalBrain {
         // A plugin answer that ignores a refusal would read as obedience: her refusal wins.
         if (typeof text === 'string' && text.trim() && !(clause.results || []).some(isRefusal)) {
           // The plugin says what she does; her terms (a condition, a paid deal) still come first.
+          // When the plugin's text is only the action's own acknowledgement, her terms already
+          // say yes: one reply, not two ("All right, but if it turns ugly..." + "Understood...").
           const terms = this.consentTerms(clause);
-          return terms && !text.includes(terms) ? `${terms} ${text.trim()}` : text.trim();
+          if (!terms || text.includes(terms)) return text.trim();
+          const ackOnly = (clause.results || []).some((r) => r?.message && String(r.message).trim() === text.trim());
+          return ackOnly ? terms : `${terms} ${text.trim()}`;
         }
       }
       if (it.actions.length) return this.ack(clause, reply);
@@ -651,6 +655,40 @@ const WILL_QUESTIONS = new Set(['ask.trust_me', 'ask.fear_me', 'ask.plan', 'ask.
 const LEFT_HEARS = new Set(['ask.decline', 'social.apology', 'social.greet', 'social.farewell', 'social.insult', 'ask.why_left', 'ask.trust_me', 'ask.fear_me', 'ask.why_refused', 'counter.take', 'counter.decline']);
 
 // Which refusal bank fits the gate's reasons (they are free text from the mind).
+// The memories an offline reply drew on, as "remembered" chips [{ id, label }] (DESIGN
+// §17.3): what she recalled while composing it (hits from her memory index) and what she
+// remembers of today, kept only when the reply plainly carries their words.
+export function usedMemories(say, candidates = [], { max = 3, since = null } = {}) {
+  const words = contentWords(say);
+  if (words.size < 3) return [];
+  const out = [];
+  const seen = new Set();
+  for (const c of candidates) {
+    if (out.length >= max) break;
+    if (!c || c.store === 'person' || !c.text) continue;
+    const id = c.store === 'life' ? `life:${c.id}` : String(c.id);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    if (since != null && c.store === 'episode' && Number.isFinite(c.ref?.t) && c.ref.t >= since) continue;
+    const mw = contentWords(c.text);
+    let shared = 0;
+    for (const w of mw) if (words.has(w)) shared++;
+    if (shared >= 3 && (shared / Math.max(1, Math.min(mw.size, words.size)) >= 0.5 || shared >= 6)) out.push({ id, label: String(c.label || c.text).slice(0, 60) });
+  }
+  return out;
+}
+
+const CHIP_STOP = new Set(['the', 'and', 'that', 'with', 'this', 'they', 'them', 'their', 'then', 'have', 'from', 'about', 'what', 'when', 'were', 'was', 'for', 'not', 'but', 'too', 'just', 'very', 'your', 'you', 'mine', 'there', 'here', 'into', 'over', 'like', 'some', 'remember', 'course', 'yes', 'well', 'still']);
+
+function contentWords(text) {
+  const out = new Set();
+  for (const w of String(text || '').toLowerCase().split(/[^a-z']+/)) {
+    const x = w.replace(/'s$/, '').replace(/'/g, '');
+    if (x.length >= 3 && !CHIP_STOP.has(x)) out.add(x.length > 5 ? x.replace(/(ing|ed|es|s)$/, '') : x);
+  }
+  return out;
+}
+
 export function refusalSituation(verdict, state = 'together', offer = null) {
   if (verdict?.decision === 'refuse_and_act') return 'refuse_and_act';
   if (state === 'left' || state === 'gone') return 'refuse_left';

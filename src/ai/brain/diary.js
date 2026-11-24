@@ -1,5 +1,6 @@
 // The offline mind's diary: a heartfelt first-person entry built from the day's real
-// memories, her mood, her bond with the player and what she is reaching for next.
+// memories, her mood, her bond with the player and what she is reaching for next. It is
+// her private voice about her day: the player is written about, never written to.
 
 import { moodKey, bondLevel, lowerFirst, bare, tidy } from './speech_gen.js';
 import { soulOf } from './soul_fallback.js';
@@ -31,7 +32,60 @@ const OPENERS = {
   ],
 };
 
-const CONNECTORS = ['Today', 'Then', 'Later,', 'And'];
+// When in the day a memory happened, for the way she tells it ("This afternoon I...").
+function partOf(t) {
+  if (!Number.isFinite(t)) return null;
+  const h = ((((t % DAY) + DAY) % DAY) / DAY) * 24;
+  if (h < 5) return 'Last night';
+  if (h < 12) return 'This morning';
+  if (h < 17) return 'This afternoon';
+  if (h < 21) return 'This evening';
+  return 'Tonight';
+}
+
+const DAY = 900;
+const TIME_START = /^(?:today|this (?:morning|afternoon|evening)|tonight|last night|at (?:dawn|dusk|noon)|two days ago|yesterday)\b/i;
+// Words that may start a sentence without being a name: lowered after "This morning".
+const COMMON_START = /^(?:The|A|An|We|It|There|That|This|Then|One|Two|Some|My|Our|His|Her|Their|After|Before|When|While|At|In|On|Most|All|Nobody|Everyone|Someone|Something|Nothing|Got|Paid|Found|Gave|Saw|Took|Had|Went)\b/;
+
+// Her memories are sometimes written to the player ("I warned you: ..."). Her diary is
+// her own: the player is "Ash" or "the traveler", never "you" (quoted words stay as said).
+export function privateVoice(text, playerName = 'the traveler') {
+  const name = String(playerName || 'the traveler');
+  const parts = String(text || '').split(/("[^"]*"|“[^”]*”)/);
+  let named = false;
+  for (let i = 0; i < parts.length; i += 2) {
+    parts[i] = parts[i]
+      .replace(/\byou're\b/gi, "they're")
+      .replace(/\byou've\b/gi, "they've")
+      .replace(/\byou'll\b/gi, "they'll")
+      .replace(/\byou'd\b/gi, "they'd")
+      .replace(/\byourself\b/gi, 'themselves')
+      .replace(/\byours\b/gi, 'theirs')
+      .replace(/\byour\b/gi, (m) => {
+        if (!named) {
+          named = true;
+          return `${name}'s`;
+        }
+        return m[0] === 'Y' ? 'Their' : 'their';
+      })
+      .replace(/(^|[.!?]\s+|\b(?:and|but|when|if|that|because|so|while|until)\s+)?\byou\b/gi, (m, lead) => {
+        const subject = lead != null;
+        let word;
+        if (!named) {
+          named = true;
+          word = name;
+        } else word = subject ? 'they' : 'them';
+        if (lead && /[.!?]\s+$|^$/.test(lead) && /^[a-z]/.test(word)) word = word[0].toUpperCase() + word.slice(1);
+        return `${lead || ''}${word}`;
+      });
+  }
+  return parts.join('').replace(/\bthey (was|is|has)\b/g, (m, v) => `they ${v === 'was' ? 'were' : v === 'is' ? 'are' : 'have'}`);
+}
+
+function lowerStart(text) {
+  return COMMON_START.test(text) ? text[0].toLowerCase() + text.slice(1) : text;
+}
 
 const EMOTION_REFLECTIONS = {
   joy: ["That made me happier than I'll admit out loud.", 'I laughed. Properly laughed.'],
@@ -116,7 +170,7 @@ function pick(list, rnd) {
   return list[Math.floor(rnd() * list.length) % list.length];
 }
 
-const STOP = new Set(['the', 'and', 'that', 'with', 'this', 'they', 'them', 'their', 'then', 'have', 'from', 'about', 'what', 'when', 'were', 'was', 'for', 'not', 'but', 'too', 'just', 'very', 'traveler', 'today']);
+const STOP = new Set(['the', 'and', 'that', 'with', 'this', 'they', 'them', 'their', 'then', 'have', 'from', 'about', 'what', 'when', 'were', 'was', 'for', 'not', 'but', 'too', 'just', 'very', 'traveler', 'today', 'you', 'your', 'her', 'him', 'his', 'she', 'had', 'did', 'has', 'our', 'who', 'are', 'its', 'one', 'all', 'out', 'got']);
 
 function words(text) {
   return new Set(
@@ -156,7 +210,7 @@ function overlaps(memoryText, line, playerName = '') {
 function sentence(text) {
   const t = String(text || '').trim();
   if (!t) return '';
-  return /[.!?…]$/.test(t) ? t : `${t}.`;
+  return /[.!?…]["”’')]*$/.test(t) ? t : `${t}.`;
 }
 
 // memories: [{text, importance, emotion, about}] most important first.
@@ -171,13 +225,19 @@ export function composeDiary(game, memories = [], { day, rnd = Math.random } = {
   const parts = [];
   parts.push(pick(OPENERS[mood] || OPENERS.calm, rnd));
 
-  const top = distinct(memories.filter((m) => m && m.text)).slice(0, 3);
+  // The day's three most important moments, told in the order they happened, in her own
+  // private voice (DESIGN §13 reflection; the diary is hers, not a letter to the player).
+  const top = distinct(memories.filter((m) => m && m.text))
+    .slice(0, 3)
+    .sort((a, b) => (Number.isFinite(a.t) && Number.isFinite(b.t) ? a.t - b.t : 0));
+  let lastPart = null;
   top.forEach((m, i) => {
-    const text = sentence(m.text);
-    // A memory that already says when it happened needs no "Today".
-    const c = i === 0 && /^(?:today|this (?:morning|afternoon|evening)|tonight|at (?:dawn|dusk|noon))\b/i.test(text) ? '' : CONNECTORS[i] || 'And';
-    const body = c ? `${c}${c.endsWith(',') ? '' : ','} ${lowerFirst(text)}`.replace(/^(Then|And),/, '$1') : text;
-    parts.push(body);
+    let text = sentence(privateVoice(String(m.text).trim(), playerName));
+    const part = partOf(m.t);
+    if (part && part !== lastPart && !TIME_START.test(text)) text = `${part} ${lowerStart(text)}`;
+    else if (i > 0 && !TIME_START.test(text) && part === lastPart) text = `${pick(['Later', 'After that', 'Then'], rnd)} ${lowerStart(text)}`;
+    lastPart = part || lastPart;
+    parts.push(text);
     const refl = EMOTION_REFLECTIONS[m.emotion];
     if (refl && (m.importance ?? 0) >= 5) parts.push(pick(refl, rnd));
   });
@@ -212,6 +272,6 @@ export function composeDiary(game, memories = [], { day, rnd = Math.random } = {
   parts.push(pick(CLOSERS[w] || CLOSERS.clear, rnd));
 
   const text = tidy(parts.join(' '));
-  const head = top[0]?.text ? bare(top[0].text) : 'a quiet day';
+  const head = top[0]?.text ? bare(privateVoice(top[0].text, playerName)) : 'a quiet day';
   return { text, summary: `Day ${day ?? game?.clock?.day ?? 1}: ${lowerFirst(head)}.` };
 }
