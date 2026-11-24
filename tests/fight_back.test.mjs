@@ -158,3 +158,29 @@ test('a weave aimed at her is a deliberate blow, and two of them start the fight
   step(game, 0.3);
   assert.ok(l.behavior.fightingBack(p));
 });
+
+test('Hess and the watch join on her call: they come at the one she is fighting', () => {
+  const game = makeGame({ hour: 11 });
+  const { p, l } = arena(game);
+  p.maxHp = 60;
+  p.hp = 60;
+  const hess = game.entities.get('hess');
+  const guard = villagers(game).find((v) => v.isGuard);
+  assert.ok(hess && guard, 'Hess and a guard live here');
+  // Within earshot, not on top of it.
+  placeAt(game, hess, p.x - 120, p.y + 40);
+  placeAt(game, guard, p.x + 140, p.y - 60);
+  strike(game);
+  step(game, 2);
+  strike(game);
+  step(game, 0.2);
+  assert.ok(l.behavior.fightingBack(p), 'she fights');
+  // Her call names the player by id ('player'); the village knows who that is.
+  const call = events(game, 'call_for_help').find((e) => e.victim === 'lyra' && e.severity >= 3);
+  assert.equal(call?.attacker, 'player');
+  const joined = (n) => n.mode === 'fight' && n.fightTarget === p;
+  const t = stepUntil(game, () => joined(hess) && joined(guard), 8);
+  assert.ok(t >= 0, `both answer and fight (hess ${hess.mode}/${hess.help?.role}, ${guard.id} ${guard.mode}/${guard.help?.role})`);
+  assert.ok(stepUntil(game, () => fallen(game), 60) >= 0, 'until the player falls');
+  assert.ok(!p.dead, 'nobody finishes them');
+});
