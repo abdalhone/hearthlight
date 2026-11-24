@@ -25,6 +25,10 @@ export const RUMOR_KINDS = {
   revived_lyra: { text: '{stranger} got {lyra} back on her feet when she went down', you: 'you got Lyra back on her feet', valence: 0.55, severity: 0.45, victim: 'lyra' },
   rescued: { text: '{stranger} pulled a {beast} off {v}', you: 'you pulled a {beast} off {v}', valence: 0.75, severity: 0.6 },
   helped_up: { text: '{stranger} helped {v} up when they were down', you: 'you helped {v} up', valence: 0.5, severity: 0.35 },
+  // Death is dangerous (DESIGN §27).
+  carried_villager: { text: "{stranger} carried {v} to Mira's on their back when they were down", you: "you carried {v} to Mira's", valence: 0.8, severity: 0.65 },
+  carried_lyra: { text: "{stranger} carried {lyra} to Mira's on their back", you: "you carried Lyra to Mira's", valence: 0.8, severity: 0.65, victim: 'lyra' },
+  flame_spent: { text: '{stranger} died, and the kept flame on the altar brought them back at dawn', you: 'you came back through the kept flame', valence: 0.05, severity: 0.8 },
   gift: { text: '{stranger} brought {v} a present', you: 'you brought {v} a present', valence: 0.3, severity: 0.15 },
   kindness: { text: '{stranger} has a kind streak', you: 'you have a kind streak', valence: 0.3, severity: 0.2 },
   maren_asking: { text: '{stranger} has been asking after Maren', you: "you've been asking after Maren", valence: 0.1, severity: 0.2 },
@@ -52,6 +56,8 @@ const GROWTH = [
   [/\bhas been asking after Maren\b/, ['is hunting for Maren', 'knows something about Maren']],
   [/\bisn't travelling with \{stranger\} any more\b/, ['has had it with {stranger}', 'walked out on {stranger}']],
   [/\bhelped \{v\} up when they were down\b/, ['carried {v} home', 'saved {v}']],
+  [/\bcarried \{v\} to Mira's on their back\b/, ["carried {v} through the whole village", "saved {v}'s life"]],
+  [/\bbrought them back at dawn\b/, ['brought them back from the dead', 'brought them back, white as a sheet']],
 ];
 
 export function distort(text, rng) {

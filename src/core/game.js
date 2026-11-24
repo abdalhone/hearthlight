@@ -42,6 +42,8 @@ import { Brain } from '../ai/brain/brain.js';
 import { ClaudeRuntime } from '../platform/claude_runtime.js';
 import { UI } from '../ui/ui.js';
 import { StoryDirector } from '../story/director.js';
+import { Survival } from '../survival/survival.js';
+import { installDeathView } from '../ui/death_view.js';
 
 export const SAVE_VERSION = 1;
 
@@ -59,6 +61,7 @@ export class Game {
     this.state = 'boot'; // boot | title | playing | sleeping | cutscene (a story scene plays; the world is frozen)
     this.paused = false; // set by the UI while a pause/settings menu is open
     this.hitStop = 0; // seconds of frozen action after a heavy hit (combat sets it; world freezes, UI keeps running)
+    this.timeScale = 1; // the world's pace (survival slows it for a beat when the player falls)
     this.flags = {}; // story flags: { journal_found: true, ... }
 
     root.innerHTML = '';
@@ -89,6 +92,8 @@ export class Game {
     this.save = new SaveManager(this);
     this.ui = new UI(this, this.uiRoot);
     this.story = new StoryDirector(this); // cutscenes, the prologue, story scenes, the Book of Halcyre
+    this.survival = new Survival(this); // falling, rescue, the sickroom, the kept flame, death (DESIGN §27)
+    installDeathView(this); // its screens: the heartbeat line, Call for help, the memorial
 
     // World pieces, created by buildWorld().
     this.map = null;
@@ -259,17 +264,20 @@ export class Game {
       this.hitStop = Math.max(0, this.hitStop - dt);
       this.camera.update(dt);
     } else if (this.state === 'playing' && !this.paused) {
-      this.clock.update(dt);
-      this.entities.update(dt);
-      this.objects.update(dt);
-      this.map.update(dt);
-      this.combat.update(dt);
-      this.spawner.update(dt);
-      this.plugins.update(dt);
-      this.brain.update(dt);
-      this.lighting.update(dt);
-      this.particles.update(dt);
-      this.weather.update(dt);
+      this.survival?.realtime(dt);
+      const wdt = dt * (this.timeScale ?? 1); // the world's step (slowed for a beat when the player falls)
+      this.clock.update(wdt);
+      this.entities.update(wdt);
+      this.objects.update(wdt);
+      this.map.update(wdt);
+      this.combat.update(wdt);
+      this.survival?.update(wdt);
+      this.spawner.update(wdt);
+      this.plugins.update(wdt);
+      this.brain.update(wdt);
+      this.lighting.update(wdt);
+      this.particles.update(wdt);
+      this.weather.update(wdt);
       this.bubbles.update(dt);
       this.camera.update(dt);
       this.save.update(dt);
@@ -312,6 +320,7 @@ export class Game {
       spawner: this.spawner?.serialize(),
       plugins: this.plugins.serialize(),
       brain: this.brain.serialize?.() ?? null,
+      survival: this.survival?.serialize?.() ?? null,
     };
   }
 
@@ -326,5 +335,6 @@ export class Game {
     this.spawner?.deserialize(d.spawner);
     this.plugins.deserialize(d.plugins);
     this.brain.deserialize?.(d.brain);
+    this.survival?.deserialize?.(d.survival);
   }
 }

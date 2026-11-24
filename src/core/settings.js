@@ -32,6 +32,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   reduceMotion: false,
   showFps: false,
   villageAi: 'player', // 'player': Claude speaks for villagers only when the player acts; 'always': also ambient talk (API key only)
+  // When I die (DESIGN §27): 'final' — the story ends unless a kept flame burns at the chapel
+  // (the save closes and moves to Past lives); 'home' — wake at home, a little poorer.
+  deathMode: 'final',
 });
 
 export function loadSettings() {

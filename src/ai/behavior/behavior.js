@@ -472,6 +472,10 @@ export class Behavior {
       this.steering.stop();
       return;
     }
+    // Someone fell (§27): she comes, whatever is between them (LORE §7: she never leaves a
+    // living person to die when she could carry them), or she lies abed at Mira's. While
+    // something is still standing over them, her own fighting sense runs instead.
+    if (this.game.survival?.stepActor?.(a, dt)) return;
     if (this.survival(dt)) return;
     if (this.preserve(dt)) return;
     if (this.support(dt)) return;

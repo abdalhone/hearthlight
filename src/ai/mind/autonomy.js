@@ -709,6 +709,11 @@ export class Autonomy {
     if (d.abandoned || d.byPlayer) return;
     const p = this.player();
     if (!p || p.downed) return;
+    // Carried on their shoulders, or laid in a cot (DESIGN §27): that is not leaving her.
+    if (l.carriedBy === p) {
+      d.waited = 0;
+      return;
+    }
     d.waited += step;
     const far = Math.hypot(p.x - l.x, p.y - l.y) > 20 * TILE;
     if (far || d.waited > 45) {

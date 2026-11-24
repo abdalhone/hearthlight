@@ -91,8 +91,15 @@ export class Audio {
     comp.ratio.value = 3.5;
     comp.attack.value = 0.004;
     comp.release.value = 0.2;
-    this.master.connect(comp);
+    // A low-pass on everything, opened wide; it closes while the player bleeds out (§27).
+    this.muffleFilter = ctx.createBiquadFilter();
+    this.muffleFilter.type = 'lowpass';
+    this.muffleFilter.frequency.value = 20000;
+    this.muffleFilter.Q.value = 0.7;
+    this.master.connect(this.muffleFilter);
+    this.muffleFilter.connect(comp);
     comp.connect(ctx.destination);
+    this.muffled = 0;
 
     this.sfxBus = ctx.createGain();
     this.musicBus = ctx.createGain();
@@ -229,6 +236,41 @@ export class Audio {
     }, 2600);
   }
 
+  // A heartbeat (DESIGN §27): lub-dub, low and close, under the muffled world.
+  heartbeat(strength = 0.7) {
+    if (!this.ctx || this.ctx.state === 'closed') return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.01;
+    const out = ctx.createGain();
+    const s = Math.max(0.2, Math.min(1, strength));
+    out.gain.value = 0.9 * s * Math.max(0.25, Number(this.game.settings?.sfxVol ?? 0.7));
+    // Past the muffle, straight out: it is inside your own head.
+    out.connect(ctx.destination);
+    try {
+      tone(ctx, out, t, { type: 'sine', freq: 64, to: 44, dur: 0.16, a: 0.006, gain: 0.85 });
+      tone(ctx, out, t, { type: 'triangle', freq: 120, to: 60, dur: 0.07, gain: 0.25, filter: { type: 'lowpass', freq: 400 } });
+      tone(ctx, out, t + 0.2, { type: 'sine', freq: 56, to: 40, dur: 0.18, a: 0.006, gain: 0.6 });
+    } catch {
+      /* sound is optional */
+    }
+    setTimeout(() => {
+      try {
+        out.disconnect();
+      } catch {
+        /* already gone */
+      }
+    }, 900);
+  }
+
+  // 0 (clear) .. 1 (underwater): how muffled the world sounds.
+  setMuffle(amount) {
+    const a = Math.max(0, Math.min(1, Number(amount) || 0));
+    if (!this.ctx || !this.muffleFilter || Math.abs(a - this.muffled) < 0.01) return;
+    this.muffled = a;
+    const f = a <= 0.001 ? 20000 : 3200 * Math.pow(0.08, a);
+    this.muffleFilter.frequency.setTargetAtTime(f, this.ctx.currentTime, a > 0 ? 0.25 : 0.6);
+  }
+
   // Force a track ('title'|'day'|'night'|'combat'|'none'); pass null to follow the game again.
   setMusic(track) {
     this.forced = track === null || track === undefined ? null : track;
@@ -290,6 +332,9 @@ export class Audio {
 
   update(dt) {
     if (!this.ctx) return;
+    // Bleeding out: the world goes far away and thick (§27).
+    const fx = this.game.survival?.fxState?.() || null;
+    this.setMuffle(fx ? 0.55 + 0.4 * (1 - fx.frac) : this.game.state === 'dead' ? 0.9 : 0);
     this.checkTimer -= dt;
     if (this.checkTimer <= 0) {
       this.checkTimer = 0.4;

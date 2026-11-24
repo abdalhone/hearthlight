@@ -2,6 +2,7 @@ import { TARGET_VIRTUAL_MIN, TILE } from '../core/constants.js';
 import { viewMetrics } from './text_layout.js';
 import { TitleScene } from './title_scene.js';
 import { bedUnder, drawSleeperInBed } from '../art/characters_bed.js';
+import { DeathFx } from './death_fx.js';
 
 // The renderer. The world is drawn into a low-res buffer (about 240 world px on the
 // short side) and upscaled by an integer factor, so pixels stay crisp; the buffer is
@@ -43,6 +44,7 @@ export class Renderer {
     this.hurt = 0; // red edge pulse when the player is hit
     this.drawables = [];
     this.title = new TitleScene(game);
+    this.deathFx = new DeathFx(game); // the fall's slow color drain, heartbeat and letterbox (§27)
     this._reported = new Set();
     this._dirty = false;
     this._vignette = null; // cached CanvasGradient objects (see _vignetteGradient)
@@ -281,11 +283,16 @@ export class Renderer {
     // 5. The vignette is part of the light map; here only the red pulse when hurt
     // (and a slow heartbeat at low health), drawn before text so bubbles stay crisp.
     const p = g.player;
-    if (p && !p.removed && p.maxHp > 0 && p.hp > 0 && p.hp / p.maxHp < 0.25 && !p.downed) {
+    if (p && !p.removed && p.maxHp > 0 && p.hp > 0 && p.hp / p.maxHp < 0.25 && !p.downed && !g.survival?.isFallen?.(p)) {
       const beat = g.settings?.reduceMotion ? 0.5 : Math.pow(Math.max(0, Math.sin(time * 4.2)), 8);
       this.hurt = Math.max(this.hurt, 0.18 + 0.3 * beat);
     }
     this._drawVignette(ctx, L ? 0 : 0.3, dt);
+    try {
+      this.deathFx.draw(ctx, this, dt);
+    } catch (err) {
+      this._report('deathFx', err);
+    }
 
     // 6. Text and markers.
     try {
@@ -317,7 +324,7 @@ export class Renderer {
     const stamp = (this._sleepStamp = (this._sleepStamp || 0) + 1);
     for (let i = 0; i < ents.length; i++) {
       const e = ents[i];
-      if (e.removed || e.hidden) continue;
+      if (e.removed || e.hidden || e.carriedBy) continue; // the carried are drawn on their carrier (§27)
       if (e.x < x0 || e.x > x1 || e.y < y0 || e.y > y1) continue;
       // Someone asleep in a bed is drawn with the bed, lying along it (DESIGN §19.8).
       if (e.state === 'sleep' && e.type === 'actor') {
@@ -330,6 +337,8 @@ export class Renderer {
       }
       list.push(e);
     }
+    const carried = g.survival?.drawables?.() || EMPTY;
+    for (let i = 0; i < carried.length; i++) list.push(carried[i]);
     list.sort(bySortY);
     return list;
   }

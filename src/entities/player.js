@@ -158,7 +158,23 @@ export class Player extends Actor {
   }
 
   get attackPower() {
-    return this.atk + this.weaponBonus;
+    const weak = this.game.survival?.mul?.(this, 'atk') ?? 1; // bruised, mending, flame-thin (§27)
+    return Math.max(1, Math.round((this.atk + this.weaponBonus) * weak));
+  }
+
+  // Fall now, whatever your health (DESIGN §25/§27): berserk's end calls
+  // fall({ window: 30, cause: 'berserk' }). The bleed-out window starts at once.
+  fall(opts = {}) {
+    if (this.downed || this.dead) return false;
+    this._fallOpts = { ...opts };
+    this.hp = 0;
+    const c = this.game.combat;
+    if (c?.down) return !!c.down(this, opts.by || null);
+    this.downed = true;
+    this.setState('downed');
+    this.game.bus?.emit?.('downed', { entity: this, by: opts.by || null });
+    this.onDowned(opts.by || null);
+    return true;
   }
 
   // ------------------------------------------------------------ step
@@ -207,17 +223,22 @@ export class Player extends Actor {
     const dodgePress = !!input?.pressed('dodge') || (dodgeHeld && !this._heldDodge);
     this._heldAttack = atkHeld;
     this._heldDodge = dodgeHeld;
+    // Someone on your shoulders (§27): no sword, no roll; interact lays them down.
+    const carrying = !!this.carrying;
     // Binding Light holds the body in place mid-roll; the sword arm stays free.
     if (this.rolling && this.rootTime > 0) this._endRoll();
     if (canAct) {
       const mv = input.moveVector();
       mx = mv?.x || 0;
       my = mv?.y || 0;
-      if (dodgePress) this.tryDodge(mx, my);
-      if (atkPress) this.attackBuffer = ATTACK_BUFFER;
+      if (dodgePress && !carrying) this.tryDodge(mx, my);
+      if (carrying) this.attackBuffer = 0;
+      else if (atkPress) this.attackBuffer = ATTACK_BUFFER;
       // Holding the button keeps swinging once each swing finishes (chopping, phones).
       else if (atkHeld && this.lockTime <= 0 && !this.rolling) this.attackBuffer = Math.max(this.attackBuffer, 0.05);
-      if (input.pressed('interact') && !this.rolling) this.tryInteract();
+      if (input.pressed('interact') && !this.rolling) {
+        if (!(carrying && g.survival?.carrierInteract?.(this))) this.tryInteract();
+      }
     } else {
       this.attackBuffer = 0; // a press made just before a menu opened must not swing after it
     }
@@ -245,7 +266,7 @@ export class Player extends Actor {
   }
 
   _accelerate(dt, mx, my) {
-    const max = this.speed * (this.speedMul || 1);
+    const max = this.speed * (this.speedMul || 1) * (this.game.survival?.speedFactor?.(this) ?? 1);
     const v = this.vel;
     let tx = 0;
     let ty = 0;
@@ -675,7 +696,9 @@ export class Player extends Actor {
     this._promptT = 0.12;
     const g = this.game;
     let label = '';
-    if (this.isAlive() && !this.rolling && g.state === 'playing') {
+    const own = g.survival?.promptFor?.(this); // "Call for help", "Lay Lyra in the cot"…
+    if (own != null && g.state === 'playing') label = own;
+    else if (this.isAlive() && !this.rolling && g.state === 'playing') {
       try {
         label = g.interactions?.best?.(this)?.label || '';
       } catch {
@@ -715,6 +738,20 @@ export class Player extends Actor {
         this.crime = null;
       }
     }
+    // Death is dangerous (§27): you lie where you fell, bleeding, and game.survival decides
+    // who comes. Without it (tests, older builds) you wake at home as before.
+    if (this.game.survival) {
+      this.rolling = false;
+      this.swing = null;
+      this.combo = 0;
+      this.attackBuffer = 0;
+      this.workBar = null;
+      this.z = 0;
+      this.vel.x = 0;
+      this.vel.y = 0;
+      if (this.carrying) this.game.survival.endCarry?.(this);
+      return;
+    }
     this._down = { t: 0, fading: false, woke: false, by: by || null, arrested };
     this.rolling = false;
     this.swing = null;
@@ -732,6 +769,7 @@ export class Player extends Actor {
   }
 
   _tickDown(dt) {
+    if (this.game.survival) return; // the bleed-out window runs in game.survival (§27)
     if (!this._down) this.onDowned(null); // e.g. a save loaded while knocked out
     const d = this._down;
     d.t += dt;
