@@ -1,2 +1,3 @@
-// STUB (owned by the world agent). Contract: registerTileArt(atlas, rng) builds tile art.
+export const CHUNK = 16;
 export function registerTileArt(atlas, rng) {}
+export function paintChunk(art, map, cx, cy, shadows) { return null; }
