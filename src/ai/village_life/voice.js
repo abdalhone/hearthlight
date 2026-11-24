@@ -45,6 +45,7 @@ export function fillLine(template, speaker, vars = {}) {
     WHO: String(who).toUpperCase(),
     place: vars.place || 'somewhere',
     at: vars.at || (vars.place ? `at ${vars.place}` : 'somewhere'),
+    At: cap(vars.at || (vars.place ? `at ${vars.place}` : 'somewhere')),
     when: vars.when || 'today',
     When: cap(vars.when || 'today'),
     with: vars.with || 'someone',

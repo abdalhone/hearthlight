@@ -1150,6 +1150,13 @@ export class VillageLife {
     const vars = { about, listener: askerId };
     let key;
     let info;
+    // Found already, and they have heard: the news, not a sighting.
+    const fc = this.cases.get(about);
+    const fr = fc?.status === 'found' && fc.foundRumor ? safe(() => this.village?.rumors?.get?.(fc.foundRumor)) : null;
+    if (fr?.heardBy?.includes(who) && who !== about) {
+      vars.placeId = fc.foundPlace || null;
+      return { line: this.line(who, 'turnedUp', vars), info: { kind: 'found', place: fc.foundPlace, placeName: this.placeName(fc.foundPlace) } };
+    }
     // Out with the search party: the whole village knows the watch is out.
     const xs = this.steps.get(about);
     const xc = xs?.party ? this.cases.get(xs.about) : null;
@@ -1238,19 +1245,29 @@ export class VillageLife {
     if (ans.info.kind === 'seen' || ans.info.kind === 'heard') this.learn(e.id, about, { ...ans.info, from: tgt.id, at: t });
     this.learnAsked(tgt.id, about, e.id, t);
     const c = this.cases.get(about);
-    if (c) {
+    if (c && c.status !== 'found' && c.status !== 'dead') {
       if (c.status === 'noticed') c.status = 'asking';
       if (ans.info.kind === 'seen') this.cases.report(c, { by: tgt.id, kind: 'seen', place: ans.info.place, t: ans.info.t, with: ans.info.with, heading: ans.info.heading, at: t, public: true });
       this.cases.note(c, t, summary, 'ask');
       this.maybeRumor(c, [e.id, tgt.id]);
+    }
+    // The news that he has turned up: the asker can stop looking.
+    if (ans.info.kind === 'found' && prob) {
+      if (c?.foundRumor) safe(() => this.village?.rumors?.hear?.(this.village.rumors.get(c.foundRumor), e.id, tgt.id, this.village?.rng?.()));
+      lines.length = 2;
+      const relief = this.line(e.id, 'relief', { about });
+      if (relief) lines.push([e.id, relief]);
     }
     this.talk(e, tgt, lines, {
       topic: 'news',
       summary,
       step,
       after: () => {
-        if (prob && prob.status === 'open') prob.due = this.now() + BEAT;
-        if (tgt.id !== 'lyra') this.maybeJoin(tgt, about, e.id);
+        if (prob && prob.status === 'open') {
+          if (ans.info.kind === 'found') this.closeProblem(prob, 'resolved', `heard ${this.name(about)} turned up`);
+          else prob.due = this.now() + BEAT;
+        }
+        if (tgt.id !== 'lyra' && ans.info.kind !== 'found') this.maybeJoin(tgt, about, e.id);
       },
     });
   }

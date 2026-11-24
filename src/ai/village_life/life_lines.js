@@ -23,6 +23,7 @@ export const ANY = {
   heading: ['{When}, heading for {place}.', 'I saw {him} going toward {place}, {when}.'],
   heard: ['{from} says {he} was {at}, {when}.', 'I heard from {from}: {at}, {when}.'],
   busy: ["{He}'s {doing}. You'll not catch {him} today.", "{He}'s {doing}, with the watch."],
+  turnedUp: ["{He}'s turned up, safe. {At}, they say.", "Haven't you heard? {He}'s back. Found {at}."],
   notSeen: ['Not since {when}.', 'No. Not since {when}. Why?'],
   never: ["Not today. Is something wrong?", 'No. Is something the matter?'],
   guess: ["{He}'ll be {at}, this time of day.", 'Try {place}. {He} usually is.'],
