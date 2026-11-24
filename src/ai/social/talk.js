@@ -181,10 +181,7 @@ export function buildExchange(ctx, a, b, opts = {}) {
     const s = topic.scene;
     return { topic: s.topic, scene: s, lines: s.lines.slice(0, maxLines).map(([sp, text]) => ({ speaker: sp, text })), effects: effectsFor(ctx, a, b, s.topic) };
   }
-  if (topic === 'rumor_back') {
-    const r = buildExchange(ctx, b, a, { ...opts, topic: 'rumor' });
-    return r;
-  }
+  if (topic === 'rumor_back') return buildExchange(ctx, b, a, { ...opts, topic: 'rumor' });
   const lines = [];
   const push = (l) => {
     if (l && lines.length < maxLines && !lines.some((x) => x.text === l.text)) lines.push(l);
@@ -251,7 +248,7 @@ export function buildExchange(ctx, a, b, opts = {}) {
     push(line(a, opener(ctx, a, b, extra) || fill('Well.', {})));
     push(line(b, helloBack(ctx, b, a, extra) || say(vb?.short, b, a, { rng })));
   }
-  return { topic, lines: lines.filter(Boolean), rumor, effects: effectsFor(ctx, a, b, topic) };
+  return { topic, lines: lines.filter(Boolean), rumor, teller: rumor ? a : null, effects: effectsFor(ctx, a, b, topic) };
 }
 
 // How talking moves the two of them: closer, mostly; rivals stay rivals.

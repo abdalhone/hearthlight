@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   cloudSave: true, // also keep the save on claude.ai when available
   reduceMotion: false,
   showFps: false,
+  villageAi: 'player', // 'player': Claude speaks for villagers only when the player acts; 'always': also ambient talk (API key only)
 });
 
 export function loadSettings() {

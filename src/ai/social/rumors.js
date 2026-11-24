@@ -32,6 +32,7 @@ export const RUMOR_KINDS = {
   lyra_gone: { text: "{lyra} won't have {stranger} near her now", you: "Lyra won't have you near her", valence: -0.6, severity: 0.8, about: 'lyra' },
   lyra_kettle: { text: "{lyra}'s taken her old room at the Kettle again", you: "Lyra's back in her old room at the Kettle", valence: -0.1, severity: 0.3, about: 'lyra' },
   lyra_back: { text: "{lyra}'s back on the road with {stranger}", you: "Lyra's back on the road with you", valence: 0.25, severity: 0.3, about: 'lyra' },
+  threat: { text: '{stranger} threatened {v}', you: 'you threatened {v}', valence: -0.55, severity: 0.55 },
   apology: { text: '{stranger} said sorry to {v}, and meant it, by the look of it', you: 'you said sorry to {v}', valence: 0.3, severity: 0.25 },
 };
 
