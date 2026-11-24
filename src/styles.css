@@ -8889,12 +8889,13 @@ input[type='range']::-moz-range-thumb {
   }
 }
 
-/* Fallen on an upright phone: the heartbeat and Call for help sit above the move stick
-   (which stays free for crawling). */
+/* Fallen on an upright phone: the heartbeat and Call for help sit between the people
+   bending over you (their words above your head) and the move stick (which stays free
+   for crawling). */
 @media (max-width: 640px) and (min-height: 521px) {
   .ui .sv-fallen {
     top: auto;
-    bottom: calc(var(--sa-b) + 190px);
+    bottom: calc(var(--sa-b) + 150px);
   }
 }
 
@@ -8972,4 +8973,39 @@ input[type='range']::-moz-range-thumb {
 .sb-more .sb-tile-name {
   white-space: normal;
   overflow: visible;
+}
+
+/* ---------- r8 phone pass, second sitting ---------- */
+
+/* Pixelify Sans draws its "fi" ligature as a stray glyph ("more to find" read "more to
+   And"): plain letters everywhere. */
+body {
+  font-variant-ligatures: none;
+}
+
+/* A villager has more to say: on a phone the ▼ carries words, so the hidden choices are
+   not a mystery. */
+.dlg-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dlg-more[hidden] {
+  display: none;
+}
+.dlg-more-hint {
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+}
+
+/* Trading sideways: the wares get the room (their words narrow to a column, and the
+   "Say something" field steps aside until "Done trading"). */
+@media (max-height: 520px) and (min-width: 600px) {
+  .panel-dialog .dlg:has(.dlg-extra > .shop) {
+    grid-template-columns: 56px minmax(0, 0.7fr) minmax(0, 1.7fr);
+  }
+  .panel-dialog:has(.dlg-extra > .shop) .panel-foot.dlg-say {
+    display: none;
+  }
 }

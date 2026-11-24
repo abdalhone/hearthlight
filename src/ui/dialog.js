@@ -55,7 +55,8 @@ export class DialogPanel {
     this.portrait = h('img', { class: 'portrait portrait-xl', alt: '', draggable: 'false' });
     this.setExpression('happy');
     this.textEl = h('p', { class: 'dlg-text', 'aria-live': 'polite' });
-    this.moreEl = h('span', { class: 'dlg-more', text: '▼', hidden: true });
+    // More to say: a bobbing ▼, and on a phone the words too (the options wait behind it).
+    this.moreEl = h('span', { class: 'dlg-more', hidden: true }, this.ui.isTouch ? h('span', { class: 'dlg-more-hint', text: 'Tap for more' }) : null, h('span', { class: 'dlg-more-arrow', text: '▼' }));
     this.optionsEl = h('div', { class: 'dlg-options' });
     this.extraEl = h('div', { class: 'dlg-extra' });
     this.youEl = h('p', { class: 'dlg-you', hidden: true });

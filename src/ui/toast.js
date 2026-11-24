@@ -4,9 +4,11 @@
 // takes the first free slot under the quest line (or low on the screen), stays put
 // while that slot stays free, and waits out of sight (not aging) when nothing is free.
 // A phone shows one notice at a time (the rest wait their turn, not aging); a tap on a
-// notice puts it away. While a panel is open, notices from before it wait for it to
-// close; one raised while it is open (most often the answer to a tap in it) shows
-// along the bottom edge, clear of the panel's title and close button.
+// notice puts it away. While a panel is open, notices wait for it to close, except
+// the answer to a tap in it (raised within ANSWER_WINDOW of a tap or key in the
+// panel: "Game saved", "Not enough coin"), which shows along the bottom edge, clear
+// of the panel's title and close button. The world's news (Lyra leaving, a mission
+// step) never covers a panel's buttons.
 
 import { h, icon, setText } from './dom.js';
 import { placeStack } from './village_view.js';
@@ -16,6 +18,7 @@ const LIFE = { info: 3.6, good: 3.6, warn: 5, quest: 6, lyra: 4.5, item: 2.6 };
 const MAX_VISIBLE = 4;
 const MAX_VISIBLE_SMALL = 1; // phones: one at a time, the others wait their turn
 const PLACE_EVERY = 0.1;
+const ANSWER_WINDOW = 2500; // ms after a tap in a panel: a notice then is its answer
 
 // HUD pieces the stack must never cover (the chat is handled on its own).
 const HUD_SELECTOR = '.hud .card, .hud-btn, .lyra-fold, .quest-line, .listen-prompt, .interact-prompt, .cmdbar, .orders-btn, .tbtn, .jobs-menu, .fps';
@@ -40,6 +43,8 @@ function textBox(el) {
   return box ? { ...box, width: box.right - box.left, height: box.bottom - box.top } : null;
 }
 
+const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
 export class Toasts {
   constructor(ui) {
     this.ui = ui;
@@ -58,6 +63,22 @@ export class Toasts {
     this.waiting = false; // no free slot: hidden, and not aging
     this.panelMode = null; // a panel is open: 'one-up' | 'on-head' (see setPanelMode)
     this._bubbles = [];
+    // When the player last tapped (or pressed a key) in a panel: a notice raised just
+    // after is the answer to it and shows at once; any other waits for the panel to close.
+    this.lastPanelAct = -Infinity;
+    if (typeof document !== 'undefined') {
+      const note = (e) => {
+        if (e.target?.closest?.('.layer-modal, .modal-layer')) this.lastPanelAct = now();
+      };
+      document.addEventListener('pointerdown', note, true);
+      document.addEventListener('keydown', note, true);
+    }
+  }
+
+  // Is a notice raised now the answer to something done in the open panel? (Her
+  // answers in her Mind, where the Ask row is, always are.)
+  answersPanel() {
+    return !!this.ui.stack?.length && now() - this.lastPanelAct < ANSWER_WINDOW;
   }
 
   maxVisible() {
@@ -102,7 +123,7 @@ export class Toasts {
     const titleEl = title || key ? h('strong', { class: 'toast-title', text: title || '' }) : null;
     const body = titleEl ? h('div', { class: 'toast-body' }, titleEl, textEl) : textEl;
     const el = h('div', { class: `toast toast-${kind}`, title: 'Tap to put away' }, ic, body);
-    const t = { el, textEl, titleEl, text: msg, kind, key, age: 0, life: LIFE[kind] ?? 3.6, leaving: false, inPanel: !!this.ui.stack?.length };
+    const t = { el, textEl, titleEl, text: msg, kind, key, age: 0, life: LIFE[kind] ?? 3.6, leaving: false, inPanel: this.answersPanel() || (kind === 'lyra' && this.ui.top?.()?.id === 'mind') };
     this.items.push(t);
     this.el.appendChild(el);
     this.placeT = 0; // place the grown stack on the next step
