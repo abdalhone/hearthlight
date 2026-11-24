@@ -1356,6 +1356,7 @@ export class VillageLife {
     if (!k.by.includes(askerId)) k.by.push(askerId);
     const c = this.cases.get(about);
     if (c && !c.noticers.includes(who) && this.care(who, about) >= 0.6) c.noticers.push(who);
+    if (c && c.status !== 'found' && c.status !== 'dead') this.knowNews(c, [who, askerId]);
   }
 
   // Missing, or the watch is out searching and they know it.
@@ -1563,7 +1564,23 @@ export class VillageLife {
     if (c.timeline.length === 0) this.cases.note(c, t, `${this.name(by)} noticed ${this.name(about)} wasn't ${placeAt(place, this.placeName(place))}.`, 'notice');
     else if (!c.timeline.some((x) => x.text.startsWith(`${this.name(by)} `))) this.cases.note(c, t, `${this.name(by)} is looking for ${this.name(about)} too.`, 'notice');
     if (c.noticers.length >= 2 && c.status === 'noticed') c.status = 'asking';
+    this.knowNews(c, [by]);
     return c;
+  }
+
+  // Those who already know the news are not told it as gossip: the people looking, and
+  // everyone they asked.
+  knowNews(c, ids) {
+    const r = c?.rumor ? safe(() => this.village?.rumors?.get?.(c.rumor)) : null;
+    if (!r) return;
+    for (const id of ids) if (id && id !== c.about && id !== 'player' && !r.heardBy.includes(id)) r.heardBy.push(id);
+  }
+
+  // Everyone who knows someone is being looked for: the noticers and whoever they asked.
+  inTheKnow(c) {
+    const ids = new Set(c.noticers);
+    for (const [who, row] of Object.entries(this.know)) if (row?.[`asked:${c.about}`]) ids.add(who);
+    return [...ids];
   }
 
   // People asking after someone becomes village talk once it is more than a passing absence.
@@ -1574,6 +1591,7 @@ export class VillageLife {
     if (last && this.now() - last.t < 2 * HOUR) return; // seen not long ago: a busy day, not news
     const r = safe(() => this.village?.addRumor?.('asking_after', { victim: c.about, witnesses: heardBy, source: heardBy[0], about: 'village' }));
     if (r) c.rumor = r.id;
+    this.knowNews(c, this.inTheKnow(c));
   }
 
   startSearch(about, leaderId, { by = null } = {}) {
@@ -1615,6 +1633,7 @@ export class VillageLife {
       const r = safe(() => this.village?.addRumor?.('asking_after', { victim: about, witnesses: [leader, by, ...searchers].filter(Boolean), source: leader, about: 'village' }));
       if (r) c.rumor = r.id;
     }
+    this.knowNews(c, [leader, by, ...searchers, ...this.inTheKnow(c)]);
     if (assigned.length) {
       const L = this.entity(leader);
       const start = this.line(leader, 'watchStart', { about });
