@@ -239,6 +239,13 @@ export const questPlugin = {
           if (!s.reading && !s.read) doRead(ctx);
         }
         break;
+      case 'companion_action':
+        // "Read the journal" can reach her as 'interact' (the world plugin's intents come
+        // first); when one of them carries Maren's journal, that means reading it.
+        if (p.name === 'interact' && !s.read && /journal|diary|notebook|maren/i.test(String(p.args?.target || '')) && (ctx.companion?.inventory?.has?.('maren_journal') || ctx.player?.inventory?.has?.('maren_journal'))) {
+          readJournal({}, ctx);
+        }
+        break;
       default:
         break;
     }

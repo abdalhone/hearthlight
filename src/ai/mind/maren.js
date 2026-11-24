@@ -32,7 +32,7 @@ export const STAGE_LINES = {
   ],
   find_key: [
     'She walked to the Sunken Ruins and never came back. Aveline kept the candle burning for her all this time.',
-    "And the gate's been locked since spring. The bandits up north-east took the warden's key.",
+    "And the gate's been locked since spring. The bandits up north-east took the key.",
     "Bandits. Of course it's bandits. Tides take them. North-east, then.",
   ],
   find_key_told: [
@@ -69,7 +69,7 @@ export const MAREN_JOURNAL = [
   },
   {
     date: '16th of Thawmonth',
-    text: 'I asked the old warden at the toll-house to lock the ruins gate behind me and keep the key until I come out. Nobody should wander in while the stones hum like this. If anyone finds these pages before I return: do not follow without light. Bring a lamp, a friend, and more courage than sense.',
+    text: 'I asked the old ruins-keeper at the lodge to lock the gate behind me and keep the key until I come out. Nobody should wander in while the stones hum like this. If anyone finds these pages before I return: do not follow without light. Bring a lamp, a friend, and more courage than sense.',
   },
   {
     date: '17th of Thawmonth, late',
@@ -102,9 +102,9 @@ export const MAREN_TESTIMONY = {
     npc: [
       'Maren Ashgrove. Yes. She sat in the third pew most evenings and asked me about the old stones.',
       'The last morning, she asked me to keep the candle burning, and walked toward the Sunken Ruins. She did not come back.',
-      'The ruins gate has been locked since spring. Captain Rowan believes the bandits in the north-east took the warden\'s key.',
+      'The ruins gate has been locked since spring. Captain Rowan believes the bandits in the north-east took the key from the ruins-keeper\'s lodge.',
     ],
-    learned: 'Maren asked Aveline to keep the chapel candle burning, then walked to the Sunken Ruins and never came back. The gate is locked; the bandits may have the warden\'s key.',
+    learned: 'Maren asked Aveline to keep the chapel candle burning, then walked to the Sunken Ruins and never came back. The gate is locked; the bandits may have its key.',
     lyra: "Thank you, Sister. For the candle, too. I'll bring her back to see it.",
   },
   elda: {
@@ -115,9 +115,9 @@ export const MAREN_TESTIMONY = {
   rowan: {
     npc: [
       'Your teacher went into the Sunken Ruins against my advice.',
-      "Then the bandits raided the warden's toll-house by the ruins and took the gate key. I haven't the soldiers to take it back.",
+      "Then the bandits raided the ruins-keeper's lodge and took the gate key. I haven't the soldiers to take it back.",
     ],
-    learned: "The bandits took the ruins gate key from the warden's toll-house; it is probably at their camp in the north-east.",
+    learned: "The bandits took the ruins gate key from the ruins-keeper's lodge; it is probably at their camp in the north-east.",
     lyra: "Then I'll take them back for you, Captain. With help.",
   },
   garrick: {

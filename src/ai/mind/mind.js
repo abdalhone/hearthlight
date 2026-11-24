@@ -8,7 +8,7 @@ import { addGoal as addGoalTo, completeGoal as completeGoalIn, sanitizeGoals, to
 import { Perception, jobLabel } from './perception.js';
 import { ThoughtGenerator } from './thoughts.js';
 import { STAGES } from './maren.js';
-import { clamp, firstSentence, playerRef, cap, partOfDay, pick, shorten, placePhrase, lowerFirst } from './text.js';
+import { clamp, firstSentence, playerRef, cap, partOfDay, pick, shorten, placePhrase, lowerFirst, joinList } from './text.js';
 import { KnowledgeStore } from './knowledge.js';
 import { MemoryIndex } from './memory_index.js';
 import { WorkingMemory } from './working_memory.js';
@@ -27,6 +27,7 @@ import { defaultLorebook } from '../../lore/lorebook.js';
 // plugins are installed.
 
 const LIMITS = { thoughts: 80, thoughtsSaved: 40, conversation: 40, diary: 20, diaryText: 1800, saveBytes: 145000 };
+const HUNGRY = 0.32; // below this she eats from her satchel if she can
 
 const EAT_LINES = {
   honey_cake: ["Mm. Elda's honey cake. Ten out of ten. I'd fight a bear for these.", 'Honey cake. My one weakness. Well. One of several.'],
@@ -43,16 +44,24 @@ export class Mind {
     this.game = game;
     this.owner = owner;
     this.soul = defaultSoul();
+    this.lorebook = opts.lorebook || defaultLorebook();
+    this._build();
+    this._off = game?.bus?.on?.('*', (type, payload) => this.perceive(type, payload)) || null;
+    this._startAutonomy();
+  }
+
+  // Every store, empty, then her first memories: who she is on the day the game begins.
+  _build() {
+    const game = this.game;
     this.affect = new Emotions(this.soul.personality);
     this.emotions = this.affect.values;
     this.needsEngine = new Needs();
     this.needs = this.needsEngine.values;
-    this.lorebook = opts.lorebook || defaultLorebook();
     this.life = buildLife(this.lorebook);
     this.memory = new Memory({ now: () => this.now() });
     this.knowledgeStore = new KnowledgeStore({ now: () => this.now() });
     this.knowledge = this.knowledgeStore.list;
-    this.relationships = new Relationships(game, owner, this);
+    this.relationships = new Relationships(game, this.owner, this);
     this.goals = [];
     this.thoughts = [];
     this.diary = [];
@@ -67,6 +76,7 @@ export class Mind {
     this._acc = 0;
     this._moodAcc = 0;
     this._secretT = 12;
+    this._eatT = 3;
     this._speech = [];
     this._speechT = 0;
     this._convLen = 0;
@@ -75,16 +85,41 @@ export class Mind {
     this._sleepDay = null;
     this._consolidatedFor = null;
     this._act = { moving: false, working: false, combat: false, sitting: false, sleeping: false, nearPlayer: false, danger: 0, hpFrac: 1, threats: 0, night: false, indoor: false, exploring: false };
-
     this._seed();
-    this._off = game?.bus?.on?.('*', (type, payload) => this.perceive(type, payload)) || null;
-    // Her own will (DESIGN §16) is built last: it reads everything above.
+  }
+
+  // Her own will (DESIGN §16) is built last: it reads everything above.
+  _startAutonomy() {
     try {
-      this.autonomy = new Autonomy(this, game);
+      this.autonomy = new Autonomy(this, this.game);
     } catch (err) {
       console.error('[mind] autonomy failed to start', err);
       this.autonomy = null;
     }
+  }
+
+  // Back to the woman who walked into Hearthvale (the Data tab's reset). Her soul, edited
+  // or not, stays; everything she has lived through since is gone.
+  reset() {
+    try {
+      this.autonomy?._off?.();
+    } catch {
+      /* an old will that cannot be unhooked just goes quiet */
+    }
+    this._build();
+    this._startAutonomy();
+    if (this.game?.state === 'playing') {
+      try {
+        this.autonomy?.planDay?.('reset');
+      } catch (err) {
+        console.error('[mind] planning after a reset failed', err);
+      }
+    }
+    return this;
+  }
+
+  defaultSoul() {
+    return defaultSoul();
   }
 
   get name() {
@@ -171,6 +206,12 @@ export class Mind {
     if (this._secretT <= 0) {
       this._secretT = 8;
       this._checkSecrets();
+    }
+    // Her own satchel, her own meals: checked every couple of seconds.
+    this._eatT -= dt;
+    if (this._eatT <= 0) {
+      this._eatT = 2;
+      if (this.needs.hunger < HUNGRY && this.game?.state === 'playing' && this.owner && !this.owner.downed && this.owner.state !== 'sleep') this.tryEat();
     }
     if (this.conversation.length !== this._convLen) this._dedupeConversation();
     if (this.autonomy) {
@@ -274,10 +315,9 @@ export class Mind {
     if (t - this.perception.lastSpoke < 5 || this._speech.length) return false;
     const b = g.bubbles;
     try {
-      if (typeof b?.isBusy === 'function' && b.isBusy(o)) return false;
-      if (typeof b?.has === 'function' && b.has(o)) return false;
+      if (bubbleShowing(b, o)) return false;
       if (!b?.thought) return false;
-      b.thought(o, text);
+      if (!b.thought(o, text) && typeof b.hasBubble === 'function') return false;
     } catch (err) {
       return false;
     }
@@ -577,7 +617,7 @@ export class Mind {
 
   // Eat from her own satchel when hungry (preferring honey cake, bread, grilled fish).
   tryEat({ force = false } = {}) {
-    if (!force && this.needs.hunger >= 0.32) return null;
+    if (!force && this.needs.hunger >= HUNGRY) return null;
     if (this.activity().combat) return null;
     const inv = this.owner?.inventory;
     if (!inv) return null;
@@ -653,7 +693,10 @@ export class Mind {
     const parts = [];
     parts.push(mood.valence > 0.25 ? 'A good day, mostly.' : mood.valence < -0.15 ? 'A heavy day.' : 'A long day, and a strange one.');
     if (mems.length) {
-      for (const m of mems) parts.push(firstSentence(m.text, 160));
+      const gists = mems.map((m) => m.gist).filter(Boolean).slice(0, 3);
+      if (gists.length >= 2) parts.push(`${cap(joinList(gists))}.`);
+      const big = mems.find((m) => m.importance >= 6) || (gists.length < 2 ? mems[0] : null);
+      if (big) parts.push(firstSentence(big.text, 180));
     } else {
       parts.push(`Quiet. We stayed ${placePhrase(this.place())}, and nothing tried to eat us, which counts as a triumph.`);
     }
@@ -745,7 +788,8 @@ export class Mind {
       .top(3)
       .filter((e) => e.value >= 0.35)
       .map((e) => e.name);
-    const status = safeCall(() => o?.behavior?.status?.()) || '';
+    // Behavior speaks to the player ("following you"); this paragraph is about her.
+    const status = String(safeCall(() => o?.behavior?.status?.()) || '').replace(/\byou\b/g, 'the player').replace(/\byour\b/g, "the player's");
     const loc = this.place();
     const w = g?.clock?.weather?.type || 'clear';
     const weather = { clear: 'clear skies', cloudy: 'clouds', rain: 'rain', fog: 'fog' }[w] || w;
@@ -757,7 +801,10 @@ export class Mind {
     const comp = this.companionship;
     if (comp !== 'together') parts.push(COMPANIONSHIP_STATE[comp] || `Her standing with the player: ${comp}.`);
     const plan = this.currentPlan();
-    if (plan) parts.push(`Her plan now: ${plan.activity}${plan.at ? ` at ${g?.locations?.get?.(plan.at)?.name || plan.at}` : ''}${plan.why ? ` (${plan.why})` : ''}.`);
+    if (plan) {
+      const why = plan.why ? ` (in her words: "${String(plan.why).replace(/[.!]+$/, '')}")` : '';
+      parts.push(`Her plan now: ${plan.activity}${plan.with === 'player' ? ' with the player' : ''}${plan.at ? ` at ${g?.locations?.get?.(plan.at)?.name || plan.at}` : ''}${why}.`);
+    }
     if (goal) parts.push(`On her mind: ${lowerFirst(goal.text.replace(/[.!]$/, ''))}.`);
     const wm = this.workingMemory.list(3).map((it) => it.label);
     if (wm.length) parts.push(`Thinking of: ${wm.join('; ')}.`);
@@ -918,6 +965,21 @@ function buildLife(lorebook) {
     feeling: e.feeling ? String(e.feeling) : null,
     importance: Math.max(1, Math.min(10, Math.round(Number(e.importance) || 6))),
   }));
+}
+
+// Is a speech bubble (or a thought) already over her head? (render's Bubbles API, with
+// older names as a fallback.)
+export function bubbleShowing(b, o) {
+  if (!b || !o) return false;
+  try {
+    if (typeof b.isSpeaking === 'function' && b.isSpeaking(o)) return true;
+    if (typeof b.hasBubble === 'function' && b.hasBubble(o)) return true;
+    if (typeof b.isBusy === 'function' && b.isBusy(o)) return true;
+    if (typeof b.has === 'function' && b.has(o)) return true;
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 function playerName(game) {

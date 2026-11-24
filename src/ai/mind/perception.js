@@ -254,6 +254,16 @@ export class Perception {
         return this.onPlanChanged(p);
       case 'conversation':
         return this.onConversation(p);
+      case 'new_day':
+        return this.onNewDay(p);
+      case 'room_rented':
+        return this.onRoomRented(p);
+      case 'quest':
+        return this.onQuest(p);
+      case 'enter_location':
+        // Polling notices her own moves; the event only speeds it up.
+        if (this.isSelf(p.actor)) this._placeT = 0;
+        return;
       default:
         return;
     }
@@ -862,7 +872,8 @@ export class Perception {
     if (this.isPlayer(speaker)) return;
     if (!this.near(speaker, NOTICE_RADIUS)) return;
     if (this.throttle(`heard_topics_${speaker.id}`, 6)) m.noticeText(String(text), { source: 'overheard', amount: 0.3 });
-    if (/\bmaren\b/i.test(text) && this.throttle('heard_maren', 120)) {
+    // Said to her face, in a talk she is having: the conversation itself is remembered.
+    if (/\bmaren\b/i.test(text) && !this.isSelf(target) && this.throttle('heard_maren', 120)) {
       m.appraise('hope', 0.6, `${speaker.name} spoke of Maren`);
       m.remember(`Heard ${speaker.name || 'someone'} mention Maren: "${firstSentence(text, 120)}"`, {
         importance: 6,
@@ -980,6 +991,43 @@ export class Perception {
 
   onPlanChanged() {
     this.mind.thinker.nudge(8);
+  }
+
+  // Her own room at the inn, paid from her own purse (or on Elda's credit, which she
+  // will settle: she keeps a tally of debts).
+  onRoomRented({ npc, actor, price, paid }) {
+    if (!this.isSelf(actor)) return;
+    const m = this.mind;
+    const day = this.game?.clock?.day ?? 1;
+    if (!this.throttle(`room_${day}`, 600)) return;
+    m.needsEngine.satisfy('safety', 0.1);
+    const host = npc?.name ? firstName(npc.name) : 'Elda';
+    const coins = Number(price) || 0;
+    if (paid) {
+      m.feel('pride', 0.06, 'paid my own way');
+      m.remember(`Took my room at the Ember Kettle for the night${coins ? `, ${coins} coins from my own purse` : ''}. A door with a bolt on it. Worth every copper.`, { importance: 2, about: npc?.id ? [npc.id] : [], tags: ['room', 'ember_kettle', 'coin'], location: 'ember_kettle', emotion: 'pride', gist: 'my room at the Kettle' });
+    } else {
+      m.feel('embarrassment', 0.1, 'a room on credit');
+      m.remember(`${host} gave me my room at the Kettle on credit tonight. It goes in the tally at the back of my journal: I pay my debts.`, { importance: 3, about: npc?.id ? [npc.id] : [], tags: ['room', 'ember_kettle', 'debt'], location: 'ember_kettle', emotion: 'embarrassment', gist: `owing ${host} for a room` });
+      if (npc?.id) m.relationships.adjust(npc.id, { affinity: 2, trust: 1 }, 'Trusted me with a room on credit');
+    }
+  }
+
+  // A new morning: yesterday's fear of the dark is gone, and she thinks about the day.
+  onNewDay() {
+    const m = this.mind;
+    m.feel('joy', 0.05, 'a new day');
+    m.thinker.nudge(10);
+  }
+
+  // A turn in the Maren arc brings Maren, and the places involved, to the front of her mind.
+  onQuest({ id, stage }) {
+    if (id !== 'maren') return;
+    const m = this.mind;
+    m.notice('person:maren', { source: 'quest', amount: 0.9, reminisce: false, label: 'Maren' });
+    const place = { find_key: 'bandit_camp', enter_ruins: 'sunken_ruins', find_journal: 'sunken_ruins' }[stage];
+    if (place) m.notice(`place:${place}`, { source: 'quest', amount: 0.6, reminisce: false });
+    if (stage === 'read_journal' || stage === 'waygate') m.notice('item:maren_journal', { source: 'quest', amount: 0.8, reminisce: false });
   }
 
   onConversation({ a, b, topic }) {
@@ -1215,6 +1263,18 @@ export class Perception {
     const g = this.game;
     const rels = m.relationships;
     const t = g?.clock?.t ?? 0;
+    // Pip's stray may come back under another id (a reloaded world): same cat, same bond.
+    if (e.species === 'cat' && !e.profile && !rels.map.has(e.id)) {
+      const old = [...rels.map.values()].find((r) => r.species === 'cat' && r.tags.includes('pet') && !g?.entities?.get?.(r.id));
+      if (old) {
+        rels.map.delete(old.id);
+        old.id = e.id;
+        rels.map.set(e.id, old);
+        old.lastSeen = t;
+        rels._emit(old, { met: true }, 'found again');
+        return old;
+      }
+    }
     const rel = rels.ensure(e);
     if (rel.firstMet == null) rel.firstMet = t;
     rel.lastSeen = t;
@@ -1247,7 +1307,10 @@ export class Perception {
       rels.setOpinion(rel.id, fi.opinion, 'impression');
       const where = place ? ` ${placePhrase(place)}` : '';
       const mentions = place && fi.memory && fi.memory.toLowerCase().includes(String(place.name).toLowerCase().replace(/^the /, ''));
-      const memText = fi.memory ? (where && !mentions ? fi.memory.replace(/\./, `${where}.`) : fi.memory) : `Met ${e.name}${where}.`;
+      // "Met Bram Ironhand, the blacksmith, at the smithy." (an appositive keeps its commas)
+      const first = fi.memory ? fi.memory.split('.')[0] : '';
+      const placeIn = (t) => (/, [^,]+$/.test(first) ? t.replace(/\./, `,${where}.`) : t.replace(/\./, `${where}.`));
+      const memText = fi.memory ? (where && !mentions ? placeIn(fi.memory) : fi.memory) : `Met ${e.name}${where}.`;
       m.remember(memText, {
         importance: fi.hope ? 6 : 5,
         about: [rel.id],

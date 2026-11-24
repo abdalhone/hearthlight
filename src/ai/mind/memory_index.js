@@ -24,6 +24,19 @@ const STRONG_FEELINGS = new Set(['fear', 'sadness', 'anger', 'joy', 'affection',
 const GENERIC = new Set([`person:${PLAYER_ID}`, 'person:lyra', 'place:hearthvale']);
 const RECALL_HALF_LIFE = 300; // real seconds for "I was just thinking about that" to fade
 
+// What a record's document depends on: when this changes, it is re-indexed.
+function lifeSig(e) {
+  return `${e.title}|${e.text.length}|${e.importance}|${e.people.join(',')}|${e.places.join(',')}`;
+}
+
+function episodeSig(m) {
+  return `${m.text}|${m.importance}|${m.about.join(',')}|${m.tags.join(',')}|${m.location || ''}|${m.emotion || ''}|${m.gist || ''}`;
+}
+
+function knowledgeSig(k) {
+  return `${k.subject}|${k.text}|${k.kind}|${k.confidence}|${k.about.join(',')}`;
+}
+
 export function emotionWeight(name) {
   if (!name) return 0;
   return STRONG_FEELINGS.has(String(name)) ? 1 : 0.5;
@@ -63,23 +76,35 @@ export class MemoryIndex {
     if (!this.linker || lsig !== this._linkerSig) {
       this.linker = buildLinker(m);
       this._linkerSig = lsig;
-      this.sigs = {}; // every record must be re-linked with the new vocabulary
+      // Every record must be re-linked with the new vocabulary.
+      this.sigs = {};
+      for (const d of this.docs.values()) d.sig = null;
     }
     const life = m.life || [];
-    this._sync('life', `${life.length}:${life[0]?.id || ''}`, () => life.map((e) => this._lifeDoc(e)));
+    this._sync('life', `${life.length}:${life[0]?.id || ''}`, life, (e) => e.id, lifeSig, (e) => this._lifeDoc(e));
     const mem = m.memory;
-    this._sync('episode', `${mem?.size || 0}:${mem?.rev || 0}`, () => (mem ? mem.all().map((x) => this._episodeDoc(x)) : []));
+    this._sync('episode', `${mem?.size || 0}:${mem?.rev || 0}`, mem ? mem.all() : [], (x) => x.id, episodeSig, (x) => this._episodeDoc(x));
     const kn = m.knowledgeStore;
-    this._sync('knowledge', `${kn?.size || 0}:${kn?.rev || 0}`, () => (kn ? kn.all().map((x) => this._knowledgeDoc(x)) : []));
-    this._sync('person', this._peopleSignature(), () => this._personDocs());
+    this._sync('knowledge', `${kn?.size || 0}:${kn?.rev || 0}`, kn ? kn.all() : [], (x) => x.id, knowledgeSig, (x) => this._knowledgeDoc(x));
+    const people = this._personDocsIfChanged();
+    if (people) this._sync('person', null, people, (d) => d.id, (d) => d.sig, (d) => d);
   }
 
+  // What the linker's vocabulary depends on: the names of the people she could mean, the
+  // places, the player's name and the story. Meeting a villager whose name the linker
+  // already knows changes nothing, so the index is not rebuilt for it.
   _linkerSignature() {
     const m = this.mind;
     const g = m?.game;
-    let profiles = 0;
-    for (const e of g?.entities?.all?.() || []) if (e?.profile) profiles++;
-    return `${m?.relationships?.size || 0}:${profiles}:${g?.locations?.all?.()?.length || 0}:${g?.settings?.playerName || ''}:${m?.lorebook?.size || 0}`;
+    const list = g?.entities?.all?.() || [];
+    const quick = `${m?.relationships?.size || 0}:${list.length}:${g?.locations?.all?.()?.length || 0}:${g?.settings?.playerName || ''}:${m?.lorebook?.size || 0}`;
+    if (quick === this._quickSig) return this._linkerSigCache;
+    this._quickSig = quick;
+    const names = new Set();
+    for (const e of list) if (e?.profile) names.add(`${e.id}|${e.name}|${e.profile.role || e.role || ''}`);
+    for (const r of m?.relationships?.map?.values?.() || []) if (r.id !== PLAYER_ID) names.add(`${r.id}|${r.name}|${r.role || ''}`);
+    this._linkerSigCache = `${[...names].sort().join(';')}#${g?.locations?.all?.()?.length || 0}#${g?.settings?.playerName || ''}#${m?.lorebook?.size || 0}`;
+    return this._linkerSigCache;
   }
 
   _peopleSignature() {
@@ -87,16 +112,33 @@ export class MemoryIndex {
     let s = 0;
     for (const r of this.mind?.relationships?.map?.values?.() || []) {
       n++;
-      s += (r.notes?.length || 0) * 7 + (Math.round(r.opinionT) || 0) + (r.tags?.length || 0) * 3 + (r.firstMet != null ? 1 : 0);
+      s += (r.notes?.length || 0) * 7 + (Math.round(r.opinionT) || 0) + (r.tags?.length || 0) * 3 + (r.firstMet != null ? 1 : 0) + bondOf(r).level * 11;
     }
     return `${n}:${s}`;
   }
 
-  _sync(store, sig, build) {
-    if (this.sigs[store] === sig) return;
-    this.sigs[store] = sig;
-    for (const key of [...this.docs.keys()]) if (this.docs.get(key).store === store) this._remove(key);
-    for (const d of build()) if (d) this._add(d);
+  // Bring one store's documents up to date. Only records that are new or whose content
+  // changed are re-tokenized and re-linked, so a new memory costs one document, not all.
+  _sync(store, sig, items, idOf, sigOf, build) {
+    if (sig != null && this.sigs[store] === sig) return;
+    if (sig != null) this.sigs[store] = sig;
+    const live = new Set();
+    for (const it of items) {
+      const key = `${store}:${idOf(it)}`;
+      live.add(key);
+      const s = sigOf(it);
+      const old = this.docs.get(key);
+      if (old && old.sig === s && old.ref === (it.ref || it)) continue;
+      if (old) this._remove(key);
+      const d = build(it);
+      if (d) {
+        d.sig = s;
+        this._add(d);
+      }
+    }
+    const stale = [];
+    for (const [key, d] of this.docs) if (d.store === store && !live.has(key)) stale.push(key);
+    for (const key of stale) this._remove(key);
   }
 
   _add(doc) {
@@ -141,7 +183,8 @@ export class MemoryIndex {
   }
 
   _lifeDoc(e) {
-    const body = `${e.title} ${e.text}`;
+    // The title counts twice: it is what she would call the chapter.
+    const body = `${e.title} ${e.title} ${e.text}`;
     return {
       key: `life:${e.id}`,
       store: 'life',
@@ -151,6 +194,8 @@ export class MemoryIndex {
       text: e.text,
       body,
       ents: this.linker.linkRecord(body, { about: e.people, places: e.places }),
+      labelEnts: this.linker.link(e.title),
+      labelToks: new Set(tokenize(e.title)),
       importance: e.importance || 6,
       t: null,
       emotion: emotionWeight(e.feeling),
@@ -175,7 +220,8 @@ export class MemoryIndex {
   }
 
   _knowledgeDoc(k) {
-    const body = `${k.subject} ${k.text}`;
+    // The subject counts twice: "Maren Ashgrove" is about Maren more than a spell she taught.
+    const body = `${k.subject} ${k.subject} ${k.text}`;
     const ents = this.linker.linkRecord(body, { about: k.about });
     if (k.loreId) {
       const base = String(k.loreId).split('#')[0];
@@ -194,38 +240,59 @@ export class MemoryIndex {
       text: k.text,
       body,
       ents,
+      labelEnts: this.linker.link(k.subject),
+      labelToks: new Set(tokenize(k.subject)),
       importance: base + Math.round((k.confidence ?? 0.7) * 2),
       t: k.t,
       emotion: 0,
     };
   }
 
-  _personDocs() {
+  // Person documents, rebuilt only when someone's notes, opinion or tags changed.
+  _personDocsIfChanged() {
+    const sig = this._peopleSignature();
+    if (this.sigs.person === sig) return null;
+    this.sigs.person = sig;
     const out = [];
     for (const r of this.mind?.relationships?.map?.values?.() || []) {
       if (r.kind === 'group' || (r.firstMet == null && !r.absent && r.id !== PLAYER_ID)) continue;
       const notes = (r.notes || []).map((n) => n.text).join(' ');
-      const body = `${r.name} ${r.role || ''} ${r.opinion || ''} ${notes} ${(r.tags || []).join(' ')}`;
-      const ents = this.linker.link(body);
+      const body = `${r.name} ${r.name} ${r.role || ''} ${r.opinion || ''} ${notes} ${(r.tags || []).join(' ')}`;
+      out.push({ id: r.id, ref: r, body, sig: `${body.length}:${r.opinionT || 0}:${r.notes?.length || 0}:${(r.tags || []).join(',')}:${bondOf(r).level}` });
+    }
+    return out.map((p) => {
+      const r = p.ref;
+      const ents = this.linker.link(p.body);
       ents.add(`person:${r.id}`);
-      out.push({
+      return {
         key: `person:${r.id}`,
         store: 'person',
         id: r.id,
         ref: r,
         label: r.name,
         text: r.opinion || r.name,
-        body,
+        body: p.body,
         ents,
         importance: 3 + bondOf(r).level,
         t: r.lastSeen ?? null,
         emotion: Math.abs(r.affinity) >= 50 || r.fear >= 30 ? 1 : 0,
-      });
-    }
-    return out;
+        sig: p.sig,
+      };
+    });
   }
 
   // ---------------------------------------------------------------- querying
+
+  // The words of an entity's name ('person:maren' -> maren, ashgrov), cached.
+  _entToks(key) {
+    if (!this._entTokCache || this._entTokFor !== this.linker) {
+      this._entTokCache = new Map();
+      this._entTokFor = this.linker;
+    }
+    let t = this._entTokCache.get(key);
+    if (!t) this._entTokCache.set(key, (t = new Set(tokenize(this.linker.label(key)))));
+    return t;
+  }
 
   link(text, opts) {
     this.refresh();
@@ -269,7 +336,8 @@ export class MemoryIndex {
   }
 
   _salience(doc, now) {
-    const age = doc.t == null ? Infinity : Math.max(0, (now - doc.t) / DAY_SECONDS);
+    const t = doc.store === 'person' ? doc.ref?.lastSeen ?? null : doc.t;
+    const age = t == null ? Infinity : Math.max(0, (now - t) / DAY_SECONDS);
     const recency = Number.isFinite(age) ? Math.exp(-age / 4) : 0;
     return W.importance * (doc.importance / 10) + W.recency * recency + W.emotion * doc.emotion + W.activation * this.activation(doc);
   }
@@ -317,13 +385,29 @@ export class MemoryIndex {
       }
     }
     const nEnts = qEnts.size;
+    const qSet = new Set(q);
     const scored = [];
     for (const c of cands.values()) {
       const text = c.bm / (c.bm + 2.5);
       let hit = 0;
       if (nEnts) for (const e of qEnts) if (c.d.ents.has(e)) hit++;
       const ent = nEnts ? hit / nEnts : 0;
-      const rel = clamp01(0.6 * text + 0.6 * ent + (text > 0 && ent > 0 ? 0.1 : 0));
+      // What a record is called counts most: "Maren" finds "Maren Ashgrove" before a spell she taught.
+      let head = 0;
+      const lt = c.d.labelToks;
+      if (lt && lt.size) {
+        // How much of the record's name the question covers, by words or by who it names.
+        let covered = 0;
+        for (const t of lt) {
+          if (qSet.has(t)) covered++;
+          else for (const e of qEnts) if (c.d.labelEnts?.has(e) && this._entToks(e).has(t)) {
+            covered++;
+            break;
+          }
+        }
+        head = 0.3 * (covered / lt.size);
+      }
+      const rel = Math.min(1.6, 0.6 * text + 0.6 * ent + (text > 0 && ent > 0 ? 0.1 : 0) + head);
       if (rel <= 0) continue;
       scored.push({ d: c.d, rel, score: W.relevance * rel + this._salience(c.d, now) });
     }

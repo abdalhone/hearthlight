@@ -1,5 +1,6 @@
 import { PLAYER_ID } from '../../core/constants.js';
-import { shorten, firstSentence, firstName, cap, lowerFirst, pick, normName, timeAgo, playerRef } from './text.js';
+import { shorten, firstSentence, firstName, cap, lowerFirst, pick, normName, timeAgo, playerRef, tokenSet } from './text.js';
+import { jaccard } from './memory.js';
 import { bondOf } from './relationships.js';
 
 // How Lyra brings things back to mind (DESIGN §17.2): the context Claude gets for a
@@ -17,6 +18,12 @@ const SECTION_TITLES = {
 const SECTION_ORDER = ['mind', 'episode', 'knowledge', 'person', 'life'];
 const LINE_MAX = { mind: 120, episode: 240, knowledge: 210, person: 330, life: 240 };
 const SECTION_MAX = { mind: 6, episode: 7, knowledge: 7, person: 3, life: 3 };
+const PER_STORE = [
+  ['episode', 24],
+  ['knowledge', 12],
+  ['life', 5],
+  ['person', 4],
+];
 
 // ---------------------------------------------------------------- ids
 
@@ -77,10 +84,15 @@ function lifeLine(h) {
 // The context for one message: grouped, deduplicated, and never over budget.
 export function recallContext(mind, text, { budget = 3500 } = {}) {
   const idx = mind.index;
-  const hits = idx.search(text, { limit: 30, touch: true });
+  // Each store is searched on its own, so a hundred small memories of one thing never
+  // crowd out what she knows or who she was.
+  const hits = [];
+  for (const [store, limit] of PER_STORE) hits.push(...idx.search(text, { limit, stores: [store], touch: true }));
+  hits.sort((a, b) => b.score - a.score);
   const qEnts = idx.link(text, { query: true });
   const groups = { mind: [], episode: [], knowledge: [], person: [], life: [] };
   const seen = new Set();
+  const shapes = { episode: [], knowledge: [], life: [] };
 
   let loose = 0;
   for (const h of hits) {
@@ -91,6 +103,10 @@ export function recallContext(mind, text, { budget = 3500 } = {}) {
       if (loose >= 2 || h.store !== 'episode' || (h.ref.importance || 0) < 7) continue;
       loose++;
     }
+    // Near-repeats of something already chosen add nothing.
+    const shape = tokenSet(h.text);
+    if (shapes[h.store].some((o) => jaccard(o, shape) >= 0.6)) continue;
+    shapes[h.store].push(shape);
     const line = h.store === 'episode' ? episodeLine(h, mind) : h.store === 'knowledge' ? knowledgeLine(h, mind) : lifeLine(h);
     groups[h.store].push({ line: shorten(line, LINE_MAX[h.store]), item: { id: citeId(h.store, h.id), store: h.store, label: h.label } });
     seen.add(h.key);
@@ -107,11 +123,12 @@ export function recallContext(mind, text, { budget = 3500 } = {}) {
   for (const e of qEnts) addPerson(e);
   for (const h of hits) {
     if (h.store === 'person') addPerson(`person:${h.id}`);
-    else if (people.length < 2) for (const e of h.ents) addPerson(e);
+    else if (people.length < 2 && h.relevance >= 0.3 && seen.has(h.key)) for (const e of h.ents) addPerson(e);
   }
   for (const id of people) {
     const d = dossier(mind, id);
-    if (!d) continue;
+    // Someone she has only heard named adds nothing unless the player asked about them.
+    if (!d || (!d.met && !d.lore && !qEnts.has(`person:${id}`))) continue;
     groups.person.push({ line: shorten(`- [person:${d.id}] ${d.text}`, LINE_MAX.person), item: { id: `person:${d.id}`, store: 'person', label: d.name } });
     seen.add(`person:${d.id}`);
   }
@@ -162,9 +179,11 @@ export function recallContext(mind, text, { budget = 3500 } = {}) {
 function resolvePersonId(mind, ref) {
   if (!ref) return null;
   if (typeof ref === 'object' && ref.id) return String(ref.id);
+  if (/^(me|player|the player|you know who)$/i.test(String(ref).trim())) return PLAYER_ID;
   const rel = mind.relationships.get(String(ref));
   if (rel && rel.kind !== 'group') return rel.id;
-  for (const k of mind.index.link(String(ref), { query: true })) if (k.startsWith('person:')) return k.slice(7);
+  // Names, roles and aliases only: "we" and "us" are not anyone's dossier.
+  for (const k of mind.index.link(String(ref))) if (k.startsWith('person:')) return k.slice(7);
   const lore = mind.lorebook?.all('person').find((e) => normName(e.name) === normName(ref) || e.id === String(ref) || e.npcId === String(ref));
   return lore ? lore.npcId || lore.id : null;
 }
@@ -176,9 +195,11 @@ export function dossier(mind, personRef) {
   const rel = mind.relationships.map.get(id) || null;
   const loreEntry = (mind.lorebook?.all('person') || []).find((e) => (e.npcId || e.id) === id && mind.knowsLore(e)) || null;
   const known = !!rel && (rel.firstMet != null || rel.absent || id === PLAYER_ID);
-  if (!known && !loreEntry) return null;
-  const name = rel?.name || loreEntry?.name || id;
-  const role = rel?.role || loreEntry?.role || null;
+  // Someone who lives here but she has not met: a name and a trade, nothing more.
+  const ent = !known && !loreEntry ? mind.game?.entities?.get?.(id) : null;
+  if (!known && !loreEntry && !ent?.profile) return null;
+  const name = rel?.name || loreEntry?.name || ent?.name || id;
+  const role = rel?.role || loreEntry?.role || ent?.profile?.role || ent?.role || null;
   const key = `person:${id}`;
   const facts = mind.knowledgeStore.all().filter((k) => k.about.includes(id) || (k.loreId && (k.loreId === loreEntry?.id))).slice(-6);
   // The memories that matter most about them, then the most recent.
@@ -210,6 +231,10 @@ export function dossier(mind, personRef) {
     firstMet: rel?.firstMet ?? null,
     lastSeen: rel?.lastSeen ?? null,
   };
+  if (!known && !loreEntry) {
+    d.text = `${name}${role ? `, ${role}` : ''}. She has not met them yet.`;
+    return d;
+  }
   const head = `${name}${role ? `, ${role}` : ''}`;
   const stats = rel ? ` ${bond.label}; affinity ${Math.round(rel.affinity)}, trust ${Math.round(rel.trust)}, respect ${Math.round(rel.respect)}${rel.fear >= 10 ? `, fear ${Math.round(rel.fear)}` : ''}${rel.tags.length ? `, ${rel.tags.join('/')}` : ''}.` : '';
   const bits = [`${head}.${stats}`];
@@ -390,6 +415,7 @@ export function maybeReminisce(mind, entKey, cue) {
   if (!per || g?.state !== 'playing' || !o || o.downed || o.state === 'sleep') return null;
   const t = per.rt();
   const R = mind._reminisce;
+  if (per.clock < 20) return null; // let the player find their feet first
   if (t - R.last < 120 || per.encounter || per.threats > 0) return null;
   if (per.firstVisit && t - per.placeSince < 60) return null; // a first visit has its own thoughts
   const now = mind.now();
@@ -436,6 +462,8 @@ export function maybeReminisce(mind, entKey, cue) {
 function bubbleBusy(g, o) {
   const b = g?.bubbles;
   try {
+    if (typeof b?.hasBubble === 'function') return !!b.hasBubble(o);
+    if (typeof b?.isSpeaking === 'function') return !!b.isSpeaking(o);
     if (typeof b?.isBusy === 'function') return !!b.isBusy(o);
     if (typeof b?.has === 'function') return !!b.has(o);
   } catch {

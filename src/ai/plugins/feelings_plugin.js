@@ -90,7 +90,8 @@ export const feelingsPlugin = {
     },
   },
 
-  // Eating when hungry and saying so when she has nothing (checked every 2 s).
+  // The mind eats from her satchel by itself (Mind.update); when the satchel is empty and
+  // she is starving, she says so (checked every 2 s).
   update(dt, ctx) {
     const mind = ctx.mind;
     if (!mind || ctx.game?.state !== 'playing') return;
@@ -100,9 +101,8 @@ export const feelingsPlugin = {
     s.t = 0;
     const o = ctx.companion;
     if (!o || o.downed) return;
-    if (mind.needs.hunger < 0.32) {
-      const ate = mind.tryEat();
-      if (!ate && mind.needs.hunger < 0.2) {
+    if (mind.needs.hunger < 0.2) {
+      if (!mind.hasFood?.()) {
         const now = mind.perception.rt();
         const p = ctx.player;
         const near = p && Math.hypot(p.x - o.x, p.y - o.y) < 100;
