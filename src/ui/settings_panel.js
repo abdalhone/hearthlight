@@ -1,10 +1,56 @@
-// Settings (DESIGN.md §14). Every field goes through game.setSetting so other
-// modules hear `settings_changed`. The API key is stored only in this browser.
+// Settings (DESIGN.md §14, §24): five tabs (Game, Controls, Sound & voices, Minds
+// (Claude), Display), every option exactly once, each with a short plain label and a
+// one-line note. Every field goes through game.setSetting so other modules hear
+// `settings_changed`. The API key is stored only in this browser. Save and Quit live in
+// the menu, the list of keys and buttons in How to play (Controls links there).
 
-import { h, button, clear, setText } from './dom.js';
+import { h, button, clear, setText, icon } from './dom.js';
 import { makePanel } from './modal.js';
 import { saveApiKey, loadApiKey, DEFAULT_SETTINGS } from '../core/settings.js';
-import { CONTROLS_SUMMARY, CONTROLS_NOTE } from './content.js';
+
+export const SETTINGS_TABS = [
+  { id: 'game', label: 'Game', icon: 'flag' },
+  { id: 'controls', label: 'Controls', icon: 'hand' },
+  { id: 'sound', label: 'Sound & voices', icon: 'mic' },
+  { id: 'minds', label: 'Minds (Claude)', icon: 'mind' },
+  { id: 'display', label: 'Display', icon: 'sun' },
+];
+
+// Where every setting lives: tab → groups → keys. Each key appears exactly once.
+export const SETTINGS_LAYOUT = {
+  game: [
+    { id: 'names', title: 'Names', keys: ['playerName', 'companionName'] },
+    { id: 'journey', title: 'Your journey', keys: ['deathMode', 'cloudSave'] },
+  ],
+  controls: [
+    { id: 'touch', title: 'Touch', keys: ['touchScale', 'leftHanded', 'touchBuzz'] },
+    { id: 'mouse', title: 'Mouse', keys: ['aimGuides'], howTo: true },
+  ],
+  sound: [
+    { id: 'volume', title: 'Volume', keys: ['musicVol', 'sfxVol', 'voiceVol'] },
+    { id: 'recorded', title: 'Recorded voices', keys: ['voices', 'voiceLyra', 'voiceVillagers', 'voiceNarrator'] },
+    { id: 'unrecorded', title: 'Her other words', note: 'Lines with no recording, like her replies from Claude. The first voice that can speak them does.', keys: ['kokoroLive', 'voice', 'voiceName', 'browserVoice'] },
+  ],
+  minds: [
+    { id: 'lyra', title: "Lyra's mind", keys: ['brain', 'modelTier'] },
+    { id: 'apikey', title: 'Your own API key', keys: ['apiModel'] },
+    { id: 'village', title: 'Villagers', keys: ['villageAi'] },
+  ],
+  display: [
+    { id: 'screen', title: 'Screen', keys: ['zoom', 'reduceMotion', 'showFps'] },
+    { id: 'words', title: 'Words', keys: ['textSpeed', 'showThoughts'] },
+  ],
+};
+
+// Settings the touch and aim controls keep outside DEFAULT_SETTINGS (unset = default).
+export const EXTRA_SETTING_KEYS = ['touchScale', 'leftHanded', 'touchBuzz', 'aimGuides'];
+
+// Every key the panel shows, in order, with its tab: [{ key, tab, group }].
+export function settingKeysInLayout() {
+  const out = [];
+  for (const t of SETTINGS_TABS) for (const g of SETTINGS_LAYOUT[t.id] || []) for (const key of g.keys) out.push({ key, tab: t.id, group: g.id });
+  return out;
+}
 
 const BRAIN_CHOICES = [
   ['auto', 'Automatic', 'Claude on claude.ai when available, then your API key, else her offline mind.'],
@@ -19,6 +65,83 @@ const VOICES = [
   ['glassy', 'Glassy'],
   ['rounded', 'Rounded'],
 ];
+
+// The plain rows: kind, label, one-line note, options. `on`: a toggle that is on until
+// turned off (unset = on). The radio lists (brain, villageAi) and the API model are built
+// by their own methods.
+export const SETTING_ROWS = {
+  playerName: { kind: 'text', label: 'Your name', note: 'What the people of Hearthvale call you.', max: 20 },
+  companionName: { kind: 'text', label: 'Her name', note: 'The name your companion answers to.', max: 20 },
+  deathMode: {
+    kind: 'select',
+    label: 'When you die',
+    note: 'Ends: unless someone gets you to Mira in time or a flame burns for you at the chapel, this save closes for good. Wake at home: you lose a little coin.',
+    options: [
+      ['final', 'Your story ends'],
+      ['home', 'Wake at home'],
+    ],
+  },
+  cloudSave: { kind: 'toggle', label: 'Copy in my claude.ai account', note: 'Your journey follows you to your other devices.' },
+  touchScale: {
+    kind: 'select',
+    label: 'Button size',
+    note: 'The buttons on a phone or tablet.',
+    options: [
+      [0.9, 'Smaller'],
+      [1, 'Normal'],
+      [1.15, 'Larger'],
+    ],
+    fallback: 1,
+  },
+  leftHanded: { kind: 'toggle', label: 'Left-handed', note: 'Move with your right thumb, fight with your left.' },
+  touchBuzz: { kind: 'toggle', on: true, label: 'Buzz', note: 'A small vibration when you press a button, where the phone allows it.' },
+  aimGuides: { kind: 'toggle', on: true, label: 'Aim guide', note: 'Shows where a weave will go, under the mouse.' },
+  musicVol: { kind: 'range', label: 'Music' },
+  sfxVol: { kind: 'range', label: 'Effects' },
+  voiceVol: { kind: 'range', label: 'Voices' },
+  voices: { kind: 'toggle', label: 'Spoken lines', note: 'Characters speak the lines recorded for them.' },
+  voiceLyra: { kind: 'toggle', label: 'Lyra', note: 'Her recorded lines.' },
+  voiceVillagers: { kind: 'toggle', label: 'Villagers', note: 'The people of Hearthvale.' },
+  voiceNarrator: { kind: 'toggle', label: 'Narrator', note: 'The storyteller in the cutscenes.' },
+  kokoroLive: { kind: 'toggle', label: 'Her own voice', note: 'Kokoro speaks everything she says, in this browser. Downloads about 90 MB once.' },
+  voice: { kind: 'toggle', label: "claude.ai's voice", note: 'Reads her replies aloud on claude.ai.' },
+  voiceName: { kind: 'select', label: 'Which voice', note: "The claude.ai voice she uses.", options: VOICES },
+  browserVoice: { kind: 'toggle', label: "Your browser's voice", note: 'Reads her replies when nothing else can.' },
+  modelTier: {
+    kind: 'select',
+    label: 'On claude.ai',
+    note: 'Deeper thought answers more slowly.',
+    options: [
+      ['quick', 'Quick replies'],
+      ['default', 'Deeper thought'],
+    ],
+  },
+  zoom: {
+    kind: 'select',
+    label: 'Zoom',
+    note: 'How close the camera is.',
+    options: [
+      [0.75, 'Far'],
+      [1, 'Normal'],
+      [1.25, 'Close'],
+      [1.5, 'Closest'],
+    ],
+  },
+  reduceMotion: { kind: 'toggle', label: 'Reduce motion', note: 'Less shaking, flashing and drifting.' },
+  showFps: { kind: 'toggle', label: 'Frame rate', note: 'Frames per second, in a corner.' },
+  textSpeed: {
+    kind: 'select',
+    label: 'Text speed',
+    note: 'How fast words appear in speech bubbles.',
+    options: [
+      [0.6, 'Slow'],
+      [1, 'Normal'],
+      [1.6, 'Fast'],
+      [3, 'Instant-ish'],
+    ],
+  },
+  showThoughts: { kind: 'toggle', label: 'Thought bubbles', note: 'What she is thinking, above her head.' },
+};
 
 // The brain's last error code, as something a player can act on.
 const PROBLEMS = {
@@ -54,23 +177,34 @@ function safe(fn, fallback = null) {
   }
 }
 
+let rowSeq = 0;
+
 export class SettingsPanel {
   constructor(ui) {
     this.ui = ui;
     this.game = ui.game;
     this.panel = null;
+    this.tab = 'game';
   }
 
   isOpen() {
     return !!this.panel && this.ui.stack.includes(this.panel);
   }
 
-  open() {
-    if (this.isOpen()) return;
-    const panel = makePanel({ id: 'settings', title: 'Settings', subtitle: 'Changes apply right away', iconName: 'gear', cls: 'panel-wide' });
+  open(tab) {
+    if (tab && SETTINGS_TABS.some((t) => t.id === tab)) this.tab = tab;
+    if (this.isOpen()) {
+      this.showTab(this.tab);
+      return;
+    }
+    const panel = makePanel({ id: 'settings', title: 'Settings', subtitle: 'Changes apply right away', iconName: 'gear', cls: 'panel-settings' });
     panel.pauses = this.game.state === 'playing';
     this.panel = panel;
-    panel.onClose = () => (this.panel = null);
+    panel.onClose = () => {
+      this.panel = null;
+      this.statusEl = null;
+      this.liveEl = null;
+    };
     this.ui.openModal(panel);
     this.render();
   }
@@ -92,6 +226,7 @@ export class SettingsPanel {
         break;
       case 'voices':
         if (!value) g.voice?.stop?.();
+        this.refreshDeps();
         break;
       case 'zoom':
         safe(() => g.renderer?.resize?.());
@@ -123,6 +258,7 @@ export class SettingsPanel {
     // 'Always' needs the API key provider; it falls back when that is gone.
     if (g.settings?.villageAi === 'always' && safe(() => g.brain?.providers?.currentId?.(), null) !== 'api') g.setSetting('villageAi', 'player');
     if (this.villageAiEl?.isConnected) this.villageAiEl.replaceWith(this.villageAiRow());
+    this.refreshDeps();
     this.refreshStatus();
     this.ui.title?.refreshMindLine?.();
   }
@@ -142,45 +278,244 @@ export class SettingsPanel {
     if (!this.statusEl) return;
     const st = safe(() => this.game.brain?.status?.()) || {};
     const problem = problemWords(st.lastError);
-    setText(this.statusEl, `Her mind right now: ${st.label || 'her offline mind'}${st.busy ? ' (thinking…)' : ''}${problem ? `. Last problem: ${problem}.` : ''}`);
+    setText(this.statusEl, `Right now: ${st.label || 'her offline mind'}${st.busy ? ' (thinking…)' : ''}${problem ? `. Last problem: ${problem}.` : ''}`);
     this.statusEl.dataset.provider = st.provider || 'local';
   }
 
-  render() {
+  // What is not available here, and why: [disabled, why] for a key, or null.
+  blocked(key) {
     const g = this.game;
-    const s = g.settings;
+    const s = g.settings || {};
     const rt = g.runtime;
+    switch (key) {
+      case 'cloudSave':
+        return rt?.db && rt?.user ? null : 'Only when you play on claude.ai.';
+      case 'kokoroLive':
+        return g.brain?.voice?.live?.available?.() ? null : 'Not available in this browser.';
+      case 'voice':
+      case 'voiceName':
+        return rt?.tts ? null : 'Only when you play on claude.ai.';
+      case 'modelTier':
+        return s.brain === 'apikey' || s.brain === 'local' ? 'Used when her mind is Claude on claude.ai.' : null;
+      case 'voiceLyra':
+      case 'voiceVillagers':
+      case 'voiceNarrator':
+        return s.voices === false ? 'Turn on spoken lines first.' : null;
+      case 'deathMode':
+        return safe(() => g.survival?.isFallen?.(g.player), false) ? 'Not while you lie bleeding. Ask again once you are on your feet.' : null;
+      default:
+        return null;
+    }
+  }
+
+  // Rows whose availability follows another setting, updated in place (focus stays put).
+  refreshDeps() {
+    if (!this.panel) return;
+    for (const row of this.panel.body.querySelectorAll('.set-row[data-setting]')) {
+      const key = row.dataset.setting;
+      const def = SETTING_ROWS[key];
+      if (!def) continue;
+      const why = this.blocked(key);
+      const ctl = row.querySelector('input, select');
+      if (ctl) ctl.disabled = !!why;
+      row.classList.toggle('is-disabled', !!why);
+      const note = row.querySelector('.set-note');
+      if (note) setText(note, why || this.noteFor(key));
+    }
+  }
+
+  noteFor(key) {
+    const def = SETTING_ROWS[key];
+    if (!def) return '';
+    if (key === 'voiceLyra') return `${this.name()}'s recorded lines.`;
+    return def.note || '';
+  }
+
+  name() {
+    return this.game.settings?.companionName || 'Lyra';
+  }
+
+  render() {
     const body = this.panel.body;
+    const keepScroll = {};
+    for (const pane of body.querySelectorAll('.set-pane')) keepScroll[pane.dataset.tab] = pane.scrollTop;
     clear(body);
     body.classList.add('settings-body');
+    this.tabButtons = {};
+    this.panes = {};
+    const tabs = h('div', { class: 'tabs settings-tabs', role: 'tablist', 'aria-label': 'Settings' });
+    const panes = h('div', { class: 'set-panes' });
+    for (const t of SETTINGS_TABS) {
+      const b = h('button', { type: 'button', class: 'tab set-tab', role: 'tab', id: `set-tab-${t.id}`, 'data-tab': t.id, 'aria-controls': `set-pane-${t.id}`, 'aria-selected': 'false', tabindex: '-1' }, icon(t.icon, 'set-tab-ico'), h('span', { class: 'set-tab-label', text: t.label }));
+      b.addEventListener('click', () => this.showTab(t.id, true));
+      b.addEventListener('keydown', (e) => this.tabKey(e, t.id));
+      this.tabButtons[t.id] = b;
+      tabs.append(b);
+      const pane = h('div', { class: 'set-pane', role: 'tabpanel', id: `set-pane-${t.id}`, 'data-tab': t.id, 'aria-labelledby': `set-tab-${t.id}`, hidden: true });
+      const groups = h('div', { class: 'set-groups' });
+      for (const g of SETTINGS_LAYOUT[t.id]) groups.append(this.groupEl(g));
+      pane.append(groups);
+      this.panes[t.id] = pane;
+      panes.append(pane);
+    }
+    body.append(tabs, panes);
+    this.showTab(this.tab);
+    for (const [id, top] of Object.entries(keepScroll)) if (this.panes[id]) this.panes[id].scrollTop = top;
+    this.refreshDeps();
+    this.refreshStatus();
+  }
 
-    // --- Lyra's mind ---
-    const mindSec = h('section', { class: 'box' }, h('h3', { text: "Lyra's mind" }));
-    this.statusEl = h('p', { class: 'brain-status', role: 'status' });
-    mindSec.append(this.statusEl);
-    const choices = h('div', { class: 'choice-list', role: 'radiogroup', 'aria-label': 'Which mind drives Lyra' });
+  showTab(id, focus = false) {
+    if (!this.panes?.[id]) return;
+    this.tab = id;
+    for (const [tid, b] of Object.entries(this.tabButtons)) {
+      const on = tid === id;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+      b.classList.toggle('active', on);
+      this.panes[tid].hidden = !on;
+    }
+    if (focus) this.tabButtons[id].focus();
+  }
+
+  // Left and right walk the tabs, Home and End jump to the ends (the tablist pattern).
+  tabKey(e, id) {
+    const i = SETTINGS_TABS.findIndex((t) => t.id === id);
+    const n = SETTINGS_TABS.length;
+    let j = -1;
+    if (e.key === 'ArrowRight') j = (i + 1) % n;
+    else if (e.key === 'ArrowLeft') j = (i - 1 + n) % n;
+    else if (e.key === 'Home') j = 0;
+    else if (e.key === 'End') j = n - 1;
+    if (j < 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.showTab(SETTINGS_TABS[j].id, true);
+  }
+
+  groupEl(g) {
+    const sec = h('section', { class: `set-group set-group-${g.id}` }, h('h3', { class: 'set-group-title', text: g.title }));
+    if (g.note) sec.append(h('p', { class: 'set-group-note', text: g.note }));
+    if (g.id === 'lyra') {
+      this.statusEl = h('p', { class: 'brain-status', role: 'status' });
+      sec.append(this.statusEl);
+    }
+    for (const key of g.keys) sec.append(this.rowFor(key));
+    if (g.id === 'unrecorded') {
+      const live = this.game.brain?.voice?.live;
+      this.liveEl = live?.available?.() ? h('p', { class: 'set-group-note voice-live-status', role: 'status', text: live.statusText() }) : null;
+      if (this.liveEl) sec.querySelector('[data-setting="kokoroLive"]')?.after(this.liveEl);
+    }
+    if (g.howTo) sec.append(this.howToRow());
+    return sec;
+  }
+
+  rowFor(key) {
+    if (key === 'brain') return this.brainRow();
+    if (key === 'villageAi') return this.villageAiRow();
+    if (key === 'apiModel') return this.apiKeyBlock();
+    const def = SETTING_ROWS[key];
+    if (!def) return h('div', { class: 'set-row', 'data-setting': key, text: key });
+    const label = key === 'voiceLyra' ? this.name() : def.label;
+    if (def.kind === 'toggle') return this.toggleRow(label, key, def.on);
+    if (def.kind === 'range') return this.rangeRow(label, key);
+    if (def.kind === 'select') return this.selectRow(label, key, def.options, def.fallback ?? def.options[0][0]);
+    return this.textRow(label, key, def.max);
+  }
+
+  // One row: the label and its one-line note on the left, the control on the right.
+  row(key, kind, label, control) {
+    const id = `set-${key}-${++rowSeq}`;
+    control.id = id;
+    const note = h('span', { class: 'set-note', text: this.noteFor(key) });
+    return h('div', { class: `set-row set-${kind}`, 'data-setting': key }, h('label', { class: 'set-main', for: id }, h('span', { class: 'set-label', text: label }), note), h('span', { class: 'set-ctl' }, control));
+  }
+
+  toggleRow(label, key, onByDefault = false) {
+    const s = this.game.settings;
+    const input = h('input', { type: 'checkbox', class: 'switch', checked: onByDefault ? s[key] !== false : !!s[key] });
+    input.addEventListener('change', () => this.set(key, input.checked));
+    return this.row(key, 'toggle', label, input);
+  }
+
+  rangeRow(label, key) {
+    const s = this.game.settings;
+    const v = Math.round((Number(s[key] ?? DEFAULT_SETTINGS[key]) || 0) * 100);
+    const out = h('output', { class: 'num', text: `${v}%` });
+    const input = h('input', { type: 'range', min: '0', max: '100', step: '1', value: String(v) });
+    input.addEventListener('input', () => {
+      out.textContent = `${input.value}%`;
+      this.set(key, Number(input.value) / 100);
+    });
+    input.addEventListener('change', () => this.game.audio?.play('ui_click'));
+    const r = this.row(key, 'range', label, input);
+    r.querySelector('.set-ctl').append(out);
+    return r;
+  }
+
+  selectRow(label, key, options, fallback = options[0]?.[0]) {
+    const s = this.game.settings;
+    const sel = h('select', { class: 'field' });
+    const cur = s[key] ?? fallback;
+    for (const [v, text] of options) {
+      const o = h('option', { value: String(v), text });
+      if (String(cur) === String(v)) o.selected = true;
+      sel.append(o);
+    }
+    sel.addEventListener('change', () => {
+      const raw = sel.value;
+      const num = Number(raw);
+      this.set(key, typeof options[0][0] === 'number' && Number.isFinite(num) ? num : raw);
+    });
+    return this.row(key, 'select', label, sel);
+  }
+
+  textRow(label, key, max = 24) {
+    const s = this.game.settings;
+    const input = h('input', { type: 'text', class: 'field', maxlength: String(max), value: s[key] || '', autocomplete: 'off', spellcheck: 'false' });
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') input.blur();
+    });
+    input.addEventListener('change', () => {
+      const v = input.value.trim().slice(0, max);
+      if (!v) {
+        input.value = s[key] || '';
+        return;
+      }
+      this.set(key, v);
+      if (key === 'companionName') {
+        const lyra = this.panel?.body.querySelector('[data-setting="voiceLyra"] .set-label');
+        if (lyra) setText(lyra, v);
+        this.refreshDeps();
+      }
+    });
+    return this.row(key, 'text', label, input);
+  }
+
+  // Which mind drives Lyra (a radio list; the status line sits above it).
+  brainRow() {
+    const s = this.game.settings;
+    const choices = h('div', { class: 'choice-list set-row set-radio', 'data-setting': 'brain', role: 'radiogroup', 'aria-label': `Which mind drives ${this.name()}` });
     for (const [id, label, note] of BRAIN_CHOICES) {
       const input = h('input', { type: 'radio', name: 'brain', value: id, checked: s.brain === id });
       input.addEventListener('change', () => {
-        if (input.checked) {
-          this.set('brain', id);
-          this.render();
-        }
+        if (!input.checked) return;
+        this.set('brain', id);
+        const det = this.panel?.body.querySelector('.api-key');
+        if (det && id === 'apikey') det.open = true;
       });
       choices.append(h('label', { class: 'choice' }, input, h('span', { class: 'choice-text' }, h('span', { class: 'choice-label', text: label }), h('span', { class: 'choice-note', text: note }))));
     }
-    mindSec.append(choices);
+    return choices;
+  }
 
-    if (rt?.sample || s.brain === 'claude' || s.brain === 'auto') {
-      mindSec.append(this.selectRow('Claude on claude.ai', 'modelTier', [
-        ['quick', 'Quick replies'],
-        ['default', 'Deeper thought (slower)'],
-      ]));
-    }
-
-    // API key
+  // The key (stored only in this browser, never a setting or a save) and its model.
+  apiKeyBlock() {
+    const g = this.game;
+    const s = g.settings;
     const keyField = h('input', { type: 'password', class: 'field mono', autocomplete: 'off', spellcheck: 'false', placeholder: g.apiKey ? '•••••••• saved in this browser' : 'sk-ant-…', 'aria-label': 'Anthropic API key' });
-    const keyStatus = h('span', { class: 'muted small', text: g.apiKey || loadApiKey() ? 'A key is saved in this browser.' : 'No key saved.' });
+    const keyStatus = h('span', { class: 'set-note key-status', text: g.apiKey || loadApiKey() ? 'A key is saved in this browser.' : 'No key saved.' });
     const saveKey = button('Save key', {
       cls: 'btn-ember btn-small',
       onClick: () => {
@@ -197,7 +532,7 @@ export class SettingsPanel {
         this.ui.toast('API key saved in this browser only.', 'good');
       },
     });
-    const clearKey = button('Forget key', {
+    const clearKey = button('Forget', {
       cls: 'btn-ghost btn-small',
       onClick: () => {
         saveApiKey('');
@@ -213,125 +548,20 @@ export class SettingsPanel {
       e.stopPropagation();
       if (e.key === 'Enter') saveKey.click();
     });
-    const modelField = h('input', { type: 'text', class: 'field mono', value: s.apiModel || '', spellcheck: 'false', 'aria-label': 'Model for your API key' });
+    const modelField = h('input', { type: 'text', class: 'field mono', value: s.apiModel || '', spellcheck: 'false', autocomplete: 'off' });
+    modelField.addEventListener('keydown', (e) => e.stopPropagation());
     modelField.addEventListener('change', () => this.set('apiModel', modelField.value.trim() || DEFAULT_SETTINGS.apiModel));
-    mindSec.append(
-      h(
-        'details',
-        { class: 'api-key', open: s.brain === 'apikey' },
-        h('summary', { text: 'Your own API key' }),
-        h('p', { class: 'warning', text: 'Your key is stored only in this browser, on this device. It is never put in save files or sent anywhere except directly to Anthropic when Lyra thinks. Anyone using this browser profile could read it: do not save a key on a shared computer. Keys do not work inside claude.ai, which blocks outside connections.' }),
-        h('div', { class: 'key-row' }, keyField, saveKey, clearKey),
-        keyStatus,
-        h('label', { class: 'form-row' }, h('span', { class: 'form-label', text: 'Model' }), modelField),
-      ),
+    const model = this.row('apiModel', 'text', 'Model', modelField);
+    setText(model.querySelector('.set-note'), 'The Claude model your key uses.');
+    return h(
+      'details',
+      { class: 'api-key', open: s.brain === 'apikey' },
+      h('summary', { text: 'Use your own key' }),
+      h('p', { class: 'warning', text: 'Kept only in this browser, never in a save, and sent only to Anthropic when she thinks. Do not save a key on a shared computer. Keys do not work inside claude.ai.' }),
+      h('div', { class: 'key-row' }, keyField, saveKey, clearKey),
+      keyStatus,
+      model,
     );
-
-    // --- Villagers' minds (§19.3) ---
-    mindSec.append(this.villageAiRow());
-
-    // --- Voices (DESIGN.md §21) ---
-    const voiceSec = h('section', { class: 'box' }, h('h3', { text: 'Voices' }));
-    voiceSec.append(
-      this.toggleRow('Characters speak their lines', 'voices'),
-      this.rangeRow('Voice volume', 'voiceVol'),
-      this.toggleRow('Lyra', 'voiceLyra'),
-      this.toggleRow('Villagers', 'voiceVillagers'),
-      this.toggleRow('Narrator', 'voiceNarrator'),
-      h('p', { class: 'muted small', text: 'Lines without a recording (her replies from Claude, made-up lines) can still be spoken:' }),
-    );
-    const live = g.brain?.voice?.live;
-    this.liveEl = null;
-    if (live?.available?.()) {
-      voiceSec.append(this.toggleRow('Kokoro voice for everything she says — downloads about 90 MB once', 'kokoroLive'));
-      this.liveEl = h('p', { class: 'muted small voice-live-status', role: 'status', text: live.statusText() });
-      voiceSec.append(this.liveEl);
-    }
-    voiceSec.append(this.toggleRow(rt?.tts ? "Read her other replies in Claude's voice" : 'Read her other replies aloud', 'voice'));
-    if (rt?.tts) voiceSec.append(this.selectRow("Claude's voice", 'voiceName', VOICES));
-    voiceSec.append(this.toggleRow("Use the browser's voice when nothing else can", 'browserVoice'));
-
-    // --- Sound ---
-    const soundSec = h('section', { class: 'box' }, h('h3', { text: 'Sound' }));
-    soundSec.append(this.rangeRow('Music', 'musicVol'), this.rangeRow('Effects', 'sfxVol'));
-
-    // --- Display ---
-    const dispSec = h('section', { class: 'box' }, h('h3', { text: 'Display' }));
-    dispSec.append(
-      this.selectRow('Zoom', 'zoom', [
-        [0.75, 'Far'],
-        [1, 'Normal'],
-        [1.25, 'Close'],
-        [1.5, 'Closest'],
-      ]),
-      this.selectRow('Speech speed', 'textSpeed', [
-        [0.6, 'Slow'],
-        [1, 'Normal'],
-        [1.6, 'Fast'],
-        [3, 'Instant-ish'],
-      ]),
-      this.toggleRow("Show Lyra's thought bubbles", 'showThoughts'),
-      this.toggleRow('Reduce motion', 'reduceMotion'),
-      this.toggleRow('Show frames per second', 'showFps'),
-    );
-
-    // --- Names ---
-    const nameSec = h('section', { class: 'box' }, h('h3', { text: 'Names' }));
-    nameSec.append(this.textRow('Your name', 'playerName', 20), this.textRow("Your companion's name", 'companionName', 20));
-
-    // --- Death (DESIGN §27) ---
-    const deathSec = h('section', { class: 'box' }, h('h3', { text: 'Death' }));
-    const fallen = !!safe(() => g.survival?.isFallen?.(g.player), false);
-    const deathRow = this.selectRow('When I die', 'deathMode', [
-      ['final', 'It ends, unless a kept flame burns'],
-      ['home', 'Wake at home'],
-    ]);
-    const deathSel = deathRow.querySelector('select');
-    if (deathSel && fallen) deathSel.disabled = true;
-    deathSec.append(
-      deathRow,
-      h('p', {
-        class: 'muted small',
-        text: fallen
-          ? 'Not while you lie bleeding. Ask again once you are on your feet.'
-          : 'Ends: if nobody gets you to Mira in time and no flame burns for you at the chapel, your story is over and this save closes for good (it moves to Past lives). Wake at home: you lose a little coin and wake in your bed.',
-      }),
-    );
-
-    // --- Saving ---
-    const saveSec = h('section', { class: 'box' }, h('h3', { text: 'Saving' }));
-    if (rt?.db && rt?.user) saveSec.append(this.toggleRow('Also keep my save in my claude.ai account', 'cloudSave'));
-    else saveSec.append(h('p', { class: 'muted small', text: 'Your game saves in this browser. When played on claude.ai, it can also keep a copy in your account.' }));
-    if (g.state === 'playing') saveSec.append(h('div', { class: 'data-actions' }, button('Save now', { cls: 'btn-small', onClick: () => g.save?.save?.('manual') })));
-
-    // --- Controls ---
-    const ctrlSec = h('section', { class: 'box' }, h('h3', { text: 'Controls' }));
-    // Touch and aiming options (DESIGN §22.4).
-    ctrlSec.append(
-      this.selectRow(
-        'Touch buttons',
-        'touchScale',
-        [
-          [0.9, 'Smaller'],
-          [1, 'Normal'],
-          [1.15, 'Larger'],
-        ],
-        1,
-      ),
-      this.toggleRow('Left-handed touch layout (move on the right)', 'leftHanded'),
-      this.toggleRow('Buzz on touch buttons', 'touchBuzz', true),
-      this.toggleRow('Show the aim guide under the mouse', 'aimGuides', true),
-    );
-    const dl = h('dl', { class: 'controls' });
-    for (const [k, v] of CONTROLS_SUMMARY) dl.append(h('div', { class: 'control' }, h('dt', null, h('kbd', { class: 'keycap', text: k })), h('dd', { text: v })));
-    ctrlSec.append(dl, h('p', { class: 'muted small', text: CONTROLS_NOTE }));
-
-    body.append(h('div', { class: 'settings-grid' }, mindSec, h('div', { class: 'settings-col' }, voiceSec, soundSec, dispSec), h('div', { class: 'settings-col' }, nameSec, deathSec, saveSec, ctrlSec)));
-
-    this.panel.foot.replaceChildren();
-    if (g.state === 'playing') this.panel.foot.append(button('Quit to title', { cls: 'btn-danger btn-small', onClick: () => this.ui.quitToTitle() }));
-    this.panel.foot.append(button('Done', { cls: 'btn-ember', onClick: () => this.close() }));
-    this.refreshStatus();
   }
 
   // 'player' (default): villagers reach Claude only when you talk to them or listen in.
@@ -341,11 +571,10 @@ export class SettingsPanel {
     const s = g.settings;
     const current = s.villageAi === 'always' ? 'always' : 'player';
     const apiReady = safe(() => g.brain?.providers?.currentId?.(), null) === 'api' || (!!g.apiKey && s.brain === 'apikey');
-    const wrap = h('div', { class: 'village-ai' }, h('span', { class: 'form-label', text: 'Villagers think with Claude' }));
-    const choices = h('div', { class: 'choice-list', role: 'radiogroup', 'aria-label': 'When villagers think with Claude' });
+    const choices = h('div', { class: 'choice-list set-row set-radio', 'data-setting': 'villageAi', role: 'radiogroup', 'aria-label': 'When villagers think with Claude' });
     const opts = [
-      ['player', 'When you talk to them', 'Only when you say something to someone or listen in. Everything else uses their own words.'],
-      ['always', 'Always, near you', apiReady ? 'Villagers near you also talk among themselves with Claude, at most once every 45 seconds. Uses your API key.' : 'Needs your own API key (set "Her mind" to your API key). Never used on claude.ai.'],
+      ['player', 'When you talk to them', 'Only when you speak to someone or listen in; otherwise their own words.'],
+      ['always', 'Always, near you', apiReady ? 'They also talk among themselves with Claude, at most once every 45 seconds. Uses your API key.' : 'Needs your own API key (her mind set to your API key). Never on claude.ai.'],
     ];
     for (const [id, label, note] of opts) {
       const disabled = id === 'always' && !apiReady;
@@ -355,61 +584,13 @@ export class SettingsPanel {
       });
       choices.append(h('label', { class: `choice${disabled ? ' is-disabled' : ''}` }, input, h('span', { class: 'choice-text' }, h('span', { class: 'choice-label', text: label }), h('span', { class: 'choice-note', text: note }))));
     }
-    wrap.append(choices);
-    this.villageAiEl = wrap;
-    return wrap;
+    this.villageAiEl = choices;
+    return choices;
   }
 
-  // `onByDefault`: a setting that is on until the player turns it off (unset = on).
-  toggleRow(label, key, onByDefault = false) {
-    const s = this.game.settings;
-    const input = h('input', { type: 'checkbox', class: 'switch', checked: onByDefault ? s[key] !== false : !!s[key] });
-    input.addEventListener('change', () => this.set(key, input.checked));
-    return h('label', { class: 'form-row toggle-row' }, h('span', { class: 'form-label', text: label }), input);
-  }
-
-  rangeRow(label, key) {
-    const s = this.game.settings;
-    const v = Math.round((Number(s[key]) || 0) * 100);
-    const out = h('output', { class: 'num', text: `${v}%` });
-    const input = h('input', { type: 'range', min: '0', max: '100', step: '1', value: String(v), 'aria-label': label });
-    input.addEventListener('input', () => {
-      out.textContent = `${input.value}%`;
-      this.set(key, Number(input.value) / 100);
-    });
-    input.addEventListener('change', () => this.game.audio?.play('ui_click'));
-    return h('label', { class: 'form-row range-row' }, h('span', { class: 'form-label', text: label }), input, out);
-  }
-
-  selectRow(label, key, options, fallback = options[0]?.[0]) {
-    const s = this.game.settings;
-    const sel = h('select', { class: 'field', 'aria-label': label });
-    const cur = s[key] ?? fallback;
-    for (const [v, text] of options) {
-      const o = h('option', { value: String(v), text });
-      if (String(cur) === String(v)) o.selected = true;
-      sel.append(o);
-    }
-    sel.addEventListener('change', () => {
-      const raw = sel.value;
-      const num = Number(raw);
-      this.set(key, typeof options[0][0] === 'number' && Number.isFinite(num) ? num : raw);
-    });
-    return h('label', { class: 'form-row' }, h('span', { class: 'form-label', text: label }), sel);
-  }
-
-  textRow(label, key, max = 24) {
-    const s = this.game.settings;
-    const input = h('input', { type: 'text', class: 'field', maxlength: String(max), value: s[key] || '' });
-    input.addEventListener('keydown', (e) => e.stopPropagation());
-    input.addEventListener('change', () => {
-      const v = input.value.trim().slice(0, max);
-      if (!v) {
-        input.value = s[key] || '';
-        return;
-      }
-      this.set(key, v);
-    });
-    return h('label', { class: 'form-row' }, h('span', { class: 'form-label', text: label }), input);
+  // The keys and buttons themselves are in How to play, for each device.
+  howToRow() {
+    const b = button('How to play', { icon: 'hand', cls: 'btn-small', onClick: () => this.ui.title?.openHowTo?.('controls') });
+    return h('div', { class: 'set-row set-link' }, h('span', { class: 'set-main' }, h('span', { class: 'set-label', text: 'Keys and buttons' }), h('span', { class: 'set-note', text: 'Every control for touch, keyboard and gamepad.' })), h('span', { class: 'set-ctl' }, b));
   }
 }

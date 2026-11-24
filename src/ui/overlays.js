@@ -1,7 +1,7 @@
 // Small overlays: the menu (pause), sign and diary popups, full-screen fades and the
 // red hit vignette.
 
-import { h, button, icon, setStyle, setText, toggleClass } from './dom.js';
+import { h, icon, setStyle, setText, toggleClass, button } from './dom.js';
 import { makePanel } from './modal.js';
 import { dayLabel } from './format.js';
 import { prologueAction, bookAction } from './story_menu.js';
@@ -35,19 +35,20 @@ function spellbookReady(game, ui) {
   return typeof ui?.openSpellbook === 'function' && !!game?.magic;
 }
 
-// The one menu (DESIGN §24): what pauses the world and the places that are not already a
-// tap away on the HUD, except where the menu is their home (her mind, the Spellbook,
-// Missions: the HUD's shortcuts to those lead to the same panels). Inventory and the chat
-// live on the HUD only. Pure: [{ id, label, hint, key, group, run, sub }].
-//   group 'main' — the big Resume; 'go' — places; 'sys' — settings, save, quit.
-// `run(ctx)`: ctx.close() closes the menu; panels opened from it stack on top, so
-// closing them (Esc, ✕) comes back here.
+// The one menu (DESIGN §24). Resume, then the places that are not already one tap away
+// on the HUD, or whose home is here (the HUD's book, her card and the quest line are
+// shortcuts to the same panels), then settings, save and quit. Inventory and the chat
+// live on the HUD only; How to play is under Settings → Controls. Pure:
+//   [{ id, group, label, hint, key, run, sub }]
+//   group 'main' — Resume; 'go' — places; 'sys' — Settings, Save, Quit.
+// `run(ctx)`: ctx.close() closes the menu, ctx.save() saves; a panel opened from here
+// stacks on top of it, so closing that panel (Esc, ✕) comes back to the menu.
 export function pauseItems(game, ui) {
   const name = game?.settings?.companionName || game?.companion?.name || 'Lyra';
   const items = [{ id: 'resume', group: 'main', label: 'Resume', hint: '', key: 'Esc', run: (ctx) => ctx.close() }];
-  if (spellbookReady(game, ui)) items.push({ id: 'spellbook', group: 'go', label: 'Spellbook', hint: 'Make weaves, fill your slots', key: '', run: () => ui.openSpellbook() });
+  if (spellbookReady(game, ui)) items.push({ id: 'spellbook', group: 'go', label: 'Spellbook', hint: 'Make weaves, fill your slots', key: 'B', run: () => ui.openSpellbook() });
   if (typeof ui?.openMissions === 'function') items.push({ id: 'missions', group: 'go', label: 'Missions', hint: 'What you have taken on', key: '', run: () => ui.openMissions('active') });
-  items.push({ id: 'lyra', group: 'go', label: name, hint: 'Her mind: mood, memories, you', key: '', run: () => ui.openMind?.(ui.mind?.tab || 'now') });
+  items.push({ id: 'lyra', group: 'go', label: name, hint: 'Her mind: mood, memories, you', key: 'Tab', run: () => ui.openMind?.(ui.mind?.tab || 'now') });
   const character = characterOpener(ui);
   if (character) items.push({ id: 'character', group: 'go', label: 'Character', hint: 'Your stats and gear', key: '', run: character });
   const book = bookAction(game, ui) || (() => openCodex(ui));
@@ -61,9 +62,9 @@ export function pauseItems(game, ui) {
     run: book,
     sub: prologue ? { id: 'prologue', label: 'Prologue', hint: 'Watch how it began', run: prologue } : null,
   });
-  items.push({ id: 'settings', group: 'sys', label: 'Settings', hint: '', key: '', run: () => ui.openSettings?.() });
-  items.push({ id: 'save', group: 'sys', label: 'Save', hint: '', key: '', run: (ctx) => ctx.save() });
-  items.push({ id: 'quit', group: 'sys', label: 'Quit to title', hint: '', key: '', run: () => ui.quitToTitle?.() });
+  items.push({ id: 'settings', group: 'sys', label: 'Settings', hint: 'Sound, controls, her mind', key: '', run: () => ui.openSettings?.() });
+  items.push({ id: 'save', group: 'sys', label: 'Save', hint: 'Save now', key: '', run: (ctx) => ctx.save() });
+  items.push({ id: 'quit', group: 'sys', label: 'Quit to title', hint: 'Saves first', key: '', run: () => ui.quitToTitle?.() });
   return items;
 }
 
@@ -78,8 +79,13 @@ function whereText(g) {
 
 function itemButton(it, cls) {
   const text = h('span', { class: 'menu-text' }, h('span', { class: 'menu-label', text: it.label }), it.hint ? h('span', { class: 'menu-hint', text: it.hint }) : null);
-  const b = h('button', { type: 'button', class: `btn menu-item pause-${it.id} ${cls}`.trim(), 'data-item': it.id, title: it.hint || null }, menuIcon(it.id), text, it.key ? h('kbd', { class: 'keycap', text: it.key }) : null);
-  return b;
+  return h(
+    'button',
+    { type: 'button', class: `btn menu-item pause-${it.id} ${cls}`.trim(), 'data-item': it.id, title: it.hint || null },
+    menuIcon(it.id),
+    text,
+    it.key ? h('kbd', { class: 'keycap', text: it.key }) : null,
+  );
 }
 
 export function buildPause(ui) {
@@ -90,14 +96,17 @@ export function buildPause(ui) {
   panel.setTitle('Menu', where ? `Paused · ${where}` : 'Paused');
   const items = pauseItems(g, ui);
   let saving = false;
+  let saveTimer = 0;
   const ctx = {
     close: () => ui.closeModal(panel),
     // Saving keeps the menu open and says how it went on the button itself.
     save: async () => {
       if (saving) return;
       saving = true;
+      clearTimeout(saveTimer);
       const b = panel.el.querySelector('.pause-save');
       const label = b?.querySelector('.menu-label');
+      toggleClass(b, 'is-done', false);
       toggleClass(b, 'is-busy', true);
       if (label) setText(label, 'Saving…');
       let ok = false;
@@ -110,8 +119,8 @@ export function buildPause(ui) {
       toggleClass(b, 'is-busy', false);
       if (label) setText(label, ok ? 'Saved' : 'Not saved');
       toggleClass(b, 'is-done', ok);
-      setTimeout(() => {
-        if (label && b.isConnected) setText(label, 'Save');
+      saveTimer = setTimeout(() => {
+        if (label) setText(label, 'Save');
         toggleClass(b, 'is-done', false);
       }, 2200);
     },
@@ -128,56 +137,96 @@ export function buildPause(ui) {
   const menu = h('nav', { class: 'pause-menu', 'aria-label': 'Menu' });
   const go = h('div', { class: 'menu-go' });
   const sys = h('div', { class: 'menu-sys' });
-  const goItems = items.filter((it) => it.group === 'go');
-  // Two columns where there is room: the Book (with the Prologue beside it) takes a
-  // whole row, and so does the last place when the others do not pair up.
-  const pairs = goItems.filter((it) => it.id !== 'book');
+  // The places sit two to a row (a sideways phone puts them all on one); the Book, with
+  // the Prologue beside it, takes a whole row, and so does an odd one out.
+  const places = items.filter((it) => it.group === 'go' && it.id !== 'book');
+  go.style.setProperty('--n', String(Math.max(1, places.length)));
   for (const it of items) {
     if (it.group === 'main') {
-      const b = itemButton(it, 'btn-ember btn-big menu-main');
+      const b = itemButton(it, 'btn-ember menu-main');
       b.addEventListener('click', () => run(it));
       menu.append(b);
       continue;
     }
-    const wide = it.id === 'book' || (pairs.length % 2 === 1 && it === pairs[pairs.length - 1]);
-    const b = itemButton(it, it.group === 'sys' ? 'btn-ghost menu-sys-item' : 'menu-go-item');
-    b.addEventListener('click', () => run(it));
     if (it.group === 'sys') {
+      const b = itemButton(it, 'btn-ghost menu-sys-item');
+      b.addEventListener('click', () => run(it));
       sys.append(b);
       continue;
     }
-    if (it.sub) {
-      const sub = h('button', { type: 'button', class: `btn btn-ghost menu-sub pause-${it.sub.id}`, 'data-item': it.sub.id, title: it.sub.hint }, menuIcon(it.sub.id), h('span', { class: 'menu-label', text: it.sub.label }));
-      sub.addEventListener('click', () => {
-        // The cutscene takes the whole screen: nothing stays open under it.
-        ui.closeAll?.();
-        run(it.sub);
-      });
-      go.append(h('div', { class: `menu-row${wide ? ' menu-wide' : ''}` }, b, sub));
-    } else {
-      if (wide) b.classList.add('menu-wide');
-      go.append(b);
+    const b = itemButton(it, 'menu-go-item');
+    b.addEventListener('click', () => run(it));
+    if (it.id === 'book') {
+      const row = h('div', { class: 'menu-row' }, b);
+      if (it.sub) {
+        const sub = h('button', { type: 'button', class: `btn btn-ghost menu-item menu-sub pause-${it.sub.id}`, 'data-item': it.sub.id, title: it.sub.hint }, menuIcon(it.sub.id), h('span', { class: 'menu-label', text: it.sub.label }));
+        sub.addEventListener('click', () => {
+          // The cutscene takes the whole screen: nothing stays open under it.
+          ui.closeAll?.();
+          run(it.sub);
+        });
+        row.append(sub);
+      }
+      go.append(row);
+      continue;
     }
+    if (places.length % 2 === 1 && it === places[places.length - 1]) b.classList.add('menu-span');
+    go.append(b);
   }
   menu.append(go, sys);
   menu.addEventListener('keydown', (e) => moveFocus(menu, e));
   panel.body.append(menu);
+  panel.onClose = () => clearTimeout(saveTimer);
   return panel;
 }
 
-// Arrow keys walk the menu (in reading order), Home and End jump to its ends.
+// Arrow keys walk the menu by where the buttons are on screen (it is a grid); Home and
+// End jump to its ends.
+export function nextInDirection(rects, from, dir) {
+  const a = rects[from];
+  if (!a) return 0;
+  const ax = a.x + a.w / 2;
+  const ay = a.y + a.h / 2;
+  let best = -1;
+  let bestScore = Infinity;
+  for (let i = 0; i < rects.length; i++) {
+    if (i === from) continue;
+    const r = rects[i];
+    const dx = r.x + r.w / 2 - ax;
+    const dy = r.y + r.h / 2 - ay;
+    const main = dir === 'down' ? dy : dir === 'up' ? -dy : dir === 'right' ? dx : -dx;
+    if (main <= 2) continue;
+    const side = dir === 'down' || dir === 'up' ? Math.abs(dx) : Math.abs(dy);
+    const score = main + side * 2;
+    if (score < bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  }
+  return best;
+}
+
 function moveFocus(menu, e) {
-  const keys = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1, Home: -99, End: 99 };
-  const step = keys[e.key];
-  if (!step) return;
+  const dirs = { ArrowDown: 'down', ArrowUp: 'up', ArrowRight: 'right', ArrowLeft: 'left' };
+  const dir = dirs[e.key];
+  if (!dir && e.key !== 'Home' && e.key !== 'End') return;
   const list = [...menu.querySelectorAll('button')].filter((b) => !b.disabled && b.offsetParent !== null);
   if (!list.length) return;
   const i = list.indexOf(document.activeElement);
   let n;
-  if (step === -99) n = 0;
-  else if (step === 99) n = list.length - 1;
-  else n = i < 0 ? 0 : (i + step + list.length) % list.length;
-  list[n].focus({ preventScroll: false });
+  if (e.key === 'Home') n = 0;
+  else if (e.key === 'End') n = list.length - 1;
+  else if (i < 0) n = 0;
+  else {
+    const rects = list.map((b) => {
+      const r = b.getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height };
+    });
+    n = nextInDirection(rects, i, dir);
+    // Past the edge: wrap around in reading order.
+    if (n < 0) n = dir === 'down' || dir === 'right' ? (i + 1) % list.length : (i - 1 + list.length) % list.length;
+  }
+  list[n].focus();
   e.preventDefault();
   e.stopPropagation();
 }

@@ -1,15 +1,23 @@
-// Title screen (DESIGN.md §14): name, an animated scene behind (the renderer's title
-// view, plus drifting embers here), Continue when a save exists, New game, Settings,
-// How to play, and a line naming the mind Lyra uses.
+// Title screen (DESIGN.md §14, §24): name, an animated scene behind (the renderer's title
+// view, plus drifting embers here), and one short menu: Continue (when a save exists),
+// New game, Prologue, The Book of Halcyre, Past lives (when a story has ended), Settings,
+// How to play; a line naming the mind Lyra uses.
 
-import { h, button, setText, icon } from './dom.js';
+import { h, button, setText, icon, clear } from './dom.js';
 import { makePanel } from './modal.js';
-import { HOW_TO_PLAY, TITLE_TAGLINES } from './content.js';
+import { HOW_TO_PLAY, TITLE_TAGLINES, CONTROL_DEVICES, controlsFor } from './content.js';
 import { SAVE_KEY, DAY_SECONDS } from '../core/constants.js';
-import { storyEntries, runEntry } from './story_menu.js';
 import { openCodex } from './codex.js';
 import { openPastLives } from './memorial.js';
 import { readPastLives } from '../survival/past_lives.js';
+import { menuIcon } from './overlays.js';
+
+// A menu button with its place's icon (the same icon as in the in-game menu).
+function menuButton(id, label, cls, onClick) {
+  const b = button(label, { cls: `${cls} title-${id}`, onClick });
+  b.prepend(menuIcon(id));
+  return b;
+}
 
 function safe(fn, fallback = null) {
   try {
@@ -41,19 +49,19 @@ export class TitleScreen {
       e.style.cssText = `--x:${x}%;--d:${d}s;--delay:${delay}s;--s:${s}px;--drift:${(i % 2 ? 1 : -1) * (8 + (i % 4) * 6)}px`;
       embers.append(e);
     }
-    this.continueBtn = button('Continue', { cls: 'btn-ember btn-big', onClick: () => this.onContinue() });
+    this.continueBtn = menuButton('continue', 'Continue', 'btn-ember btn-big', () => this.onContinue());
     this.continueBtn.hidden = true;
     this.continueInfo = h('span', { class: 'continue-info' });
     this.continueBtn.append(this.continueInfo);
-    this.newBtn = button('New game', { cls: 'btn-big', onClick: () => this.onNew() });
-    const settingsBtn = button('Settings', { icon: 'gear', cls: 'btn-ghost', onClick: () => this.ui.openSettings() });
-    const howBtn = button('How to play', { icon: 'book', cls: 'btn-ghost', onClick: () => this.openHowTo() });
+    this.newBtn = menuButton('newGame', 'New game', 'btn-big', () => this.onNew());
     // The story: watch the prologue again, or read what is known of the world.
-    const prologueBtn = button('Prologue', { icon: 'flame', cls: 'btn-ghost', onClick: () => this.onPrologue() });
-    const bookBtn = button('The Book of Halcyre', { icon: 'scroll', cls: 'btn-ghost', onClick: () => openCodex(this.ui) });
+    const prologueBtn = menuButton('prologue', 'Prologue', 'btn-ghost', () => this.onPrologue());
+    const bookBtn = menuButton('book', 'The Book of Halcyre', 'btn-ghost', () => openCodex(this.ui));
     // Stories that ended in death with no kept flame (DESIGN §27).
-    this.pastBtn = button('Past lives', { icon: 'flame', cls: 'btn-ghost', onClick: () => openPastLives(this.ui) });
+    this.pastBtn = menuButton('pastLives', 'Past lives', 'btn-ghost', () => openPastLives(this.ui));
     this.pastBtn.hidden = true;
+    const settingsBtn = menuButton('settings', 'Settings', 'btn-ghost', () => this.ui.openSettings());
+    const howBtn = menuButton('howTo', 'How to play', 'btn-ghost', () => this.openHowTo());
     this.mindLine = h('p', { class: 'mind-line' });
     const tagline = TITLE_TAGLINES[0];
     this.el = h(
@@ -66,7 +74,7 @@ export class TitleScreen {
         { class: 'title-card' },
         h('div', { class: 'logo' }, h('span', { class: 'logo-flame', 'aria-hidden': 'true' }, icon('flame')), h('h1', { class: 'logo-text', text: 'Hearthlight' })),
         h('p', { class: 'tagline', text: tagline }),
-        h('nav', { class: 'title-menu', 'aria-label': 'Main menu' }, this.continueBtn, this.newBtn, h('div', { class: 'title-row' }, settingsBtn, howBtn), h('div', { class: 'title-row' }, prologueBtn, bookBtn), h('div', { class: 'title-row' }, this.pastBtn)),
+        h('nav', { class: 'title-menu', 'aria-label': 'Main menu' }, h('div', { class: 'title-main' }, this.continueBtn, this.newBtn), h('div', { class: 'title-row title-story' }, prologueBtn, bookBtn, this.pastBtn), h('div', { class: 'title-row title-sys' }, settingsBtn, howBtn)),
         this.mindLine,
       ),
       h('footer', { class: 'title-foot', text: 'All art and sound are made in your browser as you play.' }),
@@ -81,7 +89,6 @@ export class TitleScreen {
     this.newBtn.disabled = false;
     this.continueBtn.disabled = false;
     this.refreshMindLine();
-    this.refreshStory();
     this.checkSave();
     this.pastBtn.hidden = !safe(() => readPastLives().length, 0);
     this.game.runtime?.onChange?.((name) => {
@@ -94,18 +101,6 @@ export class TitleScreen {
 
   hide() {
     if (this.el) this.el.hidden = true;
-  }
-
-  // "Prologue" and "The Book of Halcyre", when this build has the story (§20).
-  refreshStory() {
-    const row = this.storyRow;
-    if (!row) return;
-    row.textContent = '';
-    const entries = safe(() => storyEntries(this.game, this.ui), []);
-    for (const entry of entries) {
-      row.append(button(entry.label, { icon: entry.icon, cls: `btn-ghost title-${entry.id}`, title: entry.hint, onClick: () => runEntry(entry, this.ui) }));
-    }
-    row.hidden = !entries.length;
   }
 
   isVisible() {
@@ -192,19 +187,51 @@ export class TitleScreen {
     this.game.story?.playPrologue({ world: false });
   }
 
-  openHowTo() {
-    const panel = makePanel({ id: 'howto', title: 'How to play', subtitle: 'Hearthvale, Lyra, and you', iconName: 'book', cls: 'panel-wide' });
+  // How to play: the controls for the device in hand (switchable), then what the game
+  // is about. `section` scrolls to one part ('controls' from Settings → Controls).
+  openHowTo(section = '') {
+    const prev = this.ui.stack.find((p) => p.id === 'howto');
+    if (prev) this.ui.closeModal(prev, true);
+    const panel = makePanel({ id: 'howto', title: 'How to play', subtitle: 'Hearthvale, Lyra, and you', iconName: 'hand', cls: 'panel-wide' });
+    let target = null;
     for (const sec of HOW_TO_PLAY) {
-      const box = h('section', { class: 'box how' }, h('h3', { text: sec.title }));
+      const box = h('section', { class: `box how how-${sec.id}`, 'data-section': sec.id }, h('h3', { text: sec.title }));
+      if (sec.controls) box.append(...this.controlsBlock());
       if (sec.text) box.append(h('p', { text: sec.text }));
       if (sec.rows) {
         const dl = h('dl', { class: 'how-rows' });
         for (const [k, v] of sec.rows) dl.append(h('div', { class: 'how-row' }, h('dt', { text: k }), h('dd', { text: v })));
         box.append(dl);
       }
+      if (sec.id === section) target = box;
       panel.body.append(box);
     }
     panel.foot.append(button('Got it', { cls: 'btn-ember', onClick: () => this.ui.closeModal(panel) }));
     this.ui.openModal(panel);
+    if (target && target !== panel.body.firstElementChild) requestAnimationFrame(() => (panel.body.scrollTop = target.offsetTop - panel.body.offsetTop));
+    return panel;
+  }
+
+  // Touch, Keyboard & mouse or Gamepad: one list at a time, the one in your hands first.
+  controlsBlock() {
+    const inp = this.game.input;
+    let device = this.ui.isTouch ? 'touch' : inp?.lastDevice === 'gamepad' ? 'pad' : 'keys';
+    const dl = h('dl', { class: 'how-rows how-controls' });
+    const seg = h('div', { class: 'segmented how-devices', role: 'radiogroup', 'aria-label': 'Controls for' });
+    const fill = () => {
+      clear(dl);
+      for (const [what, how] of controlsFor(device)) dl.append(h('div', { class: 'how-row' }, h('dt', { text: what }), h('dd', { text: how })));
+      for (const b of seg.children) b.setAttribute('aria-checked', b.dataset.device === device ? 'true' : 'false');
+    };
+    for (const d of CONTROL_DEVICES) {
+      const b = h('button', { type: 'button', class: 'seg', role: 'radio', 'data-device': d.id, 'aria-checked': 'false', text: d.label });
+      b.addEventListener('click', () => {
+        device = d.id;
+        fill();
+      });
+      seg.append(b);
+    }
+    fill();
+    return [seg, dl];
   }
 }
