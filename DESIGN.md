@@ -425,14 +425,16 @@ serialize() / deserialize(d)       must stay under ≈ 150 KB (prune low-importa
 **Soul** (`soul.js`, default for Lyra; editable): `name, fullName, age, pronouns ('she/her'),
 origin, backstory, appearance, personality (Big Five 0..1: openness, conscientiousness,
 extraversion, agreeableness, neuroticism), values [], likes [], dislikes [], fears [], dreams [],
-quirks [], speechStyle, secrets [{text, revealAtBond}]`. Lyra: 24, arcane ranger from the
-Glasswater Isles; came to Hearthvale following her mentor **Maren Ashgrove**, who vanished near
-the Sunken Ruins three months ago. Warm, witty, teasing, brave, fiercely loyal once trust is
-earned; protects the defenseless; hates cruelty, lies and bandits; loves moonpetals, honey
-cakes, stargazing, old books, rain on roofs; afraid of deep water and of losing people; dreams
-of finding Maren and teaching magic to kids like Pip. Secret: she could not save her little
-brother Cal from a fever. She met the player two days ago on the King's Road when wolves
-attacked and the player stood beside her; she owes them, and is curious about them.
+quirks [], speechStyle, secrets [{text, revealAtBond}]`, plus `limits [], family []` and `giftTastes`.
+Lyra (docs/LORE.md §7 is canon): **Lyra Ambrel**, 24, a lumencrafter born in Hearthvale to old
+parents (Hobb, 79, the lamplighter; Wenna, 76, the beekeeper), Maren Ashgrove's apprentice since
+eleven. Maren vanished into the Sunken Ruins three months ago. Two days later Lyra and Hess found
+the player in the Crown Ring on the Hollowcrown and carried them down. The player slept 81 days
+and woke six days ago, and Lyra took the hearthwatch on them. Two days ago, wolves on the King's
+Road, and the player stood beside her. Warm, nosy, teasing, plain; she lives for herself and
+gives what she can spare. Hearthvale is her home: she never leaves it (§19.7). Secret: Bryn's
+leg in the Weeping Cut. Her people (all eighteen villagers, Maren and Bryn) are seeded from
+`soul.js` `LYRA_PEOPLE`; her life memories come from `STORY.lyraLife`.
 
 **Memory**: episodic entries `{ id, t (game time), day, text, type, importance, about [ids],
 location, tags, emotion, uses }`. Retrieval scoring = keyword overlap + entity match +

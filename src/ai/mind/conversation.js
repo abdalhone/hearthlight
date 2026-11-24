@@ -17,17 +17,19 @@ const LEAD_INS = {
 const REACTIONS = {
   secret: ['Your secret is safe with me.', "I won't tell a soul. Not even the cat.", 'That stays between us. I promise.'],
   family: ["I'm so sorry.", 'That must be heavy to carry.', 'Thank you for telling me.'],
-  work: ["I'd love to see that someday.", "That's wonderful.", 'Honest work. I like that.'],
-  village: ['Good to know.', "I'll keep my ears open.", 'Huh. This valley keeps surprising me.'],
+  // She has known every one of them all her life (LORE §7): a neighbor's replies, not a newcomer's.
+  work: ['Some things never change. Good.', 'Ha. Same as ever, then.', 'Honest work. I like that.'],
+  village: ['Good to know.', "I'll keep my ears open.", 'Twenty-four years in this valley, and it still surprises me.'],
+  maren: ['I know. I keep asking anyway.', 'Every time I hear it, I hope it ends differently.', 'Thank you. I needed to hear it again.'],
   default: ["Huh. I wouldn't have guessed.", 'I like learning things like that.', 'Well. I never.'],
 };
 
 const QUESTIONS = {
-  family: ['Do you have family here, {n}?', 'Who do you go home to, {n}?'],
-  work: ["How's work treating you, {n}?", 'What does a day look like for you, {n}?'],
+  family: ['How are your people, {n}?', 'Everyone well at home, {n}?'],
+  work: ["How's the work treating you, {n}?", 'Busy day, {n}?'],
   secret: ["You've got a look about you, {n}. What's the story?", "There's something you're not saying, {n}. Out with it."],
-  village: ["What's the news in Hearthvale?", 'Anything I should know about this place, {n}?'],
-  default: ['Tell me something about yourself I don\'t know.', 'What keeps you busy, {n}?', 'Tell me something about this valley.'],
+  village: ["What's the news, {n}?", "Heard anything I haven't, {n}?"],
+  default: ["Tell me something I don't know, {n}. I dare you.", 'What keeps you busy these days, {n}?', "What's new with you, {n}?"],
 };
 
 const CLOSERS = {
@@ -78,8 +80,11 @@ const CONJ = {
 // pronoun ambiguous, so it is left alone.
 const GENDER = {
   bram: 'm', elda: 'f', pip: 'm', rowan: 'm', mira: 'f', tobias: 'm', aveline: 'f', garrick: 'm', gale: 'm',
-  maren: 'f', cal: 'm', hanna: 'f', tam: 'm', june: 'f', biscuit: 'm', varek: 'm', duchess: 'f', barnaby: 'm',
-  orrin: 'm', odile: 'f', lyra: 'f',
+  maren: 'f', hanna: 'f', tam: 'm', june: 'f', biscuit: 'm', varek: 'm', duchess: 'f', barnaby: 'm', lyra: 'f',
+  // Round three's ten and the people of LORE §6, §7.
+  hobb: 'm', wenna: 'f', hess: 'f', hesper: 'f', sabeth: 'f', beth: 'f', alder: 'm', petra: 'f', tilly: 'f', ottilie: 'f',
+  tansy: 'f', corran: 'm', wys: 'm', wystan: 'm', bryn: 'f', davin: 'm', maudie: 'f', edric: 'm', ewan: 'm', jory: 'm',
+  rosalind: 'f', abel: 'm', osric: 'm', nan: 'f', marl: 'm',
 };
 const PRONOUNS = {
   m: { subj: 'he', obj: 'him', poss: 'his', self: 'himself' },
@@ -87,7 +92,7 @@ const PRONOUNS = {
 };
 const ADVERBS = new Set(['still', 'never', 'always', 'often', 'once', 'also', 'just', 'only', 'really', 'sometimes', 'usually', 'even', 'already', 'rarely', 'barely', 'nearly', 'almost', 'quietly', 'secretly', 'privately', 'truly', 'firmly', 'honestly']);
 const FIRST_CONJ = { is: 'am', "isn't": "am not", was: 'was', "wasn't": "wasn't", are: 'am', has: 'have', does: 'do', "doesn't": "don't", "hasn't": "haven't", goes: 'go' };
-const NOT_PEOPLE = new Set(['The', 'A', 'An', 'I', 'One', 'Last', 'Some', 'Before', 'After', 'When', 'If', 'From', 'Every', 'Something', 'Someone', 'Nobody', 'Ember', 'Kettle', 'Stonecut', 'Quarry', 'Whisperwood', 'Sunken', 'Ruins', 'Mirror', 'Lake', 'Reed', 'Farm', 'Hearthvale', 'Chapel', 'Hearth', 'King', 'Road', 'Glasswater', 'Brightwater', 'Border', 'Wars', 'Ironhand', 'Smithy', 'Fennick', 'Goods', 'South', 'Meadow', 'Pale', 'Reach', 'Isles', 'Saltmere', 'Lanternwright', 'Lanternwrights', 'Thawmonth', 'Sir', 'Captain', 'Sister', 'Bandit', 'Bandits', 'Blue', 'Wolves', 'Boars', 'Slimes', 'Moonpetals']);
+const NOT_PEOPLE = new Set(['The', 'A', 'An', 'I', 'One', 'Last', 'Some', 'Before', 'After', 'When', 'If', 'From', 'Every', 'Something', 'Someone', 'Nobody', 'Ember', 'Kettle', 'Stonecut', 'Quarry', 'Whisperwood', 'Sunken', 'Ruins', 'Mirror', 'Lake', 'Reed', 'Farm', 'Hearthvale', 'Chapel', 'Hearth', 'King', 'Road', 'Glasswater', 'Brightwater', 'Border', 'Wars', 'Ironhand', 'Smithy', 'Fennick', 'Goods', 'South', 'Meadow', 'Pale', 'Reach', 'Isles', 'Saltmere', 'Lanternwright', 'Lanternwrights', 'Sir', 'Wellstone', 'Wayhouse', 'Moot', 'Lamplight', 'Lane', 'Hollowcrown', 'Crown', 'Ring', 'Owlsend', 'Cinderwick', 'Brindlecombe', 'Greywinter', 'Longwatch', 'Weeping', 'Cut', 'Captain', 'Sister', 'Bandit', 'Bandits', 'Blue', 'Wolves', 'Boars', 'Slimes', 'Moonpetals']);
 const PRONOUN_WORDS = new Set(['he', 'she', 'it', 'they', 'we', 'you', 'her', 'his', 'him', 'their', 'them', 'this', 'that', 'these', 'those', 'there', 'then', 'just', 'watch', 'bring']);
 const OBJECT_BEFORE = new Set(['to', 'for', 'with', 'by', 'at', 'of', 'from', 'told', 'asked', 'let', 'lets', 'made', 'makes', 'helped', 'saw', 'gave', 'pays', 'paid', 'taught', 'showed', 'sent', 'warned', 'thanked']);
 const GIVING_VERBS = new Set(['bring', 'give', 'show', 'tell', 'ask', 'help', 'let', 'make', 'pay', 'send', 'lend', 'offer', 'sell', 'buy', 'teach', 'thank', 'owe', 'told', 'asked', 'gave', 'showed', 'sent', 'lent', 'paid', 'taught', 'thanked', 'warned', 'call', 'called', 'leave', 'left', 'saw', 'see']);
@@ -298,7 +303,20 @@ function knownNote(rel, text) {
 }
 
 // Facts this NPC would share at Lyra's familiarity, best first.
-export function availableFacts(npc, rel, topic = null) {
+// Who may be told a fact (LORE §9.10, DESIGN §19.1): never someone in its `hiddenFrom`;
+// and when it carries a `knownBy`, only those it names (or 'everyone') learn it from talk.
+// The player is the exception the LORE makes: they can still learn secrets Lyra never is
+// told, so for them only `hiddenFrom` applies.
+export function factHiddenFrom(f, listener = 'lyra') {
+  if (!f) return true;
+  const who = String(listener || 'lyra');
+  if (Array.isArray(f.hiddenFrom) && f.hiddenFrom.includes(who)) return true;
+  if (who !== 'lyra') return false;
+  return Array.isArray(f.knownBy) && !f.knownBy.includes(who) && !f.knownBy.includes('everyone');
+}
+
+// The facts a villager would share with Lyra now (her familiarity with them, the topic).
+export function availableFacts(npc, rel, topic = null, { listener = 'lyra' } = {}) {
   const facts = Array.isArray(npc?.profile?.facts) ? npc.profile.facts : [];
   const fam = rel?.familiarity ?? 0;
   const topicKey = topic ? topicOfText(topic) : null;
@@ -306,6 +324,7 @@ export function availableFacts(npc, rel, topic = null) {
   const out = [];
   for (const f of facts) {
     if (!f || !f.text) continue;
+    if (factHiddenFrom(f, listener)) continue;
     const need = Number(f.minFamiliarity) || 0;
     // A direct question unlocks things a little early.
     if (need > fam + (topic ? 10 : 0)) continue;
@@ -352,7 +371,7 @@ function lyraOpener(mind, npc, rel, topic, rng) {
     return fill(pick([`{n}, I've been meaning to ask you about ${topic}.`, `Got a moment, {n}? I'm curious about ${topic}.`], rng), vars);
   }
   if (mood.valence < -0.2) return fill(pick(['{tg}, {n}.', 'Hello, {n}. Mind some company?'], rng), vars);
-  if (lvl <= 1) return fill(pick(['{tg}, {n}. Got a moment for a nosy ranger?', '{n}! Mind if I bother you for a bit?', 'Hello, {n}. I hope I am not interrupting.'], rng), vars);
+  if (lvl <= 1) return fill(pick(['{tg}, {n}. Got a moment for a nosy neighbor?', '{n}! Mind if I bother you for a bit?', 'Hello, {n}. I hope I am not interrupting.'], rng), vars);
   if (lvl <= 3) return fill(pick(['{n}! There you are.', '{tg}, {n}. How goes it?', 'There\'s my favorite {role}.'], rng), { ...vars, role: (npc.role || rel.role || 'neighbor').toLowerCase() });
   return fill(pick(["{n}! Best part of my day, right here. Don't tell the others.", '{tg}, {n}. I saved you a smile.'], rng), vars);
 }

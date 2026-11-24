@@ -75,7 +75,7 @@ export class KnowledgeStore {
   add(subject, text, opts = {}) {
     if (typeof opts === 'string') opts = { source: opts };
     const subj = String(subject ?? '').replace(/\s+/g, ' ').trim().slice(0, LIMITS.subject);
-    const clean = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, LIMITS.text);
+    const clean = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, LIMITS.text).trim();
     if (!subj || !clean) return null;
     const source = normalizeSource(opts.source);
     const kind = normalizeKind(opts.kind, source);

@@ -168,7 +168,7 @@ export const feelingsPlugin = {
       patterns: [/\bare (?:you|u) (?:scared|afraid|frightened|nervous|worried)\b/i, /\bwhat (?:are you (?:afraid|scared|frightened) of|scares you|frightens you)\b/i],
       confidence: 0.85,
       answer(m, ctx) {
-        return fearAnswer(ctx);
+        return fearAnswer(ctx, { what: /\bwhat\b/i.test(m.input || m[0] || '') });
       },
     },
     {
@@ -247,7 +247,7 @@ export const feelingsPlugin = {
         const mood = ctx.mind?.mood();
         if (!mood) return null;
         if (mood.valence < -0.1) return pick(["...Thank you. I needed that more than I'd say.", "I'm trying. You help. You know that?"], ctx.game?.rng);
-        return pick(["I'm fine, I promise. But it's sweet that you checked.", 'Calm water. I mean it.'], ctx.game?.rng);
+        return pick(["I'm fine, I promise. But it's sweet that you checked.", 'Flame’s lit. I mean it.'], ctx.game?.rng);
       },
     },
   ],

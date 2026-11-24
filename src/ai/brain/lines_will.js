@@ -13,7 +13,7 @@ export const WILL_LINES = {
     "I'm not doing that. {reason}.",
     'Not this time. {reason}.',
     { t: "I'd rather not, {you}. {reason}.", trait: 'warm', maxFear: 30, state: CLOSE },
-    { t: 'Tides, no. {reason}.', trait: 'playful', state: CLOSE },
+    { t: 'Ashes, no. {reason}.', trait: 'playful', state: CLOSE },
     { t: "No. And that's the end of it. {reason}.", state: GUARDED },
     { t: 'Ask someone else. {reason}.', trait: 'prickly' },
     { t: "I hear you. The answer's still no. {reason}.", trait: 'steady' },

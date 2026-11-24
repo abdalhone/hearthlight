@@ -1,7 +1,7 @@
 import { PLAYER_ID } from '../../core/constants.js';
 import { normalizeTag, bondOf } from '../mind/relationships.js';
-import { resolvePerson, opinionAnswer, playerAnswer, friendsAnswer, relLine, firstPerson } from '../mind/voice.js';
-import { clamp, firstName, cap, pick, shorten, isChild, playerRef } from '../mind/text.js';
+import { resolvePerson, opinionAnswer, playerAnswer, friendsAnswer, relLine, firstPerson, closedAbout, toListener } from '../mind/voice.js';
+import { clamp, firstName, cap, pick, shorten, isChild, playerRef, lowerFirst } from '../mind/text.js';
 
 // Relationships plugin (mind): who Lyra counts as friend or enemy, notes she keeps
 // about people, and what she thinks of them. The store itself is mind.relationships.
@@ -171,7 +171,9 @@ export const relationshipsPlugin = {
       confidence: 0.9,
       answer(m, ctx) {
         const v = (m.groups?.verb || '').toLowerCase();
-        const verb = v.startsWith('trust') ? 'trust' : v.startsWith('love') ? 'love' : v === 'friends' || v === 'close' ? 'friends' : 'like';
+        // "What do you think of me?" / "how do you feel about me?" / "what am I to you?" ask for
+        // her opinion, not a yes or no.
+        const verb = v.startsWith('trust') ? 'trust' : v.startsWith('love') ? 'love' : v === 'friends' || v === 'close' ? 'friends' : v ? 'like' : 'think';
         return playerAnswer(ctx, verb);
       },
     },
@@ -246,7 +248,11 @@ export const relationshipsPlugin = {
         if (!who) {
           // Someone she only knows of (family, people in stories she has heard).
           const d = ctx.mind?.dossier?.(ref);
-          return d && !d.met ? shorten(`${firstName(d.name)}${d.role ? `, ${String(d.role).replace(/^lyra's /i, 'my ')}` : ''}. ${firstPerson(d.lore || '', ctx.mind.name)}`, 420) : null;
+          if (!d || d.met) return null;
+          const closed = closedAbout(ctx.mind, d.id);
+          if (closed) return closed;
+          const nm = String(d.name).includes(',') ? d.name : firstName(d.name);
+          return shorten(toListener(`${nm}${d.role ? `, ${lowerFirst(firstPerson(String(d.role), ctx.mind.name))}` : ''}. ${firstPerson(d.lore || '', ctx.mind.name)}`), 420);
         }
         if (who.group) return null;
         if (who.player) return playerAnswer(ctx, 'think');
@@ -254,15 +260,20 @@ export const relationshipsPlugin = {
         const rel = who.rel;
         const n = firstName(who.name);
         const role = who.entity?.profile?.role || who.entity?.role || rel?.role;
+        // "Captain of the watch", "scribe in Saltmere": lower the first letter, keep the names.
+        const roleText = role ? String(role).replace(/^the /i, '').replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase()) : '';
         if (!rel || rel.firstMet == null) {
+          // Someone she has never met but knows of (Varek One-Eye): what the valley says.
+          const d = ctx.mind?.dossier?.(who.id || ref);
+          if (d?.lore) return shorten(toListener(`${n}? I know only what the valley says. ${firstPerson(d.lore, ctx.mind.name)}`), 420);
           if (!who.entity) return null;
-          return `${n}? ${role ? `The ${String(role).toLowerCase()}, I'm told. ` : ''}We haven't met properly yet.`;
+          return `${n}? ${roleText ? `The ${roleText}, I'm told. ` : ''}We haven't met properly yet.`;
         }
         const facts = rel.notes
           .filter((x) => x.source !== 'self')
           .slice(-2)
           .map((x) => x.text.replace(/[.!]?$/, '.'));
-        return shorten(`${n}${role ? `, the ${String(role).toLowerCase()}` : ''}. ${rel.opinion || ''}${facts.length ? ` ${facts.join(' ')}` : ''}`, 420);
+        return shorten(`${n}${roleText ? `, the ${roleText}` : ''}. ${rel.opinion || ''}${facts.length ? ` ${facts.join(' ')}` : ''}`, 420);
       },
     },
     {

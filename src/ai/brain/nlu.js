@@ -955,15 +955,17 @@ export const BUILTIN_INTENTS = [
       const t = c.core;
       const table = [
         ['secret', /^(?:tell me a secret|do you have (?:a|any) secrets?|what are you hiding|what is your secret|share a secret)$/],
-        ['family', /^(?:tell me about|do you have|what about|what happened to|who is|who was) (?:a |any |your )?(?:family|siblings|brother|little brother|sister|parents|mother|father|mom|dad|mum|cal)$|^(?:do you have (?:any )?(?:brothers|sisters|siblings|kids|children))$/],
+        ['family', /^(?:tell me about|do you have|what about|what happened to|who is|who was|who are|where are|where is|how are) (?:a |any |your )?(?:family|siblings|brother|little brother|sister|parents|folks|mother|father|mom|dad|mum|mam|da|ma|pa)$|^(?:do you have (?:any )?(?:brothers|sisters|siblings|kids|children))$|^(?:are your parents (?:alive|still alive|here|in hearthvale|around)|do your parents live (?:here|in hearthvale|nearby)|where do your parents live|what do your parents do|who are your folks)$/],
         ['maren', /^(?:who is maren(?: ashgrove)?|tell me about maren|who is your (?:mentor|teacher|master)|what happened to maren|where is maren|tell me about your (?:mentor|teacher)|why are you looking for maren|what was maren like|is maren alive|do you think maren is alive)$/],
-        ['meet', /^(?:how did we meet|when did we meet|do you remember how we met|where did we meet|why do you (?:follow|travel with|stay with) me|why are you with me|why did you join me)$/],
-        ['origin', /^(?:where are you from|where do you come from|where did you grow up|where is your home|where were you born|tell me about (?:your )?(?:home|homeland|the glasswater isles|glasswater|the isles|the islands|your island|your islands)|what is (?:your home|glasswater|the glasswater isles) like)$/],
+        ['meet', /^(?:how did we meet|when did we meet|do you remember how we met|where did we meet|why do you (?:follow|travel with|stay with) me|why are you with me|why did you join me|how did you find me|where did you find me|who found me|how was i found|where was i found|where did i come from|where do i come from|how did i get here|how did i get to hearthvale|what happened to me|why was i asleep|why did i sleep so long|why do i not remember anything|who am i|what do you know about me|tell me how you found me|tell me about the mountain|what happened on the mountain)$/],
+        ['glasswater', /^(?:tell me about|what are|what is|where are|where is|have you been to|did you grow up (?:on|in)|are you from) (?:the )?(?:glasswater isles|glasswater|isles|islands|glasswater islands)(?: like)?$|^(?:are you from (?:the )?(?:islands|isles|sea|coast))$/],
+        ['origin', /^(?:where are you from|where do you come from|where did you grow up|where is your home|where were you born|where do you live|tell me about (?:your )?(?:home|homeland|hometown|your village|hearthvale|the chandlery|lamplight lane)|what is (?:your home|hearthvale|your village) like|are you from (?:here|hearthvale)|were you born here|did you grow up here)$/],
+        ['leave', /^(?:(?:are|were) you (?:going to|gonna|ever going to|planning to|thinking of|thinking about) leav(?:e|ing)|(?:will|would|could|do) you (?:ever )?(?:want to )?leave|do you want to leave|have you (?:ever )?thought (?:of|about) leaving|why (?:don't|do not) you leave) (?:hearthvale|the village|the valley|home|your village|your home|this village|this place)$/],
         ['self', /^(?:tell me about yourself|who are you|what is your story|tell me your story|what is your (?:past|history|background)|tell me about your (?:past|life|childhood)|describe yourself|what are you like|what kind of person are you)$/],
         ['age', /^(?:how old are you|what is your age|when is your birthday)$/],
         ['name', /^(?:what is your (?:full )?name|what are you called|who are you called|what should i call you|is lyra your real name)$/],
-        ['why', /^(?:why are you (?:here|in hearthvale)|why did you come(?: here| to hearthvale)?|what brought you (?:here|to hearthvale)|what are you doing (?:here|in hearthvale))$/],
-        ['magic', /^(?:(?:tell me about|how does|explain) (?:your )?magic(?: work)?|how do you do magic|teach me (?:magic|a spell)|are you a (?:mage|witch|wizard|ranger|sorceress)|what is an arcane ranger|what can your magic do|show me (?:some )?magic|where did you learn magic)$/],
+        ['why', /^(?:why are you (?:here|in hearthvale)|why did you come(?: here| to hearthvale)?|what brought you (?:here|to hearthvale)|what are you doing (?:here|in hearthvale)|why do you (?:live|stay) (?:here|in hearthvale)|why did you take the hearthwatch|why are you watching me|why do you have the key)$/],
+        ['magic', /^(?:(?:tell me about|how does|explain) (?:your )?magic(?: work)?|how do you do magic|teach me (?:magic|a spell)|are you a (?:mage|witch|wizard|ranger|sorceress|lumencrafter)|what is an arcane\s+ranger|what can your magic do|show me (?:some )?magic|where did you learn magic|what (?:kind of |sort of )?magic (?:do you (?:use|do|have|know|cast|practice)|is (?:that|yours|your magic))|what kind of mage are you|what are your spells|what spells (?:do you know|can you cast)|what is (?:a |an )?lumencraft(?:er)?|what is your magic(?: called)?|how does lumencraft work|what is lamp chill|why are you always cold)$/],
         ['likes', /^(?:what do you (?:like|love|enjoy)(?: doing| to do)?|what makes you happy|what are your (?:likes|hobbies|interests)|what is your hobby|what do you do for fun)$/],
         ['dislikes', /^(?:what do you (?:hate|dislike|not like|despise)|what annoys you|what makes you angry|what are your dislikes|what bothers you)$/],
         ['fears', /^(?:what are you (?:afraid|scared) of|what scares you|what do you fear|are you afraid of anything|can you swim|what is your (?:fear|greatest fear|weakness)|what are your fears)$/],
@@ -975,6 +977,11 @@ export const BUILTIN_INTENTS = [
         const m = re.exec(t);
         if (m) return { m, slots: { topic, fav: m.groups?.fav || null } };
       }
+      // Questions the modal head would otherwise turn into orders ("would you ever leave the
+      // village?", "can you swim?"): read them whole.
+      const n = String(c.norm || '').replace(/[?!.]+$/, '').trim();
+      if (/^(?:will|would|could|can|do) you (?:ever )?(?:want to )?leave (?:hearthvale|the village|the valley|home|your village|your home|this village)$/.test(n)) return { m: [n], slots: { topic: 'leave', fav: null } };
+      if (/^(?:can|could|do) you swim$/.test(n)) return { m: [n], slots: { topic: 'fears', fav: null } };
       return null;
     },
   },
@@ -1139,6 +1146,69 @@ function matchPlugin(c, env) {
   return null;
 }
 
+// "What is the Wellstone?" / "what's a wardstone?" / "tell me about the Drift": words of the
+// world's lore (story.js `world` entries by title or alias, and the titles of its places and
+// its history: "the Sunken Ruins", "the Greywinter") are answered from what she knows (the
+// memory plugin's mem.know, LORE's telling) before a place or an item with a similar name
+// catches them. People keep their own questions.
+const LORE_Q = /^(?:what (?:is|are|was|were) (?:a |an |the )?(?<q>[a-z', -]{3,40})|tell me about (?:a |an |the )?(?<q2>[a-z', -]{3,40}))$/;
+function loreTermKey(t) {
+  return String(t || '').toLowerCase().replace(/[“”"'’]/g, '').replace(/^(?:the|a|an) /, '').replace(/-/g, ' ').replace(/\s+/g, ' ').trim().replace(/(?:es|s)$/, '');
+}
+const loreTermCache = new WeakMap();
+function loreTerms(lb) {
+  let set = loreTermCache.get(lb);
+  if (set) return set;
+  set = new Set();
+  for (const e of lb.all?.('world') || []) {
+    for (const t of [e.title, ...(e.aliases || []), ...String(e.title).split(/ and |, /)]) {
+      const k = loreTermKey(t);
+      if (k.length >= 3) set.add(k);
+    }
+  }
+  for (const e of [...(lb.all?.('place') || []), ...(lb.all?.('timeline') || [])]) {
+    for (const t of [e.title, e.locationId && e.locationId !== 'hearthvale' ? String(e.locationId).replace(/_/g, ' ') : null]) {
+      const k = loreTermKey(t);
+      if (k.length >= 3 && !/^(?:now|three years ago|player home)$/.test(k)) set.add(k);
+    }
+  }
+  loreTermCache.set(lb, set);
+  return set;
+}
+// Something she knows by name that is not a person ("tell me about the wolves" -> her memory
+// of the wolves on the King's Road): what she knows, told in her voice, rather than a raw note.
+function knownByName(mind, lb, q) {
+  const k = loreTermKey(q);
+  if (k.length < 4 || typeof mind?.loreLookup !== 'function') return false;
+  try {
+    return mind.loreLookup(q).entries.some((e) => {
+      if (e.kind !== 'life' && lb.get?.(e.loreId)?.kind === 'person') return false;
+      return loreTermKey(e.subject).includes(k);
+    });
+  } catch {
+    return false;
+  }
+}
+const BRIGHTBORN_Q = /^(?:are you (?:brightborn|drift[ -]?touched|a changeling|touched by the drift)|is it true you are (?:brightborn|drift[ -]?touched)|why is your hair blue|why is your (?:magic|light) (?:violet|purple))$/;
+function matchLoreQuestion(c, env) {
+  // Her own life has its own answers ("tell me about Glasswater": Maren's home, not hers).
+  if (BUILTIN_INTENTS.find((i) => i.id === 'ask.past')?.test?.(c)) return null;
+  const bright = BRIGHTBORN_Q.test(c.core);
+  const m = bright ? Object.assign([c.core], { groups: { q: 'is lyra brightborn' } }) : LORE_Q.exec(c.core);
+  if (!m) return null;
+  const q = (m.groups.q || m.groups.q2 || '').trim();
+  if (!q || /^(?:your|my|our|this|that|it)\b/.test(q)) return null;
+  const lb = env.ctx?.mind?.lorebook;
+  const know = (env.intents || []).find((i) => i && i.id === 'mem.know' && typeof i.answer === 'function');
+  if (!lb || !know) return null;
+  if (!bright && !loreTerms(lb).has(loreTermKey(q)) && !knownByName(env.ctx.mind, lb, q)) return null;
+  const match = Object.assign([c.raw], { groups: { q, mode: !bright && /^what /.test(c.core) ? 'what' : null } });
+  return {
+    id: 'mem.know', source: 'plugin', plugin: know.plugin || 'memory', kind: 'question', command: false,
+    confidence: 0.85, match, slots: { q }, actions: [], answer: (results) => know.answer(match, env.ctx, results),
+  };
+}
+
 function canModify(id, prev) {
   const acts = prev?.intent?.actions || [];
   if (id === 'mod.deliver') return acts.some((a) => a.name === 'start_job');
@@ -1231,7 +1301,10 @@ export function parseMessage(text, env = {}) {
       applyModifier(mod, prev);
       continue;
     }
-    let intent = matchPlugin(c, env);
+    // A question about a word of the lore is answered from her knowledge first, before a
+    // plugin reads "Mirror Lake" as a person or a place handler gives its plain description.
+    let intent = matchLoreQuestion(c, env);
+    if (!intent) intent = matchPlugin(c, env);
     if (!intent) intent = matchBuiltin(c, env, null);
     const clause = { text: raw, norm, core, question, forMe, intent };
     // Remember who was mentioned so "talk to him" works in the next clause.

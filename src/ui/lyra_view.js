@@ -632,7 +632,7 @@ export function memoryChipLabel(ref, found = null, max = 34) {
   const base = ref?.label || found?.title || ref?.text || found?.text || '';
   const clean = String(base).replace(/\s+/g, ' ').trim();
   if (!clean) return 'something';
-  const lower = /^[A-Z][a-z]/.test(clean) && !/^(I|I'm|Maren|Lyra|Cal|Hearthvale)\b/.test(clean) ? clean[0].toLowerCase() + clean.slice(1) : clean;
+  const lower = /^[A-Z][a-z]/.test(clean) && !/^(I|I'm|Maren|Lyra|Hobb|Wenna|Bryn|Hearthvale)\b/.test(clean) ? clean[0].toLowerCase() + clean.slice(1) : clean;
   return truncate(lower, max);
 }
 

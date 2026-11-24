@@ -756,7 +756,7 @@ test('offline mind answers from game data and updates the mind', async () => {
   const where = await brain.handlePlayerMessage('where is the smithy?');
   assert.ok(/Ironhand Smithy/.test(where.say), where.say);
   const past = await brain.handlePlayerMessage('where are you from?');
-  assert.ok(/Glasswater/.test(past.say), past.say);
+  assert.ok(/Hearthvale/.test(past.say) && /Lamplight Lane/.test(past.say) && !/Glasswater|Isles/.test(past.say), past.say);
   const quest = await brain.handlePlayerMessage('what should we do next?');
   assert.ok(quest.say.length > 10);
   const unknown = await brain.handlePlayerMessage('purple elephants debate taxes');

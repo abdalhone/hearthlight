@@ -9,8 +9,8 @@ import { WILL_LINES } from './lines_will.js';
 export const RULES = {
   oath: [
     { t: 'Stars above', mood: ['happy', 'calm', 'tense'] },
-    { t: 'Tides take it', mood: ['tense', 'angry', 'low'] },
-    'Oh, tides',
+    { t: 'Wicks and ashes', mood: ['tense', 'angry', 'low'] },
+    'Oh, ashes',
     { t: 'Ha', mood: ['happy', 'calm'] },
     { t: 'Blast it', mood: ['angry', 'tense'] },
   ],
@@ -174,7 +174,7 @@ export const LINES = {
     { t: "Clean. You've been practicing.", minBond: 1 },
   ],
   downed: [
-    { t: 'Tides... the ground is... comfortable...', trait: 'playful' },
+    { t: 'Ashes... the ground is... comfortable...', trait: 'playful' },
     "I can't— {you}...",
     'Ngh— I\'m down...',
     { t: "Sorry... just... need a moment...", trait: 'warm' },
@@ -207,7 +207,7 @@ export const LINES = {
     "I feel stronger. Maren would've said 'finally'.",
     { t: "Did the air just get brighter, or is that me?", trait: 'playful' },
     'Something just clicked. My bolts feel sharper.',
-    { t: 'Level {level}. Not bad for an island girl.', trait: 'playful' },
+    { t: "Level {level}. Not bad for the lamplighter's girl.", trait: 'playful' },
   ],
   player_level_up: [
     { t: 'Careful — keep growing like that and you will not need me.', trait: 'playful' },
@@ -269,11 +269,11 @@ export const LINES = {
     { t: 'Hearthvale. Somebody is baking. Somebody always is.', trait: 'playful' },
     { t: 'Hearthvale. Warm lamps, warmer people.', mood: ['happy', 'calm'] },
     "Back in town. Smell that? Elda's bread.",
-    'Home, more or less.',
+    'Home. Every chimney going, every lamp I know by name.',
   ],
   place_home: [
-    { t: 'Our little cottage. It creaks like a ship. I like that.', trait: 'bookish' },
-    'Home sweet cottage.',
+    { t: "The Wayhouse. It creaks like old Jory's still pacing it. I like that.", trait: 'bookish' },
+    'The Wayhouse. Your roof, my key.',
     { t: "Boots off. I mean it. You'll track mud everywhere.", trait: 'playful' },
     'It\'s good to be inside four walls for a bit.',
   ],
@@ -285,7 +285,7 @@ export const LINES = {
   ],
   place_chapel: [
     'Hush. Even the dust settles quietly in here.',
-    { t: 'I light a candle for Maren every time. Silly, maybe.', minBond: 1 },
+    { t: "Thirty-eight flames on the altar. Ours burns Da's beeswax. So do all the others.", minBond: 1 },
     'The chapel. Let\'s keep our voices down.',
     { t: "Sister Aveline's candles... they never seem to burn down.", trait: 'bookish' },
   ],
@@ -299,7 +299,7 @@ export const LINES = {
   // ------------------------------------------------------- time and weather
   night_falls: [
     'Night already. Stay close — things wake up in the dark.',
-    { t: "Look up. Stars. Gods, I missed island skies.", mood: ['happy', 'calm'], trait: 'bookish' },
+    { t: 'Look up. Stars. Da taught me every one of them from the top of a ladder.', mood: ['happy', 'calm'], trait: 'bookish' },
     "Dark's here. The wolves will be out soon.",
     { t: 'Moonpetals will be opening now...', trait: 'bookish' },
   ],
@@ -322,7 +322,7 @@ export const LINES = {
     { t: "Perfect. Wet socks for the rest of the day.", trait: 'playful' },
   ],
   fog_rolls: [
-    { t: 'Fog like this, back home, meant the lighthouse never slept.', trait: 'bookish' },
+    { t: 'Grey in the morning, count your neighbors by noon. ...It is only fog. Probably.', trait: 'bookish' },
     "Fog. Can't see a thing past ten paces.",
     { t: 'Stay where I can see you. This fog swallows people.', mood: ['tense', 'calm'] },
     'Fog rolling in. Sounds carry strangely now.',
@@ -360,10 +360,10 @@ export const LINES = {
     "There's Pip. Still chasing that cat, I bet.",
   ],
   npc_meet: [
-    { t: 'Hello. I\'m Lyra. Don\'t mind the bow.', trait: 'playful' },
-    "I haven't met {name} before.",
-    { t: '{name}, is it? Good to meet you.', trait: 'warm' },
-    { t: 'A new face. {name}. I like them already. Probably.', trait: 'playful' },
+    { t: '{name}! Flame\'s lit?', trait: 'playful' },
+    'There\'s {name}.',
+    { t: '{name}. Good to see you about.', trait: 'warm' },
+    { t: 'A face I don\'t know. {name}, is it? Now that\'s rare in Hearthvale.', trait: 'playful' },
   ],
   conversation_done: [
     { t: '{name} talks more when you let the silence sit.', trait: 'steady' },
@@ -474,13 +474,13 @@ export const LINES = {
   ],
   idle_night_sky: [
     { t: 'Count the stars with me? I lose track after eleven.', minBond: 2 },
-    'See that bright one? Sailors back home call it the Lantern.',
-    { t: "Maren taught me the stars. I still can't find the Heron without her.", trait: 'bookish' },
+    'See that bright one, over the Hollowcrown? Lamplighters call it Lyra. Da named me for it.',
+    { t: "Maren taught me the star charts. Da taught me the names. I still can't find the Heron without one of them.", trait: 'bookish' },
     'Clear sky. Perfect for stargazing, if nothing eats us.',
   ],
   idle_rain: [
     'Rain on the leaves. The forest sounds like it is whispering.',
-    { t: 'If this keeps up I am building a boat.', trait: 'playful' },
+    { t: 'If this keeps up, Corran will be fishing in the square by supper.', trait: 'playful' },
     { t: 'Rain on leaves... my favorite sound, after rain on roofs.', mood: ['happy', 'calm', 'low'] },
     "My hair's going to be a disaster.",
   ],
@@ -504,7 +504,7 @@ export const LINES = {
   ],
   lonely: [
     'It gets quiet out here. Say something?',
-    { t: 'I miss the noise of the harbor sometimes. People everywhere.', trait: 'bookish' },
+    { t: 'I miss the noise of the Kettle at supper. Everyone talking at once.', trait: 'bookish' },
     "Talk to me a little? The quiet's getting loud.",
     { t: 'You\'re awfully quiet today, {you}.', minBond: 1 },
   ],
@@ -696,7 +696,7 @@ export const LINES = {
     "Bram told me a joke about iron once. It was ore-ful.",
     "How does a wolf say hello? 'Howl do you do.' Pip taught me that one, don't blame me.",
     "Why did the bandit bring a ladder to the inn? He heard the drinks were on the house.",
-    "Maren used to say a ranger's favorite meal is a quick bite. Mostly because of the wolves.",
+    "Maren used to say a lumencrafter's favorite meal is a quick bite. Mostly because of the wolves.",
     "What's a skeleton's least favorite room? The living room.",
     "Why are boars terrible at cards? Too many tells. Also hooves.",
     "Two slimes walk into a bar. The third one ducks. ...Slimes can't duck. That's the joke.",
@@ -713,9 +713,9 @@ export const LINES = {
     "That laugh's worth more than coin.",
   ],
   song: [
-    "♪ Down by the glasswater, the herons fly low, the tide brings the boats home and lanterns aglow... ♪ That's all I remember.",
+    "♪ Hobb up the ladder, Hobb down the lane, light every lamp till the morning again... ♪ Every child in Hearthvale skips to that. I was mortified.",
     "♪ Oh, the wolf and the lantern went walking one night — the wolf wanted supper, the lantern wanted light... ♪ It ends badly for the wolf.",
-    "♪ Hush now, little island, the storm's going round... ♪ My mother sang that one. I sing it worse.",
+    "♪ Lindenflower, linden-light, the stone is singing in the night... ♪ Mam sings that one to her bees. I sing it worse.",
     "I don't sing in front of people. ...Fine. ♪ La-la-la ♪. Happy?",
   ],
   ai_deflect: [
@@ -824,7 +824,7 @@ export const LINES = {
   opinion_player_low: [
     "I'm still figuring you out. You stood with me on the King's Road, though — that counts for a lot.",
     { t: "You're... interesting. I haven't decided yet. Keep it up.", trait: 'playful' },
-    "I owe you. And I think I like you. Ask me again in a week.",
+    "You stood with me against the wolves. I noticed. And I think I like you. Ask me again in a week.",
   ],
   opinion_player_mid: [
     "You're a good friend, {you}. I don't say that lightly.",
@@ -832,7 +832,7 @@ export const LINES = {
     "Honestly? I'm glad it was you on that road.",
   ],
   opinion_player_high: [
-    "You're the best thing that's happened to me since I left the Isles.",
+    "You're the best thing that's happened to me since Maren went into the ruins.",
     { t: "I'd walk into the ruins for you. I'm already doing it, technically.", trait: 'playful' },
     "You know what you are to me, {you}. Don't make me say it twice.",
   ],
@@ -900,23 +900,23 @@ export const LINES = {
     'Find Maren. Earn my keep. Stay alive. In whatever order the day allows.',
     'To find Maren. Everything else can wait.'],
   past_magic: [
-    "Arcane ranger — I bend light into bolts. Maren taught me. It burns a little, every time.",
-    "Island magic. You catch the light like water in your hands, and then you throw it. Simple. It took me eight years.",
-    { t: "I'd teach you, but you'd probably singe your eyebrows. I did. Twice.", trait: 'playful' },
+    "Lumencrafter. I make light out of my own warmth and throw it. Maren taught me. It costs a little heat, every time.",
+    "Lumencraft. You gather the warmth in your own body, kindle it into light, and give it a shape. Simple. It took me eight years. Hence the tea.",
+    { t: "Lumencraft: light made out of my own warmth. I'd teach you, but you'd singe your eyebrows. I did. Twice. Pip's next, when he's eleven.", trait: 'playful' },
   ],
   past_deflect: ["That... another time, {you}. Ask me when we've shared more roads.", "I don't talk about that. Not yet."],
   secret_none: ['Maybe when I know you better.', { t: 'Nice try. Buy me dinner first.', trait: 'playful' }],
   meet_story: [
-    "On the King's Road, two days ago. Wolves came out of the rain, and you just... stood next to me. Like you'd known me for years.",
-    { t: "You don't remember? Wolves, rain, me losing my footing — and you, swinging like a madman. I owe you.", trait: 'playful' },
+    "Hess and I carried you down off the Hollowcrown three months ago. You slept eighty-one days. Then two days ago the wolves came, and you just... stood next to me.",
+    { t: "You don't remember? A ring of stones, snow melted in a perfect circle, and you asleep in the middle like you'd been put there. Then two days ago, wolves, and you swinging like a madman. I noticed.", trait: 'playful' },
   ],
   story: [
-    "When I was small, the herons on Glasswater would follow the fishing boats home. Mother said they carried the drowned's last words. I used to whisper back to them, just in case.",
+    "When I was small, Da let me ride his shoulders on the lamp-round. I thought I was the one lighting them. He let me think it.",
     "The first bolt I ever cast set Maren's hat on fire. She didn't stop laughing for a week. She kept the hat. Wore it to every lesson after, scorch mark and all.",
-    "There was a storm my twelfth winter that blew out the lighthouse. I climbed the tower with a lantern in my teeth and kept it lit till dawn. That's the night Maren decided to teach me.",
-    "A ship's cat once picked me. Walked off its boat, sat on my foot, and refused to leave. I named her Admiral. She outranked everyone in our house.",
+    "Longwatch night, when I was eleven, a hollow wind blew out every lamp on the square and knocked Da off his ladder. I lit them all again at once. In violet. Maren came out of the Kettle in her nightgown and said, 'There goes my quiet old age.'",
+    "Mam's bees know my step. When I was six I tried to teach them to fetch. They taught me something instead.",
     "Maren used to say every ruin is just a house that nobody visits anymore. Be polite when you enter, she said. Wipe your feet. The dead notice.",
-    { t: "My brother Cal used to fold paper boats and race them down the gutters when it rained. I still can't see rain on a road without looking for them.", minBond: 3 },
+    { t: "Bryn and I used to race paper boats down the gutters on Lamplight Lane when it rained. I still can't see rain on a road without looking for them.", minBond: 3 },
   ],
   careful_reply: ['Always am. Well. Usually.', { t: "Careful is my middle name. My first name is Reckless.", trait: 'playful' }, "You too. Especially you."],
   quiet_reply: ['...Fine.', { t: 'Quiet as a mouse. A sulking mouse.', trait: 'playful' }, 'Alright.'],

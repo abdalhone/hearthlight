@@ -416,6 +416,8 @@ export class Relationships {
       if (r.species) o.species = r.species;
       if (r.npc) o.npc = true;
       if (r.absent) o.absent = true;
+      if (r.call) o.call = r.call;
+      if (r.calledBy) o.calledBy = r.calledBy;
       if (r.tags.length) o.tags = r.tags;
       if (r.notes.length) o.notes = r.notes.map((n) => ({ text: n.text, source: n.source, t: Math.round(n.t) }));
       if (r.opinion) {
@@ -457,6 +459,8 @@ export class Relationships {
       r.lastSeen = Number.isFinite(d.lastSeen) ? d.lastSeen : null;
       r.interactions = Number(d.interactions) || 0;
       r.history = Array.isArray(d.history) ? d.history.map(String).slice(-LIMITS.history) : [];
+      if (d.call) r.call = String(d.call).slice(0, 40);
+      if (d.calledBy) r.calledBy = String(d.calledBy).slice(0, 60);
       this.map.set(r.id, r);
     }
   }
@@ -473,9 +477,9 @@ function composePlayerOpinion(rel) {
   const parts = [];
   if (a <= -40) parts.push("Honestly? I don't like who you've been lately.");
   else if (a <= -10) parts.push("We've had our rough patches, you and I.");
-  else if (a < 15) parts.push("I owe you, and I haven't decided yet what else you are to me.");
-  else if (a < 30) parts.push("I owe you my life, and I'm starting to like you, too.");
-  else if (a < 50) parts.push('I like you. More than I planned to when I took that spare bed.');
+  else if (a < 15) parts.push("You stood with me against the wolves. I noticed. I haven't decided yet what else you are to me.");
+  else if (a < 30) parts.push("You stood with me against the wolves, and I'm starting to like you, too.");
+  else if (a < 50) parts.push('I like you. More than I planned to when I took the hearthwatch.');
   else if (a < 75) parts.push("You're my friend. The real kind, the kind you'd walk into a ruin for.");
   else parts.push("You're home, I think. Wherever you are.");
   if (rel.trust >= 65) parts.push('I trust you with my life. I already have.');
@@ -483,6 +487,6 @@ function composePlayerOpinion(rel) {
   if (rel.respect >= 60) parts.push('You fight well and you choose well, and the second part is rarer.');
   else if (rel.respect < 10) parts.push("And some of what you've done sits badly with me.");
   if (rel.fear >= 40) parts.push('Sometimes you scare me.');
-  if (rel.familiarity < 25) parts.push('I still barely know where you come from.');
+  if (rel.familiarity < 40) parts.push("Neither of us knows where you come from. I'd like to.");
   return shorten(parts.join(' '), LIMITS.opinion);
 }

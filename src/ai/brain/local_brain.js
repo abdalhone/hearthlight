@@ -392,7 +392,7 @@ export class LocalBrain {
         return this.line('ack_free');
       case 'emote':
         if (args.value === 'hug') return bondLevel(this.mind) >= 2 ? 'Come here, you.' : 'Oh — alright. Just a quick one.';
-        if (args.value === 'dance') return this.speech.pick(['Watch and weep.', 'Island style!', 'Only for you.']);
+        if (args.value === 'dance') return this.speech.pick(['Watch and weep.', 'Sheaf Moot style!', 'Only for you.']);
         return this.line('ack_emote');
       case 'sit':
         return this.line('ack_sit');
@@ -771,6 +771,9 @@ const HANDLERS = {
       const loc = this.currentLocation();
       return this.line('place_opinion', { place: loc?.name || 'Here', take: this.placeTake(loc) || 'I like it.' });
     }
+    // "What about your mother?": her family, not a thing she likes (LORE §7).
+    if (/^(?:mother|mom|mum|mam|ma|father|dad|da|pa)$/.test(who) && s.verb !== 'know') return this.opinionOf(/^(?:mother|mom|mum|mam|ma)$/.test(who) ? 'wenna' : 'hobb', s.verb, reply);
+    if (/^(?:parents|folks|family|siblings|brothers?|sisters?)$/.test(who)) return HANDLERS['ask.past'].call(this, { topic: 'family' }, clause, reply);
     const id = resolvePerson(this.game, who);
     const key = String(who).split(/\s+/)[0];
     if (id || VILLAGERS[key]) {
@@ -885,20 +888,24 @@ const HANDLERS = {
         const search = shortestSentence(bs, /came (?:north|here|to Hearthvale)|went ahead|vanish|disappear|to find (?:her|Maren)/i, 170);
         const parts = [`I'm ${name}${soul.age ? `, ${soul.age}` : ''}, from ${home}.`];
         if (mentor) parts.push(toFirstPerson(mentor));
-        parts.push(search && search !== mentor ? toFirstPerson(search) : 'Maren, my teacher, vanished near the Sunken Ruins, and I came to find her.');
+        parts.push(search && search !== mentor ? toFirstPerson(search) : 'Maren, my teacher, went into the Sunken Ruins at midsummer and never came back.');
         return clipWords(parts.join(' '), 330);
       }
       case 'origin': {
-        const s1 = pickSentence(bs, /grew up|island|born|home/i);
-        return `${capitalize(shortOrigin(soul.origin) || 'Far from here')}. ${s1 ? toFirstPerson(s1) : ''} I miss the sound of it.`.replace(/\s+/g, ' ').trim();
+        // "Hearthvale: born in the chandlery on Lamplight Lane." -> place, then the detail.
+        const [place, detail] = String(soul.origin || '').split(/:\s*/);
+        const born = detail ? `I was ${lowerFirst(bare(detail))}.` : '';
+        return `${capitalize(place || 'Hearthvale')}. ${born} Da's the lamplighter, Mam keeps the bees. I've lived inside this bell-reach all my life, and I can hear the Wellstone from anywhere on the square.`.replace(/\s+/g, ' ').trim();
       }
+      case 'glasswater':
+        return "That's Maren's home, not mine. I've never been. Sand like crushed glass, she says, and a lagoon that glows on summer nights. I was born here, in the chandlery on Lamplight Lane.";
       case 'age':
-        return `${soul.age || 'Old enough'}. ${this.speech.pick(['Old enough to know better, young enough not to care.', "Don't ask a ranger her age. Ask her kill count. ...Don't ask that either."])}`;
+        return `${soul.age || 'Old enough'}. ${this.speech.pick(['Old enough to know better, young enough not to care.', "Don't ask a mage her age. Ask her kill count. ...Don't ask that either."])}`;
       case 'name':
         return soul.fullName && soul.fullName !== name ? `${soul.fullName}. But ${name} is fine — everyone calls me ${name}.` : `Just ${name}. Short, easy to shout in a fight.`;
       case 'family':
       case 'secret': {
-        const sec = this.revealableSecret(s.topic === 'family' ? /brother|sister|mother|father|family|cal\b/i : null);
+        const sec = this.revealableSecret(s.topic === 'family' ? /brother|sister|mother|father|family/i : null);
         if (sec?.ok) {
           reply.emotion = { name: 'sadness', intensity: 0.4 };
           reply.memories.push({ text: `I told ${this.game.settings?.playerName || 'the traveler'} something I don't tell people: ${bare(toFirstPerson(sec.text))}.`, importance: 8, about: ['player'] });
@@ -907,7 +914,11 @@ const HANDLERS = {
           return `I'll tell you something I don't tell people. ${toFirstPerson(sec.text)}`;
         }
         if (sec) return this.line('past_deflect');
-        return s.topic === 'family' ? "My family's back on the Isles. We write. Rarely, and badly." : this.line('secret_none');
+        if (s.topic !== 'family') return this.line('secret_none');
+        if (/\b(?:brothers?|sisters?|siblings)\b/.test(clause.core)) return "No brothers or sisters living. Mam and Da buried three babies before me: Ansel, Bee and little Jem. And there's Beth, who came in out of the grey and got put in my bed. She's my sister, whatever the flame-count says.";
+        if (/\b(?:father|dad|da|pa)\b/.test(clause.core)) return `${VILLAGERS.hobb.take} He's at the chandlery on Lamplight Lane, or up a ladder.`;
+        if (/\b(?:mother|mom|mum|mam|ma)\b/.test(clause.core)) return `${VILLAGERS.wenna.take} Go and say hello; she'll want to touch your face.`;
+        return "My parents are on Lamplight Lane. Da's the lamplighter, Mam keeps the bees. Go and say hello; she'll want to touch your face.";
       }
       case 'maren': {
         const op = this.opinionText('maren');
@@ -917,9 +928,14 @@ const HANDLERS = {
       case 'meet':
         return this.line('meet_story');
       case 'why': {
-        const s1 = pickSentence(bs, /vanish|followed|came to|maren/i);
-        return `${s1 ? toFirstPerson(s1) : 'Maren. She came here and never came back.'} So here I am.`;
+        // Born here; with the player by her own choice (LORE §7, "This year").
+        const reasons = 'the stipend, a second blade for the ruins, whatever ties you to that ring and to Maren, plain curiosity, and a door to close on the Moot\'s questions';
+        if (/hearthwatch|\bkey\b|watching me|with me/.test(clause.core)) return `The Moot needed somebody, and I chose to be it, for my own reasons: ${reasons}. I could hand the key back tomorrow. I haven't.`;
+        return `Here? I was born here. Hearthvale's mine. If you mean here with you: ${reasons}. And you stood with me against the wolves. I noticed.`;
       }
+      case 'leave':
+        // DESIGN §19.7: Hearthvale is her home; the road to the sea is a dream, never a way out.
+        return "Leave Hearthvale? I was born here. Mam and Da are on Lamplight Lane, and I can hear the Wellstone from the square. One day I'd like to walk the King's Road to the sea, relighting the waystones as I go, and walk home again. That's a dream, not a door.";
       case 'magic':
         return this.line('past_magic');
       case 'likes': {
@@ -929,9 +945,14 @@ const HANDLERS = {
       case 'dislikes':
         return `${capitalize(listJoin((soul.dislikes || []).slice(0, 4)))}. ${/bandit/i.test((soul.dislikes || []).join(' ')) ? 'Bandits most of all — they tend to be all three.' : ''}`.trim();
       case 'fears': {
-        if (/swim/.test(clause.core) && /water/i.test((soul.fears || []).join(' '))) return "Technically. Do I want to? Absolutely not. Deep water and I have an understanding: it stays down there, I stay up here.";
+        // LORE §7: she has never once admitted she is afraid of deep water. It is a secret
+        // she tells only at a deep bond; until then she deflects, and leaves it off the list.
+        const told = bondLevel(this.mind) >= 4;
+        const fears = (soul.fears || ['losing people']).map((f) => bare(toFirstPerson(String(f).replace(/\s*\([^)]*\)/g, ''))));
+        const shown = told ? fears : fears.filter((f) => !/water/i.test(f));
+        if (/swim/.test(clause.core) && fears.some((f) => /water/i.test(f))) return told ? "I can. I don't. Not since the ice. You know why." : "Of course I can swim. I just don't. There's a difference, and I'd thank you not to look into it.";
         reply.emotion = { name: 'fear', intensity: 0.1 };
-        return `${capitalize(listJoin(soul.fears || ['losing people']))}. Don't laugh.`;
+        return `${capitalize(listJoin(shown.slice(0, 4).map(lowerFirst)))}. Don't laugh.`;
       }
       case 'dreams':
         return `${capitalize(listJoin(soul.dreams || ['find Maren']))}. Someday.`;
@@ -982,7 +1003,7 @@ const HANDLERS = {
     const item = resolveItemId(topic);
     if (item && ITEMS[item]) return this.line('know_item', { item: ITEMS[item].name, desc: ITEMS[item].desc });
     const k = (this.mind?.knowledge || []).find((x) => String(x.subject || '').toLowerCase().includes(topic));
-    if (k?.text) return k.text;
+    if (k?.text) return spokenByHer(k.text, soulOf(this.game).name || 'Lyra');
     return this.line('know_none', { topic });
   },
 
@@ -1276,7 +1297,7 @@ function favoriteAnswer(fav, soul) {
   if (/colou?r/.test(f)) return 'Moonpetal silver. Or arcane violet — the color a bolt makes just before it leaves your hand.';
   if (/book|story/.test(f)) return 'Anything old, with a cracked spine and someone else\'s notes in the margins.';
   if (/song|music/.test(f)) return this.line('song');
-  if (/animal|creature|pet/.test(f)) return 'Herons. Or the stray cat Pip keeps chasing. I named her Admiral the Second.';
+  if (/animal|creature|pet/.test(f)) return "Mam's bees, though they'd be insulted to hear it. Or Biscuit, the ginger stray Pip follows everywhere.";
   if (/season|weather/.test(f)) return 'Autumn. Rain on roofs and a perfect excuse to stay in with a book.';
   if (/place|spot/.test(f)) return 'Rooftops in the rain. Or Mirror Lake at dawn — from the shore.';
   if (/weapon/.test(f)) return 'My bow. Though a dagger never hurts. Well. It hurts them.';
@@ -1310,10 +1331,27 @@ function activityPhrase(activity) {
   return lowerFirst(a.replace(/_/g, ' '));
 }
 
-// "Kettlewake, the smallest of the Glasswater Isles: a scatter of..." -> the part before the gloss.
+// "Hearthvale: born in the chandlery on Lamplight Lane." -> the part before the gloss.
 function shortOrigin(origin) {
   const t = String(origin || 'far away').split(/[:;(—]/)[0].replace(/[.,\s]+$/, '').trim();
   return t || 'far away';
+}
+
+// A note or a lore line that names her, as she would say it: "Lyra's" -> "my", "Lyra came" ->
+// "I came", anywhere else "me"; the stranger, to the player, is "you".
+function spokenByHer(text, name = 'Lyra') {
+  const n = String(name).replace(/[.*+?^${}()|[\]\\]/g, '');
+  const VERB = { has: 'have', is: 'am', was: 'was', does: 'do', goes: 'go' };
+  return String(text || '')
+    .replace(new RegExp(`\\b${n}'s\\b`, 'g'), 'my')
+    .replace(new RegExp(`\\b${n} (has|is|was|does|goes)\\b`, 'g'), (m, v) => `I ${VERB[v]}`)
+    .replace(new RegExp(`\\b${n} ([a-z]+ed|came|went|took|saw|lit|found|heard|knew|left|got)\\b`, 'g'), 'I $1')
+    .replace(new RegExp(`(^|[.!?]\\s+)${n}\\b`, 'g'), '$1I')
+    .replace(new RegExp(`\\b${n}\\b`, 'g'), 'me')
+    .replace(/\b(my|me)\b(?=[^.!?]*$)/, (w) => w)
+    .replace(/\bthe stranger's\b/g, 'your')
+    .replace(/\bthe stranger\b/g, 'you')
+    .replace(/(^|[.!?]\s+)(my|me)\b/g, (m, a, w) => `${a}${w === 'my' ? 'My' : 'Me'}`);
 }
 
 // At most n characters, cut after a whole sentence when one fits.

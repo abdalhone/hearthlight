@@ -22,58 +22,61 @@ export function stageIndex(stage) {
   return STAGE_INDEX[stage] ?? 0;
 }
 
-// What she says when a stage begins. {P} is the player's name.
+// What she says when a stage begins. {P} is the player's name. Lyra has known Maren
+// thirteen years and Aveline all her life: she knows Aveline saw Maren go, and suspects
+// Aveline knows something she hasn't said (LORE §7). Aveline never tells her Maren's
+// message (LORE §9.10): she may tell the stranger first.
 export const STAGE_LINES = {
   ask_aveline: [
     '{P}, can I ask you something?',
-    'Maren came to Hearthvale three months ago, and then her letters just stopped.',
-    'She wrote that the chapel keeps a candle in the window. Sister Aveline might know where she went.',
-    "Will you come with me? I'd rather not hear it alone.",
+    'Maren went over the ruins wall at midsummer and never came back. Sister Aveline saw her go.',
+    "Aveline knows something about Maren she hasn't said. I can feel it. And I keep finding reasons not to ask.",
+    "Will you ask her? Or come with me when I do. I'd rather not hear it alone.",
   ],
   find_key: [
-    'She walked to the Sunken Ruins and never came back. Aveline kept the candle burning for her all this time.',
-    "And the gate's been locked since spring. The bandits up north-east took the key.",
-    "Bandits. Of course it's bandits. Tides take them. North-east, then.",
+    'A lantern and a coil of rope, at dusk, toward the ruins. That much I knew. Aveline says it the same way every time.',
+    "The gate's been locked by the chapel's order for a hundred and ten years, and the bandits took the key from the lodge this spring.",
+    "I've climbed that wall once. Never again without the key: a gate is a way out you can run through. Wicks and ashes. North-east, then.",
   ],
   find_key_told: [
     'You asked Aveline about Maren? Thank you. Tell me everything.',
-    'The Sunken Ruins... and the gate is locked, and the bandits have the key?',
+    'The gate, then. Locked a hundred and ten years, and the bandits have the key.',
     "North-east, then. I'll bring every spark I've got.",
   ],
   enter_ruins: [
-    "The key. Rusted, stamped with the ruins' crest. That's it, that's really it.",
+    "The key. Rusted, and older than the chapel's seal on it. That's it. That's really it.",
     'My hands are shaking. Ignore them.',
-    'The Sunken Ruins are south-west. Whenever you are ready. Soon would be good.',
+    'The Sunken Ruins are south-west, past the marsh. Whenever you are ready. Soon would be good.',
   ],
   find_journal: [
     "Cold in here. The kind of cold that's been waiting for someone.",
-    "Maren came through here. Her wards are in the stones; she always leaves them neater than she found them.",
-    "If she left anything, it'll be deeper. Stay close.",
+    "Maren came through here. Her chalk-marks are on the stones; she always left them neater than she found them.",
+    "If she left anything, it'll be at the bottom of the stair. Stay close.",
   ],
   read_journal: ["That's... that's her journal. That's Maren's.", 'Would you let me read it? Please.'],
 };
 
-// Maren's journal, as found in the deepest room of the Sunken Ruins.
+// Maren's journal, as found at the foot of the stair in the Sunken Ruins. It tells exactly
+// what LORE §9.2 "What the journal says" tells, and no more: the stones of this verse are
+// failing; the waygate is alive and its verse runs north, to the Crown Ring and past it
+// into the Pale; she meant to go through; the wrist with a ring around it; one last line.
+// ("Little lamp" belongs to the unfinished letter in Elda's strongbox, not to this.)
 export const MAREN_JOURNAL = [
   {
-    date: 'Hearthvale, 3rd of Thawmonth',
-    text: "Arrived in the rain. The chapel keeps a candle in its window for travelers; Sister Aveline says it has not gone out in sixty years. I like her already. She makes terrible tea, which is a mark of honesty. Elda at the inn sold me four honey cakes and the life story of every soul in the valley. I ate two before supper. Lyra would be appalled. She would have eaten three.",
+    date: 'Spring, the top room at the Kettle',
+    text: "The rubbings from the upper halls again, by bad candlelight. I have read these carvings for nineteen years and only now see what they say. The stones of this verse are failing, one by one.",
   },
   {
-    date: '9th of Thawmonth',
-    text: 'The Sunken Ruins are older than anyone here believes. Lanternwright work under the moss: a waygate hall, half drowned, its ring still humming. They never truly closed it. And the hum is wrong. Too low, too slow, like something breathing on the far side. I have set wards. I have not told the Captain; he has bandits enough to worry about.',
+    date: 'Midsummer eve',
+    text: 'Paid Elda a month ahead. Rope, oil and a hooded lantern from Garrick, at full price, which made him suspicious. Salve from Mira. Turnips from Tobias, for a long walk. Bram sharpened the silver chisel and asked nothing, bless him. Tomorrow is her birthday. I have promised supper.',
   },
   {
-    date: '15th of Thawmonth',
-    text: 'Louder. My wards are being tested from the other side, gently, the way a hand tries a door in the dark. The gate does not open on a place so much as a promise: north, to the Pale Reach, where the Lanternwrights sang to sleep the thing they could not kill. It is waking. I am nearly sure of it now.',
+    date: 'Midsummer, the foot of the stair',
+    text: "The waygate is alive. Not sleeping, not dead: alive, and humming under my hand. Its verse runs north, from here to the Crown Ring, and past the Ring into the Pale. I have come too far to stand at the edge of it. I mean to go through.",
   },
   {
-    date: '16th of Thawmonth',
-    text: 'I asked the old ruins-keeper at the lodge to lock the gate behind me and keep the key until I come out. Nobody should wander in while the stones hum like this. If anyone finds these pages before I return: do not follow without light. Bring a lamp, a friend, and more courage than sense.',
-  },
-  {
-    date: '17th of Thawmonth, late',
-    text: "Little lamp, if this reaches you (and of course it will; you have never once done as you were told), don't grieve yet. I am going north through the old waygate to sing the old thing back to sleep before it opens its eyes. I am not afraid. I am a little afraid. Light for the lost first, fire for the wicked last. You were always the best thing I ever made. Bring honey cakes. M.",
+    date: 'The last page',
+    text: "A drawing in ink: a wrist, with a thin ring drawn around it. Beside it, in Lanternwright script, the words 'where the Song lets go'. Under it, one line in her plain hand: \"If someone comes out, I hope whoever it is is kind.\"",
   },
 ];
 
@@ -81,100 +84,153 @@ export function journalText() {
   return MAREN_JOURNAL.map((e) => `${e.date}\n${e.text}`).join('\n\n');
 }
 
-// Lyra reading it, line by line (spoken over a few seconds).
+// Lyra reading it, line by line (spoken over a few seconds). She concludes what anyone
+// reading it would: Maren went north through the old waygate (LORE §9.2).
 export const READ_LINES = [
-  "It's her hand. Gods. It's really her hand.",
-  "'Bring a lamp, a friend, and more courage than sense.' That's her. That's exactly her.",
-  'North. Through the old waygate, to sing something back to sleep. Alone. Of course alone.',
-  'But she was alive when she wrote this. Alive, and not afraid. ...A little afraid.',
-  "{P}. Thank you. I couldn't have walked into that place without you, and I'm not going north without you either. If you'll come.",
+  "It's her hand. Wicks and ashes. It's really her hand.",
+  "'The stones of this verse are failing.' The hitch in the Wellstone's hum. She knew. She knew and she didn't tell me.",
+  "'From here to the Crown Ring, and past the Ring into the Pale.' She went through. North, through the old waygate.",
+  "And the last page. A wrist with a ring around it. 'Where the Song lets go.' ...{P}. Your wrist.",
+  "'If someone comes out, I hope whoever it is is kind.' Someone came out. I carried them down the mountain. I don't know what that makes us yet.",
 ];
 
 export const REREAD_LINES = [
-  "'You were always the best thing I ever made.' I keep reading that line.",
-  'North, through the waygate. We will follow, Maren. Hold on.',
+  "'If someone comes out, I hope whoever it is is kind.' I keep reading that line.",
+  "North, through the waygate, past the Crown Ring into the Pale. Hold on, Maren. I'm not done being angry at you.",
 ];
 
-// What each villager knows about Maren, used when their profile has no Maren facts.
-// npc: their lines; learned: what Lyra writes down.
+// What each villager saw of Maren's last days (LORE §9.2, "Known"), used when their
+// profile has no Maren facts. npc: their lines to Lyra; learned: what Lyra writes down.
+// Never anyone's secret: not Aveline's message, not the letter in Elda's strongbox.
 export const MAREN_TESTIMONY = {
   aveline: {
     npc: [
-      'Maren Ashgrove. Yes. She sat in the third pew most evenings and asked me about the old stones.',
-      'The last morning, she asked me to keep the candle burning, and walked toward the Sunken Ruins. She did not come back.',
-      'The ruins gate has been locked since spring. Captain Rowan believes the bandits in the north-east took the key from the ruins-keeper\'s lodge.',
+      'Nineteen years of late nights by these candles, child. Old gates, old gods and older mistakes. She was my friend.',
+      'At midsummer, at dusk, I saw her walk toward the Sunken Ruins with a lantern and a coil of rope. I did not stop her. I am not sure anyone could have.',
+      "The gate has been locked by the chapel's order for a hundred and ten years, and the bandits took its key from the lodge this spring. Captain Rowan believes it is at their camp.",
     ],
-    learned: 'Maren asked Aveline to keep the chapel candle burning, then walked to the Sunken Ruins and never came back. The gate is locked; the bandits may have its key.',
-    lyra: "Thank you, Sister. For the candle, too. I'll bring her back to see it.",
+    learned: 'Aveline saw Maren walk toward the ruins at dusk at midsummer with a lantern and a coil of rope. The gate key was taken by the bandits this spring; Rowan thinks it is at their camp.',
+    lyra: "Thank you, Sister. ...If there's more, I'm listening. Whenever you're ready.",
   },
   elda: {
-    npc: ["A grey cloak and a laugh you could hear from the cellar? Bought four honey cakes and asked me all about the old ruins. Lovely woman. Terrible at eating slowly."],
-    learned: 'Maren bought honey cakes at the Ember Kettle and asked Elda about the Sunken Ruins.',
-    lyra: 'That is her. That is so exactly her.',
+    npc: ["She paid me a month ahead, love. A month! As if she meant to be back for it. Her room's as she left it. I dust it Sundays."],
+    learned: 'Maren paid Elda a month ahead at the Kettle before she went, as if she meant to come back.',
+    lyra: "Paying ahead so nobody's out of pocket. That is so exactly her.",
   },
   rowan: {
     npc: [
-      'Your teacher went into the Sunken Ruins against my advice.',
-      "Then the bandits raided the ruins-keeper's lodge and took the gate key. I haven't the soldiers to take it back.",
+      'The wardwright went over the ruins wall alone. Against the second law, and against my advice. She thanked me for the advice.',
+      "Then the bandits raided the ruins-keeper's lodge and took the gate key. I haven't the watchmen to take it back.",
     ],
     learned: "The bandits took the ruins gate key from the ruins-keeper's lodge; it is probably at their camp in the north-east.",
-    lyra: "Then I'll take them back for you, Captain. With help.",
+    lyra: "Then we'll take it back, Captain. And I'll tell you first, this time.",
   },
   garrick: {
-    npc: ['Grey cloak, ink on her fingers? Asked me about the old road north, past the ruins. Told her nobody has walked it in a hundred years. She smiled like that was the point.'],
-    learned: 'Maren asked Garrick about the old road north, past the Sunken Ruins.',
-    lyra: "North. She always did love a road nobody uses.",
+    npc: ["The day before, she bought rope, lamp oil and a hooded miner's lantern. Paid full price, my friend. Nobody pays full price. I should have asked why."],
+    learned: "Maren bought rope, lamp oil and a hooded miner's lantern from Garrick the day before she went, and paid full price.",
+    lyra: 'Full price. She was in a hurry. Or saying goodbye.',
   },
   bram: {
-    npc: ["She had me mend a lantern hook. Paid double and wouldn't say why it had to hold through 'a long dark'."],
-    learned: "Maren had Bram mend a lantern hook to hold through 'a long dark'.",
-    lyra: 'A long dark. Tides. Thank you, Bram.',
+    npc: ["Sharpened her a silver chisel. 'For cutting runes out of old stone.' Hmph. Didn't ask."],
+    learned: "Bram sharpened a silver chisel for Maren, 'for cutting runes out of old stone'.",
+    lyra: 'Runes out of old stone. ...Thank you, Bram.',
   },
   mira: {
-    npc: ["She bought every sprig of silverleaf I had. She said she'd need it where she was going. I thought she meant the road."],
-    learned: 'Maren bought all of Mira\'s silverleaf, saying she would need it where she was going.',
-    lyra: 'Silverleaf. For wounds. ...Thank you, Mira.',
+    npc: ["She bought my strongest moonpetal salve. 'For cold hands in deep places.' And she asked me what grows on the far side of the old waygate. I didn't know it had a far side. Sorry."],
+    learned: "Maren bought Mira's strongest moonpetal salve 'for cold hands in deep places', and asked what grows on the far side of the old waygate.",
+    lyra: "The far side. She meant to go through something. Thank you, Mira.",
   },
   tobias: {
-    npc: ["After she came, I saw lights out by the Sunken Ruins some nights. Blue ones, moving. I didn't go and look. I'm not brave like that."],
-    learned: 'Tobias saw blue lights moving in the Sunken Ruins at night after Maren arrived.',
-    lyra: "Blue. That's warding light. She was working down there.",
+    npc: ["She bought a sack of turnips. 'For a long walk,' she said. Oh dear. And that same night the blue lights started in the ruins. I saw them from the field."],
+    learned: "Maren bought a sack of turnips from Tobias 'for a long walk', and the blue lights began in the ruins that same night.",
+    lyra: 'A long walk. With turnips. That is so exactly her it hurts.',
   },
   pip: {
-    npc: ['The lady in the grey cloak? She showed me how to make a coin float! Then she went to the scary ruins. Is she your friend? Is she coming back?'],
-    learned: 'Maren showed Pip how to float a coin, then went to the Sunken Ruins.',
-    lyra: "She's my friend. And I'm going to find out, Pip. Promise.",
+    npc: ['She could make a coin float! She said she\'d teach me a real one when I\'m bigger, same as you. Is she coming back? Lyra? Is she?'],
+    learned: 'Maren promised Pip a real spell when he is older. He misses her too.',
+    lyra: "I don't know yet, Sprout. I'm finding out.",
+  },
+  // Round three's ten (LORE §6): everyone knew Maren nineteen years; none of them knows why she went.
+  hobb: {
+    npc: ['Well now. She promised you supper that night, Star. Nineteen years, and she never once broke a promise to your mother.'],
+    learned: 'Da says Maren never broke a promise to Mam in nineteen years, until midsummer.',
+    lyra: 'I know, Da. That is what frightens me.',
+  },
+  wenna: {
+    npc: ["That woman never did a thing by accident. Whatever she went in for, she went in meaning to. And don't you dare go in after her in the dark, Lyra Ambrel."],
+    learned: 'Mam thinks Maren went into the ruins meaning to.',
+    lyra: 'Not in the dark, Mam. With a key, and a gate I can run through.',
+  },
+  hess: {
+    npc: ["Mm. Her notes said 'the other end'. We went. Found that one instead, two days after she went in. I don't like a trail that crosses itself."],
+    learned: 'Hess does not like that the stranger lay in the Crown Ring two days after Maren went in.',
+    lyra: "Neither do I. That's half of why I took the hearthwatch.",
+  },
+  sabeth: {
+    npc: ["She'd sit by my vats some evenings and let me talk. She listened the way you do, sister. I miss it."],
+    learned: 'Beth misses the evenings Maren sat by her vats.',
+    lyra: "So do I, Beth. Come and listen to me instead. I'm worse at it.",
+  },
+  alder: {
+    npc: ["In the Moot's view the wardwright's absence is a grave difficulty. And, if I may say so outside the Moot, a grief. She paid a month ahead at the Kettle; it is in the ledger."],
+    learned: "Alder grieves Maren in his way. The Moot's ledger shows she paid a month ahead at the Kettle.",
+    lyra: "Thank you, Reeve. That's the kindest thing you've said to me in a year.",
+  },
+  petra: {
+    npc: ["The ruins took Maren and the mountain gave us your stranger, kicker. An even trade? We'll see."],
+    learned: 'Petra calls it a trade: the ruins took Maren, the mountain gave the stranger.',
+    lyra: "It's not a trade, Petra. Nobody asked me.",
+  },
+  tilly: {
+    npc: ["Bram sharpened her a silver chisel and wouldn't let me touch it. Silver! For stone! It'd be blunt in a week. She didn't mean to use it long, did she."],
+    learned: "Tilly saw the silver chisel Bram sharpened for Maren, and thinks it wasn't meant to last.",
+    lyra: "Maybe not, Copper. Maybe she only needed it once.",
+  },
+  tansy: {
+    npc: ['She knew more about the old stones than anyone, and she went in anyway. So knowing doesn\'t keep you out, does it.'],
+    learned: "Tansy thinks knowing wasn't what kept anyone out of the ruins.",
+    lyra: 'No. Judgment does. Hers or yours.',
+  },
+  corran: {
+    npc: ["Hm-hmm. The night the blue lights came up in the ruins I was out on the water. Saw them from the lake. Still water keeps its counsel."],
+    learned: 'Corran saw the blue lights come up in the ruins from the lake, the night Maren went in.',
+    lyra: 'Thank you, Corran. From the dock is close enough for me.',
+  },
+  wys: {
+    npc: ["Cit — Lyra. The Captain says she went over the wall against the second law. I'd have stopped her. Probably. If I'd been there. Sorry."],
+    learned: 'Wys was not on watch at the ruins the night Maren went over the wall.',
+    lyra: 'Nobody could have stopped her, Watchman. Not even me.',
   },
 };
 
 export const MAREN_OPENERS = [
-  "I'm looking for a woman called Maren Ashgrove. Grey cloak, ink-stained fingers. She came through about three months ago.",
-  "Can I ask you about Maren Ashgrove? My teacher. She came to Hearthvale this spring and then... nothing.",
+  "Tell me again what you saw of Maren, those last days before midsummer. Anything. Even the small things.",
+  "Can I ask about Maren? Not who she was. What she did, the week she went.",
 ];
 
 // "Who is Maren?" / "What happened to Maren?" in her voice, by quest stage.
 export function marenAnswer(stage, { what = false } = {}) {
   const who =
-    "Maren Ashgrove. My teacher. She found me lighting harbor lamps on Kettlewake and taught me what my fire was for. Grey cloak, ink on her fingers, laughs like a kettle coming to the boil. The closest thing to a mother I ever chose.";
+    "Maren Ashgrove. My teacher, and Hearthvale's wardwright for nineteen years. She came out of the Kettle in her nightgown the night I lit the square and said, 'There goes my quiet old age.' Grey cloak, ink on her fingers, laughs like a kettle coming to the boil. The mother I chose, beside the one I was born to.";
   const status = [
-    'She came to Hearthvale three months ago, chasing something under the Sunken Ruins. One letter, then nothing. Her letter mentioned the chapel\'s candle; Sister Aveline might know more.',
-    "She came here three months ago and the letters stopped. Her letter mentioned the chapel. I need to ask Sister Aveline about her.",
-    "Aveline saw her walk toward the Sunken Ruins. The gate's been locked since spring, and the bandits up north-east have the key.",
-    'We have the key now. Whatever happened to her happened in the Sunken Ruins.',
-    'She went into these ruins. I can feel her wards in the stones. Deeper.',
+    'Maren went over the ruins wall at midsummer and never came back. Sister Aveline saw her go. That was my birthday.',
+    "She went over the ruins wall at midsummer and never came back. Sister Aveline saw her go, and I think Aveline knows something she hasn't said.",
+    "Aveline saw her walk toward the ruins at dusk with a lantern and a rope. The gate's locked, and the bandits up north-east have the key.",
+    'We have the key now. Whatever happened to her happened past that gate.',
+    'She came through here. Her chalk-marks are on the stones. Deeper.',
     'We found her journal. Please, let me read it.',
-    'She went north through the old waygate, to sing something old back to sleep. She was alive when she wrote that. That is enough to walk on.',
+    'She went north through the old waygate, toward the Crown Ring and past it into the Pale. She meant to go through. That is enough to walk on.',
   ][stageIndex(stage)];
   return what ? status : `${who} ${status}`;
 }
 
 // What she thinks about the arc while walking around (used by spontaneous thoughts).
 export const STAGE_THOUGHTS = {
-  settle: ["Maren, where are you? Three months is too long for one of your 'little detours'.", 'Everyone here has known Maren for a week or a minute. Somebody saw something.'],
-  ask_aveline: ["Sister Aveline might know. And I keep finding reasons not to ask, in case she says the thing I'm afraid of.", 'The candle in the chapel window. Maren wrote about that candle.'],
-  find_key: ["A locked gate and a key in a bandit's pocket. Maren would call this 'a reasonable obstacle'. I call it bandits.", 'North-east, the bandit camp. I keep looking that way.'],
-  enter_ruins: ['The key is heavier than it looks. Or my hands are lighter.', 'The Sunken Ruins. Maren walked in there with a lamp and a joke, I bet.'],
-  find_journal: ['Her wards are everywhere down here. Neat little knots of light. She was here. She was really here.', "Deeper. Whatever's humming down there, it's under my skin now."],
+  settle: ['Three months since midsummer. You promised to come to supper, Maren.', 'Nineteen years in this valley and nobody knows where she went. Somebody saw something.'],
+  ask_aveline: ["Sister Aveline knows something she hasn't said. And I keep finding reasons not to ask, in case she says the thing I'm afraid of.", 'The road-candle in the chapel window. Aveline keeps it for whoever is still on the road. Maren is on some road.'],
+  find_key: ["A locked gate and a key in a bandit's pocket. Maren would call this 'a reasonable obstacle'. I call it bandits.", "I climbed that wall once. Not again. A gate is a way out you can run through; a rope isn't."],
+  enter_ruins: ['The key is heavier than it looks. Or my hands are lighter.', 'The Sunken Ruins. Maren walked in there with a lantern and a joke, I bet.'],
+  find_journal: ['Her chalk-marks are everywhere down here. Neat little lines. She was here. She was really here.', "Deeper. Whatever's humming down there, it's under my skin now."],
   read_journal: ["Her journal's right there. I'm almost scared to open it.", 'Her handwriting on the cover. I would know it anywhere.'],
-  waygate: ["North. The Pale Reach. I've never been so far. She'll need honey cakes.", "'Light for the lost first.' Hold on, Maren. We're coming."],
+  waygate: ["North. The Pale Reach. I've never been so far. She'll want honey cakes.", "'Keep your own wick.' I am, Maren. I'm coming anyway."],
 };

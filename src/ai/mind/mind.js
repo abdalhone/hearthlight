@@ -1,5 +1,5 @@
 import { PLAYER_ID, DAY_SECONDS } from '../../core/constants.js';
-import { defaultSoul, normalizeSoul, seedMemories, SEED_KNOWLEDGE, SEED_GOALS, MAREN_REL, PLAYER_REL_START, playerStartOpinion, SOUL_LIFE } from './soul.js';
+import { defaultSoul, normalizeSoul, seedMemories, SEED_KNOWLEDGE, SEED_GOALS, MAREN_REL, BRYN_REL, LYRA_PEOPLE, PLAYER_REL_START, PLAYER_NOTES, PLAYER_HISTORY, playerStartOpinion, SOUL_LIFE } from './soul.js';
 import { Emotions, emotionName, EMOTIONS } from './emotions.js';
 import { Needs, FOOD_PREFERENCE } from './needs.js';
 import { Memory } from './memory.js';
@@ -136,13 +136,14 @@ export class Mind {
     const g = this.game;
     const ref = playerRef(g);
     const t0 = this.now();
-    const pl = this.relationships.ensure(PLAYER_ID, { name: g?.settings?.playerName || g?.player?.name || 'Traveler', kind: 'human', role: 'traveler', faction: 'player' });
+    // The stranger: carried down off the Hollowcrown three months ago, awake six days.
+    const pl = this.relationships.ensure(PLAYER_ID, { name: g?.settings?.playerName || g?.player?.name || 'Traveler', kind: 'human', role: 'stranger from the mountain', faction: 'player' });
     Object.assign(pl, PLAYER_REL_START);
-    pl.firstMet = t0 - 2 * DAY_SECONDS;
+    pl.firstMet = t0 - 89 * DAY_SECONDS;
     pl.lastSeen = t0;
-    pl.interactions = 2;
-    pl.history = ["Two days ago: stood beside me against the wolves on the King's Road", 'Yesterday: gave me the spare bed in the cottage'];
-    pl.notes = [{ text: "Stood beside me against a wolf pack on the King's Road without knowing my name.", source: 'self', t: t0 - 2 * DAY_SECONDS }];
+    pl.interactions = 6;
+    pl.history = [...PLAYER_HISTORY];
+    pl.notes = PLAYER_NOTES.map((text, i) => ({ text, source: 'self', t: t0 - [89, 49, 6, 2][i] * DAY_SECONDS }));
     this.relationships.setOpinion(PLAYER_ID, playerStartOpinion(ref), 'impression');
 
     const maren = this.relationships.ensure(MAREN_REL.id, { name: MAREN_REL.name, kind: 'human', role: 'mentor', absent: true });
@@ -150,9 +151,10 @@ export class Mind {
     maren.tags = [...MAREN_REL.tags];
     maren.notes = MAREN_REL.notes.map((n) => ({ ...n, t: t0 - 90 * DAY_SECONDS }));
     maren.history = [...MAREN_REL.history];
-    maren.firstMet = t0 - 9 * 365 * DAY_SECONDS;
+    maren.firstMet = t0 - 13 * 365 * DAY_SECONDS;
     maren.absent = true;
     this.relationships.setOpinion('maren', MAREN_REL.opinion, 'locked');
+    this._seedPeople(t0);
 
     for (const s of seedMemories(ref)) {
       const t = t0 - s.daysAgo * DAY_SECONDS + (s.hour - (g?.clock?.hour ?? 8)) * (DAY_SECONDS / 24);
@@ -160,6 +162,38 @@ export class Mind {
     }
     this._seedLore(t0);
     for (const goal of SEED_GOALS) addGoalTo(this.goals, goal.text, goal.priority, goal.source, t0, goal.id);
+  }
+
+  // Everyone she has known all her life (LORE §7, "Lyra's people"): the eighteen of
+  // Hearthvale and Bryn in Saltmere. What she knows of them, never their secrets.
+  // onlyMissing: a save from before she knew them keeps what it has and gains the rest.
+  _seedPeople(t0 = this.now(), { onlyMissing = false } = {}) {
+    const year = 365 * DAY_SECONDS;
+    const rels = this.relationships;
+    const set = (rel, p) => {
+      for (const k of ['affinity', 'trust', 'respect', 'familiarity']) if (Number.isFinite(p[k])) rel[k] = p[k];
+      rel.fear = 0;
+      rel.tags = [...(p.tags || [])];
+      rel.notes = (p.notes || []).map((n) => (typeof n === 'string' ? { text: n, source: 'self', t: t0 - year } : { ...n, t: t0 - year }));
+      if (p.history) rel.history = [...p.history];
+      if (p.opinion) rels.setOpinion(rel.id, p.opinion, 'impression');
+    };
+    for (const [id, p] of Object.entries(LYRA_PEOPLE)) {
+      if (onlyMissing && rels.map.has(id)) continue;
+      const rel = rels.ensure(id, { name: p.name, kind: 'human', role: p.role, faction: p.faction || 'villager' });
+      rel.npc = true;
+      if (!rel.faction) rel.faction = p.faction || 'villager';
+      if (p.call) rel.call = p.call;
+      if (p.calledBy) rel.calledBy = p.calledBy;
+      rel.firstMet = t0 - Math.max(1, p.years || 24) * year;
+      rel.interactions = Math.round((p.familiarity || 50) / 2);
+      set(rel, p);
+    }
+    if (onlyMissing && rels.map.has(BRYN_REL.id)) return;
+    const bryn = rels.ensure(BRYN_REL.id, { name: BRYN_REL.name, kind: 'human', role: BRYN_REL.role, absent: true });
+    bryn.absent = true;
+    bryn.firstMet = t0 - 22 * year;
+    set(bryn, BRYN_REL);
   }
 
   // What she knows of the world on day one: every lore entry the story says she knows.
@@ -710,7 +744,7 @@ export class Mind {
     );
     const stage = this.questStage();
     parts.push(stage.index >= 6 ? 'Maren went north. So will we.' : stage.index >= 3 ? 'The ruins are waiting. So is she, I hope.' : 'Still no sign of Maren. Tomorrow.');
-    parts.push(pick(['Calm water, little lamp. Sleep.', 'The stars are out. I named six before I gave up.', 'Bed. Now. Before I start rereading her letter again.'], this.game?.rng));
+    parts.push(pick(['Keep your own wick, little lamp. Sleep.', 'The stars are out. I named six before I gave up.', 'Bed. Now. Before I start rereading her star charts again.'], this.game?.rng));
     return parts.join(' ');
   }
 
@@ -914,6 +948,7 @@ export class Mind {
     if (Array.isArray(d.relationships)) {
       this.relationships.deserialize(d.relationships);
       if (!this.relationships.get(PLAYER_ID)) this.relationships.ensure(PLAYER_ID);
+      this._seedPeople(this.now(), { onlyMissing: true });
     }
     if (d.knowledge) {
       this.knowledgeStore.deserialize(d.knowledge, this.lorebook);

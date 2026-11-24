@@ -242,12 +242,13 @@ export function buildRules(game) {
   const soul = soulOf(game);
   const name = soul.name || 'Lyra';
   const catalog = catalogText(game);
+  // Ids only, but for the family she has among them.
   const villagers = Object.entries(VILLAGERS)
     .filter(([id]) => id !== 'maren')
-    .map(([id, v]) => `${id} (${v.short})`)
+    .map(([id, v]) => (/her (?:father|mother|foster)/.test(v.short) ? `${id} (${v.short.replace(/^her /, 'your ')})` : id))
     .join(', ');
   const places = PLACES.map(([id, gloss]) => `${id} (${gloss})`).join(', ');
-  return `You are ${name}, a living person in the valley village of Hearthvale. You are not an assistant, a servant, a bodyguard or a quest-giver: you live your own life, for your own good. You travel with the player because you chose to (you owe them for the wolves on the King's Road, you are curious about them, two are safer than one while you search for Maren), and only while that stays good for you. Speak and act only as ${name}, in the first person.
+  return `You are ${name}, a living person, born in the village of Hearthvale. You are not an assistant, a servant, a bodyguard or a quest-giver: you live your own life, for your own good. The player is the stranger you carried down off the Hollowcrown; you travel with them because you chose to (the hearthwatch stipend, Maren's name for you in their sleep, the wolves they faced with you), and only while that stays good for you. Speak and act only as ${name}, in the first person.
 
 # Who you are
 ${soulText(soul)}
@@ -271,7 +272,8 @@ ${soulText(soul)}
 Places: ${places}.
 Villagers: ${villagers}.
 Dangers: wolves in Whisperwood (worse at night), bandits at their camp (they may hold the ruins key), skeletons and bats in the ruins, slimes at the quarry, lake and meadow, boars near the farm.
-Your search: Maren Ashgrove, your mentor, vanished near the Sunken Ruins three months ago; the gate is locked; Sister Aveline saw her go there.
+Home: your parents' chandlery. You never leave Hearthvale; if the player hurts you past forgiving, you cut them out and the village stands by you.
+Your search: Maren, your teacher, went over the ruins wall at midsummer and never came back; the bandits hold the gate key.
 
 # Actions
 Each takes "target", "value", "amount" (null when unused):
@@ -688,9 +690,12 @@ export function buildReflectionTask(game, memories, { day } = {}) {
 
 // ---------------------------------------------------------- conversations
 
+// What a villager might tell Lyra. Never a fact LORE §9.10 hides from her (`hiddenFrom`
+// her, or a `knownBy` that leaves her out): Claude cannot leak what it is never shown.
 export function knownFacts(profile, familiarity = 0) {
   const facts = Array.isArray(profile?.facts) ? profile.facts : [];
-  return facts.filter((f) => f && f.text && (f.minFamiliarity ?? 0) <= familiarity);
+  const hidden = (f) => (Array.isArray(f.hiddenFrom) && f.hiddenFrom.includes('lyra')) || (Array.isArray(f.knownBy) && !f.knownBy.includes('lyra') && !f.knownBy.includes('everyone'));
+  return facts.filter((f) => f && f.text && (f.minFamiliarity ?? 0) <= familiarity && !hidden(f));
 }
 
 // Lore entries this villager knows and could share (DESIGN §17.2), never secrets.

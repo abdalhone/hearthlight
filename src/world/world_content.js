@@ -327,7 +327,7 @@ export const LOOKS = {
   coopers: { label: 'Look', text: "Barrels from the Holloways' yard, hooped and stacked. They will sell you one. They will not sell one to Lyra." },
   thatch: { label: 'Look', text: 'Bundles of reed bound for somebody\'s roof. The Tolleys thatch half the valley, and their own roof last.' },
   keeperCell: { label: 'Look', text: "Sister Aveline's cell: a narrow bed, a stool, a candle and a shelf of books worn soft at the corners." },
-  lyraTrunk: { label: 'Look', text: 'A sea-chest from the Glasswater Isles, scuffed salt-white at the corners. It is locked, and it is not yours.' },
+  lyraTrunk: { label: 'Look', text: "Lyra's old trunk from the chandlery, with Hobb's road-warden mark burned into the lid. It is locked, and it is not yours." },
 };
 
 // Beds of the villagers, each in their own home (DESIGN §19.8). What the player sees

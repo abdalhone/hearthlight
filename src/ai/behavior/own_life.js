@@ -38,7 +38,7 @@ const HOURS_TO_SECONDS = 900 / 24; // real seconds per in-game hour
 export const DEFAULT_DAY = [
   { from: 6, to: 8, activity: 'breakfast', at: 'ember_kettle', why: "Elda's porridge is the best start to a day." },
   { from: 8, to: 12, activity: 'gather herbs for Mira', at: 'whisperwood', why: 'Mira pays fairly for silverleaf.' },
-  { from: 12, to: 13, activity: 'lunch', at: 'ember_kettle', why: 'Even rangers eat.' },
+  { from: 12, to: 13, activity: 'lunch', at: 'ember_kettle', why: 'Even mages eat.' },
   { from: 13, to: 16, activity: 'follow a lead about Maren', at: 'chapel', why: 'Aveline saw her last.' },
   { from: 16, to: 18.5, activity: 'visit friends', at: 'town_square', why: 'Hearthvale is starting to feel like home.' },
   { from: 18.5, to: 20.5, activity: 'supper', at: 'ember_kettle', why: 'Supper by the hearth.' },

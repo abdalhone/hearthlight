@@ -11,8 +11,8 @@ import { rand, dist, tileOf, tileCenter, walkable, standSpotFor, isActorAlive, n
 export const EMOTES = {
   wave: { dur: 1.0, anim: 'cast', lock: true, face: 'player', line: ['Hello there!', 'Hi!', 'Over here!'] },
   laugh: { dur: 1.4, hop: [2, 7], icon: 'note', line: ["Hah! You're terrible.", 'Hahaha!', 'Oh, that got me.'] },
-  bow: { dur: 1.2, anim: 'work', face: 'player', line: ["A proper Glasswater bow. Don't get used to it.", 'Milady. Milord. Whichever.'] },
-  dance: { dur: 2.8, hop: [3, 5], spin: 0.28, icon: 'note', particle: 'note', line: ["Don't laugh. ...Fine, you can laugh.", 'Glasswater Isles reel! Keep up!'] },
+  bow: { dur: 1.2, anim: 'work', face: 'player', line: ["A proper Sheaf Moot bow. Don't get used to it.", 'Milady. Milord. Whichever.'] },
+  dance: { dur: 2.8, hop: [3, 5], spin: 0.28, icon: 'note', particle: 'note', line: ["Don't laugh. ...Fine, you can laugh.", 'Sheaf Moot reel! Keep up!'] },
   hug: { dur: 1.8, approach: true, icon: 'heart', particle: 'heart', feel: ['affection', 0.12], line: ['Come here, you.', 'Mm. Thank you for that.'] },
   think: { dur: 1.9, icon: '...', line: ['Hmm... let me think.', 'Thinking. Give me a moment.'] },
   cheer: { dur: 1.5, hop: [4, 6], anim: 'cast', lock: true, icon: '!', particle: 'sparkle', line: ['Huzzah!', 'Yes! Ha!'] },

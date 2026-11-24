@@ -111,7 +111,7 @@ export const FACT_SAY = {
   garrick_archers: 'Bandit archers keep their distance and shoot from the trees. Close the gap fast, my friend, or not at all.',
   garrick_toll_secret: "...Between us? I've paid their toll for a year to keep my cart whole. I'm practically their banker. I hate it.",
   garrick_bear: 'Did I tell you about the bear? Enormous! Brightwater! I wrestled it! ...It was a large dog. Very large. Mostly dog.',
-  garrick_lyra: "The Glasswater Isles! Sand like crushed glass, and the sea glows at night. Lyra's from there. Imagine the souvenirs!",
+  garrick_lyra: "Lyra? Rode guard on my cart to Brightwater, twice. Best guard I ever had. I offer her the job every season. Every season: no, with her reasons. Lamplighter's girl through and through!",
   garrick_mother: "Half of every season's profit goes to my mother in Saltmere. Don't tell anyone I'm sentimental. Bad for haggling.",
   garrick_ruins_coins: "I've bought old coins from the bandits. Ruins coins, I'd swear it. Which means they've been inside.",
 };

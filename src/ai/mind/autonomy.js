@@ -66,7 +66,7 @@ const FAREWELL_DIARY = {
   downed:
     'Day {day}. I’m writing this at the edge of Hearthvale with my head still ringing. {P} struck me down — the same hands that stood beside me against the wolves on the King’s Road. I keep trying to make it mean something else. It doesn’t. Maren always said a lamp is for the lost and fire is for the wicked, and that you learn which is which by watching what people do when they think it costs them nothing. I watched. I’m taking the King’s Road at first light. I’ll find Maren on my own. I’ve done harder things alone. I just didn’t think I’d have to.',
   villager:
-    'Day {day}. {P} beat {target} until they couldn’t stand. I bound them with light and shouted for the guards, and my hands are still shaking. I came to Hearthvale for Maren, and somewhere along the way it became a place I wanted to keep. I can’t keep it and keep {P}. So I’m going. Maren, if you’re out there: I’m still coming. Just not with them.',
+    'Day {day}. {P} beat {target} until they couldn’t stand. I bound them with light and shouted for the guards, and my hands are still shaking. I was born in Hearthvale, and it’s mine. {P} isn’t part of it anymore. I’m going home to Mam and Da at the chandlery. The Reeve has the key back, and the village knows what happened. Maren, if you’re out there: I’ll still find you. Just not with them.',
   violence:
     'Day {day}. I warned {P}. More than once. Every time I hoped the last time was the last time. It wasn’t. I don’t hate them — I think that’s the worst of it. I’m leaving Hearthvale tonight by the King’s Road. Calm water ahead, I hope. There wasn’t much of it here at the end.',
   other:
