@@ -186,9 +186,11 @@ function hitsPlaced(rects, i, x, y, w, h, gap) {
 // attached. Optional `maxBottom` / `minTop` keep a bubble above (or below) its
 // speaker's head. With no free spot it climbs upward. Mutates x/y in place and
 // returns how many rects moved.
-export function stackRects(rects, count = rects.length, gap = 4, margin = 0, screenH = Infinity, screenW = Infinity) {
+// The first `fixed` rects are obstacles that never move (HUD boxes); they are not
+// checked against each other.
+export function stackRects(rects, count = rects.length, gap = 4, margin = 0, screenH = Infinity, screenW = Infinity, fixed = 0) {
   let moved = 0;
-  for (let i = 1; i < count; i++) {
+  for (let i = Math.max(1, fixed); i < count; i++) {
     const r = rects[i];
     let collides = false;
     for (let j = 0; j < i; j++) if (overlaps(r, rects[j], gap)) collides = true;

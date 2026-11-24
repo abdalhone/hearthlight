@@ -131,6 +131,14 @@ function headHeight(e) {
   return 26;
 }
 
+function hitsAny(a, list, gap) {
+  for (let i = 0; i < list.length; i++) {
+    const o = list[i];
+    if (a.x < o.x + o.w + gap && a.x + a.w + gap > o.x && a.y < o.y + o.h + gap && a.y + a.h + gap > o.y) return true;
+  }
+  return false;
+}
+
 export class Bubbles {
   constructor(game) {
     this.game = game;
@@ -140,6 +148,8 @@ export class Bubbles {
     for (let i = 0; i < MAX_NUMBERS; i++) this.numbers.push({ active: false, x: 0, y: 0, vx: 0, vy: 0, t: 0, life: 1, text: '', fill: '#fff', scale: 1, kind: 'damage' });
     this._vis = [];
     this._rects = [];
+    this._keepOut = []; // HUD boxes bubbles stay clear of (CSS px, from the UI)
+    this._ko = []; // the same in canvas pixels, reused each frame
     this._edge = { x: 0, y: 0, angle: 0, onScreen: true };
     this._lp = { ax: 0, ay: 0, footY: 0, w: 0, h: 0, gap: 0, margin: 0, corner: 0, tailHalf: 0, screenW: 0, screenH: 0 };
     this._tagWidths = new Map();
@@ -368,6 +378,34 @@ export class Bubbles {
     return (wy - r.oy) * r.scale - r.subY;
   }
 
+  // Screen boxes (CSS px from the canvas's top-left) that bubbles must not hide
+  // behind: the HUD cards, the quest line, the touch buttons. A bubble that would sit
+  // under one flips below its speaker or slides aside. The UI refreshes them a few
+  // times a second; an empty list clears them.
+  setKeepOut(rects) {
+    const k = this._keepOut;
+    k.length = 0;
+    if (!rects) return;
+    for (const r of rects) if (r && r.w > 0 && r.h > 0) k.push({ x: r.x, y: r.y, w: r.w, h: r.h });
+  }
+
+  _keepOutPx() {
+    const dpr = this._dpr || 1;
+    const src = this._keepOut;
+    const out = this._ko;
+    while (out.length < src.length) out.push({ x: 0, y: 0, w: 0, h: 0, fixed: true });
+    out.length = src.length;
+    for (let i = 0; i < src.length; i++) {
+      const a = src[i];
+      const o = out[i];
+      o.x = a.x * dpr;
+      o.y = a.y * dpr;
+      o.w = a.w * dpr;
+      o.h = a.h * dpr;
+    }
+    return out;
+  }
+
   // Where the bubbles drawn last frame are, in CSS pixels of the canvas (which covers
   // the page from its top-left corner). DOM overlays (toasts) use it to keep clear.
   // Fills and returns `out`; tails and name tabs are included.
@@ -447,6 +485,7 @@ export class Bubbles {
     vis.length = 0;
     const u = this.u;
     const margin = 4 * u;
+    const ko = this._keepOutPx();
     for (const b of this.items) {
       const e = b.entity;
       if (b.t >= b.life || e.removed) continue;
@@ -472,6 +511,15 @@ export class Bubbles {
       lp.screenW = W;
       lp.screenH = H;
       layoutBubble(lp, b.layout);
+      // Above the head but under the HUD (the cards, the quest line): say it below them.
+      if (!b.layout.below && ko.length && hitsAny(b.layout, ko, u)) {
+        const L = b.layout;
+        const y = footY + lp.gap;
+        if (y + L.h <= H - margin) {
+          L.y = y;
+          L.below = true;
+        }
+      }
       b.layout.x = Math.round(b.layout.x / u) * u;
       b.layout.y = Math.round(b.layout.y / u) * u;
       b.origY = b.layout.y;
@@ -485,10 +533,13 @@ export class Bubbles {
       vis.push(b);
     }
     vis.sort(byPriority);
+    // The HUD boxes go first and never move; the bubbles find room around them.
     const rects = this._rects;
-    rects.length = vis.length;
-    for (let i = 0; i < vis.length; i++) rects[i] = vis[i].layout;
-    stackRects(rects, vis.length, 2 * u, margin, H, W);
+    const nk = vis.length ? ko.length : 0;
+    rects.length = nk + vis.length;
+    for (let i = 0; i < nk; i++) rects[i] = ko[i];
+    for (let i = 0; i < vis.length; i++) rects[nk + i] = vis[i].layout;
+    stackRects(rects, rects.length, 2 * u, margin, H, W, nk);
     // A bubble that slid sideways keeps its tail over the speaker.
     for (let i = 0; i < vis.length; i++) {
       const L = vis[i].layout;

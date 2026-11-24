@@ -400,3 +400,19 @@ test('toasts never overlap bubbles, the quest line or the HUD on a phone viewpor
   // Without obstacles the stack sits right under the top.
   assert.equal(placeStack({ w, h, viewW: W, top: 214, bottom: H - 8 }).y, 214);
 });
+
+test('speech bubbles find room around fixed HUD boxes instead of hiding under them', async () => {
+  const { stackRects } = await import('../src/render/text_layout.js');
+  const hud = { x: 0, y: 0, w: 390, h: 120 }; // the phone's top band (cards, quest line)
+  const bubble = { x: 120, y: 90, w: 160, h: 40, ax: 200, tailPad: 10 };
+  const other = { x: 40, y: 300, w: 100, h: 30 };
+  stackRects([hud, bubble, other], 3, 4, 4, 686, 390, 1);
+  assert.deepEqual(hud, { x: 0, y: 0, w: 390, h: 120 }, 'the HUD box never moves');
+  assert.ok(bubble.y >= hud.y + hud.h, `the bubble clears the HUD band (y=${bubble.y})`);
+  assert.deepEqual(other, { x: 40, y: 300, w: 100, h: 30 }, 'a bubble already clear stays put');
+  // Two HUD boxes that touch are not pushed apart from each other.
+  const a = { x: 0, y: 0, w: 200, h: 50 };
+  const b = { x: 196, y: 0, w: 100, h: 50 };
+  stackRects([a, b], 2, 4, 4, 686, 390, 2);
+  assert.equal(b.x, 196);
+});

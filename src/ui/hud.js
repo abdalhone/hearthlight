@@ -16,6 +16,9 @@ const STANCE_ICON = { attack: 'sword', defend: 'shield', passive: 'feather', sel
 const SMALL_QUERY = '(max-width: 640px), (max-height: 520px)';
 const PORTRAIT_PHONE_QUERY = '(max-width: 640px) and (min-height: 521px)';
 const MINI_KEY = 'hearthlight.hud.lyraMini';
+// HUD pieces speech bubbles must not hide behind (see Bubbles.setKeepOut).
+const KEEP_OUT_SELECTOR = '.hud .card, .hud-btn, .lyra-fold, .quest-line, .listen-prompt, .interact-prompt, .cmdbar, .orders-btn, .tbtn';
+const KEEP_OUT_EVERY = 0.25;
 
 function readMiniPref() {
   try {
@@ -66,6 +69,8 @@ export class Hud {
     this.refusedT = 0;
     this.mini = readMiniPref(); // Lyra's card folded to portrait + mood (small screens only)
     this.layoutT = 0;
+    this.keepT = 0;
+    this._keep = [];
     this.el = this.build();
     this.watchLayout();
   }
@@ -317,6 +322,31 @@ export class Hud {
     toggleClass(this.center, 'beside', beside);
   }
 
+  // Tell the bubbles where the HUD is, so nobody speaks from under a card.
+  updateKeepOut(dt) {
+    this.keepT -= dt;
+    if (this.keepT > 0) return;
+    this.keepT = KEEP_OUT_EVERY;
+    const b = this.game.bubbles;
+    if (!b?.setKeepOut) return;
+    const out = this._keep;
+    out.length = 0;
+    const canvas = this.game.renderer?.canvas;
+    if (!this.el.hidden && this.game.state === 'playing' && !this.ui.stack?.length && canvas?.getBoundingClientRect) {
+      const c = canvas.getBoundingClientRect();
+      const root = this.ui.root || this.el;
+      for (const el of root.querySelectorAll(KEEP_OUT_SELECTOR)) {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) out.push({ x: r.left - c.left, y: r.top - c.top, w: r.width, h: r.height });
+      }
+    }
+    try {
+      b.setKeepOut(out);
+    } catch {
+      /* bubbles are optional */
+    }
+  }
+
   toggleQuestFull(force) {
     const open = force ?? !this.questLine.classList.contains('full');
     toggleClass(this.questLine, 'full', open);
@@ -537,6 +567,7 @@ export class Hud {
 
   update(dt) {
     const g = this.game;
+    this.updateKeepOut(dt);
     if (this.el.hidden || !g.player) return;
     this.tick += dt;
     if (this.tick < 0.1) return;
