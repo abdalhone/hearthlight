@@ -68,10 +68,12 @@ def plan_line(line: dict, cast: dict) -> dict:
     text = vl.tts_text(line["text"])
     ref_sha = vl.file_sha(ref)
     seeds = list(v.get("seeds") or cast.get("seeds") or [11, 23, 37])
-    takes = [{"seed": s, "fp": vl.sha({"model": MODEL, "ref": ref_sha, "text": text, "gen": gen, "seed": s})} for s in seeds]
+    take = lambda s: {"seed": s, "fp": vl.sha({"model": MODEL, "ref": ref_sha, "text": text, "gen": gen, "seed": s})}
+    takes = [take(s) for s in seeds]
+    retry = [take(s) for s in (cast.get("retrySeeds") or [53, 71, 89])]
     post = {"fx": v.get("fx") or {}, "void": v.get("void"), "place": line.get("place"), "pipeline": vl.PIPELINE, "ears": EARS, "lighter": LIGHTER}
     fp = vl.sha({"takes": [t["fp"] for t in takes], "post": post, "kbps": vl.KBPS})
-    return {**line, "tts": text, "ref": str(ref), "ref_sha": ref_sha, "gen": gen, "takes": takes, "post": post, "fp": fp}
+    return {**line, "tts": text, "ref": str(ref), "ref_sha": ref_sha, "gen": gen, "takes": takes, "retry": retry, "post": post, "fp": fp}
 
 
 # --------------------------------------------------------------------------- worker
@@ -216,6 +218,11 @@ def render_job(job: dict) -> dict:
     t0 = time.time()
     try:
         infos = [take_for(job, t) for t in job["takes"]]
+        # Every take lost a word: another take, up to three more (the author's fix).
+        for t in job.get("retry", []):
+            if min(i["errors"] for i in infos) == 0:
+                break
+            infos.append(take_for(job, t))
         best = min(infos, key=score)
         out = Path(job["out"]) / f"{job['key']}.mp3"
         tried = []
@@ -238,7 +245,7 @@ def render_job(job: dict) -> dict:
             "key": job["key"], "ok": True, "fp": job["fp"], "seed": best["seed"], "takes": [{k: i[k] for k in ("seed", "errors", "sim", "gap", "prob", "dur")} for i in infos],
             "errors": best["errors"], "n": n, "final_errors": final_errors, "heard": " ".join(w[0] for w in heard),
             "dur": round(len(dec) / vl.SR, 3), "lufs": round(vl.lufs(dec), 2), "tp": round(tp, 2), "bytes": out.stat().st_size,
-            "words": words, "secs": round(time.time() - t0, 1), "strength": k,
+            "words": words, "secs": round(time.time() - t0, 1), "strength": k, "tried": len(infos),
         }
     except Exception as err:  # one bad line never stops the render
         import traceback
@@ -304,7 +311,8 @@ def main() -> int:
         j = plan_line(l, cast)
         j["out"] = str(OUT)
         have = clips.get(l["key"])
-        if not args.force and have and have.get("fp") == j["fp"] and (OUT / have["file"]).exists():
+        done_ok = have and (have.get("errors") == 0 or have.get("tried", 3) >= len(j["takes"]) + len(j["retry"]))
+        if not args.force and done_ok and have.get("fp") == j["fp"] and (OUT / have["file"]).exists():
             continue
         jobs.append(j)
     print(f"render: {len(lines)} lines, {len(want)} asked, {len(jobs)} to render ({args.jobs} jobs x {args.threads} threads)", flush=True)
@@ -325,7 +333,7 @@ def main() -> int:
                     "file": f"{r['key']}.mp3", "speaker": l["speaker"], "line": l["line"], "script": l["script"], "order": l["order"],
                     "text": l["text"], "dur": r["dur"], "words": r["words"], "fp": r["fp"], "seed": r["seed"], "takes": r["takes"],
                     "errors": r["errors"], "final_errors": r["final_errors"], "n": r["n"], "heard": r["heard"],
-                    "lufs": r["lufs"], "tp": r["tp"], "bytes": r["bytes"], "strength": r["strength"],
+                    "lufs": r["lufs"], "tp": r["tp"], "bytes": r["bytes"], "strength": r["strength"], "tried": r["tried"],
                 }
                 manifest = update_manifest(manifest_path, {r["key"]: entry})
                 clips = manifest["clips"]

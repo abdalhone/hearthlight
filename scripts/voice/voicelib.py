@@ -114,8 +114,9 @@ def norm_tokens(text: str) -> list[str]:
             continue
         w = SPELLING.get(w, w)  # Whisper spells American; the story spells British
         out += w.split() if " " in w else [FILLERS.get(w, w)]
-    # "a hundred" is "one hundred"
-    return ["one" if w == "a" and i + 1 < len(out) and out[i + 1] in ("hundred", "thousand") else w for i, w in enumerate(out)]
+    # "a hundred" is "one hundred"; "hm-hmm" is one hum however Whisper writes it
+    out = ["one" if w == "a" and i + 1 < len(out) and out[i + 1] in ("hundred", "thousand") else w for i, w in enumerate(out)]
+    return [w for i, w in enumerate(out) if not (w == "hm" and i and out[i - 1] == "hm")]
 
 
 def display_tokens(text: str) -> list[str]:

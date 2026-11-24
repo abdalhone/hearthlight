@@ -2,6 +2,7 @@
   "version": 2,
   "note": "Who speaks in the cutscenes and how (scripts/voice/CASTING.md has the reasons). ref: one of the author's reference voices (refs/<ref>.flac); refShape: how that voice is reshaped into this person before Chatterbox listens to it (pitch and formant in semitones, formant - bigger/older + smaller/younger, tempo); gen: Chatterbox's exaggeration, cfg (lower is slower and calmer) and temperature; moods: gen changes per line mood; fx: shaping after the cut (pitch, tempo, tremor in cents, grit, highpass, lowpass, bass, eq [[Hz, dB, Q]]); void: the narrator's chain.",
   "seeds": [11, 23, 37],
+  "retrySeeds": [53, 71, 89],
   "voices": {
     "narrator": {
       "name": "The Void",
