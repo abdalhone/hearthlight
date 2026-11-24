@@ -9,11 +9,12 @@ import { Inventory } from '../src/entities/items.js';
 import { LocationIndex } from '../src/world/locations.js';
 import { DEFAULT_SETTINGS } from '../src/core/settings.js';
 
-import { parseMessage, splitClauses, normalize, extractQuantityItem, COMMAND_THRESHOLD } from '../src/ai/brain/nlu.js';
+import { parseMessage, splitClauses, normalize, extractQuantityItem, detectOffer, COMMAND_THRESHOLD } from '../src/ai/brain/nlu.js';
 import { SpeechGen } from '../src/ai/brain/speech_gen.js';
 import { LINES, BARK_SITUATIONS } from '../src/ai/brain/lines.js';
-import { coerceResponse, coerceReflection, coerceConversation, dedupeActions, extractJson, looksLikeSpeech } from '../src/ai/brain/claude_brain.js';
+import { coerceResponse, coerceReflection, coerceConversation, coerceKnowledge, coerceIds, dedupeActions, extractJson, looksLikeSpeech } from '../src/ai/brain/claude_brain.js';
 import { buildRules, buildChatPrompt, buildContext, PROMPT_BUDGET, RESPONSE_SCHEMA } from '../src/ai/brain/prompt.js';
+import { refusalSituation, firstPersonReason } from '../src/ai/brain/local_brain.js';
 import { chooseProvider, ProviderSet, ApiKeyProvider, BrainError, classifyApiError, scrub } from '../src/ai/brain/providers.js';
 import { Brain } from '../src/ai/brain/brain.js';
 import { composeDiary } from '../src/ai/brain/diary.js';
@@ -25,6 +26,8 @@ const ACTION_NAMES = [
   'free_will', 'emote', 'sit', 'open_door', 'close_door', 'pick_up', 'give_item', 'use_item', 'interact', 'sleep',
   'start_job', 'stop_job', 'talk_to', 'set_relationship', 'note_about', 'remember', 'forget', 'set_goal', 'complete_goal',
   'express', 'read_journal',
+  // round 2 (DESIGN §16.9)
+  'leave_player', 'rejoin', 'set_plan', 'request', 'promise', 'flee', 'keep_distance', 'bind', 'warn', 'wait_outside',
 ];
 
 function fakeMind() {
@@ -163,7 +166,7 @@ function envFor(game, extra = {}) {
 // [phrase, expected intent id(s) in order, optional check on actions]
 const PHRASES = [
   ['follow me', ['cmd.follow'], (a) => a[0].name === 'follow' && a[0].args.target === 'player'],
-  ['Follow me closely', ['cmd.follow'], (a) => a[0].args.value === 'close'],
+  ['Follow me closely', ['cmd.follow_close'], (a) => a[0].args.value === 'close'],
   ['stay close', ['cmd.follow_close'], (a) => a[0].args.value === 'close'],
   ['stay here', ['cmd.stay'], (a) => a[0].name === 'stay'],
   ['wait here', ['cmd.stay'], (a) => a[0].name === 'stay'],
@@ -269,6 +272,19 @@ const PHRASES = [
   ['ok', ['social.yes']],
   ['hi, how are you?', ['social.greet', 'ask.feelings']],
   ['lyra', ['social.name_call']],
+  // her own will (DESIGN §16)
+  ["let's split up for a while", ['cmd.part_ways'], (a) => a[0].name === 'leave_player' && a[0].args.value === 'apart'],
+  ['travel with me again', ['cmd.rejoin']],
+  ['I promise to buy you a honey cake', ['cmd.promise'], (a) => a[0].name === 'promise' && /buy you a honey cake/.test(a[0].args.value)],
+  ["what's your plan for today?", ['ask.plan']],
+  ['do you trust me?', ['ask.trust_me']],
+  ['are you afraid of me?', ['ask.fear_me']],
+  ['why did you leave me?', ['ask.why_left']],
+  ["I'm so sorry for hitting you", ['social.apology']],
+  ['it was an accident', ['social.apology'], null, (c) => c.intent.slots.accident === true],
+  ["I'll pay you 10 coins to chop wood", ['cmd.job'], (a) => a[0].name === 'start_job' && a[0].args.value === 'chop_wood'],
+  ['follow me for 5 coins', ['cmd.follow'], (a) => a[0].args.amount === 5],
+  ["I'll pay you 20 gold to explore the ruins", ['cmd.explore'], (a) => a[0].args.target === 'ruins' && a[0].args.amount === 20],
 ];
 
 test(`NLU understands ${PHRASES.length} phrasings (commands, multi-commands, questions, small talk)`, () => {
@@ -428,12 +444,14 @@ test('prompt: rules are byte-stable across calls and the whole prompt stays unde
   assert.equal(buildRules(game), a.rules);
   assert.notEqual(a.context, b.context);
   assert.ok(b.context.includes('what do you think of Bram?'));
-  assert.ok(b.context.includes('follow(target=player) -> ok'));
+  assert.ok(b.context.includes('follow(target=player): DONE already'), 'already done, so not repeated');
   assert.ok(b.context.includes('w1: Grey Wolf'), 'nearby creature with id');
-  assert.ok(a.rules.includes('- follow: does follow'), 'action catalogue');
+  assert.ok(/\n- follow: /.test(a.rules) && /\n- leave_player: /.test(a.rules), 'action catalogue');
   assert.ok(!/\bDay 2\b|2:00 PM/.test(a.rules), 'no time in rules');
-  const example = a.rules.split('Example:\n')[1].trim();
-  assert.doesNotThrow(() => JSON.parse(example), 'example is valid JSON');
+  assert.ok(/not an assistant, a servant/.test(a.rules) && /request, never an order/.test(a.rules) && /Never apologize for having your own will/.test(a.rules), 'she lives for herself');
+  assert.ok(/leave_player/.test(a.rules) && /bind/.test(a.rules) && /flee/.test(a.rules), 'she can stop, run or leave');
+  assert.ok(!/\b(?:assistant to|helpful assistant)\b/i.test(a.rules));
+  assert.ok(a.rules.includes('"used_memories"') && a.rules.includes('"knowledge"'), 'round-2 reply fields');
   assert.ok(a.rules.length + a.context.length < PROMPT_BUDGET);
 
   // A long conversation and big plugin sections still fit.
@@ -529,7 +547,7 @@ test('claude.ai path: commands run first, then Claude replies; effects and actio
   console.warn = origWarn;
   assert.equal(r.provider, 'claude.ai');
   assert.equal(r.say, GOOD_REPLY.say);
-  assert.deepEqual(order, ['follow:local', 'sample', 'set_combat_mode:claude']);
+  assert.deepEqual(order, ['follow:player', 'sample', 'set_combat_mode:claude']);
   assert.equal(prompts[0].o.modelTier, 'quick');
   assert.equal(prompts[0].o.cache, false);
   assert.ok(prompts[0].p.startsWith('You are Lyra'), 'rules first in the single prompt');
@@ -870,4 +888,386 @@ test('serialize keeps a tiny state and restores it', () => {
   assert.equal(b2.lastReflectT, 1234);
   b2.deserialize(null);
   b2.deserialize({ notices: 'junk', barks: 5 });
+});
+
+// ================================================================ round 2: her own will
+
+function brainFor(game) {
+  const b = new Brain(game);
+  game.brain = b;
+  b.init();
+  return b;
+}
+
+const verdict = (decision, reasons = [], message = '', extra = {}) => ({ decision, reasons, message, score: 0, ...extra });
+const bankTexts = (key) => LINES[key].map((l) => (typeof l === 'string' ? l : l.t));
+const quiet = async (fn) => {
+  const w = console.warn;
+  console.warn = () => {};
+  try {
+    return await fn();
+  } finally {
+    console.warn = w;
+  }
+};
+
+test('coin offers: detected, stripped from the request, and carried on amount-free actions', () => {
+  const cases = [
+    ["I'll pay you 10 coins to chop wood", 10, 'chop wood'],
+    ['chop 5 wood and I will pay you 20 coins', 20, 'chop 5 wood'],
+    ['I will give you 5 gold if you follow me', 5, 'follow me'],
+    ['20 coins to guard Pip', 20, 'guard Pip'],
+    ["here's ten coins, now chop some wood", 10, 'chop some wood'],
+    ['follow me for 3 coins', 3, 'follow me'],
+    ["I'll pay you", null, ''],
+    ['how about 20 gold?', 20, ''],
+  ];
+  for (const [text, coins, rest] of cases) {
+    const r = detectOffer(text);
+    assert.ok(r.offer, text);
+    assert.equal(r.offer.coins, coins, text);
+    assert.equal(r.rest, rest, text);
+  }
+  assert.equal(detectOffer('fish for me, you can keep half').offer.share, true);
+  for (const text of ['give me 10 coins', "I'll give you a hug if you follow me", 'how many coins do you have?', 'I found 10 coins']) assert.equal(detectOffer(text).offer, null, text);
+  const game = makeGame();
+  const r = parseMessage("Lyra, I'll pay you 15 coins to follow me", envFor(game));
+  assert.equal(r.offer.coins, 15);
+  assert.equal(r.commands[0].intent.actions[0].args.amount, 15, 'follow ignores amount: the offer rides on it');
+  const job = parseMessage("I'll pay you 15 coins to chop 5 wood", envFor(game));
+  assert.equal(job.commands[0].intent.actions[0].args.amount, 5, 'a job keeps its own amount');
+});
+
+test('consent: a refused request gets her refusal, never an acknowledgement (offline, HUD, "why not?")', async () => {
+  const game = makeGame();
+  const brain = brainFor(game);
+  const asked = [];
+  game.actions.setConsentGate((name, args, source) => {
+    asked.push([name, source]);
+    if (name === 'start_job') return verdict('refuse', ["it's nearly dark", 'wolves hunt Whisperwood at night']);
+    if (name === 'explore') return verdict('refuse', [], 'Walk into the ruins at night? No. Find someone else.');
+    if (name === 'attack') return verdict('refuse', ['Bram is my friend and I will not harm him']);
+    return null;
+  });
+  const r = await brain.handlePlayerMessage('chop some wood');
+  assert.deepEqual(asked[0], ['start_job', 'player'], 'commands from the chat are requests');
+  assert.equal(game.log.filter((a) => a.name === 'start_job').length, 0, 'a refused request never runs');
+  assert.ok(/nearly dark/i.test(r.say) && /wolves hunt Whisperwood/i.test(r.say), r.say);
+  const acks = [...bankTexts('ack_job'), ...bankTexts('job_start')].map((t) => t.replace(/\{job\}.*$/, '').trim()).filter((t) => t.length > 4);
+  assert.ok(!acks.some((t) => r.say.includes(t)), `no acknowledgement: ${r.say}`);
+  assert.ok(r.actions[0].refused);
+
+  const r2 = await brain.handlePlayerMessage('explore the ruins');
+  assert.equal(r2.say, 'Walk into the ruins at night? No. Find someone else.', 'the verdict message is her line');
+
+  const r3 = await brain.handlePlayerMessage('attack Bram');
+  assert.ok(/won't|will not|no\b|not/i.test(r3.say) && /Bram is my friend/.test(r3.say), r3.say);
+
+  const before = game.bubbles.said.length;
+  game.time += 30;
+  game.actions.run('explore', { target: 'whisperwood' }, 'player');
+  assert.equal(game.bubbles.said.length, before + 1, 'HUD request answered with a bubble');
+  assert.equal(game.bubbles.said.at(-1), 'Walk into the ruins at night? No. Find someone else.');
+
+  game.actions.setConsentGate((name) => (name === 'start_job' ? verdict('refuse', ["I'm exhausted", 'the forest is crawling with wolves']) : null));
+  await brain.handlePlayerMessage('gather some herbs');
+  const why = await brain.handlePlayerMessage('why not?');
+  assert.ok(/exhausted/.test(why.say) && /wolves/.test(why.say), why.say);
+  // Reasons written about her are said as herself.
+  assert.equal(firstPersonReason('Lyra is exhausted and her hands are shaking'), "I'm exhausted and my hands are shaking");
+  assert.equal(refusalSituation(verdict('refuse', ['too dangerous at night'])), 'refuse_danger');
+  assert.equal(refusalSituation(verdict('refuse', ['she is starving'])), 'refuse_hungry');
+  assert.equal(refusalSituation(verdict('refuse', ['x']), 'left'), 'refuse_left');
+  assert.equal(refusalSituation(verdict('refuse_and_act', ['x'])), 'refuse_and_act');
+});
+
+test('consent: conditions, counter-offers ("deal" runs her proposal), paid requests and sweetened refusals', async () => {
+  const game = makeGame();
+  const brain = brainFor(game);
+  let offerSeen = null;
+  game.actions.setConsentGate((name, args) => {
+    if (name === 'start_job') return verdict('accept_conditional', ['it pays'], '', { condition: 'Half the wood is mine' });
+    if (name === 'follow') return verdict('counter', ['my feet are done for today'], '', { counter: { name: 'stay', args: { target: null, value: null, amount: null } } });
+    if (name === 'guard') {
+      offerSeen = brain.currentOffer;
+      return verdict('accept', ['fair pay']);
+    }
+    if (name === 'explore') return (args.amount ?? 0) >= 10 ? verdict('accept', ['the coin is good']) : verdict('refuse', ['it is not worth my neck for free']);
+    return null;
+  });
+  const c = await brain.handlePlayerMessage('chop some wood');
+  assert.ok(/half the wood is mine/i.test(c.say), c.say);
+  assert.equal(game.log.filter((a) => a.name === 'start_job').length, 1, 'a conditional yes runs');
+
+  const k = await brain.handlePlayerMessage('follow me');
+  assert.ok(/wait here/.test(k.say), `counter-offer: ${k.say}`);
+  assert.equal(game.log.filter((a) => a.name === 'follow').length, 0);
+  const d = await brain.handlePlayerMessage('deal');
+  const stay = game.actions.history.filter((h) => h.name === 'stay').at(-1);
+  assert.ok(stay && stay.source === 'self', 'her own proposal runs as her decision');
+  assert.ok(d.say.length > 2);
+
+  const p = await brain.handlePlayerMessage("I'll pay you 15 coins to guard Pip");
+  assert.equal(offerSeen?.coins, 15, 'the gate sees the offer');
+  assert.ok(/15 coins/.test(p.say), p.say);
+  const promise = game.log.find((a) => a.name === 'promise');
+  assert.ok(promise && /15 coins/.test(promise.args.value) && promise.args.target === 'player', 'the player now owes her');
+
+  const no = await brain.handlePlayerMessage('explore whisperwood');
+  assert.ok(/not worth my neck/i.test(no.say), no.say);
+  await brain.handlePlayerMessage("Fine. I'll pay you 10 coins");
+  const ex = game.log.filter((a) => a.name === 'explore');
+  assert.equal(ex.length, 1, 'the bare offer sweetens the refused request');
+  assert.equal(ex[0].args.amount, 10);
+});
+
+test('Claude is told what her gut says, may overrule it, and her refusal shows at once', async () => {
+  const prompts = [];
+  const order = [];
+  const scout = {
+    id: 'test_scout',
+    intents: [{ id: 'test.scout', patterns: [/^could you scout (?<place>.+)$/i], command: false, confidence: 0.7, actions: (m) => [{ name: 'explore', args: { target: m.groups.place, value: null, amount: null } }] }],
+  };
+  const game = makeGame({
+    plugins: [scout],
+    runtime: fakeRuntime(async (p) => {
+      prompts.push(p);
+      order.push('sample');
+      return { ...GOOD_REPLY, say: "Fine. I'll come — but I'm watching you.", actions: [{ name: 'follow', target: 'player', value: 'far', amount: null }] };
+    }),
+  });
+  const brain = brainFor(game);
+  const evals = [];
+  game.companion.mind.evaluateRequest = (req) => {
+    evals.push(req);
+    return verdict('refuse', ['the ruins are deadly at night']);
+  };
+  game.actions.setConsentGate((name) => (name === 'follow' ? verdict('refuse', ['you hit me an hour ago'], "Not after that. I'll walk alone.") : null));
+  const orig = game.actions.run.bind(game.actions);
+  game.actions.run = (n, a, s) => {
+    order.push(`${n}:${s}`);
+    return orig(n, a, s);
+  };
+  const r = await quiet(() => brain.handlePlayerMessage('follow me'));
+  assert.equal(game.bubbles.said[0], "Not after that. I'll walk alone.", 'her refusal shows before Claude answers');
+  assert.ok(prompts[0].includes('NOT done, you refused'), 'Claude knows it did not happen');
+  assert.ok(prompts[0].includes('your gut says: refuse, because you hit me an hour ago'), 'gut verdict line');
+  assert.deepEqual(order, ['follow:player', 'sample', 'follow:claude'], 'Claude made the final call');
+  assert.equal(r.say, "Fine. I'll come — but I'm watching you.");
+
+  await quiet(() => brain.handlePlayerMessage('could you scout the ruins'));
+  assert.equal(evals.length, 1);
+  assert.equal(evals[0].action, 'explore');
+  assert.equal(evals[0].source, 'player');
+  assert.equal(evals[0].preview, true, 'a preview, not a decision');
+  assert.ok(prompts[1].includes('not done yet; your gut says: refuse, because the ruins are deadly at night'), 'previewed request');
+  assert.ok(!game.log.some((a) => a.name === 'explore' && a.args.target === 'ruins'), 'previews never run anything');
+});
+
+test('memory-aware prompt: recall context + working memory, "remembered" chips, knowledge as beliefs', async () => {
+  const replies = [];
+  const game = makeGame({
+    runtime: fakeRuntime(async (p) => {
+      replies.push(p);
+      return {
+        ...GOOD_REPLY,
+        actions: [],
+        used_memories: ['m1', 'not-in-context'],
+        knowledge: [
+          { subject: 'Bram', text: 'Bram may know who forged the ruins key.', kind: 'theory' },
+          { subject: 'Maren', text: 'Maren drew maps of the ruins.', kind: 'gossip' },
+          { subject: 'Elda', text: 'Elda used to sail.', kind: 'fact' },
+        ],
+      };
+    }),
+  });
+  const brain = brainFor(game);
+  const mind = game.companion.mind;
+  const budgets = [];
+  mind.recallContext = (text, opts) => {
+    budgets.push(opts.budget);
+    return {
+      text: "On your mind now:\n- [m1] The wolves on the King's Road, and the traveler beside me.\nMemories:\n- [m2] Bram paid fairly for the pelts.",
+      items: [
+        { id: 'm1', store: 'episode', label: 'wolves on the King\'s Road' },
+        { id: 'm2', store: 'episode', label: 'Bram paid fairly' },
+        { id: 'k7', store: 'knowledge', label: 'the ruins gate is locked' },
+      ],
+    };
+  };
+  mind.workingMemory = [{ id: 'w9', label: 'Pip chasing the stray cat', activation: 0.8 }, { id: 'm1', label: 'DUPLICATE OF M1' }];
+  const learned = [];
+  mind.learn = (subject, text, opts) => learned.push([subject, text, opts]);
+  game.plugins.register({ id: 'memory', name: 'Memory', promptContext: () => 'RAW MEMORY DUMP' });
+  await quiet(() => brain.handlePlayerMessage('do you remember the wolves?'));
+  const p = replies[0];
+  assert.ok(p.includes("[m1] The wolves on the King's Road"), 'recall context in the prompt');
+  assert.ok(p.includes('[k7] the ruins gate is locked'), 'ids not in the text are indexed');
+  assert.ok(p.includes('Pip chasing the stray cat') && !p.includes('DUPLICATE OF M1'), 'working memory, deduped');
+  assert.ok(!p.includes('RAW MEMORY DUMP'), 'no raw memory dump next to the recall context');
+  assert.ok(budgets[0] > 1000 && budgets[0] <= 3500, `recall budget ${budgets[0]}`);
+  const msg = game.ui.chat.messages.filter((m) => m.from === 'lyra').at(-1);
+  assert.deepEqual(msg.memories, [{ id: 'm1', label: "wolves on the King's Road" }], 'chips only for ids in the context');
+  assert.equal(learned.length, 3);
+  assert.deepEqual([learned[0][2].kind, learned[0][2].source], ['theory', 'inferred'], 'a theory stays a belief');
+  assert.equal(learned[1][2].kind, 'rumor');
+  assert.equal(learned[2][2].kind, 'fact');
+  assert.deepEqual(coerceKnowledge([{ subject: 'x', text: 'y', kind: 'nonsense' }, { subject: '', text: 'z' }]), [{ subject: 'x', text: 'y', kind: 'theory' }]);
+  assert.deepEqual(coerceIds(['m1', 2, { id: 'm3' }, '[m4]', 'm1', null]), ['m1', '2', 'm3', 'm4']);
+  // Rules stay byte-stable across messages; the whole prompt keeps its budget.
+  await quiet(() => brain.handlePlayerMessage('x '.repeat(400)));
+  const rules = buildRules(game);
+  assert.ok(replies[0].startsWith(rules) && replies[1].startsWith(rules));
+  assert.ok(replies[1].length <= PROMPT_BUDGET + 2, `prompt ${replies[1].length}`);
+});
+
+function toolRuntime({ tools = null, failWithTools = false } = {}) {
+  const calls = [];
+  const rt = fakeRuntime(async (p, o) => {
+    calls.push(o);
+    if (failWithTools && o.tools) throw { code: 'tools_unavailable', message: 'no tools here' };
+    let used = [];
+    if (o.tools) {
+      const found = await o.tools[0].execute({ query: 'wolves' }, { signal: null });
+      used = found.map((x) => x.id);
+    }
+    return { ...GOOD_REPLY, actions: [], used_memories: used };
+  });
+  rt.caps.sample.limits = async () => ({ maxPromptBytes: 262144, ...(tools ? { tools } : {}) });
+  rt.calls = calls;
+  return rt;
+}
+
+test('Claude recall tools are offered only when the view supports them', async () => {
+  const plain = makeGame({ runtime: toolRuntime() });
+  const b1 = brainFor(plain);
+  plain.companion.mind.dossier = () => ({ name: 'Bram' });
+  await quiet(() => b1.handlePlayerMessage('tell me about Bram'));
+  assert.equal(plain.runtime.calls[0].tools, undefined, 'no tools without limits().tools');
+  assert.equal(plain.runtime.calls[0].cache, false);
+
+  const rt = toolRuntime({ tools: { maxCount: 2 } });
+  const game = makeGame({ runtime: rt });
+  const brain = brainFor(game);
+  const mind = game.companion.mind;
+  mind.dossier = (who) => ({ name: who, opinion: 'gruff, kind', memories: [{ id: 'm2', text: 'Bram paid fairly' }] });
+  mind.loreLookup = (topic) => [{ id: 'l1', title: topic, text: 'Old stones.' }];
+  await quiet(() => brain.handlePlayerMessage('tell me about the wolves'));
+  const o = rt.calls[0];
+  assert.deepEqual(o.tools.map((t) => t.name), ['recall', 'about_person'], 'capped at maxCount');
+  assert.notEqual(o.cache, true, 'never cache with tools');
+  for (const t of o.tools) assert.equal(t.inputSchema.type, 'object');
+  const chips = game.ui.chat.messages.filter((m) => m.from === 'lyra').at(-1).memories;
+  assert.deepEqual(chips.map((c) => c.id), ['m1', 'm2', 'm3'], 'memories found by a tool become chips');
+  const res = await o.tools[1].execute({ name: 'Bram' }, {});
+  assert.ok(JSON.stringify(res).length <= 1700, 'small results');
+
+  const rt2 = toolRuntime({ tools: { maxCount: 3 }, failWithTools: true });
+  const g2 = makeGame({ runtime: rt2 });
+  const b2 = brainFor(g2);
+  const r = await quiet(() => b2.handlePlayerMessage('hello'));
+  assert.equal(r.provider, 'claude.ai', 'answered without tools');
+  assert.equal(rt2.calls.length, 2, 'one plain retry, no loop');
+  await quiet(() => b2.handlePlayerMessage('hello again'));
+  assert.equal(rt2.calls.length, 3);
+  assert.equal(rt2.calls[2].tools, undefined, 'tools stay off for the view');
+});
+
+test('when she has left or is gone she does not answer like a companion; apologies are weighed', async () => {
+  let calls = 0;
+  const game = makeGame({ runtime: fakeRuntime(async () => (calls++, GOOD_REPLY)) });
+  const brain = brainFor(game);
+  game.flags.lyra_gone = { day: 3, reason: 'knocked out' };
+  const r = await brain.handlePlayerMessage('please come back');
+  assert.equal(calls, 0, 'nobody to ask');
+  assert.equal(r.say, '');
+  assert.ok(/gone/.test(game.ui.chat.messages.at(-1).text) && game.ui.chat.messages.at(-1).from === 'system');
+
+  const g2 = makeGame();
+  const b2 = brainFor(g2);
+  const mind = g2.companion.mind;
+  mind.companionship = 'left';
+  const rel = mind.relationships.get('player');
+  rel.trust = 8;
+  rel.fear = 50;
+  g2.companion.x = g2.player.x + 30 * 16;
+  const far = await b2.handlePlayerMessage('hey');
+  assert.equal(far.unreachable, 'far');
+  assert.ok(/too far away/.test(g2.ui.chat.messages.at(-1).text));
+  g2.companion.x = g2.player.x + 3 * 16;
+  const cold = await b2.handlePlayerMessage('how are you feeling?');
+  assert.ok(bankTexts('left_reply').some((t) => t.replace('{player}', 'Traveler') === cold.say), `cold: ${cold.say}`);
+  const order = await b2.handlePlayerMessage('follow me');
+  assert.equal(g2.log.filter((a) => a.name === 'follow').length, 0, 'even without a gate, a Lyra who left refuses');
+  assert.ok(bankTexts('refuse_left').includes(order.say), order.say);
+  const events = [];
+  g2.bus.on('apology', (p) => events.push(p));
+  const rej = await b2.handlePlayerMessage("I'm sorry. I didn't mean to hurt you");
+  assert.equal(events.at(-1).believed, false);
+  assert.ok(bankTexts('apology_reject').some((t) => t.replace('{player}', 'Traveler') === rej.say), rej.say);
+  rel.trust = 40;
+  rel.fear = 20;
+  b2.local.apologies = [];
+  const ok = await b2.handlePlayerMessage('please forgive me');
+  assert.equal(events.at(-1).believed, true);
+  assert.ok(bankTexts('apology_believed_left').includes(ok.say), ok.say);
+  const mem = mind.calls.remember.at(-1);
+  assert.ok(mem[1].tags.includes('apology') && mem[1].tags.includes('believed'));
+
+  const g3 = makeGame();
+  const b3 = brainFor(g3);
+  g3.companion.mind.companionship = 'wary';
+  const greet = await b3.handlePlayerMessage('hi');
+  assert.ok(bankTexts('wary_greet').some((t) => t.replace('{player}', 'Traveler') === greet.say), greet.say);
+  const flirt = await b3.handlePlayerMessage('you are beautiful');
+  assert.ok(bankTexts('flirt_wary').includes(flirt.say), flirt.say);
+});
+
+test('speech_gen: lines keyed by companionship state, trust and fear; guarded address', () => {
+  const sg = new SpeechGen();
+  const bank = [{ t: 'Cold.', state: 'left' }, { t: 'Warm.', state: ['together', 'apart'] }, { t: 'Scared.', minFear: 50 }];
+  for (let i = 0; i < 6; i++) assert.equal(sg.lineFrom('t1', bank, {}, { state: 'left', fear: 0 }), 'Cold.');
+  for (let i = 0; i < 6; i++) assert.equal(sg.lineFrom('t2', bank, {}, { state: 'together', fear: 0 }), 'Warm.');
+  const seen = new Set();
+  for (let i = 0; i < 8; i++) seen.add(sg.lineFrom('t3', bank, {}, { state: 'wary', fear: 60 }));
+  assert.deepEqual([...seen], ['Scared.']);
+  for (let i = 0; i < 10; i++) assert.equal(sg.expand('{you}', {}, { state: 'wary', bond: 5, playerName: 'Ash' }), 'Ash', 'no endearments when guarded');
+  for (const k of ['refuse_generic', 'refuse_danger', 'counter_offer', 'accept_condition', 'apology_reject', 'leaving', 'returning', 'wary_reply', 'left_reply', 'deed_hit', 'fear_bark']) {
+    assert.ok(LINES[k]?.length >= 3, `${k} has several variants`);
+  }
+  const made = new Set();
+  for (let i = 0; i < 5; i++) made.add(sg.line('refuse_danger', { reason: 'Wolves hunt there at night' }, { state: 'together' }));
+  assert.equal(made.size, 5, 'no repeats in a row');
+  for (const t of made) assert.ok(t.includes('Wolves hunt there at night') && !t.includes('{'), t);
+});
+
+test('barks: she reacts to deeds and companionship, and yields when another module spoke for her', () => {
+  const game = makeGame();
+  const brain = brainFor(game);
+  const said = game.bubbles.said;
+  game.bus.emit('deed', { deed: 'hit_lyra', severity: -3, text: 'hit me with a sword', victim: game.companion });
+  game.time += 0.5;
+  brain.update(1 / 60);
+  assert.ok(bankTexts('deed_hit').includes(said.at(-1)), said.at(-1));
+  game.time += 3;
+  game.companion.mind.companionship = 'left';
+  game.bus.emit('companionship_changed', { state: 'left', previous: 'wary', reason: 'they kept hurting me' });
+  game.time += 0.5;
+  brain.update(1 / 60);
+  assert.ok(bankTexts('leaving').includes(said.at(-1)), said.at(-1));
+  assert.equal(brain.lastCompanionshipReason, 'they kept hurting me');
+  const n = said.length;
+  game.time += 5;
+  game.bus.emit('attack', { attacker: game.entities.get('w1'), kind: 'bite', target: game.player });
+  game.bus.emit('damage', { source: game.entities.get('w1'), target: game.player, amount: 30, kind: 'bite' });
+  brain.update(1 / 60);
+  assert.ok(!said.slice(n).some((t) => bankTexts('player_hurt').includes(t)), 'no companion lines after she left');
+
+  const g2 = makeGame();
+  const b2 = brainFor(g2);
+  g2.bus.emit('companionship_changed', { state: 'wary', previous: 'together', reason: 'x' });
+  g2.bus.emit('speech', { speaker: g2.companion, text: 'What are you doing?!', kind: 'say' });
+  g2.time += 1.5;
+  b2.update(1 / 60);
+  assert.equal(g2.bubbles.said.length, 0, 'her own line already said it');
 });

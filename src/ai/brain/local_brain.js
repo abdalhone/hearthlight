@@ -1065,6 +1065,8 @@ const HANDLERS = {
     return this.line('insult_1');
   },
   'social.apology'(s, clause, reply, state) {
+    // "I'm sorry. I didn't mean it." is one apology, not two.
+    if (reply.apology) return null;
     const g = this.game;
     const rel = playerRel(g);
     const now = this.now();

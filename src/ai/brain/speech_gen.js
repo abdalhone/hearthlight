@@ -299,7 +299,8 @@ export class SpeechGen {
 export function tidy(s) {
   let out = String(s)
     .replace(/\s+/g, ' ')
-    .replace(/\s+([,.!?;:…])/g, '$1')
+    // No space before punctuation, except an ellipsis that opens a new sentence ("Hello. ...Keep").
+    .replace(/\s+([,!?;:]|\.(?!\.))/g, '$1')
     .replace(/([,;:])(?=[^\s\d])/g, '$1 ')
     .replace(/\.{4,}/g, '...')
     .replace(/,\s*([.!?])/g, '$1')
