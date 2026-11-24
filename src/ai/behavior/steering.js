@@ -339,6 +339,22 @@ export class Steering {
         this.avY += ux * side * w;
       }
     }
+    // Making room must never shove her into a wall, or through a doorway into a house.
+    if (this.avX || this.avY) {
+      const l = Math.hypot(this.avX, this.avY);
+      const tx = tileOf(a.x + (this.avX / l) * 10);
+      const ty = tileOf(a.y + (this.avY / l) * 10);
+      const here = tileOf(a.x) === tx && tileOf(a.y) === ty;
+      if (!here && (!walkable(this.game, tx, ty, a) || this.doorAtTile(tx, ty) || this.buildingOf(tx, ty) !== this.buildingOf(tileOf(a.x), tileOf(a.y)))) {
+        this.avX = 0;
+        this.avY = 0;
+      }
+    }
+  }
+
+  buildingOf(tx, ty) {
+    const map = this.game.map;
+    return map?.buildingAt ? safe('map.buildingAt', () => map.buildingAt(tx, ty), null) : null;
   }
 
   // Open closed doors right ahead; remember building doors she walks through.
