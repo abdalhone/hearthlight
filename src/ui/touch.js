@@ -22,9 +22,10 @@ const GEOMETRY = {
   landscape: { sword: 78, btn: 56, dodge: 54, use: 52, r1: 96, r2: 162, edge: 14, dragMax: 96 },
   portrait: { sword: 70, btn: 52, dodge: 50, use: 48, r1: 86, r2: 146, edge: 12, dragMax: 84 },
 };
-const INNER = { dodge: 172, slots: [206, 244, 282] };
+const INNER = { dodge: 168, slots: [206, 244, 282] };
 const OUTER_SPANS = { 1: [222], 2: [207, 237], 3: [196, 222, 248] };
 const USE_ANGLE = 276;
+const DODGE_OUT = 1.04; // the dodge sits a touch further out, clear of the first weave
 
 // Pure: where every piece of the cluster sits, as offsets (CSS px) from the sword's
 // centre. `count` weave slots (0–6); `mirror` flips it for a left-handed layout.
@@ -39,7 +40,7 @@ export function clusterLayout(count, geo, mirror = false) {
   for (let i = 0; i < inner; i++) slots.push(at(INNER.slots[i], geo.r1));
   const outer = Math.max(0, Math.min(3, count - 3));
   if (outer) for (const deg of OUTER_SPANS[outer]) slots.push(at(deg, geo.r2));
-  return { dodge: at(INNER.dodge, geo.r1), use: at(USE_ANGLE, count > 3 ? geo.r2 : geo.r1 + (geo.r2 - geo.r1) * 0.62), slots };
+  return { dodge: at(INNER.dodge, geo.r1 * DODGE_OUT), use: at(USE_ANGLE, geo.r2), slots };
 }
 
 function captureOn(el, e) {
@@ -163,7 +164,7 @@ export class TouchControls {
     const knob = h('span', { class: 'wbtn-knob', 'aria-hidden': 'true' });
     const ring = h('span', { class: 'wbtn-ring', 'aria-hidden': 'true' });
     const plus = h('span', { class: 'wbtn-plus', 'aria-hidden': 'true', text: '+' });
-    const b = h('button', { type: 'button', class: 'wbtn', 'aria-label': `Weave ${i + 1}` }, ring, img, cd, plus, knob);
+    const b = h('button', { type: 'button', class: 'wbtn tbtn', 'aria-label': `Weave ${i + 1}` }, ring, img, cd, plus, knob);
     const slot = { i, b, img, cd, knob, ring, plus, pid: null, x: 0, y: 0, key: '' };
     b.addEventListener('pointerdown', (e) => this.slotDown(slot, e));
     b.addEventListener('pointermove', (e) => this.slotMove(slot, e));

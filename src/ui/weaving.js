@@ -343,6 +343,7 @@ export class Weaving {
   select(i) {
     const n = this.slotCount();
     if (!n) return;
+    this.lastActT = this.game.time || 0;
     const v = Math.max(0, Math.min(n - 1, i | 0));
     if (v === this.selected) return;
     this.selected = v;
@@ -471,8 +472,17 @@ export class Weaving {
       this.describeAim(v, c, aim);
       this.aims.push(v);
     }
-    // The selected weave, faintly, under a mouse that is aiming.
-    if (!this.casts.size && input?.mouseAiming?.(2.5)) {
+    // The selected weave, faintly, under a mouse that is aiming — in a fight (a foe near)
+    // or right after a cast or a slot change; walking about shows only the reticle.
+    this.foeT -= dt;
+    if (!(this.foeT > 0)) {
+      this.foeT = 0.25;
+      const p = g.player;
+      this.foeNear = !!this.nearestFoe(p.x, p.y - BODY_UP, p.facing?.x || 0, p.facing?.y || 0, 220);
+    }
+    const t = g.time || 0;
+    const recent = t - (this.lastActT ?? -9) < 2.5;
+    if (!this.casts.size && (this.foeNear || recent) && input?.mouseAiming?.(2.5)) {
       const rec = this.slotInfo(this.selected);
       if (rec.plan) {
         const c = this._hoverCast || (this._hoverCast = { slot: 0, source: 'mouse', mode: 'quick', touch: null, held: 0 });
@@ -485,7 +495,6 @@ export class Weaving {
       }
     }
     // Shakes on failed casts fade out.
-    const t = g.time || 0;
     while (this.fails.length && t - this.fails[0].t > 0.6) this.fails.shift();
   }
 
@@ -540,6 +549,7 @@ export class Weaving {
   }
 
   fire(c, aim = this.aimFor(c)) {
+    this.lastActT = this.game.time || 0;
     const r = this.call('cast', c.slot, aim);
     if (r && r.ok === false) this.fail(c.slot, r.reason);
     return r;

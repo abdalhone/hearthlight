@@ -6818,3 +6818,39 @@ input[type='range']::-moz-range-thumb {
     aspect-ratio: 200 / 72;
   }
 }
+
+/* The thumb cluster is round: buttons on an arc read and fit best as circles (a pixel
+   ring and a drop shadow instead of the notched square frame). */
+.tcluster .tbtn,
+.tcluster .wbtn {
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2px var(--bc),
+    0 0 0 4px rgba(11, 9, 21, 0.6),
+    0 5px 0 2px rgba(5, 3, 14, 0.38);
+}
+.tcluster .wbtn::before,
+.tcluster .wbtn-cd {
+  border-radius: 50%;
+}
+.tcluster .tbtn.down,
+.tcluster .wbtn.down {
+  box-shadow:
+    0 0 0 2px var(--bc),
+    0 0 0 4px rgba(11, 9, 21, 0.6),
+    0 3px 0 2px rgba(5, 3, 14, 0.38);
+}
+.tcluster .tbtn-attack {
+  background-image: radial-gradient(circle at 50% 38%, rgba(255, 107, 94, 0.32), transparent 70%);
+}
+.tcluster .tbtn-dodge {
+  --bc: var(--sky);
+  background-image: radial-gradient(circle at 50% 38%, rgba(140, 203, 230, 0.22), transparent 70%);
+}
+.tcluster .tbtn-label {
+  font-size: 9px;
+  margin-top: -1px;
+}
+.tcluster .tbtn-interact.ready {
+  animation: ready-glow 1.2s ease-in-out infinite;
+}

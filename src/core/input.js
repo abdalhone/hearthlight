@@ -97,7 +97,7 @@ export function slotOfAction(a) {
 // Wheel deltas -> whole slot steps, keeping the remainder (trackpads send many small ones).
 // Returns { steps, rest }. deltaMode 1 (lines) and 2 (pages) are scaled to pixels.
 export function wheelSteps(rest, deltaY, deltaMode = 0) {
-  const px = deltaMode === 1 ? deltaY * 33 : deltaMode === 2 ? deltaY * 400 : deltaY;
+  const px = deltaMode === 1 ? deltaY * 40 : deltaMode === 2 ? deltaY * 400 : deltaY;
   let acc = (Number.isFinite(rest) ? rest : 0) + (Number.isFinite(px) ? px : 0);
   let steps = 0;
   while (acc >= WHEEL_STEP) {

@@ -283,7 +283,7 @@ export class Hud {
       const plus = h('span', { class: 'wbtn-plus', 'aria-hidden': 'true', text: '+' });
       const key = h('kbd', { class: 'keycap hb-key', text: String(i + 1) });
       const cost = h('span', { class: 'hb-cost num' });
-      const b = h('button', { type: 'button', class: 'wbtn hslot', hidden: true }, img, cd, plus, key, cost);
+      const b = h('button', { type: 'button', class: 'wbtn hslot tbtn', hidden: true }, img, cd, plus, key, cost);
       const slot = { i, b, img, cd, plus, cost, key: '' };
       // A click selects the slot (the right button casts the selected one); an empty
       // slot opens the Spellbook on it.

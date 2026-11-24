@@ -318,13 +318,19 @@ async function desktop() {
     const tiles = [...document.querySelectorAll('.sb-sec-shapes .sb-tile:not(.locked)')];
     tiles.find((t) => t.textContent.includes('Throw'))?.click();
     await new Promise((r) => setTimeout(r, 50));
-    const ess = [...document.querySelectorAll('.sb-sec-essences .sb-tile:not(.locked)')];
-    ess.find((t) => t.textContent.includes('Storm'))?.click();
+    // Clear the essences, then add one that is not there.
+    for (const t of document.querySelectorAll('.sb-sec-essences .sb-tile[aria-pressed="true"]')) {
+      t.click();
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    const pick = document.querySelector('.sb-sec-essences .sb-tile:not(.locked)[aria-pressed="false"]');
+    const want = pick?.querySelector('.sb-tile-name')?.textContent || '';
+    pick?.click();
     await new Promise((r) => setTimeout(r, 50));
     const slot = g.ui.hud.spellbook.slot;
-    return { slot, weave: g.magic.slots[slot], name: q('.sb-name')?.textContent, note: q('.sb-note')?.textContent };
+    return { slot, want, weave: g.magic.slots[slot], name: q('.sb-name')?.textContent, note: q('.sb-note')?.textContent };
   });
-  check('desktop: the Spellbook saves a weave into its slot', built.weave?.shape === 'throw' && built.weave.essences.includes('storm'), JSON.stringify(built));
+  check('desktop: the Spellbook saves a weave into its slot', built.weave?.shape === 'throw' && built.weave.essences.length === 1 && built.want.toLowerCase().includes(built.weave.essences[0]), JSON.stringify(built));
   await page.waitForTimeout(900);
   await page.screenshot({ path: `${OUT}/spellbook-desktop-built.png` });
   await page.keyboard.press('KeyB');
