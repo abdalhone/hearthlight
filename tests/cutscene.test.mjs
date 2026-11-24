@@ -321,3 +321,26 @@ test('cues fire on their word as it is spoken, and a tapped-past line still chan
   await done;
   assert.deepEqual(fired.slice(2), [['bed', 'drone']], 'the bed still changes; its one-off sound is let go');
 });
+
+test('scene sound is silent and harmless until the audio may play (before the first tap)', async () => {
+  const { SceneSound, SFX_NAMES, BED_NAMES } = await import('../src/story/sfx.js');
+  for (const audio of [null, { ctx: null }, { ctx: { state: 'suspended' }, sfxBus: {} }]) {
+    const s = new SceneSound(audio);
+    assert.equal(s.ready(), false);
+    for (const n of SFX_NAMES) assert.equal(s.fx(n), false);
+    for (const b of BED_NAMES) s.bed(b);
+    s.heart(70);
+    s.hush();
+    s.slam('big');
+    s.duckFor([['w', 0, 0.3]]);
+    s.unduck();
+    s.stop();
+    assert.equal(s.bedName, null);
+    assert.equal(s.hushed, false);
+  }
+  // The bed asked for before the tap is remembered, so the scene can start it once sound may play.
+  const s = new SceneSound(null);
+  s.bed('wind');
+  assert.equal(s.bedName, 'wind');
+  s.heart(0);
+});
