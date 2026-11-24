@@ -363,6 +363,8 @@ export class ThoughtGenerator {
       pride: 'I still stand a little taller for it.',
       fear: 'I can still feel how cold my hands were.',
       joy: 'Good days, those.',
+      trust: 'Strange, how one evening can turn a whole road.',
+      curiosity: 'I still wonder about it.',
     };
     let entry = null;
     const warm = m.workingMemory.list(6).find((it) => it.store === 'life' && it.activation > 0.25);

@@ -256,6 +256,8 @@ export class Perception {
         return this.onConversation(p);
       case 'new_day':
         return this.onNewDay(p);
+      case 'room_rented':
+        return this.onRoomRented(p);
       case 'quest':
         return this.onQuest(p);
       case 'enter_location':
@@ -989,6 +991,26 @@ export class Perception {
 
   onPlanChanged() {
     this.mind.thinker.nudge(8);
+  }
+
+  // Her own room at the inn, paid from her own purse (or on Elda's credit, which she
+  // will settle: she keeps a tally of debts).
+  onRoomRented({ npc, actor, price, paid }) {
+    if (!this.isSelf(actor)) return;
+    const m = this.mind;
+    const day = this.game?.clock?.day ?? 1;
+    if (!this.throttle(`room_${day}`, 600)) return;
+    m.needsEngine.satisfy('safety', 0.1);
+    const host = npc?.name ? firstName(npc.name) : 'Elda';
+    const coins = Number(price) || 0;
+    if (paid) {
+      m.feel('pride', 0.06, 'paid my own way');
+      m.remember(`Took my room at the Ember Kettle for the night${coins ? `, ${coins} coins from my own purse` : ''}. A door with a bolt on it. Worth every copper.`, { importance: 2, about: npc?.id ? [npc.id] : [], tags: ['room', 'ember_kettle', 'coin'], location: 'ember_kettle', emotion: 'pride', gist: 'my room at the Kettle' });
+    } else {
+      m.feel('embarrassment', 0.1, 'a room on credit');
+      m.remember(`${host} gave me my room at the Kettle on credit tonight. It goes in the tally at the back of my journal: I pay my debts.`, { importance: 3, about: npc?.id ? [npc.id] : [], tags: ['room', 'ember_kettle', 'debt'], location: 'ember_kettle', emotion: 'embarrassment', gist: `owing ${host} for a room` });
+      if (npc?.id) m.relationships.adjust(npc.id, { affinity: 2, trust: 1 }, 'Trusted me with a room on credit');
+    }
   }
 
   // A new morning: yesterday's fear of the dark is gone, and she thinks about the day.

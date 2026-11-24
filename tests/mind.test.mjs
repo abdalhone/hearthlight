@@ -641,6 +641,16 @@ test('quest arc: every stage, its event, objective and journal', () => {
   assert.equal(questPlugin.stageOf(b.game).id, 'waygate');
 });
 
+test('quest arc: "read the journal" reaching her as interact still means reading it', () => {
+  const { game, mind, player } = makeGame();
+  questPlugin.advance(game.plugins.ctx, 5, 'test');
+  player.inventory.add('maren_journal', 1);
+  game.bus.emit('companion_action', { name: 'interact', args: { target: "maren's journal" }, source: 'player', ok: false, message: '', t: 0 });
+  assert.equal(questPlugin.stageOf(game).id, 'waygate');
+  assert.ok(questPlugin.isRead(game));
+  assert.ok(mind.goals.some((g) => g.id === 'follow_maren'));
+});
+
 test('quest arc: day two begins, or Lyra asks Aveline herself', () => {
   const { game, lyra } = makeGame();
   game.bus.emit('new_day', { day: 2 });
