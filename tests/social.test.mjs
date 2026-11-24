@@ -297,6 +297,7 @@ test('rumors spread one listener at a time, grow in the telling and move opinion
   assert.ok(r.heardBy.length > heard0 + 3, `spread to ${r.heardBy.length}`);
   assert.ok(people.tobias.opinionOfPlayer > before, 'her father thinks better of the player');
   for (const id of r.heardBy) if (VILLAGERS.includes(id)) assert.ok(v.rumors.render(r, id, { stranger: 'the stranger' }), `${id} can tell it`);
+  assert.equal(r.text, 'the stranger pulled a wolf off Tansy', 'the rumor reads as the village tells it');
   // Tansy herself is never told what happened to her.
   const told = v.log.filter((c) => c.topic === 'rumor' && c.effects?.rumor === r.id);
   assert.ok(told.every((c) => !(c.b === 'tansy' && c.a !== 'tansy' && c.lines.some((l) => l.speaker !== 'tansy' && /tansy/i.test(l.text)))));
@@ -337,6 +338,10 @@ test('attacking Lyra: fast word, cold village, shut shop, barred Kettle, slow am
   assert.ok(fall('wenna') > fall('tansy'), 'her mother more than Tansy');
   const avg = VILLAGERS.reduce((s, id) => s + fall(id), 0) / VILLAGERS.length;
   assert.ok(avg >= 10, `village average fall ${avg}`);
+  // The next morning they are still raw.
+  people.wenna.wrongedDay = -1;
+  v.onEvent('new_day', { day: game.clock.day });
+  assert.equal(people.wenna.wrongedDay, game.clock.day);
   // Shops refuse while it is fresh; the Kettle is barred.
   assert.equal(v.standing('elda').refusesTrade, true);
   assert.ok(v.standing('wenna').grievance?.grave);

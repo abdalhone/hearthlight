@@ -3,8 +3,9 @@
 // {stranger} is the player as the teller names them, {lyra} is Lyra, {v} the victim.
 // Rumors spread one listener at a time, and each retelling may grow a little.
 //
-// { id, about, kind, text, you, valence -1..1, severity 0..1, source, victim, t, day,
-//   heardBy: [ids], versions: { id: text } }
+// { id, about, kind, text (as the village tells it, ready to show), tpl (the clause with
+//   placeholders), you, valence -1..1, severity 0..1, source, victim, t, day,
+//   heardBy: [ids], versions: { id: tpl as that person heard it } }
 
 import { rnd, thirdName, fill } from './lines.js';
 
@@ -81,11 +82,13 @@ export class Rumors {
       same.t = t;
       return same;
     }
+    const tpl = String(text || def.text || '').slice(0, 200);
     const r = {
       id: `r${++this.seq}`,
       about: def.about || about,
       kind: kind || 'news',
-      text: String(text || def.text || '').slice(0, 200),
+      tpl,
+      text: '',
       you: String(you || def.you || '').slice(0, 200) || null,
       valence: clamp(Number(valence ?? def.valence ?? 0) || 0, -1, 1),
       severity: clamp(Number(severity ?? def.severity ?? 0.3) || 0, 0, 1),
@@ -97,7 +100,8 @@ export class Rumors {
       heardBy: [...new Set(heardBy.filter(Boolean))],
       versions: {},
     };
-    if (!r.text) return null;
+    if (!r.tpl) return null;
+    r.text = fillClause(r.tpl, 'narrator', r, 'the stranger') || r.tpl.replace(/\{\w+\}/g, 'someone');
     this.list.push(r);
     this.trim();
     return r;
@@ -137,7 +141,7 @@ export class Rumors {
 
   // The teller's own version of the clause (still with placeholders).
   versionOf(rumor, id) {
-    return rumor.versions[id] || rumor.text;
+    return rumor.versions[id] || rumor.tpl;
   }
 
   // The listener hears it from the teller; the story may grow on the way.
@@ -145,9 +149,9 @@ export class Rumors {
     if (!rumor || !listenerId) return null;
     const told = this.versionOf(rumor, tellerId);
     let heard = told;
-    const grown = told !== rumor.text;
+    const grown = told !== rumor.tpl;
     if (!grown && rnd(rng) < 0.3) heard = distort(told, rng);
-    if (heard !== rumor.text) rumor.versions[listenerId] = heard;
+    if (heard !== rumor.tpl) rumor.versions[listenerId] = heard;
     if (!rumor.heardBy.includes(listenerId)) rumor.heardBy.push(listenerId);
     return heard;
   }
@@ -180,7 +184,7 @@ export class Rumors {
     return {
       seq: this.seq,
       list: this.list.map((r) => {
-        const o = { id: r.id, about: r.about, kind: r.kind, text: r.text, valence: r.valence, severity: r.severity, source: r.source, t: Math.round(r.t), day: r.day, heardBy: r.heardBy };
+        const o = { id: r.id, about: r.about, kind: r.kind, tpl: r.tpl, text: r.text, valence: r.valence, severity: r.severity, source: r.source, t: Math.round(r.t), day: r.day, heardBy: r.heardBy };
         if (r.you) o.you = r.you;
         if (r.victim) o.victim = r.victim;
         if (r.beast) o.beast = r.beast;
@@ -195,12 +199,15 @@ export class Rumors {
     if (!d || !Array.isArray(d.list)) return;
     this.seq = Number.isFinite(d.seq) ? d.seq : 0;
     for (const r of d.list) {
-      if (!r || typeof r.text !== 'string' || !r.text) continue;
+      if (!r || typeof r !== 'object') continue;
+      const tpl = typeof r.tpl === 'string' && r.tpl ? r.tpl : typeof r.text === 'string' ? r.text : '';
+      if (!tpl) continue;
       this.list.push({
         id: String(r.id || `r${++this.seq}`),
         about: r.about || 'player',
         kind: String(r.kind || 'news'),
-        text: r.text.slice(0, 200),
+        tpl: tpl.slice(0, 200),
+        text: typeof r.text === 'string' && r.text ? r.text.slice(0, 220) : tpl.replace(/\{\w+\}/g, 'someone'),
         you: typeof r.you === 'string' ? r.you.slice(0, 200) : null,
         valence: clamp(Number(r.valence) || 0, -1, 1),
         severity: clamp(Number(r.severity) || 0, 0, 1),

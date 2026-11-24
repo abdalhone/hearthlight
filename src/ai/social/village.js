@@ -986,8 +986,17 @@ export class Village {
     safe(() => g?.ui?.toast?.(`You're not welcome at the Kettle for ${days}. Amends might shorten it.`, 'warn', { key: 'village_bar' }));
   }
 
-  // Each morning households pass on what they heard: the news reaches kin overnight.
+  // Each morning households pass on what they heard: the news reaches kin overnight. And
+  // those still raw about a grave wrong stay so: they will not trade or chat while it is
+  // fresh (the villagers' own wronged/cold day marks, which dialogue and shops honour).
   morning() {
+    const day = this.day();
+    for (const [id, g] of Object.entries(this.grievances)) {
+      const e = this.entity(id);
+      if (!e || this.now() - g.t > DAY * 2) continue;
+      if (g.grave && g.weight >= 8) e.wrongedDay = day;
+      else if (g.weight >= 6) e.coldDay = day;
+    }
     for (const r of this.rumors.list) {
       if (this.now() - r.t > DAY * 3) continue;
       for (const id of [...r.heardBy]) {
@@ -1285,7 +1294,6 @@ export class Village {
     const provider = this.provider();
     if (!provider || provider.id !== 'api') return null;
     this.ambientAt = g.time ?? 0;
-    this.calls.ambient++;
     const conv = { id: -1, a: a.id, b: b.id, topic: null };
     this.pairAt.set(pairKey(a.id, b.id), this.now());
     this.askClaude(provider, VILLAGER_RULES, buildListenTask(this.listenBrief(a.id, b.id, conv)), LINES_SCHEMA, 'ambient')
