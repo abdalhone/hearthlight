@@ -851,6 +851,9 @@ export class Chat {
       if (mood) bits.push(mood);
     }
     if (this.dictState === 'listening') bits.push('listening to you…');
+    // Lyra overhears what you say near her (§23): worth knowing.
+    const lyra = g.companion;
+    if (lyra && !lyra.removed && !lyra.downed && g.player && Math.hypot(lyra.x - g.player.x, lyra.y - g.player.y) <= 110) bits.push(`${this.targetName(LYRA)} can hear`);
     setText(this.status, bits.join(' · '));
     toggleClass(this.el, 'is-thinking', this.waiting.has(id));
     const url = e ? portraitUrl(g, e.spriteKey || e.id, faceOf(st, this.moods.get(id))) : '';
@@ -1013,6 +1016,7 @@ export class Chat {
     if (!e || !reply?.lines?.length) return;
     const g = this.game;
     const id = e.id;
+    this.installVoice();
     if (reply.mood) this.moods.set(id, String(reply.mood).toLowerCase());
     if (!reply.ok) {
       // No words came: what the player sees them do instead.
