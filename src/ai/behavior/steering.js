@@ -234,7 +234,7 @@ export class Steering {
       dx = dx * 0.4 + this.sideX;
       dy = dy * 0.4 + this.sideY;
     }
-    this.avoid(opts.ignore);
+    this.avoid(opts.ignore, dx, dy);
     dx += this.avX * 0.7;
     dy += this.avY * 0.7;
 
@@ -272,8 +272,9 @@ export class Steering {
     }
   }
 
-  // Repulsion from nearby solid actors (no allocation: writes avX/avY).
-  avoid(ignore = null) {
+  // Repulsion from nearby solid actors, plus a sideways step around anyone standing
+  // right in her way (ux, uy: where she wants to go). No allocation: writes avX/avY.
+  avoid(ignore = null, ux = 0, uy = 0) {
     const a = this.actor;
     this.avX = 0;
     this.avY = 0;
@@ -283,12 +284,23 @@ export class Steering {
       if (e === a || e === ignore || e.type !== 'actor' || !e.solid || e.dead || e.removed) continue;
       const dx = a.x - e.x;
       const dy = a.y - e.y;
-      if (dx > 14 || dx < -14 || dy > 14 || dy < -14) continue;
+      if (dx > 20 || dx < -20 || dy > 20 || dy < -20) continue;
       const d = Math.hypot(dx, dy);
-      if (d < 0.01 || d >= 14) continue;
-      const w = (14 - d) / 14;
-      this.avX += (dx / d) * w;
-      this.avY += (dy / d) * w;
+      if (d < 0.01 || d >= 20) continue;
+      if (d < 14) {
+        const w = (14 - d) / 14;
+        this.avX += (dx / d) * w;
+        this.avY += (dy / d) * w;
+      }
+      const ahead = -(dx * ux + dy * uy) / d;
+      if (ahead > 0.35) {
+        // Pass on the side she is already on (or her usual side when dead ahead).
+        const s = dx * -uy + dy * ux;
+        const side = s > 1 ? 1 : s < -1 ? -1 : this.side;
+        const w = ((20 - d) / 20) * ahead * 1.6;
+        this.avX += -uy * side * w;
+        this.avY += ux * side * w;
+      }
     }
   }
 

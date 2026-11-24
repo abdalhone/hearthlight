@@ -27,6 +27,9 @@ import { rand, chance, dist, tileOf, tileCenter, walkable, nearestWalkable, isAc
 export const OWN_DIRECTIVES = ['independent', 'flee', 'leave', 'keep_away', 'wait_outside'];
 export const LEAVE_MODES = ['apart', 'left', 'gone'];
 const LEFT_AVOID_TILES = 8;
+const NIGHT_ENTRY = Object.freeze({ from: 22, to: 6, activity: 'sleep', at: null });
+const LEFT_LIFE = Object.freeze({ type: 'independent', avoid: 'player', tiles: LEFT_AVOID_TILES });
+const APART_LIFE = Object.freeze({ type: 'independent' });
 const HOURS_TO_SECONDS = 900 / 24; // real seconds per in-game hour
 
 // Her day when her mind has not planned one: work for coin in the morning, Maren's
@@ -138,12 +141,28 @@ export function classifyActivity(entry) {
   return { mode, job, person, buyer, at };
 }
 
+// An hour of the day from a plan: 13, 13.5, "13", "1:30 pm", "13:30".
+export function hourOf(v) {
+  if (Number.isFinite(v)) return ((v % 24) + 24) % 24;
+  if (typeof v !== 'string') return NaN;
+  const m = v.trim().toLowerCase().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
+  if (!m) return NaN;
+  let h = parseInt(m[1], 10) + (m[2] ? parseInt(m[2], 10) / 60 : 0);
+  if (m[3] === 'pm' && h < 12) h += 12;
+  if (m[3] === 'am' && h >= 12) h -= 12;
+  return h % 24;
+}
+
 // The plan entry active at `hour` (handles entries that wrap past midnight).
 export function activeEntry(plan, hour) {
   if (!Array.isArray(plan)) return null;
-  for (const e of plan) {
-    if (!e || !Number.isFinite(e.from) || !Number.isFinite(e.to)) continue;
-    if (e.from <= e.to ? hour >= e.from && hour < e.to : hour >= e.from || hour < e.to) return e;
+  for (let i = 0; i < plan.length; i++) {
+    const e = plan[i];
+    if (!e) continue;
+    const from = hourOf(e.from);
+    const to = hourOf(e.to);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from === to) continue;
+    if (from < to ? hour >= from && hour < to : hour >= from || hour < to) return e;
   }
   return null;
 }
@@ -151,8 +170,8 @@ export function activeEntry(plan, hour) {
 // Hours left in an entry from `hour`.
 function hoursLeft(e, hour) {
   if (!e) return 0;
-  const end = e.to;
-  let h = end - hour;
+  let h = hourOf(e.to) - hour;
+  if (!Number.isFinite(h)) return 0;
   if (h < 0) h += 24;
   return h;
 }
@@ -216,8 +235,8 @@ export class OwnLife {
 
   setupIndependent(d) {
     let plan = null;
-    if (Array.isArray(d.plan)) plan = d.plan.filter((e) => e && Number.isFinite(e.from) && Number.isFinite(e.to)).map((e) => ({ from: e.from, to: e.to, activity: String(e.activity || 'wander'), at: e.at ?? null, why: e.why ?? null, with: e.with ?? null, job: e.job ?? null, deliverTo: e.deliverTo ?? null }));
-    else if (typeof d.plan === 'string' && d.plan.trim()) {
+    if (Array.isArray(d.plan)) plan = d.plan.filter((e) => e && Number.isFinite(hourOf(e.from)) && Number.isFinite(hourOf(e.to))).map((e) => ({ from: e.from, to: e.to, activity: String(e.activity || 'wander'), at: e.at ?? null, why: e.why ?? null, with: e.with ?? null, job: e.job ?? null, deliverTo: e.deliverTo ?? null }));
+    else if (typeof d.plan === 'string' && d.plan.trim() && !/^(today|agenda|her own|own|default|plan|day|her day|my day)$/i.test(d.plan.trim())) {
       // One activity named in words: do it for the next three hours, then her usual day.
       const h = this.game.clock?.hour ?? 12;
       plan = [{ from: Math.floor(h * 2) / 2, to: (Math.floor(h * 2) / 2 + 3) % 24, activity: d.plan.trim().slice(0, 80), at: d.at ?? null, why: null }];
@@ -345,9 +364,13 @@ export class OwnLife {
     const avoid = d.avoid ? this.resolveWho(d.avoid) : null;
     if (avoid && this.avoidStep(dt, avoid, (d.tiles || LEFT_AVOID_TILES) * TILE)) return true;
     let entry = activeEntry(this.plan(d), hour);
-    if (!entry && (hour >= 22 || hour < 6)) entry = { from: 22, to: 6, activity: 'sleep', at: null };
-    const key = entryKey(entry);
-    if (!this.day || this.day.key !== key) this.startEntry(entry, key, d);
+    if (!entry && (hour >= 22 || hour < 6)) entry = NIGHT_ENTRY;
+    // Plans are rebuilt now and then; an entry that reads the same is the same entry.
+    if (!this.day || this.day.entry !== entry) {
+      const key = entryKey(entry);
+      if (!this.day || this.day.key !== key) this.startEntry(entry, key, d);
+      else this.day.entry = entry;
+    }
     const day = this.day;
     day.t += dt;
     if (!entry) return this.ownIdle(dt, null);
@@ -718,8 +741,7 @@ export class OwnLife {
   runLeave(dt, d) {
     if (d.mode !== 'gone') {
       // Apart or left: she lives her own day; when she left you, she keeps her distance.
-      const inner = d.mode === 'left' ? { type: 'independent', avoid: 'player', tiles: LEFT_AVOID_TILES } : { type: 'independent' };
-      return this.runIndependent(dt, inner);
+      return this.runIndependent(dt, d.mode === 'left' ? LEFT_LIFE : APART_LIFE);
     }
     const b = this.b;
     const g = this.game;
@@ -846,18 +868,22 @@ export class OwnLife {
     }
     if (!st.spot) st.spot = entranceSpot(g, a, loc, a.x, a.y) || { x: a.x, y: a.y };
     st.t = (st.t || 0) + dt;
-    // The player is out again and near: back to what she was doing.
+    // The player went in and came back out to her (or came to fetch her from her
+    // post): back to what she was doing.
     const p = g.player;
+    const s = st.spot;
     if (d.then && p && isActorAlive(p)) {
-      const out = !inBounds(loc, p.x, p.y);
-      st.outT = out ? (st.outT || 0) + dt : 0;
-      if (out && st.outT > 1 && dist(a.x, a.y, p.x, p.y) < 10 * TILE && st.t > 2) {
+      const pin = inBounds(loc, p.x, p.y);
+      if (pin) st.playerWasIn = true;
+      st.outT = pin ? 0 : (st.outT || 0) + dt;
+      if (dist(a.x, a.y, s.x, s.y) <= 12) st.waitedT = (st.waitedT || 0) + dt;
+      const near = dist(a.x, a.y, p.x, p.y);
+      if (st.outT > 1 && ((st.playerWasIn && near < 10 * TILE) || (st.waitedT > 4 && near < 4 * TILE))) {
         b.setDirective(d.then, { quiet: true });
         b.say(say.waitOutsideOver());
         return true;
       }
     }
-    const s = st.spot;
     if (dist(a.x, a.y, s.x, s.y) > 8) {
       const r = b.steering.moveTo(s.x, s.y, dt, { arrive: 5 });
       if (r === 'moving') return true;

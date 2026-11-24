@@ -835,7 +835,7 @@ export class JobRunner {
     this.active = false;
     this.phase = 'idle';
     this.target = null;
-    this.emit('job_done', { result: { items, count: this.count, deliveredTo } });
+    this.emit('job_done', { result: { ...(result || {}), items, count: this.count, deliveredTo } });
     this.b.onJobEnded(true);
     return 'done';
   }

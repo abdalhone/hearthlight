@@ -331,13 +331,16 @@ export function edgeExit(game, actor) {
     }
   };
   const b = road?.bounds;
-  if (b) {
+  // The road leaves the map at its ends: the left/right ends of a road running east
+  // to west, the top/bottom of one running north to south.
+  if (b && b.w >= b.h) {
     for (let ty = b.y; ty < b.y + b.h; ty++) {
       for (let k = 0; k < 3; k++) {
         if (b.x <= k) consider(k, ty);
         if (b.x + b.w >= map.w - k) consider(map.w - 1 - k, ty);
       }
     }
+  } else if (b) {
     for (let tx = b.x; tx < b.x + b.w; tx++) {
       for (let k = 0; k < 3; k++) {
         if (b.y <= k) consider(tx, k);
@@ -375,6 +378,17 @@ export function playerFighting(game) {
   if (!p || !isActorAlive(p)) return false;
   if (p.state === 'attack' || p.attackCd > 0.05) return true;
   return false;
+}
+
+// Would someone standing at (x, y) be inside the fighting player's swing?
+export function inSwordArc(game, x, y) {
+  const p = game.player;
+  if (!p || !playerFighting(game)) return false;
+  const dx = x - p.x;
+  const dy = y - p.y;
+  const d = Math.hypot(dx, dy);
+  if (d > 36 || d < 0.01) return d < 0.01;
+  return (dx * (p.facing?.x ?? 0) + dy * (p.facing?.y ?? 1)) / d >= 0.4;
 }
 
 // When she stands in front of a fighting player, the sideways step that takes her

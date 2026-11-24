@@ -21,6 +21,7 @@ import {
   fightWinnable,
   lovedDownedNearby,
   swordArcPush,
+  inSwordArc,
   openSpotAway,
 } from './safety.js';
 import { runTask, endTask, taskStatus, EMOTES, resolveEmote, handItems } from './tasks.js';
@@ -657,7 +658,7 @@ export class Behavior {
 
   tendNeeds(dt) {
     this.tendT -= dt;
-    if (this.tendT > 0 || this.task?.tend) return false;
+    if (this.tendT > 0) return false;
     this.tendT = 2;
     const g = this.game;
     const d = this.directive;
@@ -669,6 +670,7 @@ export class Behavior {
         this.say(say.starvingNoFood());
       }
     }
+    if (this.task?.tend) return false;
     if (need(g, 'energy') < 0.1 && this.t - this.restAt > 90 && !this.anyThreatClose() && this.task?.kind !== 'sleep') {
       this.restAt = this.t;
       this.startSit(null, 25);
@@ -1071,6 +1073,11 @@ export class Behavior {
   doHold(x, y, dt) {
     const a = this.actor;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    // Her post is where the player is swinging: hold beside it, not in it.
+    if (inSwordArc(this.game, x, y) && !inSwordArc(this.game, a.x, a.y)) {
+      this.steering.stop();
+      return false;
+    }
     if (dist(a.x, a.y, x, y) > 10 || (this.holdReturning && dist(a.x, a.y, x, y) > 3)) {
       this.holdReturning = true;
       const r = this.steering.moveTo(x, y, dt, { arrive: 3 });
