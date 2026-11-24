@@ -1,9 +1,11 @@
-import { Actor } from './entity.js';
+import { Actor, factionRelation } from './entity.js';
 import { FACTION, TILE } from '../core/constants.js';
 import { entryAt, adjustForWeather } from './npc_schedule.js';
 import { Walker } from './npc_walker.js';
 import { now, rand, hostileTo, alive, walkLine, speak, pickLine } from './creature_util.js';
 import * as D from './npc_dialogue.js';
+import { NPC_PROFILES } from './npc_data.js';
+import { RESPONSE_LINES } from './npc_lines.js';
 
 // Villagers of Hearthvale. Each one lives by the 24-hour schedule in its profile
 // (npc_data.js): walks there with the pathfinder (opening doors and closing them
@@ -22,6 +24,32 @@ const GUARD_RADIUS = 170; // guards engage hostiles this close
 const GUARD_CRIME_HEAR = 420; // guards come running to a crime this far away
 const GUARD_LEASH = 300; // and give up the chase this far from their post
 const SAY_GAP = 6; // seconds between ambient lines from any two villagers
+const HUNT_RADIUS = 150; // Hess takes on hostile creatures this close (DESIGN §19.1)
+const BOW_RANGE = 140; // and looses arrows from this far
+const SHOT_GAP = 1.35;
+
+// Places another branch builds (DESIGN §19.2): where to go while one is missing, so a
+// schedule never points at nothing and the villagers still work on their own.
+export const PLACE_FALLBACK = {
+  chandlery: 'ember_kettle',
+  lamplight_lane: 'town_square',
+  ashby_house: 'ember_kettle',
+  dye_cottage: 'ember_kettle',
+  weavers_row: 'town_square',
+  net_shed: 'mirror_lake',
+  wenna_hives: 'whisperwood',
+};
+
+// Things a villager sits on rather than beside.
+const SEATS = new Set(['bench', 'chair', 'stool', 'pew']);
+// The lamplighter's round covers the square and the lanes (LORE §5).
+const LAMP_AREAS = ['town_square', 'lamplight_lane', 'weavers_row'];
+
+// The village answering a call for help (DESIGN §19.7).
+const TENDERS = new Set(['mira', 'hobb', 'wenna', 'elda', 'aveline']); // heal, help up, walk home
+const HELP_HEAR = [0, 300, 440, 600]; // how far a shout carries, by severity 1..3
+const HELP_SECONDS = 45; // the longest anyone stays on one call
+const DANGER_NEAR = 84; // an attacker this close to the victim keeps carers back
 
 const WORK_OBJECTS = {
   bram: ['anvil', 'forge'],
@@ -129,10 +157,19 @@ export class NPC extends Actor {
     this.chatAt = -Infinity;
     this.roomDay = -1;
     this.pendingSay = null;
+    this.help = null; // answering a call for help: { victim, attacker, role, phase, ... }
+    this.inBed = null; // the bed they are lying in
+    this.seat = null; // { obj, i, x, y, from } the bench or chair they sit on
+    this.shootReadyAt = 0;
     this._objCache = new Map();
     this._offs = [];
     const bus = game.bus;
     if (bus?.on) {
+      installVillageHooks(game);
+      this._offs.push(bus.on('call_for_help', (p) => this.onCallForHelp(p)));
+      this._offs.push(bus.on('damage', (p) => {
+        if (p && p.target === this) this.onHurt(p);
+      }));
       this._offs.push(bus.on('crime', (p) => this.onCrime(p)));
       this._offs.push(bus.on('speech', (p) => {
         if (p && p.target === this && p.speaker !== this) this.hears(p.speaker, p.text);
@@ -175,6 +212,7 @@ export class NPC extends Actor {
     }
     if (this.mode === 'flee') return this.fleeStep(dt, tick);
     if (this.mode === 'fight') return this.fightStep(dt, tick);
+    if (this.mode === 'help') return this.helpStep(dt, tick);
     // Someone is talking to us: stand still and look at them.
     const p = this.game.player;
     if (now(this.game) < this.talkingUntil && p && this.distTo(p) < 56) {
@@ -206,9 +244,12 @@ export class NPC extends Actor {
     return e;
   }
 
+  // A place by id, else what stands in for it, else home, else the square.
   locFor(id) {
     const L = this.game.locations;
-    return L?.get?.(id) || L?.get?.(this.profile.home) || null;
+    if (!L?.get) return null;
+    const home = this.profile.home;
+    return L.get(id) || L.get(PLACE_FALLBACK[id]) || L.get(home) || L.get(PLACE_FALLBACK[home]) || L.get('town_square') || null;
   }
 
   routine(dt, tick) {
@@ -242,6 +283,9 @@ export class NPC extends Actor {
     r.subT = 0;
     r.subDur = 0.5;
     r.walking = false;
+    r.lamp = null;
+    r.lampIdx = 0;
+    r.lampPhase = null;
     if (!spot || this.distToPoint(spot.x, spot.y) < 4) {
       this.arrive();
       return;
@@ -285,14 +329,119 @@ export class NPC extends Actor {
     if (s?.face) this.faceDir(s.face);
     else if (s?.lookAt) this.faceToward(s.lookAt.x, s.lookAt.y);
     const a = this.activity;
-    if (a === 'sleep') this.setState('sleep', 0.8);
-    else if (a === 'eat' || a === 'rest') this.setState('sit', 0.8);
+    if (a === 'sleep') {
+      // Into their own bed, the way it lies (DESIGN §19.8); with no bed, they doze in a
+      // chair by the hearth. Nobody lies down on a floor.
+      if (s?.bed && !s.bed.removed) this.getIntoBed(s.bed, s);
+      else if (s?.seat) this.sitOn(s.seat, s);
+      this.setState(this.inBed ? 'sleep' : 'sit', 0.8);
+      return;
+    }
+    if (s?.seat) this.sitOn(s.seat, s);
+    if (a === 'eat' || a === 'rest' || this.seat || (s?.sit && r.entry?.pose === 'sit')) this.setState('sit', 0.8);
   }
 
   wake() {
+    this.leaveBed();
+    this.leaveSeat();
     if (this.state === 'sleep' || this.state === 'sit' || this.state === 'work') {
       this.lockTime = 0;
       this.setState('idle');
+    }
+  }
+
+  // ------------------------------------------------------------ beds and seats
+
+  // Their own bed, wherever the world put it (a back room, a loft, the second cot).
+  ownBed() {
+    const g = this.game;
+    const b = this._bed;
+    if (b && !b.removed) return b;
+    const t = now(g);
+    if (b === null && t - (this._bedAt ?? -Infinity) < 20) return null;
+    this._bedAt = t;
+    const id = this.profile.id;
+    const all = g.objects?.all?.() || [];
+    this._bed = all.find((o) => o.objType === 'bed' && !o.removed && (o.owner ?? o.state?.owner) === id) || null;
+    return this._bed;
+  }
+
+  // The free floor beside a bed where its sleeper steps in and out.
+  bedSide(bed) {
+    const ss = bed.sleepSpot;
+    if (ss && this.tileFree(Math.floor(ss.x / TILE), Math.floor(ss.y / TILE))) return { x: ss.x, y: ss.y };
+    const f = bed.footprint || { x: bed.tx, y: bed.ty - 1, w: 1, h: 2 };
+    for (const [tx, ty] of [
+      [f.x + f.w, f.y + f.h - 1],
+      [f.x - 1, f.y + f.h - 1],
+      [f.x + f.w, f.y],
+      [f.x - 1, f.y],
+      [f.x, f.y + f.h],
+    ]) {
+      if (this.tileFree(tx, ty)) return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 + 2 };
+    }
+    return this.freeNear(bed.x, bed.y + TILE) || { x: bed.x, y: bed.y + TILE };
+  }
+
+  getIntoBed(bed, from) {
+    this.leaveSeat();
+    this.inBed = bed;
+    this._bedOut = from ? { x: from.x, y: from.y } : this.bedSide(bed);
+    // Lying along the bed, head on the pillow: the renderer draws sleepers with their bed.
+    this.x = bed.x;
+    this.y = bed.y - 4;
+    this.faceDir('down');
+    this.moveIntent.x = 0;
+    this.moveIntent.y = 0;
+  }
+
+  leaveBed() {
+    const bed = this.inBed;
+    if (!bed) return;
+    this.inBed = null;
+    const out = this._bedOut || this.bedSide(bed);
+    this.x = out.x;
+    this.y = out.y;
+  }
+
+  // A place to sit on a bench, chair, stool or pew: one seat per tile of its footprint.
+  seatOn(o) {
+    const f = o.footprint || { x: o.tx ?? Math.floor(o.x / TILE), y: o.ty ?? Math.floor(o.y / TILE), w: 1, h: 1 };
+    const sitters = (o._sitters ||= []);
+    const n = Math.max(1, f.w);
+    const start = Math.floor(this.jitter * n);
+    for (let k = 0; k < n; k++) {
+      const i = (start + k) % n;
+      const who = sitters[i];
+      if (who && who !== this && !who.removed && who.seat?.obj === o) continue;
+      const approach = this.besideObject({ tx: f.x + i, ty: f.y + f.h - 1 }) || this.freeNear(o.x, o.y + TILE);
+      if (!approach) return null;
+      return { ...approach, face: 'down', sit: true, seat: { obj: o, i, x: (f.x + i) * TILE + TILE / 2, y: o.y + 1 } };
+    }
+    return null;
+  }
+
+  sitOn(seat, from) {
+    const o = seat.obj;
+    const sitters = (o._sitters ||= []);
+    const who = sitters[seat.i];
+    if (who && who !== this && who.seat?.obj === o) return false; // taken while we walked
+    sitters[seat.i] = this;
+    this.seat = { ...seat, from: from ? { x: from.x, y: from.y } : { x: this.x, y: this.y } };
+    this.x = seat.x;
+    this.y = seat.y;
+    this.faceDir('down');
+    return true;
+  }
+
+  leaveSeat() {
+    const s = this.seat;
+    if (!s) return;
+    this.seat = null;
+    if (s.obj?._sitters?.[s.i] === this) s.obj._sitters[s.i] = null;
+    if (s.from) {
+      this.x = s.from.x;
+      this.y = s.from.y;
     }
   }
 
@@ -303,12 +452,38 @@ export class NPC extends Actor {
     if (!loc) return { x: this.anchor.x + (reroll ? (rand(this.game) - 0.5) * 32 : 0), y: this.anchor.y };
     const id = this.profile.id;
     const salt = reroll ? Math.floor(rand(this.game) * 97) : 0;
+    // A schedule entry may name what to stand at or sit on (npc_data_more.js `near`).
+    if (e.near?.length && e.activity !== 'sleep') {
+      const objs = this.objectsIn(loc, e.near);
+      if (objs.length) {
+        const o = objs[(Math.floor(this.jitter * 11) + salt) % objs.length];
+        const sp = e.pose === 'sit' && SEATS.has(o.objType) ? this.seatOn(o) : this.besideObject(o, e.pose === 'sit');
+        if (sp) return sp;
+      }
+    }
     switch (e.activity) {
       case 'sleep': {
-        const bed = this.objectsIn(loc, ['bed']).find((o) => (o.owner ?? o.state?.owner) === id);
-        if (bed) return { x: bed.x, y: bed.y - 6, face: 'down' };
-        return this.floorSpot(loc, 11 + salt);
+        const bed = this.ownBed();
+        if (bed) return { ...this.bedSide(bed), bed, face: 'down' };
+        // No bed of their own (DESIGN §19.8): home, and doze in a chair by the hearth.
+        const home = this.locFor(this.profile.home) || loc;
+        const fire = this.objectsIn(home, ['hearth', 'campfire'])[0];
+        const chairs = this.objectsIn(home, ['chair', 'bench', 'stool']);
+        if (chairs.length) {
+          const near = fire ? chairs.slice().sort((a, b) => Math.hypot(a.x - fire.x, a.y - fire.y) - Math.hypot(b.x - fire.x, b.y - fire.y)) : chairs;
+          for (const c of near) {
+            const sp = this.seatOn(c);
+            if (sp) return sp;
+          }
+        }
+        if (fire) {
+          const sp = this.besideObject(fire, true);
+          if (sp) return { ...sp, sit: true };
+        }
+        return { ...this.floorSpot(home, 11 + salt), sit: true };
       }
+      case 'lamps':
+        return null; // the round walks itself (performLamps)
       case 'work':
       case 'farm': {
         const types = WORK_OBJECTS[id] || (e.activity === 'farm' ? ['crop'] : null);
@@ -451,13 +626,15 @@ export class NPC extends Actor {
     }
     switch (a) {
       case 'sleep':
-        this.setState('sleep', 0.8);
+        this.setState(this.inBed ? 'sleep' : 'sit', 0.8);
         if (tick && rand(g) < 0.02 && this.visibleToPlayer(0)) this.icon('zzz');
         return;
       case 'eat':
       case 'rest':
         this.setState('sit', 0.8);
         return;
+      case 'lamps':
+        return this.performLamps(dt, tick);
       case 'pray':
         if (r.sub === 'kneel') {
           this.setState('sit', 0.5);
@@ -488,6 +665,12 @@ export class NPC extends Actor {
   performWork(dt, tick) {
     const r = this.r;
     const g = this.game;
+    // Work done sitting (the ledger, sewing, mending nets): stay in the seat.
+    if (r.entry?.pose === 'sit') {
+      this.setState('sit', 0.8);
+      if (tick && !this.seat && rand(g) < 0.04 && r.spot?.object) this.faceToward(r.spot.object.x, r.spot.object.y);
+      return;
+    }
     // Only people with a tool in hand (hammer, hoe, ladle) swing it; shopkeepers and
     // the sister tend their place instead.
     const hands = !!this.profile.appearance?.workTool;
@@ -534,6 +717,15 @@ export class NPC extends Actor {
   performWander(dt, tick) {
     const r = this.r;
     const g = this.game;
+    // Socializing on a bench (Hobb and Wenna at dusk, Petra passing judgment): stay put.
+    if (r.entry?.pose === 'sit' && (this.seat || r.spot?.sit)) {
+      this.setState('sit', 0.8);
+      if (tick && rand(g) < 0.12) {
+        const other = this.nearestPerson(40);
+        if (other && !this.seat) this.faceToward(other.x, other.y);
+      }
+      return;
+    }
     if (r.subT <= r.subDur) {
       if (this.activity === 'socialize' && tick && rand(g) < 0.2) {
         const other = this.nearestPerson(48);
@@ -574,6 +766,150 @@ export class NPC extends Actor {
     this.walker.goTo(spot.x, spot.y);
   }
 
+  // ------------------------------------------------------------ the lamp-round
+
+  // The street lamps in the order the lamplighter walks them: the world's own `round`
+  // numbers when it has them (DESIGN §19.2), otherwise the lamps of the square and the
+  // lanes, nearest first from the chapel.
+  lampRoute() {
+    const g = this.game;
+    const day = g.clock?.day ?? 1;
+    if (this._lampRoute && this._lampRouteDay === day) return this._lampRoute;
+    const all = (g.objects?.all?.() || []).filter((o) => o.objType === 'lamp' && !o.removed && !o.alwaysLit && o.kind !== 'candles');
+    let list = all.filter((o) => Number.isFinite(o.round)).sort((a, b) => a.round - b.round);
+    if (!list.length) {
+      const areas = LAMP_AREAS.map((id) => g.locations?.get?.(id)).filter(Boolean);
+      const inArea = (o) => (o.area && LAMP_AREAS.includes(o.area)) || areas.some((L) => inBounds(L, o));
+      const left = all.filter(inArea);
+      const start = g.locations?.get?.('chapel')?.center || areas[0]?.center || { x: this.x, y: this.y };
+      let cx = start.x;
+      let cy = start.y;
+      while (left.length) {
+        let bi = 0;
+        let bd = Infinity;
+        for (let i = 0; i < left.length; i++) {
+          const d = Math.hypot(left[i].x - cx, left[i].y - cy);
+          if (d < bd) {
+            bd = d;
+            bi = i;
+          }
+        }
+        const o = left.splice(bi, 1)[0];
+        list.push(o);
+        cx = o.x;
+        cy = o.y;
+      }
+    }
+    this._lampRoute = list;
+    this._lampRouteDay = day;
+    return list;
+  }
+
+  lampSpot(lamp) {
+    const tx = lamp.tx ?? Math.floor(lamp.x / TILE);
+    const ty = lamp.ty ?? Math.floor(lamp.y / TILE);
+    for (const [dx, dy] of [
+      [0, 1],
+      [-1, 1],
+      [1, 1],
+      [-1, 0],
+      [1, 0],
+    ]) {
+      if (this.tileFree(tx + dx, ty + dy)) return { x: (tx + dx) * TILE + TILE / 2, y: (ty + dy) * TILE + TILE / 2 + 2 };
+    }
+    return this.freeNear(lamp.x, lamp.y + TILE) || { x: lamp.x, y: lamp.y + TILE };
+  }
+
+  // Light one lamp: the world's own lamp.light() when it has one, else the contract
+  // fields (state.lit and a 'lamp_lit' event). Returns true when it was dark.
+  lightLamp(lamp) {
+    if (!lamp || lamp.removed) return false;
+    if (typeof lamp.light === 'function') return !!lamp.light(this);
+    if (lamp.state?.lit) return false;
+    lamp.state = { ...(lamp.state || {}), lit: true };
+    lamp.markDirty?.();
+    try {
+      this.game.bus?.emit?.('lamp_lit', { id: lamp.id, lamp, by: this });
+    } catch {
+      /* listeners must not stop the round */
+    }
+    return true;
+  }
+
+  performLamps(dt, tick) {
+    const r = this.r;
+    const g = this.game;
+    const route = this.lampRoute();
+    const seen = this.visibleToPlayer(48);
+    if (!r.lamp) {
+      while (r.lampIdx < route.length && (route[r.lampIdx].removed || route[r.lampIdx].state?.lit)) {
+        // Someone young and quick got there first. He notices, and says it was the wind.
+        if (seen && route[r.lampIdx].far && !r.windSaid) {
+          r.windSaid = true;
+          this.say(pickLine(g, this.profile.lampAlreadyLit) || 'Lit already.');
+        }
+        r.lampIdx++;
+      }
+      if (r.lampIdx >= route.length) {
+        // The round is done: back to the bench by the chandlery until the schedule moves on.
+        if (!r.roundDone) {
+          r.roundDone = true;
+          const spot = this.spotFor({ activity: 'socialize', at: 'lamplight_lane', near: ['bench'], pose: 'sit' });
+          r.entry = { ...r.entry, activity: 'socialize', at: 'lamplight_lane', near: ['bench'], pose: 'sit' };
+          this.activity = 'socialize';
+          r.spot = spot;
+          if (spot) {
+            r.phase = 'travel';
+            this.walker.goTo(spot.x, spot.y);
+          }
+        }
+        return;
+      }
+      r.lamp = route[r.lampIdx];
+      r.lampPhase = 'go';
+      const spot = this.lampSpot(r.lamp);
+      if (!seen && this.farFromPlayer(420)) {
+        // Off-screen the round keeps a lamplighter's pace without the walking.
+        if (r.subT < 2.2) {
+          r.lamp = null;
+          return;
+        }
+        this.x = spot.x;
+        this.y = spot.y;
+      } else if (this.distToPoint(spot.x, spot.y) > 4) {
+        this.walkTo(spot, 0.95);
+        return;
+      }
+    }
+    const lamp = r.lamp;
+    if (r.lampPhase === 'go') {
+      if (lamp.state?.lit) {
+        if (seen && lamp.far && rand(g) < 0.6) this.say(pickLine(g, this.profile.lampAlreadyLit) || 'Lit already.');
+        r.lamp = null;
+        r.lampIdx++;
+        r.subT = 0;
+        return;
+      }
+      this.faceToward(lamp.x, lamp.y - 24);
+      this.setState('work', 1.0);
+      this.animTime = 0;
+      r.lampPhase = 'raise';
+      r.subT = 0;
+      return;
+    }
+    if (r.lampPhase === 'raise' && r.subT > 0.85) {
+      this.lightLamp(lamp);
+      if (seen && rand(g) < 0.22 && now(g) - (g._npcSayAt ?? -Infinity) > SAY_GAP) {
+        g._npcSayAt = now(g);
+        this.say(pickLine(g, this.profile.lampLines) || 'There. Lit.');
+      }
+      r.lamp = null;
+      r.lampPhase = null;
+      r.lampIdx++;
+      r.subT = 0;
+    }
+  }
+
   // ------------------------------------------------------------ perception
 
   perceive() {
@@ -597,18 +933,24 @@ export class NPC extends Actor {
           foe = e;
           fd = d2;
         }
+      } else if (this.profile.hunter && e !== p && e.species && d2 < HUNT_RADIUS * HUNT_RADIUS && d2 < fd && huntable(e) && this.canSee(e)) {
+        foe = e;
+        fd = d2;
       } else if (e !== p && d2 < THREAT_RADIUS * THREAT_RADIUS && d2 < td && hostileTo(g, e, this) && this.canSee(e)) {
         threat = e;
         td = d2;
       }
     }
-    if (this.isGuard) {
-      if (foe && this.mode !== 'fight') this.startFight(foe);
+    if (this.isGuard || (this.profile.hunter && foe)) {
+      if (foe && this.mode !== 'fight' && this.state !== 'sleep') this.startFight(foe);
       else if (foe && this.mode === 'fight' && this.fightTarget !== foe && !alive(this.fightTarget)) this.fightTarget = foe;
       return;
     }
+    if (this.profile.hunter && this.mode === 'fight') return;
+    // Carers stay with the hurt even with the culprit about, unless they come close.
+    const steadfast = this.mode === 'help' && this.help && this.help.role !== 'shout';
     // The player is wanted: keep clear of them.
-    if (p && alive(p) && crimeActive(g, p) && this.distTo(p) < SIGHT && this.canSee(p)) {
+    if (p && alive(p) && crimeActive(g, p) && this.distTo(p) < (steadfast ? 44 : SIGHT) && this.canSee(p)) {
       if (this.mode !== 'flee' || this.fleeFrom !== p) this.startFlee(p, 8, 'crime');
       else this.fleeUntil = Math.max(this.fleeUntil, now(g) + 4);
       return;
@@ -654,6 +996,7 @@ export class NPC extends Actor {
 
   startFlee(from, seconds, shout = 'flee') {
     const g = this.game;
+    if (this.help && this.help.role === 'shout') this.help = null;
     this.mode = 'flee';
     this.fleeFrom = from;
     this.fleeUntil = now(g) + seconds;
@@ -732,12 +1075,19 @@ export class NPC extends Actor {
     this.speedMul = 1;
     this.walker.stop();
     this.r.key = null; // replan from wherever we ran to
+    // Back to the person they were going to help, if that still needs doing.
+    const h = this.help;
+    if (h && h.role !== 'shout' && now(this.game) < h.until && h.victim && !h.victim.removed) {
+      this.mode = 'help';
+      h.phase = h.phase === 'care' ? 'go' : h.phase;
+    } else this.help = null;
   }
 
   // ------------------------------------------------------------ guards
 
   startFight(target) {
     const g = this.game;
+    if (this.mode === 'help') this.endHelp(true);
     this.mode = 'fight';
     this.fightTarget = target;
     if (!this.post) this.post = { x: this.x, y: this.y };
@@ -745,6 +1095,14 @@ export class NPC extends Actor {
     this.walker.stop();
     this.r.walking = false;
     this.windup = 0;
+    this.freezeT = 0;
+    const c = this.profile.combat;
+    // Wys froze at the wolf last month (LORE §6). Sometimes, at dusk, he still does.
+    if (c?.freezeVs?.includes(target?.species) && (g.clock?.isNight || (g.clock?.hour ?? 12) > 17.5) && rand(g) < 0.5) {
+      this.freezeT = (c.freeze || 0.9) * 2;
+      this.icon('sweat');
+    }
+    if (target === g.player && this.profile.hunter) this.provoke(target);
     if (now(g) - this.shoutAt > 6) {
       this.shoutAt = now(g);
       const isPlayer = target === g.player;
@@ -752,12 +1110,32 @@ export class NPC extends Actor {
     }
   }
 
+  // Hess is not of the watch: combat lets her strike the player only while the player is
+  // wanted for hurting someone, through the same 'provoked' rule creatures use.
+  provoke(target) {
+    const g = this.game;
+    if (target !== g.player || !crimeActive(g, target)) return;
+    this.provokedBy = target;
+    this.provokedMode = 'fight';
+    this.provokedAt = g.combat?.now?.() ?? now(g);
+  }
+
   fightStep(dt, tick) {
     const g = this.game;
     const t = this.fightTarget;
+    if (this.freezeT > 0) {
+      this.freezeT -= dt;
+      this.moveIntent.x = 0;
+      this.moveIntent.y = 0;
+      if (t) this.faceToward(t.x, t.y);
+      return;
+    }
+    if (tick && t && this.profile.hunter && t === g.player) this.provoke(t);
     if (tick) {
-      const valid = t && alive(t) && hostileTo(g, this, t);
-      const tooFar = !t || this.distTo(t) > 260 || (this.post && Math.hypot(this.x - this.post.x, this.y - this.post.y) > GUARD_LEASH);
+      const valid = t && alive(t) && (hostileTo(g, this, t) || (this.profile.hunter && t.species && huntable(t)));
+      // Running in from afar to answer a call, the usual leash waits until they arrive.
+      const rushing = now(g) < (this.rushUntil ?? 0) && t && this.distTo(t) > 90;
+      const tooFar = !t || (!rushing && (this.distTo(t) > 260 || (this.post && Math.hypot(this.x - this.post.x, this.y - this.post.y) > GUARD_LEASH)));
       if (!valid || tooFar) return this.endFight(t);
     }
     if (!t) return this.endFight(null);
@@ -779,6 +1157,23 @@ export class NPC extends Actor {
     }
     const d = this.distTo(t);
     this.speedMul = 1.35;
+    // A huntress keeps her distance and uses the bow.
+    if (this.profile.hunter && d > 34 && d < BOW_RANGE && (tick ? (this._clear = walkLine(g, this, this.x, this.y, t.x, t.y)) : this._clear) !== false) {
+      this.moveIntent.x = 0;
+      this.moveIntent.y = 0;
+      this.faceToward(t.x, t.y);
+      if (now(g) >= this.shootReadyAt && this.lockTime <= 0) {
+        this.shootReadyAt = now(g) + SHOT_GAP;
+        this.setState('attack', 0.3);
+        this.animTime = 0;
+        try {
+          g.combat?.shoot?.(this, t.x, t.y - 6, 'arrow', { target: t, damageMul: 1 });
+        } catch {
+          /* a wasted arrow */
+        }
+      }
+      return;
+    }
     if (d <= 20 + (t.radius ?? 4)) {
       this.moveIntent.x = 0;
       this.moveIntent.y = 0;
@@ -853,6 +1248,13 @@ export class NPC extends Actor {
       if (hears && hostileTo(g, this, actor)) this.startFight(actor);
       return;
     }
+    // Hess answers a crime like the watch does, when she sees it or is close.
+    if (this.profile.hunter && isPlayer && (sees || this.distTo(actor) <= 260) && this.state !== 'sleep') {
+      this.post = { x: this.x, y: this.y };
+      this.startFight(actor);
+      return;
+    }
+    // Witnesses run; a carer on the way to the hurt runs too, and comes back once clear.
     if (sees) this.startFlee(actor, isVictim ? 14 : 10, 'crime');
   }
 
@@ -894,6 +1296,9 @@ export class NPC extends Actor {
 
   // combat.down() calls this.
   onDowned(by) {
+    this.leaveBed();
+    this.leaveSeat();
+    this.help = null;
     this.mode = 'downed';
     this.downedFor = 0;
     this.walker.stop();
@@ -903,6 +1308,8 @@ export class NPC extends Actor {
     this.fightTarget = null;
     this.windup = 0;
     this.pendingSay = null;
+    // Knocked down: the whole lane hears about it (DESIGN §19.7).
+    this.callForHelp(attackerOf(by), 3);
   }
 
   getUp() {
@@ -938,6 +1345,355 @@ export class NPC extends Actor {
     } else {
       this.pendingSay = { at: now(g) + 0.8, text: pickLine(g, this.profile.shaken) || '...', kind: 'say', target: null };
     }
+  }
+
+  // ------------------------------------------------------------ the village answers
+
+  // Hit by anyone: the victim cries out, and the people in earshot answer (DESIGN §19.7).
+  onHurt(p) {
+    const g = this.game;
+    const src = attackerOf(p.source);
+    if (!src || src === this || this.downed) return;
+    const t = now(g);
+    const sev = this.hp <= this.maxHp * 0.4 ? 2 : 1;
+    if (t - (this._hurtCallAt ?? -Infinity) < 6 && sev <= (this._hurtCallSev ?? 0)) return;
+    this._hurtCallAt = t;
+    this._hurtCallSev = sev;
+    this.callForHelp(src, sev);
+  }
+
+  callForHelp(attacker, severity = 1) {
+    const g = this.game;
+    try {
+      g.bus?.emit?.('call_for_help', { victim: this, attacker: attacker || null, x: this.x, y: this.y, severity });
+    } catch {
+      /* listeners must not break the victim */
+    }
+  }
+
+  // Is this villager family to `id` (either side of the bond)?
+  isKinOf(id) {
+    if (!id) return false;
+    const f = this.profile.family;
+    const mine = f && ['parent', 'child', 'spouse', 'sibling', 'ward'].some((k) => f[k]?.includes(id));
+    if (mine) return true;
+    const other = NPC_PROFILES.find((q) => q.id === id)?.family;
+    return !!other && ['parent', 'child', 'spouse', 'sibling', 'ward'].some((k) => other[k]?.includes(this.profile.id));
+  }
+
+  // call_for_help { victim, attacker, x, y, severity } — from a villager, or from Lyra's
+  // mind/behavior. Each villager in earshot picks a part: fight, tend, shield a child,
+  // fetch the watch, or shout and keep clear.
+  onCallForHelp(p, forced = false) {
+    const g = this.game;
+    const victim = p?.victim;
+    if (!victim || victim === this || p.attacker === this || victim.removed) return;
+    if (!this.isAlive() || this.downed || this.mode === 'downed') return;
+    const attacker = p.attacker && p.attacker !== victim && !p.attacker.removed ? attackerOf(p.attacker) : null;
+    const sev = Math.max(1, Math.min(3, Math.round(Number(p.severity) || 1)));
+    const x = Number.isFinite(p.x) ? p.x : victim.x;
+    const y = Number.isFinite(p.y) ? p.y : victim.y;
+    const d = Math.hypot(this.x - x, this.y - y);
+    const kin = this.isKinOf(victim.id);
+    const asleep = this.state === 'sleep';
+    const range = HELP_HEAR[sev] * (kin && sev >= 2 ? 1.8 : 1) * (asleep ? (sev >= 3 ? 0.6 : 0.3) : 1);
+    if (!forced && d > range) return;
+    const t = now(g);
+    const h = this.help;
+    if (this.mode === 'help' && h && h.victim === victim) {
+      // Already on it: the news is worse, or the culprit has changed.
+      if (attacker) h.attacker = attacker;
+      h.sev = Math.max(h.sev, sev);
+      h.lastCall = t;
+      h.until = Math.max(h.until, t + 20);
+      if (forced && h.role === 'shout' && (this.isGuard || this.profile.hunter)) this.startHelp(victim, attacker, sev, x, y, d, true);
+      return;
+    }
+    if (this.mode === 'fight' && this.fightTarget && alive(this.fightTarget) && this.fightTarget !== attacker) return;
+    if (this.mode === 'fight' && this.fightTarget === attacker) return;
+    this.startHelp(victim, attacker, sev, x, y, d, forced);
+  }
+
+  startHelp(victim, attacker, sev, x, y, d, forced = false) {
+    const g = this.game;
+    const t = now(g);
+    const inc = incidentFor(g, victim);
+    const role = helpRole(this, { victim, attacker, sev, d, incident: inc, game: g, forced });
+    if (!role) return;
+    if (role === 'fight') {
+      this.wake();
+      this.post = { x, y };
+      this.mode = 'routine';
+      this.rushUntil = t + 25;
+      this.startFight(attacker);
+      this.sayHelp('answer', victim, true);
+      return;
+    }
+    if (role === 'flee') {
+      this.wake();
+      if (attacker) this.startFlee(attacker, 10, 'flee');
+      else this.sayHelp('shout', victim, true);
+      return;
+    }
+    this.wake();
+    this.leaveBed();
+    this.leaveSeat();
+    this.walker.stop();
+    this.r.walking = false;
+    this.fleeFrom = null;
+    this.mode = 'help';
+    this.help = { victim, attacker, role, sev, phase: 'go', t: 0, at: t, lastCall: t, until: t + HELP_SECONDS, x, y, child: null, guard: null, said: false };
+    inc.responders.set(this.id, role);
+    const h = this.help;
+    if (role === 'shield') {
+      h.child = nearestChild(this, 110);
+      if (h.child) inc.shielded.add(h.child.id);
+    }
+    if (role === 'fetch') {
+      inc.fetcher = this;
+      h.guard = nearestGuard(g, this);
+    }
+    // The first words: by name when it is someone they love.
+    const special = victim.id === 'lyra' ? this.profile.rescue?.lyra : null;
+    const wanted = attacker && attacker === g.player && crimeActive(g, attacker);
+    if (special?.length && (role === 'tend' || role === 'confront')) this.sayLine(special, victim, 'shout');
+    else if (wanted && (role === 'tend' || role === 'shout')) this.sayLine(this.profile.crime, attacker, 'shout');
+    else this.sayHelp(role === 'tend' ? 'shout' : role === 'confront' ? 'answer' : role, victim, true);
+    this.icon('!');
+  }
+
+  sayHelp(kind, about, shout = false) {
+    const g = this.game;
+    const own = this.profile;
+    const res = RESPONSE_LINES[own.id] || {};
+    let list = res[kind];
+    if (kind === 'tend') list = (about?.id === 'lyra' ? own.tend?.lyra : own.tend?.other) || res.tend;
+    if (kind === 'answer') list = res.answer || own.fight || own.crime;
+    if (kind === 'shout') list = res.shout || own.crime || own.flee;
+    if (!list?.length) list = own.flee;
+    this.sayLine(list, about, shout ? 'shout' : 'say');
+  }
+
+  sayLine(list, target, kind = 'say') {
+    const g = this.game;
+    const t = now(g);
+    if (t - this.shoutAt < 2.5) return;
+    const l = pickLine(g, list);
+    if (!l) return;
+    this.shoutAt = t;
+    this.say(l, { kind, target: target || null });
+  }
+
+  helpStep(dt, tick) {
+    const g = this.game;
+    const h = this.help;
+    const t = now(g);
+    if (!h || !h.victim || h.victim.removed || t > h.until) return this.endHelp();
+    h.t += dt;
+    const v = h.victim;
+    const a = h.attacker && alive(h.attacker) && !h.attacker.removed && !h.attacker.downed ? h.attacker : null;
+    // Danger: whoever did it is still at the victim's side, and recently at it.
+    const danger = !!a && Math.hypot(a.x - v.x, a.y - v.y) < DANGER_NEAR && (t - h.lastCall < 14 || hostileTo(g, a, v) || crimeActive(g, a));
+    switch (h.role) {
+      case 'tend':
+        return this.tendStep(dt, tick, h, v, a, danger);
+      case 'shield':
+        return this.shieldStep(dt, tick, h, a);
+      case 'confront':
+        return this.confrontStep(dt, tick, h, v, a, danger);
+      case 'fetch':
+        return this.fetchStep(dt, tick, h, v);
+      default:
+        return this.shoutStep(dt, tick, h, v, a);
+    }
+  }
+
+  // Walk (or hurry) toward a point, re-planning now and then. 'arrived' when close.
+  helpMove(dt, x, y, run, arrive = 8, tick = false) {
+    if (this.distToPoint(x, y) <= arrive) {
+      this.walker.stop();
+      this.speedMul = 1;
+      return 'arrived';
+    }
+    this.speedMul = run;
+    if (tick || !this.walker.active) this.walker.goTo(x, y);
+    const res = this.walker.step(dt);
+    if (res === 'stuck' && !this.visibleToPlayer(32)) {
+      this.x = x;
+      this.y = y + 2;
+      return 'arrived';
+    }
+    return 'moving';
+  }
+
+  tendStep(dt, tick, h, v, a, danger) {
+    const g = this.game;
+    const t = now(g);
+    const dv = this.distTo(v);
+    if (h.phase === 'go') {
+      if (danger && dv < DANGER_NEAR + 40) {
+        // Close enough to call out, too close to the trouble to go in.
+        this.walker.stop();
+        this.speedMul = 1;
+        this.faceToward(v.x, v.y);
+        if (tick && rand(g) < 0.08) this.sayHelp('shout', v, true);
+        return;
+      }
+      const side = v.x >= this.x ? -12 : 12;
+      if (this.helpMove(dt, v.x + side, v.y + 3, 1.5, 10, tick) !== 'arrived') return;
+      h.phase = 'care';
+      h.t = 0;
+      this.faceToward(v.x, v.y);
+      this.setState('work', 1.1);
+      this.animTime = 0;
+      this.sayHelp('tend', v);
+      return;
+    }
+    if (h.phase === 'care') {
+      this.faceToward(v.x, v.y);
+      if (dv > 30) {
+        h.phase = 'go';
+        return;
+      }
+      if (h.t < 1.1) return;
+      const c = g.combat;
+      let ok = false;
+      try {
+        if (v.downed) {
+          ok = c?.revive ? !!c.revive(v, this, 0.4) : false;
+          if (!ok && typeof v.helpUp === 'function') {
+            v.helpUp(this);
+            ok = true;
+          }
+        } else {
+          const share = this.profile.id === 'mira' ? 0.35 : 0.2;
+          ok = (c?.heal?.(this, v, Math.max(4, Math.round((v.maxHp || 30) * share))) || 0) > 0 || true;
+        }
+      } catch {
+        ok = false;
+      }
+      if (ok) {
+        try {
+          if (this.visibleToPlayer(0)) g.particles?.emit?.('heal', v.x, v.y - 10, { count: 6 });
+        } catch {
+          /* cosmetic */
+        }
+        try {
+          g.bus?.emit?.('tended', { npc: this, victim: v, attacker: h.attacker || null });
+        } catch {
+          /* listeners must not break the carer */
+        }
+      }
+      h.phase = 'escort';
+      h.t = 0;
+      h.escortUntil = t + 22;
+      const home = homeOf(g, v);
+      try {
+        g.bus?.emit?.('escort', { npc: this, victim: v, to: home?.id ?? null });
+      } catch {
+        /* nobody has to listen */
+      }
+      const lines = RESPONSE_LINES[this.profile.id]?.escort;
+      if (lines?.length) this.pendingSay = { at: t + 1.6, text: pickLine(g, lines), kind: 'say', target: v };
+      return;
+    }
+    // Walking them home: keep at their side until they are in, or a while has passed.
+    if (t > (h.escortUntil ?? 0) || (v.state === 'sleep' && dv < 40)) return this.endHelp();
+    if (danger) {
+      h.phase = 'go';
+      return;
+    }
+    const want = dv > 22;
+    if (want) this.helpMove(dt, v.x + (this.x < v.x ? -14 : 14), v.y + 2, dv > 80 ? 1.4 : 1.05, 6, tick);
+    else {
+      this.walker.stop();
+      this.speedMul = 1;
+      this.moveIntent.x = 0;
+      this.moveIntent.y = 0;
+      if (tick && rand(g) < 0.2) this.faceToward(v.x, v.y);
+    }
+  }
+
+  // Stand between a child and the trouble while the child gets away.
+  shieldStep(dt, tick, h, a) {
+    const c = h.child;
+    if (!c || !alive(c) || !a || h.t > 14 || this.distTo(a) > 260) return this.endHelp();
+    const dx = a.x - c.x;
+    const dy = a.y - c.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const gx = c.x + (dx / d) * 16;
+    const gy = c.y + (dy / d) * 16;
+    if (this.helpMove(dt, gx, gy, 1.5, 6, tick) === 'arrived') {
+      this.moveIntent.x = 0;
+      this.moveIntent.y = 0;
+      this.faceToward(a.x, a.y);
+    }
+  }
+
+  // A fighter facing someone combat does not (yet) let them strike: step in the way and warn.
+  confrontStep(dt, tick, h, v, a, danger) {
+    const g = this.game;
+    if (!a || h.t > 16 || (!danger && h.t > 6)) return this.endHelp();
+    if (hostileTo(g, this, a) || (this.profile.hunter && crimeActive(g, a))) {
+      this.post = { x: this.x, y: this.y };
+      this.mode = 'routine';
+      this.help = null;
+      return this.startFight(a);
+    }
+    const dx = a.x - v.x;
+    const dy = a.y - v.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const gx = v.x + (dx / d) * Math.min(18, d * 0.5);
+    const gy = v.y + (dy / d) * Math.min(18, d * 0.5);
+    if (this.helpMove(dt, gx, gy, 1.5, 6, tick) === 'arrived') {
+      this.faceToward(a.x, a.y);
+      if (tick && rand(g) < 0.1) this.sayLine(this.profile.crime, a, 'shout');
+    }
+  }
+
+  // Run for the watch and bring them.
+  fetchStep(dt, tick, h, v) {
+    const g = this.game;
+    let G = h.guard;
+    if (!G || !alive(G) || G.downed) G = h.guard = nearestGuard(g, this);
+    if (!G) return this.endHelp();
+    if (G.mode === 'fight' || (G.mode === 'help' && G.help?.victim === v)) return this.endHelp();
+    if (this.helpMove(dt, G.x, G.y + 4, 1.6, 40, tick) === 'arrived' || h.t > 25) {
+      this.faceToward(G.x, G.y);
+      const lead = RESPONSE_LINES[this.profile.id]?.fetch;
+      if (lead?.length) this.say(`${D.firstName(G)}! ${D.firstName(v) === 'them' ? 'Quick' : D.firstName(v)} — over there!`, { kind: 'shout', target: G });
+      G.onCallForHelp({ victim: v, attacker: h.attacker, x: h.x, y: h.y, severity: Math.max(2, h.sev) }, true);
+      this.endHelp();
+    }
+  }
+
+  // Raise the alarm, look, and keep clear of the trouble.
+  shoutStep(dt, tick, h, v, a) {
+    if (a && this.distTo(a) < 110) {
+      this.help = null;
+      this.mode = 'routine';
+      return this.startFlee(a, 7, 'flee');
+    }
+    this.walker.stop();
+    this.moveIntent.x = 0;
+    this.moveIntent.y = 0;
+    this.faceToward(v.x, v.y);
+    if (h.t > 4 + this.jitter * 3) this.endHelp();
+  }
+
+  endHelp(quiet = false) {
+    const g = this.game;
+    const h = this.help;
+    if (h) {
+      const inc = g._helpIncidents?.get(h.victim);
+      inc?.responders.delete(this.id);
+      if (inc?.fetcher === this) inc.fetcher = null;
+    }
+    this.help = null;
+    if (this.mode === 'help') this.mode = 'routine';
+    this.speedMul = 1;
+    this.walker.stop();
+    this.r.key = null;
   }
 
   // ------------------------------------------------------------ social life
@@ -1287,3 +2043,173 @@ function hash01(x) {
 function escapeRe(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+
+function inBounds(loc, o) {
+  const b = loc?.bounds;
+  if (!b) return false;
+  const tx = o.tx ?? Math.floor(o.x / TILE);
+  const ty = o.ty ?? Math.floor(o.y / TILE);
+  return tx >= b.x && ty >= b.y && tx < b.x + b.w && ty < b.y + b.h;
+}
+
+// The actor behind a hit: an arrow's archer, a bolt's caster.
+function attackerOf(src) {
+  if (!src) return null;
+  if (src.type === 'projectile') return src.owner || null;
+  return src.type === 'actor' ? src : src.owner || null;
+}
+
+// Creatures Hess will take on: monsters, bandits, the dead. Never wildlife, cats or people.
+function huntable(e) {
+  if (!e || !e.species || e.species === 'cat') return false;
+  return factionRelation('villager', e.faction) === 'hostile';
+}
+
+function isChild(npc) {
+  const a = npc?.profile?.appearance;
+  return a?.build === 'child' || a?.build === 'teen' || (npc?.profile?.age ?? 30) < 16;
+}
+
+function nearestChild(npc, r) {
+  const g = npc.game;
+  return g.entities?.nearest?.(npc.x, npc.y, r, (e) => e !== npc && e instanceof NPC && isChild(e) && alive(e)) || null;
+}
+
+function nearestGuard(g, from) {
+  return g.entities?.nearest?.(from.x, from.y, 4000, (e) => e instanceof NPC && e.isGuard && alive(e) && !e.downed) || null;
+}
+
+function homeOf(g, actor) {
+  const L = g.locations;
+  if (!L?.get || !actor) return null;
+  if (actor.id === 'lyra') return L.get('chandlery') || L.get('ember_kettle') || null;
+  const home = actor.profile?.home;
+  return (home && (L.get(home) || L.get(PLACE_FALLBACK[home]))) || null;
+}
+
+// One shared record per victim, so the village splits the work (one fetcher, each child
+// shielded once) instead of everyone doing the same thing.
+function incidentFor(g, victim) {
+  const t = now(g);
+  let map = g._helpIncidents;
+  if (!map) map = g._helpIncidents = new Map();
+  for (const [k, v] of map) if (t - v.t > 90) map.delete(k);
+  let inc = map.get(victim);
+  if (!inc) map.set(victim, (inc = { t, responders: new Map(), fetcher: null, shielded: new Set() }));
+  inc.t = t;
+  return inc;
+}
+
+// Which part a villager plays in a call for help (DESIGN §19.7). Pure apart from looking
+// around: ctx = { victim, attacker, sev, d (distance to the victim), incident, game, forced }.
+//   fight     guards and Hess, against an attacker combat lets them strike
+//   confront  guards and Hess, stepping in the way of the player when it is not (yet) a crime
+//   tend      Mira, the Ambrels, Elda, Aveline, and family of the victim: heal, help up, walk home
+//   shield    an adult with Pip or Tansy close by: stand between the child and the trouble
+//   fetch     one villager runs for the watch when no guard is near
+//   flee      children, and anyone with the trouble on top of them
+//   shout     everyone else: raise the alarm, look, keep clear
+export function helpRole(npc, ctx) {
+  const g = ctx.game || npc.game;
+  const { victim, attacker, sev = 1, d = 0, incident = null, forced = false } = ctx;
+  const id = npc.profile?.id;
+  const fighter = npc.isGuard || !!npc.profile?.hunter;
+  const playerDid = !!attacker && (attacker === g?.player || attacker.id === 'player');
+  const close = attacker ? Math.hypot(npc.x - attacker.x, npc.y - attacker.y) : Infinity;
+  if (fighter && attacker) {
+    if (hostileTo(g, npc, attacker) || (npc.profile?.hunter && attacker.species && huntable(attacker))) return 'fight';
+    if (playerDid && npc.profile?.hunter && crimeActive(g, attacker)) return 'fight';
+    if (playerDid && (sev >= 2 || forced || d < 140)) return 'confront';
+  }
+  if (fighter && !attacker) return victim?.downed || sev >= 2 ? 'tend' : 'shout';
+  if (isChild(npc)) return 'flee';
+  const kin = npc.isKinOf?.(victim?.id);
+  const carer = TENDERS.has(id) || kin || (!!RESPONSE_LINES[id]?.tend && d < 200);
+  if (carer && (sev >= 2 || d < 260 || kin || victim?.downed)) return 'tend';
+  if (attacker && close < 60) return 'flee';
+  if (attacker && incident) {
+    const child = nearestChild(npc, 110);
+    if (child && !incident.shielded.has(child.id) && child !== victim) return 'shield';
+  }
+  if (attacker && incident && !incident.fetcher && sev >= 2) {
+    const G = nearestGuard(g, npc);
+    const guardNear = G && Math.hypot(G.x - victim.x, G.y - victim.y) < 240;
+    if (G && !guardNear && G.mode !== 'fight') return 'fetch';
+  }
+  // One knock from afar is not everyone's business.
+  if (sev <= 1 && d > 160 && !forced) return null;
+  return 'shout';
+}
+
+// Hooks every villager shares, installed once per game: Lyra's own hurts reach the village
+// even before her mind calls out (a fallback; her call_for_help refreshes the same answer),
+// and villagers the world did not place yet are put at home when the game starts.
+function installVillageHooks(game) {
+  if (game._villageHooks || !game.bus?.on) return;
+  game._villageHooks = true;
+  const bus = game.bus;
+  const lastCall = { t: -Infinity, sev: 0 };
+  const alarm = (victim, attacker, sev) => {
+    const t = now(game);
+    if (t - lastCall.t < 5 && sev <= lastCall.sev) return;
+    lastCall.t = t;
+    lastCall.sev = sev;
+    const p = { victim, attacker, x: victim.x, y: victim.y, severity: sev };
+    for (const e of game.entities?.all?.() || []) if (e instanceof NPC && !e.removed) e.onCallForHelp(p);
+  };
+  bus.on('damage', (p) => {
+    const lyra = game.companion;
+    if (!p || !lyra || p.target !== lyra) return;
+    const src = attackerOf(p.source);
+    if (!src || src === lyra) return;
+    const f = lyra.maxHp ? lyra.hp / lyra.maxHp : 1;
+    alarm(lyra, src, f < 0.35 ? 3 : f < 0.7 ? 2 : 1);
+  });
+  bus.on('downed', (p) => {
+    const lyra = game.companion;
+    if (p?.entity && p.entity === lyra) alarm(lyra, attackerOf(p.by), 3);
+  });
+  bus.on('game_start', () => ensureVillagers(game));
+}
+
+// Put any villager whose profile exists but whom the world did not place at their home
+// (or what stands in for it), so all eighteen live in the village. Returns those added.
+export function ensureVillagers(game, profiles = NPC_PROFILES) {
+  const ents = game?.entities;
+  const L = game?.locations;
+  if (!ents?.add || !L?.get) return [];
+  const added = [];
+  for (const p of profiles) {
+    if (ents.get?.(p.id)) continue;
+    const loc = L.get(p.home) || L.get(PLACE_FALLBACK[p.home]) || L.get('town_square');
+    if (!loc?.center) continue;
+    const spot = freeSpotNear(game, loc.center.x, loc.center.y, hashId(p.id)) || loc.center;
+    try {
+      added.push(ents.add(new NPC(game, p, { x: spot.x, y: spot.y })));
+    } catch (err) {
+      console.error('[npc] could not place', p.id, err);
+    }
+  }
+  return added;
+}
+
+function freeSpotNear(game, x, y, salt) {
+  const tx = Math.floor(x / TILE);
+  const ty = Math.floor(y / TILE);
+  for (let r = 0; r <= 4; r++) {
+    for (let k = 0; k < 8; k++) {
+      const a = (salt * 6.28 + k * 0.785) % 6.283;
+      const cx = tx + Math.round(Math.cos(a) * r);
+      const cy = ty + Math.round(Math.sin(a) * r);
+      let blocked = false;
+      try {
+        blocked = !!game.isBlockedTile?.(cx, cy, null) || !!game.objects?.doorAt?.(cx, cy);
+      } catch {
+        blocked = true;
+      }
+      if (!blocked) return { x: cx * TILE + TILE / 2, y: cy * TILE + TILE / 2 + 2 };
+    }
+  }
+  return null;
+}
+

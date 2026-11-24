@@ -470,8 +470,11 @@ function makeVillage() {
   return { g, p, bram, rowan, elda };
 }
 
-test('a knocked-out villager gets up after 30 s at half health and goes home shaken', () => {
-  const { g, bram } = makeVillage();
+test('a knocked-out villager left alone gets up after 30 s at half health and goes home shaken', () => {
+  const { g, bram, rowan, elda } = makeVillage();
+  // Nobody about to help him up (the village answering is tested in villagers.test.mjs).
+  g.entities.remove(rowan);
+  g.entities.remove(elda);
   g.combat.down(bram, g.player);
   assert.equal(bram.state, 'downed');
   assert.equal(bram.mode, 'downed');
@@ -527,7 +530,8 @@ test('crimes: witnesses flee and shout, guards fight the player only while the c
   p.x = px(70);
   p.y = px(50);
   run(g, 12);
-  assert.equal(elda.mode, 'routine');
+  // Elda stops running; she is back to her day, or back at Bram's side (DESIGN §19.7).
+  assert.ok(elda.mode === 'routine' || (elda.mode === 'help' && elda.help?.victim === bram), elda.mode);
   assert.equal(dialogueTone(elda, p), 'cold');
   const d = elda.getDialogue(p);
   assert.ok(profileById('elda').cold.includes(d.lines[0]));
