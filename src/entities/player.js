@@ -114,7 +114,7 @@ export class Player extends Actor {
     this._prompt = null;
     this._down = null; // knocked-out sequence
     this._light = { x: 0, y: 0, r: 72, color: '#ffb047', intensity: 0.85, flicker: 0.12 };
-    this._bindLight = { x: 0, y: 0, r: 34, color: '#ffe08a', intensity: 0.7, flicker: 0.2 };
+    this._bindLight = { x: 0, y: 0, r: 34, color: '#b9a6ff', intensity: 0.7, flicker: 0.2 };
     this._rootShown = 0; // seconds the binding ring has been visible (for its fade-in)
     // { level 1|2, kind 'assault'|'knockout', until (game.clock.t), victimId, since, t } while wanted.
     this.crime = null;
@@ -650,7 +650,7 @@ export class Player extends Actor {
   _strain() {
     const g = this.game;
     try {
-      g.particles?.emit?.('magic', this.x, this.y - 2, { count: 4, color: '#ffe08a', speed: 18, life: 0.4 });
+      g.particles?.emit?.('magic', this.x, this.y - 2, { count: 4, color: '#ddd2ff', speed: 18, life: 0.4 });
       g.audio?.play?.('magic', { x: this.x, y: this.y, volume: 0.4, pitch: 1.3 });
     } catch {
       /* effects are optional */
@@ -879,7 +879,7 @@ export class Player extends Actor {
   getLight(time = 0) {
     if (this.dead) return null;
     if (this.rootTime > 0 && !this.downed) {
-      // Binding Light glows gold around the feet, day or night.
+      // Binding Light glows in Lyra's arcane violet around the feet, day or night.
       const B = this._bindLight;
       B.x = this.x;
       B.y = this.y - 2;
@@ -940,7 +940,7 @@ export class Player extends Actor {
     if (this.workBar) this._drawWorkBar(ctx, sx, sy - hz);
   }
 
-  // Lyra's Binding Light: a spinning ring of gold light with brighter runes at the feet,
+  // Lyra's Binding Light: a spinning ring of arcane light with brighter runes at the feet,
   // and bands of light wrapping the shins. The back half of the ring is drawn before the
   // body and the front half after, so it reads as circling the player. Plain rects only.
   _drawBinding(ctx, sx, sy, time, front) {
@@ -963,25 +963,25 @@ export class Player extends Actor {
       const u = (((ang - spin) / (Math.PI * 2)) % 1 + 1) % 1;
       const rune = (u * 5) % 1 < 0.2;
       ctx.globalAlpha = prev * a * (front ? 1 : 0.65);
-      ctx.fillStyle = rune ? '#fff4c0' : '#ffb047';
+      ctx.fillStyle = rune ? '#ffffff' : '#a995ff';
       ctx.fillRect(x, y, 1, 1);
       if (rune) {
         ctx.globalAlpha = prev * a * (front ? 0.8 : 0.5);
-        ctx.fillStyle = '#ffe08a';
+        ctx.fillStyle = '#ddd2ff';
         ctx.fillRect(x, y - 1, 1, 1);
       }
     }
     if (front) {
       const pulse = 0.6 + 0.4 * Math.sin(time * 11);
       ctx.globalAlpha = prev * a * pulse;
-      ctx.fillStyle = '#fff4c0';
+      ctx.fillStyle = '#ddd2ff';
       ctx.fillRect(sx - 4, sy - 3, 9, 1);
       ctx.globalAlpha = prev * a * pulse * 0.6;
-      ctx.fillStyle = '#ffe08a';
+      ctx.fillStyle = '#a995ff';
       ctx.fillRect(sx - 3, sy - 7, 7, 1);
       // Motes rising off the ring.
       ctx.globalAlpha = prev * a * 0.8;
-      ctx.fillStyle = '#fff4c0';
+      ctx.fillStyle = '#ffffff';
       for (let k = 0; k < 3; k++) {
         const ph = (time * 0.9 + k / 3) % 1;
         const mx = Math.round(sx + Math.cos(spin * 0.7 + k * 2.1) * rx * 0.8);
