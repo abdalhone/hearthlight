@@ -87,6 +87,12 @@ export class SettingsPanel {
       case 'sfxVol':
         g.audio?.applyVolumes?.();
         break;
+      case 'voiceVol':
+        g.voice?.applyVolume?.();
+        break;
+      case 'voices':
+        if (!value) g.voice?.stop?.();
+        break;
       case 'zoom':
         safe(() => g.renderer?.resize?.());
         break;
@@ -128,6 +134,8 @@ export class SettingsPanel {
     if (this.statusT < 0.5) return;
     this.statusT = 0;
     this.refreshStatus();
+    const live = this.game.brain?.voice?.live;
+    if (this.liveEl && live) setText(this.liveEl, live.statusText());
   }
 
   refreshStatus() {
@@ -222,11 +230,26 @@ export class SettingsPanel {
     // --- Villagers' minds (§19.3) ---
     mindSec.append(this.villageAiRow());
 
-    // --- Voice ---
-    const voiceSec = h('section', { class: 'box' }, h('h3', { text: 'Voice' }));
-    voiceSec.append(this.toggleRow('Lyra speaks her replies aloud', 'voice'));
-    if (rt?.tts) voiceSec.append(this.selectRow('Her voice', 'voiceName', VOICES));
-    else voiceSec.append(h('p', { class: 'muted small', text: "Uses your browser's speech voice here; on claude.ai she can use a Claude voice." }));
+    // --- Voices (DESIGN.md §21) ---
+    const voiceSec = h('section', { class: 'box' }, h('h3', { text: 'Voices' }));
+    voiceSec.append(
+      this.toggleRow('Characters speak their lines', 'voices'),
+      this.rangeRow('Voice volume', 'voiceVol'),
+      this.toggleRow('Lyra', 'voiceLyra'),
+      this.toggleRow('Villagers', 'voiceVillagers'),
+      this.toggleRow('Narrator', 'voiceNarrator'),
+      h('p', { class: 'muted small', text: 'Lines without a recording (her replies from Claude, made-up lines) can still be spoken:' }),
+    );
+    const live = g.brain?.voice?.live;
+    this.liveEl = null;
+    if (live?.available?.()) {
+      voiceSec.append(this.toggleRow('Kokoro voice for everything she says — downloads about 90 MB once', 'kokoroLive'));
+      this.liveEl = h('p', { class: 'muted small voice-live-status', role: 'status', text: live.statusText() });
+      voiceSec.append(this.liveEl);
+    }
+    voiceSec.append(this.toggleRow(rt?.tts ? "Read her other replies in Claude's voice" : 'Read her other replies aloud', 'voice'));
+    if (rt?.tts) voiceSec.append(this.selectRow("Claude's voice", 'voiceName', VOICES));
+    voiceSec.append(this.toggleRow("Use the browser's voice when nothing else can", 'browserVoice'));
 
     // --- Sound ---
     const soundSec = h('section', { class: 'box' }, h('h3', { text: 'Sound' }));

@@ -4,3 +4,9 @@ dist/
 node_modules
 node_modules/
 screenshots/
+
+# Voice tooling: rendered samples and caches stay out of git
+assets/voice/_sample/
+scripts/voice/__pycache__/
+*.pyc
+scripts/voice/lines.json

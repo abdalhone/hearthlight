@@ -12,6 +12,8 @@
     "check": "npm test && npm run smoke"
   },
   "devDependencies": {
-    "esbuild": "0.25.12"
+    "esbuild": "0.25.12",
+    "onnxruntime-web": "1.31.1",
+    "phonemizer": "1.2.1"
   }
 }
