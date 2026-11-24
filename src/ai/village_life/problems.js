@@ -189,6 +189,16 @@ export function whenPhrase(t, now) {
   return `${today - day} days ago`;
 }
 
+// For "nobody's seen him since …": never "since just now".
+export function sincePhrase(t, now) {
+  const w = whenPhrase(t, now);
+  if (w === 'just now' || w === 'an hour or so ago') {
+    const h = ((t % 900) / 900) * 24;
+    return h < 11.5 ? 'this morning' : h < 17 ? 'earlier today' : 'this evening';
+  }
+  return w;
+}
+
 export function clockText(t) {
   const h24 = ((t % 900) / 900) * 24;
   const h = Math.floor(h24);

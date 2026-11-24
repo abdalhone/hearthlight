@@ -430,6 +430,7 @@ export const LYRA_LIFE = {
   seenWith: ['{When}, {at}. With {with}.'],
   notSeen: ["Not since {when}. Is something wrong?", "No — not since {when}."],
   never: ["No. What's happened?"],
+  notSeenCalm: ["Not today. Why — do you need {him}?", "Not since {when}, I think. {He}'ll be about somewhere."],
   heard: ['{from} says {he} was {at}, {when}.'],
   worry: ["Nobody can find {who}. I keep looking at doors, as if {he}'ll walk through one."],
   playerNo: ["Then where is {he}… All right. If you see {him}, tell me.", 'No. Nobody has. That\'s what frightens me.'],

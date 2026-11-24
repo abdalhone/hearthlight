@@ -20,7 +20,7 @@
 import { Sightings } from './sightings.js';
 import { ErrandBook, applyEffects, describeErrand, freshStock, seedMorningGoods, inStock, habitAt } from './errands.js';
 import { errandTemplate, EXPECTS, COVER, WATCH, placePhrase, placeAt, pronoun } from './errands_data.js';
-import { newProblem, restoreProblem, careFor, buildInput, whenPhrase, clockText, MAX_STEPS } from './problems.js';
+import { newProblem, restoreProblem, careFor, buildInput, whenPhrase, sincePhrase, clockText, MAX_STEPS } from './problems.js';
 import { decideLocal } from './reasoner_local.js';
 import { ClaudeReasoner, THINK_BATCH } from './reasoner_claude.js';
 import { Cases, Absences } from './missing.js';
@@ -1319,7 +1319,7 @@ export class VillageLife {
     const about = step.about;
     const c = this.cases.get(about);
     const last = c ? this.cases.lastKnown(c) : null;
-    const when = last ? whenPhrase(last.t, t) : prob ? whenPhrase(prob.since, t) : 'this morning';
+    const when = last ? sincePhrase(last.t, t) : prob ? sincePhrase(prob.since, t) : 'this morning';
     const lines = [[e.id, this.line(e.id, 'alarm', { about, listener: leader.id, when })]];
     this.event('alarm', `${this.name(e.id)} told ${this.name(leader.id)} that nobody has seen ${this.name(about)} since ${when}.`, { who: e.id, about });
     this.talk(e, leader, lines, {
@@ -1639,7 +1639,7 @@ export class VillageLife {
     if (!mind) return;
     const name = this.name(c.about);
     const last = this.cases.lastKnown(c);
-    const since = last ? whenPhrase(last.t, t) : whenPhrase(c.openedAt, t);
+    const since = last ? sincePhrase(last.t, t) : sincePhrase(c.openedAt, t);
     const care = this.lyraCare(c.about);
     safe(() => mind.learn?.(name, `Nobody has seen ${name} since ${since}; people are looking for ${pronoun(c.about, 'him')}.`, { kind: 'rumor', source: 'told', confidence: 0.6, about: [c.about] }));
     safe(() => mind.remember?.(`Nobody has seen ${name} since ${since}. People are asking after ${pronoun(c.about, 'him')}.`, { importance: 3 + Math.round(care * 4), about: [c.about], tags: ['missing'], type: 'event' }));
@@ -1665,7 +1665,7 @@ export class VillageLife {
     if (!this.lyraCanSpeak(lyra)) return;
     c.lyra.asked = t;
     const last = this.cases.lastKnown(c);
-    const when = last ? whenPhrase(last.t, t) : whenPhrase(c.openedAt, t);
+    const when = last ? sincePhrase(last.t, t) : sincePhrase(c.openedAt, t);
     const text = this.line('lyra', c.status === 'missing' ? 'askPlayerMissing' : 'askPlayer', { about: c.about, when, listener: 'player' });
     if (!text) return;
     safe(() => lyra.mind.say(text, { chat: true, target: this.game.player }));
@@ -1892,10 +1892,10 @@ export class VillageLife {
     if (prob) {
       const about = prob.about;
       const last = about ? this.lastKnownTo(id, about) : null;
-      const when = last ? whenPhrase(last.t, now) : whenPhrase(prob.since, now);
+      const when = last ? sincePhrase(last.t, now) : sincePhrase(prob.since, now);
       const vars = { about, when, shop: prob.shop, goods: prob.goods, purpose: prob.purpose, placeId: prob.place };
       let problem;
-      if (prob.kind === 'shut') problem = fillLine(`I came for {goods}, and {shop}'s shut. Nobody's seen {who} since {when}.`, id, vars);
+      if (prob.kind === 'shut') problem = fillLine(`I came for {goods}, and {shop} is shut. Nobody's seen {who} since {when}.`, id, vars);
       else if (prob.kind === 'item') problem = fillLine(`{who}'s got no {goods} left, and I needed it.`, id, vars);
       else if (prob.kind === 'blocked') problem = fillLine(`There's something {at}. I'm not going in there alone.`, id, { ...vars, at: placeAt(prob.place, this.placeName(prob.place)) });
       else if (prob.kind === 'worried') problem = fillLine(`Nobody's seen {who} since {when}.`, id, vars);
@@ -2193,7 +2193,7 @@ export class VillageLife {
         vars.with = this.nameFor('lyra', own.with);
         line = this.line('lyra', 'seenWith', vars);
       } else line = this.line('lyra', 'seen', vars);
-    } else line = this.line('lyra', own ? 'notSeen' : 'never', { about, when: own ? whenPhrase(own.t, t) : 'yesterday' });
+    } else line = this.line('lyra', c && c.status !== 'found' ? (own ? 'notSeen' : 'never') : 'notSeenCalm', { about, when: own ? whenPhrase(own.t, t) : 'yesterday' });
     if (c && (c.status === 'search' || c.status === 'missing') && c.lyra.knew != null) {
       const extra = this.line('lyra', c.status === 'missing' ? 'missing' : 'worry', { about });
       if (extra) line = `${line} ${extra}`;
@@ -2214,7 +2214,7 @@ export class VillageLife {
         const searched = Object.keys(c.searched || {})
           .slice(0, 4)
           .map((p) => placePhrase(p, this.placeName(p)));
-        bits.push(`Nobody in Hearthvale has seen ${name} since ${whenPhrase((this.cases.lastKnown(c) || { t: c.openedAt }).t, t)}${c.status === 'missing' ? '; the village says ' + pronoun(c.about, 'he') + ' is missing, and nobody knows why' : c.status === 'search' ? '; the watch is searching' : ''}${searched.length ? ` (searched: ${searched.join(', ')})` : ''}.`);
+        bits.push(`Nobody in Hearthvale has seen ${name} since ${sincePhrase((this.cases.lastKnown(c) || { t: c.openedAt }).t, t)}${c.status === 'missing' ? '; the village says ' + pronoun(c.about, 'he') + ' is missing, and nobody knows why' : c.status === 'search' ? '; the watch is searching' : ''}${searched.length ? ` (searched: ${searched.join(', ')})` : ''}.`);
       }
     }
     const q = this.pending.lyra;
