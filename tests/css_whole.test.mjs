@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CSS_FILES = ['src/styles.css'];
+const CSS_FILES = [process.env.CSS_FILE || 'src/styles.css'];
 
 // The stylesheet with comments and strings blanked out (kept the same length, so line
 // numbers still match), for brace counting.
@@ -59,7 +59,7 @@ function topLevelSelectors(code) {
 }
 
 for (const rel of CSS_FILES) {
-  const css = readFileSync(path.join(root, rel), 'utf8');
+  const css = readFileSync(path.isAbsolute(rel) ? rel : path.join(root, rel), 'utf8');
 
   test(`${rel}: no merge-conflict markers`, () => {
     const bad = [];
