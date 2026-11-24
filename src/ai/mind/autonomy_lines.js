@@ -57,7 +57,7 @@ export const LINES = {
     tired: ['I’ll come. I may yawn at you.'],
   },
   ok_rejoin: {
-    warm: ['All right. Together again. I’m glad, if I’m honest.', 'I missed the road with you, if I’m honest. Let’s go.', 'Calm water, then. I’m coming back.'],
+    warm: ['All right. Together again. I’m glad, if I’m honest.', 'I missed the road with you, if I’m honest. Let’s go.', 'Flame’s lit, then. I’m coming back.'],
     cool: ['I’ll come back. Slowly.', 'All right. I’ll walk with you again.'],
     afraid: ['I’ll come. My hand stays near my dagger.'],
     tired: ['I’ll come back. Mostly because I’m too tired to argue.'],

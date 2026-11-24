@@ -41,6 +41,7 @@ import { Brain } from '../ai/brain/brain.js';
 
 import { ClaudeRuntime } from '../platform/claude_runtime.js';
 import { UI } from '../ui/ui.js';
+import { StoryDirector } from '../story/director.js';
 
 export const SAVE_VERSION = 1;
 
@@ -55,7 +56,7 @@ export class Game {
     this.seed = 20261123;
     this.rng = new RNG(this.seed);
     this.time = 0; // real seconds since boot; drives animations
-    this.state = 'boot'; // boot | title | playing | sleeping
+    this.state = 'boot'; // boot | title | playing | sleeping | cutscene (a story scene plays; the world is frozen)
     this.paused = false; // set by the UI while a pause/settings menu is open
     this.hitStop = 0; // seconds of frozen action after a heavy hit (combat sets it; world freezes, UI keeps running)
     this.flags = {}; // story flags: { journal_found: true, ... }
@@ -87,6 +88,7 @@ export class Game {
     this.brain = new Brain(this);
     this.save = new SaveManager(this);
     this.ui = new UI(this, this.uiRoot);
+    this.story = new StoryDirector(this); // cutscenes, the prologue, story scenes, the Book of Halcyre
 
     // World pieces, created by buildWorld().
     this.map = null;
@@ -167,7 +169,9 @@ export class Game {
     this.camera.snap();
   }
 
-  newGame() {
+  // opts.prologue: play the prologue first (the title's New game does; automated tests
+  // calling newGame() directly start straight in play).
+  newGame(opts = {}) {
     if (this.map) {
       location.reload();
       return;
@@ -175,6 +179,7 @@ export class Game {
     this.buildWorld();
     this.state = 'playing';
     this.bus.emit('game_start', { loaded: false });
+    if (opts.prologue) this.story?.playPrologue({ world: true });
   }
 
   async continueGame() {
@@ -249,6 +254,7 @@ export class Game {
   update(dt) {
     this.time += dt;
     this.input.update(dt);
+    this.story?.update(dt);
     if (this.state === 'playing' && !this.paused && this.hitStop > 0) {
       this.hitStop = Math.max(0, this.hitStop - dt);
       this.camera.update(dt);
@@ -270,6 +276,12 @@ export class Game {
     } else if (this.state === 'title' || this.state === 'sleeping') {
       this.particles.update(dt);
       this.bubbles.update(dt);
+    } else if (this.state === 'cutscene') {
+      // The world is frozen under a scene; only its light, air and speech marks live on.
+      this.lighting.update(dt);
+      this.particles.update(dt);
+      this.weather.update(dt);
+      this.bubbles.update(dt);
     }
     this.audio.update(dt);
     this.ui.update(dt);
@@ -277,7 +289,9 @@ export class Game {
   }
 
   render(alpha, frameDt) {
-    this.renderer.render(alpha, frameDt);
+    // A painted story panel covers the whole screen: no need to draw the world under it.
+    if (!this.story?.coversScreen()) this.renderer.render(alpha, frameDt);
+    this.story?.render();
   }
 
   serialize() {

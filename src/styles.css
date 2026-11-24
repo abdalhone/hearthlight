@@ -4301,8 +4301,7 @@ input[type='range']::-moz-range-thumb {
   pointer-events: none;
 }
 
-/* =====================================================================
-   Round 3 (DESIGN §19.6): saying anything to anyone, listening in, the
+/* ==============================================================   Round 3 (DESIGN §19.6): saying anything to anyone, listening in, the
    morning's "while you slept", the eighteen, her worth-it judgment, edited
    memories, and phone polish (toasts that keep clear, the keyboard inset).
    ===================================================================== */
@@ -5174,4 +5173,430 @@ input[type='range']::-moz-range-thumb {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+=======
+/* ---------- story: cutscenes (src/story/cutscene.js) ---------- */
+
+.cs-root {
+  --cs-bar: clamp(16px, 7vh, 64px);
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  overflow: hidden;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  cursor: pointer;
+}
+.cs-root[hidden] {
+  display: none;
+}
+.cs-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+.cs-fade {
+  position: absolute;
+  inset: 0;
+  background: #05040c;
+  opacity: 1;
+  pointer-events: none;
+}
+.cs-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--cs-bar);
+  background: #020107;
+  pointer-events: none;
+  transition: transform 0.7s var(--ease);
+}
+.cs-bar-top {
+  top: 0;
+  transform: translateY(-100%);
+}
+.cs-bar-bottom {
+  bottom: 0;
+  transform: translateY(100%);
+}
+.cs-on .cs-bar {
+  transform: none;
+}
+.cs-title {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.9s ease;
+  pointer-events: none;
+}
+.cs-title.cs-show {
+  opacity: 1;
+}
+.cs-title-main {
+  font-family: var(--font-display);
+  font-size: clamp(28px, 6vw, 54px);
+  color: var(--ember-hot);
+  text-shadow: 0 3px 0 var(--ember-dark), 0 0 24px rgba(255, 176, 71, 0.45);
+}
+.cs-title-sub {
+  font-family: var(--font-body);
+  font-style: italic;
+  font-size: clamp(15px, 2.4vw, 20px);
+  color: var(--parch-2);
+}
+.cs-box {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--cs-bar) * 0.45 + var(--sa-b));
+  width: min(780px, calc(100% - 32px));
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 18px 16px;
+  background: linear-gradient(180deg, rgba(14, 12, 34, 0.9), rgba(8, 7, 22, 0.94));
+  box-shadow:
+    0 -2px 0 0 var(--line),
+    0 2px 0 0 var(--line),
+    -2px 0 0 0 var(--line),
+    2px 0 0 0 var(--line),
+    0 10px 30px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  transition:
+    opacity 0.35s ease,
+    transform 0.35s var(--ease);
+  pointer-events: none;
+}
+.cs-box.cs-show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.cs-box.cs-lyra {
+  box-shadow:
+    0 -2px 0 0 var(--arcane-deep),
+    0 2px 0 0 var(--arcane-deep),
+    -2px 0 0 0 var(--arcane-deep),
+    2px 0 0 0 var(--arcane-deep),
+    0 10px 30px rgba(0, 0, 0, 0.55);
+}
+.cs-portrait {
+  flex: none;
+  width: 76px;
+  height: 76px;
+  background: radial-gradient(circle at 50% 35%, #2a2f66, #12122e);
+  box-shadow: 0 0 0 2px var(--outline), 0 0 0 4px var(--line-soft);
+}
+.cs-portrait[hidden] {
+  display: none;
+}
+.cs-portrait canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+.cs-words {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+.cs-name {
+  font-family: var(--font-display);
+  font-size: var(--fs-m);
+  color: var(--ember);
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
+}
+.cs-name:empty {
+  display: none;
+}
+.cs-lyra .cs-name {
+  color: var(--arcane);
+}
+.cs-text {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: clamp(16px, 1.25vw + 9px, 21px);
+  line-height: 1.42;
+  color: var(--parch);
+  min-height: 2.84em;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+.cs-narration {
+  background: linear-gradient(180deg, rgba(5, 4, 14, 0.55), rgba(5, 4, 14, 0.78));
+  box-shadow: none;
+}
+.cs-narration .cs-text {
+  text-align: center;
+  font-style: italic;
+  color: var(--parch-2);
+  font-size: clamp(17px, 1.35vw + 9px, 22px);
+}
+.cs-next {
+  position: absolute;
+  right: -4px;
+  bottom: -8px;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid var(--ember);
+  opacity: 0;
+}
+.cs-next.cs-ready {
+  opacity: 1;
+  animation: cs-bob 1s ease-in-out infinite;
+}
+@keyframes cs-bob {
+  50% {
+    transform: translateY(3px);
+  }
+}
+.cs-skip {
+  position: absolute;
+  top: calc(var(--sa-t) + 10px);
+  right: calc(var(--sa-r) + 12px);
+  z-index: 2;
+  overflow: hidden;
+  min-width: 72px;
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-s);
+  color: var(--parch-2);
+  background: rgba(10, 9, 25, 0.55);
+  box-shadow: 0 0 0 2px var(--line-soft);
+  cursor: pointer;
+}
+.cs-skip:hover,
+.cs-skip:focus-visible {
+  color: var(--ember-hot);
+  box-shadow: 0 0 0 2px var(--ember-deep);
+}
+.cs-skip-label {
+  position: relative;
+}
+.cs-skip-label::after {
+  content: ' \25B8\25B8';
+}
+.cs-skip-fill {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 176, 71, 0.35);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+.cs-hint {
+  display: none;
+}
+/* Phones held upright: the box spans the width, the portrait shrinks. */
+.cs-portrait-screen .cs-box {
+  width: calc(100% - 20px);
+  bottom: calc(var(--sa-b) + 14px);
+  padding: 12px 14px 14px;
+  gap: 10px;
+}
+.cs-portrait-screen .cs-portrait {
+  width: 58px;
+  height: 58px;
+}
+@media (max-height: 460px) {
+  .cs-root {
+    --cs-bar: 12px;
+  }
+  .cs-box {
+    bottom: calc(var(--sa-b) + 8px);
+    padding: 8px 14px 10px;
+  }
+  .cs-portrait {
+    width: 56px;
+    height: 56px;
+  }
+  .cs-text {
+    font-size: 16px;
+    min-height: 2.6em;
+  }
+  .cs-skip {
+    top: calc(var(--sa-t) + 6px);
+    min-height: 34px;
+    padding: 6px 12px;
+  }
+}
+/* While a scene plays, the game's own interface steps back. */
+.cs-active > .layer-hud,
+.cs-active > .layer-touch,
+.cs-active > .layer-chat,
+.cs-active > .layer-toasts {
+  visibility: hidden;
+}
+.reduce-motion .cs-next.cs-ready {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-bar,
+  .cs-box,
+  .cs-title {
+    transition: none;
+  }
+  .cs-next.cs-ready {
+    animation: none;
+  }
+}
+
+/* ---------- story: the Book of Halcyre (src/ui/codex.js) ---------- */
+
+.codex-panel .panel-body {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+}
+.codex-book {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 196px 1fr;
+}
+.codex-chapters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 10px 14px 14px;
+  border-right: 2px solid var(--line-dim);
+  overflow-y: auto;
+  background: rgba(8, 7, 22, 0.35);
+}
+.codex-tab {
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  gap: 8px;
+}
+.codex-tab-title {
+  flex: 1;
+  min-width: 0;
+}
+.codex-tab-count {
+  flex: none;
+  min-width: 22px;
+  padding: 0 5px;
+  font-size: var(--fs-xs);
+  text-align: center;
+  color: var(--parch-dim);
+  background: rgba(10, 9, 25, 0.5);
+}
+.codex-tab-on {
+  color: var(--ember-hot);
+  box-shadow:
+    0 -2px 0 0 var(--ember-deep),
+    0 2px 0 0 var(--ember-deep),
+    -2px 0 0 0 var(--ember-deep),
+    2px 0 0 0 var(--ember-deep);
+}
+.codex-page {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 16px 22px 28px;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  user-select: text;
+  -webkit-user-select: text;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.codex-plate {
+  margin: 0 0 14px;
+  box-shadow: 0 0 0 2px var(--outline), 0 0 0 4px var(--line-soft);
+  background: #05040c;
+}
+.codex-plate-art {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 0.38;
+  image-rendering: pixelated;
+}
+.codex-chapter-title {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  color: var(--ember-hot);
+  text-shadow: 0 2px 0 var(--ember-dark);
+}
+.codex-intro {
+  margin: 0 0 16px;
+  font-style: italic;
+  color: var(--parch-dim);
+}
+.codex-entry {
+  margin: 0 0 16px;
+  padding: 0 0 14px;
+  border-bottom: 2px dotted var(--line-dim);
+}
+.codex-entry h4 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: var(--fs-l);
+  font-weight: 500;
+  color: var(--parch);
+}
+.codex-entry p {
+  margin: 0 0 8px;
+  font-size: var(--fs-m);
+  line-height: 1.5;
+  color: var(--parch-2);
+  max-width: 64ch;
+}
+.codex-life h4,
+.codex-told h4 {
+  color: var(--arcane-pale);
+}
+.codex-questions p::before {
+  content: '? ';
+  color: var(--ember);
+  font-family: var(--font-display);
+}
+.codex-locked,
+.codex-empty {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  font-style: italic;
+  color: var(--parch-faint);
+  box-shadow: inset 0 0 0 2px var(--line-dim);
+}
+@media (max-width: 640px) {
+  .codex-book {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .codex-chapters {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 10px 10px 12px;
+    border-right: 0;
+    border-bottom: 2px solid var(--line-dim);
+    scrollbar-width: none;
+  }
+  .codex-tab {
+    width: auto;
+    flex: none;
+    white-space: nowrap;
+  }
+  .codex-page {
+    padding: 14px 14px 24px;
+  }
 }

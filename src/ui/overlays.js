@@ -5,6 +5,7 @@ import { h, button, setStyle, toggleClass } from './dom.js';
 import { makePanel } from './modal.js';
 import { dayLabel } from './format.js';
 import { storyEntries, runEntry } from './story_menu.js';
+import { openCodex } from './codex.js';
 
 export function buildPause(ui) {
   const g = ui.game;
@@ -30,17 +31,14 @@ export function buildPause(ui) {
       ui.closeModal(panel, true);
       ui.openInventory();
     } }),
-  );
-  // The Prologue and The Book of Halcyre, when this build has the story (§20).
-  for (const entry of storyEntries(g, ui)) {
-    menu.append(
-      button(entry.label, { icon: entry.icon, cls: `pause-${entry.id}`, title: entry.hint, onClick: () => {
-        ui.closeModal(panel, true);
-        runEntry(entry, ui);
-      } }),
-    );
-  }
-  menu.append(
+    button('The Book of Halcyre', { icon: 'book', onClick: () => {
+      ui.closeModal(panel, true);
+      openCodex(ui);
+    } }),
+    button('Watch the prologue', { icon: 'flame', onClick: () => {
+      ui.closeModal(panel, true);
+      g.story?.playPrologue?.({ world: false });
+    } }),
     button('Settings', { icon: 'gear', onClick: () => ui.openSettings() }),
     button('Save game', { icon: 'scroll', onClick: () => g.save?.save?.('manual') }),
     button('Quit to title', { cls: 'btn-ghost', onClick: () => ui.quitToTitle() }),
