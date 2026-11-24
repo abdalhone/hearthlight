@@ -1307,7 +1307,10 @@ export class Perception {
       rels.setOpinion(rel.id, fi.opinion, 'impression');
       const where = place ? ` ${placePhrase(place)}` : '';
       const mentions = place && fi.memory && fi.memory.toLowerCase().includes(String(place.name).toLowerCase().replace(/^the /, ''));
-      const memText = fi.memory ? (where && !mentions ? fi.memory.replace(/\./, `${where}.`) : fi.memory) : `Met ${e.name}${where}.`;
+      // "Met Bram Ironhand, the blacksmith, at the smithy." (an appositive keeps its commas)
+      const first = fi.memory ? fi.memory.split('.')[0] : '';
+      const placeIn = (t) => (/, [^,]+$/.test(first) ? t.replace(/\./, `,${where}.`) : t.replace(/\./, `${where}.`));
+      const memText = fi.memory ? (where && !mentions ? placeIn(fi.memory) : fi.memory) : `Met ${e.name}${where}.`;
       m.remember(memText, {
         importance: fi.hope ? 6 : 5,
         about: [rel.id],

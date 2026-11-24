@@ -22,7 +22,7 @@ import { WorkingMemory } from '../src/ai/mind/working_memory.js';
 import { relationshipsPlugin } from '../src/ai/plugins/relationships_plugin.js';
 import { memoryPlugin } from '../src/ai/plugins/memory_plugin.js';
 import { feelingsPlugin } from '../src/ai/plugins/feelings_plugin.js';
-import { socialPlugin } from '../src/ai/plugins/social_plugin.js';
+import { socialPlugin, socialState } from '../src/ai/plugins/social_plugin.js';
 import { questPlugin } from '../src/ai/plugins/quest_plugin.js';
 
 const MIND_PLUGINS = [relationshipsPlugin, memoryPlugin, feelingsPlugin, socialPlugin, questPlugin];
@@ -701,6 +701,44 @@ test('talk_to: she walks over, talks from the profile and lore, learns, remember
   // Nobody to talk to.
   assert.equal(game.actions.run('talk_to', { target: 'Maren' }, 'player').ok, false);
   assert.equal(game.actions.run('talk_to', { target: 'nobody at all' }, 'player').ok, false);
+});
+
+test('talk_to through Claude: the brain writes the talk when the player asked for it', async () => {
+  const { game, mind, lyra } = makeGame();
+  game.bus.emit('game_start', { loaded: false });
+  const rowan = game.entities.add(villager(game, 'rowan', lyra.x + 20, lyra.y));
+  mind.perception.meet(rowan);
+  const asked = [];
+  game.brain = {
+    llmAvailable: () => true,
+    async generateConversation(npc, topic) {
+      asked.push([npc.id, topic]);
+      return {
+        lines: [
+          { speaker: 'lyra', text: 'Captain. What do you know about the bandits?' },
+          { speaker: 'npc', text: "Varek One-Eye's outlaws camp in the hills north-east and take a toll from carts on the King's Road. Some are hungry farmhands; some are worse." },
+          { speaker: 'lyra', text: 'Then I know where not to take a stroll.' },
+        ],
+        learned: ['Rowan counts at least six bandits at the camp, archers among them.'],
+        affinity: 3,
+      };
+    },
+  };
+  assert.ok(game.actions.run('talk_to', { target: 'Rowan', value: 'the bandits' }, 'player').ok);
+  run(game, 0.5);
+  await new Promise((r) => setTimeout(r, 0));
+  run(game, 30, 0.25);
+  assert.deepEqual(asked, [['rowan', 'the bandits']]);
+  assert.ok(mind.knowledge.some((k) => /six bandits/.test(k.text) && k.from === 'rowan'));
+  assert.ok(mind.knowsLore('varek_band'), 'lore he actually told her is learned');
+  assert.ok(rowan.said.some((t) => /Varek/.test(t)));
+  // Her own wandering talks never call Claude.
+  asked.length = 0;
+  socialState(game).talk = null;
+  game.actions.run('talk_to', { target: 'Rowan' }, 'self');
+  run(game, 0.5);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(asked, []);
 });
 
 // ------------------------------------------------------------------ plugins: actions, intents, prompt context

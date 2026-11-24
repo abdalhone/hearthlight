@@ -8,7 +8,7 @@ import { addGoal as addGoalTo, completeGoal as completeGoalIn, sanitizeGoals, to
 import { Perception, jobLabel } from './perception.js';
 import { ThoughtGenerator } from './thoughts.js';
 import { STAGES } from './maren.js';
-import { clamp, firstSentence, playerRef, cap, partOfDay, pick, shorten, placePhrase, lowerFirst } from './text.js';
+import { clamp, firstSentence, playerRef, cap, partOfDay, pick, shorten, placePhrase, lowerFirst, joinList } from './text.js';
 import { KnowledgeStore } from './knowledge.js';
 import { MemoryIndex } from './memory_index.js';
 import { WorkingMemory } from './working_memory.js';
@@ -693,7 +693,10 @@ export class Mind {
     const parts = [];
     parts.push(mood.valence > 0.25 ? 'A good day, mostly.' : mood.valence < -0.15 ? 'A heavy day.' : 'A long day, and a strange one.');
     if (mems.length) {
-      for (const m of mems) parts.push(firstSentence(m.text, 160));
+      const gists = mems.map((m) => m.gist).filter(Boolean).slice(0, 3);
+      if (gists.length >= 2) parts.push(`${cap(joinList(gists))}.`);
+      const big = mems.find((m) => m.importance >= 6) || (gists.length < 2 ? mems[0] : null);
+      if (big) parts.push(firstSentence(big.text, 180));
     } else {
       parts.push(`Quiet. We stayed ${placePhrase(this.place())}, and nothing tried to eat us, which counts as a triumph.`);
     }
@@ -785,7 +788,8 @@ export class Mind {
       .top(3)
       .filter((e) => e.value >= 0.35)
       .map((e) => e.name);
-    const status = safeCall(() => o?.behavior?.status?.()) || '';
+    // Behavior speaks to the player ("following you"); this paragraph is about her.
+    const status = String(safeCall(() => o?.behavior?.status?.()) || '').replace(/\byou\b/g, 'the player').replace(/\byour\b/g, "the player's");
     const loc = this.place();
     const w = g?.clock?.weather?.type || 'clear';
     const weather = { clear: 'clear skies', cloudy: 'clouds', rain: 'rain', fog: 'fog' }[w] || w;
@@ -797,7 +801,10 @@ export class Mind {
     const comp = this.companionship;
     if (comp !== 'together') parts.push(COMPANIONSHIP_STATE[comp] || `Her standing with the player: ${comp}.`);
     const plan = this.currentPlan();
-    if (plan) parts.push(`Her plan now: ${plan.activity}${plan.at ? ` at ${g?.locations?.get?.(plan.at)?.name || plan.at}` : ''}${plan.why ? ` (${plan.why})` : ''}.`);
+    if (plan) {
+      const why = plan.why ? ` (in her words: "${String(plan.why).replace(/[.!]+$/, '')}")` : '';
+      parts.push(`Her plan now: ${plan.activity}${plan.with === 'player' ? ' with the player' : ''}${plan.at ? ` at ${g?.locations?.get?.(plan.at)?.name || plan.at}` : ''}${why}.`);
+    }
     if (goal) parts.push(`On her mind: ${lowerFirst(goal.text.replace(/[.!]$/, ''))}.`);
     const wm = this.workingMemory.list(3).map((it) => it.label);
     if (wm.length) parts.push(`Thinking of: ${wm.join('; ')}.`);
