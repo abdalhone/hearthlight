@@ -17,17 +17,19 @@ const LEAD_INS = {
 const REACTIONS = {
   secret: ['Your secret is safe with me.', "I won't tell a soul. Not even the cat.", 'That stays between us. I promise.'],
   family: ["I'm so sorry.", 'That must be heavy to carry.', 'Thank you for telling me.'],
-  work: ["I'd love to see that someday.", "That's wonderful.", 'Honest work. I like that.'],
-  village: ['Good to know.', "I'll keep my ears open.", 'Huh. This valley keeps surprising me.'],
+  // She has known every one of them all her life (LORE §7): a neighbor's replies, not a newcomer's.
+  work: ['Some things never change. Good.', 'Ha. Same as ever, then.', 'Honest work. I like that.'],
+  village: ['Good to know.', "I'll keep my ears open.", 'Twenty-four years in this valley, and it still surprises me.'],
+  maren: ['I know. I keep asking anyway.', 'Every time I hear it, I hope it ends differently.', 'Thank you. I needed to hear it again.'],
   default: ["Huh. I wouldn't have guessed.", 'I like learning things like that.', 'Well. I never.'],
 };
 
 const QUESTIONS = {
-  family: ['Do you have family here, {n}?', 'Who do you go home to, {n}?'],
-  work: ["How's work treating you, {n}?", 'What does a day look like for you, {n}?'],
+  family: ['How are your people, {n}?', 'Everyone well at home, {n}?'],
+  work: ["How's the work treating you, {n}?", 'Busy day, {n}?'],
   secret: ["You've got a look about you, {n}. What's the story?", "There's something you're not saying, {n}. Out with it."],
-  village: ["What's the news in Hearthvale?", 'Anything I should know about this place, {n}?'],
-  default: ['Tell me something about yourself I don\'t know.', 'What keeps you busy, {n}?', 'Tell me something about this valley.'],
+  village: ["What's the news, {n}?", "Heard anything I haven't, {n}?"],
+  default: ["Tell me something I don't know, {n}. I dare you.", 'What keeps you busy these days, {n}?', "What's new with you, {n}?"],
 };
 
 const CLOSERS = {
