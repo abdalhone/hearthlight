@@ -53,6 +53,33 @@ Interjections espeak would spell out ("Hmph" as H-M-P-H) are spoken as sounds
 The first test sentence ("Well now, the lamps are lit and the road home is long. Mind your
 step on the bridge tonight, will you?"), rendered, shaped and normalized; rate is the
 average over both test sentences. No voice clipped (raw or finished), none had a silence
-longer than 0.9 s inside a line, and every line ends at least 60 dB down.
+longer than 0.9 s inside a line (Mira's hesitant pauses are the longest, 0.89 s), and
+every line fades out: its last 30 ms sit 36 dB (a bandit's breath) to 76 dB below its
+loudest moment.
 
-MEASUREMENTS
+| voice | median F0 | F0 p10–p90 | range | rate (syl/s) | HNR | LUFS | true peak | nearest (distance) |
+|---|---|---|---|---|---|---|---|---|
+| narrator | 127 Hz | 94–157 | 9.0 st | 4.27 | 10.8 dB | -16.0 | -1.8 dBTP | rowan (3.7) |
+| lyra | 196 Hz | 160–257 | 8.1 st | 5.07 | 12.2 dB | -16.1 | -1.8 dBTP | petra (3.4) |
+| hobb | 114 Hz | 76–154 | 12.2 st | 4.07 | 7.9 dB | -16.2 | -1.8 dBTP | bandit (4.3) |
+| wenna | 184 Hz | 148–226 | 7.3 st | 5.45 | 11.9 dB | -16.2 | -1.9 dBTP | tansy (4.2) |
+| elda | 163 Hz | 135–195 | 6.4 st | 5.25 | 12.3 dB | -16.1 | -1.8 dBTP | mira (3.2) |
+| bram | 101 Hz | 78–135 | 9.5 st | 4.74 | 9.7 dB | -16.1 | -1.8 dBTP | tobias (3.5) |
+| pip | 218 Hz | 175–292 | 8.9 st | 5.65 | 13.6 dB | -16.1 | -1.9 dBTP | lyra (5.1) |
+| rowan | 121 Hz | 98–144 | 6.7 st | 5.25 | 10.2 dB | -16.1 | -1.8 dBTP | narrator (3.7) |
+| mira | 172 Hz | 141–239 | 9.1 st | 4.84 | 12.5 dB | -16.1 | -1.5 dBTP | elda (3.2) |
+| tobias | 109 Hz | 86–162 | 10.9 st | 5.10 | 11.7 dB | -16.1 | -1.7 dBTP | alder (3.4) |
+| aveline | 153 Hz | 120–197 | 8.5 st | 4.19 | 11.1 dB | -16.1 | -1.8 dBTP | maren (3.7) |
+| garrick | 152 Hz | 111–207 | 10.8 st | 5.22 | 9.1 dB | -16.2 | -1.6 dBTP | wys (3.8) |
+| hess | 139 Hz | 110–168 | 7.4 st | 5.27 | 12.1 dB | -16.2 | -1.9 dBTP | tilly (4.9) |
+| sabeth | 182 Hz | 151–237 | 7.8 st | 5.14 | 15.1 dB | -16.1 | -1.9 dBTP | tilly (3.5) |
+| alder | 105 Hz | 75–148 | 11.8 st | 4.77 | 8.1 dB | -16.2 | -1.6 dBTP | tobias (3.4) |
+| petra | 190 Hz | 138–249 | 10.2 st | 5.10 | 11.5 dB | -16.0 | -1.8 dBTP | lyra (3.4) |
+| tilly | 170 Hz | 141–229 | 8.4 st | 5.57 | 14.4 dB | -16.1 | -1.9 dBTP | sabeth (3.5) |
+| tansy | 174 Hz | 151–235 | 7.6 st | 5.42 | 11.4 dB | -16.0 | -1.8 dBTP | petra (3.6) |
+| corran | 130 Hz | 84–189 | 13.9 st | 4.31 | 7.3 dB | -16.3 | -1.8 dBTP | garrick (4.4) |
+| wys | 143 Hz | 107–199 | 10.7 st | 5.64 | 9.7 dB | -16.0 | -1.8 dBTP | garrick (3.8) |
+| maren | 171 Hz | 120–237 | 11.9 st | 4.32 | 8.4 dB | -16.2 | -1.9 dBTP | aveline (3.7) |
+| bandit | 113 Hz | 86–145 | 9.1 st | 5.48 | 7.7 dB | -16.3 | -1.8 dBTP | alder (3.4) |
+| varek | 96 Hz | 80–126 | 8.0 st | 5.13 | 11.1 dB | -16.1 | -1.8 dBTP | bram (3.6) |
+| lyra_young | 253 Hz | 204–331 | 8.4 st | 5.27 | 12.4 dB | -16.2 | -1.9 dBTP | pip (6.4) |
