@@ -181,6 +181,11 @@ export class Player extends Actor {
       if (this.workBar.t <= 0) this.workBar = null;
     }
     this._rootShown = this.rootTime > 0 ? this._rootShown + dt : 0;
+    if (this.rootTime > 0) {
+      // Held in place means held: blows land, but do not shove you out of the light.
+      this.knock.x = 0;
+      this.knock.y = 0;
+    }
     super.update(dt);
     this._afterMove(dt);
     if (this.downed) this._tickDown(dt);
