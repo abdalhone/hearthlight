@@ -145,7 +145,7 @@ export function analyzeRequest(a, req = {}) {
   // Words between them (a promise, a note, a feeling): never an imposition.
   if (category === 'talk') {
     out.score = 1;
-    out.lineKey = 'ok_generic';
+    out.quiet = true; // nothing to agree to out loud: the words themselves are the answer
     return finish(a, out, v, worst);
   }
 
@@ -659,9 +659,9 @@ function finish(a, out, v, worst) {
     key = out.pay > 0 && out.category !== 'companionship' ? 'ok_paid' : out.lineKey || 'ok_generic';
   }
   out.condition = out.decision === 'accept_conditional' ? conditionText(out) : null;
-  out.lineKey = key;
+  out.lineKey = out.quiet ? null : key;
   out.score = Math.round(s * 100) / 100;
-  out.message = a.lines.pick(key, tone, vars) || a.lines.pick('ok_generic', tone, vars);
+  out.message = out.quiet ? '' : a.lines.pick(key, tone, vars) || a.lines.pick('ok_generic', tone, vars);
   return out;
 }
 

@@ -454,6 +454,12 @@ export const LINES = {
     afraid: ['Thank you.'],
     tired: ['Thanks. Truly.'],
   },
+  deed_paid_work: {
+    warm: ['{npc} paid me {coins} coins. My purse is singing.', '{coins} coins from {npc}. Honest work, honest coin.', 'Look at that — {coins} coins, and {npc} says come back tomorrow.'],
+    cool: ['{npc} paid me {coins} coins. I earn my own way.', '{coins} coins. My own.'],
+    afraid: ['{coins} coins from {npc}. Good. That’s a room for the night.'],
+    tired: ['{coins} coins. Worth every blister.'],
+  },
   deed_payment: {
     warm: ['{coins} coins, as agreed. A pleasure doing business.', 'Paid in full. See? We’re good at this.'],
     cool: ['Paid. Good.'],
@@ -869,6 +875,12 @@ export const LINES = {
     cool: ['We’ll see.', 'I’ll remember you said that.'],
     afraid: ['I hope you mean it.'],
     tired: ['I’ll remember.'],
+  },
+  ans_promise_ask: {
+    warm: ['You promise what, exactly? Finish the sentence.', 'Promise what? I like my promises with words in them.'],
+    cool: ['Promise what?'],
+    afraid: ['Promise me what?'],
+    tired: ['Promise what?'],
   },
   ans_promise_doubt: {
     warm: ['You promised last time too.'],
