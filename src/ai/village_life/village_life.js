@@ -451,6 +451,13 @@ export class VillageLife {
       if (e.absent) continue;
       const step = this.steps.get(e.id);
       if (step) {
+        // The player is talking to them: their errand waits (and its clock with it).
+        if ((e.talkingUntil ?? -Infinity) > t && step.phase !== 'talk') {
+          step.t0 += TICK;
+          step.readyAt += TICK;
+          if (step.until) step.until += TICK;
+          continue;
+        }
         safe(() => this.progress(e, step, t, hour));
         continue;
       }
@@ -1066,7 +1073,7 @@ export class VillageLife {
     const tgt = this.entity(step.target);
     const prob = step.prob ? this.problemById(step.prob) : null;
     if (step.kind !== 'meet' && prob && prob.status !== 'open') return this.endStep(e);
-    if (!tgt || !this.isHere(tgt) || tgt.downed) {
+    if (!tgt || !this.isHere(tgt) || tgt.downed || (tgt === this.game?.companion && tgt.state === 'sleep')) {
       this.endStep(e);
       if (prob) {
         if (!prob.asked.includes(step.target)) prob.asked.push(step.target);
@@ -1793,6 +1800,47 @@ export class VillageLife {
         return { lines: [why || `I'm ${inst.label}.`], mood: 'neutral', intent: 'life_errand' };
       }
       if (step?.doing) return { lines: [`I'm ${step.doing}.`], mood: 'worried', intent: 'life_errand' };
+    }
+    return null;
+  }
+
+  // Dialog buttons for their day (phones have no keyboard to type "what's wrong?").
+  dialogOptions(npc) {
+    const id = npc?.id;
+    if (!id || npc.state === 'sleep') return [];
+    const out = [];
+    const q = this.pending.npc[id];
+    if (q && !q.answered && this.rt() - q.rt < 90) {
+      const him = pronoun(q.about, 'him');
+      out.push({ id: 'life:answer:no', label: `No, I haven't seen ${him}.` }, { id: 'life:answer:yes', label: `Yes, I saw ${him} earlier.` }, { id: 'life:answer:unsure', label: "I don't know." });
+      return out;
+    }
+    if (this.situation(id)) out.push({ id: 'life:wrong', label: "What's wrong?" });
+    const step = this.steps.get(id);
+    if (step?.errand && step.kind === 'errand') out.push({ id: 'life:errand', label: 'Where are you off to?' });
+    const c = this.cases.active().find((x) => x.about !== id && this.serious(x) && this.seerKnows(x, id));
+    if (c) out.push({ id: `life:seen:${c.about}`, label: `Have you seen ${this.name(c.about)}?` });
+    return out.slice(0, 2);
+  }
+
+  dialogOption(npc, key) {
+    const id = npc?.id;
+    if (!id) return null;
+    if (key.startsWith('life:answer:')) {
+      const q = this.pending.npc[id];
+      if (!q) return null;
+      const text = { no: "No, I haven't seen him.", yes: 'Yes, I saw him earlier.', unsure: "I don't know." }[key.slice(12)] || '';
+      return this.answerPlayer(npc, null, text);
+    }
+    if (key === 'life:wrong') {
+      const s = this.situation(id);
+      return s ? { lines: [s] } : null;
+    }
+    if (key === 'life:errand') return this.answerPlayer(npc, null, 'Where are you off to?');
+    if (key.startsWith('life:seen:')) {
+      const about = key.slice(10);
+      if (!VILLAGERS.includes(about)) return null;
+      return this.answerPlayer(npc, { person: about }, `Have you seen ${this.name(about)}?`);
     }
     return null;
   }

@@ -1982,11 +1982,38 @@ export class NPC extends Actor {
   }
 
   getDialogue(player) {
-    return D.getDialogue(this, player);
+    return this.withLifeOptions(D.getDialogue(this, player));
   }
 
   chooseOption(id, player) {
-    return D.chooseOption(this, id, player);
+    const key = String(id || '');
+    // Their day (DESIGN §28): "What's wrong?", "Have you seen Garrick?", answering their question.
+    if (key.startsWith('life:')) {
+      let r = null;
+      try {
+        r = this.game.villageLife?.dialogOption?.(this, key) || null;
+      } catch (err) {
+        console.warn('[npc] village life option failed', err);
+      }
+      if (r?.lines?.length) {
+        const back = D.chooseOption(this, '__back', player);
+        return this.withLifeOptions({ lines: r.lines, options: back.options });
+      }
+    }
+    return this.withLifeOptions(D.chooseOption(this, id, player));
+  }
+
+  withLifeOptions(d) {
+    if (!d || !Array.isArray(d.options) || d.close) return d;
+    let extra = [];
+    try {
+      extra = this.game.villageLife?.dialogOptions?.(this) || [];
+    } catch {
+      extra = [];
+    }
+    if (!extra.length) return d;
+    const ids = new Set(d.options.map((o) => o.id));
+    return { ...d, options: [...extra.filter((o) => !ids.has(o.id)), ...d.options] };
   }
 
   receiveGift(itemId, giver) {

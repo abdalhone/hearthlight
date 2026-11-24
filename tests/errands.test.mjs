@@ -228,6 +228,28 @@ test('"what\'s wrong?" and "have you seen X?" are answered from real state', asy
   else assert.ok(r2.lines.length);
 });
 
+test('a villager’s bad day shows in the dialog, and the player can answer their question with a button', () => {
+  const game = makeWorld({ hour: 13.2 });
+  const life = game.villageLife;
+  run(game, 1);
+  life.vanish('garrick');
+  const hobb = game.entities.get('hobb');
+  const prob = life.newProblemFor(hobb, { kind: 'shut', about: 'garrick', place: 'general_store', purpose: 'buy wick for tonight’s lamp-round', goods: 'wick', shop: "Gale's Goods", care: 0.5 });
+  const d = hobb.getDialogue(game.player);
+  assert.ok(d.options.some((o) => o.id === 'life:wrong' && /wrong/i.test(o.label)), JSON.stringify(d.options));
+  const r = hobb.chooseOption('life:wrong', game.player);
+  assert.match(r.lines.join(' '), /wick|Garrick/);
+  assert.ok(r.options.length >= 2, 'the usual options stay');
+  life.pending.npc.hobb = { about: 'garrick', t: game.clock.t, rt: game.time, prob: prob.id };
+  const d2 = hobb.getDialogue(game.player);
+  assert.ok(d2.options.some((o) => o.id === 'life:answer:no'));
+  const r2 = hobb.chooseOption('life:answer:no', game.player);
+  assert.ok(r2.lines.length && r2.lines[0].length > 2);
+  const claim = life.claims[life.claims.length - 1];
+  assert.equal(claim.kind, 'not_seen');
+  assert.equal(claim.to, 'hobb');
+});
+
 test('the player can lie to Lyra, and the lie can be found out', () => {
   const game = makeWorld({ hour: 9 });
   const life = game.villageLife;
