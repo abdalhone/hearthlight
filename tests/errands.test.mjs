@@ -87,12 +87,19 @@ test('errands are planned every morning with variety, and done for real over two
   assert.ok(new Set(life.book.list.map((e) => e.who)).size >= 16, 'most of the eighteen have errands');
   const honeyBefore = wennaHoney();
   const garrickWick = life.stock.garrick.wick;
+  // Count the two-person exchanges as they happen (the village's own log is a rolling 80).
+  const exchanges = [];
+  const converse = game.village.converse.bind(game.village);
+  game.village.converse = (a, b, o = {}) => {
+    if (o.source === 'village_life') exchanges.push([a, b, o.summary]);
+    return converse(a, b, o);
+  };
   runUntilHour(game, 23);
   const done1 = life.book.list.filter((e) => e.state === 'done');
   assert.ok(done1.length >= day1.length * 0.75, `day 1: ${done1.length}/${day1.length} done`);
   assert.ok(life.events.some((e) => e.kind === 'errand' && / is /.test(e.text)), 'errands are visible ("Hobb is off to Gale\'s Goods for wick")');
-  const conv = game.village.log.filter((c) => c.source === 'village_life');
-  assert.ok(conv.length >= 10, 'errands are exchanges between two people, logged by the village');
+  assert.ok(exchanges.length >= 15, `errands are exchanges between two people (${exchanges.length})`);
+  assert.ok(game.village.log.some((c) => c.source === 'village_life'), 'logged by the village');
   // Goods, coin and stock really move.
   if (done1.some((e) => e.tpl === 'elda_honey')) assert.ok(wennaHoney() < honeyBefore, "Wenna's honey went to the Kettle");
   if (done1.some((e) => e.tpl === 'hobb_wick')) assert.ok(life.stock.garrick.wick < garrickWick, "Garrick's wick stock went down");
@@ -362,6 +369,55 @@ test('the local reasoner reaches every action', () => {
   assert.equal(D({ care: 0.3, asked: ['a', 'b', 'c'], elapsedH: 1, home: null, places: [] }).action.type, 'give_up');
   assert.equal(D({ lyraNear: true, home: null, asked: ['x'] }).action.type, 'tell_lyra');
   for (const a of ['go', 'ask', 'search', 'wait', 'alarm', 'give_up', 'tell_lyra']) assert.ok(seen.has(a), `reached ${a}`);
+});
+
+test('someone seen within the hour is only out and about: no alarm, the errand waits for later', () => {
+  const recent = decideLocal(baseInput({ care: 0.8, asked: ['mira', 'elda'], elapsedH: 2, home: null, lastKnownAgo: 0.4, lastKnown: { fromName: 'Sabeth', when: 'just now' } }), { rng: () => 0.1, say: () => 'said', think: (k) => k });
+  assert.equal(recent.action.type, 'give_up');
+  assert.equal(recent.thought, 'about');
+  const stale = decideLocal(baseInput({ care: 0.8, asked: ['mira', 'elda'], elapsedH: 2, home: null, lastKnownAgo: 3, lastKnown: { fromName: 'Sabeth', when: 'this morning' } }), { rng: () => 0.1, say: () => 'said', think: (k) => k });
+  assert.equal(stale.action.type, 'alarm');
+  // In the world: the errand goes back on the list instead of failing.
+  const game = makeWorld({ hour: 9 });
+  const life = game.villageLife;
+  run(game, 1);
+  const inst = life.forceErrand('hobb', 'hobb_wick', 9);
+  inst.state = 'active';
+  const hobb = game.entities.get('hobb');
+  const prob = life.newProblemFor(hobb, { kind: 'shut', about: 'garrick', errand: inst.id, purpose: 'buy wick', place: 'general_store', care: 0.5 });
+  prob.heard.push({ kind: 'seen', place: 'ember_kettle', placeName: 'the Kettle', t: life.now() - 5, when: 'just now', from: 'elda', fromName: 'Elda' });
+  life.apply(prob, { action: { type: 'give_up', target: null }, thought: '', say: '', source: 'local' });
+  assert.equal(prob.status, 'resolved');
+  assert.equal(inst.state, 'planned', 'he will try again later');
+});
+
+test('news about a villager: never told by the one it is about, never once it is stale, good news only to those who heard the bad', () => {
+  const game = makeWorld({ hour: 10 });
+  const v = game.village;
+  const R = v.rumors;
+  const ask = v.addRumor('asking_after', { victim: 'mira', witnesses: ['aveline', 'mira'], source: 'aveline', about: 'village' });
+  assert.ok(ask);
+  assert.ok(!R.tellable('mira', 'rowan', v.now()).includes(ask), 'Mira does not spread "nobody can find Mira"');
+  assert.ok(R.tellable('aveline', 'rowan', v.now()).includes(ask));
+  run(game, 2);
+  const found = v.addRumor('found_safe', { victim: 'mira', witnesses: ['aveline'], source: 'aveline', about: 'village' });
+  assert.ok(!R.tellable('mira', 'rowan', v.now()).includes(ask) && !R.tellable('aveline', 'rowan', v.now()).includes(ask), 'stale: she has turned up');
+  assert.ok(!R.tellable('aveline', 'rowan', v.now()).includes(found), 'Rowan never heard she was lost');
+  R.hear(ask, 'rowan', 'aveline', () => 0.9);
+  assert.ok(R.tellable('aveline', 'rowan', v.now()).includes(found), 'Rowan heard she was lost: he hears she is found');
+});
+
+test('asked about someone the watch is searching for, people who know say so', () => {
+  const game = makeWorld({ hour: 9 });
+  const life = game.villageLife;
+  run(game, 1);
+  life.vanish('garrick');
+  life.startSearch('garrick', 'rowan', { by: 'hobb' });
+  const r = game.village.rumors.get(life.cases.get('garrick').rumor);
+  r.heardBy.push('hess');
+  const ans = life.answerFor('hess', 'garrick', 'tobias');
+  assert.ok(['sought', 'seen', 'heard'].includes(ans.info.kind), ans.info.kind);
+  if (ans.info.kind === 'sought') assert.match(ans.line, /watch|looking|search/i);
 });
 
 test('every decided action runs in the world without breaking anyone’s day', () => {

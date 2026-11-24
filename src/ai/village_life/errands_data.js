@@ -146,7 +146,7 @@ export const ERRANDS = [
   },
   // Elda ----------------------------------------------------------------------
   {
-    id: 'elda_honey', who: 'elda', to: 'wenna', at: 'chandlery', window: [11.6, 12.85], kind: 'buy', goods: 'honey', item: 'honey', qty: 2, price: 12,
+    id: 'elda_honey', who: 'elda', to: 'wenna', at: 'chandlery', window: [14.6, 16.6], kind: 'buy', goods: 'honey', item: 'honey', qty: 2, price: 12,
     purpose: 'buy honey from Wenna for the honey cakes', label: 'off to the chandlery for honey', care: 0.7, weight: 1.6,
     why: ["Honey, love, from Wenna. A hundred honey cakes for the Moot don't sweeten themselves."],
     going: ["Honey. Two crocks. Don't let me forget.", 'Back in a blink, love, mind the kettle!'],

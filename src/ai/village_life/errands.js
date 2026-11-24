@@ -53,6 +53,7 @@ export class ErrandBook {
   plan(day, { fromHour = 0, profiles = null, isAbsent = () => false, seed = 20261123 } = {}) {
     this.day = day;
     this.list = [];
+    this.fromHour = fromHour;
     const sunday = isSunday(day);
     for (const p of profiles || []) {
       if (!p?.id || isAbsent(p.id)) continue;
@@ -94,8 +95,50 @@ export class ErrandBook {
         this.list.push(this.instance(tpl, p.id, start, tpl.window[1]));
       }
     }
+    this.deconflict(profiles || []);
     this.list.sort((a, b) => a.start - b.start);
     return this.list;
+  }
+
+  // Nobody calls at a shop while its keeper is out on an errand of their own, when either
+  // of them could go at another time in their window. (What cannot be moved stays: now and
+  // then the smith is out when Mira brings the salve, and that is a small story.)
+  deconflict(profiles) {
+    const prof = new Map(profiles.filter(Boolean).map((p) => [p.id, p]));
+    const AWAY = 1; // hours someone is gone on an errand of their own (there, the exchange, back)
+    const VISIT = 1; // from setting off to the exchange, with a little patience
+    const overlap = (a0, a1, b0, b1) => a0 < b1 && b0 < a1;
+    const outings = (who) => this.list.filter((x) => x.who === who && x.at !== habitAt(prof.get(who), x.start + 0.2)?.at);
+    const callers = (who) => this.list.filter((x) => x.to === who);
+    const clash = (out, call) => overlap(out.start, out.start + AWAY, call.start, call.start + VISIT);
+    // Move `inst` to the nearest start in its window where ok(start) holds; false if none.
+    const move = (inst, ok) => {
+      const tpl = errandTemplate(inst.tpl);
+      if (!tpl) return false;
+      const lo = Math.max(tpl.window[0], this.fromHour + 0.05);
+      const hi = tpl.window[1] - 0.35;
+      let best = null;
+      for (let s = lo; s <= hi + 1e-6; s += 0.1) {
+        if (!freeAt(prof.get(inst.who), s) || !ok(s)) continue;
+        if (best == null || Math.abs(s - inst.start) < Math.abs(best - inst.start)) best = s;
+      }
+      if (best == null) return false;
+      inst.start = Math.round(best * 100) / 100;
+      return true;
+    };
+    for (const id of prof.keys()) {
+      for (const out of outings(id)) {
+        for (const call of callers(id)) {
+          if (!clash(out, call)) continue;
+          const mine = this.list.filter((x) => x.who === call.who && x !== call);
+          const okCall = (s) => !outings(id).some((o) => overlap(o.start, o.start + AWAY, s, s + VISIT)) && !mine.some((m) => overlap(m.start, m.start + AWAY, s, s + AWAY));
+          if (move(call, okCall)) continue;
+          const others = this.list.filter((x) => x.who === id && x !== out);
+          const okOut = (s) => !callers(id).some((c) => overlap(s, s + AWAY, c.start, c.start + VISIT)) && !others.some((m) => overlap(m.start, m.start + AWAY, s, s + AWAY));
+          move(out, okOut);
+        }
+      }
+    }
   }
 
   instance(tpl, who, start, end) {

@@ -125,10 +125,12 @@ async function snap(label) {
 }
 
 // Real time, with a screenshot every few seconds.
-async function watchFor(seconds, label, every = 3) {
+// With `follow`, the camera keeps up with that villager.
+async function watchFor(seconds, label, every = 3, follow = null) {
   const n = Math.max(1, Math.round(seconds / every));
   for (let i = 0; i < n; i++) {
     await page.waitForTimeout(every * 1000);
+    if (follow) await standAt(follow);
     await snap(`${label}-${i + 1}`);
   }
 }
@@ -166,7 +168,7 @@ async function followTrouble(label, seconds = 18) {
   });
   if (!who) return null;
   await standAt(who);
-  await watchFor(seconds, `${label}-${who}`, 3);
+  await watchFor(seconds, `${label}-${who}`, 3, who);
   return who;
 }
 await fastTo(10.2);
@@ -182,7 +184,7 @@ const searching = await page.evaluate((WHO) => {
 }, WHO);
 if (searching?.searchers?.length) {
   await standAt(searching.searchers[0]);
-  await watchFor(15, 'search', 3);
+  await watchFor(15, 'search', 3, searching.searchers[0]);
 }
 // Away somewhere unexpected: stand where he is and watch the search reach him.
 if (MODE === 'away') {
@@ -207,6 +209,9 @@ await followTrouble('afternoon');
 await fastTo(20.4);
 await standAt('town_square');
 await watchFor(9, 'nightfall', 3);
+// Find Lyra: missing is news she brings to the player.
+await standAt('lyra');
+await watchFor(6, 'lyra', 3, 'lyra');
 await page.evaluate(() => window.__game.ui.chat?.open?.());
 await page.waitForTimeout(1500);
 await snap('lyra-asks');

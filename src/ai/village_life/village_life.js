@@ -1100,8 +1100,8 @@ export class VillageLife {
     if (about && this.findsHere(e, about, thorough)) {
       this.endStep(e);
       const prob = this.problemById(step.prob);
-      if (prob && prob.status === 'open') return this.problemFound(prob, e, this.entity(about));
-      return this.found(about, e.id);
+      if (prob && prob.status === 'open') return this.problemFound(prob, e, this.entity(about), step.place);
+      return this.found(about, e.id, step.place);
     }
     if (t - step.callAt > 11) {
       step.callAt = t;
@@ -1210,7 +1210,7 @@ export class VillageLife {
       key = fc.status === 'missing' ? 'missing' : 'sought';
       vars.when = s ? sincePhrase(s.t, t) : 'this morning';
       info = { kind: fc.status === 'missing' ? 'missing' : 'sought' };
-    } else if (this.care(who, about) >= 0.6 && habitAt(this.profile(about), this.hour())?.at && habitAt(this.profile(about), this.hour()).at !== exclude) {
+    } else if (this.care(who, about) >= 0.6 && habitAt(this.profile(about), this.hour())?.at && !excluded(exclude, habitAt(this.profile(about), this.hour()).at)) {
       const h = habitAt(this.profile(about), this.hour()).at;
       key = 'guess';
       vars.placeId = h;
@@ -1240,7 +1240,8 @@ export class VillageLife {
 
   askExchange(e, tgt, step, prob, t) {
     const about = step.about || prob?.about;
-    let ans = this.answerFor(tgt.id, about, e.id, { exclude: prob?.place || null });
+    // Nobody guesses a place the asker has just come from.
+    let ans = this.answerFor(tgt.id, about, e.id, { exclude: prob ? [prob.place, ...prob.checked].filter(Boolean) : null });
     if (tgt.id === 'lyra') {
       const { own, claim } = this.lyraKnowledge(about);
       if (!own || t - own.t > 900) {
@@ -1309,8 +1310,13 @@ export class VillageLife {
     if (this.problems.some((p) => p.owner === tgt.id && p.about === about && p.day === this.dayN() && p.status === 'given_up')) return;
     const c = this.cases.get(about);
     const care = this.care(tgt.id, about);
-    // The watch hearing the second worried voice starts searching.
-    if (WATCH.includes(tgt.id) && c && (c.noticers.length >= 2 || this.now() - c.openedAt > 1.5 * HOUR) && c.status !== 'search' && c.status !== 'missing') {
+    // The watch hearing the second worried voice starts searching, once it is more than a
+    // busy afternoon: nobody has seen them for hours.
+    const last = c ? this.cases.lastKnown(c) : null;
+    const goneH = c ? (this.now() - (last?.t ?? c.openedAt - 2 * HOUR)) / HOUR : 0;
+    const night = this.hour() >= 20.5 || this.hour() < 5;
+    const worrying = c && ((c.noticers.length >= 2 && goneH >= 3) || (this.now() - c.openedAt > 2.5 * HOUR && goneH >= 4) || (night && goneH >= 2));
+    if (WATCH.includes(tgt.id) && worrying && c.status !== 'search' && c.status !== 'missing') {
       this.cases.note(c, this.now(), `${this.name(askerId)} told ${this.name(tgt.id)}.`, 'alarm');
       return this.startSearch(about, searchLeader(this, about) || tgt.id, { by: tgt.id });
     }
@@ -1362,6 +1368,7 @@ export class VillageLife {
       const l = this.line(e.id, 'askPlayer', { about, listener: 'player' });
       safe(() => e.faceToward?.(player.x, player.y));
       if (l) safe(() => e.say(l, { target: player }));
+      e.greetedAt = t; // that was their hello: no cheery greeting on top of it
       this.pending.npc[e.id] = { about, t, rt: this.rt(), prob: prob?.id || null };
       this.event('ask', `${this.name(e.id)} asked you whether you'd seen ${this.name(about)}.`, { who: e.id, about });
       if (prob && !prob.asked.includes('player')) prob.asked.push('player');
@@ -1428,11 +1435,11 @@ export class VillageLife {
   }
 
   // The one with the problem sees the person they were looking for.
-  problemFound(prob, e, x) {
+  problemFound(prob, e, x, near = null) {
     if (!x || !this.isHere(x)) return;
     const c = this.cases.get(x.id);
     const open = c && c.status !== 'found' && c.status !== 'dead';
-    if (open && this.serious(c)) return this.found(x.id, e.id);
+    if (open && this.serious(c)) return this.found(x.id, e.id, near);
     // Not a village matter (or already found): they walk over and get on with it.
     this.closeProblem(prob, 'resolved', `found ${this.name(x.id)}`);
     if (open && !this.problems.some((p) => p.status === 'open' && p.about === x.id)) {
@@ -1468,13 +1475,16 @@ export class VillageLife {
   }
 
   // The village finds someone it was looking for.
-  found(about, by) {
+  // near: the place the finder was searching (the lake shore is the lake, not "the village").
+  found(about, by, near = null) {
     const c = this.cases.get(about);
     const x = this.entity(about);
     const e = this.entity(by);
     if (!c || c.status === 'found' || c.status === 'dead' || !x || !this.isHere(x)) return;
     const t = this.now();
-    const place = this.placeOf(x);
+    let place = this.placeOf(x);
+    if ((!place || place === 'hearthvale') && near) place = near;
+    if ((!place || place === 'hearthvale') && this.absences.isAway(about)) place = this.absences.get(about)?.place || place;
     const wasMissing = c.status === 'missing' || c.status === 'search';
     const serious = this.serious(c);
     this.closeCase(c, 'found', by, place);
@@ -1541,6 +1551,8 @@ export class VillageLife {
   maybeRumor(c, heardBy) {
     if (c.rumor || this.now() - c.openedAt < 1.2 * HOUR || (c.noticers.length < 2 && this.now() - c.openedAt < 2.5 * HOUR)) return;
     if (this.steps.get(c.about)?.party) return; // out with a search party: half the village has seen them
+    const last = this.cases.lastKnown(c);
+    if (last && this.now() - last.t < 2 * HOUR) return; // seen not long ago: a busy day, not news
     const r = safe(() => this.village?.addRumor?.('asking_after', { victim: c.about, witnesses: heardBy, source: heardBy[0], about: 'village' }));
     if (r) c.rumor = r.id;
   }
@@ -1672,6 +1684,8 @@ export class VillageLife {
       if (!knows) continue;
       if (c.lyra.knew == null) this.lyraLearns(c, t);
       if (c.lyra.asked == null && mind && t - c.lyra.knew > 6) this.lyraAsks(c, t);
+      // Missing now, not just late: she brings it up again, gravely.
+      else if (c.status === 'missing' && c.lyra.asked != null && c.lyra.askedMissing == null && mind && t - c.lyra.asked > HOUR) this.lyraAsks(c, t, { again: true });
     }
     // Missing turned to grief, or found: she hears when the village does.
     for (const c of this.cases.all()) {
@@ -1738,16 +1752,24 @@ export class VillageLife {
     return lyra.state !== 'sleep';
   }
 
-  lyraAsks(c, t) {
+  lyraAsks(c, t, { again = false } = {}) {
     const lyra = this.game?.companion;
     if (!this.lyraCanSpeak(lyra)) return;
-    c.lyra.asked = t;
+    if (again) c.lyra.askedMissing = t;
+    else c.lyra.asked = t;
+    if (c.status === 'missing') c.lyra.askedMissing ??= t;
     const last = this.cases.lastKnown(c);
     const when = last ? sincePhrase(last.t, t) : sincePhrase(c.openedAt, t);
-    const text = this.line('lyra', c.status === 'missing' ? 'askPlayerMissing' : 'askPlayer', { about: c.about, when, listener: 'player' });
+    // Already answered once: now she only tells you, and it weighs on her.
+    const answered = again && this.claims.some((x) => x.to === 'lyra' && x.about === c.about);
+    const text = this.line('lyra', answered ? 'missing' : c.status === 'missing' ? 'askPlayerMissing' : 'askPlayer', { about: c.about, when, listener: 'player' });
     if (!text) return;
     safe(() => lyra.mind.say(text, { chat: true, target: this.game.player }));
     safe(() => lyra.mind.addConversation?.('lyra', text));
+    if (answered) {
+      this.event('lyra', `Lyra told you ${this.name(c.about)} is missing.`, { who: 'lyra', about: c.about });
+      return;
+    }
     this.pending.lyra = { about: c.about, t, rt: this.rt(), text };
     this.event('lyra', `Lyra asked you whether you'd seen ${this.name(c.about)}.`, { who: 'lyra', about: c.about });
   }
@@ -2429,6 +2451,11 @@ export class VillageLife {
     const c = this.cases.get(about);
     return c ? c.timeline.map((x) => `${clockText(x.t)}  ${x.text}`) : [];
   }
+}
+
+function excluded(exclude, id) {
+  if (!exclude) return false;
+  return Array.isArray(exclude) ? exclude.includes(id) : exclude === id;
 }
 
 // The case as a story: every turning point, and the latest of the asking and searching.

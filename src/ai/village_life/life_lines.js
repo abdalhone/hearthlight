@@ -467,6 +467,7 @@ export const THOUGHTS = {
   askAny: ["Somebody must have seen {him}. I'll ask {a}.", "{a} gets about. I'll ask."],
   askWatch: ['The watch sees everyone. I\'ll ask {a}.'],
   alarm: ["Nobody's seen {who} since {when}. This isn't right. The watch has to know."],
+  alarmWatch: ["Nobody's seen {who} since {when}. That's enough asking. We search.", "Not since {when}, and nobody knows where. Time the watch looked."],
   search: ["I can't just stand here. I'll look {at} myself.", "Nobody's looked {at} yet. I will.", "{place}. If I were {who}, that's where I'd be."],
   giveUp: ["I've asked and asked. I came to {purpose}; it'll have to be tomorrow.", "Nothing for it. I'll try tomorrow."],
   about: ["{from} saw {him} {when}. {He}'s about somewhere. I'll catch {him} later.", "{He} was seen {when}. Not lost, just not here. Later, then."],
