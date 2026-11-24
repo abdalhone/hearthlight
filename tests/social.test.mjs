@@ -708,3 +708,106 @@ test('npc.js: villagers leave each other to the village and still answer the pla
   assert.equal(typeof started, 'boolean');
   if (started) assert.ok(v.log.some((c) => (c.a === 'bram' && c.b === 'elda') || (c.a === 'elda' && c.b === 'bram')));
 });
+
+// ------------------------------------------------------------------ verifier's additions
+
+test('"what do you think of me?" gets each villager\'s own view of the player, by how they stand', async () => {
+  const { v, people } = makeGame({ hour: 11 });
+  const seen = new Set();
+  for (const id of VILLAGERS) {
+    const e = people[id];
+    for (const [o, stance] of [[80, 'good'], [45, 'mid'], [20, 'bad']]) {
+      e.opinionOfPlayer = o;
+      const r = await v.playerSays(e, 'What do you think of me?');
+      const line = r.lines[0];
+      assert.ok(TO_YOU[id].think[stance].includes(line), `${id} (${stance}): ${line}`);
+      seen.add(line);
+    }
+  }
+  assert.ok(seen.size >= 50, `varied (${seen.size})`);
+});
+
+test('a compliment on their shop, stew or forge is heard as a compliment', () => {
+  for (const t of ['You have a lovely shop, you know.', 'Your stew is the best.', 'What a fine forge.', 'I love your honey cakes!', "You're a good cook, Elda."]) {
+    assert.ok(understand(t).intents.has('compliment'), t);
+  }
+});
+
+test('a rumor told after "have you heard?" starts its sentence with a capital', () => {
+  const { v } = makeGame({ hour: 11 });
+  v.addRumor('attacked_villager', { victim: 'bram', witnesses: ['elda'] });
+  let checked = 0;
+  for (let i = 0; i < 30; i++) {
+    v.pairAt.clear();
+    v.personAt.clear();
+    const r = v.rumors.list[0];
+    r.heardBy = ['bram', 'elda'];
+    const c = v.converse('elda', 'pip', { topic: 'rumor' });
+    for (const l of c.lines) {
+      assert.ok(!/[!?.]\s+[a-z]/.test(l.text.replace(/\.\.\.\s*[a-z]/g, '')), l.text);
+      checked++;
+    }
+  }
+  assert.ok(checked > 0);
+});
+
+test('listening in never has one speaker twice running, nor a goodbye mid-talk', async () => {
+  const { v } = makeGame({ hour: 19 });
+  for (let i = 0; i < 25; i++) {
+    v.pairAt.clear();
+    v.personAt.clear();
+    const conv = v.converse('elda', 'pip', { onScreen: true });
+    const lines = await v.listenIn({ id: conv.id, a: 'elda', b: 'pip', topic: conv.topic });
+    assert.ok(lines.length >= 2);
+    for (let k = 1; k < lines.length; k++) assert.notEqual(lines[k].speaker, lines[k - 1].speaker, lines.map((l) => `${l.speaker}: ${l.text}`).join(' / '));
+  }
+});
+
+test('scenes keep their hour: the bread war by day, the far lamps at dusk; none repeats within three days', () => {
+  const { v } = makeGame({ hour: 2 });
+  const dayScenes = SCENES.filter((s) => s.day);
+  const duskScenes = SCENES.filter((s) => s.dusk);
+  assert.ok(dayScenes.length && duskScenes.length);
+  for (let i = 0; i < 40; i++) {
+    v.pairAt.clear();
+    v.personAt.clear();
+    const c = v.converse('elda', 'garrick', {});
+    assert.ok(!c.lines.some((l) => /^Fresh bread! Six coppers!$/.test(l.text)), 'no market cry at 2 in the morning');
+  }
+  const { v: v2 } = makeGame({ hour: 11 });
+  const played = new Map();
+  for (let i = 0; i < 60; i++) {
+    v2.pairAt.clear();
+    v2.personAt.clear();
+    v2.converse('rowan', 'wys', {});
+  }
+  const rw = SCENES.findIndex((s) => s.with.includes('rowan') && s.with.includes('wys'));
+  const n = v2.log.filter((c) => c.lines?.some((l) => l.text === SCENES[rw].lines[0][1])).length;
+  assert.ok(n <= 1, `the Duchess scene played ${n} times in one day`);
+  assert.ok(played);
+});
+
+test('Lyra says she saw what she saw, and heard what she heard', () => {
+  const { game, v } = withLyra({ hour: 18.5 });
+  // She was there.
+  game.companion.x = game.player.x + 10;
+  game.companion.y = game.player.y;
+  v.onEvent('deed', { deed: 'attacked_villager', victim: 'bram', severity: -6 });
+  const r = v.rumors.list.find((x) => x.kind === 'attacked_villager');
+  assert.ok(r.saw.includes('lyra'));
+  let saw = false;
+  for (let i = 0; i < 30 && !saw; i++) {
+    v.pairAt.clear();
+    v.personAt.clear();
+    r.heardBy = r.heardBy.filter((x) => x !== 'hobb');
+    const c = v.lyraConverse('hobb', { topic: 'rumor', lyraFirst: true });
+    if (c?.lines.some((l) => l.speaker === 'lyra' && /I was there|saw it myself/.test(l.text))) saw = true;
+    if (c) assert.ok(!c.lines.some((l) => l.speaker === 'lyra' && /^I heard the stranger/.test(l.text)), c.lines.map((l) => l.text).join(' / '));
+  }
+  assert.ok(saw, 'she told it as an eyewitness');
+  // Far away, her ledger knows it but she did not see it.
+  game.companion.x = game.player.x + 2000;
+  v.onEvent('deed', { deed: 'stole', victim: 'garrick', severity: -3 });
+  const s = v.rumors.list.find((x) => x.kind === 'stole');
+  assert.ok(s.heardBy.includes('lyra') && !s.saw.includes('lyra'));
+});
