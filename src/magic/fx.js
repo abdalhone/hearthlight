@@ -617,7 +617,7 @@ export class MagicFx {
         case 'ward': {
           const s = b.shieldMax > 0 ? Math.max(0, Math.min(1, b.shield / b.shieldMax)) : 1;
           const hit = b.fxState && b.fxState.hitAge >= 0 ? Math.max(0, 1 - (b.age - b.fxState.hitAge) / 0.3) : 0;
-          push(b.x, b.y - 9, Math.max(30, (b.cur || b.r) * 2.8), col, (0.3 + 0.25 * s + 0.4 * hit) * strobe * Math.min(1, (b.life - b.age) / 0.4), fl);
+          push(b.x, b.y - 9, Math.max(30, (b.cur || b.r) * 2.6), col, (0.22 + 0.18 * s + 0.4 * hit) * strobe * Math.min(1, (b.life - b.age) / 0.4), fl);
           break;
         }
         default:

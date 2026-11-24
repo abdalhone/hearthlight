@@ -406,25 +406,26 @@ export const SHAPES = {
 
 // How each essence flavors a bind (DESIGN §22.5: "fire ring burns, frost freezes the hold
 // longer, storm shocks, dark drains, song lulls, nature roots with vines…"). hold: how
-// long it holds; tick: how hard the ring bites while it holds (its essences' statuses
-// ride on the bite: burning, shocked, drained…); after: a status left when it lets go.
-// An essence with no entry holds plainly and bites a little.
+// long it holds; tick: how hard the ring bites while it holds, for the essences that
+// bite (its statuses ride on the bite: burning, shocked, drained…; the rest hold the way
+// Lyra's does, without hurting); after: a status left when it lets go. An essence with
+// no entry holds plainly.
 export const BIND_FLAVORS = {
-  raw: { hold: 1, tick: 0.4 },
+  raw: { hold: 1, tick: 0 },
   fire: { hold: 0.9, tick: 1 },
-  water: { hold: 1, tick: 0.5 },
-  frost: { hold: 1.45, tick: 0.4 },
+  water: { hold: 1, tick: 0 },
+  frost: { hold: 1.45, tick: 0 },
   storm: { hold: 0.9, tick: 0.8 },
-  earth: { hold: 1.15, tick: 0.5 },
-  wind: { hold: 0.85, tick: 0.4 },
+  earth: { hold: 1.15, tick: 0 },
+  wind: { hold: 0.85, tick: 0 },
   nature: { hold: 1.05, tick: 0.4, after: 'rooted' },
   poison: { hold: 1, tick: 0.7 },
-  light: { hold: 1, tick: 0.5 },
+  light: { hold: 1, tick: 0 },
   dark: { hold: 1, tick: 0.8 },
-  iron: { hold: 1.2, tick: 0.5 },
+  iron: { hold: 1.2, tick: 0 },
   song: { hold: 1.3, tick: 0, after: 'lulled' },
 };
-const BIND_DEFAULT = { hold: 1, tick: 0.5 };
+const BIND_DEFAULT = { hold: 1, tick: 0 };
 
 // How each essence flavors a ward ("light reflects bolts back, fire burns whoever strikes
 // it, frost chills them, earth and iron absorb more but slow you, water heals a little,
@@ -461,7 +462,7 @@ export function bindFlavor(plan) {
   for (const e of ess) {
     const d = BIND_FLAVORS[e] || BIND_DEFAULT;
     f.hold += (d.hold ?? 1) / ess.length;
-    f.tick += (d.tick ?? 0.5) / ess.length;
+    f.tick += (d.tick ?? 0) / ess.length;
     if (d.after && !f.after.includes(d.after)) f.after.push(d.after);
   }
   if (plan && typeof plan === 'object') flavorCache.set(plan, f);

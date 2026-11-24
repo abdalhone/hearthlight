@@ -698,6 +698,7 @@ export class Magic {
     o.heavy = !!flags.heavy;
     o.noHitStop = !flags.heavy;
     o.noStagger = tick;
+    o.dot = !!flags.dot; // a bite like a status tick: soft flash, through i-frames
     o.quiet = pooled;
     o.silent = !!(g.magicFx?.sfx || g.magicSfx);
     o.crit = tick ? false : undefined;

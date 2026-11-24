@@ -186,6 +186,7 @@ export const HIT_HEAVY = Object.freeze({ heavy: true, knock: 1.5 });
 export const HIT_TICK = Object.freeze({ tick: true });
 export const HIT_PUNCH = Object.freeze({ heavy: true, knock: 2 });
 export const HIT_POOL = Object.freeze({ pool: true }); // a full hit whose number is pooled (rain drops)
+export const HIT_BITE = Object.freeze({ tick: true, dot: true }); // a bind's ring biting the one it holds
 
 const alive = (a) => !a.removed && !a.dead && a.isAlive();
 
@@ -816,7 +817,7 @@ function updateBind(rt, b, dt) {
   b.tickT -= dt;
   if (b.tickT > 0) return;
   b.tickT += b.tick;
-  if (rt.canAffect(b.cast, t)) rt.hit(b, t, b.tickMul, HIT_TICK);
+  if (rt.canAffect(b.cast, t)) rt.hit(b, t, b.tickMul, HIT_BITE);
 }
 
 // A ward (DESIGN §22.5) rides on its bearer; the runtime does the shielding (absorb, the

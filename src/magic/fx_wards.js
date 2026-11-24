@@ -416,7 +416,10 @@ export function drawWard(R, b, L) {
   ell(c, x, cy, rx, ry, L.look.dark ? P.deep : P.glow);
   c.globalAlpha = (0.08 + 0.06 * s) * a;
   ell(c, x - rx * 0.12, cy - ry * 0.15, rx * 0.72, ry * 0.68, P.spark);
-  // The near rim, then a thinner whole outline.
+  // The near rim (with a dark lip under it, so it reads on grass and snow), then a
+  // thinner whole outline.
+  c.globalAlpha = 0.35 * a;
+  ring(c, x, cy + 1, rx, L.outline, 1, sq, 0.3, Math.PI - 0.3);
   c.globalAlpha = (0.7 + 0.3 * hk) * a;
   ring(c, x, cy, rx, hk > 0.5 ? '#ffffff' : P.core, 1, sq, 0.05, Math.PI - 0.05);
   c.globalAlpha = 0.45 * a;
@@ -448,7 +451,7 @@ export function drawWard(R, b, L) {
     g.globalAlpha = (0.35 + 0.4 * hk) * a;
     ring(g, x, cy, rx, P.glow, 1, sq, 0.05, Math.PI - 0.05);
     g.globalAlpha = 1;
-    halo(g, x, cy, rx * 1.9, L.halo, (0.18 + 0.3 * hk) * a, R.bounds);
+    halo(g, x, cy, rx * 1.9, L.halo, (0.12 + 0.3 * hk) * a, R.bounds);
   }
 }
 
@@ -596,7 +599,7 @@ function surface(R, b, L, style, x, cy, rx, ry, a, t) {
         const l = 2 + 2 * Math.sin(t * 6 + i);
         line(c, x + ux * (rx + 1), cy + uy * (ry + 1), x + ux * (rx + 1 + l), cy + uy * (ry + 1 + l), i & 1 ? P.spark : P.core, 1);
       }
-      if (g) halo(g, x, cy, rx * 2.4, L.halo, 0.3 * a, R.bounds);
+      if (g) halo(g, x, cy - ry * 0.4, rx * 1.6, L.halo, 0.1 * a, R.bounds);
       break;
     }
     case 'shadow': {
@@ -669,36 +672,53 @@ function surface(R, b, L, style, x, cy, rx, ry, a, t) {
   c.globalAlpha = a;
 }
 
-// The orbit twist: three small shields circling the bearer.
+// The orbit twist: three small shields circling the bearer, under a faint dome (the
+// ward still takes blows whole; the shields catch missiles and bump foes).
 function drawPlates(R, b, L, x, y, a, hk) {
   const P = L.pal;
   const c = R.ctx;
   const g = R.g;
   const r = Math.max(4, b.cur || b.r) * 1.35;
-  c.globalAlpha = 0.3 * a;
+  const rx = Math.max(4, b.cur || b.r);
+  c.globalAlpha = 0.25 * a;
+  ring(c, x, y - WARD_H, rx, P.glow, 1, 1.08);
+  c.globalAlpha = 0.35 * a;
   ring(c, x, y - 6, r, P.glow, 1, 0.8);
   for (let i = 0; i < 3; i++) {
     const an = b.plateA + (i / 3) * TAU;
-    const sx = x + Math.cos(an) * r;
-    const sy = y - 6 + Math.sin(an) * r * 0.8;
+    const sx = Math.round(x + Math.cos(an) * r);
+    const sy = Math.round(y - 6 + Math.sin(an) * r * 0.8);
     c.globalAlpha = a;
-    // A small kite shield, outlined.
-    PTS[0] = sx;
+    // A small heater shield: outline, face, a bright left edge, a boss in the middle.
+    PTS[0] = sx - 4;
+    PTS[1] = sy - 5;
+    PTS[2] = sx + 4;
+    PTS[3] = sy - 5;
+    PTS[4] = sx + 4;
+    PTS[5] = sy;
+    PTS[6] = sx;
+    PTS[7] = sy + 6;
+    PTS[8] = sx - 4;
+    PTS[9] = sy;
+    poly(c, PTS, 5, L.outline);
+    PTS[0] = sx - 3;
     PTS[1] = sy - 4;
     PTS[2] = sx + 3;
-    PTS[3] = sy - 1;
-    PTS[4] = sx;
-    PTS[5] = sy + 4;
-    PTS[6] = sx - 3;
-    PTS[7] = sy - 1;
-    poly(c, PTS, 4, L.outline);
-    PTS[1] = sy - 3;
-    PTS[2] = sx + 2;
-    PTS[5] = sy + 3;
-    PTS[6] = sx - 2;
-    poly(c, PTS, 4, hk > 0.5 ? '#ffffff' : P.glow);
-    px(c, sx - 1, sy - 2, P.core);
-    if (g) halo(g, sx, sy, 8, L.halo, 0.45 * a, R.bounds);
+    PTS[3] = sy - 4;
+    PTS[4] = sx + 3;
+    PTS[5] = sy;
+    PTS[6] = sx;
+    PTS[7] = sy + 4;
+    PTS[8] = sx - 3;
+    PTS[9] = sy;
+    poly(c, PTS, 5, hk > 0.5 ? '#ffffff' : P.glow);
+    rect(c, sx - 3, sy - 4, 1, 4, P.core);
+    rect(c, sx - 3, sy - 4, 6, 1, P.spark);
+    px(c, sx, sy - 1, P.deep);
+    if (g) {
+      px(g, sx - 3, sy - 3, P.core);
+      halo(g, sx, sy, 6, L.halo, 0.25 * a, R.bounds);
+    }
   }
   c.globalAlpha = 1;
 }
