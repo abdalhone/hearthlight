@@ -96,7 +96,7 @@ export function parseAskText(text, resolveLocation = null) {
   const t = String(text || '').toLowerCase().trim();
   let m;
   if ((m = t.match(/\bpay me\s+(\d{1,4})/))) return { kind: 'pay', params: { amount: parseInt(m[1], 10) }, what: `pay me ${m[1]} coins`, days: 2 };
-  if ((m = t.match(/\b(?:buy|bring|get|give|fetch|find)\s+me\s+(?:a |an |some |the |another )?([a-z' ]+?)(?:\s+(?:tomorrow|today|tonight|later|soon))?\s*(?:[.!?,]|$)/))) {
+  if ((m = t.match(/\b(?:buy|bring|get|give|fetch|find)\s+me\s+(?:a |an |some |the |another )?([a-z' ]+?)(?:\s+(?:tomorrow|today|tonight|later|soon))?(?=\s+(?:and|then|so|if|or|before|after)\b|\s*[.!?,;]|$)/))) {
     const itemId = resolveItemId(m[1]);
     if (itemId && itemDef(itemId)) return { kind: 'give', params: { itemId, qty: 1 }, what: `bring me ${withArticle(itemDef(itemId).name)}`, days: 2 };
   }
@@ -129,7 +129,7 @@ export function parsePromiseText(text, resolveLocation = null) {
     const amount = parseInt(m[1], 10);
     return { kind: 'pay', params: { amount }, what: `pay me ${amount} coins`, days: 2 };
   }
-  if ((m = t.match(/\b(?:bring|buy|get|give|find|fetch)\s+you\s+(?:a |an |some |the |your |another )?([a-z' ]+?)(?:\s+(?:tomorrow|today|tonight|later|soon|someday|again|back))?\s*(?:[.!,]|$)/))) {
+  if ((m = t.match(/\b(?:bring|buy|get|give|find|fetch)\s+you\s+(?:a |an |some |the |your |another )?([a-z' ]+?)(?:\s+(?:tomorrow|today|tonight|later|soon|someday|again|back))?(?=\s+(?:and|then|so|if|or|before|after)\b|\s*[.!?,;]|$)/))) {
     const itemId = resolveItemId(m[1]);
     if (itemId && itemDef(itemId)) return { kind: 'give', params: { itemId, qty: 1 }, what: `bring me ${withArticle(itemDef(itemId).name)}`, days: 2 };
   }

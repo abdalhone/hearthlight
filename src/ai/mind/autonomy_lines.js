@@ -254,12 +254,6 @@ export const LINES = {
     afraid: ['I’m hurt. I’m not going back in.'],
     tired: ['I’m hurt and done. No.'],
   },
-  no_villager: {
-    warm: ['Hurt {target}? Never. Don’t ask me that again.', 'No. {target} lives here. So do I.'],
-    cool: ['No. And if you touch {target}, you answer to me.', 'Lay a hand on {target} and we’re finished.'],
-    afraid: ['No. Leave {target} alone.'],
-    tired: ['No. Never.'],
-  },
   no_friend: {
     warm: ['{target}? That’s a friend. No.', 'I don’t turn on my friends. Not for you, not for anyone.'],
     cool: ['No. {target} is a friend.'],
@@ -418,41 +412,17 @@ export const LINES = {
     afraid: ['Thank you. Thank you.'],
     tired: ['Thanks. Really.'],
   },
-  deed_revived: {
-    warm: ['You came back for me.', 'You came back. I won’t forget that.', 'Thought I was done for. You came back.'],
-    cool: ['You came back. Huh.'],
-    afraid: ['You came back for me. Thank you.'],
-    tired: ['You came back. Thank you.'],
-  },
-  deed_gift_loved: {
-    warm: ['For me? Oh, you absolute treasure.', 'A {item}! You remembered. You actually remembered.', 'Oh. Oh, I love this. Thank you.'],
-    cool: ['…That’s kind. Thank you.'],
-    afraid: ['Oh. Thank you. Truly.'],
-    tired: ['{item}. That’s the best thing all day.'],
-  },
-  deed_gift_liked: {
-    warm: ['Oh, thank you! That’s lovely.', 'For me? That’s sweet of you.', 'I’ll put that to good use. Thanks.'],
-    cool: ['Thanks.'],
-    afraid: ['Thank you.'],
-    tired: ['Thanks. Lovely.'],
-  },
-  deed_gift_neutral: {
-    warm: ['Oh. Thank you. I’ll find a use for it.', 'Practical. I like practical.'],
-    cool: ['Thanks.'],
-    afraid: ['Thanks.'],
-    tired: ['Thanks.'],
-  },
-  deed_gift_disliked: {
-    warm: ['Is this a joke? I hate {item}.', '{item}. Lovely. I’ll treasure it in the bin.', 'You don’t know me at all, do you?'],
-    cool: ['I don’t want this.'],
-    afraid: ['Oh. Um. Thanks.'],
-    tired: ['Why would you give me {item}?'],
-  },
   deed_coin_gift: {
     warm: ['Coin? I won’t pretend I don’t need it. Thank you.', 'For my purse? You’re a soft touch. Thank you.'],
     cool: ['Thank you.'],
     afraid: ['Thank you.'],
     tired: ['Thanks. Truly.'],
+  },
+  deed_paid_work: {
+    warm: ['{npc} paid me {coins} coins. My purse is singing.', '{coins} coins from {npc}. Honest work, honest coin.', 'Look at that — {coins} coins, and {npc} says come back tomorrow.'],
+    cool: ['{npc} paid me {coins} coins. I earn my own way.', '{coins} coins. My own.'],
+    afraid: ['{coins} coins from {npc}. Good. That’s a room for the night.'],
+    tired: ['{coins} coins. Worth every blister.'],
   },
   deed_payment: {
     warm: ['{coins} coins, as agreed. A pleasure doing business.', 'Paid in full. See? We’re good at this.'],
@@ -534,12 +504,6 @@ export const LINES = {
     afraid: ['What are you doing?! Get back!'],
     tired: ['What—? Get back!'],
   },
-  to_wary_villager: {
-    warm: ['What is wrong with you? I’m watching you now. Closely.'],
-    cool: ['I don’t know who you are any more. I’m watching you.'],
-    afraid: ['I don’t like what I just saw.'],
-    tired: ['I saw that. I’m watching you.'],
-  },
   to_wary_trust: {
     warm: ['I’ll keep walking with you. But I’m keeping my distance for a while.', 'Something’s off between us. I’ll stay — a few steps back.'],
     cool: ['I’m still here. Further back. Don’t read anything into it.', 'I’ll travel with you. I won’t pretend I trust you.'],
@@ -593,12 +557,6 @@ export const LINES = {
     cool: ['I warned you. This is the last thing I’ll ever say to you. Goodbye.'],
     afraid: ['I warned you! I’m going and I’m never coming back!'],
     tired: ['I warned you. Goodbye.'],
-  },
-  to_apart_dismissed: {
-    warm: ['A day of my own. I’ll find you later — or you’ll find me.'],
-    cool: ['I’ll be about. On my own business.'],
-    afraid: ['I’ll be near the square.'],
-    tired: ['I’ll be resting somewhere.'],
   },
   to_apart_amends: {
     warm: ['I believe you. I’m not ready to travel with you again, but I won’t run from you.', 'All right. You’re not someone I have to hide from any more. Ask me, someday.'],
@@ -840,12 +798,6 @@ export const LINES = {
     afraid: ['For what?'],
     tired: ['No need. Really.'],
   },
-  ans_gone: {
-    warm: ['Goodbye.'],
-    cool: ['There’s nothing you can say. Goodbye.'],
-    afraid: ['Stay away.'],
-    tired: ['Goodbye.'],
-  },
   ans_plans: {
     warm: ['{what}', 'Today? {what}'],
     cool: ['{what}'],
@@ -869,6 +821,12 @@ export const LINES = {
     cool: ['We’ll see.', 'I’ll remember you said that.'],
     afraid: ['I hope you mean it.'],
     tired: ['I’ll remember.'],
+  },
+  ans_promise_ask: {
+    warm: ['You promise what, exactly? Finish the sentence.', 'Promise what? I like my promises with words in them.'],
+    cool: ['Promise what?'],
+    afraid: ['Promise me what?'],
+    tired: ['Promise what?'],
   },
   ans_promise_doubt: {
     warm: ['You promised last time too.'],
@@ -934,6 +892,17 @@ export class LinePicker {
       text = fill(list[i % list.length], vars);
     }
     this.cursor.set(ck, (i + 1) % list.length);
+    // A one-line bank said twice running: borrow the same thought in another register.
+    if (text === this.last) {
+      for (const other of TONES) {
+        if (other === t || !LINES[key][other]?.length) continue;
+        const alt = LINES[key][other].map((x) => fill(x, vars)).find((x) => x !== this.last);
+        if (alt) {
+          text = alt;
+          break;
+        }
+      }
+    }
     this.last = text;
     return text;
   }

@@ -6,7 +6,7 @@ import { resolveEntity, resolveLocation } from '../resolve.js';
 import { DEEDS, DEED_KINDS, DEED_REPEAT_WINDOW, HARMLESS_SPECIES, PET_SPECIES, SAFE_PLACES, STATES, T, COIN_JOBS, PRICES, DEFAULT_GIFT_TASTES } from './autonomy_data.js';
 import { LinePicker } from './autonomy_lines.js';
 import { analyzeRequest, requestKey } from './autonomy_consent.js';
-import { buildPlan, blockAt, blockIndexAt, weighGoals, sleepSpot, questStageIndex, hourLabel, describeBlock } from './autonomy_agenda.js';
+import { buildPlan, blockAt, blockIndexAt, weighGoals, sleepSpot, questStageIndex, hourLabel, describeBlock, makeBlock } from './autonomy_agenda.js';
 import { RE, isApology, parseOffer, parsePromiseText, parseAskText } from './autonomy_words.js';
 
 // Lyra's own will (DESIGN §16). She lives for herself: she keeps her own day, her own
@@ -32,6 +32,9 @@ const num = (v, d) => (Number.isFinite(v) ? v : d);
 const NEG_INF = -Infinity;
 const DEFAULT_PERSONALITY = { openness: 0.85, conscientiousness: 0.55, extraversion: 0.65, agreeableness: 0.7, neuroticism: 0.4 };
 const LEAVING_TYPES = new Set(['independent', 'keep_away', 'leave', 'flee', 'wait_outside']);
+const START_PURSE = 8; // a ranger's pocket money on the first morning
+const LEFT_TILES = 10; // how far she keeps from the player once she has left them
+const OBSERVED_DEEDS = new Set(['lied', 'kindness', 'stole']);
 
 // Why her state changed: what she tells the player, and what she remembers.
 const CAUSES = {
@@ -76,10 +79,20 @@ export class Autonomy {
     this.game = game || null;
     this.companionship = 'together';
     this.reason = CAUSES.start.reason;
-    this.agenda = { goals: weighGoals({}), today: [], purse: 8, sleepAt: 'lyra_inn_bed', day: 0, revision: 0, morningIntent: null };
+    this._purse = START_PURSE;
+    this.agenda = { goals: weighGoals({}), today: [], purse: 0, sleepAt: 'lyra_inn_bed', day: 0, revision: 0, morningIntent: null };
+    // Her coin lives in her pack (like the player's gold); agenda.purse reads and writes it,
+    // so whoever charges her (Elda's room) and whoever pays her see the same purse.
+    Object.defineProperty(this.agenda, 'purse', {
+      enumerable: true,
+      configurable: true,
+      get: () => this._readPurse(),
+      set: (v) => this._writePurse(v),
+    });
     this.ledger = [];
     this.promises = [];
     this.lines = new LinePicker();
+    this._nextAsk = null;
     this._shadow = { id: PLAYER_ID, trust: T.startTrust, affinity: 25, respect: 25, familiarity: 15, fear: 0, tags: [] };
     this._init();
     this._off = game?.bus?.on?.('*', (type, payload) => this.onEvent(type, payload)) || null;
@@ -122,6 +135,7 @@ export class Autonomy {
     this.meal = { day: -1, block: -1 };
     this.rentDay = -1;
     this.lastJobId = null;
+    this._pendingBind = null;
     this.calibrated = false;
     this._heard = null;
     this._promiseSeq = 0;
@@ -303,6 +317,15 @@ export class Autonomy {
 
   _isHostileCreature(e) {
     if (!e || this.isPlayer(e) || this.isLyra(e) || this.isVillager(e)) return false;
+    const c = this.game?.combat;
+    const l = this.lyra();
+    if (l && typeof c?.isHostile === 'function') {
+      try {
+        if (c.isHostile(e, l) || c.isHostile(e, this.player() || l)) return true;
+      } catch {
+        /* fall back to factions */
+      }
+    }
     if (factionRelation('player', e.faction) === 'hostile') return true;
     // Wildlife counts only while it is fighting (a charging boar).
     return e.faction === 'wildlife' && (e.state === 'attack' || (e.lastAttackedAt > (this.game?.time ?? 0) - 6 && !!e.lastAttacker));
@@ -352,11 +375,12 @@ export class Autonomy {
     return { energy: num(n.energy, 0.8), hunger: num(n.hunger, 0.7), fun: num(n.fun, 0.6), social: num(n.social, 0.6), safety: num(n.safety, 0.9) };
   }
 
-  // 2 loved, 1 liked, 0 polite, -1 disliked.
+  // 2 loved, 1 liked, 0 polite, -1 disliked (the same reading as the mind's perception).
   giftTaste(itemId) {
     const soul = this.mind?.soul;
     const tastes = soul?.giftTastes;
     if (tastes && Number.isFinite(tastes[itemId])) return tastes[itemId];
+    if (tastes && typeof tastes === 'object') return itemDef(itemId)?.type === 'food' ? 1 : 0;
     const name = String(itemDef(itemId)?.name || itemId).toLowerCase();
     const stem = name.replace(/s$/, '');
     const hit = (list) => (Array.isArray(list) ? list.findIndex((s) => String(s).toLowerCase().includes(stem)) : -1);
@@ -498,6 +522,10 @@ export class Autonomy {
           return undefined;
         case 'player_message':
           return this.hearPlayer(payload.text);
+        case 'apology':
+          return this._onApologyEvent(payload);
+        case 'room_rented':
+          return this._onRoomRented(payload);
         case 'stance_changed':
           if (payload.stance !== 'attack') this.orderFight.attackMode = false;
           return undefined;
@@ -521,6 +549,7 @@ export class Autonomy {
     this.calibrated = true;
     const rel = this.playerRel();
     if (this.ledger.length === 0 && num(rel.trust, T.startTrust) < T.startTrust) this.adjustPlayer({ trust: T.startTrust - rel.trust }, '');
+    if (this._readPurse() === 0) this._writePurse(START_PURSE);
   }
 
   _onDamage({ source, target }) {
@@ -529,7 +558,11 @@ export class Autonomy {
       if (source && source !== target && typeof source === 'object') this.recentAttackers.set(source, this.now());
       return this._checkReckless();
     }
-    if (source && this.isPlayer(source) && target && this.isVillager(target)) return this._playerHitNpc(target);
+    if (source && this.isPlayer(source) && target && this.isVillager(target)) {
+      // A blow that knocks them out is recorded by the 'downed' that follows it.
+      if (!(target.hp > 0)) return undefined;
+      return this._playerHitNpc(target);
+    }
     return undefined;
   }
 
@@ -621,8 +654,17 @@ export class Autonomy {
     if (!this.isLyra(entity)) return;
     const d = this.downed;
     this.downed = null;
-    if (d && !d.byPlayer && by && this.isPlayer(by)) this.recordDeed('revived_lyra');
+    if (d?.byPlayer) return this._comeTo(d);
+    if (d && by && this.isPlayer(by)) this.recordDeed('revived_lyra');
     this._flushQueued();
+    return undefined;
+  }
+
+  // She comes to after the player knocked her out (§16.6): she leaves, for good.
+  _comeTo(d) {
+    this._flushQueued();
+    if (this.companionship !== 'gone') this._goGone('downed', 'to_gone_downed', { target: 'them' });
+    return d;
   }
 
   // She notices when the player walks off (> 20 tiles) or waits 45 s without helping.
@@ -630,15 +672,11 @@ export class Autonomy {
     const d = this.downed;
     const l = this.lyra();
     if (!d || !l) return;
-    if (!l.downed && !d.byPlayer) {
+    if (!l.downed) {
       // She got up on her own.
       this.downed = null;
-      this._flushQueued();
-      return;
-    }
-    if (!l.downed) {
-      this.downed = null;
-      this._flushQueued();
+      if (d.byPlayer) this._comeTo(d);
+      else this._flushQueued();
       return;
     }
     if (d.abandoned || d.byPlayer) return;
@@ -683,8 +721,7 @@ export class Autonomy {
   _receiveFromPlayer(itemId, qty) {
     if (itemId === 'maren_journal') return;
     if (itemId === 'coin') {
-      if (!this.lyra()?.inventory) this.agenda.purse += qty;
-      this._syncPurse();
+      if (!this._inv()) this._purse += qty;
       let left = qty;
       let paid = false;
       for (const p of this.promises) {
@@ -727,12 +764,17 @@ export class Autonomy {
       this.deals.splice(this.deals.indexOf(deal), 1);
       if (result?.deliveredTo === 'player') this._takeShare(result);
     }
+    // Her own work for coin while she lives her own day (§16.1): paid on delivery.
     const st = this.companionship;
-    if ((st === 'apart' || st === 'left') && result?.deliveredTo !== 'player') {
-      const b = this.currentBlock();
-      const spec = COIN_JOBS.find((j) => j.job === jobId && (b?.jobId ? b.jobId === j.id : true)) || COIN_JOBS.find((j) => j.job === jobId);
-      if (spec) this._getPaid(spec, result);
-    }
+    if (result?.deliveredTo === 'player' || result?.deliveredTo === 'chest') return;
+    const b = this.currentBlock();
+    const own = st === 'apart' || st === 'left' || (b?.type === 'work' && b.company !== 'player' && this.behavior()?.directive?.type === 'independent');
+    if (!own) return;
+    const buyer = result?.buyer || (typeof result?.deliveredTo === 'string' && result.deliveredTo !== 'keep' ? result.deliveredTo : null);
+    const spec =
+      COIN_JOBS.find((j) => j.job === jobId && (buyer ? j.npc === buyer : b?.jobId ? b.jobId === j.id : true)) ||
+      (buyer ? null : COIN_JOBS.find((j) => j.job === jobId));
+    if (spec || (buyer && result?.earned > 0)) this._getPaid(spec, result, buyer);
   }
 
   // "Half the wood is mine": after delivering, she takes her share back.
@@ -754,27 +796,34 @@ export class Autonomy {
     if (taken.length) this.say(`${taken.join(' and ')} for me, as agreed. Pleasure doing business.`.replace(/^./, (c) => c.toUpperCase()), { force: true });
   }
 
-  _getPaid(spec, result) {
+  // Paid for her work: what the buyer's shop pays (job_done's `earned`), or her agreed
+  // rate. Goods she handed to the buyer are theirs already; goods she kept are sold to them.
+  _getPaid(spec, result, buyer = null) {
     const items = Array.isArray(result?.items) ? result.items : [];
     let count = num(result?.count, 0);
     if (!count) count = items.reduce((s, it) => s + (it.qty || 0), 0);
-    if (!count) count = spec.amount;
+    if (!count) count = spec?.amount || 1;
     const units = clamp(Math.round(count), 1, 10);
-    const pay = units * spec.rate;
-    // The goods go to whoever is paying for them.
-    const inv = this.lyra()?.inventory;
-    if (inv) {
-      let left = units;
-      for (const id of spec.items) {
-        if (left <= 0) break;
-        left -= inv.remove(id, left);
+    const earned = num(result?.earned, 0);
+    const pay = Math.max(earned, spec ? units * spec.rate : 0);
+    if (!(pay > 0)) return;
+    if (!buyer && spec) {
+      const inv = this._inv();
+      if (inv) {
+        let left = units;
+        for (const id of spec.items) {
+          if (left <= 0) break;
+          left -= inv.remove(id, left);
+        }
       }
     }
     this._addCoin(pay);
-    this.lastJobId = spec.id;
-    const npc = this.npcName(spec.npc);
-    this.remember(`${npc} paid me ${pay} coins to ${spec.label}. Honest work, honest coin.`, { importance: 3, about: [spec.npc], tags: ['work', 'coin'] });
-    if (this._playerNear(220)) this.say(`${npc} paid me ${pay} coins. My purse is singing.`, { minGap: 10 });
+    const npcId = buyer || spec?.npc;
+    if (spec) this.lastJobId = spec.id;
+    const npc = this.npcName(npcId);
+    const what = spec ? `to ${spec.label}` : 'for what I gathered';
+    this.remember(`${npc} paid me ${pay} coins ${what}. Honest work, honest coin.`, { importance: 3, about: npcId ? [npcId] : [], tags: ['work', 'coin'] });
+    if (this._playerNear(220)) this.say(this.line('deed_paid_work', { npc, coins: pay }), { minGap: 10 });
   }
 
   _onEnter({ actor, location }) {
@@ -834,13 +883,14 @@ export class Autonomy {
       if (this.violence.length > 12) this.violence.shift();
     }
     const P = this.playerName();
-    const memo = this._deedMemory(deed, entry, vname, P);
-    this.remember(memo, {
-      importance: clamp(Math.round(3 + Math.abs(severity) * 1.4), 1, 10),
-      about: victimId && victimId !== PLAYER_ID ? [PLAYER_ID, victimId] : [PLAYER_ID],
-      tags: ['deed', deed],
-      type: 'event',
-    });
+    if (!(def?.mindMemo && this.mind?.perception)) {
+      this.remember(this._deedMemory(deed, entry, vname, P), {
+        importance: clamp(Math.round(3 + Math.abs(severity) * 1.4), 1, 10),
+        about: victimId && victimId !== PLAYER_ID ? [PLAYER_ID, victimId] : [PLAYER_ID],
+        tags: ['deed', deed],
+        type: 'event',
+      });
+    }
     this._feelDeed(deed, severity, kind);
     this.game?.bus?.emit?.('deed', { deed, severity: entry.severity, text, victim: victim || victimId || null });
     if (severity < 0) this._checkAvoidPromises(deed);
@@ -1051,6 +1101,17 @@ export class Autonomy {
           return;
         }
         this.warnings += 1;
+        if (st === 'apart') {
+          // Living her own day: a warning and some distance, then back to her day.
+          this.say(this.line('to_wary_hit'), { force: true });
+          this._act('keep_distance', { target: 'player', amount: 5 });
+          try {
+            this.behavior()?.setDirective?.({ type: 'keep_away', from: 'player', tiles: 5, follow: false, seconds: 30, then: { type: 'independent' } });
+          } catch (err) {
+            console.error('[autonomy] keep away failed', err);
+          }
+          return;
+        }
         if (!this.setCompanionship('wary', '', { cause: 'hit', lineKey: 'to_wary_hit' })) this.say(this.line('to_wary_hit'), { force: true });
         this._act('keep_distance', { target: 'player', amount: 4 });
         return;
@@ -1082,7 +1143,9 @@ export class Autonomy {
         return;
       }
       case 'downed_lyra':
-        return this._goGone('downed', 'to_gone_downed', vars);
+        // She decides when she comes to (_comeTo); unconscious, she decides nothing.
+        if (!this.downed?.byPlayer) return this._goGone('downed', 'to_gone_downed', vars);
+        return undefined;
       case 'abandoned_downed':
         this._queue(this.line('deed_abandoned'));
         return;
@@ -1115,7 +1178,7 @@ export class Autonomy {
   _goGone(reason, lineKey, vars, victim = null) {
     const cause = reason === 'downed' ? 'downed' : reason === 'villager' ? 'villager_gone' : 'violence';
     this.setCompanionship('gone', '', { cause, vars, lineKey, goneReason: reason, target: vars?.target, victim });
-    if (reason !== 'downed') this._act('bind', { target: 'player' });
+    if (reason !== 'downed') this._bindPlayer();
   }
 
   // Binding Light, then flee or stand her ground, by personality and fear.
@@ -1123,7 +1186,7 @@ export class Autonomy {
     const s = this.stats();
     const P = this.personality();
     const l = this.lyra();
-    this._act('bind', { target: 'player' });
+    this._bindPlayer();
     const hurt = l?.maxHp ? l.hp / l.maxHp < 0.5 : false;
     if (s.fear >= 40 || P.neuroticism >= 0.55 || hurt || P.agreeableness >= 0.8) {
       this._act('flee', { target: 'player', value: this._safePlace() });
@@ -1139,9 +1202,36 @@ export class Autonomy {
 
   // Bind the player, step between them and the victim, call the guards.
   _bindAndGuard(victim) {
-    this._act('bind', { target: 'player' });
+    this._bindPlayer();
     if (victim?.id) this._act('guard', { target: victim.id });
     this.say(this.line('deed_villager_bind'), { force: true, kind: 'shout', target: this.game?.entities?.get?.('rowan') || null });
+  }
+
+  // Binding Light on the player (behavior's `bind`, run as her own act). A blow can knock
+  // her out of reach or line of sight for a moment: she tries again for two seconds.
+  _bindPlayer() {
+    const r = this._act('bind', { target: 'player' });
+    if (r && r.ok) {
+      this._pendingBind = null;
+      return true;
+    }
+    if (r && this.game?.actions?.has?.('bind')) this._pendingBind = { until: this.now() + 2.5 };
+    return false;
+  }
+
+  _retryBind() {
+    const pb = this._pendingBind;
+    if (!pb) return;
+    const l = this.lyra();
+    if (this.now() > pb.until || !l || l.downed || this.companionship === 'together') {
+      this._pendingBind = null;
+      return;
+    }
+    if (this.player()?.rootTime > 0) {
+      this._pendingBind = null;
+      return;
+    }
+    if (this._playerNear(140)) this._bindPlayer();
   }
 
   // The guards, the inn or the chapel: whichever is nearer to her than to the player.
@@ -1167,11 +1257,16 @@ export class Autonomy {
   // Run one of her own actions (never gated); fall back to the behavior directly.
   _act(name, args = {}) {
     const g = this.game;
-    try {
-      if (g?.actions?.has?.(name)) return g.actions.run(name, args, 'self');
-    } catch (err) {
-      console.error(`[autonomy] ${name} failed`, err);
-      return null;
+    if (g?.actions?.has?.(name)) {
+      this._selfAct = (this._selfAct || 0) + 1;
+      try {
+        return g.actions.run(name, args, 'self');
+      } catch (err) {
+        console.error(`[autonomy] ${name} failed`, err);
+        return null;
+      } finally {
+        this._selfAct -= 1;
+      }
     }
     const b = this.behavior();
     try {
@@ -1251,33 +1346,47 @@ export class Autonomy {
     return true;
   }
 
-  // Tell behavior what this state means for her body (DESIGN §16.3, §16.9).
+  // Tell behavior what this state means for her body (DESIGN §16.3, §16.9): together ->
+  // follow; wary -> follow far, stance defend; apart -> independent (her own day, read
+  // live from agenda.today); left -> keep away from the player, then her own day at a
+  // distance; gone -> leave the world along the King's Road.
   _direct(state, previous = null) {
     const b = this.behavior();
     if (!b?.setDirective) return;
     const d = b.directive || {};
+    const set = (directive) => {
+      const r = b.setDirective(directive);
+      if (r && r.ok === false) console.warn(`[autonomy] behavior declined ${directive.type}: ${r.message || ''}`);
+      return r;
+    };
     try {
       switch (state) {
         case 'together':
           if (previous === 'apart' || previous === 'left' || LEAVING_TYPES.has(d.type) || (d.type === 'follow' && d.distance === 'far')) {
-            b.setDirective({ type: 'follow', target: 'player', distance: 'normal' });
+            set({ type: 'follow', target: 'player', distance: 'normal' });
           }
           if (b.stance === 'self_defense') b.setStance?.('defend');
           break;
         case 'wary':
-          if (d.type === 'follow' || previous === 'apart' || previous === 'left' || LEAVING_TYPES.has(d.type)) b.setDirective({ type: 'follow', target: 'player', distance: 'far' });
+          if (d.type === 'follow' || previous === 'apart' || previous === 'left' || (LEAVING_TYPES.has(d.type) && d.type !== 'keep_away' && d.type !== 'flee')) {
+            set({ type: 'follow', target: 'player', distance: 'far' });
+          }
           if (b.stance === 'attack') b.setStance?.('defend');
           break;
         case 'apart':
-          b.setDirective({ type: 'independent', plan: this.agenda.today, block: this.currentBlock() });
+          if (d.type !== 'independent' || d.avoid) set({ type: 'independent', reason: 'apart' });
           if (b.stance === 'attack' || b.stance === 'self_defense') b.setStance?.('defend');
           break;
         case 'left':
-          b.setDirective({ type: 'keep_away', from: 'player', tiles: 10, plan: this.agenda.today, block: this.currentBlock() });
-          this._keepAwaySince = this.now();
+          // Running from the player already (flee): behavior sends her on to her own day.
+          if (d.type !== 'flee') {
+            set({ type: 'keep_away', from: 'player', tiles: LEFT_TILES, follow: false });
+            this._keepAwaySince = this.now();
+          }
+          if (b.stance === 'attack') b.setStance?.('defend');
           break;
         case 'gone':
-          b.setDirective({ type: 'leave', mode: 'gone' });
+          set({ type: 'leave', mode: 'gone', reason: String(this.reason || 'gone').slice(0, 80) });
           if (b.stance === 'attack') b.setStance?.('defend');
           break;
         default:
@@ -1310,6 +1419,8 @@ export class Autonomy {
   reconsider(reason = '') {
     const st = this.companionship;
     if (st === 'gone') return st;
+    // Knocked out by the player: nothing is decided until she comes to.
+    if (this.downed?.byPlayer && this.lyra()?.downed) return st;
     const s = this.stats();
     if (st === 'left') {
       if (this.amendsStatus().ok) this.setCompanionship('apart', '', { cause: 'amends', apartReason: 'amends', lineKey: 'to_apart_amends' });
@@ -1499,6 +1610,7 @@ export class Autonomy {
         this.deals.push({ kind: 'share', job: res.args.value ? String(res.args.value).toLowerCase().replace(/\s+/g, '_') : null, until: now + this.daySeconds() / 2 });
         break;
       case 'pay': {
+        if (res.pay > 0 && this._brainOffer() > 0) break; // the brain records the player's offer as their promise
         const amount = res.pay || res.askPrice || 5;
         this.addPromise({ by: 'player', kind: 'pay', params: { amount }, what: `pay me ${amount} coins`, days: 0.25 });
         break;
@@ -1515,9 +1627,16 @@ export class Autonomy {
         this.deals.push({ kind: 'until', until: now + Math.max(0.5, 20.5 - this.hour()) * this.sph() });
         break;
       default:
-        if (res.pay > 0 && res.decision === 'accept') this.addPromise({ by: 'player', kind: 'pay', params: { amount: res.pay }, what: `pay me ${res.pay} coins`, days: 0.25 });
+        if (res.pay > 0 && res.decision === 'accept' && !(this._brainOffer() > 0)) this.addPromise({ by: 'player', kind: 'pay', params: { amount: res.pay }, what: `pay me ${res.pay} coins`, days: 0.25 });
         break;
     }
+  }
+
+  // Coins the player is offering with the request being weighed right now (the brain's
+  // offer detection), or 0. Already handed over ('here's 10 coins') counts as no debt.
+  _brainOffer() {
+    const o = this.game?.brain?.currentOffer;
+    return o && Number(o.coins) > 0 && !o.paid ? Number(o.coins) : 0;
   }
 
   _eatSomething() {
@@ -1530,37 +1649,50 @@ export class Autonomy {
   // ------------------------------------------------------------------ her day (§16.1)
 
   purse() {
-    this._syncPurse();
-    return this.agenda.purse;
+    return this._readPurse();
   }
 
-  // Her coin lives in her inventory when she has one (like the player's gold).
-  _syncPurse() {
+  _inv() {
     const inv = this.lyra()?.inventory;
-    if (inv?.count) this.agenda.purse = inv.count('coin');
+    return inv && typeof inv.count === 'function' && typeof inv.add === 'function' && typeof inv.remove === 'function' ? inv : null;
   }
 
-  _addCoin(n) {
+  _readPurse() {
+    const inv = this._inv();
+    if (inv) {
+      try {
+        return inv.count('coin');
+      } catch {
+        return this._purse;
+      }
+    }
+    return this._purse;
+  }
+
+  _writePurse(v) {
+    const n = Math.max(0, Math.round(Number(v) || 0));
+    const inv = this._inv();
+    if (!inv) {
+      this._purse = n;
+      return;
+    }
+    const have = inv.count('coin');
+    if (n > have) inv.add('coin', n - have);
+    else if (n < have) inv.remove('coin', have - n);
+  }
+
+  _addCoin(n, from = 'job') {
     if (!(n > 0)) return;
+    this._writePurse(this._readPurse() + n);
     const l = this.lyra();
-    if (l?.inventory?.add) {
-      l.inventory.add('coin', n);
-      this.game?.bus?.emit?.('item_gained', { actor: l, itemId: 'coin', qty: n, from: 'job' });
-      this._syncPurse();
-    } else this.agenda.purse += n;
+    if (l && this._inv()) this.game?.bus?.emit?.('item_gained', { actor: l, itemId: 'coin', qty: n, from });
   }
 
   _spendCoin(n) {
     if (!(n > 0)) return true;
-    const inv = this.lyra()?.inventory;
-    if (inv?.remove) {
-      if (inv.count('coin') < n) return false;
-      inv.remove('coin', n);
-      this._syncPurse();
-      return true;
-    }
-    if (this.agenda.purse < n) return false;
-    this.agenda.purse -= n;
+    const have = this._readPurse();
+    if (have < n) return false;
+    this._writePurse(have - n);
     return true;
   }
 
@@ -1639,14 +1771,13 @@ export class Autonomy {
     let today;
     try {
       const v = this._planView(fromHour >= 23.5 ? 23.5 : fromHour);
-      if (fresh && this.agenda.morningIntent && fromHour < 10) v.morningIntent = this.agenda.morningIntent;
       today = buildPlan(v);
-      if (v.morningIntent) {
-        const mi = v.morningIntent;
+      const mi = fresh && fromHour < 10 ? this.agenda.morningIntent : null;
+      if (mi && today[0] && today[0].from <= 7.5) {
         const first = today[0];
-        if (first && first.from <= 7.5) Object.assign(first, { activity: 'travel', at: mi.at || null, why: mi.why || first.why, with: 'player', job: undefined, jobId: undefined });
-        this.agenda.morningIntent = null;
+        today[0] = makeBlock(first.from, first.to, 'travel', mi.at || null, mi.why || first.why, { company: 'player' });
       }
+      if (fresh) this.agenda.morningIntent = null;
       this.agenda.goals = weighGoals(v);
     } catch (err) {
       console.error('[autonomy] planning failed', err);
@@ -1657,9 +1788,6 @@ export class Autonomy {
     this.agenda.revision = (this.agenda.revision || 0) + 1;
     this._blockIdx = -2;
     this.game?.bus?.emit?.('plan_changed', { today, reason });
-    const st = this.companionship;
-    const d = this.behavior()?.directive?.type;
-    if ((st === 'apart' && d === 'independent') || (st === 'left' && (d === 'independent' || d === 'keep_away'))) this._direct(st, st);
     return today;
   }
 
@@ -1671,8 +1799,9 @@ export class Autonomy {
     if ((m = t.match(/rejoin (?:you )?at (\d+(?:\.\d+)?)/))) {
       const hour = clamp(parseFloat(m[1]), 0, 24);
       this.addPromise({ by: 'lyra', kind: 'rejoin', params: { hour, day: hour > h ? this.day() : this.day() + 1 }, what: `come back to you at ${hourLabel(hour)}`, days: 1 });
-      this._insertBlock({ from: Math.max(h, hour), to: Math.max(h, hour) + 3, activity: 'travel', at: null, why: 'I said I’d come back to you.', with: 'player' });
-      return { ok: true, message: '' };
+      const at = Math.max(h, hour);
+      this._insertBlock(makeBlock(at, Math.min(at + 3, 24), 'travel', null, 'I said I’d come back to you.', { company: 'player' }));
+      return { ok: true, message: this.line('ok_plan') };
     }
     if (/in the morning|tomorrow|at (?:first light|dawn|sunrise)/.test(t)) {
       const loc = this.resolveLocation(t.replace(/^(explore|patrol|goto|go to|visit)\s+/, '').replace(/\s+(in the morning|tomorrow).*$/, ''));
@@ -1683,31 +1812,37 @@ export class Autonomy {
     const b = this._blockFromText(t, h);
     this._insertBlock(b);
     if (by === 'player') this.lastAcceptedT = this.now();
+    // Her own new plan takes her away from the player now, unless it is with them.
+    if ((this.companionship === 'together' || this.companionship === 'wary') && b.company !== 'player') this._deferIdx = blockIndexAt(this.agenda.today, h);
     return { ok: true, message: this.line('ok_plan') };
   }
 
   _blockFromText(t, h) {
-    const base = { from: h, to: Math.min(h + 2, 24), with: 'alone', why: t ? t.charAt(0).toUpperCase() + t.slice(1, 120) : 'A change of plans.' };
+    const why = t ? t.charAt(0).toUpperCase() + t.slice(1, 120) : 'A change of plans.';
+    const to = Math.min(h + 2, 24);
     const job = COIN_JOBS.find((j) => new RegExp(`\\b(${j.npc}|${j.job.split('_')[0]})`).test(t));
-    if (/\b(follow|with you|travel|join you|together|come along)\b/.test(t)) return { ...base, activity: 'travel', at: null, with: 'player' };
+    if (/\b(follow|with you|travel|join you|together|come along)\b/.test(t)) return makeBlock(h, to, 'travel', null, why, { company: 'player' });
     if (job && /\b(work|help|herb|farm|fish|wood|ore|mine|chop|gather)\b/.test(t)) {
-      return { ...base, activity: 'work', at: job.at, job: job.job, jobId: job.id, label: job.label, npc: job.npc, deliverAt: job.deliverAt, amount: job.amount, pay: job.rate * job.amount };
+      return makeBlock(h, to, 'work', job.at, why, { job: job.job, jobId: job.id, label: job.label, npc: job.npc, deliverTo: job.npc, amount: job.amount, pay: job.rate * job.amount });
     }
-    if (/\b(eat|supper|dinner|lunch|breakfast|food|kettle|inn)\b/.test(t)) return { ...base, activity: 'eat', at: 'ember_kettle' };
-    if (/\b(sleep|bed|nap)\b/.test(t)) return { ...base, activity: 'sleep', at: this.agenda.sleepAt === 'lyra_bed' ? 'player_home' : 'ember_kettle', bed: this.agenda.sleepAt, to: 31 };
-    if (/\b(rest|sit|relax)\b/.test(t)) return { ...base, activity: 'rest', at: 'ember_kettle' };
-    if (/\b(study|practi[cs]e|read|book|spell)\b/.test(t)) return { ...base, activity: 'study', at: 'player_home' };
-    if (/\bstar/.test(t)) return { ...base, activity: 'free', at: 'south_meadow', kind: 'stars' };
-    if (/\bmoonpetal/.test(t)) return { ...base, activity: 'free', at: 'whisperwood', kind: 'moonpetals' };
-    if (/\b(maren|aveline|chapel|lead|clue)\b/.test(t)) return { ...base, activity: 'lead', at: 'chapel', npc: 'aveline' };
+    if (/\b(eat|supper|dinner|lunch|breakfast|food|kettle|inn)\b/.test(t)) return makeBlock(h, to, 'eat', 'ember_kettle', why);
+    if (/\b(sleep|bed|nap)\b/.test(t)) {
+      const home = this.agenda.sleepAt === 'lyra_bed';
+      return makeBlock(h, 31, 'sleep', home ? 'player_home' : 'ember_kettle', why, { bed: this.agenda.sleepAt });
+    }
+    if (/\b(rest|sit|relax)\b/.test(t)) return makeBlock(h, to, 'rest', 'ember_kettle', why);
+    if (/\b(study|practi[cs]e|read|book|spell)\b/.test(t)) return makeBlock(h, to, 'study', 'player_home', why);
+    if (/\bstar/.test(t)) return makeBlock(h, to, 'stars', 'south_meadow', why);
+    if (/\bmoonpetal/.test(t)) return makeBlock(h, to, 'moonpetals', 'whisperwood', why);
+    if (/\b(maren|aveline|chapel|lead|clue)\b/.test(t)) return makeBlock(h, to, 'lead', 'chapel', why, { npc: 'aveline' });
     const vm = t.match(/\b(?:visit|see)\s+([a-z]+)/);
     if (vm) {
       const e = this.resolveEntity(vm[1]);
-      if (e?.profile) return { ...base, activity: 'visit', at: e.profile.work || e.profile.home || 'town_square', npc: e.id };
+      if (e?.profile) return makeBlock(h, to, 'visit', e.profile.work || e.profile.home || 'town_square', why, { npc: e.id, npcName: this.displayName(e) });
     }
     const loc = this.resolveLocation(t.replace(/^(go to|explore|visit|walk to)\s+/, ''));
-    if (loc) return { ...base, activity: 'free', at: loc.id };
-    return { ...base, activity: 'free', at: null };
+    if (loc) return makeBlock(h, to, 'free', loc.id, why, { activity: `spend time at ${loc.name}` });
+    return makeBlock(h, to, 'free', null, why);
   }
 
   // Put a block into today, trimming whatever it overlaps.
@@ -1725,16 +1860,16 @@ export class Autonomy {
     out.sort((a, b) => a.from - b.from);
     this.agenda.today = out;
     this.agenda.revision = (this.agenda.revision || 0) + 1;
-    this._blockIdx = -2;
+    this._blockIdx = blockIndexAt(out, this.hour());
     this.game?.bus?.emit?.('plan_changed', { today: out, reason: 'set_plan' });
   }
 
   // She accepted the player's company: whatever she had planned for now can wait.
   _yieldBlock() {
     const b = this.currentBlock();
-    if (!b || b.with === 'player' || b.activity === 'sleep') return;
+    if (!b || b.company === 'player' || b.type === 'sleep') return;
     const h = this.hour();
-    this._insertBlock({ from: h, to: Math.max(h + 0.25, b.to), activity: 'travel', at: null, why: 'You asked; my errands can wait.', with: 'player' });
+    this._insertBlock(makeBlock(h, Math.max(h + 0.25, b.to), 'travel', null, 'You asked; my errands can wait.', { company: 'player' }));
   }
 
   _followPlan() {
@@ -1751,31 +1886,32 @@ export class Autonomy {
   // Returns true once the block has been acted on (false: try again shortly).
   _enterBlock(b) {
     const st = this.companionship;
-    if (st === 'gone') return true;
+    if (st === 'gone' || st === 'left') return true;
     if (st === 'together' || st === 'wary') {
-      if (b.with === 'player') return true;
+      if (b.company === 'player') return true;
       if (!this._canLeaveForPlan()) return false;
       this.lastAnnounceT = this.now();
       this.setCompanionship('apart', b.why || '', { cause: 'plans', apartReason: 'plans', lineKey: planLineKey(b), vars: this._planVars(b) });
       return true;
     }
-    if (st === 'apart') {
-      if (b.with === 'player' && this._wantsCompany()) {
+    // apart
+    if (b.company === 'player') {
+      if (this._wantsCompany()) {
         const morning = b.from <= 7.5;
         this.setCompanionship(this._returnState(), '', { cause: 'back', lineKey: this._playerNear(400) ? (morning ? 'plan_back_morning' : 'plan_back') : null });
         return true;
       }
-      this._direct('apart', 'apart');
-      if (this._playerNear(260) && this.now() - this.lastAnnounceT > 45) {
-        this.lastAnnounceT = this.now();
-        this.say(this.line(planLineKey(b), this._planVars(b)), { minGap: 8 });
+      // She meant to spend these hours with the player, but not any more: a day of her own.
+      if (this._moodReplanRev !== this.agenda.revision) {
+        this.planDay('mood');
+        this._moodReplanRev = this.agenda.revision;
+        return true;
       }
-      return true;
     }
-    if (st === 'left') {
-      const d = this.behavior()?.directive?.type;
-      if (d === 'independent' || d === 'keep_away') this._direct(d === 'keep_away' ? 'left' : 'apart', 'left');
-      return true;
+    this._direct('apart', 'apart');
+    if (this._playerNear(260) && this.now() - this.lastAnnounceT > 45) {
+      this.lastAnnounceT = this.now();
+      this.say(this.line(planLineKey(b), this._planVars(b)), { minGap: 8 });
     }
     return true;
   }
@@ -1794,7 +1930,9 @@ export class Autonomy {
     if (!l || l.downed) return false;
     const b = this.behavior();
     if (b?.currentTarget) return false;
-    if (b?.directive?.type === 'job') return false;
+    const d = b?.directive?.type;
+    // A standing order she agreed to (a job, a guard post) is kept until it is done.
+    if (d === 'job' || d === 'guard' || d === 'goto' || d === 'explore' || d === 'patrol' || d === 'flee') return false;
     if (this.now() - this.lastAcceptedT < 90) return false;
     if (this._hostileNear(l, 120)) return false;
     if (this.player()?.downed) return false;
@@ -1807,7 +1945,7 @@ export class Autonomy {
     if (!b) return;
     const day = this.day();
     const idx = this.agenda.today.indexOf(b);
-    if (b.activity === 'eat' && !(this.meal.day === day && this.meal.block === idx)) {
+    if (b.type === 'eat' && !(this.meal.day === day && this.meal.block === idx)) {
       this.meal = { day, block: idx };
       if (this.needs().hunger > 0.85) return;
       const sad = this._planView(this.hour()).valence < 0;
@@ -1824,7 +1962,15 @@ export class Autonomy {
         this.remember('Elda slid me a heel of bread and wouldn’t take my last coins. I owe her.', { importance: 3, about: ['elda'], tags: ['kindness'] });
       }
       this._act('use_item', { value: food });
-    } else if (b.activity === 'sleep' && b.bed === 'lyra_inn_bed' && this.rentDay !== day && this.hour() >= 18) {
+    } else if (b.type === 'sleep' && b.bed === 'lyra_inn_bed' && this.rentDay !== day && this.hour() >= 18) {
+      // Elda rents her the room herself while she lives apart; traveling with the player,
+      // she pays at the counter on her way up.
+      const st = this.companionship;
+      if (st !== 'together' && st !== 'wary') return;
+      if (this.game?.flags?.lyra_inn_room?.day === day) {
+        this.rentDay = day;
+        return;
+      }
       this.rentDay = day;
       if (!this._spendCoin(PRICES.room)) {
         this.remember('Elda let me keep my room on credit tonight. I hate owing people.', { importance: 3, about: ['elda'], tags: ['coin'] });
@@ -1832,10 +1978,25 @@ export class Autonomy {
     }
   }
 
+  // Elda rented her the room (characters: 'room_rented').
+  _onRoomRented({ actor, paid, price }) {
+    if (actor && !this.isLyra(actor)) return;
+    this.rentDay = this.day();
+    if (!paid) this.remember('Elda let me keep my room on credit tonight. I hate owing people.', { importance: 3, about: ['elda'], tags: ['coin'] });
+    else if (price > 0 && this._readPurse() < 10) this.remember(`Paid Elda ${price} coins for my room. My purse is getting thin.`, { importance: 2, about: ['elda'], tags: ['coin'] });
+  }
+
   // ------------------------------------------------------------------ promises
 
   addPromise({ by = 'player', kind = 'free', params = {}, what = '', days = 0, text = '' } = {}) {
     const now = this.now();
+    // One promise, however many ways it reached her (her ear, the brain, Claude).
+    const pkey = JSON.stringify(params || {});
+    const label = String(what || text || '').toLowerCase();
+    const same = this.promises.find(
+      (p) => p.state === 'open' && p.by === (by === 'lyra' ? 'lyra' : 'player') && p.kind === kind && now - p.made < 30 && (kind === 'free' ? p.text.toLowerCase() === label : JSON.stringify(p.params) === pkey),
+    );
+    if (same) return same;
     const p = {
       id: `p${++this._promiseSeq}_${Math.round(now)}`,
       text: String(what || text || 'keep their word').slice(0, 120),
@@ -1939,6 +2100,9 @@ export class Autonomy {
   // ------------------------------------------------------------------ the player's words
 
   // Every player_message: apologies, promises, offers, and answers to her questions.
+  // With the real brain, a "yes" to her counter-offer or to something she asked runs as
+  // an action (the brain turns it into the counter or the `promise` action), and promises
+  // arrive through the `promise` action; on her own she handles them here.
   hearPlayer(text) {
     const t = String(text || '').trim();
     if (!t) return null;
@@ -1950,10 +2114,26 @@ export class Autonomy {
       heard.offer = offer;
     }
     if (isApology(t)) heard.apology = this.receiveApology(t);
-    if (RE.promise.test(t)) heard.promise = this.playerPromise(t);
-    else if (RE.yes.test(t)) heard.answered = this._answer(true);
-    else if (RE.no.test(t)) heard.answered = this._answer(false);
+    const viaActions = this._brainRunsFollowUps();
+    if (RE.promise.test(t)) {
+      if (!viaActions) heard.promise = this.playerPromise(t);
+    } else if (!viaActions) {
+      if (RE.yes.test(t)) heard.answered = this._answer(true);
+      else if (RE.no.test(t)) heard.answered = this._answer(false);
+      // Nobody else answers for her: she does.
+      const ans = heard.answered;
+      if (ans?.kind === 'request') this.say(this.line(ans.yes ? 'req_yes' : 'req_no'), { force: true });
+      else if (ans?.kind === 'counter' && ans.yes) this.say(this.line('counter_taken'), { force: true });
+    } else if (RE.no.test(t) && this.pendingRequest && this.now() - this.pendingRequest.t < 120) {
+      heard.answered = this._answer(false);
+    }
     return heard;
+  }
+
+  // The brain keeps counters and her asks itself and answers them with actions.
+  _brainRunsFollowUps() {
+    const g = this.game;
+    return typeof g?.brain?.noteRefusal === 'function' && !!g?.actions?.has?.('promise');
   }
 
   // What she heard in the message being handled right now (for the plugin's intents).
@@ -1962,6 +2142,14 @@ export class Autonomy {
     if (!h) return null;
     if (h.rt != null && this.game?.time != null) return Math.abs(this.game.time - h.rt) < 1 ? h : null;
     return Math.abs(this.now() - h.t) < 0.5 ? h : null;
+  }
+
+  // The brain's 'apology' event: the same apology she already heard in player_message,
+  // unless it reached her some other way.
+  _onApologyEvent({ text } = {}) {
+    const h = this._heard;
+    if (h?.apology && (h.text === text || this.now() - h.t < 5)) return;
+    if (text) this.receiveApology(String(text));
   }
 
   receiveApology(text) {
@@ -1999,14 +2187,47 @@ export class Autonomy {
 
   playerPromise(text) {
     const now = this.now();
-    if (this.pendingRequest && now - this.pendingRequest.t < 90) return this._answer(true)?.promise || null;
+    if (this.pendingRequest && now - this.pendingRequest.t < 120) return this._answer(true)?.promise || null;
     const spec = parsePromiseText(text, (ref) => this.resolveLocation(ref));
+    return this.addPromise({ by: 'player', kind: spec.kind, params: spec.params, what: spec.what, days: spec.days });
+  }
+
+  // The `promise` action: { by, text, amount }. A "yes" to what she just asked becomes
+  // that ask; coin owed becomes a payment promise; anything else is read from the words
+  // (the player's: "bring you a honey cake", or hers: "buy me a honey cake").
+  promiseFromAction({ by = 'player', text = '', amount = null } = {}) {
+    const who = by === 'lyra' || by === 'self' || by === 'her' ? 'lyra' : 'player';
+    const raw = String(text || '').trim();
+    const now = this.now();
+    const r = this.pendingRequest;
+    if (who === 'player' && r && now - r.t < 120) {
+      const a = raw.toLowerCase();
+      const b = String(r.text || '').toLowerCase();
+      if (!raw || a === b || a.includes(b) || b.includes(a) || a.includes(String(r.spec?.what || '').toLowerCase())) {
+        this.pendingRequest = null;
+        return this.addPromise({ by: 'player', kind: r.spec.kind, params: r.spec.params, what: r.spec.what, days: r.spec.days || 1 });
+      }
+    }
+    const coins = Number(amount);
+    if (coins > 0 && (who === 'player' || /\b(pay|coins?|gold)\b/i.test(raw))) {
+      return this.addPromise({ by: who, kind: 'pay', params: { amount: Math.round(coins) }, what: who === 'player' ? `pay me ${Math.round(coins)} coins` : `pay you ${Math.round(coins)} coins`, days: 0.25 });
+    }
+    if (who === 'lyra') {
+      const what = raw.replace(/^(?:i(?:'ll| will)\s+)/i, '').replace(/[.!]+$/, '').slice(0, 90) || 'keep my word';
+      return this.addPromise({ by: 'lyra', kind: 'free', params: {}, what, days: 1 });
+    }
+    const resolve = (ref) => this.resolveLocation(ref);
+    let spec = parsePromiseText(raw, resolve);
+    if (spec.kind === 'free') {
+      const asked = parseAskText(raw, resolve);
+      if (asked.kind !== 'free') spec = asked;
+    }
     return this.addPromise({ by: 'player', kind: spec.kind, params: spec.params, what: spec.what, days: spec.days });
   }
 
   _answer(yes) {
     const now = this.now();
-    if (this.pendingRequest && now - this.pendingRequest.t < 90) {
+    if (this.pendingRequest && now - this.pendingRequest.t < 120) {
       const r = this.pendingRequest;
       this.pendingRequest = null;
       if (yes) {
@@ -2016,7 +2237,7 @@ export class Autonomy {
       this.remember(`I asked ${this.playerName()} to ${r.spec.what}, and they said no.`, { importance: 2, tags: ['request'], about: [PLAYER_ID] });
       return { kind: 'request', yes: false };
     }
-    if (this.pendingCounter && now - this.pendingCounter.t < 60) {
+    if (this.pendingCounter && now - this.pendingCounter.t < 90) {
       const c = this.pendingCounter;
       this.pendingCounter = null;
       if (yes) {
@@ -2045,6 +2266,18 @@ export class Autonomy {
     this.pendingRequest = { spec: sp, t: this.now(), text: String(text || sp.what) };
     if (say && text) this.say(String(text), { force: true });
     return sp;
+  }
+
+  // Her initiative asks go through the `request` action, so every module sees them
+  // (the brain turns the player's "yes" into their promise).
+  _ask(text, spec) {
+    if (this.game?.actions?.has?.('request')) {
+      this._nextAsk = { text, spec };
+      const r = this._act('request', { value: text });
+      this._nextAsk = null;
+      if (r?.ok) return;
+    }
+    this.makeRequest(text, { spec, say: true });
   }
 
   // ------------------------------------------------------------------ speaking
@@ -2127,7 +2360,7 @@ export class Autonomy {
     this.lastInitiativeT = now;
     if (c.key) this.asked[c.key] = this.day();
     const text = this.line(c.lineKey, c.vars || {});
-    if (c.spec) this.makeRequest(text, { spec: c.spec, say: true });
+    if (c.spec) this._ask(text, c.spec);
     else this.say(text, { force: true });
   }
 
@@ -2207,6 +2440,7 @@ export class Autonomy {
       this._hourly(n);
     }
     this._watchDowned(step);
+    if (this._pendingBind) this._retryBind();
     if (this.queued.length) this._flushQueued();
     this._followPlan();
     this._checkPromises();
@@ -2245,6 +2479,25 @@ export class Autonomy {
       /* keep the old weights */
     }
     this.reconsider('hour');
+    this._checkNeeds();
+  }
+
+  // Starving or spent: her plan for the rest of the day changes (once per change).
+  _checkNeeds() {
+    const n = this.needs();
+    const band = `${n.hunger < 0.25 ? 'h' : ''}${n.energy < 0.2 ? 'e' : ''}`;
+    if (band === (this._needsBand ?? '')) return;
+    this._needsBand = band;
+    if (band && this.hour() >= 7) this.planDay('needs');
+  }
+
+  // A deed only she can judge, reached through Claude (the record_deed action): a lie,
+  // a kindness, a theft. The rest she sees for herself on the bus.
+  recordObservedDeed(deed, text = '') {
+    const d = String(deed || '').toLowerCase().trim();
+    if (!OBSERVED_DEEDS.has(d)) return null;
+    const words = String(text || '').trim().slice(0, 140);
+    return this.recordDeed(d, words ? { text: words } : {});
   }
 
   // A refusal the player did not push for a minute: they respected it.
@@ -2279,25 +2532,41 @@ export class Autonomy {
     }
   }
 
-  // Left: she keeps away while the player is near, and lives her own day when they are not.
+  // Her body keeps up with her state: once she has left the player she keeps away from
+  // them while she lives her own day; apart, she lives her day; gone, she walks away.
   _keepAway() {
-    if (this.companionship !== 'left') return;
+    const st = this.companionship;
     const b = this.behavior();
-    const d = b?.directive?.type;
-    if (!b?.setDirective || (d !== 'keep_away' && d !== 'independent')) return;
     const l = this.lyra();
-    const p = this.player();
-    if (!l || !p) return;
-    const dist = Math.hypot(p.x - l.x, p.y - l.y);
+    if (!b?.setDirective || !l || l.downed || l.removed) return;
+    const d = b.directive || {};
     try {
-      if (dist < 9 * TILE && d !== 'keep_away') {
-        b.setDirective({ type: 'keep_away', from: 'player', tiles: 10, plan: this.agenda.today, block: this.currentBlock() });
-        this._keepAwaySince = this.now();
-      } else if (dist > 16 * TILE && d === 'keep_away' && this.now() - this._keepAwaySince > 20) {
-        b.setDirective({ type: 'independent', plan: this.agenda.today, block: this.currentBlock() });
+      if (st === 'gone') {
+        if (d.type !== 'leave') b.setDirective({ type: 'leave', mode: 'gone', reason: String(this.reason || 'gone').slice(0, 80) });
+        return;
+      }
+      if (st === 'apart') {
+        // Anything but her own day ends with her own day again (a job she was asked to do,
+        // a walk somewhere): behavior falls back to following, which is not her choice now.
+        if (d.type === 'follow' && d.target === 'player') b.setDirective({ type: 'independent', reason: 'apart' });
+        return;
+      }
+      if (st !== 'left') return;
+      if (d.type === 'flee' || d.type === 'leave') return;
+      const p = this.player();
+      const dist = p ? Math.hypot(p.x - l.x, p.y - l.y) : Infinity;
+      if (d.type === 'keep_away') {
+        if (dist > (LEFT_TILES + 4) * TILE && this.now() - this._keepAwaySince > 20) b.setDirective({ type: 'independent', avoid: 'player', tiles: LEFT_TILES, reason: 'left' });
+        return;
+      }
+      if (d.type !== 'independent' || d.avoid !== 'player') {
+        if (dist < LEFT_TILES * TILE) {
+          b.setDirective({ type: 'keep_away', from: 'player', tiles: LEFT_TILES, follow: false });
+          this._keepAwaySince = this.now();
+        } else b.setDirective({ type: 'independent', avoid: 'player', tiles: LEFT_TILES, reason: 'left' });
       }
     } catch (err) {
-      console.error('[autonomy] keep away failed', err);
+      console.error('[autonomy] keeping her distance failed', err);
     }
   }
 
@@ -2334,7 +2603,7 @@ export class Autonomy {
     if (v.hunger < 0.35) now = 'Right now? Supper.';
     else if (v.energy < 0.3) now = 'Right now? Sleep.';
     else if (v.fun < 0.3) now = 'Right now, anything that isn’t work.';
-    else if (v.block && v.block.with !== 'player') now = `Today I mean to be ${describeBlock(v.block, { npcName: this.npcName(v.block.npc), place: this.game?.locations?.get?.(v.block.at)?.name })}.`;
+    else if (v.block && v.block.company !== 'player') now = `Today I mean to be ${describeBlock(v.block, { npcName: this.npcName(v.block.npc), place: this.game?.locations?.get?.(v.block.at)?.name })}.`;
     return `${big}${now ? ` ${now}` : ''}`;
   }
 
@@ -2373,7 +2642,7 @@ export class Autonomy {
     const plan = this.agenda.today
       .filter((b) => b.to > h || (h < 7 && b.to > 24))
       .slice(0, 5)
-      .map((b) => `${fmtHour(b.from)}–${fmtHour(b.to)} ${describeBlock(b, { npcName: this.npcName(b.npc), place: this.game?.locations?.get?.(b.at)?.name || b.at })}${b.with === 'invite' ? ' (player welcome)' : ''}`);
+      .map((b) => `${fmtHour(b.from)}–${fmtHour(b.to)} ${describeBlock(b, { npcName: this.npcName(b.npc), place: this.game?.locations?.get?.(b.at)?.name || b.at })}${b.company === 'invite' ? ' (player welcome)' : ''}`);
     if (plan.length) lines.push(`Her plan today: ${plan.join('; ')}.`);
     lines.push(`Purse ${this.purse()} coins; sleeps ${this.agenda.sleepAt === 'lyra_bed' ? 'in the cottage' : 'at the Ember Kettle'}.`);
     const open = this.promises.filter((p) => p.state === 'open');
@@ -2425,6 +2694,7 @@ export class Autonomy {
       rentDay: this.rentDay,
       lastJobId: this.lastJobId,
       calibrated: this.calibrated,
+      downedByPlayer: !!this.downed?.byPlayer,
       promiseSeq: this._promiseSeq,
       shadow: { ...this._shadow },
     };
@@ -2463,6 +2733,8 @@ export class Autonomy {
     this.rentDay = d.rentDay ?? -1;
     this.lastJobId = d.lastJobId ?? null;
     this.calibrated = d.calibrated !== false;
+    // Saved while she lay knocked out by the player: she still decides when she comes to.
+    this.downed = d.downedByPlayer ? { t: this.now(), byPlayer: true, abandoned: true, waited: 0 } : null;
     this._promiseSeq = d.promiseSeq || this.promises.length;
     if (d.shadow && typeof d.shadow === 'object') Object.assign(this._shadow, d.shadow);
     this._blockIdx = -2;
@@ -2485,15 +2757,21 @@ function fillText(text, vars = {}) {
 }
 
 function planLineKey(b) {
-  switch (b.activity) {
+  switch (b.type) {
     case 'work':
       return 'plan_work';
     case 'eat':
       return 'plan_eat';
     case 'sleep':
       return b.bed === 'lyra_bed' ? 'plan_sleep_home' : 'plan_sleep_inn';
+    case 'stars':
+      return 'plan_free_stars';
+    case 'moonpetals':
+      return 'plan_free_moonpetals';
+    case 'hearth':
+      return 'plan_free_rain';
     case 'free':
-      return b.kind === 'stars' ? 'plan_free_stars' : b.kind === 'moonpetals' ? 'plan_free_moonpetals' : b.kind === 'rain' ? 'plan_free_rain' : 'plan_free';
+      return 'plan_free';
     case 'study':
       return 'plan_study';
     case 'lead':

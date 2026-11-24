@@ -4,18 +4,19 @@
 
 // Deeds she can see the player do (§16.2). severity is the default; `kind` picks the
 // feeling profile below; `violent` deeds feed the gone/left rules of §16.6; `grave`
-// deeds are never cushioned by existing trust and never fade by themselves.
+// deeds are never cushioned by existing trust and never fade by themselves; `mindMemo`
+// deeds are already remembered, in her own words, by the mind's perception.
 export const DEEDS = {
   protected_lyra: { severity: 2, kind: 'care', text: 'Cut down something that was hurting me.' },
-  revived_lyra: { severity: 3, kind: 'care', text: 'Got me back on my feet when I was down.' },
-  gift_liked: { severity: 1, kind: 'gift', text: 'Gave me something I liked.' },
-  gift_loved: { severity: 2, kind: 'gift', text: 'Gave me something I love.' },
-  gift_disliked: { severity: -1, kind: 'slight', text: 'Gave me something I can’t stand.' },
+  revived_lyra: { severity: 3, kind: 'care', mindMemo: true, text: 'Got me back on my feet when I was down.' },
+  gift_liked: { severity: 1, kind: 'gift', mindMemo: true, text: 'Gave me something I liked.' },
+  gift_loved: { severity: 2, kind: 'gift', mindMemo: true, text: 'Gave me something I love.' },
+  gift_disliked: { severity: -1, kind: 'slight', mindMemo: true, text: 'Gave me something I can’t stand.' },
   kept_promise: { severity: 2, kind: 'honesty', text: 'Kept a promise.' },
   broke_promise: { severity: -2, kind: 'honesty', text: 'Broke a promise.' },
   respected_refusal: { severity: 1, kind: 'respect', text: 'Took my no for an answer.' },
   pushed_after_refusal: { severity: -1, kind: 'respect', text: 'Kept pushing after I said no.' },
-  kindness: { severity: 1, kind: 'kindness', text: 'Was kind to someone who needed it.' },
+  kindness: { severity: 1, kind: 'kindness', mindMemo: true, text: 'Was kind to someone who needed it.' },
   reckless_order: { severity: -1, kind: 'danger', text: 'Sent me into a fight that nearly finished me.' },
   hit_lyra_accident: { severity: -0.5, kind: 'danger', text: 'Clipped me with a sword in a fight.' },
   hit_lyra: { severity: -3, kind: 'violence', violent: true, grave: true, text: 'Struck me with a sword, and meant it.' },
@@ -32,14 +33,16 @@ export const DEEDS = {
 export const DEED_IDS = Object.keys(DEEDS);
 
 // Per unit of severity. Negative deeds subtract trust/affinity/respect and add fear
-// (scaled by neuroticism); positive deeds add and soothe fear.
+// (scaled by neuroticism); positive deeds add and soothe fear. The mind's perception
+// already warms her toward the giver of a gift and the friend of a villager, so those
+// kinds weigh mostly on trust here.
 export const DEED_KINDS = {
   care: { trust: 4.5, affinity: 3, respect: 1.5, fear: 3 },
-  gift: { trust: 1.5, affinity: 3.5, respect: 0.3, fear: 1 },
-  slight: { trust: 1, affinity: 3, respect: 0.5, fear: 0 },
+  gift: { trust: 1.5, affinity: 1, respect: 0.3, fear: 1 },
+  slight: { trust: 1, affinity: 2, respect: 0.5, fear: 0 },
   honesty: { trust: 4, affinity: 1.5, respect: 2, fear: 0 },
   respect: { trust: 2.5, affinity: 1, respect: 2.5, fear: 1 },
-  kindness: { trust: 1.5, affinity: 2, respect: 2, fear: 0.5 },
+  kindness: { trust: 1.5, affinity: 0.5, respect: 1.5, fear: 0.5 },
   danger: { trust: 3, affinity: 1, respect: 1.5, fear: 2.5 },
   violence: { trust: 4.5, affinity: 3, respect: 2, fear: 6 },
   betrayal: { trust: 5, affinity: 3, respect: 2, fear: 2 },
@@ -118,6 +121,16 @@ export const ACTION_CATEGORY = {
   leave_player: 'companionship',
   set_plan: 'plan',
   set_relationship: 'opinion',
+  // Words between them, not errands: a promise, a request of hers, her notes and feelings.
+  request: 'talk',
+  promise: 'talk',
+  note_about: 'talk',
+  remember: 'talk',
+  forget: 'talk',
+  set_goal: 'talk',
+  complete_goal: 'talk',
+  express: 'talk',
+  read_journal: 'talk',
 };
 
 // Actions whose `amount` means nothing else, so a number there is coin offered.
