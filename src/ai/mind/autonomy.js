@@ -53,6 +53,7 @@ const CAUSES = {
   villager_again: { reason: 'You attacked {target} after I warned you. I won’t stand beside someone who hurts the people here.', memo: '{P} attacked {target} again, after my warning. I bound them and called the guards. We are finished.' },
   villager_down: { reason: 'You beat {target} until they dropped. I won’t stand beside someone who does that.', memo: '{P} beat {target} until they dropped. I bound them and called the guards. We are finished.' },
   villager_gone: { reason: 'You beat {target} senseless — someone I care about.', memo: '{P} beat {target} senseless. I am done with them, for good.' },
+  murder: { reason: 'You killed {target}.', memo: '{P} killed {target}. I will never forgive it.' },
   downed: { reason: 'You knocked me out. There is no coming back from that.', memo: '{P} knocked me out. I want nothing more to do with them, ever.' },
   violence: { reason: 'I warned you, more than once, and you kept hurting people.', memo: 'I warned {P} again and again, and they kept hurting people. I am done with them, for good.' },
   trust: { reason: 'I don’t trust you the way I did.', memo: 'I don’t trust {P} the way I did. I’m keeping my distance.' },
@@ -82,6 +83,8 @@ const FAREWELL_DIARY = {
     'Day {day}. {P} beat {target} until they couldn’t stand. I bound them with light and shouted for the watch, and my hands are still shaking. I was born in Hearthvale, and I can’t share my life with {P}. I won’t hand them my home either. The Wayhouse key is back with Alder, and I’m {home}. Some nights I think about the road — Bryn’s door in Saltmere, and the waystones on the way. Mam says this is my village, and I am not the one who should leave it.',
   violence:
     'Day {day}. I warned {P}. More than once. Every time I hoped the last time was the last time. It wasn’t. I don’t hate them — I think that’s the worst of it. I’ve handed back the Wayhouse key and I’m {home}. If {P} wants to live in Hearthvale, they can live around me.',
+  murder:
+    'Day {day}. {target} is dead, and {P} killed them. I keep writing it and crossing it out, as if the ink could be wrong. I gave the Wayhouse key back to Alder. I’m {home}. This is my village, and {target} was part of it, and I will not leave it to the one who did this. I will not forgive it. I don’t think I’m meant to.',
   other:
     'Day {day}. I’m done with {P}. I chose them once, on the King’s Road, and I’m choosing again now. Maren taught me that loyalty is earned slowly and kept forever — and that it can be spent. It’s spent. I’ll find her on my own, from my own home.',
 };
@@ -586,6 +589,8 @@ export class Autonomy {
     if (source && this.isPlayer(source) && target && this.isVillager(target)) {
       // A blow that knocks them out is recorded by the 'downed' that follows it.
       if (!(target.hp > 0)) return undefined;
+      // Only what she saw (DESIGN §29: line of sight, light, distance).
+      if (this.game?.murder && !this.game.murder.saw('lyra', target)) return undefined;
       return this._playerHitNpc(target);
     }
     return undefined;
@@ -648,6 +653,8 @@ export class Autonomy {
   _onCrime({ actor, victim, kind }) {
     if (!this.isPlayer(actor)) return;
     const k = String(kind || '').toLowerCase();
+    // A killing is weighed by game.murder (src/murder/lyra.js): seen, told, or suspected.
+    if (k === 'murder' || k === 'outside') return undefined;
     if (k === 'knockout') return this._villagerDowned(victim);
     if (/^(theft|steal|stole|stealing)$/.test(k)) {
       this.recordDeed('stole', { victim });
@@ -674,7 +681,7 @@ export class Autonomy {
       this.downed = { t: now, byPlayer: false, abandoned: false, waited: 0 };
       return;
     }
-    if (by && this.isPlayer(by) && this.isVillager(entity)) this._villagerDowned(entity);
+    if (by && this.isPlayer(by) && this.isVillager(entity) && (!this.game?.murder || this.game.murder.saw('lyra', entity))) this._villagerDowned(entity);
   }
 
   _onRevived({ entity, by }) {
@@ -1197,6 +1204,9 @@ export class Autonomy {
         this._protect(info.victim);
         return;
       }
+      case 'murdered_villager':
+        // DESIGN §29: the gravest thing. She cuts the stranger out of her life.
+        return this._goGone('murder', 'to_gone_murder', vars, info.victim);
       case 'downed_lyra':
         // She decides when she comes to (_comeTo); unconscious, she decides nothing.
         if (!this.downed?.byPlayer) return this._goGone('downed', 'to_gone_downed', vars);
@@ -1231,7 +1241,7 @@ export class Autonomy {
   }
 
   _goGone(reason, lineKey, vars, victim = null) {
-    const cause = reason === 'downed' ? 'downed' : reason === 'villager' ? 'villager_gone' : 'violence';
+    const cause = reason === 'downed' ? 'downed' : reason === 'villager' ? 'villager_gone' : reason === 'murder' ? 'murder' : 'violence';
     this.setCompanionship('gone', '', { cause, vars, lineKey, goneReason: reason, target: vars?.target, victim });
     if (reason !== 'downed') this._bindPlayer();
   }
@@ -2080,7 +2090,7 @@ export class Autonomy {
     for (const r of all) {
       if (!r || r.id === PLAYER_ID || r.id === 'maren' || r.absent || r.kind === 'group') continue;
       const e = this.game?.entities?.get?.(r.id);
-      if (!e?.profile) continue;
+      if (!e?.profile || e.dead || e.absent) continue;
       if (num(r.affinity, 0) >= 25 && (!best || r.affinity > best.affinity)) best = r;
     }
     if (!best) return null;

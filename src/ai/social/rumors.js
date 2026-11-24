@@ -46,6 +46,12 @@ export const RUMOR_KINDS = {
   found_safe: { text: '{v} has turned up safe', you: '{v} has turned up safe', valence: 0.35, severity: 0.6, about: 'village' },
   found_dead: { text: '{v} was found dead', you: '{v} was found dead', valence: -1, severity: 1, about: 'village' },
   lied_about: { text: '{stranger} lied about {v}', you: 'you lied about {v}', valence: -0.5, severity: 0.55 },
+  // Killing (DESIGN §29).
+  murder: { text: '{stranger} killed {v}', you: 'you killed {v}', valence: -1, severity: 1 },
+  questioned: { text: "the watch has been asking {stranger} about {v}'s death", you: "the watch has been asking you about {v}", valence: -0.45, severity: 0.6 },
+  moot_sat: { text: "the Moot sat over {v}'s death", you: "the Moot sat over {v}'s death", valence: -0.3, severity: 0.6, about: 'village' },
+  convicted: { text: "the Moot found {stranger} guilty of {v}'s death and put them outside", you: 'the Moot put you outside', valence: -1, severity: 1 },
+  not_proven: { text: "the Moot couldn't prove {stranger} killed {v}", you: "the Moot couldn't prove it was you", valence: -0.6, severity: 0.8 },
 };
 
 // Retellings grow. Each rule: a pattern on the clause and what it may become.

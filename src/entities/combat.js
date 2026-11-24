@@ -467,7 +467,10 @@ export class Combat {
     const attacker = source && source.type === 'actor' ? source : null;
     if (attacker) this._noteAggression(target, attacker);
     // Hurting a villager or guard is a crime; set it before anyone hears about the hit.
-    const crime = attacker && this.isPlayer(attacker) && this.isLawful(target) ? (target.hp <= 0 ? 'knockout' : 'assault') : null;
+    let crime = attacker && this.isPlayer(attacker) && this.isLawful(target) ? (target.hp <= 0 ? 'knockout' : 'assault') : null;
+    // Known only to those who could see it (DESIGN §29): a blow nobody saw stays the
+    // victim's to tell (game.murder holds it until they do).
+    if (crime && g.murder?.screenCrime && !g.murder.screenCrime(attacker, target, crime)) crime = null;
     if (crime) this._recordCrime(attacker, target, crime);
     target.flash = opts.dot ? Math.max(target.flash || 0, 0.55) : 1;
     if (!opts.dot) target.invuln = opts.invuln ?? (isPlayer ? 0.55 : isFriend ? 0.35 : 0.12);

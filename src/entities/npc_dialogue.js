@@ -46,6 +46,9 @@ export function dialogueTone(npc, player) {
   const g = npc.game;
   const day = g.clock?.day ?? 1;
   if (npc.isWantedNear?.(player)) return 'afraid';
+  // A known killer (DESIGN §29): the frightened back away; the rest are hurt and cold.
+  const mt = g.murder?.toneFor?.(npc);
+  if (mt) return mt;
   if (npc.wrongedDay === day) return 'wronged';
   if (npc.coldDay === day) return 'cold';
   if (npc.shakenDay === day) return 'shaken';
@@ -137,6 +140,8 @@ export function mainOptions(npc, player, tone = dialogueTone(npc, player)) {
 function flameRite(npc, key, player, opts) {
   const g = npc.game;
   const price = flamePrice(g);
+  // The Moot put the stranger's flame out (DESIGN §29): not relit for a long while.
+  if (g.murder?.flameBarred?.()) return { lines: ['The Moot put your flame out, child, and I will not light it again. Not yet. Perhaps not ever.'], options: opts.filter((o) => o.id !== 'flame') };
   if (hasKeptFlame(g)) {
     return {
       lines: ['It burns, child. Third from the left, beside the Wayhouse road-candle. I trim it myself.', 'If the dark takes you before your time, it will bring you back to this chapel at dawn — once. Then it is spent, and you must ask again.'],
@@ -412,6 +417,8 @@ export function refusesTrade(npc, player) {
   const g = npc.game;
   const day = g.clock?.day ?? 1;
   if (!npc.profile.shop) return true;
+  // Not to a known killer; not to someone the family believes did it (DESIGN §29).
+  if (g.murder?.refusesTrade?.(npc)) return true;
   if (npc.isWantedNear?.(player) || npc.crimeActive?.()) return true;
   if (npc.wrongedDay === day) return true;
   const rec = npc.crimeToday?.();

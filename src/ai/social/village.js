@@ -953,6 +953,8 @@ export class Village {
       }
       case 'crime': {
         if (!isPlayer(p.actor) || !p.victim?.id) return;
+        // A killing (DESIGN §29) is told by game.murder, with its own witnesses.
+        if (p.kind === 'murder' || p.kind === 'outside') return;
         const kind = p.kind === 'knockout' ? 'downed_villager' : 'attacked_villager';
         const witnesses = this.witnessesNear(p.victim.x, p.victim.y);
         const lyra = g?.companion;
@@ -964,6 +966,8 @@ export class Village {
         if (!isPlayer(p.attacker)) return;
         const victimId = p.victim?.id || null;
         if (!victimId) return;
+        // A cry nobody saw the cause of names nobody (DESIGN §29): the victim tells later.
+        if (g?.murder?.isSecret?.(victimId)) return;
         // Knocked down (or a severity at the top of a 0..1 scale) is the worse news.
         const sev = Number(p.severity);
         const down = !!p.victim?.downed || p.severity === 'downed' || p.severity === 'critical' || (Number.isFinite(sev) && sev <= 1 && sev >= 0.95);

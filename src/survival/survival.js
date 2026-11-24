@@ -589,6 +589,8 @@ export class Survival {
   carrierInteract(player = this.game.player) {
     const c = this.carries.get(player);
     if (!c) return false;
+    // A body on your shoulders (DESIGN §29): hidden, or laid down; never a sickroom cot.
+    if (c.carried?.dead) return !!this.game.murder?.carrierInteract?.(player) || (endCarry(this, player), true);
     const bed = this.cotInReach(player);
     if (bed) {
       this.deliver(player, { bed, x: player.x, y: player.y }, null);
@@ -605,6 +607,7 @@ export class Survival {
     if (this.falls.has(player)) return '';
     const c = this.carries.get(player);
     if (!c) return null;
+    if (c.carried?.dead) return this.game.murder?.promptFor?.(player) ?? 'Put them down';
     const name = c.carried.name?.split(' ')[0] || 'them';
     return this.cotInReach(player) ? `Lay ${name} in the cot` : `Put ${name} down`;
   }
