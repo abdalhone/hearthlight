@@ -21,6 +21,14 @@ text, so a renamed method or a changed payload breaks someone else's code.
 - Lyra must feel like a person: she reacts to events in her own voice, remembers, holds
   opinions, has moods and needs, refuses things that go against her values, and keeps
   standing orders (attack mode, follow, stay, jobs) without asking permission each time.
+- **Lyra lives for herself (§16 — this overrides anything earlier that reads otherwise).**
+  She is not there to answer, serve, save or help the player. She travels with them by her
+  own choice, while it is good for her. Every order is a request she weighs. If she judges
+  the player's choices wrong, fears them, stops trusting them, or fears for her life, she
+  refuses, stops them, runs, or leaves.
+- **The game is 2D pixel art.** Mood borrowed from low-res "lost console game" reels: cool
+  blue nights with one or two warm glowing practical lights per scene, bloom, fog, a faint
+  ordered dither and vignette, smooth shaded surfaces rather than flat blocky textures (§18).
 - Everything works offline and without Claude. Claude makes her deeper, never required.
 - No external assets: all art is generated in code at boot into canvases; all sound is
   synthesized with WebAudio. No network calls except the optional Claude paths and Google Fonts.
@@ -583,7 +591,7 @@ explains a refusal or a problem ("I can't reach the ruins gate — it's locked."
 | `come_here` | | | | walk to the player, then follow |
 | `goto` | place/person/object ref | then: 'stay'/'follow'/'return' | | travel there |
 | `set_combat_mode` | | 'attack'/'defend'/'passive' | | stance |
-| `attack` | who | | | focus a target now; **refuses** if `isFriend(target)` (says why) |
+| `attack` | who | | | focus a target now; **refuses** if `isFriend(target)` (says why). Every action requested by the player first passes her consent gate (§16.4) |
 | `retreat` | | | | disengage, regroup with the player |
 | `guard` | place/person (default here) | | radius px | guard directive |
 | `patrol` | location (default current) | | | patrol directive |
@@ -786,3 +794,255 @@ key into a save.
 | **brain** | `src/ai/brain/*` except `actions.js` (brain, local_brain, nlu, speech_gen, claude_brain, providers, prompt), `src/platform/claude_runtime.js` (extend only), `tests/brain.test.mjs` |
 | **ui** | `src/ui/*`, `src/core/input.js`, `src/core/audio.js`, `src/core/save.js`, `src/styles.css`, `tests/ui.test.mjs` |
 | **lead (integration)** | everything else: `src/core/game.js`, `events.js`, `entity.js`, `manager.js`, `interact.js`, `registry.js`, `actions.js`, `resolve.js`, `locations.js`, `atlas.js`, `pixel.js`, `palette.js` (append-only for others), build/test scripts, docs |
+
+Round-2 additions (§16–§18): **mind** also owns `src/lore/*` and
+`src/ai/plugins/autonomy_plugin.js`; **behavior** owns the new directives and the actions
+`flee`, `keep_distance`, `bind`, `warn`, `wait_outside` (in `core_commands.js`); **combat**
+owns friendly fire and crimes; **characters** owns villager reactions to crimes;
+**brain** owns the consent-aware message flow, the memory-aware prompt and Claude tools;
+**ui** owns the trust/fear/companionship display, the new Mind tabs and memory chips;
+**world** adds `lyra_inn_bed`.
+
+---
+
+## 16. Lyra lives for herself
+
+The author's words, which every module serves: *"She is there for herself to live, to choose
+every single choice for the better life of Lyra. If she senses that my choices are wrong, if
+she senses that I'm trying to do something that would hurt her, if I want to do something and
+she doesn't trust me, if she fears for her life, she will do what she needs to: stop me, run
+away, or just leave me."*
+
+So: Lyra is not an assistant, a servant, a bodyguard or a quest-giver. She is a person living
+her own life in Hearthvale. She travels with the player because she chose to (she owes them
+for the wolves, she is curious about them, two are safer than one while she looks for Maren),
+and only for as long as that stays good for her. Standing orders still work — once she has
+agreed to attack mode she fights without asking per enemy — but agreeing is her decision.
+
+### 16.1 Her own life (mind: `mind.agenda`)
+
+- **Long-term goals** with weights: stay alive; find Maren; earn her keep (coin); keep the
+  people she loves safe; grow her magic; belong somewhere; small joys (moonpetals, stars, honey
+  cakes, rain on roofs). These, her needs (§9) and her values drive every decision.
+- **A daily plan**, made each morning and revised when things change:
+  `mind.agenda.today = [{ from, to, activity, at: locationId, why }]` — e.g. gather herbs for
+  Mira for coin in the morning, follow a lead about Maren after noon, supper at the Ember
+  Kettle, the evening free. With the player around she proposes ("I'm helping Mira this
+  morning. Come if you like."), or simply goes. `mind.agenda.purse` — her own coin.
+- **Where she sleeps**: `lyra_bed` in the cottage while she trusts the player (trust ≥ 50 and
+  fear ≤ 20); otherwise a rented room at the Ember Kettle (`lyra_inn_bed`).
+
+### 16.2 How she sees the player (mind)
+
+- From her relationship with the player: `trust`, `affinity`, `respect`, `fear` (§9).
+- `mind.ledger` — what she has seen the player do: `[{ t, day, deed, severity -3..+3, text,
+  victimId }]`. Deeds and default severity: `protected_lyra` +2 (killed something attacking
+  her), `revived_lyra` +3, `gift_liked` +1, `gift_loved` +2, `gift_disliked` −1,
+  `kept_promise` +2, `broke_promise` −2, `respected_refusal` +1 (didn't push after a no),
+  `pushed_after_refusal` −1 (repeated a refused request within 60 s), `kindness` +1
+  (gifts/help to villagers, sparing a fleeing creature), `reckless_order` −1 (her HP fell under
+  30% in a fight the player ordered), `hit_lyra_accident` −0.5, `hit_lyra` −3,
+  `downed_lyra` (the player knocked her out) −10, `abandoned_downed` −3 (left her knocked out:
+  walked > 20 tiles away or 45 s without reviving), `killed_harmless` −1 (rabbit, deer,
+  chicken, cat — 0 if she agreed it was for food), `attacked_villager` −3, `downed_villager` −5,
+  `attacked_guard` −2, `stole` −2, `lied` −2 (Claude may record it). Each deed shifts trust,
+  affinity, respect and fear (weighted by her personality and how much she already trusts),
+  is remembered (importance by severity), and may change her companionship state.
+- **Telling an accident from an attack** when the player's sword hits her: an accident if a
+  hostile creature is within 48 px of her and it's the first hit in 8 s; otherwise deliberate.
+
+### 16.3 Companionship state (mind: `mind.companionship`, plugin `autonomy`)
+
+`together` → travels with the player by choice · `wary` → still together but guarded: keeps
+her distance, refuses risky requests, watches the player · `apart` → living her own life for
+now (her choice or agreed), friendly, may rejoin · `left` → she broke off after being hurt or
+betrayed: avoids the player, rejoins only after amends (an apology she believes, trust ≥ 35,
+fear ≤ 30, and at least one in-game day) · `gone` → permanent: the player knocked her out
+(`downed_lyra`), knocked out a villager she cares about (affinity ≥ 30), or repeated grave
+violence after she warned them. She walks away along the King's Road and leaves the world;
+`game.flags.lyra_gone = { day, reason }`; a farewell memory and a last diary entry stay.
+
+`mind.setCompanionship(state, reason)` emits `companionship_changed {state, previous, reason}`.
+`mind.reconsider()` runs after every ledger entry and every in-game hour: together ↔ wary
+(trust < 25 or fear > 35), → left (fear > 60, trust < 10, or a grave deed), → apart by her
+plans, left → apart after amends, → gone on the gone criteria. She says why, in her voice.
+
+### 16.4 Every order is a request (mind: `mind.evaluateRequest`; core: the consent gate)
+
+`game.actions.run(name, args, 'player')` passes the **consent gate** first
+(`game.actions.setConsentGate(fn)`, installed by the autonomy plugin). The gate calls
+`mind.evaluateRequest({ action, args, source })` →
+`{ decision: 'accept'|'accept_conditional'|'counter'|'refuse'|'refuse_and_act', reasons: [string],
+message, condition?, counter?: {name, args}, score }`. Only `accept` / `accept_conditional`
+run the action; otherwise `run()` returns `{ ok: false, refused: true, verdict, message }`.
+Sources: `'player'` (HUD, hotkeys, commands parsed from the player's message) is gated;
+`'claude'` (her own choice, reached with Claude), `'self'` (her autonomy) and `'local'`
+(internal effects) are not. Actions that ask nothing of her are registered `ungated: true`
+(remember, forget, note_about, express, set_goal, complete_goal, read_journal...).
+
+Weights (each adds a signed amount and a reason):
+- **Trust, affinity and fear of the player** — the base willingness. Wary: stricter. Left /
+  gone: refuses everything but talk. Apart: accepts invitations when she is free and trusts.
+- **Risk to her** — for fighting, guarding, patrolling, exploring and going places: location
+  danger, the threat of nearby enemies against her HP and level, night, weather, how her last
+  fights went. High risk is refused unless trust is very high or it serves her own goals.
+- **Values** — never harms the innocent, friends, villagers or pets; won't steal; hunting
+  harmless animals only when food is needed and she agrees; won't abandon someone she loves.
+- **Needs** — exhausted (energy < 0.2): no work, no exploring; starving: "after I eat";
+  badly hurt: no fights.
+- **Her goals and what's in it for her** — helps find Maren: +; offered coin or a fair share
+  (the player can offer: "I'll pay you 10 coins" → `args.amount` on the request, or the brain
+  detects the offer): +; pointless or boring: −.
+- **Pushing** — the same request again within 60 s of a refusal: irritation, and the
+  `pushed_after_refusal` deed.
+Outcomes come back with a line in her voice: "Fine. Half the wood is mine." / "Not tonight —
+I can barely stand." / "Walk into a camp of crossbows first? No. Find someone else."
+
+### 16.5 Self-preservation (behavior enforces; overrides every order)
+
+- In a fight at HP < 30% she disengages and retreats to safety even in attack mode, unless
+  someone she loves (affinity ≥ 70) is downed beside her and she judges she can cover them.
+- She will not enter a place whose risk is above her threshold: she waits outside
+  (`wait_outside`) and says so.
+- Critical needs (exhaustion, starvation) make her stop and tend to herself.
+- `self_defense`: whoever attacks her is a valid target, **including the player**.
+
+### 16.6 When the player is the danger (mind decides, behavior acts)
+
+- First deliberate hit while trust is still fair: shock and a warning ("What are you doing?!"),
+  she steps out of reach (`keep_distance`), state → wary.
+- Hit again, or trust already low: she **binds** the player (Binding Light: roots the target for
+  3 s, 20 s cooldown) and flees or fights back by personality and fear; state → left.
+- The player knocks her out: when she comes to, she leaves for good (`gone`).
+- The player attacks a villager or guard: she shouts a warning, then binds the player, steps
+  between, and reports to the guards; trust crashes; knocking out someone she cares about →
+  `gone`, anyone else → `left`.
+- The player leaves her knocked out: `abandoned_downed`; if she wakes alone she remembers it.
+- She runs to safety (`flee`): the guards, the inn, the chapel — away from whoever threatens
+  her, breaking line of sight, until safe.
+
+### 16.7 Combat and villagers (combat, characters)
+
+- **Friendly fire**: the player's sword hits every actor in its arc (Lyra and villagers
+  included) — the player can do wrong. Lyra's movement avoids standing in the player's swing.
+- **Villagers are never killed**: at 0 HP they are knocked out (downed) for 30 s, then get up.
+- **Crimes**: damaging a villager or guard sets `player.crime = { level, until }` (assault 90 s;
+  knocking someone out: the rest of the day) and emits `crime {actor, victim, kind:
+  'assault'|'knockout'}`. While a crime is active, guards are hostile to the player
+  (`combat.isHostile(guard, player)` → true), villagers flee and shout, and `opinionOfPlayer`
+  drops; NPCs greet the player coldly for a day.
+
+### 16.8 Her initiative
+
+She does not wait to be told. From her plan and feelings she announces decisions and makes
+requests of the player ("I'm going to the inn. I'm done for today." / "Buy me a honey cake and
+I'll forgive the mud."). A request the player agrees to becomes a **promise** tracked in
+`mind.promises` (kept/broken feeds the ledger). Offline lines come from templates; Claude is
+used only when the player is talking to her (the claude.ai `sample` rules allow calls only on
+the player's actions).
+
+### 16.9 New actions
+
+| action | target | value | amount | effect | owner |
+|---|---|---|---|---|---|
+| `leave_player` | | 'apart'/'left'/'gone' | | she stops traveling with the player (her decision) | mind (autonomy) |
+| `rejoin` | | | | travel with the player again (only when she wants to) | mind (autonomy) |
+| `set_plan` | | activity or plan text | | change her plan for today | mind (autonomy) |
+| `request` | | what she asks of the player | | she asks; tracked as a promise if accepted | mind (autonomy) |
+| `promise` | | text | | record a promise (hers or the player's) | mind (autonomy) |
+| `flee` | from (default the threat) | to (location) | | run to safety | behavior |
+| `keep_distance` | from (default player) | | tiles | keep away | behavior |
+| `bind` | who | | | Binding Light: roots the target 3 s | behavior |
+| `warn` | who | text | | a sharp warning (bubble, memory) | behavior |
+| `wait_outside` | place | | | wait near the entrance instead of going in | behavior |
+
+New directive types (behavior): `independent {plan}` (her own day from `mind.agenda.today`:
+walk, work jobs for coin, eat, rest, visit friends, study, follow leads, sleep in her bed),
+`flee {from, to}`, `leave {mode}` (for `gone`: walk off the map along the King's Road and
+despawn), `keep_away {from, tiles}`, `wait_outside {location}`. New stance: `self_defense`.
+
+New events: `companionship_changed`, `request_evaluated {action, args, verdict}`,
+`deed {deed, severity, text, victim}`, `crime`, `promise {text, by, state}`, `plan_changed`.
+
+### 16.10 What Claude is told
+
+The stable rules frame her as herself (above), not a helper. The dynamic context adds her
+companionship state, trust/fear/affinity toward the player, the last deeds from the ledger, her
+plan for today, open promises, and — for any request in the player's message — the gate's
+verdict as "your gut says: …, because …". Claude decides; its actions run with source
+`'claude'`. The UI never presents her as a tool: the command bar asks, she answers.
+
+## 17. Memory and lore
+
+### 17.1 The story (`src/lore/story.js`, `src/lore/lorebook.js`)
+
+The author is writing the world's story and Lyra's life. Until it arrives `STORY.placeholder`
+is true and holds a short placeholder; the structure below must not change, so the real story
+drops in without code changes:
+
+```js
+export const STORY = {
+  placeholder: true, title, premise,
+  world:    [{ id, title, text, tags, aliases, knownBy: ['lyra'|'everyone'|npcId], secret }],
+  timeline: [{ id, when, title, text, tags }],
+  places:   [{ id, locationId, title, text, tags, knownBy }],
+  people:   [{ id, npcId, name, title, text, tags, knownBy }],
+  lyraLife: [{ id, age, title, text, people, places, feeling, importance }],  // birth → today
+  mysteries:[{ id, question, clues: [{ text, foundAt }], truth }],          // truth hidden from her
+}
+```
+`Lorebook(STORY)`: `get(id)`, `all()`, `search(query, {limit, knownBy})`, `knownBy(actorId)`.
+
+### 17.2 Her memory (`src/ai/mind/*`)
+
+Four stores, one index — Claude never receives everything, only what fits the moment:
+- **Life** (autobiographical): seeded from `STORY.lyraLife` (or her soul while the story is a
+  placeholder); never pruned.
+- **Episodes**: what happened since the game began (§9 memory).
+- **Knowledge**: `{ id, subject, text, kind: 'fact'|'lore'|'theory'|'rumor', source: 'lore'|'told'|
+  'observed'|'player'|'inferred', confidence, about, loreId, t }` — from lore she knows, what
+  villagers tell her, what she sees, what the player says, and her own theories.
+- **People**: dossiers assembled on demand from relationships + knowledge + episodes.
+
+`mind.index`: inverted index with entity linking (names, aliases, places, items) over all four;
+scored by BM25 + importance + recency + emotional weight + activation (recently recalled) +
+association spread (items sharing people/places with the top hits get a smaller boost).
+
+`mind.workingMemory`: ≤ 12 active items with decaying activation, refreshed by perception
+triggers (entering a place, seeing a person, an item, a topic in conversation). Strong
+associations surface as **reminiscences** — a thought or a bark ("This lake… Maren swore the
+fish here could hear you.") — rate-limited.
+
+API: `mind.recallContext(text, { budget = 3500 })` → `{ text, items: [{ id, store, label }] }`
+(grouped: on her mind now, memories, what she knows, the people involved, her past — deduped,
+truncated, under budget); `mind.recall(query, opts)`; `mind.dossier(personRef)`;
+`mind.loreLookup(topic)`; `mind.learn(subject, text, opts)`.
+
+Learning lore: entries `knownBy` an NPC can be learned by talking to them (`talk_to`, social
+plugin); place entries when she arrives; item entries when she reads (the journal).
+Theories she forms (Claude's `knowledge` with kind 'theory') are kept as her beliefs, never as
+facts.
+
+### 17.3 Brain and UI
+
+- The prompt uses `mind.recallContext(message)` and working memory instead of raw dumps.
+- Response JSON gains `"used_memories": [ids]` and `"knowledge": [{ "subject", "text", "kind" }]`.
+  The chat shows small "remembered …" chips under her reply for the memories she used.
+- Claude tools when the view supports them (`sample.limits().tools`): `recall(query)`,
+  `about_person(name)`, `lore(topic)` — read-only, small results. Without tools, only the
+  pre-selected context is sent.
+- Mind panel: new tabs **Knowledge** (by subject; facts, lore, theories, rumors, with sources)
+  and **Her life** (timeline from birth), and a **You and her** section (trust, fear,
+  affinity, respect, companionship state, what she has seen you do, promises).
+
+## 18. The 2D look
+
+Stay 2D pixel art. Take the mood, not the medium, of low-res "lost console game" reels:
+- Night is dark (cool blue, most of the frame deep) and **one or two warm practical lights**
+  per scene carry it — windows, lamps, campfires, the forge, Lyra's staff — each with a soft
+  bloom halo. Day is bright and warm-neutral.
+- Smooth, shaded surfaces with relief (soft gradients, highlights and shadows on stone, wood,
+  grass and water) instead of flat, blocky single-color tiles.
+- Fog for depth, wet/glossy ground in rain that reflects lights, mirror-like water.
+- After the upscale: a faint ordered dither (±2 levels) and a soft vignette. Text is always
+  drawn at full resolution, never pixelated with the scene.
