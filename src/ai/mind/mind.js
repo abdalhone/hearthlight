@@ -1,5 +1,5 @@
 import { PLAYER_ID, DAY_SECONDS } from '../../core/constants.js';
-import { defaultSoul, normalizeSoul, seedMemories, SEED_KNOWLEDGE, SEED_GOALS, MAREN_REL, PLAYER_REL_START, playerStartOpinion } from './soul.js';
+import { defaultSoul, normalizeSoul, seedMemories, SEED_KNOWLEDGE, SEED_GOALS, MAREN_REL, PLAYER_REL_START, playerStartOpinion, SOUL_LIFE } from './soul.js';
 import { Emotions, emotionName, EMOTIONS } from './emotions.js';
 import { Needs, FOOD_PREFERENCE } from './needs.js';
 import { Memory } from './memory.js';
@@ -8,13 +8,25 @@ import { addGoal as addGoalTo, completeGoal as completeGoalIn, sanitizeGoals, to
 import { Perception, jobLabel } from './perception.js';
 import { ThoughtGenerator } from './thoughts.js';
 import { STAGES } from './maren.js';
-import { clamp, normName, firstName, firstSentence, playerRef, cap, partOfDay, pick, shorten, placePhrase, lowerFirst } from './text.js';
+import { clamp, firstSentence, playerRef, cap, partOfDay, pick, shorten, placePhrase, lowerFirst } from './text.js';
+import { KnowledgeStore } from './knowledge.js';
+import { MemoryIndex } from './memory_index.js';
+import { WorkingMemory } from './working_memory.js';
+import { recallContext, dossier, loreLookup, lookup, noticeEntity, learnPlace, learnItem, learnClues, loreFrom, learnLoreEntry } from './recollection.js';
+import { Autonomy } from './autonomy.js';
+import { defaultLorebook } from '../../lore/lorebook.js';
 
-// Lyra's mind (DESIGN §9): soul, feelings, needs, memories, relationships, goals,
-// thoughts, diary, recent conversation and knowledge. Perception subscribes to the bus
-// here, so she notices the world whether or not the plugins are installed.
+// Lyra's mind (DESIGN §9, §16, §17): soul, feelings, needs, relationships, goals,
+// thoughts, diary, recent conversation, and four memory stores behind one index:
+//   life       her autobiography, built from the story (never pruned, never saved)
+//   memory     episodes since the game began
+//   knowledge  facts, lore, rumors and theories (mind.knowledge is the plain array)
+//   people     dossiers assembled on demand from the other three and relationships
+// plus working memory (what is on her mind now) and her own will (mind.autonomy, §16).
+// Perception subscribes to the bus here, so she notices the world whether or not the
+// plugins are installed.
 
-const LIMITS = { thoughts: 80, thoughtsSaved: 40, conversation: 40, diary: 20, diaryText: 1800, knowledge: 100, knowledgeText: 220, saveBytes: 145000 };
+const LIMITS = { thoughts: 80, thoughtsSaved: 40, conversation: 40, diary: 20, diaryText: 1800, saveBytes: 145000 };
 
 const EAT_LINES = {
   honey_cake: ["Mm. Elda's honey cake. Ten out of ten. I'd fight a bear for these.", 'Honey cake. My one weakness. Well. One of several.'],
@@ -34,16 +46,22 @@ export class Mind {
     this.emotions = this.affect.values;
     this.needsEngine = new Needs();
     this.needs = this.needsEngine.values;
+    this.lorebook = defaultLorebook();
+    this.life = buildLife(this.lorebook);
     this.memory = new Memory({ now: () => this.now() });
+    this.knowledgeStore = new KnowledgeStore({ now: () => this.now() });
+    this.knowledge = this.knowledgeStore.list;
     this.relationships = new Relationships(game, owner, this);
     this.goals = [];
     this.thoughts = [];
     this.diary = [];
     this.conversation = [];
-    this.knowledge = [];
     this.secretsRevealed = [];
     this.perception = new Perception(game, this);
     this.thinker = new ThoughtGenerator(this);
+    this.index = new MemoryIndex(this);
+    this.workingMemory = new WorkingMemory({ now: () => this.perception.rt() });
+    this._reminisce = { last: -Infinity, used: new Map() };
 
     this._acc = 0;
     this._moodAcc = 0;
@@ -59,6 +77,13 @@ export class Mind {
 
     this._seed();
     this._off = game?.bus?.on?.('*', (type, payload) => this.perceive(type, payload)) || null;
+    // Her own will (DESIGN §16) is built last: it reads everything above.
+    try {
+      this.autonomy = new Autonomy(this, game);
+    } catch (err) {
+      console.error('[mind] autonomy failed to start', err);
+      this.autonomy = null;
+    }
   }
 
   get name() {
@@ -97,8 +122,20 @@ export class Mind {
       const t = t0 - s.daysAgo * DAY_SECONDS + (s.hour - (g?.clock?.hour ?? 8)) * (DAY_SECONDS / 24);
       this.memory.add({ ...s, t, day: 0, pinned: true }, { dedupe: false });
     }
-    for (const k of SEED_KNOWLEDGE) this.knowledge.push({ subject: k.subject, text: k.text, t: t0, source: 'soul' });
+    this._seedLore(t0);
     for (const goal of SEED_GOALS) addGoalTo(this.goals, goal.text, goal.priority, goal.source, t0, goal.id);
+  }
+
+  // What she knows of the world on day one: every lore entry the story says she knows.
+  _seedLore(t0 = this.now()) {
+    let n = 0;
+    for (const e of this.lorebook.knownBy('lyra')) {
+      if (e.kind === 'life' || this.knowledgeStore.byLore(e.id)) continue;
+      const about = e.kind === 'person' ? [e.npcId || e.id] : e.locationId ? [e.locationId] : [];
+      this.knowledgeStore.add(e.title, e.text, { kind: 'lore', source: 'lore', loreId: e.id, about, t: t0 });
+      n++;
+    }
+    if (!n && !this.knowledgeStore.size) for (const k of SEED_KNOWLEDGE) this.knowledgeStore.add(k.subject, k.text, { kind: 'lore', source: 'lore', t: t0 });
   }
 
   // ---------------------------------------------------------------- loop
@@ -110,6 +147,7 @@ export class Mind {
       const step = Math.min(this._acc, 1);
       this._acc = 0;
       this.affect.decay(step);
+      this.workingMemory.decay(step);
       this.needsEngine.update(step, this.activity());
       this._moodAcc += step;
       if (this._moodAcc >= 1) {
@@ -134,6 +172,14 @@ export class Mind {
       this._checkSecrets();
     }
     if (this.conversation.length !== this._convLen) this._dedupeConversation();
+    if (this.autonomy) {
+      try {
+        this.autonomy.update(dt);
+      } catch (err) {
+        this._autonomyErrors = (this._autonomyErrors || 0) + 1;
+        if (this._autonomyErrors < 5) console.error('[mind] autonomy update failed', err);
+      }
+    }
   }
 
   // What she is doing right now, for needs. Reuses one object (called 5x a second).
@@ -334,74 +380,177 @@ export class Mind {
     return m;
   }
 
+  // Episodes by default (§9: memory objects, best first). With opts.stores (any of
+  // 'life', 'episode', 'knowledge', 'person') it returns index hits from those stores:
+  // [{ id, store, label, text, score, ref }]. 'today' / 'yesterday' list that day.
   recall(query = '', opts = {}) {
-    const { people, places } = this.resolveQuery(query);
-    if (opts.about) people.add(opts.about);
-    return this.memory.recall(query, { ...opts, people, places });
+    const q = String(query ?? '').trim();
+    const limit = opts.limit ?? 6;
+    const day = this.game?.clock?.day ?? 1;
+    if (/^(today|this morning|this afternoon|this evening|tonight)$/i.test(q)) return this.memory.ofDay(day).slice(0, limit);
+    if (/^yesterday$/i.test(q)) return this.memory.ofDay(day - 1).slice(0, limit);
+    const stores = Array.isArray(opts.stores) && opts.stores.length ? opts.stores : null;
+    const filter = (d) =>
+      (!opts.type || d.store !== 'episode' || d.ref.type === opts.type) && (!opts.minImportance || d.store !== 'episode' || d.ref.importance >= opts.minImportance) && (!opts.filter || opts.filter(d));
+    const hits = this.index.search(q, { limit, stores: stores || ['episode'], about: opts.about || null, filter, touch: opts.touch !== false, entities: opts.entities });
+    if (opts.touch !== false) for (const h of hits) if (h.store === 'episode') h.ref.uses = (h.ref.uses || 0) + 1;
+    if (stores) return hits;
+    return hits.map((h) => h.ref);
   }
 
-  // Which people and places a piece of text refers to (names through the
-  // relationships store, places through game.locations).
+  // Which people and places a piece of text refers to (names, roles, aliases).
   resolveQuery(query) {
     const people = new Set();
     const places = new Set();
-    const n = ` ${normName(query)} `;
-    if (n.trim()) {
-      for (const r of this.relationships.map.values()) {
-        if (r.kind === 'group') continue;
-        const names = [normName(r.name), normName(firstName(r.name)), r.id];
-        if (names.some((x) => x && x.length >= 3 && n.includes(` ${x} `))) people.add(r.id);
-      }
-      if (/ (me|us|we|our|my) /.test(n)) people.add(PLAYER_ID);
-      for (const p of this._placeIndex()) if (p.words.some((w) => n.includes(` ${w} `))) places.add(p.id);
+    for (const k of this.index.link(String(query ?? ''), { query: true })) {
+      if (k.startsWith('person:')) {
+        const id = k.slice(7);
+        if (id !== 'lyra') people.add(id);
+      } else if (k.startsWith('place:')) places.add(k.slice(6));
     }
     return { people, places };
   }
 
-  _placeIndex() {
-    const list = this.game?.locations?.all?.() || [];
-    if (this._places && this._placesFor === list.length) return this._places;
-    const generic = new Set(['the', 'of', 'old', 'your', 'house', 'village']);
-    this._places = list.map((l) => {
-      const words = new Set();
-      for (const s of [l.name, String(l.id).replace(/_/g, ' '), ...(l.aliases || [])]) {
-        const nn = normName(s).replace(/^the /, '');
-        if (!nn) continue;
-        words.add(nn);
-        for (const w of nn.split(' ')) if (w.length >= 4 && !generic.has(w)) words.add(w);
-      }
-      return { id: l.id, words: [...words] };
-    });
-    this._placesFor = list.length;
-    return this._places;
-  }
-
-  learn(subject, text, source = 'observed') {
-    const subj = String(subject ?? '').trim().slice(0, 60);
-    const clean = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, LIMITS.knowledgeText);
-    if (!subj || !clean) return null;
-    const key = normName(clean);
-    const existing = this.knowledge.find((k) => normName(k.subject) === normName(subj) && normName(k.text) === key);
-    if (existing) {
-      existing.t = this.now();
-      return existing;
-    }
-    const k = { subject: subj, text: clean, t: this.now(), source: String(source || 'observed') };
-    this.knowledge.push(k);
-    if (this.knowledge.length > LIMITS.knowledge) {
-      const i = this.knowledge.findIndex((x) => x.source !== 'soul');
-      this.knowledge.splice(i >= 0 ? i : 0, 1);
-    }
-    return k;
+  // Add to what she knows. opts: { kind: 'fact'|'lore'|'theory'|'rumor', source:
+  // 'lore'|'told'|'observed'|'player'|'inferred', confidence, about, loreId, from }
+  // (a plain string is taken as the source). Theories stay theories.
+  learn(subject, text, opts = {}) {
+    if (typeof opts === 'string') opts = { source: opts };
+    return this.knowledgeStore.add(subject, text, opts || {});
   }
 
   knowledgeAbout(subject) {
-    const n = normName(subject);
-    if (!n) return [];
-    return this.knowledge.filter((k) => {
-      const s = normName(k.subject);
-      return s.includes(n) || n.includes(s);
-    });
+    return this.knowledgeStore.about(subject);
+  }
+
+  // Does she know this lore entry (an entry or its id)? Her own life she always knows.
+  knowsLore(entryOrId) {
+    const e = typeof entryOrId === 'string' ? this.lorebook.get(entryOrId) : entryOrId;
+    if (!e) return false;
+    if (e.kind === 'life') return true;
+    return !!this.knowledgeStore.byLore(e.id);
+  }
+
+  // ---------------------------------------------------------------- memory v2 (§17.2)
+
+  // { text, items: [{ id, store, label }] } for a message, grouped and under budget.
+  recallContext(text, opts = {}) {
+    try {
+      return recallContext(this, text, opts);
+    } catch (err) {
+      console.error('[mind] recallContext failed', err);
+      return { text: '', items: [] };
+    }
+  }
+
+  dossier(personRef) {
+    return dossier(this, personRef);
+  }
+
+  loreLookup(topic) {
+    return loreLookup(this, topic);
+  }
+
+  // Any record by the id it is cited with ('m12', 'k4', 'life:cal_dies', 'person:bram').
+  lookup(id) {
+    return lookup(this, id);
+  }
+
+  // Bring an entity ('place:mirror_lake', 'person:bram', 'item:moonpetal') to mind.
+  notice(entKey, opts = {}) {
+    try {
+      return noticeEntity(this, entKey, opts);
+    } catch (err) {
+      console.error('[mind] notice failed', err);
+      return null;
+    }
+  }
+
+  // Topics in what someone said bring their people, places and things to mind.
+  noticeText(text, { source = 'topic', amount = 0.5 } = {}) {
+    let n = 0;
+    for (const k of this.index.link(String(text ?? ''), { query: true })) {
+      if (k === `person:${PLAYER_ID}` || k === 'person:lyra' || n >= 4) continue;
+      this.notice(k, { source, amount, reminisce: false });
+      n++;
+    }
+    return n;
+  }
+
+  learnPlace(locationId) {
+    return learnPlace(this, locationId);
+  }
+
+  learnItem(itemId) {
+    return learnItem(this, itemId);
+  }
+
+  learnClues(foundAt, source = 'observed', from = null) {
+    return learnClues(this, foundAt, source, from);
+  }
+
+  // Lore entries a person could tell her (not yet known), best first.
+  loreFrom(npcId, opts = {}) {
+    return loreFrom(this, npcId, opts);
+  }
+
+  learnLore(entry, opts = {}) {
+    return learnLoreEntry(this, entry, opts);
+  }
+
+  // ---------------------------------------------------------------- her own will (§16)
+
+  get agenda() {
+    return this.autonomy?.agenda || { goals: [], today: [], purse: 0 };
+  }
+
+  get ledger() {
+    return this.autonomy?.ledger || [];
+  }
+
+  get companionship() {
+    return this.autonomy?.companionship || 'together';
+  }
+
+  get promises() {
+    return this.autonomy?.promises || [];
+  }
+
+  evaluateRequest(req) {
+    try {
+      const v = this.autonomy?.evaluateRequest?.(req);
+      if (v && typeof v === 'object') return v;
+    } catch (err) {
+      console.error('[mind] evaluateRequest failed', err);
+    }
+    return { decision: 'accept', reasons: [], message: '', score: 1 };
+  }
+
+  setCompanionship(state, why = '') {
+    try {
+      return this.autonomy?.setCompanionship?.(state, why);
+    } catch (err) {
+      console.error('[mind] setCompanionship failed', err);
+      return undefined;
+    }
+  }
+
+  reconsider(reason = '') {
+    try {
+      return this.autonomy?.reconsider?.(reason);
+    } catch (err) {
+      console.error('[mind] reconsider failed', err);
+      return undefined;
+    }
+  }
+
+  recordDeed(deed, opts = {}) {
+    try {
+      return this.autonomy?.recordDeed?.(deed, opts);
+    } catch (err) {
+      console.error('[mind] recordDeed failed', err);
+      return undefined;
+    }
   }
 
   // ---------------------------------------------------------------- goals
@@ -599,10 +748,24 @@ export class Mind {
     parts.push(`${this.name} feels ${m.label}${tops.length ? ` (${tops.join(', ')})` : ''}, and is ${this.needsEngine.describe()}.`);
     parts.push(`${status ? `Right now she is ${status}` : 'Right now she is idle'} ${placePhrase(loc)}, ${partOfDay(g)}, ${weather}.`);
     if (o?.maxHp && o.hp < o.maxHp * 0.6) parts.push(`She is hurt (${Math.round(o.hp)}/${o.maxHp} HP).`);
+    const comp = this.companionship;
+    if (comp !== 'together') parts.push(COMPANIONSHIP_STATE[comp] || `Her standing with the player: ${comp}.`);
+    const plan = this.currentPlan();
+    if (plan) parts.push(`Her plan now: ${plan.activity}${plan.at ? ` at ${g?.locations?.get?.(plan.at)?.name || plan.at}` : ''}${plan.why ? ` (${plan.why})` : ''}.`);
     if (goal) parts.push(`On her mind: ${lowerFirst(goal.text.replace(/[.!]$/, ''))}.`);
+    const wm = this.workingMemory.list(3).map((it) => it.label);
+    if (wm.length) parts.push(`Thinking of: ${wm.join('; ')}.`);
     const last = this.thoughts[this.thoughts.length - 1];
     if (last) parts.push(`Latest thought: "${shorten(last.text, 110)}"`);
     return parts.join(' ');
+  }
+
+  // The entry of her plan for today that covers this hour, if she has one (§16.1).
+  currentPlan() {
+    const today = this.agenda?.today;
+    if (!Array.isArray(today) || !today.length) return null;
+    const h = this.game?.clock?.hour ?? 12;
+    return today.find((p) => p && Number(p.from) <= h && h < Number(p.to)) || null;
   }
 
   summary() {
@@ -612,6 +775,7 @@ export class Mind {
     const last = this.thoughts[this.thoughts.length - 1];
     const needs = {};
     for (const k of Object.keys(this.needs)) needs[k] = Math.round(this.needs[k] * 100) / 100;
+    const pr = this.relationships.get(PLAYER_ID);
     return {
       name: this.name,
       mood: m,
@@ -628,7 +792,13 @@ export class Mind {
       status: safeCall(() => this.owner?.behavior?.status?.()) || '',
       place: this.place()?.name || null,
       bond: this.relationships.bond(PLAYER_ID),
+      trust: pr ? Math.round(pr.trust) : null,
+      fear: pr ? Math.round(pr.fear) : null,
+      companionship: this.companionship,
+      purse: Number(this.agenda?.purse) || 0,
+      onMind: this.workingMemory.list(4).map((it) => it.label),
       memories: this.memory.size,
+      knowledge: this.knowledgeStore.size,
       people: this.relationships.people().length,
     };
   }
@@ -637,32 +807,46 @@ export class Mind {
 
   serialize() {
     const soulJson = JSON.stringify(this.soul);
+    let autonomy = null;
+    try {
+      autonomy = this.autonomy?.serialize?.() ?? null;
+    } catch (err) {
+      console.error('[mind] autonomy serialize failed', err);
+    }
     const out = {
-      v: 1,
+      v: 2,
       soul: soulJson === JSON.stringify(defaultSoul()) ? null : this.soul,
       emotions: this.affect.serialize(),
       needs: this.needsEngine.serialize(),
       memory: this.memory.serialize(),
+      knowledge: this.knowledgeStore.serialize(this.lorebook),
       relationships: this.relationships.serialize(),
       goals: this.goals.map((g) => ({ ...g })),
       thoughts: this.thoughts.slice(-LIMITS.thoughtsSaved).map((t) => ({ text: t.text, t: Math.round(t.t), source: t.source })),
       diary: this.diary.slice(-LIMITS.diary),
       conversation: this.conversation.slice(-LIMITS.conversation).map((c) => ({ role: c.role, text: c.text, t: Math.round(c.t ?? 0) })),
-      knowledge: this.knowledge.slice(-LIMITS.knowledge),
+      workingMemory: this.workingMemory.serialize(),
       perception: this.perception.serialize(),
       secrets: [...this.secretsRevealed],
+      autonomy,
     };
-    // Stay under the save budget: forget the least important memories first.
+    // Stay under the save budget: forget old, small episodes first (her life story is not
+    // in the save and is never pruned; lore she knows is saved as references).
     let size = JSON.stringify(out).length;
     let guard = 0;
-    while (size > LIMITS.saveBytes && guard++ < 40) {
-      if (this.memory.size > 40) {
-        this.memory.prune(Math.max(40, this.memory.size - 20));
+    while (size > LIMITS.saveBytes && guard++ < 60) {
+      if (this.memory.size > 60) {
+        this.memory.prune(Math.max(60, this.memory.size - 20));
         out.memory = this.memory.serialize();
-      } else if (out.diary.length > 5) out.diary = out.diary.slice(-5);
-      else if (out.knowledge.length > 30) out.knowledge = out.knowledge.slice(-30);
-      else if (out.conversation.length > 10) out.conversation = out.conversation.slice(-10);
-      else break;
+      } else if (out.diary.length > 6) out.diary = out.diary.slice(-6);
+      else if (out.conversation.length > 12) out.conversation = out.conversation.slice(-12);
+      else if (this.knowledgeStore.size > 80) {
+        this.knowledgeStore.prune(Math.max(80, this.knowledgeStore.size - 30));
+        out.knowledge = this.knowledgeStore.serialize(this.lorebook);
+      } else if (this.memory.size > 30) {
+        this.memory.prune(this.memory.size - 10);
+        out.memory = this.memory.serialize();
+      } else break;
       size = JSON.stringify(out).length;
     }
     return out;
@@ -678,6 +862,11 @@ export class Mind {
       this.relationships.deserialize(d.relationships);
       if (!this.relationships.get(PLAYER_ID)) this.relationships.ensure(PLAYER_ID);
     }
+    if (d.knowledge) {
+      this.knowledgeStore.deserialize(d.knowledge, this.lorebook);
+      // Lore the story says she knows, even if the story changed since the save.
+      this._seedLore(this.now());
+    }
     if (Array.isArray(d.goals)) {
       this.goals.length = 0;
       for (const g of sanitizeGoals(d.goals)) this.goals.push(g);
@@ -688,10 +877,41 @@ export class Mind {
       this.conversation = d.conversation.filter((c) => c && c.text).map((c) => ({ role: c.role === 'player' ? 'player' : 'lyra', text: String(c.text), t: Number(c.t) || 0 }));
       this._convLen = this.conversation.length;
     }
-    if (Array.isArray(d.knowledge)) this.knowledge = d.knowledge.filter((k) => k && k.subject && k.text).map((k) => ({ subject: String(k.subject), text: String(k.text), t: Number(k.t) || 0, source: k.source || 'observed' }));
+    if (Array.isArray(d.workingMemory)) this.workingMemory.deserialize(d.workingMemory);
     if (d.perception) this.perception.deserialize(d.perception);
     if (Array.isArray(d.secrets)) this.secretsRevealed = d.secrets.filter((x) => Number.isInteger(x));
+    if (d.autonomy && this.autonomy?.deserialize) {
+      try {
+        this.autonomy.deserialize(d.autonomy);
+      } catch (err) {
+        console.error('[mind] autonomy deserialize failed', err);
+      }
+    }
   }
+}
+
+// How her standing with the player reads in a prompt (DESIGN §16.3).
+const COMPANIONSHIP_STATE = {
+  wary: 'She is still traveling with the player, but warily: keeping her distance and watching them.',
+  apart: 'She is living her own life apart from the player for now, on friendly terms.',
+  left: 'She has left the player after being hurt or betrayed, and avoids them.',
+  gone: 'She has left the player for good.',
+};
+
+// Her life story, oldest first: the story's chapters, or her soul's if it has none.
+function buildLife(lorebook) {
+  const src = lorebook?.life?.() || [];
+  const list = src.length ? src : SOUL_LIFE;
+  return list.map((e) => ({
+    id: String(e.id),
+    age: Number.isFinite(Number(e.age)) ? Number(e.age) : null,
+    title: String(e.title || e.id),
+    text: String(e.text || ''),
+    people: Array.isArray(e.people) ? e.people.map(String) : [],
+    places: Array.isArray(e.places) ? e.places.map(String) : [],
+    feeling: e.feeling ? String(e.feeling) : null,
+    importance: Math.max(1, Math.min(10, Math.round(Number(e.importance) || 6))),
+  }));
 }
 
 function playerName(game) {

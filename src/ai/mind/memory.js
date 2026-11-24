@@ -19,6 +19,13 @@ export class Memory {
     this.max = max;
     this.lastAddMerged = false;
     this._tok = new Map(); // id -> Set of stems (not saved)
+    this.rev = 0; // bumped on every change, so the recall index knows to refresh
+  }
+
+  // Call after editing memory text in place (e.g. the player renamed themselves).
+  touchAll() {
+    this._tok.clear();
+    this.rev++;
   }
 
   get size() {
@@ -75,6 +82,7 @@ export class Memory {
       dup.t = Math.max(dup.t, m.t);
       for (const a of m.about) if (!dup.about.includes(a) && dup.about.length < MEMORY_LIMITS.about) dup.about.push(a);
       this.lastAddMerged = true;
+      this.rev++;
       return dup;
     }
     if (this.list.length && m.t < this.list[this.list.length - 1].t) {
@@ -84,6 +92,7 @@ export class Memory {
     } else {
       this.list.push(m);
     }
+    this.rev++;
     if (this.list.length > this.max) this.prune();
     return m;
   }
@@ -106,6 +115,7 @@ export class Memory {
     if (i < 0) return null;
     const [m] = this.list.splice(i, 1);
     this._tok.delete(id);
+    this.rev++;
     return m;
   }
 
@@ -185,6 +195,7 @@ export class Memory {
     const drop = new Set(ranked.slice(0, this.list.length - max).map((x) => x.m.id));
     this.list = this.list.filter((m) => !drop.has(m.id));
     for (const id of drop) this._tok.delete(id);
+    this.rev++;
     return drop.size;
   }
 
@@ -236,6 +247,7 @@ export class Memory {
       } else out.push(m);
     }
     this.list = out;
+    this.rev++;
     this.prune();
     return { removed, merged };
   }
@@ -275,6 +287,7 @@ export class Memory {
     }
     this.list.sort((a, b) => a.t - b.t);
     this._tok.clear();
+    this.rev++;
     this.nextId = Math.max(Number(d.n) || 1, maxId + 1);
   }
 }

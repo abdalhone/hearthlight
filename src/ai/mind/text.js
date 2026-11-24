@@ -122,7 +122,7 @@ export function cap(s) {
 // Proper names that keep their capital at the start of a clause.
 const PROPER = new Set(
   `I Lyra Maren Cal Pip Bram Elda Rowan Mira Tobias Aveline Garrick Gale Sister Captain Hearthvale Kettlewake Glasswater
-  Whisperwood Mirror Sunken Stonecut South King's Ember Ironhand Reed Odile Tam Lanternwright Lanternwrights`.split(/\s+/),
+  Whisperwood Mirror Sunken Stonecut South King's Ember Ironhand Reed Odile Orrin Tidewell Biscuit Varek Lanternwright Lanternwrights Glasswater Pale`.split(/\s+/),
 );
 
 export function addProperNames(names) {

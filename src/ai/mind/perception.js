@@ -856,7 +856,7 @@ export class Perception {
         const from = /^(traveler|traveller)$/i.test(old) ? /\bthe traveler\b/gi : new RegExp(`\\b${old.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
         const to = /^(traveler|traveller)$/i.test(value) ? 'the traveler' : String(value);
         for (const mem of m.memory.all()) if (mem.about.includes(PLAYER_ID)) mem.text = mem.text.replace(from, to).replace(/^the traveler/, 'The traveler');
-        m.memory._tok.clear();
+        m.memory.touchAll();
       }
     } else if (key === 'companionName' && value) {
       m.soul.name = String(value);
