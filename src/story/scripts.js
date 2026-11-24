@@ -34,7 +34,7 @@ export const SCRIPTS = {
     steps: [
       { music: 'prologue' },
       { panel: 'halcyre', pan: 'none' },
-      { narrate: 'Long ago, the world was a lit hall. Its makers, the Lanternwrights, called it Halcyre.' },
+      { narrate: 'Long ago, the world was a lit hall. The Lanternwrights, who kept its lamps, called it Halcyre.' },
       { narrate: 'They held its wild magic still with one great working: the Song.' },
       { narrate: 'Then the Song broke. Nobody alive knows why. The lamps went out, one by one.' },
       { panel: 'the_drift' },

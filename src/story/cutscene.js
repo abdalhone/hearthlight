@@ -471,21 +471,32 @@ export class CutscenePlayer {
     }
     const minRead = readingMs(text, narr);
     let auto = false;
+    let resolveThis = null;
+    const advanced = new Promise((resolve) => {
+      resolveThis = resolve;
+    });
+    this.advanceFn = resolveThis;
     const autoTimer = voiceEnded.then((v) => {
       // A clip that resolved almost at once means there was no clip: read instead.
       const elapsed = performance.now() - started;
       const remain = v && elapsed > 400 ? 650 : Math.max(650, minRead - elapsed);
       return this.wait(remain);
     });
-    const advanced = new Promise((resolve) => {
-      this.advanceFn = resolve;
-    });
     autoTimer.then(() => {
+      // Only this line's own timer may move it on: once the player has tapped past it,
+      // its timer must not cut the next line short.
+      if (this.advanceFn !== resolveThis) return;
       auto = true;
-      this.advanceFn?.();
+      // Never leave a line half-typed on its way out.
+      if (this.typing && !this.typing.done) {
+        this.typing.done = true;
+        this.textEl.textContent = this.typing.text;
+      }
+      this.advanceFn = null;
+      resolveThis();
     });
     await advanced;
-    this.advanceFn = null;
+    if (this.advanceFn === resolveThis) this.advanceFn = null;
     if (!auto) {
       try {
         voice?.stop?.();
