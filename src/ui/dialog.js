@@ -99,6 +99,7 @@ export class DialogPanel {
     if (typeof village?.playerSays !== 'function') return;
     this.talk = new TalkSession({ village, npc });
     this.talk.onLate = (reply) => {
+      this.noteInChat(npc, reply);
       if (this.isOpen() && this.npc === npc) this.showReply(reply);
     };
     const who = firstName(npc.name) || 'them';
@@ -156,11 +157,19 @@ export class DialogPanel {
     this.echoPlayer(text);
     this.setWaiting(true);
     const npc = this.npc;
+    // The chat keeps one conversation per person: what is said here is part of it (§23).
+    this.ui.chat?.addMessage?.({ to: npc.id, from: 'player', text, seen: true });
     this.talk.send(text).then((reply) => {
+      this.noteInChat(npc, reply);
       if (!this.isOpen() || this.npc !== npc) return;
       this.setWaiting(false);
       if (reply) this.showReply(reply);
     });
+  }
+
+  noteInChat(npc, reply) {
+    if (!npc || !reply?.lines?.length) return;
+    for (const line of reply.lines) this.ui.chat?.addMessage?.({ to: npc.id, from: reply.ok ? 'npc' : 'system', text: line, seen: true });
   }
 
   echoPlayer(text) {
