@@ -6867,3 +6867,14 @@ input[type='range']::-moz-range-thumb {
 .is-touch .interact-prompt {
   display: none;
 }
+
+/* Small windows use the Ask button (◆, at the top now) instead of the bar beside Lyra,
+   so the prompts and the hotbar sit down at the bottom edge. */
+@media (max-width: 640px), (max-height: 520px) {
+  .hud-cards > .cmdbar-side {
+    display: none;
+  }
+  .ui:not(.is-touch) .hud-bottom {
+    bottom: calc(var(--sa-b) + 12px);
+  }
+}
