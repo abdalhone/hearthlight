@@ -282,7 +282,7 @@ a stream with a bridge, forest edges with undergrowth, lily pads, ruins with bro
 `id, name, kind, faction, hp, maxHp, atk, def, speed, level, xp, dir, facing {x,y}, state,
 stateTime, animTime, lockTime, moveIntent {x,y}, speedMul, knock, invuln, flash, attackCd,
 downed, inventory, controller, spriteKey, perceptionRadius, lastAttacker, lastAttackedAt,
-flying, light`; methods `isAlive(), setState(state, lockSeconds), faceToward(x, y), faceDir(d),
+flying, light, rootTime` (seconds rooted in place by Binding Light: no movement, can still act); methods `isAlive(), setState(state, lockSeconds), faceToward(x, y), faceDir(d),
 getLight(), draw(), serialize(), deserialize()`. States: `idle walk attack cast hurt downed dead
 work sit sleep`. Controllers set `moveIntent` (length ≤ 1); the base class moves with collision.
 `FACTION_RELATIONS` / `factionRelation(a, b)` → 'ally' | 'neutral' | 'hostile'.
