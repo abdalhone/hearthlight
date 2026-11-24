@@ -480,7 +480,7 @@ export class MindPanel {
             'li',
             { class: `deed tone-${v.tone}` },
             h('span', { class: 'deed-sev num', title: 'How much it weighed with her', text: v.sev }),
-            h('span', { class: 'deed-main' }, h('span', { class: 'deed-label', text: v.label }), v.text ? h('span', { class: 'deed-text', text: v.text }) : null),
+            h('span', { class: 'deed-main' }, h('span', { class: 'deed-label', text: v.label }), v.text ? h('span', { class: 'deed-text', text: `“${v.text}”` }) : null),
             h('span', { class: 'deed-when', text: v.when }),
           ),
         );
@@ -779,6 +779,9 @@ export class MindPanel {
       if (e?.name) return e.name.split(' ')[0];
       const rel = safe(() => this.mind?.relationships?.get?.(id));
       if (rel?.name) return rel.name.split(' ')[0];
+      // People and places from her past live in the lorebook.
+      const lore = safe(() => this.mind?.lorebook?.get?.(id));
+      if (lore && (lore.name || lore.title)) return String(lore.name || lore.title);
       return String(id)
         .replace(/_/g, ' ')
         .replace(/\b[a-z]/g, (c) => c.toUpperCase());

@@ -607,6 +607,15 @@ test('requests: refusals, conditions, counters and her own fallback lines', () =
   assert.deepEqual([a.refused, a.line, a.kind], [false, '<failed>', 'problem']);
   a = requestAnswer(null, { pick });
   assert.equal(a.kind, 'problem');
+  // The brain already answered aloud: the chat shows those words, without a second bubble.
+  a = requestAnswer({ ok: true, message: '' }, { kind: 'follow', pick, heard: ['Lead the way.'] });
+  assert.deepEqual([a.line, a.bubble], ['Lead the way.', false]);
+  a = requestAnswer({ ok: false, refused: true, message: 'No.' }, { pick, heard: ['No.'] });
+  assert.deepEqual([a.line, a.bubble], ['No.', false]);
+  a = requestAnswer({ ok: false, refused: true, message: 'No.' }, { pick, heard: ['Something else.'] });
+  assert.deepEqual([a.line, a.bubble], ['No.', true]);
+  a = requestAnswer({ ok: true }, { kind: 'stay', pick });
+  assert.ok(a.bubble);
 });
 
 // ---------- memory and lore (§17) ----------
@@ -684,6 +693,8 @@ test('memory chips: refs, lookup across stores and labels', () => {
   assert.equal(findMemory(mind, 'zzz', story), null);
   assert.equal(findMemory(null, 'm1'), null);
   assert.equal(findMemory({ lookup: () => ({ text: 'direct hit', store: 'working' }) }, 'q').store, 'working');
+  const viaLookup = findMemory({ lookup: (id) => (id === 'life:born' ? { id, store: 'life', label: 'Born in a gale', text: 'I was born on Kettlewake.', ref: { age: 0 } } : null) }, 'life:born');
+  assert.deepEqual([viaLookup.title, viaLookup.store, viaLookup.day], ['Born in a gale', 'life', 0]);
   assert.equal(memoryChipLabel({ id: 'm1', label: '' }, findMemory(mind, 'm1')), "the wolves on the King's Road.");
   assert.equal(memoryChipLabel({ label: 'Maren went north' }), 'Maren went north', 'names keep their capital');
   assert.equal(memoryChipLabel({}), 'something');

@@ -70,17 +70,26 @@ export function companionshipReason(mind) {
 const ACCEPTED = new Set(['accept', 'accept_conditional']);
 
 // Read an ActionRegistry.run() result for the player: was it refused, what does she
-// say (the gate's or the action's words first; `pick(kind)` supplies a line of her
-// own otherwise), and did she offer something else instead.
-export function requestAnswer(r, { kind = '', fallback = '', pick = () => '' } = {}) {
+// say and did she offer something else instead. Her words come from, in order: the
+// gate's or the action's message; a line she already spoke aloud while the request
+// ran (`heard`: the brain answers HUD requests with a bark); `fallback`; `pick(kind)`.
+// `bubble` is false when the line is already over her head.
+export function requestAnswer(r, { kind = '', fallback = '', pick = () => '', heard = [] } = {}) {
   const verdict = r && typeof r.verdict === 'object' && r.verdict ? r.verdict : null;
   const refused = !!r?.refused || (!!verdict?.decision && !ACCEPTED.has(verdict.decision));
   const ok = !!r?.ok && !refused;
-  let line = String(r?.message || (refused || verdict?.decision === 'accept_conditional' ? verdict?.message : '') || '').trim();
-  if (!line) line = ok ? fallback || pick(kind) : pick(refused ? 'refused' : 'failed');
+  const spoken = Array.isArray(heard) ? heard.filter((x) => typeof x === 'string' && x.trim()) : [];
+  const msg = String(r?.message || (refused || verdict?.decision === 'accept_conditional' ? verdict?.message : '') || '').trim();
+  let line = msg;
+  let bubble = true;
+  if (line) bubble = !spoken.includes(line);
+  else if (spoken.length) {
+    line = spoken[spoken.length - 1].trim();
+    bubble = false;
+  } else line = String((ok ? fallback || pick(kind) : pick(refused ? 'refused' : 'failed')) || '');
   const c = refused ? verdict?.counter : null;
   const counter = c && c.name ? { label: 'All right, your way', name: String(c.name), args: c.args && typeof c.args === 'object' ? c.args : {} } : null;
-  return { ok, refused, line: String(line || ''), kind: refused ? 'refusal' : ok ? 'answer' : 'problem', counter, decision: verdict?.decision || (ok ? 'accept' : null) };
+  return { ok, refused, line, bubble, kind: refused ? 'refusal' : ok ? 'answer' : 'problem', counter, decision: verdict?.decision || (ok ? 'accept' : null) };
 }
 
 // Her standing plan in words, for the Now tab ("Plan: her own day").
@@ -504,8 +513,11 @@ export function findMemory(mind, id, story = null) {
     m && typeof m === 'object'
       ? { id: sid, text: String(m.text || m.question || ''), title: String(m.title || m.subject || m.name || ''), store, day: dayOf(m) }
       : null;
-  const direct = safeGet(() => mind?.lookup?.(sid)) || safeGet(() => mind?.index?.get?.(sid));
-  if (direct && typeof direct === 'object' && (direct.text || direct.title)) return hit(direct, direct.store || 'memory');
+  // The mind's own resolver understands every cited form ('m12', 'k4', 'life:born').
+  const direct = safeGet(() => mind?.lookup?.(sid));
+  if (direct && typeof direct === 'object' && (direct.text || direct.title || direct.label)) {
+    return { id: sid, text: String(direct.text || ''), title: String(direct.title || direct.label || ''), store: String(direct.store || 'memory'), day: dayOf(direct.ref || direct) };
+  }
   const byId = (list) => list.find((m) => m && String(m.id) === sid) || null;
   const mem = safeGet(() => mind?.memory?.get?.(sid)) || byId(listFrom(safeGet(() => mind?.memory), ['all', 'list', 'entries', 'items', 'memories']));
   if (mem) return hit(mem, 'memory');
@@ -531,7 +543,7 @@ export function memoryChipLabel(ref, found = null, max = 34) {
   return truncate(lower, max);
 }
 
-export const STORE_LABELS = Object.freeze({ memory: 'a memory', knowledge: 'something she knows', life: 'her past', lore: 'old lore', working: 'on her mind' });
+export const STORE_LABELS = Object.freeze({ memory: 'a memory', episode: 'a memory', knowledge: 'something she knows', life: 'her past', lore: 'old lore', person: 'someone she knows', working: 'on her mind' });
 
 // ---------- farewell (§16.3 gone) ----------
 

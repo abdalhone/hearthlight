@@ -73,6 +73,8 @@ export class UI {
     this.lastCs = 'together';
     this.lastCompanionReason = '';
     this.pendingSpeech = []; // her unprompted lines, waiting to join the chat
+    this.heard = null; // her words while a request runs (see ask)
+    this.heardNow = [];
   }
 
   // ---------- setup ----------
@@ -318,9 +320,11 @@ export class UI {
       const sev = Number(p?.severity) || 0;
       if (Math.abs(sev) < 2) return;
       const label = deedLabel(p?.deed);
+      // Deed texts are her own words about you.
       const text = String(p?.text || '').trim();
-      if (sev > 0) this.toast(text || `${label}. She noticed.`, 'lyra', { title: `${lyraName()} noticed`, key: `deed:${p?.deed}` });
-      else this.toast(text || `${label}. She will remember it.`, 'warn', { title: sev <= -5 ? `${lyraName()} will not forget this` : `${lyraName()} saw that`, key: `deed:${p?.deed}` });
+      const body = text ? `${label}: “${text}”` : `${label}.`;
+      if (sev > 0) this.toast(body, 'lyra', { title: `${lyraName()} noticed`, key: `deed:${p?.deed}` });
+      else this.toast(body, 'warn', { title: sev <= -5 ? `${lyraName()} will not forget this` : `${lyraName()} saw that`, key: `deed:${p?.deed}` });
     });
     bus.on('promise', (p) => {
       this.mind?.markDirty('you');
@@ -330,18 +334,17 @@ export class UI {
       else if (p.state === 'broken') this.toast(text, 'warn', { title: p.by === 'player' ? 'You broke your word' : `${lyraName()} broke her word` });
       else this.toast(text, 'lyra', { title: p.by === 'player' ? 'You promised' : `${lyraName()} promised` });
     });
-    bus.on('crime', (p) => {
-      if (!isPlayer(p?.actor)) return;
-      const who = p?.victim?.name || 'someone';
-      if (p.kind === 'knockout') this.toast(`You knocked ${who} out. Hearthvale will not forget it today, and neither will the guards.`, 'warn', { title: 'Crime', key: 'crime' });
-      else this.toast(`You attacked ${who}. The guards will come for you.`, 'warn', { title: 'Crime', key: 'crime' });
-    });
     bus.on('plan_changed', () => this.mind?.markDirty('now'));
     // What she says aloud to you on her own (announcements, requests, warnings) also
     // lands in the chat. Replies reach the chat through the brain; waiting a moment
     // lets those arrive first, so the same line is never shown twice.
     bus.on('speech', (p) => {
-      if (!isLyra(p?.speaker) || !p.text || g.state !== 'playing') return;
+      if (!isLyra(p?.speaker) || !p.text) return;
+      if (this.heard) {
+        this.heard.push(String(p.text));
+        return;
+      }
+      if (g.state !== 'playing') return;
       const kind = p.kind || 'say';
       if (kind === 'bark' || kind === 'whisper') return;
       if (p.target && !isPlayer(p.target)) return;
@@ -673,17 +676,26 @@ export class UI {
   ask(action, args = {}, kind = action, fallback = '') {
     const g = this.game;
     if (!g.companion || companionshipOf(g) === 'gone') return null;
-    const r = safe(() => g.actions.run(action, args, 'player'), null) || { ok: false, message: '' };
-    this.showAnswer(r, kind, fallback);
+    // Whatever she says aloud while the request runs (the brain barks an answer to HUD
+    // requests) is her answer: listen, so the chat shows the same words, once.
+    this.heard = [];
+    let r;
+    try {
+      r = safe(() => g.actions.run(action, args, 'player'), null) || { ok: false, message: '' };
+    } finally {
+      this.heardNow = this.heard;
+      this.heard = null;
+    }
+    this.showAnswer(r, kind, fallback, this.heardNow);
     return r;
   }
 
   // Her answer to a request, in her own voice: the gate's or the action's words, or a
   // fitting line of her own. A counter-offer becomes a button under her reply.
-  showAnswer(r, kind, fallback = '') {
+  showAnswer(r, kind, fallback = '', heard = []) {
     const g = this.game;
-    const a = requestAnswer(r, { kind, fallback, pick: pickAck });
-    this.lyraSays(a.line, { kind: a.kind, offer: a.counter });
+    const a = requestAnswer(r, { kind, fallback, pick: pickAck, heard });
+    this.lyraSays(a.line, { kind: a.kind, offer: a.counter, bubble: a.bubble });
     if (a.refused) {
       this.hud?.flashRefusal();
       g.audio?.play('error', { volume: 0.45, pitch: 0.8 });
@@ -693,12 +705,12 @@ export class UI {
 
   // Lyra speaks: a bubble over her head and a line in the chat. When neither the chat
   // nor she is in view, a toast carries her words.
-  lyraSays(text, { kind = null, offer = null, memories = null } = {}) {
+  lyraSays(text, { kind = null, offer = null, memories = null, bubble = true } = {}) {
     const g = this.game;
     const c = g.companion;
     const line = String(text || '').trim();
     if (!line) return;
-    if (c && !c.removed) safe(() => g.bubbles?.say?.(c, line, { kind: 'say' }));
+    if (bubble && c && !c.removed) safe(() => g.bubbles?.say?.(c, line, { kind: 'say' }));
     this.chat.addMessage({ from: 'lyra', text: line, kind, offer, memories });
     // A panel covers the world (and her bubble); off-screen she cannot be seen either.
     if (this.stack.length || (!this.chat.isOpen() && !this.lyraInView())) this.toast(line, 'lyra', { title: g.settings?.companionName || c?.name || 'Lyra' });
