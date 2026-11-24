@@ -172,6 +172,38 @@ export function directiveWords(type) {
   return DIRECTIVE_WORDS[type] || String(type).replace(/_/g, ' ');
 }
 
+// ---------- right now (Now tab) ----------
+
+const EMOTION_ADJ = { joy: 'glad', sadness: 'sad', fear: 'afraid', anger: 'angry', trust: 'trusting', surprise: 'surprised', affection: 'affectionate', curiosity: 'curious', pride: 'proud', embarrassment: 'embarrassed' };
+
+// "a", "a and b", "a, b and c".
+export function joinWords(list) {
+  const l = (list || []).map((x) => String(x).trim()).filter(Boolean);
+  if (l.length <= 1) return l[0] || '';
+  return `${l.slice(0, -1).join(', ')} and ${l[l.length - 1]}`;
+}
+
+// How she is right now, in a few plain sentences, from mind.summary().
+export function nowParagraph(sum, { name = 'Lyra' } = {}) {
+  if (!sum || typeof sum !== 'object') return '';
+  const out = [];
+  const label = sum.mood && typeof sum.mood === 'object' && sum.mood.label ? String(sum.mood.label) : '';
+  const adj = (Array.isArray(sum.emotions) ? sum.emotions : [])
+    .filter((e) => e && Number(e.value) >= 0.35 && EMOTION_ADJ[e.name])
+    .map((e) => EMOTION_ADJ[e.name])
+    .filter((a) => a !== label)
+    .slice(0, 2);
+  const feels = [label, ...adj].filter(Boolean);
+  if (feels.length) out.push(`${name} feels ${joinWords(feels)}.`);
+  const status = String(sum.status || '').trim();
+  if (status) out.push(`Right now she is ${status}.`);
+  if (typeof sum.pressingText === 'string' && sum.pressingText.trim()) out.push(`She is ${sum.pressingText.trim()}.`);
+  const onMind = (Array.isArray(sum.onMind) ? sum.onMind : []).filter((x) => typeof x === 'string' && x.trim()).slice(0, 3);
+  if (onMind.length) out.push(`On her mind: ${joinWords(onMind)}.`);
+  else if (typeof sum.goal === 'string' && sum.goal.trim()) out.push(`On her mind: ${sum.goal.trim().replace(/[.!]$/, '')}.`);
+  return out.join(' ');
+}
+
 // ---------- the player in her eyes (§16.2) ----------
 
 const num = (v, d = null) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : d);

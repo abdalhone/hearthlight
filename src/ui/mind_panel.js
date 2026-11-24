@@ -50,6 +50,7 @@ import {
   confidenceWord,
   lifeTimeline,
   directiveWords,
+  nowParagraph,
 } from './lyra_view.js';
 import { STORY } from '../lore/story.js';
 
@@ -105,6 +106,9 @@ const BIG_FIVE = [
   ['agreeableness', 'Agreeableness', 'blunt', 'gentle'],
   ['neuroticism', 'Neuroticism', 'steady', 'easily shaken'],
 ];
+
+// Where a goal came from, as she would put it.
+const GOAL_SOURCES = { soul: 'who she is', self: 'her own', player: 'you suggested it', quest: 'the search for Maren' };
 
 const SOUL_TEXT = [
   ['fullName', 'Full name', 'input'],
@@ -351,7 +355,8 @@ export class MindPanel {
     const mind = this.mind;
     if (!r || !mind) return;
     const c = this.game.companion;
-    setText(r.stateText, safe(() => mind.describeState?.(), '') || 'She is quiet, taking in the world around her.');
+    const name = this.game.settings?.companionName || c?.name || 'Lyra';
+    setText(r.stateText, nowParagraph(safe(() => mind.summary?.(), null), { name }) || safe(() => mind.describeState?.(), '') || 'She is quiet, taking in the world around her.');
     const beh = c?.behavior;
     const status = safe(() => beh?.status?.(), '') || 'nearby';
     const dir = beh?.directive?.type || '';
@@ -815,7 +820,7 @@ export class MindPanel {
       const m = meter('meter-priority', 'Priority');
       m.set(clamp01(Number(goal.priority) || 0), '');
       list.append(
-        h('article', { class: `goal ${goal.done ? 'done' : ''}` }, icon(goal.done ? 'star' : 'flag'), h('div', { class: 'goal-main' }, h('p', { class: 'goal-text', text: goal.text }), h('div', { class: 'goal-meta' }, h('span', { class: `tag tag-src-${goal.source || 'self'}`, text: goal.source === 'player' ? 'from you' : goal.source || 'her own' }), goal.done ? h('span', { class: 'tag', text: 'done' }) : m.el))),
+        h('article', { class: `goal ${goal.done ? 'done' : ''}` }, icon(goal.done ? 'star' : 'flag'), h('div', { class: 'goal-main' }, h('p', { class: 'goal-text', text: goal.text }), h('div', { class: 'goal-meta' }, h('span', { class: `tag tag-src-${goal.source || 'self'}`, text: GOAL_SOURCES[goal.source] || 'her own' }), goal.done ? h('span', { class: 'tag', text: 'done' }) : m.el))),
       );
     }
     const field = h('input', { type: 'text', class: 'field', maxlength: '160', placeholder: 'Suggest something she could work toward…', 'aria-label': 'Suggest a goal' });

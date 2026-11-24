@@ -90,6 +90,8 @@ import {
   handReach,
   reachNote,
   counterLabel,
+  nowParagraph,
+  joinWords,
 } from '../src/ui/lyra_view.js';
 import { personArtKey, ABSENT_LOOKS } from '../src/ui/art.js';
 import { UI } from '../src/ui/ui.js';
@@ -794,4 +796,20 @@ test('faces in the People tab: species for creatures, painted absent people, ini
   assert.equal(personArtKey(game, { id: 'bandits', kind: 'group' }), null);
   assert.equal(personArtKey(game, { id: 'tobias', npc: true }), 'tobias');
   assert.equal(personArtKey(game, null), null);
+});
+
+test('the Now tab says how she is in plain words', () => {
+  assert.equal(joinWords(['a']), 'a');
+  assert.equal(joinWords(['a', 'b', 'c']), 'a, b and c');
+  const sum = {
+    mood: { label: 'content' },
+    emotions: [{ name: 'curiosity', value: 0.5 }, { name: 'trust', value: 0.4 }, { name: 'fear', value: 0.1 }],
+    status: 'following you',
+    pressingText: 'a bit peckish',
+    onMind: ['Maren Ashgrove', "King's Road"],
+  };
+  assert.equal(nowParagraph(sum, { name: 'Lyra' }), "Lyra feels content, curious and trusting. Right now she is following you. She is a bit peckish. On her mind: Maren Ashgrove and King's Road.");
+  assert.equal(nowParagraph({ goal: 'Find Maren.' }), 'On her mind: Find Maren.');
+  assert.equal(nowParagraph(null), '');
+  assert.equal(nowParagraph({ emotions: 'odd', onMind: [null, 3] }), '');
 });
