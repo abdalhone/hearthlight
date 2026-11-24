@@ -1,0 +1,373 @@
+// Who the chat is talking to (DESIGN.md §23, "talk to them like I talk with this girl"):
+// Lyra by default, or anyone within earshot of the player. This module decides who can
+// hear the player (distance, and the same roof), how each person stands with the player
+// (the mood dot on their chip), which person a tap in the world lands on, and builds the
+// "To:" chip row. The logic is pure and runs under node; only ChatTargetBar and the voice
+// helpers touch the DOM or the browser, and only when called.
+
+import { h, setText, toggleClass } from './dom.js';
+import { portraitUrl } from './art.js';
+import { firstName, moodExpression } from './village_view.js';
+import { voicePitch } from './format.js';
+
+export const LYRA = 'lyra';
+const TILE = 16;
+export const EARSHOT = 7.5 * TILE; // px: near enough to talk
+export const EARSHOT_LOSE = 10.5 * TILE; // px: a conversation holds until they are this far
+const HOSTILE_NEAR = 9 * TILE; // a tap in a fight is a sword stroke, not a hello
+
+const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
+
+function safe(fn, fallback = null) {
+  try {
+    const v = fn();
+    return v === undefined ? fallback : v;
+  } catch {
+    return fallback;
+  }
+}
+
+// ---------------------------------------------------------------------------- who can hear
+
+// A villager the chat can address: someone with a profile and a voice of their own.
+export function isVillager(e) {
+  return !!e && !!e.profile && e.id !== LYRA && e.id !== 'player' && !e.removed;
+}
+
+export function roofOf(game, e) {
+  if (!e || !game?.map?.buildingAt) return null;
+  return safe(() => game.map.buildingAt(Math.floor(e.x / TILE), Math.floor(e.y / TILE)), null);
+}
+
+function awake(e) {
+  return !(e.state === 'sleep' || e.activity === 'sleep');
+}
+
+function downed(e) {
+  return !!e.downed || e.state === 'downed' || e.mode === 'downed' || e.dead || (typeof e.isAlive === 'function' && !safe(() => e.isAlive(), true));
+}
+
+// Why someone cannot hear the player right now: null when they can.
+//   'gone' (no longer in the world), 'downed', 'far', 'walls' (inside while the player is
+//   not, or the other way round)
+export function whyNotHeard(game, e, radius = EARSHOT) {
+  const p = game?.player;
+  if (!e || e.removed || !p) return 'gone';
+  if (downed(e)) return 'downed';
+  if (Math.hypot(e.x - p.x, e.y - p.y) > radius) return 'far';
+  if (roofOf(game, e) !== roofOf(game, p)) return 'walls';
+  return null;
+}
+
+export function canHear(game, e, radius = EARSHOT) {
+  return !whyNotHeard(game, e, radius);
+}
+
+// Everyone within earshot, nearest first. `keep`: ids already in the row, who stay until
+// they pass the wider EARSHOT_LOSE (so a chip does not flicker at the edge).
+export function earshotPeople(game, { keep = null, max = 8 } = {}) {
+  const p = game?.player;
+  const ents = safe(() => game.entities.all(), []) || [];
+  if (!p) return [];
+  const out = [];
+  for (const e of ents) {
+    if (!isVillager(e)) continue;
+    const r = keep && keep.includes?.(e.id) ? EARSHOT_LOSE : EARSHOT;
+    if (!canHear(game, e, r)) continue;
+    out.push([Math.hypot(e.x - p.x, e.y - p.y), e]);
+  }
+  out.sort((a, b) => a[0] - b[0]);
+  return out.slice(0, max).map((x) => x[1]);
+}
+
+// Is the player in a fight (a hostile creature close by)? Then a click is a sword stroke.
+export function inFight(game) {
+  const p = game?.player;
+  if (!p) return false;
+  const ents = safe(() => game.entities.all(), []) || [];
+  for (const e of ents) {
+    if (!e || e.removed || e === p || e.profile || e.id === LYRA || !Number.isFinite(e.x)) continue;
+    if (Math.hypot(e.x - p.x, e.y - p.y) > HOSTILE_NEAR || downed(e)) continue;
+    const hostile = safe(() => game.combat?.isHostile?.(e, p), null) ?? ['monster', 'bandit', 'undead'].includes(e.faction);
+    if (hostile) return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------- the world, tapped
+
+// The person (Lyra or a villager) drawn at a world point, or null. Sprites stand on their
+// feet at (x, y), about 16 px wide and 26 px tall; a fingertip gets a little more room.
+export function pickActorAt(game, wx, wy, { pad = 3 } = {}) {
+  if (!Number.isFinite(wx) || !Number.isFinite(wy)) return null;
+  const ents = safe(() => game.entities.all(), []) || [];
+  let best = null;
+  let bestD = Infinity;
+  for (const e of ents) {
+    if (!e || e.removed) continue;
+    if (e.id !== LYRA && !isVillager(e)) continue;
+    const z = num(e.z, 0);
+    const dx = wx - e.x;
+    const dy = wy - (e.y - z);
+    if (Math.abs(dx) > 8 + pad || dy < -26 - pad || dy > 3 + pad) continue;
+    const d = Math.hypot(dx, dy + 11);
+    if (d < bestD) {
+      bestD = d;
+      best = e;
+    }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------------------- how they stand with you
+
+export const TONES = {
+  hostile: 'cold to you',
+  wary: 'wary of you',
+  neutral: 'unsure of you',
+  friendly: 'likes you',
+  fond: 'fond of you',
+};
+
+// A villager's mood word (theirs or Claude's) as the header says it, or '' when it says nothing new.
+const MOOD_WORDS = { warm: 'warm', happy: 'cheerful', amused: 'amused', angry: 'angry', wary: 'guarded', worried: 'worried', sad: 'sad', sleepy: 'sleepy', cold: 'cold', curious: 'curious', proud: 'proud', embarrassed: 'flustered', nervous: 'nervous', fond: 'tender' };
+export function moodWord(mood) {
+  return MOOD_WORDS[String(mood || '').toLowerCase()] || '';
+}
+
+export function toneOf(opinion) {
+  const o = num(opinion, 30);
+  return o < 15 ? 'hostile' : o < 30 ? 'wary' : o < 50 ? 'neutral' : o < 75 ? 'friendly' : 'fond';
+}
+
+// What the chip and the header say about someone: { tone, label, asleep, cold, opinion }.
+export function standingOf(game, e) {
+  if (!e) return { tone: 'neutral', label: TONES.neutral, asleep: false, cold: false, opinion: 30 };
+  const st = safe(() => game?.village?.standing?.(e.id), null);
+  const opinion = num(st?.opinion ?? e.opinionOfPlayer, 30);
+  let tone = toneOf(opinion);
+  const cold = !!(st?.cold || (st?.grievance?.fresh && st?.grievance?.grave));
+  if (cold && tone !== 'hostile') tone = 'wary';
+  return { tone, label: TONES[tone], asleep: !awake(e), cold, opinion };
+}
+
+// The portrait expression a villager's chip and header show.
+export function faceOf(standing, mood = null) {
+  const m = moodExpression(mood);
+  if (m) return m;
+  if (standing?.asleep) return 'sleepy';
+  return { hostile: 'angry', wary: 'worried', neutral: 'neutral', friendly: 'happy', fond: 'happy' }[standing?.tone] || 'neutral';
+}
+
+const HE = new Set(['hobb', 'bram', 'pip', 'rowan', 'tobias', 'garrick', 'alder', 'corran', 'wys']);
+export function pronoun(id, kind = 'his') {
+  const he = HE.has(id);
+  if (kind === 'his') return he ? 'his' : 'her';
+  if (kind === 'he') return he ? 'he' : 'she';
+  return he ? 'him' : 'her';
+}
+
+// The line that closes a conversation when someone passes out of earshot.
+//   who: 'they' (the villager walked off) | 'you' (the player walked away)
+export function partingLine(e, why, who = 'they') {
+  const n = firstName(e?.name) || 'They';
+  const his = pronoun(e?.id, 'his');
+  if (why === 'downed') return `${n} is hurt and can't talk now.`;
+  if (why === 'gone') return `${n} has gone.`;
+  if (who === 'you') return `You walk on, and leave ${n} to ${his} day.`;
+  return `${n} has gone on ${his} way.`;
+}
+
+// Quick replies for a villager: the everyday openers, and "I'm <name>." while they do not
+// know it (only when the player has a name of their own set).
+export function villagerChips(game, id, knows = false) {
+  const out = ['Hello! How are you?', "What's the news?", 'What do you think of me?', 'Tell me about yourself.'];
+  const name = String(game?.settings?.playerName || '').trim();
+  if (!knows && name && !/^travell?er$/i.test(name)) out.splice(1, 0, `I'm ${name}.`);
+  out.push('Goodbye!');
+  return out;
+}
+
+// ---------------------------------------------------------------------------- the voice
+
+const TTS_VOICES = ['buttery', 'airy', 'glassy', 'rounded'];
+
+// A claude.ai voice for a villager: never Lyra's own, men and women apart.
+export function ttsVoiceFor(id, lyraVoice = 'airy') {
+  const he = HE.has(id);
+  const pool = (he ? ['rounded', 'buttery'] : ['glassy', 'airy', 'buttery']).filter((x) => x !== lyraVoice && TTS_VOICES.includes(x));
+  let hsh = 0;
+  for (const c of String(id)) hsh = (hsh * 31 + c.charCodeAt(0)) >>> 0;
+  return pool[hsh % pool.length] || 'rounded';
+}
+
+// Speak a villager's chat line that has no recorded clip: claude.ai's voice when the
+// player reads replies aloud, else the browser's voice when they turned that on. Resolves
+// { ok, reason }; never rejects.
+export function speakVillagerLine(game, id, text, { kind = 'say', priority = 2 } = {}) {
+  const s = game?.settings || {};
+  const tts = game?.runtime?.tts;
+  const gv = game?.voice;
+  const claim = () => (gv?.claim ? gv.claim({ speaker: id, kind, priority, stop: () => stopOutside(game) }) : { release() {} });
+  if (s.voice && tts && typeof tts.speak === 'function') {
+    const hold = claim();
+    if (!hold) return Promise.resolve({ ok: false, reason: 'busy' });
+    let p;
+    try {
+      p = tts.speak(text, { voice: ttsVoiceFor(id, s.voiceName || 'airy') });
+    } catch (err) {
+      p = Promise.reject(err);
+    }
+    return Promise.resolve(p).then(
+      () => (hold.release?.(), { ok: true, reason: 'tts' }),
+      () => (hold.release?.(), { ok: false, reason: 'tts_failed' }),
+    );
+  }
+  if (s.browserVoice && typeof window !== 'undefined' && window.speechSynthesis && typeof window.SpeechSynthesisUtterance === 'function') {
+    const hold = claim();
+    if (!hold) return Promise.resolve({ ok: false, reason: 'busy' });
+    return new Promise((resolve) => {
+      try {
+        const u = new window.SpeechSynthesisUtterance(text);
+        u.pitch = Math.max(0.5, Math.min(1.8, (voicePitch(id) - 0.8) * 2 + 0.7 + (id === 'pip' || id === 'tansy' ? 0.35 : 0)));
+        u.rate = id === 'hobb' || id === 'corran' || id === 'petra' || id === 'wenna' ? 0.86 : id === 'pip' || id === 'tilly' ? 1.12 : 0.98;
+        u.volume = Math.max(0, Math.min(1, Number(s.voiceVol ?? 0.85)));
+        u.onend = () => (hold.release?.(), resolve({ ok: true, reason: 'browser' }));
+        u.onerror = () => (hold.release?.(), resolve({ ok: false, reason: 'browser_failed' }));
+        window.speechSynthesis.speak(u);
+      } catch {
+        hold.release?.();
+        resolve({ ok: false, reason: 'browser_failed' });
+      }
+    });
+  }
+  return Promise.resolve({ ok: false, reason: 'no_voice' });
+}
+
+function stopOutside(game) {
+  const tts = game?.runtime?.tts;
+  try {
+    if (tts && typeof tts.stop === 'function') Promise.resolve(tts.stop()).catch(() => {});
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (typeof window !== 'undefined' && window.speechSynthesis?.speaking) window.speechSynthesis.cancel();
+  } catch {
+    /* ignore */
+  }
+}
+
+// ---------------------------------------------------------------------------- the "To:" row
+
+// The row of people the chat can address. render(list) takes
+//   [{ id, name, portrait, tone, label, asleep, away, unread, selected, gone }]
+// and reuses each chip's element, so the row never flickers as people come and go.
+export class ChatTargetBar {
+  constructor({ onPick } = {}) {
+    this.onPick = onPick || (() => {});
+    this.chips = new Map();
+    this.label = h('span', { class: 'chat-to-label', text: 'To' });
+    this.list = h('div', { class: 'chat-to-list', role: 'tablist', 'aria-label': 'Who you are talking to' });
+    this.hint = h('span', { class: 'chat-to-hint', text: 'Walk up to someone to talk to them' });
+    this.el = h('div', { class: 'chat-to' }, this.label, this.list);
+    this.list.append(this.hint);
+    this.list.addEventListener('scroll', () => this.measure(), { passive: true });
+    // A mouse wheel scrolls the row sideways when it runs on in one line.
+    this.list.addEventListener(
+      'wheel',
+      (e) => {
+        const l = this.list;
+        if (l.scrollWidth <= l.clientWidth + 2 || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+        l.scrollLeft += e.deltaY;
+        e.preventDefault();
+      },
+      { passive: false },
+    );
+  }
+
+  // Whether more people wait past the edge (the row fades there).
+  measure() {
+    const l = this.list;
+    const over = l.scrollWidth > l.clientWidth + 2;
+    toggleClass(l, 'overflows', over);
+    toggleClass(l, 'at-end', !over || l.scrollLeft + l.clientWidth >= l.scrollWidth - 4);
+  }
+
+  chip(id) {
+    let c = this.chips.get(id);
+    if (c) return c;
+    const img = h('img', { class: 'chat-to-img', alt: '', draggable: 'false' });
+    const name = h('span', { class: 'chat-to-name' });
+    const dot = h('i', { class: 'chat-to-dot', 'aria-hidden': 'true' });
+    const badge = h('b', { class: 'chat-to-unread', hidden: true });
+    const el = h('button', { type: 'button', class: `chat-to-chip ${id === LYRA ? 'is-lyra' : 'is-npc'}`, role: 'tab', 'data-id': id }, h('span', { class: 'chat-to-face' }, img), name, dot, badge);
+    el.addEventListener('click', () => this.onPick(id));
+    c = { el, img, name, dot, badge, last: '' };
+    this.chips.set(id, c);
+    return c;
+  }
+
+  render(list) {
+    const want = new Set(list.map((x) => x.id));
+    for (const [id, c] of this.chips) {
+      if (!want.has(id)) {
+        c.el.remove();
+        this.chips.delete(id);
+      }
+    }
+    let prev = null;
+    for (const p of list) {
+      const c = this.chip(p.id);
+      const key = [p.name, p.portrait, p.tone, p.asleep, p.away, p.unread, p.selected, p.gone, p.label].join('|');
+      if (c.last !== key) {
+        c.last = key;
+        setText(c.name, p.name);
+        if (p.portrait && c.img.src !== p.portrait) c.img.src = p.portrait;
+        c.el.className = `chat-to-chip ${p.id === LYRA ? 'is-lyra' : 'is-npc'} tone-${p.tone || 'neutral'}${p.selected ? ' selected' : ''}${p.asleep ? ' asleep' : ''}${p.away ? ' away' : ''}${p.gone ? ' gone' : ''}`;
+        c.el.setAttribute('aria-selected', p.selected ? 'true' : 'false');
+        c.el.title = `${p.name}${p.label ? ` · ${p.label}` : ''}${p.asleep ? ' · asleep' : ''}${p.away ? ' · out of earshot' : ''}`;
+        c.el.setAttribute('aria-label', c.el.title);
+        c.badge.hidden = !(p.unread > 0);
+        setText(c.badge, p.unread > 9 ? '9+' : String(p.unread || ''));
+      }
+      // Keep the row in order: Lyra, then nearest first.
+      const at = prev ? prev.nextSibling : this.list.firstChild;
+      if (at !== c.el) this.list.insertBefore(c.el, at);
+      prev = c.el;
+    }
+    // Alone with Lyra: say how to find someone else.
+    this.hint.hidden = list.length > 1;
+    if (this.hint.parentNode !== this.list || this.list.lastChild !== this.hint) this.list.append(this.hint);
+    toggleClass(this.el, 'has-people', list.length > 1);
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => this.measure());
+  }
+
+  // Bring the selected chip into view (the row scrolls sideways on a phone). By hand:
+  // scrollIntoView could scroll the page itself on iOS.
+  reveal(id) {
+    const c = this.chips.get(id);
+    const l = this.list;
+    if (!c || !l.clientWidth) return;
+    const x = c.el.offsetLeft;
+    const w = c.el.offsetWidth;
+    if (x < l.scrollLeft) l.scrollLeft = Math.max(0, x - 8);
+    else if (x + w > l.scrollLeft + l.clientWidth) l.scrollLeft = x + w - l.clientWidth + 8;
+  }
+}
+
+// Chip data for one villager.
+export function chipFor(game, e, { selected = false, away = false, unread = 0 } = {}) {
+  const st = standingOf(game, e);
+  return {
+    id: e.id,
+    name: firstName(e.name) || e.id,
+    portrait: portraitUrl(game, e.spriteKey || e.id, faceOf(st)),
+    tone: st.tone,
+    label: st.cold ? 'cold to you' : st.label,
+    asleep: st.asleep,
+    away,
+    unread,
+    selected,
+  };
+}

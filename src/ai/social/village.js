@@ -11,7 +11,7 @@ import { VILLAGERS, PEOPLE, SHORT_NAMES, FAMILY_TAGS } from './bonds_data.js';
 import { VOICES, SCENES } from './voices.js';
 import { buildExchange, chooseTopic, summarize, mainTag, WEEK_TOPICS, scenesFor } from './talk.js';
 import { voiceOf, say, rnd, shortName, thirdName, fill, varsFor, topicPool, names } from './lines.js';
-import { localReply } from './player_talk.js';
+import { localReply, emptyYou, cleanYou, knownName, learnName, addNote, notesOf, recentExchanges, applyTurn } from './player_talk.js';
 import { TO_YOU } from './voices_player.js';
 import { speakable } from './hidden.js';
 import { WEAVE_RUMORS } from '../../missions/rumors.js';
@@ -85,6 +85,8 @@ export class Village {
     this.claudeBusy = false;
     this.barSaidAt = -Infinity;
     this.calls = { say: 0, listen: 0, night: 0, ambient: 0 };
+    this.you = emptyYou(); // what each villager keeps of the player (player_talk.js)
+    this.pendingAsk = {}; // npcId -> a question they asked the player, waiting for an answer
   }
 
   // ------------------------------------------------------------------ basics
@@ -1138,11 +1140,11 @@ export class Village {
         // Threats and insults weigh what they weigh, whoever words the answer.
         // (An apology mends through amend(), slowly, whatever Claude makes of it.)
         const delta = local.intent === 'threat' || local.intent === 'insult' ? Math.min(local.delta, c.opinionDelta) : local.intent === 'apology' ? 0 : c.opinionDelta;
-        reply = { lines: [c.say], mood: c.mood || local.mood, delta, told: c.learned.filter((id) => (e.profile.facts || []).some((f) => f.id === id)), mentioned: c.rumorTold && this.rumors.get(c.rumorTold) ? [c.rumorTold] : [], source: 'claude', rumor: c.rumor };
+        reply = { lines: [c.say], mood: c.mood || local.mood, delta, told: c.learned.filter((id) => (e.profile.facts || []).some((f) => f.id === id)), mentioned: c.rumorTold && this.rumors.get(c.rumorTold) ? [c.rumorTold] : [], source: 'claude', rumor: c.rumor, name: c.name || local.name, memory: c.memory, asked: c.asked };
       }
     }
     this.afterPlayerSays(e, said, local, reply);
-    return { lines: reply.lines, mood: reply.mood || null };
+    return { lines: reply.lines, mood: reply.mood || null, intent: local.intent, source: reply.source, name: reply.name || null };
   }
 
   afterPlayerSays(e, said, local, reply) {
@@ -1157,6 +1159,11 @@ export class Village {
       if (r) this.emit('rumor', { rumor: r });
     }
     for (const fid of reply.told || []) e.told?.add?.(fid);
+    // What they keep of the player: the name once told, and what was said (§23).
+    if (reply.name || local.name) learnName(this, id, reply.name || local.name);
+    const note = reply.memory ? { text: reply.memory, w: 2 } : local.note;
+    if (note) addNote(this, id, note.text, note.w);
+    applyTurn(this, id, local, reply);
     if (reply.mentioned?.length) {
       const m = (this.mentioned[id] ||= []);
       for (const r of reply.mentioned) if (!m.includes(r)) m.push(r);
@@ -1251,7 +1258,11 @@ export class Village {
       stranger: voice?.stranger,
       facts,
       rumors,
-      history: (this.talks[id] || []).slice(-4).map((x) => ({ you: x.you, they: (x.they || []).join(' ') })),
+      history: this.briefHistory(id, said),
+      knownName: knownName(this, id),
+      memories: notesOf(this, id).slice(-5).map((n) => ({ text: n.text, day: n.day })),
+      today: this.day(),
+      asked: this.pendingAsk[id] ? (this.pendingAsk[id].kind === 'name' ? 'their name' : 'something') : '',
       place: loc?.name || '',
       time: g?.clock?.timeString?.() || '',
       weather: g?.clock?.weather?.type || '',
@@ -1261,6 +1272,16 @@ export class Village {
       text: said,
       local: local.lines?.[0] || '',
     };
+  }
+
+  // The conversation so far, oldest first (the chat's history, else the exchanges kept).
+  briefHistory(id, said) {
+    const h = recentExchanges(this, id, 6);
+    const last = h[h.length - 1];
+    const norm = (x) => String(x || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 120);
+    if (last && !last.they && norm(last.you) === norm(said)) h.pop();
+    if (h.length) return h.slice(-5);
+    return (this.talks[id] || []).slice(-4).map((x) => ({ you: x.you, they: (x.they || []).join(' '), day: x.day }));
   }
 
   // ------------------------------------------------------------------ listening in
@@ -1501,6 +1522,7 @@ export class Village {
       amends: this.amendsDay,
       scenes: this.sceneDay,
       seq: this.seq,
+      you: cleanYou(this.you),
     };
   }
 
@@ -1520,6 +1542,7 @@ export class Village {
     this.grievances = objOf(d.grievances);
     this.amendsDay = objOf(d.amends);
     this.sceneDay = objOf(d.scenes);
+    this.you = cleanYou(d.you);
     this.seq = Number.isFinite(d.seq) ? d.seq : this.log.reduce((m, c) => Math.max(m, Number(c.id) || 0), 0);
     for (const c of this.log) this.pairAt.set(pairKey(c.a, c.b), c.t);
   }

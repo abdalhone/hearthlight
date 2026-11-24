@@ -210,6 +210,7 @@ export class Input {
     this.stepHooks = []; // run at the start of every fixed step (the weave controller)
     this._bound = false;
     if (typeof window !== 'undefined') this._attach();
+    if (typeof window !== 'undefined') this._attachPick();
   }
 
   _attach() {
@@ -495,6 +496,60 @@ export class Input {
 
   consume(a) {
     this.edge.delete(a);
+  }
+
+  // ---------- tapping someone to talk to them (DESIGN §23) ----------
+
+  // A click or tap on Lyra or a villager in the world turns the chat to them. Capture
+  // phase, so a click that lands on someone is theirs and never also swings the sword.
+  _attachPick() {
+    if (this._pickBound) return;
+    this._pickBound = true;
+    window.addEventListener('pointerdown', (e) => this._pickDown(e), true);
+    window.addEventListener('pointerup', (e) => this._pickUp(e), true);
+  }
+
+  // The game canvas, when the pointer is on it (or on the touch stick's zone over it).
+  _pickSurface(e) {
+    const c = this.game?.canvas || this.game?.renderer?.canvas || null;
+    const t = e?.target;
+    if (!c || !t) return null;
+    return t === c || t.classList?.contains?.('stick-zone') ? c : null;
+  }
+
+  _pickAt(e) {
+    const c = this._pickSurface(e);
+    const r = this.game?.renderer;
+    const chat = this.game?.ui?.chat;
+    if (!c || !r?.cssToWorld || typeof chat?.pickInWorld !== 'function') return false;
+    const b = c.getBoundingClientRect();
+    const w = r.cssToWorld(e.clientX - b.left, e.clientY - b.top);
+    try {
+      return !!chat.pickInWorld(w.x, w.y, { pointerType: e.pointerType || 'mouse' });
+    } catch {
+      return false;
+    }
+  }
+
+  _pickDown(e) {
+    if (this.game?.state !== 'playing') return;
+    if (!e.pointerType || e.pointerType === 'mouse') {
+      if (e.button === 0 && this._pickAt(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
+    // A finger: decided on release, so a drag still moves the stick.
+    this._tap = this._pickSurface(e) ? { id: e.pointerId, x: e.clientX, y: e.clientY, at: performance.now() } : null;
+  }
+
+  _pickUp(e) {
+    const t = this._tap;
+    if (!t || t.id !== e.pointerId) return;
+    this._tap = null;
+    if (Math.hypot(e.clientX - t.x, e.clientY - t.y) > 12 || performance.now() - t.at > 450) return;
+    this._pickAt(e);
   }
 
   // Called every step by the player's controller: fills one reused vector instead of
