@@ -6,6 +6,7 @@ import { Twists } from './twists.js';
 import { Prices, PRICE_SLOTS } from './prices.js';
 import { StatusSystem, Statuses, REACTIONS } from './status.js';
 import { MagicLayer, fallbackFx, collectLights, drawBodies, drawGround } from './draw.js';
+import { installMagicFx } from './fx.js';
 import * as BAL from './balance.js';
 import { RNG } from '../core/rng.js';
 import { TILE } from '../core/constants.js';
@@ -164,6 +165,9 @@ export class Magic {
     this._warned = new Set();
     this.capped = 0;
     this.layer = new MagicLayer(this);
+    // The Weave's look and sound (fx.js, sfx.js) once the game has a renderer; bare
+    // runtime tests keep the plain fallback look in draw.js.
+    if (game?.renderer && game.magicFx === undefined) installMagicFx(game);
     this.registry = { shapes: Shapes, essences: Essences, twists: Twists, prices: Prices, statuses: Statuses, reactions: REACTIONS };
     try {
       game.bus?.on?.('level_up', (p) => {

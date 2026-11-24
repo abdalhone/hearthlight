@@ -146,6 +146,7 @@ export class Bubbles {
     this.game = game;
     this.items = []; // speech and thought bubbles, at most one per entity
     this.icons = [];
+    this.lastNumber = null;
     this.numbers = [];
     for (let i = 0; i < MAX_NUMBERS; i++) this.numbers.push({ active: false, x: 0, y: 0, vx: 0, vy: 0, t: 0, life: 1, text: '', fill: '#fff', scale: 1, kind: 'damage' });
     this._vis = [];
@@ -240,6 +241,8 @@ export class Bubbles {
     slot.fill = style.fill;
     slot.scale = style.scale;
     slot.kind = style.kind;
+    // The newest number, so an effect can tint it (weaves tint theirs by essence).
+    this.lastNumber = slot;
   }
 
   clear(entity) {
