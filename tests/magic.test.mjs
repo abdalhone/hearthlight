@@ -435,6 +435,14 @@ test('held beam drains mana while held and stops on release; charge grows with t
   const tap = dmgOf(0.02);
   const full = dmgOf(1.4);
   assert.ok(full > tap * 2, `charged ${full} vs tap ${tap}`);
+  // A held beam's echo that comes after the release is a quick beam, never a stuck one.
+  resetArena(g);
+  m.setSlot(3, { shape: 'beam', essences: ['fire'], twists: ['echo', 'volley'] });
+  m.castStart(g.player, 3, { x: foe.x, y: foe.y });
+  run(g, 0.05);
+  m.castRelease(g.player);
+  run(g, 3);
+  assert.equal(m.bodies.filter((b) => b.kind === 'beam').length, 0, 'no beam left pouring');
   // Cancel costs nothing.
   resetArena(g);
   const mana = m.mana.cur;

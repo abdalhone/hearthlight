@@ -781,6 +781,7 @@ export class Magic {
     let rec = this._numbers.get(actor);
     if (!rec) this._numbers.set(actor, (rec = { dmg: 0, heal: 0, color: '#58cf8f', t: 0 }));
     rec.heal += want;
+    this._numbersLive = true;
     return want;
   }
 
@@ -789,11 +790,18 @@ export class Magic {
     if (!rec) this._numbers.set(actor, (rec = { dmg: 0, heal: 0, color, t: 0 }));
     rec.dmg += amount;
     rec.color = color || rec.color;
+    this._numbersLive = true;
   }
 
+  // One summed number per actor; records are kept and zeroed (no garbage per flush).
   _flushNumbers() {
     const g = this.game;
+    this._numbersLive = false;
     for (const [a, rec] of this._numbers) {
+      if (a.removed || a.dead) {
+        this._numbers.delete(a);
+        if (!(rec.dmg >= 1)) continue;
+      }
       if (rec.dmg >= 1) {
         try {
           g.bubbles?.number?.(a.x, a.y - 20, String(Math.round(rec.dmg)), rec.color, { kind: 'dot' });
@@ -809,8 +817,10 @@ export class Magic {
           this.warn('heal', err);
         }
       }
+      rec.dmg = 0;
+      rec.heal = 0;
     }
-    this._numbers.clear();
+    if (this._numbers.size > 64) this._numbers.clear();
   }
 
   familiarAttack(b, t) {
@@ -939,7 +949,7 @@ export class Magic {
     if (caster.statusFlags?.disabled) return { ok: false, reason: 'disabled', message: "You can't move your hands!" };
     if (opts.free) return { ok: true };
     if (this.isPlayer(caster)) {
-      if (g.state && g.state !== 'playing') return { ok: false, reason: 'busy', message: 'Not now.' };
+      if ((g.state && g.state !== 'playing') || g.paused) return { ok: false, reason: 'busy', message: 'Not now.' };
       const left = r.slot >= 0 ? this.cooldowns[r.slot] : Math.max(0, (this.weaveReady.get(r.key) ?? 0) - this.t);
       if (left > 0.001) return { ok: false, reason: 'cooldown', message: 'Not ready yet.', cooldown: left };
       const need = r.plan.input === 'hold' ? Math.min(r.plan.cost, Math.max(2, r.plan.cost * 0.35)) : r.plan.cost;
@@ -1095,7 +1105,8 @@ export class Magic {
     ctx.dist = dist;
     ctx.count = plan.count;
     ctx.target = cast.target;
-    ctx.held = cast.held;
+    // An echo or volley of a beam that was already let go comes out as a quick beam.
+    ctx.held = cast.held && cast.holding !== false;
     ctx.chargeK = cast.chargeK;
     ctx.mover = null;
     ctx._i = 0;
@@ -1183,6 +1194,7 @@ export class Magic {
       const first = Math.min(plan.cost, Math.max(2, plan.cost * 0.35));
       if (!opts.free && this.isPlayer(caster)) this.spendMana(first);
       hold.cast = this._newCast(caster, plan, aim, { slot: r.slot, held: true });
+      hold.cast.holding = true;
       this._emit(hold.cast, plan, 1);
       this.game.bus?.emit('spell_cast', { caster, weave: plan.weave, plan, slot: r.slot, held: true, target: hold.cast.target });
       this.fx('beam_start', { cast: hold.cast, caster });
@@ -1263,6 +1275,7 @@ export class Magic {
   }
 
   _endHeld(h) {
+    if (h.cast) h.cast.holding = false;
     for (const b of this.bodies) {
       if (b.active && b.kind === 'beam' && b.cast === h.cast && b.held) {
         b.held = false;
@@ -1587,7 +1600,7 @@ export class Magic {
     this._numberT += dt;
     if (this._numberT >= NUMBER_FLUSH) {
       this._numberT = 0;
-      if (this._numbers.size) this._flushNumbers();
+      if (this._numbersLive) this._flushNumbers();
     }
   }
 

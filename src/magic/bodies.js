@@ -575,6 +575,10 @@ function updateBeam(rt, b, dt) {
   }
   b.x = o.x;
   b.y = o.y;
+  if (b.held && b.cast && b.cast.holding === false) {
+    b.held = false;
+    b.life = Math.min(b.life, b.age + 0.12);
+  }
   if (b.held) {
     const aim = rt.aimOf(b.cast);
     const want = Math.atan2(aim.y - o.y, aim.x - o.x) + b.aimOffset;
