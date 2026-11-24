@@ -1696,6 +1696,264 @@ textarea {
   }
 }
 
+/* ---------- chat: talk to anyone (DESIGN §23) ---------- */
+
+/* The "To:" row: Lyra, then everyone within earshot, nearest first. */
+.chat-to {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 5px 8px 5px 10px;
+  background: rgba(10, 9, 25, 0.38);
+  border-bottom: 2px solid var(--line-dim);
+}
+.chat-to-label {
+  flex: none;
+  font-family: var(--font-display);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--parch-faint);
+}
+.chat-to {
+  align-items: flex-start;
+}
+.chat-to-label {
+  margin-top: 12px;
+}
+/* A desktop has the height: everyone in earshot shows, wrapping onto a second row. */
+.chat-to-list {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 2px;
+  max-height: 112px; /* three rows: the most earshot ever holds */
+  overflow-y: auto;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+}
+.chat-to-list::-webkit-scrollbar {
+  display: none;
+}
+.chat-to-chip {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 2px 9px 2px 3px;
+  border: 0;
+  background: var(--ink-2);
+  box-shadow: inset 0 0 0 2px var(--line-soft);
+  color: var(--parch-2);
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, box-shadow 0.12s, opacity 0.2s;
+}
+.chat-to-chip:hover {
+  box-shadow: inset 0 0 0 2px var(--line);
+  color: var(--parch);
+}
+.chat-to-chip:focus-visible {
+  outline: 2px solid var(--ember-hot);
+  outline-offset: 1px;
+}
+.chat-to-face {
+  width: 26px;
+  height: 26px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+.chat-to-img {
+  display: block;
+  width: 26px;
+  height: 26px;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+/* How they stand with you, at a glance. */
+.chat-to-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  background: var(--chat-tone, var(--parch-faint));
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+.chat-to-chip.tone-fond {
+  --chat-tone: #7fd18b;
+}
+.chat-to-chip.tone-friendly {
+  --chat-tone: #c2dc6f;
+}
+.chat-to-chip.tone-neutral {
+  --chat-tone: #e8c66a;
+}
+.chat-to-chip.tone-wary {
+  --chat-tone: #f0974f;
+}
+.chat-to-chip.tone-hostile {
+  --chat-tone: var(--danger);
+}
+.chat-to-chip.tone-lyra {
+  --chat-tone: var(--arcane);
+}
+.chat-to-chip.asleep .chat-to-img {
+  filter: brightness(0.7) saturate(0.6);
+}
+.chat-to-chip.asleep .chat-to-dot {
+  background: var(--sky);
+  opacity: 0.6;
+}
+.chat-to-chip.away,
+.chat-to-chip.gone {
+  opacity: 0.5;
+}
+.chat-to-chip.selected.is-lyra {
+  background: rgba(106, 82, 201, 0.4);
+  box-shadow:
+    inset 0 0 0 2px var(--arcane),
+    0 2px 0 0 rgba(0, 0, 0, 0.35);
+  color: var(--arcane-pale);
+}
+.chat-to-chip.selected.is-npc {
+  background: rgba(238, 127, 45, 0.24);
+  box-shadow:
+    inset 0 0 0 2px var(--ember),
+    0 2px 0 0 rgba(0, 0, 0, 0.35);
+  color: #ffe7c4;
+}
+.chat-to-unread {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  background: var(--ember);
+  color: var(--ink-0);
+  font-family: var(--font-display);
+  font-size: 10px;
+  line-height: 15px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--ink-1);
+}
+.chat-to-hint {
+  flex: none;
+  padding-left: 4px;
+  font-size: var(--fs-2xs);
+  font-style: italic;
+  color: var(--parch-faint);
+  white-space: nowrap;
+}
+
+/* Talking to a villager: the panel takes their warm ember edge instead of Lyra's violet. */
+.chat.to-npc {
+  --bc: var(--ember-deep);
+}
+.chat.to-npc .chat-head {
+  background: linear-gradient(180deg, rgba(238, 127, 45, 0.22), transparent);
+}
+.chat.to-npc .chat-name {
+  color: #ffe2b8;
+}
+.chat.to-npc.is-thinking .chat-status {
+  color: var(--ember);
+}
+.chat.to-npc .msg-thinking .dots i {
+  background: var(--ember);
+}
+.chat.to-npc .chat-npc-line {
+  background: rgba(238, 127, 45, 0.12);
+  border-left: 3px solid var(--ember-deep);
+  color: #ffe9cf;
+}
+.chat.to-npc .chat-npc-line .msg-name {
+  color: var(--ember);
+}
+.chat.to-npc .chip:hover {
+  box-shadow: inset 0 0 0 2px var(--ember);
+  color: #ffe7c4;
+}
+.chat.is-away .chat-input {
+  opacity: 0.5;
+}
+/* Narration: "Hobb has gone on his way." */
+.chat-note {
+  margin: 2px 0;
+  color: var(--parch-dim);
+}
+.chat-day {
+  align-self: center;
+  margin: 4px 0 0;
+  padding: 1px 10px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--parch-faint);
+  border-top: 1px solid var(--line-dim);
+}
+.chat-empty {
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 92%;
+  margin: auto 0;
+  padding: 10px 12px;
+  text-align: center;
+  color: var(--parch-dim);
+  font-size: var(--fs-s);
+  font-style: italic;
+}
+.chat-empty-sub {
+  font-size: var(--fs-xs);
+  color: var(--parch-faint);
+}
+
+/* Phones: one slim row that scrolls sideways (faded at the edge while more people wait
+   past it), so the conversation keeps its room. */
+@media (max-width: 860px), (max-height: 480px) {
+  .chat-to {
+    align-items: center;
+    padding: 3px 6px 3px 8px;
+  }
+  .chat-to-label {
+    margin-top: 0;
+  }
+  .chat-to-list {
+    flex-wrap: nowrap;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    touch-action: pan-x;
+  }
+  .chat-to-list.overflows:not(.at-end) {
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 34px), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 34px), transparent);
+  }
+  .chat-to-chip {
+    height: 30px;
+  }
+  .chat-to-face,
+  .chat-to-img {
+    width: 24px;
+    height: 24px;
+  }
+}
+.chat-to-chip {
+  animation: pop-in 0.18s var(--ease);
+}
+
 /* ---------- fields ---------- */
 
 .field {
@@ -5599,262 +5857,4 @@ input[type='range']::-moz-range-thumb {
   .codex-page {
     padding: 14px 14px 24px;
   }
-}
-
-/* ---------- chat: talk to anyone (DESIGN §23) ---------- */
-
-/* The "To:" row: Lyra, then everyone within earshot, nearest first. */
-.chat-to {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  padding: 5px 8px 5px 10px;
-  background: rgba(10, 9, 25, 0.38);
-  border-bottom: 2px solid var(--line-dim);
-}
-.chat-to-label {
-  flex: none;
-  font-family: var(--font-display);
-  font-size: var(--fs-2xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--parch-faint);
-}
-.chat-to {
-  align-items: flex-start;
-}
-.chat-to-label {
-  margin-top: 12px;
-}
-/* A desktop has the height: everyone in earshot shows, wrapping onto a second row. */
-.chat-to-list {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 2px;
-  max-height: 112px; /* three rows: the most earshot ever holds */
-  overflow-y: auto;
-  scrollbar-width: none;
-  overscroll-behavior: contain;
-}
-.chat-to-list::-webkit-scrollbar {
-  display: none;
-}
-.chat-to-chip {
-  position: relative;
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 32px;
-  padding: 2px 9px 2px 3px;
-  border: 0;
-  background: var(--ink-2);
-  box-shadow: inset 0 0 0 2px var(--line-soft);
-  color: var(--parch-2);
-  font-family: var(--font-display);
-  font-size: var(--fs-xs);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 0.12s, box-shadow 0.12s, opacity 0.2s;
-}
-.chat-to-chip:hover {
-  box-shadow: inset 0 0 0 2px var(--line);
-  color: var(--parch);
-}
-.chat-to-chip:focus-visible {
-  outline: 2px solid var(--ember-hot);
-  outline-offset: 1px;
-}
-.chat-to-face {
-  width: 26px;
-  height: 26px;
-  overflow: hidden;
-  background: rgba(0, 0, 0, 0.35);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5);
-}
-.chat-to-img {
-  display: block;
-  width: 26px;
-  height: 26px;
-  object-fit: cover;
-  image-rendering: pixelated;
-}
-/* How they stand with you, at a glance. */
-.chat-to-dot {
-  width: 7px;
-  height: 7px;
-  flex: none;
-  background: var(--chat-tone, var(--parch-faint));
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
-}
-.chat-to-chip.tone-fond {
-  --chat-tone: #7fd18b;
-}
-.chat-to-chip.tone-friendly {
-  --chat-tone: #c2dc6f;
-}
-.chat-to-chip.tone-neutral {
-  --chat-tone: #e8c66a;
-}
-.chat-to-chip.tone-wary {
-  --chat-tone: #f0974f;
-}
-.chat-to-chip.tone-hostile {
-  --chat-tone: var(--danger);
-}
-.chat-to-chip.tone-lyra {
-  --chat-tone: var(--arcane);
-}
-.chat-to-chip.asleep .chat-to-img {
-  filter: brightness(0.7) saturate(0.6);
-}
-.chat-to-chip.asleep .chat-to-dot {
-  background: var(--sky);
-  opacity: 0.6;
-}
-.chat-to-chip.away,
-.chat-to-chip.gone {
-  opacity: 0.5;
-}
-.chat-to-chip.selected.is-lyra {
-  background: rgba(106, 82, 201, 0.4);
-  box-shadow:
-    inset 0 0 0 2px var(--arcane),
-    0 2px 0 0 rgba(0, 0, 0, 0.35);
-  color: var(--arcane-pale);
-}
-.chat-to-chip.selected.is-npc {
-  background: rgba(238, 127, 45, 0.24);
-  box-shadow:
-    inset 0 0 0 2px var(--ember),
-    0 2px 0 0 rgba(0, 0, 0, 0.35);
-  color: #ffe7c4;
-}
-.chat-to-unread {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 3px;
-  background: var(--ember);
-  color: var(--ink-0);
-  font-family: var(--font-display);
-  font-size: 10px;
-  line-height: 15px;
-  text-align: center;
-  box-shadow: 0 0 0 2px var(--ink-1);
-}
-.chat-to-hint {
-  flex: none;
-  padding-left: 4px;
-  font-size: var(--fs-2xs);
-  font-style: italic;
-  color: var(--parch-faint);
-  white-space: nowrap;
-}
-
-/* Talking to a villager: the panel takes their warm ember edge instead of Lyra's violet. */
-.chat.to-npc {
-  --bc: var(--ember-deep);
-}
-.chat.to-npc .chat-head {
-  background: linear-gradient(180deg, rgba(238, 127, 45, 0.22), transparent);
-}
-.chat.to-npc .chat-name {
-  color: #ffe2b8;
-}
-.chat.to-npc.is-thinking .chat-status {
-  color: var(--ember);
-}
-.chat.to-npc .msg-thinking .dots i {
-  background: var(--ember);
-}
-.chat.to-npc .chat-npc-line {
-  background: rgba(238, 127, 45, 0.12);
-  border-left: 3px solid var(--ember-deep);
-  color: #ffe9cf;
-}
-.chat.to-npc .chat-npc-line .msg-name {
-  color: var(--ember);
-}
-.chat.to-npc .chip:hover {
-  box-shadow: inset 0 0 0 2px var(--ember);
-  color: #ffe7c4;
-}
-.chat.is-away .chat-input {
-  opacity: 0.5;
-}
-/* Narration: "Hobb has gone on his way." */
-.chat-note {
-  margin: 2px 0;
-  color: var(--parch-dim);
-}
-.chat-day {
-  align-self: center;
-  margin: 4px 0 0;
-  padding: 1px 10px;
-  font-family: var(--font-display);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--parch-faint);
-  border-top: 1px solid var(--line-dim);
-}
-.chat-empty {
-  align-self: center;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-width: 92%;
-  margin: auto 0;
-  padding: 10px 12px;
-  text-align: center;
-  color: var(--parch-dim);
-  font-size: var(--fs-s);
-  font-style: italic;
-}
-.chat-empty-sub {
-  font-size: var(--fs-xs);
-  color: var(--parch-faint);
-}
-
-/* Phones: one slim row that scrolls sideways (faded at the edge while more people wait
-   past it), so the conversation keeps its room. */
-@media (max-width: 860px), (max-height: 480px) {
-  .chat-to {
-    align-items: center;
-    padding: 3px 6px 3px 8px;
-  }
-  .chat-to-label {
-    margin-top: 0;
-  }
-  .chat-to-list {
-    flex-wrap: nowrap;
-    max-height: none;
-    overflow-x: auto;
-    overflow-y: hidden;
-    touch-action: pan-x;
-  }
-  .chat-to-list.overflows:not(.at-end) {
-    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 34px), transparent);
-    mask-image: linear-gradient(90deg, #000 calc(100% - 34px), transparent);
-  }
-  .chat-to-chip {
-    height: 30px;
-  }
-  .chat-to-face,
-  .chat-to-img {
-    width: 24px;
-    height: 24px;
-  }
-}
-.chat-to-chip {
-  animation: pop-in 0.18s var(--ease);
 }
