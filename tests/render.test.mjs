@@ -524,3 +524,45 @@ test('arrow frames cover sixteen directions', () => {
   assert.equal(arrowFrameForAngle(-Math.PI / 2), 12);
   assert.equal(arrowFrameForAngle(Math.PI * 2 - 0.01), 0);
 });
+
+// ---------------------------------------------------------------- hit feedback (r8)
+
+test('health bars: a hurt foe shows one, a villager a quieter one, the player none; they fade', async () => {
+  const { HealthBars } = await import('../src/render/health_bars.js');
+  const { EventBus } = await import('../src/core/events.js');
+  const bus = new EventBus();
+  const player = { id: 'player', x: 0, y: 0, hp: 50, maxHp: 60 };
+  const wolf = { id: 'w1', x: 30, y: 0, hp: 20, maxHp: 26, kind: 'animal', faction: 'wild' };
+  const bram = { id: 'bram', x: -30, y: 0, hp: 40, maxHp: 50, profile: { id: 'bram' }, faction: 'village' };
+  const game = { bus, player, companion: null };
+  const bars = new HealthBars(game);
+  bus.emit('damage', { target: player, amount: 10 });
+  bus.emit('damage', { target: wolf, amount: 6 });
+  bus.emit('damage', { target: bram, amount: 3, accident: true });
+  const shown = bars.shown();
+  assert.equal(shown.length, 2, 'never over the player');
+  const w = shown.find((b) => b.actor === wolf);
+  assert.ok(Math.abs(w.frac - 20 / 26) < 1e-9);
+  assert.equal(w.friend, false);
+  assert.equal(shown.find((b) => b.actor === bram).friend, true);
+  // draws without error on a stand-in canvas, then fades after a few seconds
+  const calls = [];
+  const ctx = new Proxy({}, { get: (o, k) => (k in o ? o[k] : (...a) => calls.push([k, ...a])), set: (o, k, v) => ((o[k] = v), true) });
+  const r = { scale: 3, dpr: 1, ox: -100, oy: -100, subX: 0, subY: 0 };
+  bars.draw(ctx, r, 0.016);
+  assert.ok(calls.some((c) => c[0] === 'fillRect'));
+  for (let i = 0; i < 300; i++) bars.update(0.016);
+  assert.equal(bars.shown().length, 0, 'gone a few seconds after the last hit');
+  // a death clears it at once
+  bus.emit('damage', { target: wolf, amount: 6 });
+  bus.emit('death', { entity: wolf });
+  assert.equal(bars.shown().length, 0);
+});
+
+test('damage numbers read on any ground: essence tints are lifted toward white', async () => {
+  const { readableFill } = await import('../src/render/text_layout.js');
+  const [r, g, b] = hexToRgbArray(readableFill('#7a5cd6')); // a pale violet spark on grass
+  assert.ok(luminance(r, g, b) >= 195);
+  assert.equal(readableFill('#ffffff'), '#ffffff');
+  assert.ok(numberStyle('damage', '9').scale >= 1.25, 'damage numbers are big');
+});

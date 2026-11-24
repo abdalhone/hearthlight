@@ -10,6 +10,7 @@ import {
   stackRects,
   edgePoint,
   numberStyle,
+  readableFill,
   uiFontPx,
   pixelUnit,
 } from './text_layout.js';
@@ -236,7 +237,7 @@ export class Bubbles {
     slot.vx = (Math.random() * 2 - 1) * 14;
     slot.vy = -(58 + Math.random() * 14) * (crit ? 1.15 : 1);
     slot.t = 0;
-    slot.life = crit ? 1.15 : style.kind === 'xp' ? 1.3 : 0.95;
+    slot.life = crit ? 1.3 : style.kind === 'xp' ? 1.3 : 1.1;
     slot.text = String(text ?? '');
     slot.fill = style.fill;
     slot.scale = style.scale;
@@ -753,7 +754,7 @@ export class Bubbles {
     ctx.font = this.fonts.number;
     ctx.textAlign = 'center';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = Math.max(2, 2 * this.u);
+    ctx.lineWidth = Math.max(3, 3 * this.u);
     ctx.strokeStyle = OUTLINE;
     for (const n of this.numbers) {
       if (!n.active) continue;
@@ -766,7 +767,8 @@ export class Bubbles {
       ctx.globalAlpha = Math.max(0, fade);
       ctx.setTransform(k, 0, 0, k, dx, dy);
       ctx.strokeText(n.text, 0, 0);
-      ctx.fillStyle = n.fill;
+      // Weaves tint their numbers by essence after they spawn: keep any tint readable.
+      ctx.fillStyle = n.kind === 'damage' || n.kind === 'dot' ? readableFill(n.fill) : n.fill;
       ctx.fillText(n.text, 0, 0);
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);

@@ -3,6 +3,7 @@ import { viewMetrics } from './text_layout.js';
 import { TitleScene } from './title_scene.js';
 import { bedUnder, drawSleeperInBed } from '../art/characters_bed.js';
 import { DeathFx } from './death_fx.js';
+import { HealthBars } from './health_bars.js';
 
 // The renderer. The world is drawn into a low-res buffer (about 240 world px on the
 // short side) and upscaled by an integer factor, so pixels stay crisp; the buffer is
@@ -45,6 +46,7 @@ export class Renderer {
     this.drawables = [];
     this.title = new TitleScene(game);
     this.deathFx = new DeathFx(game); // the fall's slow color drain, heartbeat and letterbox (§27)
+    this.healthBars = new HealthBars(game); // small bars over whoever was just hurt
     this._reported = new Set();
     this._dirty = false;
     this._vignette = null; // cached CanvasGradient objects (see _vignetteGradient)
@@ -317,6 +319,15 @@ export class Renderer {
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
     }
+
+    // 5c. Health bars over whoever was just hurt (screen space: they read at night).
+    try {
+      this.healthBars.draw(ctx, this, dt);
+    } catch (err) {
+      this._report('health bars', err);
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
 
     // 6. Text and markers.
     try {
