@@ -128,8 +128,10 @@ export class Steering {
       return true;
     }
     let p = null;
+    // Long walks across the map need a wider search than the default budget.
+    const maxNodes = opts.maxNodes ?? (d > 30 * TILE ? 16000 : undefined);
     try {
-      p = pf.find(a.x, a.y, gx, gy, { actor: a, allowDoors: true, maxNodes: opts.maxNodes });
+      p = pf.find(a.x, a.y, gx, gy, { actor: a, allowDoors: true, maxNodes });
     } catch (err) {
       warnOnce('pathfinder.find failed', err);
       p = null;

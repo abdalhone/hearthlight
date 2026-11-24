@@ -372,38 +372,71 @@ export function atMapEdge(game, actor, margin = 1) {
 
 // --- the player's sword ---
 
+// Where the player's next swing lands (DESIGN §16.7), read from player.swingZone()
+// when the player has one: { x, y, fx, fy, reach, cosMin, active } in a reused object.
+// The reach gets a margin for the lunge that carries every swing forward.
+const ZONE = { x: 0, y: 0, fx: 0, fy: 1, reach: 36, cosMin: 0.4, active: false };
+const LUNGE_MARGIN = 10;
+
+export function swingZoneOf(game) {
+  const p = game.player;
+  const z = ZONE;
+  z.active = false;
+  if (!p || !isActorAlive(p)) return z;
+  const sz = typeof p.swingZone === 'function' ? safe('player.swingZone', () => p.swingZone(), null) : null;
+  if (sz) {
+    z.x = sz.x;
+    z.y = sz.y;
+    z.fx = sz.fx;
+    z.fy = sz.fy;
+    z.reach = (sz.range || 26) + LUNGE_MARGIN;
+    // Half the arc, widened a little: standing on the edge of a swing still gets you hit.
+    z.cosMin = Math.cos(Math.min(Math.PI * 0.95, (sz.arc || 1.8) / 2 + 0.25));
+    z.active = !!sz.active;
+    return z;
+  }
+  z.x = p.x;
+  z.y = p.y;
+  z.fx = p.facing?.x ?? 0;
+  z.fy = p.facing?.y ?? 1;
+  z.reach = 36;
+  z.cosMin = 0.4;
+  z.active = p.state === 'attack' || p.attackCd > 0.05;
+  return z;
+}
+
 // Is the player swinging (or about to) right now?
 export function playerFighting(game) {
-  const p = game.player;
-  if (!p || !isActorAlive(p)) return false;
-  if (p.state === 'attack' || p.attackCd > 0.05) return true;
-  return false;
+  return swingZoneOf(game).active;
 }
 
 // Would someone standing at (x, y) be inside the fighting player's swing?
 export function inSwordArc(game, x, y) {
-  const p = game.player;
-  if (!p || !playerFighting(game)) return false;
-  const dx = x - p.x;
-  const dy = y - p.y;
+  const z = swingZoneOf(game);
+  if (!z.active) return false;
+  const dx = x - z.x;
+  const dy = y - z.y;
   const d = Math.hypot(dx, dy);
-  if (d > 36 || d < 0.01) return d < 0.01;
-  return (dx * (p.facing?.x ?? 0) + dy * (p.facing?.y ?? 1)) / d >= 0.4;
+  if (d < 0.01) return true;
+  if (d > z.reach) return false;
+  return (dx * z.fx + dy * z.fy) / d >= z.cosMin;
 }
 
 // When she stands in front of a fighting player, the sideways step that takes her
 // out of the swing. Writes { x, y } into `out` and returns true when she must move.
 export function swordArcPush(game, actor, out) {
   const p = game.player;
-  if (!p || p === actor || !playerFighting(game)) return false;
-  const dx = actor.x - p.x;
-  const dy = actor.y - p.y;
+  if (!p || p === actor) return false;
+  const z = swingZoneOf(game);
+  if (!z.active) return false;
+  const dx = actor.x - z.x;
+  const dy = actor.y - z.y;
   const d = Math.hypot(dx, dy);
-  if (d > 36 || d < 0.01) return false;
-  const fx = p.facing?.x ?? 0;
-  const fy = p.facing?.y ?? 1;
+  if (d > z.reach || d < 0.01) return false;
+  const fx = z.fx;
+  const fy = z.fy;
   const cos = (dx * fx + dy * fy) / d;
-  if (cos < 0.4) return false;
+  if (cos < z.cosMin) return false;
   // Step to whichever side she is already on, and a little back.
   const side = dx * -fy + dy * fx >= 0 ? 1 : -1;
   let px = -fy * side;

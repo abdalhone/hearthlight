@@ -69,6 +69,20 @@ export function isThreat(game, self, e) {
   return false;
 }
 
+// Would her bolts and dagger actually land on `e` if she chose it? The combat
+// rules decide (they spare villagers and pets unless they hurt her first); without
+// them, anything she would pick is fair.
+export function canHarm(game, self, e) {
+  const c = game.combat;
+  if (!c || typeof c.canHarm !== 'function') return true;
+  try {
+    return !!c.canHarm(self, e, true);
+  } catch (err) {
+    warnOnce('combat.canHarm failed', err);
+    return true;
+  }
+}
+
 export function threatOf(game, self, e) {
   if (Number.isFinite(e.threat)) return e.threat;
   return isHostile(game, self, e) ? 2 : 0.5;
@@ -91,7 +105,7 @@ function isFightable(e, self) {
 // her, the player included: the one case that bypasses isFriend).
 export function selectTarget(ctx) {
   const { game, self, stance, player, now, memory, current, focus } = ctx;
-  if (focus && isFightable(focus, self) && !isFriend(game, self, focus)) return focus;
+  if (focus && isFightable(focus, self) && !isFriend(game, self, focus) && canHarm(game, self, focus)) return focus;
   const list = game.entities?.list || game.entities?.all?.() || [];
   const cx = ctx.center?.x ?? self.x;
   const cy = ctx.center?.y ?? self.y;
@@ -109,6 +123,7 @@ export function selectTarget(ctx) {
     const attackedHer = hitHerAgo < SELF_DEFENSE_SECONDS;
     const selfDefense = stance === 'self_defense' && attackedHer;
     if (!selfDefense && (isFriend(game, self, e) || isInnocent(game, self, e))) continue;
+    if (!canHarm(game, self, e)) continue;
     const vsPlayer = (rec && now - rec.vsPlayer < MEMORY_SECONDS) || (player && (e.target === player || e.ai?.target === player));
     const vsSelf = (rec && now - rec.vsSelf < MEMORY_SECONDS) || e.target === self || e.ai?.target === self;
     const byPlayer = rec && now - rec.byPlayer < MEMORY_SECONDS;

@@ -2,7 +2,7 @@ import { TILE, PLAYER_ID } from '../../core/constants.js';
 import { itemDef, resolveItemId } from '../../entities/items.js';
 import { resolveEntity, resolveLocation, normalizeRef } from '../resolve.js';
 import { Steering } from './steering.js';
-import { CombatAI, selectTarget, isFriend, isThreat, isInnocent, ATTACK_RADIUS, STANCES, SELF_DEFENSE_SECONDS } from './combat_ai.js';
+import { CombatAI, selectTarget, isFriend, isThreat, isInnocent, canHarm, ATTACK_RADIUS, STANCES, SELF_DEFENSE_SECONDS } from './combat_ai.js';
 import { JobRunner, DIRECTIVE_JOBS } from './jobs.js';
 import { IdleLife } from './idle.js';
 import { OwnLife, OWN_DIRECTIVES } from './own_life.js';
@@ -1656,6 +1656,8 @@ export class Behavior {
       if (Array.isArray(rel?.tags) && rel.tags.includes('pet')) return { ok: false, message: say.refusePet(nameOf(g, e)) };
       return { ok: false, message: say.refuseFriend(nameOf(g, e)) };
     }
+    // Villagers and pets she will not raise a hand against unless they struck first.
+    if (!canHarm(g, a, e)) return { ok: false, message: say.refuseInnocent(nameOf(g, e)) };
     if (dist(a.x, a.y, e.x, e.y) > 420) return { ok: false, message: say.tooFar(nameOf(g, e)) };
     this.cancelTask();
     this.idle.reset();

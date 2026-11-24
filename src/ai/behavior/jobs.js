@@ -613,6 +613,8 @@ export class JobRunner {
       this.edgeSaid = true;
       if (chance(0.35)) this.b.say(say.edgeNerves(), { kind: 'whisper' });
     }
+    // The dock's fishing spot has the lake's own catch rules (the work API).
+    if (s.obj && typeof s.obj.work === 'function' && canWorkSafe(s.obj, a)) return this.stepFishSpot(dt, s);
     this.biteT -= dt;
     if (this.biteT > 0) return 'running';
     this.biteT = rand(3, 5.5);
@@ -630,6 +632,39 @@ export class JobRunner {
     if (chance(0.3)) this.b.say(say.fishCatch());
     this.gain([{ id: 'raw_fish', qty: 1 }], s.obj || null);
     g.bus?.emit?.('harvest', { actor: a, object: s.obj || null, itemId: 'raw_fish', qty: 1 });
+    if (this.amount && this.count >= this.amount) return this.beginDeliver();
+    return 'running';
+  }
+
+  stepFishSpot(dt, s) {
+    const g = this.game;
+    const a = this.actor;
+    const spot = s.obj;
+    let res = null;
+    try {
+      res = spot.work(a, dt);
+    } catch (err) {
+      warnOnce('fishing_spot.work failed', err);
+      s.obj = null; // fish the old way from here
+      return 'running';
+    }
+    // A line in the water: a little ripple now and then.
+    this.fxT -= dt;
+    if (this.fxT <= 0) {
+      this.fxT = rand(1.1, 1.8);
+      safe('particles.emit', () => g.particles?.emit?.('splash', s.wx + rand(-3, 3), s.wy + rand(-2, 2), { count: 2 }));
+    }
+    if (!res?.done) return 'running';
+    const fish = (res.items || []).filter((it) => it?.id && it.qty > 0);
+    safe('audio.play', () => g.audio?.play?.('splash', { x: s.wx, y: s.wy }));
+    safe('particles.emit', () => g.particles?.emit?.('splash', s.wx, s.wy, { count: 6 }));
+    if (!fish.length) {
+      if (chance(0.15)) this.b.say(say.fishMiss(), { kind: 'whisper' });
+      return 'running';
+    }
+    safe('bubbles.icon', () => g.bubbles?.icon?.(a, '!'));
+    if (chance(0.3)) this.b.say(say.fishCatch());
+    this.gain(fish, spot);
     if (this.amount && this.count >= this.amount) return this.beginDeliver();
     return 'running';
   }

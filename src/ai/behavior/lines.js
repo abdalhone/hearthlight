@@ -83,6 +83,13 @@ export const say = {
   refusePet(name) {
     return line('ref.pet', [`${cap(name)}? Absolutely not. ${cap(name)} is ours to protect.`, `Hurt ${name}? Over my cold, enchanted body.`]);
   },
+  refuseInnocent(name) {
+    return line('ref.innocent', [
+      `${cap(name)} hasn't lifted a finger against me. I won't be the one who starts it.`,
+      `No. Whatever ${name} did to you, I don't hurt people who haven't hurt me.`,
+      `I'm not turning my magic on ${name}. Not unless ${name} comes at me first.`,
+    ]);
+  },
   refuseSelf() {
     return "Attack myself? I'd rather not. I've grown attached.";
   },
@@ -366,6 +373,13 @@ export const say = {
       ]);
     }
     return line('own.plan', [`I'm off — ${label}.`, `${cap(label)}, if anyone asks.`, `Off I go. ${cap(label)}.`]);
+  },
+  askAboutMaren(name) {
+    return line('own.maren', [
+      `${cap(name)}, about Maren — did she say anything, anything at all, before she went?`,
+      `Tell me again what Maren carried when you last saw her, ${name}. Every little thing.`,
+      `I keep thinking I missed something. Did Maren ever mention the old waygate to you, ${name}?`,
+    ]);
   },
   tooRiskyToday(place) {
     return line('own.risky', [`${cap(place.name)}? Not on my own, not today. I'll stay where it's safe.`, `I'm not walking into ${place.name} alone right now. Another time.`]);
