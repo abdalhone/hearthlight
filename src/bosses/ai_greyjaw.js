@@ -256,11 +256,17 @@ export const greyjawBrain = {
   },
 
   light(b, time) {
-    // Two cold points in the dark: his eyes, brighter while he lurks.
+    // Two cold points in the dark (his eyes, brighter while he lurks) and moonlight on
+    // his silver coat, so you can always find him.
     const L = b.mem.light || (b.mem.light = { x: 0, y: 0, r: 26, color: '#ffd75e', intensity: 0.5, flicker: 0.05 });
-    L.x = b.x + b.faceX * 12;
+    const M = b.mem.moon || (b.mem.moon = { x: 0, y: 0, r: 58, color: '#c8d4ff', intensity: 0.32, flicker: 0 });
+    L.x = b.x + b.faceX * 14;
     L.y = b.y - 16 - (b.z || 0);
     L.intensity = b.mem.lurk ? 0.9 : 0.45 + 0.05 * Math.sin(time * 3);
-    return L;
+    M.x = b.x;
+    M.y = b.y - 12 - (b.z || 0);
+    M.intensity = b.mode === 'defeat' ? Math.max(0, 0.32 - b.defeatT * 0.12) : 0.32;
+    if (!b.mem.lights) b.mem.lights = [M, L];
+    return b.mem.lights;
   },
 };

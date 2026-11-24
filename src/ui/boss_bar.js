@@ -89,7 +89,8 @@ const CSS = `
 .glyph-reveal .gr-hint { font-family: var(--font-body, system-ui); font-size: 12px; color: var(--parch-faint, #877d6e); margin-top: 2px; }
 
 @media (max-width: 640px), (max-height: 520px) {
-  .boss-bar { width: min(420px, 58vw); top: calc(var(--sa-t, 0px) + 6px); }
+  /* Phone held sideways: in the gap between the player's card and the place card. */
+  .boss-bar { width: clamp(220px, calc(100vw - 470px), 400px); top: calc(var(--sa-t, 0px) + 6px); }
   .boss-bar .bb-name { font-size: 15px; }
   .boss-bar .bb-title { display: none; }
   .boss-bar .bb-track { height: 10px; }

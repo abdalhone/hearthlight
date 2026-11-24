@@ -15,6 +15,8 @@
 
 import { Sprite, tri, darken } from './characters_paint.js';
 import { RAMPS, OUTLINE } from './palette.js';
+import { ensureCharacter } from './characters_art.js';
+import { PRESET_APPEARANCES } from './characters_appearance.js';
 
 const A = (frames, fps, loop = true) => [frames, fps, loop];
 
@@ -505,9 +507,10 @@ function paintVarek(anim, f, variant) {
 
 // ---------------------------------------------------------------- Greyjaw
 
-const GJ_BODY = ['#34323f', '#5d5b6e', '#8f8da2'];
-const GJ_SADDLE = ['#16151d', '#2a2834', '#423f50'];
-const GJ_MANE = ['#4a4856', '#7e7c90', '#bab8c8'];
+// Silver-grey, so the alpha reads even under the night canopy.
+const GJ_BODY = ['#4a4858', '#807e94', '#b8b6ca'];
+const GJ_SADDLE = ['#1e1d28', '#34323f', '#4f4c5e'];
+const GJ_MANE = ['#6a6878', '#a4a2b6', '#dedcea'];
 const GJ_BELLY = ['#7a788c', '#aeacbe', '#dcdbe6'];
 const GJ_FAR = darkerRamp(GJ_BODY);
 
@@ -1382,6 +1385,13 @@ export function registerBossArt(atlas) {
     }
     // Varek's fire is a variant; the Mother's three sizes are her only looks.
     atlas.setMeta(`boss:${id}`, { anims, variants: art.variants });
+  }
+  // Varek speaks in his intro: give the story a face for him (the chief's own look).
+  try {
+    const look = PRESET_APPEARANCES.bandit_chief;
+    if (look) ensureCharacter(atlas, 'varek', { ...look, key: 'varek', skin: 'tan', outfit: 'tunic', top: 'rust', accent: 'wine' });
+  } catch (err) {
+    console.error('[bosses] portrait failed', err);
   }
   registerGlyphArt(atlas);
 }

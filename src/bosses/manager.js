@@ -238,10 +238,24 @@ export class BossManager {
     const night = isNightish(g);
     const p = g.player;
     const watched = p && Math.hypot(p.x - b.home.x, p.y - b.home.y) < 260;
-    if (night && b.mode === 'hidden' && !watched) {
+    if (night && b.mode === 'hidden') {
+      // Out of the trees: at his den, or (if you are already standing in it) from the
+      // side of the clearing farthest from you.
+      let x = b.home.x;
+      let y = b.home.y;
+      if (watched && p) {
+        const a = this.arenas.greyjaw;
+        const ang = Math.atan2(a.y - p.y, a.x - p.x);
+        x = a.x + Math.cos(ang) * a.r * 0.8;
+        y = a.y + Math.sin(ang) * a.r * 0.6;
+        if (g.isBlockedTile?.(Math.floor(x / TILE), Math.floor(y / TILE), b)) {
+          x = b.home.x;
+          y = b.home.y;
+        }
+      }
       b.mode = 'idle';
-      b.x = b.home.x;
-      b.y = b.home.y;
+      b.x = x;
+      b.y = y;
       b.setVeiled(false);
     } else if (!night && b.mode === 'idle' && !watched) {
       b.mode = 'hidden';
@@ -354,6 +368,7 @@ export class BossManager {
       return;
     }
     this.ui?.update?.(b, dt);
+    this.frameCamera(b, dt);
     if (b.mode === 'defeat') return;
     // Walking away ends it; the boss goes home and mends.
     const p = g.player;
@@ -362,6 +377,34 @@ export class BossManager {
       A.outT += dt;
       if (A.outT > LEAVE_SECONDS) this.lose('left');
     } else A.outT = 0;
+  }
+
+  // Keep the boss in the picture: the camera leans from the player toward it (never so
+  // far the player leaves the screen), and lets go when the fight ends.
+  frameCamera(b, dt) {
+    const g = this.game;
+    const cam = g.camera;
+    const p = g.player;
+    if (!cam || !p || typeof cam.follow !== 'function') return;
+    const F = this.frame || (this.frame = { x: p.x, y: p.y, dx: 0, dy: 0 });
+    const near = !b.veiled && b.mode !== 'gone' && Math.hypot(b.x - p.x, b.y - p.y) < 300;
+    const mx = Math.max(0, (cam.vw || 400) / 2 - 60);
+    const my = Math.max(0, (cam.vh || 240) / 2 - 50);
+    const tx = near ? Math.max(-mx, Math.min(mx, (b.x - p.x) * 0.42)) : 0;
+    const ty = near ? Math.max(-my, Math.min(my, (b.y - 14 - p.y) * 0.42)) : 0;
+    const k = Math.min(1, dt * 2.5);
+    F.dx += (tx - F.dx) * k;
+    F.dy += (ty - F.dy) * k;
+    F.x = p.x + F.dx;
+    F.y = p.y + F.dy;
+    if (cam.target === p) cam.follow(F);
+  }
+
+  releaseCamera() {
+    const g = this.game;
+    const F = this.frame;
+    if (F && g.camera?.target === F) g.camera.follow(g.player);
+    if (F) F.dx = F.dy = 0;
   }
 
   onPhase(b, phase) {
@@ -453,6 +496,7 @@ export class BossManager {
     const g = this.game;
     const A = this.active;
     this.active = null;
+    this.releaseCamera();
     if (A?.lyra === 'declined' || A?.lyra === 'joined') this.releaseLyra(A);
     this.later(2.6, () => {
       if (!this.active) this.ui?.hide?.();
@@ -466,6 +510,7 @@ export class BossManager {
     const A = this.active;
     if (!A) return;
     this.active = null;
+    this.releaseCamera();
     const b = A.boss;
     try {
       b?.reset?.();

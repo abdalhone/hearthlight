@@ -287,12 +287,18 @@ export function pickFoe(b) {
   const a = b.arena;
   const reach = (a?.r || 120) + 72;
   const cur = b.target;
-  if (cur && alive(cur) && hostileTo(g, b, cur) && (!a || Math.hypot(cur.x - a.x, cur.y - a.y) < reach)) {
-    // Switch to the player when they come close and the current foe is far.
-    const p = g.player;
-    if (p && cur !== p && alive(p) && dist(b, p) < dist(b, cur) * 0.6 && hostileTo(g, b, p)) b.target = p;
-    return b.target;
+  const p = g.player;
+  const pOk = p && alive(p) && hostileTo(g, b, p) && (!a || Math.hypot(p.x - a.x, p.y - a.y) < reach);
+  // The player is who it came for: it turns on someone else only while they are much
+  // closer (Lyra in its face), and back to the player the moment that stops.
+  if (pOk && cur !== p) {
+    const dc = cur && alive(cur) && hostileTo(g, b, cur) ? dist(b, cur) : Infinity;
+    if (!(dc < 34 && dc < dist(b, p) * 0.45)) {
+      b.target = p;
+      return p;
+    }
   }
+  if (cur && alive(cur) && hostileTo(g, b, cur) && (!a || Math.hypot(cur.x - a.x, cur.y - a.y) < reach)) return cur;
   let best = null;
   let bd = Infinity;
   const list = g.entities?.all?.() || g.entities?.list || [];
