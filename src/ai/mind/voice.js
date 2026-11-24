@@ -122,8 +122,11 @@ export function playerAnswer(ctx, verb = 'like') {
     if (a >= 45) return "Careful. I'm fond of you, more than I planned. Let's not rush the rest.";
     return "Love? You've been awake six days. Buy me a honey cake first.";
   }
+  const opinion = rel.opinion || ctx.mind.relationships.composeOpinion(rel);
+  // "What do you think of me?" gets her opinion; "do you like me?" gets an answer first.
+  if (verb === 'think') return a <= -10 ? `Not much, lately. ${opinion}` : opinion;
   const lead = a >= 15 ? 'Yes.' : a <= -10 ? 'Not much, lately.' : "I'm deciding.";
-  return `${lead} ${rel.opinion || ctx.mind.relationships.composeOpinion(rel)}`;
+  return `${lead} ${opinion}`;
 }
 
 export function friendsAnswer(ctx, kind = 'friends') {
