@@ -366,7 +366,7 @@ export class Village {
     let ex = null;
     let learned = [];
     if (Array.isArray(opts.lines) && opts.lines.length) ex = { topic: opts.topic || 'own', lines: opts.lines };
-    else if (!opts.passing && mind && rnd(this.rng()) < 0.4) {
+    else if (!opts.passing && !opts.continuing && mind && rnd(this.rng()) < 0.4) {
       const r = this.lyraLearns(npc, mind, mood);
       if (r) {
         ex = r.ex;
