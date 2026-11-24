@@ -2,7 +2,9 @@
 // Barks are short and spoken in the world; chat lines answer the player.
 // Slots: {you} (how she addresses the player), {player}, {me}, {enemy}, {place},
 // {desc}, {item}, {job}, {result}, {reason}, {name}, {memory}, {goal}, {objective},
-// {target}, {level}, {time}, {weather}.
+// {target}, {level}, {time}, {weather}, {reason}, {condition}, {counter}, {coins}, {plan}.
+
+import { WILL_LINES } from './lines_will.js';
 
 export const RULES = {
   oath: [
@@ -25,7 +27,7 @@ export const LINES = {
   // ---------------------------------------------------------------- combat
   combat_start: [
     '{enemy}! [Stay close|On your left|Eyes up], {you}!',
-    { t: "Here they come. I've got your back.", mood: ['calm', 'happy'] },
+    { t: "Here they come. I've got your back.", mood: ['calm', 'happy'], state: ['together', 'apart'] },
     { t: "Trouble — {enemy}. Let's make this quick.", trait: 'playful' },
     { t: "{enemy}. [Keep behind me|Don't get surrounded].", mood: ['tense', 'low'] },
     { t: "Wonderful. Company. [The rude kind|And they didn't knock].", trait: 'playful', mood: ['happy', 'calm'] },
@@ -58,16 +60,19 @@ export const LINES = {
     "Slime on the {place} path again — who keeps feeding these?",
   ],
   combat_bat: [
+    { t: "Keep your torch high — they hate the light.", trait: 'bookish' },
     "Bats! Duck — they're aiming for your hair!",
     'Wings in the dark — stay low!',
     { t: 'Bats. I knew this place was too quiet.', mood: ['tense', 'calm'] },
   ],
   combat_boar: [
+    'Boar! Get behind something solid!',
     "Boar! Don't stand in a straight line with it!",
     'Watch the tusks — sidestep when it charges!',
     { t: "That boar's been at Tobias's turnips, I'd bet my boots.", trait: 'playful' },
   ],
   combat_chief: [
+    { t: 'That one gives the orders. Make them regret it.', mood: ['angry', 'calm'] },
     "That's their leader. Bring them down and the rest will scatter!",
     { t: 'The big one. Stay sharp, {you} — this one hits hard.', minBond: 1 },
     "Their chief. If anyone took the ruins key, it's that one.",
@@ -145,16 +150,19 @@ export const LINES = {
     { t: "That's for every farmer you robbed.", mood: ['angry', 'calm', 'happy'] },
   ],
   kill_undead: [
+    'That one won\'t get up again.',
     'Back to sleep with you.',
     { t: 'Stay dead this time. I mean it.', trait: 'playful' },
     'Bones scattered. They stay down when they break.',
   ],
   kill_slime: [
+    { t: 'Splat. Mira will want a jar of that.', trait: 'playful' },
     'Popped!',
     { t: 'Ew. Ew, ew. Got it, but ew.', trait: 'playful' },
     "Slime's done. Mira will want that gel.",
   ],
   kill_chief: [
+    { t: 'Rowan owes us a drink for that one.', trait: 'playful' },
     "Their chief is down! It's over!",
     { t: 'The camp is finished. Hearthvale can sleep tonight.', trait: 'warm' },
     "That's their leader done. Check the camp — the key has to be here.",
@@ -166,11 +174,13 @@ export const LINES = {
     { t: "Clean. You've been practicing.", minBond: 1 },
   ],
   downed: [
+    { t: 'Tides... the ground is... comfortable...', trait: 'playful' },
     "I can't— {you}...",
     'Ngh— I\'m down...',
     { t: "Sorry... just... need a moment...", trait: 'warm' },
   ],
   player_downed: [
+    { t: '{player}! Stay with me!', mood: ['tense', 'angry', 'low', 'calm'] },
     '{you}! No — get up!',
     { t: "No, no, no — not you too!", minBond: 2 },
     "{player}! Hold on!",
@@ -188,6 +198,8 @@ export const LINES = {
     { t: "There. I can't watch you hurt.", minBond: 3 },
   ],
   thanks_heal: [
+    'Better. Much better. Thank you.',
+    { t: 'Your hands are warmer than you think.', minBond: 2 },
     'Oh — thank you. That helps.',
     { t: 'Now who is looking after whom?', trait: 'playful' },
   ],
@@ -198,6 +210,7 @@ export const LINES = {
     { t: 'Level {level}. Not bad for an island girl.', trait: 'playful' },
   ],
   player_level_up: [
+    { t: 'Careful — keep growing like that and you will not need me.', trait: 'playful' },
     "You're getting good at this, {you}.",
     { t: "Look at you. Level {level}. I'm a little proud.", minBond: 2 },
     'Stronger every day. I noticed.',
@@ -229,45 +242,55 @@ export const LINES = {
     "If she left anything behind, it's in here somewhere.",
   ],
   place_lake: [
+    { t: 'Water that still makes me nervous. Pretty, though.', mood: ['tense', 'low', 'calm'] },
     'Mirror Lake. Still as glass — just like home.',
     { t: "Pretty, isn't it? I'll admire it from the dock, thank you.", trait: 'playful' },
     "Good fishing here, Gale says. Deep water, though. I'll stay on the shore.",
   ],
   place_camp: [
+    { t: 'Smoke, stolen grain and bad decisions. Bandit camp.', trait: 'playful' },
     "The bandit camp. Quietly now.",
     { t: "Look at this mess. Stolen grain everywhere.", mood: ['angry', 'calm'] },
     "If they took the ruins key, it's in that chest.",
   ],
   place_quarry: [
+    { t: 'Every rock here has a slime under it. I checked. Once.', trait: 'playful' },
     "Stonecut Quarry. Bram's iron comes from here.",
     'Mind the loose rock. And the slimes. Mostly the slimes.',
     { t: 'Listen to the echo. Hello! ...Hello.', trait: 'playful' },
   ],
   place_meadow: [
+    { t: 'I could lie in this grass until the stars come out.', mood: ['happy', 'calm'] },
     'South Meadow. Flowers up to my knees.',
     { t: "If you see me lying in the grass later, I'm 'scouting'.", trait: 'playful' },
     'Rabbits everywhere. Pip would love this.',
   ],
   place_village: [
+    { t: 'Hearthvale. Somebody is baking. Somebody always is.', trait: 'playful' },
     { t: 'Hearthvale. Warm lamps, warmer people.', mood: ['happy', 'calm'] },
     "Back in town. Smell that? Elda's bread.",
     'Home, more or less.',
   ],
   place_home: [
+    { t: 'Our little cottage. It creaks like a ship. I like that.', trait: 'bookish' },
     'Home sweet cottage.',
     { t: "Boots off. I mean it. You'll track mud everywhere.", trait: 'playful' },
     'It\'s good to be inside four walls for a bit.',
   ],
   place_inn: [
+    { t: 'The Kettle. If Pip asks, I did not see the cat.', trait: 'playful' },
     "The Ember Kettle! Please tell me Elda has honey cakes.",
     'Ah, warmth. And gossip. Mostly gossip.',
     { t: "Smells like stew and woodsmoke. Perfect.", mood: ['happy', 'calm'] },
   ],
   place_chapel: [
+    'Hush. Even the dust settles quietly in here.',
+    { t: 'I light a candle for Maren every time. Silly, maybe.', minBond: 1 },
     'The chapel. Let\'s keep our voices down.',
     { t: "Sister Aveline's candles... they never seem to burn down.", trait: 'bookish' },
   ],
   place_indoors: [
+    { t: '{place}. It smells like someone else\'s life.', trait: 'bookish' },
     "{place}. Cozy.",
     'Out of the wind, at least.',
     "{place}. Don't touch anything that looks expensive.",
@@ -281,11 +304,13 @@ export const LINES = {
     { t: 'Moonpetals will be opening now...', trait: 'bookish' },
   ],
   dusk: [
+    { t: 'Dusk. The hour when the shadows start lying about their size.', trait: 'bookish' },
     "Sun's going down. We should think about where we'll be at dark.",
     { t: "Look at that sky. Like someone spilled honey over the hills.", mood: ['happy', 'calm'] },
     'Lamps are coming on in the village.',
   ],
   dawn: [
+    { t: 'First light. The birds are arguing again.', trait: 'playful' },
     'Morning. The world looks less dangerous in this light.',
     { t: 'Dawn. My favorite trick the sky does.', mood: ['happy', 'calm'] },
     "Sunrise. We made it through another night.",
@@ -297,15 +322,19 @@ export const LINES = {
     { t: "Perfect. Wet socks for the rest of the day.", trait: 'playful' },
   ],
   fog_rolls: [
+    { t: 'Fog like this, back home, meant the lighthouse never slept.', trait: 'bookish' },
     "Fog. Can't see a thing past ten paces.",
     { t: 'Stay where I can see you. This fog swallows people.', mood: ['tense', 'calm'] },
     'Fog rolling in. Sounds carry strangely now.',
   ],
   skies_clear: [
+    'Blue sky. Our boots might actually dry.',
+    { t: 'Clouds gone. Stars tonight, maybe.', trait: 'bookish' },
     'The sky is clearing. Finally.',
     { t: 'Sun! Hello again, old friend.', mood: ['happy', 'calm'] },
   ],
   late_night: [
+    { t: 'Even the owls have gone to bed, {you}.', trait: 'playful' },
     "It's late, {you}. A bed would be wise.",
     { t: "I'm yawning more than I'm talking. Home soon?", trait: 'playful' },
     'Midnight wanderings... we should rest before something finds us.',
@@ -325,16 +354,19 @@ export const LINES = {
     'Look — {name}.',
   ],
   see_child: [
+    { t: 'Pip! Did you eat today? Properly?', trait: 'warm' },
     "Pip! Don't run so fast, you'll trip!",
     { t: 'Pip! Want to see a trick later?', trait: 'playful' },
     "There's Pip. Still chasing that cat, I bet.",
   ],
   npc_meet: [
+    { t: 'Hello. I\'m Lyra. Don\'t mind the bow.', trait: 'playful' },
     "I haven't met {name} before.",
     { t: '{name}, is it? Good to meet you.', trait: 'warm' },
     { t: 'A new face. {name}. I like them already. Probably.', trait: 'playful' },
   ],
   conversation_done: [
+    { t: '{name} talks more when you let the silence sit.', trait: 'steady' },
     "{name} is good company.",
     { t: 'I learned something from {name}. Remind me to tell you.', trait: 'bookish' },
     'Talking to {name} helped.',
@@ -346,21 +378,25 @@ export const LINES = {
     "{item}! You know me too well.",
   ],
   gift_liked: [
+    { t: 'For me? You keep surprising me. Thank you for the {item}.', minBond: 1 },
     'Thank you — I can use {item}.',
     { t: "{item}! That's thoughtful.", trait: 'warm' },
     'Oh, nice. {item}. Thank you.',
   ],
   gift_disliked: [
+    'Ah. {item}. I see. I will treasure it... somewhere.',
     "Oh. {item}. ...Thank you? I think?",
     { t: "{item}. Is this a prank? It feels like a prank.", trait: 'playful' },
     "I'll... find a place for the {item}. Far away.",
   ],
   gift_generic: [
+    'Into the pack it goes.',
     "I'll keep it safe.",
     'Got it. Thank you.',
     { t: 'Handing me your clutter again?', trait: 'playful' },
   ],
   trade: [
+    { t: 'Coins out, goods in. The oldest spell there is.', trait: 'bookish' },
     'Good trade.',
     { t: "Did you haggle? You didn't haggle. Gale saw you coming.", trait: 'playful' },
     'Spend wisely — the road gets expensive.',
@@ -374,16 +410,19 @@ export const LINES = {
     'Grabbed {item}.',
   ],
   loot_rare: [
+    { t: '{item}! Somebody up there likes us today.', trait: 'playful' },
     '{item}! Now that is a find.',
     { t: "Look at this — {item}! Today's a good day.", mood: ['happy', 'calm'] },
     "{item}. That's worth keeping close.",
   ],
   key_found: [
+    { t: 'The key. My hands are shaking. Give me a second.', mood: ['tense', 'low', 'calm'] },
     'The ruins key! {you}, this is it!',
     "A rusted key with the ruins crest... Maren, I'm coming.",
     'That crest — it opens the ruins gate. Finally.',
   ],
   journal_found: [
+    'Maren\'s journal. Her ink. Her terrible handwriting.',
     "That's her handwriting. That's Maren's journal...",
     "Her journal. She was here. She was really here.",
     "Give me a moment, {you}. That's... that's hers.",
@@ -401,11 +440,13 @@ export const LINES = {
     { t: 'Job done. {result}', trait: 'diligent' },
   ],
   job_failed: [
+    { t: 'I tried. Truly. {reason}', trait: 'warm' },
     "I couldn't finish — {reason}",
     { t: "Bad news: {reason}", trait: 'playful' },
     'I had to stop. {reason}',
   ],
   quest_update: [
+    { t: 'Write this down: {objective}', trait: 'bookish' },
     "{objective}",
     'Next step: {objective}',
     { t: "One step closer to Maren. {objective}", minBond: 0 },
@@ -426,39 +467,49 @@ export const LINES = {
     { t: "{goal}. I'll get there. We'll get there.", minBond: 2 },
   ],
   idle_place: [
+    { t: '{place} has a sound to it. Listen.', trait: 'bookish' },
     "{place} is quiet today.",
     { t: "I could get used to {place}.", mood: ['happy', 'calm'] },
     { t: 'Something about {place} feels watched.', mood: ['tense', 'low'] },
   ],
   idle_night_sky: [
+    { t: 'Count the stars with me? I lose track after eleven.', minBond: 2 },
     'See that bright one? Sailors back home call it the Lantern.',
     { t: "Maren taught me the stars. I still can't find the Heron without her.", trait: 'bookish' },
     'Clear sky. Perfect for stargazing, if nothing eats us.',
   ],
   idle_rain: [
+    'Rain on the leaves. The forest sounds like it is whispering.',
+    { t: 'If this keeps up I am building a boat.', trait: 'playful' },
     { t: 'Rain on leaves... my favorite sound, after rain on roofs.', mood: ['happy', 'calm', 'low'] },
     "My hair's going to be a disaster.",
   ],
   idle_bored: [
+    { t: 'I am counting fence posts. I am at forty. Save me.', trait: 'playful' },
     "So... are we doing anything, or are we admiring the grass?",
     { t: 'If I stand still any longer, birds will nest in my hair.', trait: 'playful' },
     "I'm restless. Let's go somewhere.",
   ],
   hungry: [
+    'I need to eat soon, {you}. Properly.',
     "Is anyone else starving, or just me?",
     { t: 'I would fight a wolf for one of Elda\'s honey cakes right now.', trait: 'playful' },
     'My stomach is louder than the bandits.',
   ],
   tired: [
+    'I need sleep. Real sleep, in a real bed.',
     "I'm fading, {you}. We should rest soon.",
     { t: 'If I fall asleep standing, just... prop me against a tree.', trait: 'playful' },
     'My eyes keep closing on their own.',
   ],
   lonely: [
+    'It gets quiet out here. Say something?',
+    { t: 'I miss the noise of the harbor sometimes. People everywhere.', trait: 'bookish' },
     "Talk to me a little? The quiet's getting loud.",
     { t: 'You\'re awfully quiet today, {you}.', minBond: 1 },
   ],
   player_idle: [
+    { t: 'Admiring the view? It is a good view.', mood: ['happy', 'calm'] },
     '{you}? Are you daydreaming?',
     { t: "Hello? Still with me? You've gone very still.", trait: 'playful' },
     "Take your time. I'll just... stand here. Heroically.",
@@ -472,8 +523,12 @@ export const LINES = {
     "I'm with you.",
     { t: 'Wherever you go.', minBond: 3 },
   ],
-  ack_follow_close: ['Close it is. Like your shadow.', "Staying close."],
-  ack_follow_far: ["I'll hang back a little.", "Giving you room. I'm not far."],
+  ack_follow_close: [
+    { t: 'Close it is. Try not to step on me.', trait: 'playful' },
+    'Close it is. Like your shadow.', "Staying close."],
+  ack_follow_far: [
+    'I will hang back where I can see you.',
+    "I'll hang back a little.", "Giving you room. I'm not far."],
   ack_stay: [
     "I'll hold here.",
     { t: "Staying put. Don't forget about me.", trait: 'playful' },
@@ -490,7 +545,9 @@ export const LINES = {
   ],
   ack_retreat: ['Falling back!', 'Pulling back to you!', { t: 'Retreating — not running. There is a difference.', trait: 'playful' }],
   ack_guard: ["I'll stand guard.", 'Nothing gets past me.', { t: 'On watch. Go on, I have this.', trait: 'diligent' }],
-  ack_patrol: ["I'll walk the rounds.", 'Patrolling. Shout if you need me.'],
+  ack_patrol: [
+    { t: 'Rounds. Round and round. Thrilling.', trait: 'playful' },
+    "I'll walk the rounds.", 'Patrolling. Shout if you need me.'],
   ack_explore: ["Let's see what's out there.", { t: 'Exploring! My favorite word.', trait: ['playful', 'bookish'] }, "I'll scout ahead."],
   ack_free: [
     "Free to roam? Don't mind if I do.",
@@ -498,15 +555,25 @@ export const LINES = {
     "I'll keep near and keep busy.",
   ],
   ack_emote: ['Ha!', 'Like this?', { t: 'Only because you asked.', trait: 'playful' }],
-  ack_sit: ['Oh, my feet thank you.', 'Sitting. Gladly.'],
+  ack_sit: [
+    { t: 'Do not let me fall asleep sitting up.', trait: 'playful' },
+    'Oh, my feet thank you.', 'Sitting. Gladly.'],
   ack_job: ['On it — {job}.', "I'll get started.", { t: '{job}. Watch me work.', trait: 'playful' }],
   ack_stop_job: ['Stopping.', 'Alright, putting it down.', { t: 'Finally, a break.', trait: 'playful' }],
   ack_give: ['Here you go.', 'Take it.', { t: "Here — don't lose it.", trait: 'playful' }],
-  ack_use: ['Thanks, I needed that.', 'Much better.'],
-  ack_door: ['Got the door.', 'There.'],
-  ack_pickup: ["I'll grab it.", 'Picking it up.'],
+  ack_use: [
+    'There. That helps.',
+    'Thanks, I needed that.', 'Much better.'],
+  ack_door: [
+    { t: 'After you. Or me. Whoever is braver.', trait: 'playful' },
+    'Got the door.', 'There.'],
+  ack_pickup: [
+    'Got it.',
+    "I'll grab it.", 'Picking it up.'],
   ack_sleep: ['Bed. Yes. Finally.', { t: "Goodnight, {you}. Don't stay up too late.", minBond: 1 }],
-  ack_talk: ["I'll go chat with {name}.", 'Off to see {name}.'],
+  ack_talk: [
+    { t: 'Going to bother {name}. Politely.', trait: 'playful' },
+    "I'll go chat with {name}.", 'Off to see {name}.'],
   ack_friend: ["{name} is a friend. Understood.", "Noted — {name}'s with us."],
   ack_enemy: ["{name} is an enemy, then. I'll remember.", 'Noted. I trust {name} even less now.'],
   ack_remember: ["I'll remember that.", "Noted — that's tucked away.", { t: "Locked in. I'll quote it back at you someday.", trait: 'playful' }],
@@ -522,10 +589,12 @@ export const LINES = {
     { t: 'Morning. The light is lovely today.', mood: ['happy', 'calm'] },
   ],
   greet_evening: [
+    { t: 'Evening. Supper smells are drifting from the Kettle.', trait: 'playful' },
     'Evening, {you}.',
     { t: 'Evening. The lamps are coming on.', mood: ['happy', 'calm'] },
   ],
   greet_night: [
+    'Late to be wandering, {you}.',
     'Hello, night owl.',
     { t: "Still awake? So am I. Hello, {you}.", minBond: 1 },
   ],
@@ -733,9 +802,15 @@ export const LINES = {
   ],
   need_hunger: ['And starving.', { t: "Also I'd sell my bow for a honey cake.", trait: 'playful' }, 'Hungry, too.'],
   need_energy: ['And so tired.', "I could sleep standing up.", { t: "My eyelids weigh more than my pack.", trait: 'playful' }],
-  need_social: ["I've been quiet too long — talk to me more?", 'A little lonely, if I am honest.'],
-  need_fun: ['And bored out of my skull.', { t: "Please, let's do something that isn't walking.", trait: 'playful' }],
-  need_safety: ["I don't feel safe here.", 'This place has me on edge.'],
+  need_social: [
+    'I could use some company that talks back.',
+    "I've been quiet too long — talk to me more?", 'A little lonely, if I am honest.'],
+  need_fun: [
+    'I need something that is not walking or fighting. Anything.',
+    'And bored out of my skull.', { t: "Please, let's do something that isn't walking.", trait: 'playful' }],
+  need_safety: [
+    'Something here feels wrong. I want to leave.',
+    "I don't feel safe here.", 'This place has me on edge.'],
   hurt_self: ["I'm hurt, too — {hp}.", 'And bleeding a little. {hp}.'],
   state_fine: ['Not really. Ask me again in an hour.', "No, I'm alright.", { t: 'Me? Never. ...Mostly never.', trait: 'playful' }],
   state_yes: ['A little, yes.', "Yes. I wasn't going to say anything.", 'Honestly? Yes.'],
@@ -780,16 +855,34 @@ export const LINES = {
   inventory_has: ['I have {qty} {item}.', '{qty} {item}. Want some?'],
   inventory_none: ['No {item}, sorry.', "I don't have any {item}."],
   gold_report: ['{qty} coins. Not exactly a dragon\'s hoard.', 'I have {qty} coins.'],
-  time_dawn: ['Barely dawn.', 'The sun is just coming up.'],
-  time_day: ['Broad daylight.', 'Plenty of day left.'],
-  time_dusk: ["The sun's going down.", 'Evening is coming on.'],
-  time_night: ["Night. The wolves' hours.", 'Late. Deep dark out there.'],
-  weather_clear: ['Clear skies. Good for travel.', { t: 'Lovely, honestly. Not a cloud.', mood: ['happy', 'calm'] }],
-  weather_cloudy: ['Grey and heavy. Might rain later.', 'Cloudy. The sky is sulking.'],
-  weather_rain: ["Raining. I don't mind — on a roof.", 'Wet. Very wet.'],
-  weather_fog: ["Fog. Stay close, it swallows sound.", 'Foggy. Can barely see my own hand.'],
+  time_dawn: [
+    'Dawn. The world is still yawning.',
+    'Barely dawn.', 'The sun is just coming up.'],
+  time_day: [
+    'Middle of the day. Hours of light yet.',
+    'Broad daylight.', 'Plenty of day left.'],
+  time_dusk: [
+    'Dusk. The lamps will be lit soon.',
+    "The sun's going down.", 'Evening is coming on.'],
+  time_night: [
+    'Night. Moonpetal hours.',
+    "Night. The wolves' hours.", 'Late. Deep dark out there.'],
+  weather_clear: [
+    'Clear. You can see all the way to the hills.',
+    'Clear skies. Good for travel.', { t: 'Lovely, honestly. Not a cloud.', mood: ['happy', 'calm'] }],
+  weather_cloudy: [
+    'Overcast. Flat light, no shadows to hide in.',
+    'Grey and heavy. Might rain later.', 'Cloudy. The sky is sulking.'],
+  weather_rain: [
+    { t: 'Rain. My cloak is regretting everything.', trait: 'playful' },
+    "Raining. I don't mind — on a roof.", 'Wet. Very wet.'],
+  weather_fog: [
+    'Fog thick enough to lose a village in.',
+    "Fog. Stay close, it swallows sound.", 'Foggy. Can barely see my own hand.'],
   danger_0: ['Safe enough.', 'Peaceful here.'],
-  danger_1: ['Mostly safe, but keep an eye out.'],
+  danger_1: [
+    'Quiet, mostly. Mostly.',
+    'Mostly safe, but keep an eye out.'],
   danger_2: ['Watch yourself here.', 'Not a place to wander alone.'],
   danger_3: ['Dangerous. Truly. Stay close.', 'This is no place to be careless.'],
   quest_report: [
@@ -803,7 +896,9 @@ export const LINES = {
     { t: 'Find someone who needs help. That usually finds us a road.', trait: 'warm' },
   ],
   goals_report: ['{list}', "What I want? {list}", 'Mostly: {list}'],
-  goals_none: ['To find Maren. Everything else can wait.'],
+  goals_none: [
+    'Find Maren. Earn my keep. Stay alive. In whatever order the day allows.',
+    'To find Maren. Everything else can wait.'],
   past_magic: [
     "Arcane ranger — I bend light into bolts. Maren taught me. It burns a little, every time.",
     "Island magic. You catch the light like water in your hands, and then you throw it. Simple. It took me eight years.",
@@ -832,7 +927,9 @@ export const LINES = {
   where_person: ['Last I saw, {name} was around {place}.', '{name}? Try {place}.'],
   where_place: ['{place} is {dir} of here.', '{place}? {dir} of us.', 'Head {dir} for {place}.'],
   where_here: ["We're right in {place}.", "You're standing in it — {place}."],
-  mention_person: ['Speaking of {name}... {opinion}'],
+  mention_person: [
+    '{name}... {opinion}',
+    'Speaking of {name}... {opinion}'],
   reminds_me: ['That reminds me... {memory}', 'Funny — that makes me think of something. {memory}'],
   refused_order: ['{reason}', "No. {reason}", "I won't. {reason}"],
   trust_yes: ['I trust {name}, yes.', '{name}? With my life, nearly.'],
@@ -844,7 +941,24 @@ export const LINES = {
   thought_thanks: ['It feels good to be useful to someone again.', 'Maren would be proud. Maybe.'],
   thought_order: ['Alright. I know what to do.', 'Simple enough.', 'Good plan. Mostly.'],
   thought_question: ['They keep asking about me. Nobody has in a long time.', 'Curious one, this traveler.'],
+
+  ...WILL_LINES,
 };
 
-// Situations spoken as world barks (bubbles, not chat).
-export const BARK_SITUATIONS = Object.keys(LINES).filter((k) => !/^(?:ack_|thought_|feel_|need_|opinion_|inventory_|time_|weather_|danger_|know_|where_|today_|memory_|goals_|quest_|past_|insult_|flirt_|apology_|player_(?:sad|tired|hungry|scared|happy|bored|hurt_words|lonely)$|greet|farewell|goodnight)/.test(k));
+// Situations spoken as world barks (bubbles over her head, never the chat).
+export const BARK_SITUATIONS = [
+  'combat_start', 'combat_wolf', 'combat_bandit', 'combat_undead', 'combat_slime', 'combat_bat', 'combat_boar', 'combat_chief',
+  'combat_end', 'combat_close_call', 'low_hp', 'player_low_hp', 'player_hurt', 'kill', 'kill_wolf', 'kill_bandit', 'kill_undead',
+  'kill_slime', 'kill_chief', 'player_kill', 'downed', 'player_downed', 'revived', 'healed_player', 'thanks_heal', 'level_up',
+  'player_level_up', 'place_new', 'place_return', 'place_forest', 'place_ruins', 'place_lake', 'place_camp', 'place_quarry',
+  'place_meadow', 'place_village', 'place_home', 'place_inn', 'place_chapel', 'place_indoors', 'night_falls', 'dusk', 'dawn',
+  'rain_starts', 'fog_rolls', 'skies_clear', 'late_night', 'morning_wake', 'see_friend', 'see_child', 'npc_meet',
+  'conversation_done', 'gift_loved', 'gift_liked', 'gift_disliked', 'gift_generic', 'trade', 'loot', 'loot_rare', 'key_found',
+  'journal_found', 'job_start', 'job_done', 'job_failed', 'quest_update', 'idle_memory', 'idle_goal', 'idle_place',
+  'idle_night_sky', 'idle_rain', 'idle_bored', 'hungry', 'tired', 'lonely', 'player_idle',
+  // her own will (DESIGN §16)
+  'deed_hit_accident', 'deed_hit', 'deed_hit_again', 'deed_protected', 'deed_kindness', 'deed_killed_harmless',
+  'deed_attacked_villager', 'deed_reckless', 'deed_broke_promise', 'deed_kept_promise', 'deed_respected_refusal', 'deed_pushed',
+  'deed_stole', 'deed_abandoned', 'became_wary', 'trust_regained', 'going_apart', 'leaving', 'gone_farewell', 'returning',
+  'crime_warning', 'promise_made', 'fear_bark', 'wary_idle',
+];

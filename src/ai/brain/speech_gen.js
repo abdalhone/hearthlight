@@ -7,12 +7,14 @@
 //   {#rule}       expands a shared sub-rule from RULES (exclamations, endearments...).
 //   [a|b|c]       inline choice; may nest.
 //
-// A bank entry is a string or { t, mood, minBond, maxBond, trait, notTrait, w }.
-// mood/trait accept a string or a list. Entries are filtered by the speaker's mood,
-// bond with the player and personality, then picked by weight while avoiding lines
-// used recently, so she rarely says the same thing twice in a row.
+// A bank entry is a string or { t, mood, minBond, maxBond, trait, notTrait, state,
+// minTrust, maxTrust, minFear, maxFear, w }. mood/trait/state accept a string or a list.
+// Entries are filtered by the speaker's mood, bond with the player, personality and how
+// things stand between her and the player (companionship state, trust, fear), then picked
+// by weight while avoiding lines used recently, so she rarely says the same thing twice.
 
 import { LINES, RULES } from './lines.js';
+import { companionshipOf, playerRel } from './her_state.js';
 
 const SLOT_RE = /\{([#a-zA-Z_][\w]*)\}/g;
 const MAX_RECENT = 80;
@@ -65,9 +67,10 @@ export function bondLevel(mind, id = 'player') {
   return 1;
 }
 
-// How Lyra addresses the player at a given bond.
-export function addressFor(playerName, bond, pick) {
+// How Lyra addresses the player at a given bond (and how guarded she is).
+export function addressFor(playerName, bond, pick, state = 'together') {
   const name = String(playerName || '').trim() || 'traveler';
+  if (state === 'left' || state === 'gone' || state === 'wary') return name;
   if (bond >= 4) return pick([name, name, 'partner', 'my friend']);
   if (bond >= 2) return pick([name, name, name, 'partner']);
   return pick([name, name, 'traveler']);
@@ -78,12 +81,20 @@ export function speechContext(game) {
   const lyra = game?.companion || null;
   const mind = lyra?.mind || null;
   const settings = game?.settings || {};
+  const state = companionshipOf(game);
+  const rel = playerRel(game);
+  let bond = bondLevel(mind);
+  // Guarded, she does not talk like a close friend whatever the old bond says.
+  if (state === 'wary' || state === 'left' || state === 'gone' || rel.trust < 20 || rel.fear > 40) bond = Math.min(bond, 1);
   return {
     mood: moodKey(mind),
-    bond: bondLevel(mind),
+    bond,
     traits: traitsOf(mind?.soul?.personality),
     playerName: settings.playerName || 'Traveler',
     me: mind?.soul?.name || settings.companionName || 'Lyra',
+    state,
+    trust: rel.trust,
+    fear: rel.fear,
   };
 }
 
@@ -192,6 +203,9 @@ export class SpeechGen {
       traits: ctx.traits instanceof Set ? ctx.traits : new Set(ctx.traits || ['playful', 'warm', 'steady', 'bookish']),
       playerName: ctx.playerName || 'Traveler',
       me: ctx.me || 'Lyra',
+      state: ctx.state || 'together',
+      trust: Number.isFinite(ctx.trust) ? ctx.trust : 50,
+      fear: Number.isFinite(ctx.fear) ? ctx.fear : 0,
     };
   }
 
@@ -199,7 +213,7 @@ export class SpeechGen {
     return {
       player: c.playerName,
       me: c.me,
-      you: addressFor(c.playerName, c.bond, (l) => this.pick(l)),
+      you: addressFor(c.playerName, c.bond, (l) => this.pick(l), c.state),
       ...vars,
     };
   }
@@ -213,6 +227,12 @@ export class SpeechGen {
     if (traits && !traits.some((t) => c.traits.has(t))) return false;
     const not = asList(entry.notTrait);
     if (not && not.some((t) => c.traits.has(t))) return false;
+    const states = asList(entry.state);
+    if (states && !states.includes(c.state)) return false;
+    if (entry.minTrust != null && c.trust < entry.minTrust) return false;
+    if (entry.maxTrust != null && c.trust > entry.maxTrust) return false;
+    if (entry.minFear != null && c.fear < entry.minFear) return false;
+    if (entry.maxFear != null && c.fear > entry.maxFear) return false;
     return true;
   }
 
@@ -283,6 +303,7 @@ export function tidy(s) {
     .replace(/([,;:])(?=[^\s\d])/g, '$1 ')
     .replace(/\.{4,}/g, '...')
     .replace(/,\s*([.!?])/g, '$1')
+    .replace(/([!?…])\.(?!\.)/g, '$1')
     .trim();
   if (out) out = out[0].toUpperCase() + out.slice(1);
   return out;
