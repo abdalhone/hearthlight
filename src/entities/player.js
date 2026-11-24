@@ -164,8 +164,18 @@ export class Player extends Actor {
   }
 
   get attackPower() {
+    // The stat pipeline (DESIGN §26) holds level, Might, the worn weapon, buffs, prices and
+    // survival's weaknesses in one number.
+    const S = this.game.stats;
+    if (S?.isManaged?.(this)) return Math.max(1, Math.round(S.get(this, 'atk')));
     const weak = this.game.survival?.mul?.(this, 'atk') ?? 1; // bruised, mending, flame-thin (§27)
     return Math.max(1, Math.round((this.atk + this.weaponBonus) * weak));
+  }
+
+  // Swing speed from the pipeline (berserk, a quick blade); 1 without one.
+  get swingRate() {
+    const v = this.game.stats?.get?.(this, 'swing');
+    return Number.isFinite(v) && v > 0 ? Math.max(0.4, v) : 1;
   }
 
   // Fall now, whatever your health (DESIGN §25/§27): berserk's end calls
@@ -419,7 +429,9 @@ export class Player extends Actor {
     const g = this.game;
     if (this.comboTimer <= 0) this.combo = 0;
     const step = this.combo;
-    const c = COMBO[step];
+    const c0 = COMBO[step];
+    const rate = this.swingRate;
+    const c = rate === 1 ? c0 : { ...c0, lock: c0.lock / rate };
     let lunge = this.rootTime > 0 ? 0 : c.lunge;
     if (target) {
       this.faceToward(target.x, target.y);

@@ -753,6 +753,7 @@ export class Survival {
   // Multiplier on 'atk' | 'speed' for the player from weaknesses.
   mul(actor, stat) {
     if (!isPlayer(this, actor)) return 1;
+    if (this.game.stats?.foldsSurvival) return 1; // the stat pipeline folds weakness in (§26)
     let k = 1;
     for (const c of this.activeConditions()) k *= CONDITIONS[c.id][stat] ?? 1;
     return k;
@@ -768,7 +769,7 @@ export class Survival {
   // Timed modifiers in the §26 shape, for a stats pipeline to fold in.
   modifiers(actor) {
     if (!isPlayer(this, actor)) return [];
-    return this.activeConditions().map((c) => ({ source: `survival:${c.id}`, label: CONDITIONS[c.id].label, until: c.until, mul: { atk: CONDITIONS[c.id].atk, speed: CONDITIONS[c.id].speed }, hpCap: CONDITIONS[c.id].hpCap }));
+    return this.activeConditions().map((c) => ({ source: `survival:${c.id}`, label: CONDITIONS[c.id].label, until: c.until, seconds: CONDITIONS[c.id].seconds, mul: { atk: CONDITIONS[c.id].atk, speed: CONDITIONS[c.id].speed }, hpCap: CONDITIONS[c.id].hpCap }));
   }
 
   // ---------------------------------------------------------------- time

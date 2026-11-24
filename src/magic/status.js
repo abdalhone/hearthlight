@@ -536,6 +536,9 @@ export class StatusSystem {
     const potency = Math.max(0.1, Math.min(2, Number.isFinite(opts.potency) ? opts.potency : 1));
     let dur = (Number.isFinite(opts.duration) ? opts.duration : def.duration) * (0.6 + 0.4 * Math.min(1.5, potency));
     if (def.cc && (a.superArmor || a.boss || Number.isFinite(a.ccResist))) dur *= Number.isFinite(a.ccResist) ? a.ccResist : CC_BOSS;
+    // Status resistance from the stat pipeline (Resolve, charms; DESIGN §26).
+    const res = opts.src !== a && this.game?.stats?.get ? this.game.stats.get(a, 'resist') : 0;
+    if (res > 0) dur *= 1 - Math.min(0.75, res);
     if (!(dur > 0.02)) return null;
 
     if (!a.magicStatus) a.magicStatus = [];

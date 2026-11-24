@@ -1,6 +1,7 @@
 import { Shapes } from './shapes.js';
 import { Essences, blendPalettes } from './essences.js';
 import { Twists, HOOKS } from './twists.js';
+import { Prices, PRICE_SLOTS } from './prices.js';
 import { weaveName, describeWeave } from './naming.js';
 import { mixColors } from './registry.js';
 import {
@@ -23,8 +24,13 @@ import {
 // shape base x essences x twists inside the power budget, the blended palette, a name,
 // a description, an aim preview and the twist hooks in call order.
 //
-// opts: { unlocked: { shapes, essences, twists } (Sets; validates locks),
-//         maxEssences, maxTwists (slot limits), gen (twist generation), trusted }
+// opts: { unlocked: { shapes, essences, twists, prices } (Sets; validates locks),
+//         maxEssences, maxTwists, maxPrices (slot limits), gen (twist generation), trusted }
+//
+// Prices (DESIGN §25, src/magic/prices.js) are the fourth family: `weave.prices` names
+// them, the plan carries `prices` and `priceDefs` (and their hooks, like twists), the
+// name gains the price's word ("Blood-bought Ember Bolt"), and every cast pays them
+// (game.prices listens to spell_cast). Children a twist makes never pay again.
 //
 // plan fields (beyond the weave's): ok, reason, key, name, autoName, description, shape,
 // shapeDef, kind, essences, essenceDefs, twists, twistDefs, gen, input ('tap'|'hold'|
@@ -58,12 +64,14 @@ export function normalizeWeave(w) {
     shape: typeof src.shape === 'string' ? src.shape.trim() : '',
     essences: essences.length ? essences : ['raw'],
     twists: uniqStrings(src.twists),
+    prices: uniqStrings(src.prices),
   };
 }
 
 export function weaveKey(w) {
   const n = normalizeWeave(w);
-  return `${n.shape}|${n.essences.join(',')}|${n.twists.join(',')}`;
+  const p = n.prices.length ? `|p:${n.prices.join(',')}` : '';
+  return `${n.shape}|${n.essences.join(',')}|${n.twists.join(',')}${p}`;
 }
 
 function invalid(weave, reason, code) {
@@ -79,6 +87,9 @@ export function validateWeave(weave, opts = {}) {
   if (!Shapes.has(w.shape)) return { ok: false, code: 'unknown', reason: `There is no shape called "${w.shape}".`, weave: w };
   for (const e of w.essences) if (!Essences.has(e)) return { ok: false, code: 'unknown', reason: `There is no essence called "${e}".`, weave: w };
   for (const t of w.twists) if (!Twists.has(t)) return { ok: false, code: 'unknown', reason: `There is no twist called "${t}".`, weave: w };
+  for (const pr of w.prices) if (!Prices.has(pr)) return { ok: false, code: 'unknown', reason: `There is no price called "${pr}".`, weave: w };
+  const maxP = opts.maxPrices ?? PRICE_SLOTS;
+  if (w.prices.length > maxP) return { ok: false, code: 'too_many', reason: `A weave can carry ${maxP} price${maxP === 1 ? '' : 's'}.`, weave: w };
   const maxE = opts.maxEssences ?? ESSENCE_SLOTS_MAX;
   const maxT = opts.maxTwists ?? TWIST_SLOTS_MAX;
   if (w.essences.length > maxE) return { ok: false, code: 'too_many', reason: `A weave can hold ${maxE} essence${maxE === 1 ? '' : 's'} for now.`, weave: w };
@@ -88,6 +99,7 @@ export function validateWeave(weave, opts = {}) {
     if (!setHas(u.shapes, w.shape)) return { ok: false, code: 'locked', reason: `You can't weave a ${Shapes.get(w.shape).name.toLowerCase()} yet.`, weave: w };
     for (const e of w.essences) if (!setHas(u.essences, e)) return { ok: false, code: 'locked', reason: `You haven't learned to weave ${Essences.get(e).noun} yet.`, weave: w };
     for (const t of w.twists) if (!setHas(u.twists, t)) return { ok: false, code: 'locked', reason: `You haven't learned the ${Twists.get(t).name.toLowerCase()} twist yet.`, weave: w };
+    for (const pr of w.prices) if (!setHas(u.prices || new Set(), pr)) return { ok: false, code: 'locked', reason: `You haven't found the ${Prices.get(pr).name.toLowerCase()} price yet.`, weave: w };
   }
   return { ok: true, weave: w };
 }
@@ -100,10 +112,11 @@ export function compileWeave(weave, opts = {}) {
   // At the generation cap, twists that make children are dropped.
   let twists = w.twists;
   if (gen >= MAX_GEN) twists = twists.filter((t) => !Twists.get(t).spawns);
-  const key = `${w.shape}|${w.essences.join(',')}|${twists.join(',')}|${gen}|${Shapes.version}.${Essences.version}.${Twists.version}`;
+  const prices = gen > 0 ? [] : w.prices;
+  const key = `${w.shape}|${w.essences.join(',')}|${twists.join(',')}|${prices.join(',')}|${gen}|${Shapes.version}.${Essences.version}.${Twists.version}.${Prices.version}`;
   let base = cache.get(key);
   if (!base) {
-    base = build(w, twists, gen, key);
+    base = build(w, twists, gen, key, prices);
     if (cache.size >= CACHE_MAX) cache.clear();
     cache.set(key, base);
   }
@@ -116,10 +129,11 @@ export function clearCompileCache() {
   cache.clear();
 }
 
-function build(w, twists, gen, key) {
+function build(w, twists, gen, key, prices = []) {
   const shapeDef = Shapes.get(w.shape);
   const essenceDefs = w.essences.map((id) => Essences.get(id));
   const twistDefs = twists.map((id) => Twists.get(id));
+  const priceDefs = prices.map((id) => Prices.get(id));
   const s = shapeDef.base;
   const n = essenceDefs.length;
 
@@ -150,7 +164,7 @@ function build(w, twists, gen, key) {
     ok: true,
     reason: null,
     key,
-    weave: { id: w.id, name: w.name, shape: w.shape, essences: w.essences.slice(), twists: twists.slice() },
+    weave: { id: w.id, name: w.name, shape: w.shape, essences: w.essences.slice(), twists: twists.slice(), prices: prices.slice() },
     id: null,
     name: '',
     autoName: '',
@@ -162,6 +176,8 @@ function build(w, twists, gen, key) {
     essenceDefs,
     twists: twists.slice(),
     twistDefs,
+    prices: prices.slice(),
+    priceDefs,
     gen,
     input: shapeDef.input === 'hold' ? 'hold' : 'tap',
     held: shapeDef.input === 'hold',
@@ -221,7 +237,7 @@ function build(w, twists, gen, key) {
   // Hooks: twists first (in the order the player set them), then any essence hooks.
   plan.hooks = {};
   for (const h of HOOKS) plan.hooks[h] = [];
-  for (const d of [...twistDefs, ...essenceDefs]) for (const h of HOOKS) if (typeof d[h] === 'function') plan.hooks[h].push(d[h]);
+  for (const d of [...twistDefs, ...essenceDefs, ...priceDefs]) for (const h of HOOKS) if (typeof d[h] === 'function') plan.hooks[h].push(d[h]);
   for (const h of HOOKS) if (!plan.hooks[h].length) plan.hooks[h] = EMPTY;
 
   for (const t of twistDefs) {
@@ -239,6 +255,13 @@ function build(w, twists, gen, key) {
       console.warn(`[magic] essence ${e.id} onPlan failed`, err);
     }
   }
+  for (const d of priceDefs) {
+    try {
+      d.onPlan?.(plan);
+    } catch (err) {
+      console.warn(`[magic] price ${d.id} onPlan failed`, err);
+    }
+  }
   plan.count = clamp(Math.round(plan.count) || 1, 1, 9);
 
   // Power budget: never free, never useless.
@@ -250,9 +273,14 @@ function build(w, twists, gen, key) {
   if (plan.input === 'hold') plan.drain = plan.cost; // mana per second while a beam is held
 
   plan.autoName = weaveName(plan);
+  // A price names the weave first: "Blood-bought Ember Bolt".
+  for (const d of priceDefs.slice().reverse()) if (d.adj && !plan.autoName.startsWith(d.adj)) plan.autoName = `${d.adj} ${plan.autoName}`;
   plan.name = plan.autoName;
-  plan.id = w.id || `w:${plan.weave.shape}:${plan.weave.essences.join('+')}:${plan.weave.twists.join('+')}`;
+  plan.id = w.id || `w:${plan.weave.shape}:${plan.weave.essences.join('+')}:${plan.weave.twists.join('+')}${prices.length ? `:${prices.join('+')}` : ''}`;
   plan.description = describeWeave(plan);
+  // Every cast pays: the gain, and the price in plain words.
+  for (const d of priceDefs) plan.description += ` Price (${d.name}): ${d.gainText}; ${d.costText}.`;
+  plan.priceText = priceDefs.map((d) => d.costText).join('; ');
   try {
     plan.aim = { ...shapeDef.aim(plan) };
   } catch {

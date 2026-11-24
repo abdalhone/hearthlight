@@ -956,6 +956,204 @@ const ICONS = {
   },
 };
 
+// ---- gear and buff food (DESIGN §26) ----
+// Weapons, armor, cloaks, boots and charms share a few painted forms, each in the
+// piece's own tint (src/gear/gear_data.js), so a new piece is one line here.
+
+function tintRamp(hex, n = 5) {
+  const c = String(hex || '#a0a0a0').replace('#', '');
+  const r = parseInt(c.slice(0, 2), 16);
+  const g = parseInt(c.slice(2, 4), 16);
+  const b = parseInt(c.slice(4, 6), 16);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const k = 0.32 + (i / (n - 1)) * 1.0; // dark .. light
+    const lift = i === n - 1 ? 38 : 0;
+    const f = (v) => Math.max(0, Math.min(255, Math.round(v * k + lift)));
+    out.push(`#${[f(r), f(g), f(b)].map((v) => v.toString(16).padStart(2, '0')).join('')}`);
+  }
+  return out;
+}
+
+function paintBlade(p, { blade, guard = GOLD, grip = ['#2a1a16', '#4a2c20', '#6b412a', '#8c5a35'], len = 1, broad = 1, gem = null, curve = 0 }) {
+  const tipX = 6.2 + 7.2 * len;
+  const tipY = 9.8 - 7.2 * len;
+  const mask = union(capsule(6.2, 9.8, tipX - curve, tipY + curve * 0.3, 1.05 * broad), capsule(tipX - curve, tipY + curve * 0.3, tipX + 0.8, tipY - 0.8, 0.55 * broad));
+  p.shape(mask, [blade[1], blade[2], blade[3], blade[4]], { k: 1.8 });
+  for (let k = 0; k < Math.round(5 * len); k++) p.set(7 + k, 8 - k, k < 3 ? blade[4] : '#f2f4f8');
+  p.shape(capsule(4.6, 11.4, 3.2, 12.8, 0.8), grip, { k: 1.6 });
+  p.shape(capsule(3.4, 8.4, 7.6, 12.6, 0.85), [guard[1], guard[2], guard[3], guard[4]], { k: 1.8 });
+  p.shape(ellipseMask(2.5, 13.5, 1.3, 1.3), [guard[1], guard[2], guard[3], guard[4]], { k: 1.6 });
+  if (gem) {
+    p.set(5, 11, gem);
+    p.set(6, 10, gem);
+  }
+  p.after.push([Math.min(14, Math.round(tipX + 0.6)), Math.max(1, Math.round(tipY - 0.6)), '#ffffff']);
+}
+
+function paintCleaver(p, tint) {
+  const steel = tintRamp(tint);
+  p.shape(union(capsule(5, 10, 11.5, 3.5, 2.2), capsule(10, 6, 13, 2.2, 1.6)), [steel[1], steel[2], steel[3], steel[4]], { k: 1.6 });
+  for (let k = 0; k < 4; k++) p.set(6 + k, 10 - k, steel[0]); // notches along the back
+  p.shape(capsule(4.2, 11.6, 2.4, 13.6, 0.9), ['#2a1a16', '#4a2c20', '#6b412a', '#8c5a35'], { k: 1.6 });
+  p.set(12, 4, '#ffffff');
+}
+
+function paintKnife(p, tint) {
+  const bone = tintRamp(tint);
+  p.shape(taper(5.4, 10.6, 13.2, 2.4, 1.3, 0.3), [bone[1], bone[2], bone[3], bone[4]], { k: 1.8 });
+  p.shape(capsule(5, 11, 2.6, 13.6, 1), ['#3a2418', '#5a3a26', '#7a5236', '#9a6c46'], { k: 1.6 });
+  p.rect(4, 10, 2, 1, IRON[3]);
+  p.set(12, 3, '#ffffff');
+}
+
+function paintArmor(p, tint, { mail = false, plate = false, collar = null } = {}) {
+  const r = tintRamp(tint);
+  const torso = (x, y) => {
+    if (y < 3.2 || y > 14) return false;
+    const half = y < 6 ? 2.6 + (y - 3.2) * 1.5 : y < 11 ? 6.2 - (y - 6) * 0.18 : 5.4;
+    return Math.abs(x - 8) <= half && !(y < 5.6 && Math.abs(x - 8) < 1.6);
+  };
+  p.shape(torso, [r[0], r[1], r[2], r[3], r[4]], { k: 1.5 });
+  if (mail) for (let y = 6; y <= 13; y++) for (let x = 3; x <= 13; x++) if (p.get(x, y) && (x + y * 2) % 3 === 0) p.set(x, y, r[1]);
+  if (plate) {
+    for (let x = 4; x <= 12; x++) p.set(x, 9, r[1]);
+    for (let y = 6; y <= 13; y++) p.set(8, y, y < 9 ? r[4] : r[3]);
+    p.set(5, 6, r[4]);
+    p.set(11, 6, r[2]);
+  } else {
+    for (let y = 7; y <= 13; y += 3) p.set(8, y, GOLD[3]); // rivets or toggles
+  }
+  if (collar) for (let x = 6; x <= 10; x++) if (p.get(x, 5)) p.set(x, 5, collar);
+  for (let x = 3; x <= 13; x++) if (p.get(x, 13)) p.set(x, 13, r[0]);
+}
+
+function paintCloak(p, tint, lining) {
+  const r = tintRamp(tint);
+  const l = tintRamp(lining || tint);
+  p.shape((x, y) => y >= 3 && y <= 14 && Math.abs(x - 8) <= 1.8 + (y - 3) * 0.48, [r[0], r[1], r[2], r[3], r[4]], { k: 1.3 });
+  for (let y = 6; y <= 13; y++) p.set(8 + (y % 3 === 0 ? 1 : 0), y, r[1]); // the fold down the back
+  for (let x = 2; x <= 14; x++) if (p.get(x, 14)) p.set(x, 14, l[2]); // lining at the hem
+  p.shape(ellipseMask(8, 4.2, 2.6, 1.3), [l[1], l[2], l[3], l[4]], { k: 1.4 }); // hood edge
+  p.set(8, 5, GOLD[4]);
+  p.set(7, 5, GOLD[2]);
+}
+
+function paintBoots(p, tint) {
+  const r = tintRamp(tint);
+  const boot = (ox) => union(capsule(ox + 2, 3.5, ox + 2, 10.5, 1.8), capsule(ox + 2, 11.5, ox + 4.6, 12.2, 1.6));
+  p.shape(boot(2), [r[0], r[1], r[2], r[3]], { k: 1.4 });
+  p.shape(boot(8), [r[1], r[2], r[3], r[4]], { k: 1.4 });
+  for (const ox of [2, 8]) {
+    p.rect(ox, 13, 6, 1, '#2a1a16');
+    p.set(ox + 1, 5, r[4]);
+    p.set(ox + 2, 3, r[0]);
+  }
+}
+
+function paintCharm(p, tint, form) {
+  const r = tintRamp(tint);
+  // The cord the charm hangs from.
+  p.line(4, 1, 8, 5, '#c8b89a');
+  p.line(12, 1, 8, 5, '#a89878');
+  if (form === 'bead') {
+    p.blob(8, 9.5, 3.6, 3.6, r, null, true);
+    p.set(7, 8, '#ffffff');
+  } else if (form === 'tooth') {
+    p.shape(taper(8, 6, 8.6, 14, 2, 0.4), [BONE[1], BONE[2], BONE[3], BONE[4]], { k: 1.6 });
+    for (let y = 6; y <= 8; y++) p.set(8, y, IRON[3]);
+  } else if (form === 'bone') {
+    p.shape(union(capsule(5.5, 9.5, 10.5, 9.5, 1.1), ellipseMask(5, 8.6, 1.4, 1.4), ellipseMask(5, 10.4, 1.4, 1.4), ellipseMask(11, 8.6, 1.4, 1.4), ellipseMask(11, 10.4, 1.4, 1.4)), [BONE[1], BONE[2], BONE[3], BONE[4]], { k: 1.6 });
+  } else if (form === 'knot') {
+    p.blob(8, 9.5, 3, 3, ['#2a2026', '#4a3a3a', '#6a5a50', '#8a7a68'], null, false);
+    p.set(8, 9, '#ffb047');
+    p.set(7, 10, '#e0603a');
+    for (const [x, y] of [[5, 7], [11, 7], [5, 12], [11, 12], [8, 6]]) p.set(x, y, r[3]);
+  } else if (form === 'thread') {
+    for (let x = 3; x <= 13; x++) p.set(x, 9 + Math.round(Math.sin(x * 0.9)), x % 2 ? r[3] : r[4]);
+    for (let x = 3; x <= 13; x++) p.set(x, 11 + Math.round(Math.sin(x * 0.9 + 1.5)), x % 2 ? r[2] : r[3]);
+    p.set(8, 7, GOLD[4]);
+  } else if (form === 'stone') {
+    p.blob(8, 10, 4, 3.4, r, null, true);
+    for (let x = 5; x <= 11; x += 3) p.set(x, 10, r[4]);
+  } else {
+    // glyph: a cut stone with a glowing mark
+    p.shape((x, y) => Math.abs(x - 8) + Math.abs(y - 10) * 0.9 <= 4.6, [STONE[1], STONE[2], STONE[3], STONE[4]], { k: 1.5 });
+    for (const [x, y] of [[8, 8], [8, 9], [8, 10], [7, 10], [9, 10], [8, 11], [8, 12]]) p.set(x, y, r[4]);
+    p.after.push([8, 7, '#ffffff']);
+  }
+}
+
+function paintFlask(p, liquid) {
+  const l = tintRamp(liquid);
+  const glass = ['#3a5a6a', '#6f9aa8', '#b8dde6', '#e8f6fa'];
+  p.shape((x, y) => (y >= 5 && y <= 14 && Math.abs(x - 8) <= 3.4) || (y >= 3 && y < 5 && Math.abs(x - 8) <= 1.2), glass, { k: 1.4 });
+  for (let y = 8; y <= 13; y++) for (let x = 5; x <= 11; x++) if (p.get(x, y)) p.set(x, y, x < 7 ? l[3] : x > 9 ? l[1] : l[2]);
+  for (let x = 5; x <= 11; x++) if (p.get(x, 8)) p.set(x, 8, l[4]);
+  p.rect(7, 1, 2, 2, '#8c5a35');
+  p.set(5, 6, WHITE);
+  p.set(5, 7, '#e8f6fa');
+}
+
+function paintBowl(p, soup) {
+  const bowl = [WOOD[1], WOOD[2], WOOD[3], WOOD[4]];
+  p.shape((x, y) => y >= 8 && y <= 13 && ((x - 8) / 6.2) ** 2 + ((y - 8) / 5.2) ** 2 <= 1, bowl, { k: 1.6 });
+  for (let x = 3; x <= 12; x++) p.set(x, 7, x < 6 ? soup[2] : soup[1]);
+  p.set(5, 7, soup[3]);
+  p.set(9, 7, soup[3]);
+  const steam = 'rgba(244, 234, 215, 0.7)';
+  p.after.push([5, 4, steam], [6, 3, steam], [9, 4, steam], [10, 3, steam]);
+}
+
+const GEAR_ICONS = {
+  steel_sword: (p) => paintBlade(p, { blade: ['#5a6472', '#8a96a6', '#b8c4d2', '#dfe8f2', '#ffffff'], guard: IRON, len: 1.05 }),
+  forgesung_blade: (p) => paintBlade(p, { blade: ['#6a4a1a', '#b8862a', '#e8c25a', '#ffe08a', '#fff6c8'], len: 1.1, broad: 1.1, gem: '#7fd6ff' }),
+  varek_cleaver: (p) => paintCleaver(p, '#b88a6a'),
+  greyjaw_fang: (p) => paintKnife(p, '#e8e2d0'),
+  warden_bonebrand: (p) => paintBlade(p, { blade: ['#5a6a7a', '#8aa4bc', '#bcd6ee', '#e4f2ff', '#ffffff'], guard: BONE, len: 1.15, gem: '#9a7dff', curve: 0.8 }),
+  leather_jerkin: (p) => paintArmor(p, '#8a5a3a'),
+  iron_mail: (p) => paintArmor(p, '#9aa6b4', { mail: true }),
+  lakeglass_mail: (p) => paintArmor(p, '#5fc6c0', { mail: true, collar: '#bfe6ff' }),
+  ironhand_plate: (p) => paintArmor(p, '#c2cad6', { plate: true, collar: GOLD[3] }),
+  traveler_cloak: (p) => paintCloak(p, '#6f7a7a', '#2f9a9a'),
+  murrel_cloak: (p) => paintCloak(p, '#7d4fb0', '#2f9a9a'),
+  lakewort_cloak: (p) => paintCloak(p, '#2f9a9a', '#7d4fb0'),
+  madder_mantle: (p) => paintCloak(p, '#b33a3a', '#e0a060'),
+  field_boots: (p) => paintBoots(p, '#7a5638'),
+  roadrunner_boots: (p) => paintBoots(p, '#3e5a7a'),
+  gelstep_boots: (p) => paintBoots(p, '#6cc05a'),
+  hearth_charm: (p) => paintCharm(p, '#e0603a', 'knot'),
+  lucky_knucklebone: (p) => paintCharm(p, '#efe6cf', 'bone'),
+  moonglass_bead: (p) => paintCharm(p, '#bfd8ff', 'bead'),
+  wolftooth_charm: (p) => paintCharm(p, '#dcd4c2', 'tooth'),
+  saints_thread: (p) => paintCharm(p, '#ffe08a', 'thread'),
+  humstone: (p) => paintCharm(p, '#6ab8e6', 'stone'),
+  lanternwright_glyph: (p) => paintCharm(p, '#ffd27a', 'glyph'),
+  ironbark_tonic: (p) => paintFlask(p, '#a0784a'),
+  swiftfoot_draught: (p) => paintFlask(p, '#5fd0a0'),
+  clearmind_tincture: (p) => paintFlask(p, '#7fa8ff'),
+  heartwort_salve: (p) => paintFlask(p, '#ff6b7a'),
+  emberroot_soup: (p) => paintBowl(p, ['#6a2a12', '#a8441e', '#d8642a', '#ff9a4a']),
+  travelers_pie: (p) => {
+    const crust = ['#6a4a22', '#9a6c34', '#c99a52', '#e8c27a', '#fff0c0'];
+    p.blob(8, 10, 6, 3.8, crust, null, false);
+    for (let x = 4; x <= 12; x += 2) p.set(x, 8, crust[4]);
+    p.set(7, 10, '#6a2a12');
+    p.set(9, 11, '#6a2a12');
+    p.rect(3, 12, 10, 1, crust[1]);
+  },
+  spiced_cider: (p) => {
+    const mug = [WOOD[1], WOOD[2], WOOD[3], WOOD[4]];
+    p.shape((x, y) => x >= 4 && x <= 11 && y >= 5 && y <= 14, mug, { k: 1.5 });
+    p.shape(union(capsule(12, 7, 13.5, 9, 0.9), capsule(13.5, 9, 12, 11, 0.9)), mug, { k: 1.5 });
+    for (let x = 5; x <= 10; x++) p.set(x, 5, x < 7 ? '#ffc070' : '#e0a060');
+    for (let y = 7; y <= 13; y += 3) for (let x = 4; x <= 11; x++) p.set(x, y, WOOD[1]);
+    const steam = 'rgba(244, 234, 215, 0.7)';
+    p.after.push([6, 3, steam], [7, 2, steam], [9, 3, steam]);
+  },
+};
+for (const [id, fn] of Object.entries(GEAR_ICONS)) if (!ICONS[id]) ICONS[id] = fn;
+
 // Shared fish silhouette facing left (raw and grilled fish).
 function fishBody(p, ramp, finColor) {
   p.blob(7.2, 8, 5.2, 3, ramp, null, false);

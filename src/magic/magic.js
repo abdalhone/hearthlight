@@ -3,6 +3,7 @@ import { compileWeave, validateWeave, normalizeWeave, weaveKey, planStats } from
 import { Shapes } from './shapes.js';
 import { Essences } from './essences.js';
 import { Twists } from './twists.js';
+import { Prices, PRICE_SLOTS } from './prices.js';
 import { StatusSystem, Statuses, REACTIONS } from './status.js';
 import { MagicLayer, fallbackFx, collectLights, drawBodies, drawGround } from './draw.js';
 import * as BAL from './balance.js';
@@ -62,9 +63,9 @@ import { T as TILE_IDS } from '../world/tiles.js';
 
 export const STARTER_WEAVE = Object.freeze({ id: 'spark', name: 'Spark', shape: 'bolt', essences: Object.freeze(['raw']), twists: Object.freeze([]) });
 
-const KIND_SETS = { shape: 'shapes', shapes: 'shapes', essence: 'essences', essences: 'essences', twist: 'twists', twists: 'twists' };
-const KIND_ONE = { shapes: 'shape', essences: 'essence', twists: 'twist' };
-const REGISTRY = { shapes: Shapes, essences: Essences, twists: Twists };
+const KIND_SETS = { shape: 'shapes', shapes: 'shapes', essence: 'essences', essences: 'essences', twist: 'twists', twists: 'twists', price: 'prices', prices: 'prices' };
+const KIND_ONE = { shapes: 'shape', essences: 'essence', twists: 'twist', prices: 'price' };
+const REGISTRY = { shapes: Shapes, essences: Essences, twists: Twists, prices: Prices };
 const GRASSY = new Set([TILE_IDS.GRASS, TILE_IDS.TALL_GRASS, TILE_IDS.FOREST, TILE_IDS.FLOWERBED, TILE_IDS.FARMLAND].filter((v) => v != null));
 const DEFAULT_MODE = { projectile: 'fly', area: 'burst' };
 const TAU = Math.PI * 2;
@@ -128,7 +129,8 @@ export class Magic {
     this.cands = [];
     this.shots = [];
     this.status = new StatusSystem(game, this);
-    this.unlocked = { shapes: new Set(['bolt']), essences: new Set(['raw']), twists: new Set() };
+    this.unlocked = { shapes: new Set(['bolt']), essences: new Set(['raw']), twists: new Set(), prices: new Set() };
+    this.priceSlots = PRICE_SLOTS; // prices a weave may carry (DESIGN §25)
     this.sources = {};
     this.slotCount = BAL.SLOTS_START;
     this.essenceSlots = BAL.ESSENCE_SLOTS_START;
@@ -162,7 +164,7 @@ export class Magic {
     this._warned = new Set();
     this.capped = 0;
     this.layer = new MagicLayer(this);
-    this.registry = { shapes: Shapes, essences: Essences, twists: Twists, statuses: Statuses, reactions: REACTIONS };
+    this.registry = { shapes: Shapes, essences: Essences, twists: Twists, prices: Prices, statuses: Statuses, reactions: REACTIONS };
     try {
       game.bus?.on?.('level_up', (p) => {
         if (p?.entity && p.entity === game.player) this._recomputeMax();
@@ -965,8 +967,9 @@ export class Magic {
       if ((g.state && g.state !== 'playing') || g.paused) return { ok: false, reason: 'busy', message: 'Not now.' };
       const left = r.slot >= 0 ? this.cooldowns[r.slot] : Math.max(0, (this.weaveReady.get(r.key) ?? 0) - this.t);
       if (left > 0.001) return { ok: false, reason: 'cooldown', message: 'Not ready yet.', cooldown: left };
-      const need = r.plan.input === 'hold' ? Math.min(r.plan.cost, Math.max(2, r.plan.cost * 0.35)) : r.plan.cost;
-      if (this.mana.cur + 1e-6 < need) return { ok: false, reason: 'mana', message: 'Not enough mana.', cost: need };
+      const cost = this.costOf(caster, r.plan);
+      const need = r.plan.input === 'hold' ? Math.min(cost, Math.max(2, cost * 0.35)) : cost;
+      if (need > 0 && this.mana.cur + 1e-6 < need) return { ok: false, reason: 'mana', message: 'Not enough mana.', cost: need };
     }
     return { ok: true };
   }
@@ -975,13 +978,36 @@ export class Magic {
     const r = this._resolve(caster, slot);
     if (!r.ok) return { ok: false, reason: r.reason, message: r.message, plan: r.plan || null, cooldown: 0, cost: 0 };
     const c = this._check(caster, r);
-    return { ok: c.ok, reason: c.reason || null, message: c.message || '', plan: r.plan, cooldown: r.slot >= 0 ? this.cooldowns[r.slot] : 0, cost: r.plan.cost };
+    return { ok: c.ok, reason: c.reason || null, message: c.message || '', plan: r.plan, cooldown: r.slot >= 0 ? this.cooldowns[r.slot] : 0, cost: this.costOf(caster, r.plan) };
+  }
+
+  // The stat pipeline (DESIGN §26, game.stats) shapes what a weave asks of its weaver:
+  // mana cost (overdraw makes it free), cooldown (Focus, charms) and cast speed (berserk,
+  // emberblood). Without a pipeline the plan's own numbers stand.
+  _stat(caster, id, dflt = 1) {
+    const S = this.game.stats;
+    if (!S || !caster || typeof S.get !== 'function') return dflt;
+    const v = S.get(caster, id);
+    return Number.isFinite(v) ? v : dflt;
+  }
+
+  costOf(caster, plan) {
+    const base = plan?.cost || 0;
+    if (!this.isPlayer(caster)) return base;
+    return Math.round(base * this._stat(caster, 'manaCost', 1) * 10) / 10;
+  }
+
+  cooldownOf(caster, plan) {
+    const base = plan?.cooldown || 0;
+    if (!this.isPlayer(caster)) return base;
+    const k = this._stat(caster, 'cooldown', 1) / Math.max(0.3, this._stat(caster, 'castSpeed', 1));
+    return Math.max(BAL.COOLDOWN_MIN * 0.75, base * k);
   }
 
   _pay(caster, r, cost, opts) {
     if (opts.free || !this.isPlayer(caster)) return;
-    this.spendMana(cost);
-    const cd = r.plan.cooldown;
+    this.spendMana(this.costOf(caster, r.plan));
+    const cd = this.cooldownOf(caster, r.plan);
     if (r.slot >= 0) {
       this.cooldowns[r.slot] = cd;
       this.cooldownTotals[r.slot] = cd;
@@ -1131,7 +1157,7 @@ export class Magic {
     cast.curPlan = plan;
     cast.curMul = mul;
     cast.angle = angle;
-    this._emitMul = mul * this.powerOf(caster);
+    this._emitMul = mul * this.powerOf(caster) * (plan.shape === 'strike' && this.isPlayer(caster) ? this._stat(caster, 'strike', 1) : 1);
     this._emitted.length = 0;
     try {
       plan.shapeDef.emit(ctx);
@@ -1157,6 +1183,8 @@ export class Magic {
   // caster.magicPower (bosses).
   powerOf(caster) {
     if (Number.isFinite(caster?.magicPower)) return caster.magicPower;
+    // The pipeline's weave power holds level, the Weave attribute, gear and prices.
+    if (this.isPlayer(caster) && this.game.stats?.get) return this._stat(caster, 'spellPower', 1);
     if (this.isPlayer(caster)) return 1 + BAL.POWER_PER_LEVEL * (Math.max(1, caster.level || 1) - 1);
     return 1;
   }
@@ -1217,8 +1245,9 @@ export class Magic {
     const hold = { caster, r, plan, mode, t: 0, aim: { x: aim?.x, y: aim?.y, target: aim?.target || null }, cast: null, opts, k: 0 };
     this.holds.set(caster, hold);
     if (mode === 'hold') {
-      const first = Math.min(plan.cost, Math.max(2, plan.cost * 0.35));
-      if (!opts.free && this.isPlayer(caster)) this.spendMana(first);
+      const full = this.costOf(caster, plan);
+      const first = Math.min(full, Math.max(2, full * 0.35));
+      if (!opts.free && this.isPlayer(caster) && first > 0) this.spendMana(first);
       hold.cast = this._newCast(caster, plan, aim, { slot: r.slot, held: true });
       hold.cast.holding = true;
       this._emit(hold.cast, plan, 1);
@@ -1256,7 +1285,7 @@ export class Magic {
     if (h.mode === 'hold') {
       this._endHeld(h);
       if (!h.opts.free && this.isPlayer(caster)) {
-        const cd = h.plan.cooldown;
+        const cd = this.cooldownOf(caster, h.plan);
         if (h.r.slot >= 0) {
           this.cooldowns[h.r.slot] = cd;
           this.cooldownTotals[h.r.slot] = cd;
@@ -1319,13 +1348,13 @@ export class Magic {
         continue;
       }
       if (h.mode === 'charge') {
-        const k = Math.min(1, h.t / Math.max(0.1, h.plan.charge || BAL.CHARGE_TIME));
+        const k = Math.min(1, (h.t * (this.isPlayer(caster) ? this._stat(caster, 'castSpeed', 1) : 1)) / Math.max(0.1, h.plan.charge || BAL.CHARGE_TIME));
         if (k >= 1 && h.k < 1) this.fx('charge', { caster, plan: h.plan, k: 1, full: true });
         h.k = k;
       } else if (h.mode === 'hold') {
         h.k = 1;
         if (!h.opts.free && this.isPlayer(caster)) {
-          const need = (h.plan.drain || h.plan.cost) * dt;
+          const need = (h.plan.drain || h.plan.cost) * this._stat(caster, 'manaCost', 1) * dt;
           if (this.mana.cur < need) {
             this.castRelease(caster);
             continue;
@@ -1359,12 +1388,20 @@ export class Magic {
     return this.mana.max;
   }
 
-  _recomputeMax(fill = 0) {
-    const lvl = Math.max(1, this.game.player?.level || 1);
-    const max = Math.min(BAL.MANA_CAP, BAL.MANA_START + (lvl - 1) * BAL.MANA_PER_LEVEL + this.manaBonus);
+  // growFills: a level or a mission's gift fills the new room; gear and buffs (the stat
+  // pipeline syncing) only move the ceiling.
+  _recomputeMax(fill = 0, growFills = true) {
+    const P = this.game.player;
+    const S = this.game.stats;
+    let max;
+    if (P && S?.get && S.isManaged?.(P)) max = Math.round(Math.min(BAL.MANA_CAP, Math.max(5, S.get(P, 'maxMana'))));
+    else {
+      const lvl = Math.max(1, P?.level || 1);
+      max = Math.min(BAL.MANA_CAP, BAL.MANA_START + (lvl - 1) * BAL.MANA_PER_LEVEL + this.manaBonus);
+    }
     const grew = max - this.mana.max;
     this.mana.max = max;
-    this.mana.cur = Math.min(max, this.mana.cur + Math.max(0, fill, grew > 0 ? grew : 0));
+    this.mana.cur = Math.min(max, this.mana.cur + Math.max(0, fill, growFills && grew > 0 ? grew : 0));
     this._manaEvent(true);
   }
 
@@ -1382,16 +1419,18 @@ export class Magic {
       return;
     }
     if (m.cur >= m.max) return;
-    m.cur = Math.min(m.max, m.cur + (BAL.MANA_REGEN + m.max * BAL.MANA_REGEN_SHARE) * dt);
+    const k = this._stat(this.game.player, 'manaRegen', 1);
+    if (!(k > 0)) return;
+    m.cur = Math.min(m.max, m.cur + (BAL.MANA_REGEN + m.max * BAL.MANA_REGEN_SHARE) * k * dt);
     this._manaEvent(false);
   }
 
   compile(weave) {
-    return compileWeave(weave, { unlocked: this.unlocked, maxEssences: this.essenceSlots, maxTwists: this.twistSlots });
+    return compileWeave(weave, { unlocked: this.unlocked, maxEssences: this.essenceSlots, maxTwists: this.twistSlots, maxPrices: this.priceSlots });
   }
 
   validate(weave) {
-    return validateWeave(weave, { unlocked: this.unlocked, maxEssences: this.essenceSlots, maxTwists: this.twistSlots });
+    return validateWeave(weave, { unlocked: this.unlocked, maxEssences: this.essenceSlots, maxTwists: this.twistSlots, maxPrices: this.priceSlots });
   }
 
   slotPlan(i) {
@@ -1422,7 +1461,7 @@ export class Magic {
     const plan = this.compile(weave);
     if (!plan.ok) return { ok: false, reason: plan.reason, plan };
     const n = normalizeWeave(weave);
-    this.slots[i] = { id: n.id || `weave${i}_${Date.now().toString(36)}`, name: n.name, shape: n.shape, essences: n.essences, twists: n.twists };
+    this.slots[i] = { id: n.id || `weave${i}_${Date.now().toString(36)}`, name: n.name, shape: n.shape, essences: n.essences, twists: n.twists, prices: n.prices };
     this._planCache.delete(i);
     this.game.bus?.emit('weave_slots', { slot: i, weave: this.slots[i] });
     return { ok: true, plan: this.slotPlan(i) };
@@ -1480,7 +1519,7 @@ export class Magic {
 
   // Developer helper for testing (not shown in any UI): everything, every slot.
   unlockAll() {
-    for (const k of ['shapes', 'essences', 'twists']) for (const id of REGISTRY[k].ids()) this.unlock(k, id, 'dev');
+    for (const k of ['shapes', 'essences', 'twists', 'prices']) for (const id of REGISTRY[k].ids()) this.unlock(k, id, 'dev');
     while (this.unlockSlot());
     while (this.unlockEssenceSlot());
     while (this.unlockTwistSlot());
@@ -1499,7 +1538,8 @@ export class Magic {
       shapes: pick('shapes', Shapes, (d) => ({ noun: d.noun, kind: d.kind, input: d.input, base: { ...d.base } })),
       essences: pick('essences', Essences, (d) => ({ word: d.word, noun: d.noun, palette: { ...d.palette }, status: d.status?.id || null, tags: d.tags.slice(), hue: d.hue })),
       twists: pick('twists', Twists, (d) => ({ adj: d.adj, clause: d.clause?.[0] || d.sentence || '' })),
-      limits: { slots: this.slotCount, essences: this.essenceSlots, twists: this.twistSlots },
+      prices: pick('prices', Prices, (d) => ({ adj: d.adj, gain: d.gainText, cost: d.costText, color: d.color })),
+      limits: { slots: this.slotCount, essences: this.essenceSlots, twists: this.twistSlots, prices: this.priceSlots },
     };
   }
 
@@ -1722,9 +1762,9 @@ export class Magic {
   serialize() {
     return {
       v: 1,
-      unlocked: { shapes: [...this.unlocked.shapes], essences: [...this.unlocked.essences], twists: [...this.unlocked.twists] },
+      unlocked: { shapes: [...this.unlocked.shapes], essences: [...this.unlocked.essences], twists: [...this.unlocked.twists], prices: [...this.unlocked.prices] },
       sources: { ...this.sources },
-      slots: this.slots.map((w) => (w ? { id: w.id || null, name: w.name || null, shape: w.shape, essences: [...w.essences], twists: [...w.twists] } : null)),
+      slots: this.slots.map((w) => (w ? { id: w.id || null, name: w.name || null, shape: w.shape, essences: [...w.essences], twists: [...w.twists], prices: [...(w.prices || [])] } : null)),
       slotCount: this.slotCount,
       essenceSlots: this.essenceSlots,
       twistSlots: this.twistSlots,
@@ -1736,7 +1776,7 @@ export class Magic {
   deserialize(d) {
     if (!d || typeof d !== 'object') return;
     const u = d.unlocked || {};
-    for (const k of ['shapes', 'essences', 'twists']) {
+    for (const k of ['shapes', 'essences', 'twists', 'prices']) {
       const set = new Set(k === 'shapes' ? ['bolt'] : k === 'essences' ? ['raw'] : []);
       for (const id of Array.isArray(u[k]) ? u[k] : []) if (typeof id === 'string' && REGISTRY[k].has(id)) set.add(id);
       this.unlocked[k] = set;
@@ -1757,7 +1797,8 @@ export class Magic {
         n.essences = n.essences.filter((e) => Essences.has(e));
         if (!n.essences.length) n.essences = ['raw'];
         n.twists = n.twists.filter((t) => Twists.has(t));
-        this.slots[i] = { id: n.id, name: n.name, shape: n.shape, essences: n.essences, twists: n.twists };
+        n.prices = n.prices.filter((t) => Prices.has(t));
+        this.slots[i] = { id: n.id, name: n.name, shape: n.shape, essences: n.essences, twists: n.twists, prices: n.prices };
       }
     }
     this.manaBonus = Number.isFinite(d.manaBonus) ? d.manaBonus : 0;

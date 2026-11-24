@@ -426,18 +426,40 @@ export class Combat {
     if (target.invuln > 0 && !opts.dot) return 0;
 
     const kind = opts.kind || 'melee';
+    // The stat pipeline (DESIGN §26, game.stats) when present: crit, dodge, damage dealt
+    // and taken (statuses, prices, gear), and an armor floor. Without it, the old rules.
+    const S = g.stats && typeof g.stats.get === 'function' ? g.stats : null;
+    const st = (a, k, d) => {
+      const v = S.get(a, k);
+      return Number.isFinite(v) ? v : d;
+    };
+    const hitter = source && source.type === 'actor' ? source : null;
+    if (S && hitter && !opts.dot && kind !== 'fall' && kind !== 'oath') {
+      const dodge = st(target, 'dodge', 0);
+      if (dodge > 0 && this.random() < dodge) {
+        this._dodged(target, hitter);
+        return 0;
+      }
+    }
     let crit = opts.crit;
-    if (crit == null) crit = !!source && kind !== 'fall' && !opts.dot && this.random() < CRIT_CHANCE;
+    if (crit == null) crit = !!source && kind !== 'fall' && !opts.dot && this.random() < (S && hitter ? st(hitter, 'crit', CRIT_CHANCE) : CRIT_CHANCE);
+    const critMul = S && hitter ? st(hitter, 'critMul', CRIT_MUL) : CRIT_MUL;
     const variance = opts.exact ? 1 : 0.9 + this.random() * 0.2;
     let mul = 1;
     if (opts.damageTypes || opts.damageType) mul *= this.resistMul(target, opts.damageTypes, opts.damageType);
-    const tf = target.statusFlags;
-    if (tf && tf.count) mul *= tf.dmgTaken;
-    const sf = source && source.type === 'actor' ? source.statusFlags : null;
-    if (sf && sf.count) mul *= sf.dmgDealt;
-    const raw = Math.max(0, Number(amount) || 0) * variance * (crit ? CRIT_MUL : 1) * mul;
+    if (S) {
+      mul *= st(target, 'dmgTaken', 1);
+      if (hitter) mul *= st(hitter, 'dmgDealt', 1);
+    } else {
+      const tf = target.statusFlags;
+      if (tf && tf.count) mul *= tf.dmgTaken;
+      const sf = hitter ? hitter.statusFlags : null;
+      if (sf && sf.count) mul *= sf.dmgDealt;
+    }
+    const raw = Math.max(0, Number(amount) || 0) * variance * (crit ? critMul : 1) * mul;
     const def = Math.max(0, (target.def || 0) - (opts.penetration || 0));
-    const dealt = Math.max(1, Math.round(raw - def));
+    const floor = S && Number.isFinite(S.armorFloor) ? raw * S.armorFloor : 0;
+    const dealt = Math.max(1, Math.round(Math.max(raw - def, floor)));
     target.hp = Math.max(0, target.hp - dealt);
 
     const isPlayer = this.isPlayer(target);
@@ -475,8 +497,9 @@ export class Combat {
     }
     if (opts.launch > 0 && !target.flying) this._launch(target, opts.launch / mass);
 
-    // Brief hit-stun (bosses with superArmor shrug it off; status ticks never stun).
-    if (!target.superArmor && target.hp > 0 && !opts.noStagger && !opts.dot) {
+    // Brief hit-stun (bosses with superArmor shrug it off; status ticks never stun; berserk's
+    // poise holds the player up).
+    if (!target.superArmor && target.hp > 0 && !opts.noStagger && !opts.dot && !(S && st(target, 'poise', 0) >= 1)) {
       target.setState('hurt', isPlayer ? 0.16 : 0.22);
       target.stateTime = 0;
       target.animTime = 0;
@@ -669,6 +692,14 @@ export class Combat {
     }
   }
 
+  // A clean miss: Grace, a light cloak, quick boots (DESIGN §26).
+  _dodged(target, by) {
+    this._number(target.x, target.y - 24, 'dodge', '#bfe6ff', { kind: 'dodge' });
+    this._sound('dodge', target.x, target.y, { volume: 0.5, pitch: 1.3 });
+    target.invuln = Math.max(target.invuln || 0, this.isPlayer(target) ? 0.25 : 0.1);
+    this.game.bus?.emit('dodged', { target, source: by });
+  }
+
   _xpPopup(target, xp) {
     this._number(target.x, target.y - 34, `+${xp} xp`, COLORS.xp, { kind: 'xp' });
   }
@@ -695,6 +726,8 @@ export class Combat {
     const g = this.game;
     if (!target || target.dead || target.downed || target.removed) return false;
     if (by && by.type === 'projectile') by = by.owner || null;
+    // Lastlight (DESIGN §25) holds the wound shut once, before the fall.
+    if (this.isPlayer(target) && g.prices?.preventFall?.(target)) return false;
     target.hp = 0;
     target.downed = true;
     target.setState?.('downed');
@@ -783,7 +816,7 @@ export class Combat {
     if (!def || !actor.inventory.has(itemId)) return false;
     const consumable = def.type === 'food' || def.type === 'potion' || Number(def.heal) > 0;
     if (!consumable) return false;
-    if (def.type === 'potion' && actor.hp >= actor.maxHp) {
+    if (def.type === 'potion' && actor.hp >= actor.maxHp && !def.buff) {
       if (actor === g.player) this._toast("You're already in full health. Better save the potion.", 'info');
       return false;
     }
@@ -818,6 +851,11 @@ export class Combat {
       actor.hp = actor.maxHp;
       gained++;
       this._levelUpFx(actor);
+      // A managed actor's numbers come from the pipeline: let the level land, then heal.
+      if (this.game.stats?.isManaged?.(actor)) {
+        this.game.stats.refresh(actor);
+        actor.hp = actor.maxHp;
+      }
       this.game.bus?.emit('level_up', { entity: actor, level: actor.level });
     }
     return gained;

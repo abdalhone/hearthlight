@@ -1,3 +1,5 @@
+import { GEAR_ITEMS, BUFF_ITEMS } from '../gear/gear_data.js';
+
 // Item definitions and the Inventory class. Item ids are part of the shared
 // contract (DESIGN.md, "Items"): AI plugins, jobs, NPC gifts and quests use them.
 // Owners may add items; never rename or remove an id.
@@ -39,6 +41,10 @@ export const ITEMS = {
   smoked_eel: { name: 'Smoked Eel', type: 'food', value: 12, heal: 16, desc: "From Corran Dell's net-shed. Garrick tells Brightwater it comes from Saltmere." },
   wool_cloak: { name: 'Wool Cloak', type: 'gift', value: 30, desc: 'Dyed and sewn by Sabeth Coll: murrel violet with a lake-wort teal lining.' },
 };
+
+// Gear and buff food (DESIGN §26, src/gear/gear_data.js): new ids, never overriding one
+// already here (iron_sword stays the weapon it always was).
+for (const [id, def] of Object.entries({ ...GEAR_ITEMS, ...BUFF_ITEMS })) if (!ITEMS[id]) ITEMS[id] = def;
 
 export function itemDef(id) {
   return ITEMS[id] || null;

@@ -21,7 +21,8 @@ test('registries hold every fixed id, and every entry fills in completely', () =
   for (const id of SHAPE_IDS) assert.ok(Shapes.has(id), `shape ${id}`);
   for (const id of ESSENCE_IDS) assert.ok(Essences.has(id), `essence ${id}`);
   for (const id of TWIST_IDS) assert.ok(Twists.has(id), `twist ${id}`);
-  assert.equal(Object.keys(SHAPES).length, 12);
+  assert.equal(Object.keys(SHAPES).length, 13, 'twelve shapes, and the surge the prices brought (DESIGN §25)');
+  assert.ok(Shapes.has('surge'));
   assert.equal(Object.keys(ESSENCES).length, 13);
   assert.equal(Object.keys(TWISTS).length, 16);
   for (const id of Essences.ids()) {

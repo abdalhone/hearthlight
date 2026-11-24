@@ -35,6 +35,7 @@ import { spawnCreature } from '../entities/monsters.js';
 import { Spawner } from '../entities/spawner.js';
 import { Combat } from '../entities/combat.js';
 import { Magic } from '../magic/magic.js';
+import { installProgression, saveProgression, loadProgression } from '../progression/index.js';
 
 import { ActionRegistry } from '../ai/brain/actions.js';
 import { PluginRegistry } from '../ai/plugins/registry.js';
@@ -91,6 +92,9 @@ export class Game {
     // The Weave (DESIGN §22): spells, statuses, mana and slots. Its look comes from
     // game.magicFx when the fx layer is present (src/magic/fx.js), else a plain fallback.
     this.magic = new Magic(this);
+    // Stats, levels and points, gear and prices (DESIGN §25–26): game.stats,
+    // game.progression, game.gear, game.prices.
+    installProgression(this);
     this.interactions = new Interactions(this);
     this.actions = new ActionRegistry(this);
     this.plugins = new PluginRegistry(this);
@@ -287,6 +291,8 @@ export class Game {
       this.combat.update(wdt);
       this.survival?.update(wdt);
       this.magic.update(wdt);
+      this.stats?.update(wdt);
+      this.prices?.update(wdt);
       this.spawner.update(wdt);
       this.bosses?.update(wdt);
       this.plugins.update(wdt);
@@ -338,6 +344,7 @@ export class Game {
       brain: this.brain.serialize?.() ?? null,
       magic: this.magic?.serialize?.() ?? null,
       survival: this.survival?.serialize?.() ?? null,
+      progression: saveProgression(this),
     };
   }
 
@@ -347,6 +354,7 @@ export class Game {
     this.flags = { ...(d.flags || {}) };
     this.objects?.deserialize(d.objects);
     this.player?.deserialize(d.player);
+    loadProgression(this, d.progression);
     this.magic?.deserialize?.(d.magic);
     this.companion?.deserialize(d.companion);
     for (const [id, nd] of Object.entries(d.npcs || {})) this.entities.get(id)?.deserialize?.(nd);

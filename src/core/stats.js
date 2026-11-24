@@ -34,11 +34,11 @@ export const STATS = Object.freeze({
   dodge: { label: 'Dodge chance', fmt: 'pct', min: 0, max: 0.4 },
   resist: { label: 'Status resistance', fmt: 'pct', min: 0, max: 0.75 },
   castSpeed: { label: 'Cast speed', fmt: 'mul', min: 0.3, max: 3 },
-  cooldown: { label: 'Cooldowns', fmt: 'mul', min: 0.4, max: 3 },
+  cooldown: { label: 'Cooldowns', fmt: 'mul', min: 0.4, max: 3, lowerIsBetter: true },
   swing: { label: 'Swing speed', fmt: 'mul', min: 0.4, max: 2.5 },
   dmgDealt: { label: 'Damage dealt', fmt: 'mul', min: 0, max: 10 },
-  dmgTaken: { label: 'Damage taken', fmt: 'mul', min: 0.1, max: 10 },
-  manaCost: { label: 'Mana cost', fmt: 'mul', min: 0, max: 5 },
+  dmgTaken: { label: 'Damage taken', fmt: 'mul', min: 0.1, max: 10, lowerIsBetter: true },
+  manaCost: { label: 'Mana cost', fmt: 'mul', min: 0, max: 5, lowerIsBetter: true },
   bleedout: { label: 'Bleed-out window', fmt: 'sec', min: 10, max: 300 },
   carrySpeed: { label: 'Carrying pace', fmt: 'mul', min: 0.3, max: 3 },
   poise: { label: 'Unshakable', fmt: 'flag', min: 0, max: 1 },
@@ -73,6 +73,10 @@ export const DEFAULTS = Object.freeze({
 export const SYNCED = Object.freeze(['maxHp', 'atk', 'def', 'speed']);
 
 const REGEN_AFTER_HIT = 4; // seconds after a hit before health starts to knit
+// Armor (def) takes a flat bite out of every hit, but never more than this share of it:
+// good armor matters, and nothing makes the stranger safe (the author wants death to be
+// dangerous). combat.damage reads it from game.stats.armorFloor.
+export const ARMOR_FLOOR = 0.35;
 const own = Object.prototype.hasOwnProperty;
 
 let modSeq = 0;
@@ -141,6 +145,7 @@ export class Stats {
     this.bases = new WeakMap(); // actor -> { maxHp, atk, def, speed } at level 1
     this.cache = new WeakMap(); // actor -> { stamp, v }
     this.foldsSurvival = false;
+    this.armorFloor = ARMOR_FLOOR;
     this._regen = new WeakMap(); // actor -> fractional hp
     this._lastMax = new WeakMap(); // actor -> last synced maxHp
     this.addSource('base', 'Base', (a) => this.baseOf(a), 0);
@@ -368,7 +373,7 @@ export class Stats {
     if (before !== actor.maxHp) this._lastMax.set(actor, actor.maxHp);
     if (this.isPlayer(actor)) {
       const m = this.game.magic;
-      if (m && m.mana && m.mana.max !== v.maxMana && typeof m._recomputeMax === 'function') m._recomputeMax();
+      if (m && m.mana && m.mana.max !== Math.round(Math.min(400, Math.max(5, v.maxMana))) && typeof m._recomputeMax === 'function') m._recomputeMax(0, false);
     }
   }
 
