@@ -129,6 +129,7 @@ export class Actor extends Entity {
     this.stateTime = 0;
     this.animTime = 0;
     this.lockTime = 0; // while > 0, the state is held and the actor cannot move
+    this.rootTime = 0; // while > 0, rooted in place (Lyra's Binding Light) but can still act
     this.moveIntent = { x: 0, y: 0 }; // set by controllers each step; length <= 1
     this.speedMul = 1; // running, slows
     this.knock = { x: 0, y: 0 }; // knockback velocity (px/s), decays
@@ -181,6 +182,7 @@ export class Actor extends Entity {
     if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 6);
     if (this.attackCd > 0) this.attackCd -= dt;
     if (this.lockTime > 0) this.lockTime -= dt;
+    if (this.rootTime > 0) this.rootTime = Math.max(0, this.rootTime - dt);
 
     if (this.isAlive() && this.controller) this.controller.update(this, dt);
     if (!this.isAlive()) this.moveIntent = { x: 0, y: 0 };
@@ -189,7 +191,7 @@ export class Actor extends Entity {
     let vx = this.knock.x;
     let vy = this.knock.y;
     const mi = this.moveIntent;
-    const moving = this.lockTime <= 0 && (Math.abs(mi.x) > 0.01 || Math.abs(mi.y) > 0.01);
+    const moving = this.lockTime <= 0 && this.rootTime <= 0 && (Math.abs(mi.x) > 0.01 || Math.abs(mi.y) > 0.01);
     if (moving) {
       const s = this.speed * this.speedMul;
       vx += mi.x * s;
