@@ -1307,3 +1307,127 @@ cool" voices, cutscenes with voices, and Lyra talking in that voice.
   download of the int8 model, published as artifact files), when it runs in that browser;
   otherwise claude.ai's voice where offered (desktop), otherwise the browser's own voice if
   the player enables it, otherwise silence with the text on screen. Never block the game.
+
+## 22. Magic: the Weave (`src/magic/*`)
+
+The author: "There is base magical ways of casting, like throwing or blasting or punching or
+summoning… and then there's those things that add into the path: dark power, fire, water…
+literally everything… You make a combination of all of them… If you add another thing to
+the magic system, it just works with everything else flawlessly and very fast… Colors and
+effects and powers… I start with a small blast or a projectile, and after that I kill a
+boss and I get a fire element. I can put it into my magic… make magic skills… blast with
+fire, and after that I get multiple hits… divisions… a whole magic system that makes me
+able to combine magic and fight with it."
+
+**In the story.** Nobody in Hearthvale can do what the stranger can: hold raw Drift in the
+hands and shape it with Lanternwright glyphs, the lost craft the Song was made of. The
+village calls it **weaving**. Lyra notices first (a story scene); she is a lumencrafter and
+can name what she sees, but she cannot do it. What the player weaves is seen, talked about
+and remembered (rumors, Lyra's mind). LORE gains §13 *The Weave* (written with the
+missions, never revealing §9 hidden truths).
+
+### 22.1 A weave = one Shape + Essences + Twists
+
+Every spell the player makes is data: `{ id, name?, shape, essences: [..], twists: [..] }`.
+It is compiled once into a **plan** (`compileWeave`) and cast through one generic runtime.
+Nothing is written per combination: a new shape, essence, twist, status or reaction is one
+registry entry, and it works with every other entry automatically.
+
+- **Shapes** (how it leaves the hands; `SHAPES` in `src/magic/shapes.js`): `bolt`
+  (projectile; the starting shape), `blast` (short cone burst), `strike` (a punch with an
+  impact wave), `throw` (lobbed, lands and bursts), `beam` (held line), `nova` (ring around
+  the caster), `orb` (slow, big, pulses on what it passes), `summon` (a familiar whose form
+  and attacks come from the essences), `rune` (a glyph trap on the ground), `rain` (strikes
+  falling on the aimed spot), `wall` (a barrier line), `dash` (a blink that leaves the
+  weave in a trail). Each defines base numbers (`dmg, cost, cooldown, speed, range, radius,
+  count, life`) and `emit(ctx)`, which creates **bodies**.
+- **Essences** (what it is made of; `ESSENCES` in `src/magic/essences.js`): `fire`, `water`,
+  `frost`, `storm`, `earth`, `wind`, `nature`, `poison`, `light`, `dark`, `iron`, `song`,
+  plus `raw` (unaspected violet weave, used when a weave has no essence). Each has a
+  palette `{ core, glow, spark, deep }`, a light `{ color, radius }`, a particle style
+  (`flame`, `drop`, `shard`, `spark`, `pebble`, `gust`, `leaf`, `bubble`, `mote`, `wisp`,
+  `filing`, `note`), a sound, a damage type, a status it applies (`burning`, `soaked`,
+  `chilled`→`frozen`, `shocked`, `staggered`, `knocked`, `rooted`, `poisoned`, `dazzled`,
+  `drained`, `sundered`, `charmed`…), terrain touches (fire scorches grass, frost glazes
+  water, water leaves puddles…), and `tags`. A weave may hold up to 2 essences (3 later);
+  bodies carry all of them: palettes blend, damage is split across types, every status
+  lands at reduced potency.
+- **Twists** (how it behaves; `TWISTS` in `src/magic/twists.js`) are hook objects:
+  `multishot` (+2 bodies, fanned), `split` (on hit, divides into 3 smaller), `pierce`,
+  `bounce` (ricochets), `chain` (jumps to a nearby foe), `homing`, `echo` (casts again a
+  moment later), `big`, `swift`, `burst` (explodes on hit or at the end), `linger` (leaves
+  a ground patch of its essences), `orbit` (circles the caster first), `volley` (three in
+  quick succession), `spiral` (weaving path), `leech` (heals the caster a little),
+  `charge` (hold to power up). Hooks: `onPlan(plan)`, `onEmit(bodies)`, `onSpawn(body)`,
+  `onUpdate(body, dt)`, `onHit(body, target)`, `onEnd(body)`, plus multipliers
+  (`dmg, cost, cooldown, speed, size, life`). Children made by twists (split, burst,
+  chain) inherit the weave minus that twist, with a generation cap, so nothing recurses
+  forever.
+- **Statuses and reactions** (`src/magic/status.js`): statuses carry tags; a short
+  `REACTIONS` list keyed by tag pairs gives combos (wet + shock = arcing stun, wet + frost =
+  freeze, fire + wind = spreading flames, fire + nature = wildfire, fire + wet = scalding
+  steam that blinds, earth + water = mud that slows, light + dark = eclipse burst, poison
+  + fire = toxic flare, iron + storm = conducted bolt…). An essence with no reaction
+  still works. Statuses show on actors (flicker, tint, drips, sparks, frost rime, bubbles).
+- **Numbers.** Cost = (shape cost + essence costs) × twist multipliers; cooldown and damage
+  scale the same way; every plan stays inside a power budget so a combination is never
+  free or useless. Names are generated ("Splitting Ember Bolt", "Echoing Tide Nova").
+- **Mana.** A violet bar under health (start 40, regenerates; grows with level and
+  missions). **Four weave slots** on the hotbar to start (six later).
+- **Rules of harm.** Weaves follow combat's rules (`canHarm`, crimes, friendly fire):
+  aimed at a foe they never hurt villagers or Lyra; area weaves spare friends unless the
+  player deliberately targets them (then it is an attack, with all of §19.7's weight).
+
+### 22.2 Runtime contract (`src/magic/magic.js`, `game.magic`)
+
+- `game.magic.cast(caster, slotOrWeave, aim {x, y}) → { ok, reason?, plan }`;
+  `game.magic.slots[0..5]`, `game.magic.mana {cur, max}`, `game.magic.unlocked {shapes,
+  essences, twists}` (Sets), `unlock(kind, id, source)`, `setSlot(i, weave)`,
+  `compile(weave) → plan`, `bodies` (live bodies: `{ kind: 'projectile'|'area'|'beam'|
+  'strike'|'summon'|'rune'|'wall'|'trail', x, y, vx, vy, r, angle, age, life, owner,
+  plan, essences, palette, gen }`), serialize/deserialize.
+- Bus events: `spell_cast {caster, weave, plan}`, `spell_hit {body, target, amount,
+  essences}`, `status_applied {target, status}`, `reaction {id, x, y}`,
+  `magic_unlocked {kind, id, source}`, `mana_changed {cur, max}`.
+- Visuals live in `src/magic/fx.js` (a render layer drawing every body by kind with its
+  palette, particle style and light, impacts, trails, status overlays, screen shake) and
+  sound in `src/magic/sfx.js` (synthesized, per essence and shape). Core draws a plain
+  fallback if fx is absent. Budget: 60 fps on a phone with a full screen of weaves (pooled
+  bodies and particles, hard caps).
+- **Test that it is combinatorial:** every shape × essence (and pairs) × twist (and
+  triples) compiles, casts and runs for a few simulated seconds with no error, no NaN, no
+  runaway body count, within a time budget.
+
+### 22.3 Getting magic: missions and bosses (`src/missions/*`)
+
+A mission system: givers (villagers, Lyra, the notice board), objectives (`defeat`
+species/boss, `bring` items, `reach` a place at a time, `talk`, `weave` with a given
+essence or shape, `protect`), progress tracking, a journal (Missions tab), map/HUD
+markers, rewards (`magic` components, coins, items, xp), saved. Every shape (except the
+starting `bolt`), essence and twist comes from exactly one mission or boss, in a curve
+that gives the player something new every few minutes at first. Missions are written in
+each giver's LORE voice, fit Hearthvale's life (the ward, the Drift, the bandits, the
+ruins, the lake that hums), and never reveal hidden truths. Lyra has opinions: she may
+come along, refuse what is too dangerous, worry about `dark`, and remembers what the player
+did.
+
+**Bosses** (each with art, a health bar, telegraphed attack patterns and phases, an arena,
+a short intro scene, and a component reward): *Varek One-Eye* at the bandit camp (gives
+`fire`: the fire that never goes out), *Greyjaw* the pack leader in deep Whisperwood,
+*the Mother of Slimes* in the quarry's rain-pools, *the Lake's Hum* in Mirror Lake, and
+*the Bone Warden* in the Sunken Ruins (gives `dark`). Rewards are picked up as glowing
+glyph-shards with a short reveal ("You can weave fire").
+
+### 22.4 Controls (`src/core/input.js`, `src/ui/touch.js`, `src/ui/spellbook.js`)
+
+- **Phone, held sideways (landscape) is the battle layout**: the left side is a floating
+  move stick (appears under the thumb); the right side has the sword button, the dodge,
+  and the weave buttons in an arc. Drag from a weave button to aim (a preview shows the
+  line, cone, circle or landing spot for its shape), release to cast, drag back to cancel;
+  a tap casts at the nearest foe. Safe areas (notches) respected; the HUD is a thin top
+  strip. Portrait keeps working. A one-time hint suggests turning the phone.
+- **Desktop**: move with WASD, aim with the mouse, sword on the left button, weaves on
+  1–4 (and the right button casts the selected weave), B opens the Spellbook.
+- **The Spellbook**: craft and edit weaves (pick a shape, essences, twists from what is
+  unlocked; see cost, cooldown and damage; a live preview casts it at a training dummy),
+  assign them to slots, name them. Works on a phone in both orientations.
