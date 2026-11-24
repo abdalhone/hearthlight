@@ -176,7 +176,6 @@ export function buildTileArt(rng, { withCanvas = true } = {}) {
     waterBufs,
     water: withCanvas ? waterBufs.map((b) => b.toCanvas()) : null,
     waterFrames: WATER_FRAMES,
-    patterns: null,
   };
 }
 
