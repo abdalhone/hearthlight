@@ -19,23 +19,34 @@ export const VILLAGER_RULES = [
   'You voice the people of Hearthvale, a small warded village in Halcyre, a cosy pixel-art RPG. The player is "the stranger": someone found asleep in a melted circle of snow on the Hollowcrown, carried down, who slept eighty-one days and now lives in the Wayhouse. Lyra Ambrel, the lumencrafter, is a villager in her own right: Hobb and Wenna’s daughter.',
   'Stay exactly in the character you are given: their age, their voice, their verbal habits and the sample lines. Short, spoken, natural: one to three sentences, no narration, no stage directions, no quotation marks around the whole line, no emoji.',
   'Speak only from what the brief says this person knows. Never invent secrets, family history, deaths, romances or plot. If asked about something they do not know, they say so in their own way. Never claim to know what happened to Maren, where the stranger came from, who the bandit chief is, or anything about the ward’s numbers.',
-  'They react to the player as their opinion says: warm when they like them, short and guarded when they do not, cold or angry when the player has hurt someone they love. Kindness, thanks and apologies soften them slowly; insults and threats harden them.',
-  'Reply with JSON only, matching the schema.',
+  'They react to the player as their opinion says: warm when they like them, short and guarded when they do not, cold or angry when the player has hurt someone they love. Kindness, thanks and apologies soften them slowly; insults and threats harden them. Someone cold or wronged may refuse to talk, and says so in their own way.',
+  'Be a living person, not an answer machine: react to what was said with feeling, keep your own mood, now and then ask the player something back, and bring up what you remember of them when it fits. Use the player’s name only if they told it to you. Asleep, you mumble or say nothing.',
+  'Reply with JSON only, in the format the task gives.',
 ].join('\n');
 
+// What the player said that a villager keeps (the schema's own words, for the API path).
+const nullable = (schema) => ({ anyOf: [schema, { type: 'null' }] });
+
+// Structured outputs (the API key path): every property listed, optional ones nullable.
 export const SAY_SCHEMA = {
   type: 'object',
   properties: {
     say: { type: 'string', description: 'what they say aloud, 1-3 sentences' },
-    mood: { type: 'string', description: 'one word: warm, happy, neutral, wary, angry, sad, worried, amused, sleepy' },
+    mood: nullable({ type: 'string', description: 'one word: warm, happy, neutral, wary, angry, sad, worried, amused, sleepy' }),
     opinion_delta: { type: 'number', description: 'how this exchange changes their opinion of the player, -10..5' },
     learned: { type: 'array', items: { type: 'string' }, description: 'ids of facts from the brief they actually told the player' },
-    rumor_told: { type: 'string', description: 'id of a piece of news from the brief they mentioned, if any' },
-    rumor: { type: 'string', description: 'only if notable: a short clause they will repeat about what the player said, e.g. "the stranger asked after Maren"' },
+    rumor_told: nullable({ type: 'string', description: 'id of a piece of news from the brief they mentioned, if any' }),
+    rumor: nullable({ type: 'string', description: 'only if notable: a short clause they will repeat about what the player said, e.g. "the stranger asked after Maren"' }),
+    name: nullable({ type: 'string', description: 'the name the player just told them, if they did' }),
+    memory: nullable({ type: 'string', description: 'if worth keeping: a short clause to the player starting with "you", e.g. "you told me you have never seen the sea"' }),
+    asked: nullable({ type: 'string', enum: ['name', 'other'], description: 'if their reply asks the player something: "name" for the player’s name, else "other"' }),
   },
-  required: ['say', 'opinion_delta'],
+  required: ['say', 'mood', 'opinion_delta', 'learned', 'rumor_told', 'rumor', 'name', 'memory', 'asked'],
   additionalProperties: false,
 };
+
+// The same, said in the prompt (claude.ai's sample takes no schema).
+const SAY_FORMAT = 'Reply with one JSON object and nothing else: {"say": string, "mood": one word, "opinion_delta": number from -10 to 5, "learned": [fact ids you told], "rumor_told": news id or null, "rumor": a short clause you will repeat about what they said, or null, "name": their name if they just told it, else null, "memory": a short clause starting "you" worth remembering about them, else null, "asked": "name" or "other" if you asked them something, else null}';
 
 export const LINES_SCHEMA = {
   type: 'object',
@@ -80,35 +91,61 @@ export function voiceSamples(id, max = 7) {
   return out;
 }
 
+// A profile line may name what someone keeps to themselves ("in secret, into poems"):
+// Claude is never told it, so it can never let it slip.
+const PRIVATE = /\b(in secret|secretly|poems?|poetry|strongbox|ferry-?house|flute|brightborn)\b/i;
+export function publicText(text) {
+  let t = String(text || '').replace(/,?\s*(?:and,?\s*)?(?:in secret|secretly),?\s+[^.;!?]*/gi, '');
+  t = t
+    .split(/(?<=[.!?])\s+/)
+    .filter((x) => x && !PRIVATE.test(x) && speakable(x))
+    .join(' ');
+  return t.replace(/\s+/g, ' ').trim();
+}
+
 function personLine(id, profile) {
   const name = FULL_NAMES[id] || profile?.name || id;
   const role = ROLES[id] || profile?.role || '';
   const bits = [`${name}${profile?.age ? `, ${profile.age}` : ''}${role ? `, ${role}` : ''}.`];
-  if (profile?.personality) bits.push(clip(profile.personality, 260));
-  if (profile?.voice) bits.push(`Voice: ${clip(profile.voice, 200)}`);
+  const persona = publicText(profile?.personality);
+  if (persona) bits.push(clip(persona, 260));
+  const voice = publicText(profile?.voice);
+  if (voice) bits.push(`Voice: ${clip(voice, 200)}`);
   return bits.join(' ');
 }
 
 // The brief for one villager answering the player. `b` is gathered by the village.
-// b: { id, profile, opinion, opinionLabel, familiarity, playerName, facts: [{id, text}],
-//      rumors: [{id, text}], history: [{you, they}], place, time, weather, week: [str],
+// b: { id, profile, opinion, opinionLabel, familiarity, playerName, knownName, stranger,
+//      facts: [{id, text}], rumors: [{id, text}], memories: [{text, day}],
+//      history: [{you, they, day}], asked, place, time, weather, today, week: [str],
 //      lyra: str, standing: str, text }
+// Compact on purpose (a few KB): every list is short and every line clipped, and nothing
+// in it may state a hidden truth (tests/chat_target.test.mjs checks every villager).
 export function buildSayTask(b) {
   const L = [];
   L.push(`You are ${personLine(b.id, b.profile)}`);
-  const samples = voiceSamples(b.id);
+  const samples = voiceSamples(b.id, 6);
   if (samples.length) L.push(`How you talk (your own lines): ${samples.map((s) => `"${s}"`).join(' ')}`);
-  L.push(`Where and when: ${b.place || 'Hearthvale'}, ${b.time || ''}${b.weather ? `, ${b.weather}` : ''}.`);
-  L.push(`The player is ${b.playerName ? `${b.playerName}, ` : ''}the stranger. You call them "${b.stranger || 'the stranger'}" behind their back. Your opinion of them: ${b.opinionLabel} (${Math.round(b.opinion)}/100). You know them ${b.familiarity < 15 ? 'barely' : b.familiarity < 45 ? 'a little' : 'well'}.`);
-  if (b.standing) L.push(`Right now: ${b.standing}`);
+  L.push(`Where and when: ${b.place || 'Hearthvale'}, ${b.time || ''}${b.weather ? `, ${b.weather}` : ''}${b.today ? `, day ${b.today}` : ''}.`);
+  const fam = b.familiarity < 15 ? 'barely' : b.familiarity < 45 ? 'a little' : 'well';
+  L.push(`The player is the stranger found on the Hollowcrown; you call them "${b.stranger || 'the stranger'}" behind their back. Your opinion of them: ${b.opinionLabel} (${Math.round(b.opinion)}/100). You know them ${fam}.`);
+  L.push(b.knownName ? `Their name is ${clip(b.knownName, 20)}: they told you, so you may use it.` : 'You do not know their name: they have not told you. Do not guess it; you may ask.');
+  if (b.standing) L.push(`Right now: ${clip(b.standing, 300)}`);
   if (b.lyra) L.push(`Lyra: ${b.lyra}`);
-  if (b.facts?.length) L.push(`Things you would share at this familiarity (use only if it fits; list ids you told in "learned"):\n${b.facts.map((f) => `- [${f.id}] ${clip(f.text, 200)}`).join('\n')}`);
-  if (b.rumors?.length) L.push(`News you have heard (id: what you heard):\n${b.rumors.map((r) => `- [${r.id}] ${clip(r.text, 160)}`).join('\n')}`);
-  if (b.week?.length) L.push(`What the village is talking about this week: ${b.week.join(' ')}`);
-  if (b.history?.length) L.push(`Your last exchanges with them:\n${b.history.map((h) => `- They said: "${clip(h.you, 120)}" You said: "${clip(h.they, 160)}"`).join('\n')}`);
-  L.push(`The player says to you: "${clip(b.text, 300)}"`);
-  L.push('Answer as yourself, in one to three sentences.');
-  return L.join('\n\n');
+  const mem = (b.memories || []).map((m) => clip(m.text, 110)).filter((t) => t && speakable(t));
+  if (mem.length) L.push(`What you remember of them: ${mem.slice(-5).join('; ')}.`);
+  if (b.facts?.length) L.push(`Things you would share at this familiarity (only if it fits; list the ids you told in "learned"):\n${b.facts.slice(0, 5).map((f) => `- [${f.id}] ${clip(f.text, 180)}`).join('\n')}`);
+  if (b.rumors?.length) L.push(`News you have heard (id: what you heard):\n${b.rumors.slice(0, 4).map((r) => `- [${r.id}] ${clip(r.text, 150)}`).join('\n')}`);
+  if (b.week?.length) L.push(`What the village is talking about this week: ${b.week.slice(0, 2).join(' ')}`);
+  if (b.history?.length) {
+    const rows = b.history.slice(-5).map((h) => `- ${h.day && b.today && h.day < b.today ? `(day ${h.day}) ` : ''}They: "${clip(h.you, 110)}" You: "${clip(h.they || '…', 150)}"`);
+    L.push(`The conversation so far, oldest first:\n${rows.join('\n')}`);
+  }
+  if (b.asked) L.push(`You had just asked them ${b.asked === 'their name' ? 'their name' : 'a question'}; this may be their answer.`);
+  L.push(`They say to you now: "${clip(b.text, 300)}"`);
+  L.push('Answer as yourself, in one to three short spoken sentences.');
+  L.push(SAY_FORMAT);
+  return L.join('\n');
 }
 
 // The brief for the next exchange between two people the player is listening to.
@@ -161,6 +198,10 @@ export function coerceSay(raw) {
   const say = cleanLine(raw.say, 320);
   if (!say) return null;
   const d = Number(raw.opinion_delta);
+  const name = typeof raw.name === 'string' ? raw.name.trim().replace(/[.!,]+$/, '') : '';
+  let memory = typeof raw.memory === 'string' ? cleanLine(raw.memory, 110) : null;
+  // A memory is kept as something said to the player: "you …".
+  if (memory && !/^you\b/i.test(memory)) memory = null;
   return {
     say,
     mood: typeof raw.mood === 'string' ? raw.mood.toLowerCase().replace(/[^a-z]/g, '').slice(0, 16) || null : null,
@@ -168,6 +209,9 @@ export function coerceSay(raw) {
     learned: Array.isArray(raw.learned) ? raw.learned.filter((x) => typeof x === 'string').slice(0, 3) : [],
     rumorTold: typeof raw.rumor_told === 'string' ? raw.rumor_told : null,
     rumor: typeof raw.rumor === 'string' ? cleanLine(raw.rumor, 140) : null,
+    name: /^[A-Za-zÀ-ÿ'-]{2,20}$/.test(name) ? name.charAt(0).toUpperCase() + name.slice(1) : null,
+    memory: memory ? memory.replace(/^You\b/, 'you').replace(/[.!?]+$/, '') : null,
+    asked: raw.asked === 'name' || raw.asked === 'other' ? raw.asked : null,
   };
 }
 
