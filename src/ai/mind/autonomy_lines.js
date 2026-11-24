@@ -57,8 +57,8 @@ export const LINES = {
     tired: ['I’ll come. I may yawn at you.'],
   },
   ok_rejoin: {
-    warm: ['All right. Together again. Don’t make me regret it.', 'I missed the road with you, if I’m honest. Let’s go.', 'Calm water, then. I’m coming back.'],
-    cool: ['I’ll come back. Slowly. Earn the rest.', 'One more chance. That’s what this is.'],
+    warm: ['All right. Together again. I’m glad, if I’m honest.', 'I missed the road with you, if I’m honest. Let’s go.', 'Calm water, then. I’m coming back.'],
+    cool: ['I’ll come back. Slowly.', 'All right. I’ll walk with you again.'],
     afraid: ['I’ll come. My hand stays near my dagger.'],
     tired: ['I’ll come back. Mostly because I’m too tired to argue.'],
   },
@@ -127,7 +127,7 @@ export const LINES = {
   cond_careful: {
     warm: ['All right. But if it turns ugly I’m pulling back, and so are you.', 'Fine. I’ll stay at range and you stay out of my way.', 'Yes, but no heroics. I like my bones where they are.'],
     cool: ['Fine. I’ll back off the moment it goes wrong.', 'I’ll fight. I won’t die for it.'],
-    afraid: ['Fine. First sign of trouble, I’m gone.', 'All right. Quick in, quicker out.'],
+    afraid: ['Fine. First sign of trouble, I pull back.', 'All right. Quick in, quicker out.'],
     tired: ['I’ll try. Don’t expect a hero.'],
   },
   cond_pay: {
@@ -155,8 +155,8 @@ export const LINES = {
     tired: ['Loan. Pay it back.'],
   },
   cond_favor: {
-    warm: ['Fine. You owe me one.', 'All right. I’m keeping a tally, you know.', 'Yes. Next time it’s my turn to ask.'],
-    cool: ['Fine. You owe me.', 'This once.'],
+    warm: ['Fine. Because I feel like it.', 'All right, as a favor. Don’t make a habit of it.', 'Yes. Next time it’s my turn to ask.'],
+    cool: ['Fine. As a favor.', 'This once.'],
     afraid: ['All right. Quickly.'],
     tired: ['Fine. You owe me a nap.'],
   },
@@ -522,7 +522,7 @@ export const LINES = {
   },
   deed_stole: {
     warm: ['That isn’t yours.'],
-    cool: ['That’s stealing. I don’t travel with thieves.'],
+    cool: ['That’s stealing. Put it back.'],
     afraid: ['That isn’t yours…'],
     tired: ['That’s not yours.'],
   },
@@ -541,14 +541,14 @@ export const LINES = {
     tired: ['I’ll stay. Over here.'],
   },
   to_together: {
-    warm: ['All right. I think we’re all right again.', 'Calm water. I’m done keeping my distance.', 'I’ve decided you’re all right after all. Don’t spoil it.'],
+    warm: ['All right. I think we’re all right again.', 'Calm water. I’m done keeping my distance.', 'I’ve decided you’re all right after all.'],
     cool: ['All right. I’ll walk beside you again.'],
     afraid: ['All right. I believe you.'],
     tired: ['We’re fine. I’m too tired to stay cross.'],
   },
   to_left_hit: {
-    warm: ['Twice. You did it twice. I’m done with you.', 'No more. I’m leaving, and you’re staying right there.'],
-    cool: ['Twice. That’s no accident. Stay where you are — I’m leaving.', 'You won’t get a third time. Goodbye.'],
+    warm: ['Twice. You struck me twice. I’m going my own way.', 'You hit me again. I’m going, and you’re staying right there.'],
+    cool: ['Twice. That’s no accident. Stay where you are. I’m going.', 'You struck me again. That ends it. Goodbye.'],
     afraid: ['Stay away from me! Stay away!', 'No more — I’m going. Don’t follow me!'],
     tired: ['No more. I’m going.'],
   },
@@ -563,6 +563,24 @@ export const LINES = {
     cool: ['I don’t trust you. I’m leaving.', 'This isn’t good for me. Goodbye.'],
     afraid: ['I’m scared of you. I’m going.', 'I can’t stay near you. I’m sorry. I’m going.'],
     tired: ['I’m done. I’m going.'],
+  },
+  to_left_worth: {
+    warm: ['I’m going my own way. {why} I weighed it, and staying isn’t worth it to me.', 'I’ve thought about it. {why} I’m going my own way.'],
+    cool: ['{why} So I’m going my own way.', 'I weighed it. {why} I’m going.'],
+    afraid: ['{why} I’m going my own way.'],
+    tired: ['{why} I’m going my own way.'],
+  },
+  to_wary_worth: {
+    warm: ['{why} I’ll still walk with you. A few steps back, for a while.', 'I’ll be honest with you. {why} So I’m keeping a little distance.'],
+    cool: ['{why} I’m keeping my distance for a while.'],
+    afraid: ['{why} I’m staying back a bit.'],
+    tired: ['{why} I’ll walk a little behind.'],
+  },
+  back_own_terms: {
+    warm: ['I’ve thought it over. I’d like to walk with you again. My terms: I keep my room at the Kettle until I say otherwise.', 'I missed the road with you. I’m coming back, on my own terms, and slowly.'],
+    cool: ['I’ve decided to walk with you again. On my terms. Slowly.'],
+    afraid: ['I’ll walk with you again. On my terms. Give me room.'],
+    tired: ['I’m coming back. On my terms.'],
   },
   to_left_abandoned: {
     warm: ['You left me lying there. I’m going my own way.'],
@@ -730,9 +748,11 @@ export const LINES = {
     afraid: ['Come to the Kettle with me? It’s warm.'],
     tired: ['Kettle. Fire. Tea. Come?'],
   },
+  // Never used for her own initiative (she does not remind people what they owe her), kept
+  // for anyone who asks her outright.
   remind_promise: {
     warm: ['You said you’d {what}. Still waiting.', 'Don’t think I forgot: you promised to {what}.'],
-    cool: ['You promised to {what}. I’m counting.'],
+    cool: ['You said you’d {what}.'],
     afraid: ['You did promise to {what}…'],
     tired: ['You promised to {what}. Remember?'],
   },
@@ -758,7 +778,7 @@ export const LINES = {
   // ------------------------------------------------------------------ answers to the player
   ans_trust_high: {
     warm: ['Yes. More than I expected to, honestly. Don’t let it go to your head.', 'I do. You’ve earned it, one stupid brave thing at a time.'],
-    cool: ['I do. Don’t make me regret saying it.'],
+    cool: ['I do. That surprised me too.'],
     afraid: ['I do. Please don’t make that a mistake.'],
     tired: ['Yes. I do.'],
   },
@@ -799,8 +819,8 @@ export const LINES = {
     tired: ['{reason}'],
   },
   ans_not_left: {
-    warm: ['Leave? I’m right here, you goose.', 'I haven’t gone anywhere. Yet.'],
-    cool: ['I’m still here. For now.'],
+    warm: ['Leave? I’m right here, you goose.', 'I haven’t gone anywhere. Look: right here.'],
+    cool: ['I’m right here.'],
     afraid: ['I’m here.'],
     tired: ['I’m right here.'],
   },

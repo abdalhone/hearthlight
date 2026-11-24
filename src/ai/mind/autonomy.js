@@ -8,6 +8,7 @@ import { LinePicker } from './autonomy_lines.js';
 import { analyzeRequest, requestKey } from './autonomy_consent.js';
 import { buildPlan, blockAt, blockIndexAt, weighGoals, sleepSpot, questStageIndex, hourLabel, describeBlock, makeBlock } from './autonomy_agenda.js';
 import { RE, isApology, parseOffer, parsePromiseText, parseAskText } from './autonomy_words.js';
+import { weighWorth, WorthTracker, WORTH, worthLine, topCost } from './autonomy_worth.js';
 
 // Lyra's own will (DESIGN §16). She lives for herself: she keeps her own day, her own
 // coin and her own counsel; she watches what the player does (the ledger), decides
@@ -19,7 +20,8 @@ import { RE, isApology, parseOffer, parsePromiseText, parseAskText } from './aut
 //   agenda                        { goals: [{id, text, weight}], today: [{from, to, activity, at, why, ...}], purse, sleepAt }
 //   ledger                        [{ t, day, deed, severity, text, victimId }]
 //   promises                      [{ id, text, by: 'player'|'lyra', state: 'open'|'kept'|'broken', due, kind, params }]
-//   update(dt)                    plans, promise deadlines, periodic reconsider()
+//   update(dt)                    plans, promise deadlines, the worth of staying, periodic reconsider()
+//   worth()                       { stay, cost, net, reasons: [{text, weight}] } (DESIGN §19.4)
 //   evaluateRequest(req)          req = { action, args, source, pay?, preview? } -> verdict (DESIGN §16.4)
 //   recordDeed(deed, opts)        opts = { severity, text, victim }; adjusts the relationship, remembers, reconsiders
 //   reconsider(reason)            re-evaluate the companionship state
@@ -50,6 +52,9 @@ const CAUSES = {
   trust: { reason: 'I don’t trust you the way I did.', memo: 'I don’t trust {P} the way I did. I’m keeping my distance.' },
   fear: { reason: 'You frighten me, these days.', memo: '{P} frightens me now. I’m keeping my distance.' },
   trust_left: { reason: 'I stopped trusting you. Too much happened, one thing after another.', memo: 'I stopped trusting {P}. I’m going my own way.' },
+  worth_wary: { reason: '{why}', memo: 'Being with {P} has stopped feeling good for me. {why} I’m keeping a few steps back.' },
+  worth_left: { reason: 'It stopped being worth it to me. {why}', memo: 'I weighed it, and staying with {P} isn’t worth it to me any more. {why} I’m going my own way.' },
+  own_terms: { reason: 'I thought it over, and I chose to walk with you again, on my own terms.', memo: 'I chose to walk with {P} again. On my own terms.' },
   fear_left: { reason: 'I’m afraid of you. Being near you isn’t safe for me.', memo: 'I am afraid of {P}. I left to keep myself safe.' },
   abandoned: { reason: 'You left me lying there, knocked out.', memo: '{P} left me lying knocked out. I am going my own way.' },
   plans: { reason: 'I have my own day to live. {why}' },
@@ -147,6 +152,11 @@ export class Autonomy {
     this._t = 0;
     this._lastStep = null;
     this._keepAwaySince = NEG_INF;
+    this.worthTrack = new WorthTracker();
+    this._worth = null;
+    this._worthAcc = 0;
+    this._reconsiderAcc = 0;
+    this._relieved = true;
   }
 
   // ------------------------------------------------------------------ time and people
@@ -845,6 +855,13 @@ export class Autonomy {
     const n = Math.min(24, Math.max(0, Math.round(num(hours, 0))));
     if (n > 0) {
       this._hourIdx = Math.floor(this.now() / this.sph());
+      // A night's sleep: the weighing moves on, and how things sit with her softens.
+      this._feedWorth(n * this.sph());
+      try {
+        this.mind?.affect?.fadeTint?.(n * this.sph());
+      } catch {
+        /* optional */
+      }
       this._hourly(n);
     }
   }
@@ -863,6 +880,7 @@ export class Autonomy {
     const vname = victim ? this.displayName(victim) : victimId ? this.npcName(victimId) : '';
     const text = String(opts.text || (def?.text || deed).replace(/one of the villagers|one of the guard/, vname || '$&')).slice(0, 160);
     const before = this.stats();
+    const worthBefore = this.worthTrack.avg ?? this.worth().net;
     const entry = { t: Math.round(now * 10) / 10, day: this.day(), deed, severity: Math.round(severity * 100) / 100, text, victimId };
     this.ledger.push(entry);
     this._trimLedger();
@@ -894,8 +912,9 @@ export class Autonomy {
     this._feelDeed(deed, severity, kind);
     this.game?.bus?.emit?.('deed', { deed, severity: entry.severity, text, victim: victim || victimId || null });
     if (severity < 0) this._checkAvoidPromises(deed);
+    this._feedWorth(0);
     try {
-      this._respond(deed, { before, victim, vname, severity });
+      this._respond(deed, { before, worthBefore, victim, vname, severity });
     } catch (err) {
       console.error('[autonomy] deed response failed', err);
     }
@@ -1094,7 +1113,8 @@ export class Autonomy {
       case 'hit_lyra': {
         const hitsBefore = this.ledger.filter((e) => e.deed === 'hit_lyra' && now - e.t <= twoDays).length - 1;
         if (st === 'left' && this._violenceCount(twoDays) >= 3) return this._goGone('violence', 'to_gone_violence', vars);
-        if (hitsBefore >= 1 || info.before.trust < T.waryTrust || st === 'left') {
+        // A second blow ends it, and so does a first one when staying was already barely worth it.
+        if (hitsBefore >= 1 || info.worthBefore < WORTH.wary || st === 'left') {
           if (st !== 'left') this.setCompanionship('left', '', { cause: 'hit_again', lineKey: 'to_left_hit' });
           else this.say(this.line('to_left_hit'), { force: true });
           this._bindAndRun();
@@ -1132,14 +1152,14 @@ export class Autonomy {
           return;
         }
         if (st !== 'left') this.setCompanionship('left', '', { cause: 'villager_again', vars, lineKey: 'to_left_villager' });
-        this._bindAndGuard(info.victim);
+        this._protect(info.victim);
         return;
       }
       case 'downed_villager': {
         const aff = num(this.relOf(info.victim?.id)?.affinity, 0);
         if (aff >= 30 || (st === 'left' && this._violenceCount(twoDays) >= 3)) return this._goGone(aff >= 30 ? 'villager' : 'violence', aff >= 30 ? 'to_gone_villager' : 'to_gone_violence', vars, info.victim);
         if (st !== 'left') this.setCompanionship('left', '', { cause: 'villager_down', vars, lineKey: 'to_left_villager' });
-        this._bindAndGuard(info.victim);
+        this._protect(info.victim);
         return;
       }
       case 'downed_lyra':
@@ -1181,12 +1201,13 @@ export class Autonomy {
     if (reason !== 'downed') this._bindPlayer();
   }
 
-  // Binding Light, then flee or stand her ground, by personality and fear.
+  // Binding Light if she needs it (the player is within reach of her), then she runs or
+  // keeps her distance, by personality, fear and how hurt she is (LORE §7 "Boundaries").
   _bindAndRun() {
     const s = this.stats();
     const P = this.personality();
     const l = this.lyra();
-    this._bindPlayer();
+    if (this._playerNear(140)) this._bindPlayer();
     const hurt = l?.maxHp ? l.hp / l.maxHp < 0.5 : false;
     if (s.fear >= 40 || P.neuroticism >= 0.55 || hurt || P.agreeableness >= 0.8) {
       this._act('flee', { target: 'player', value: this._safePlace() });
@@ -1200,11 +1221,37 @@ export class Autonomy {
     }
   }
 
-  // Bind the player, step between them and the victim, call the guards.
-  _bindAndGuard(victim) {
-    this._bindPlayer();
-    if (victim?.id) this._act('guard', { target: victim.id });
+  // Someone is hurting a villager after her warning. She always tells the watch; she binds
+  // the player and steps between only when protecting them is worth more to her than the
+  // risk to herself (DESIGN §19.4): a child or someone she loves is worth a great deal,
+  // and she weighs how hurt she is, how strong the player is and how afraid of them.
+  _protect(victim) {
+    const w = this.protectWorth(victim);
+    if (w.step) {
+      this._bindPlayer();
+      if (victim?.id) this._act('guard', { target: victim.id });
+    } else {
+      this._act('keep_distance', { target: 'player', amount: 6 });
+    }
     this.say(this.line('deed_villager_bind'), { force: true, kind: 'shout', target: this.game?.entities?.get?.('rowan') || null });
+    return w;
+  }
+
+  // { value, risk, step }: is stepping in worth it to her?
+  protectWorth(victim) {
+    const rel = this.relOf(victim?.id);
+    const aff = num(rel?.affinity, 0);
+    const child = !!victim && (victim.child || victim.profile?.child || /\b(pip|tansy)\b/i.test(String(victim.id || '')) || num(victim.profile?.age, 30) < 16 || (rel?.tags || []).includes('child'));
+    let value = 1.2 + (aff >= 50 ? 1.3 : aff >= 30 ? 0.8 : 0) + (child ? 1.5 : 0) + ((rel?.tags || []).includes('family') ? 2 : 0);
+    if (victim && this.isGuard(victim)) value -= 0.5;
+    const l = this.lyra();
+    const p = this.player();
+    const mine = l?.maxHp ? clamp(l.hp / l.maxHp, 0, 1) : 1;
+    const theirs = p?.maxHp ? clamp(p.hp / p.maxHp, 0, 1) : 1;
+    const power = (num(p?.atk, 6) * theirs) / Math.max(1, num(l?.atk, 7));
+    // Hurt, outmatched or terrified, stepping in could cost her everything.
+    const risk = (1 - mine) * 2.2 + Math.max(0, power - 1) * 0.6 + Math.max(0, this.stats().fear - 40) / 30 + (l?.downed ? 9 : 0);
+    return { value: Math.round(value * 100) / 100, risk: Math.round(risk * 100) / 100, step: value > risk };
   }
 
   // Binding Light on the player (behavior's `bind`, run as her own act). A blow can knock
@@ -1334,16 +1381,47 @@ export class Autonomy {
       const importance = state === 'left' ? 8 : state === 'wary' ? 6 : state === 'together' ? 5 : 4;
       this.remember(fillText(cause.memo, { ...vars, P }), { importance, tags: ['companionship', state], about: [PLAYER_ID] });
     }
+    this.worthTrack.restart();
+    this._relieved = state !== 'left';
     try {
       if (state === 'left' || state === 'gone') this.mind?.feel?.('sadness', 0.35, reason);
       else if (state === 'together' && (previous === 'left' || previous === 'wary')) this.mind?.feel?.('trust', 0.25, reason);
     } catch {
       /* optional */
     }
+    this._feelState(state, opts.cause || null, previous);
     const line = opts.line ?? (opts.lineKey ? this.line(opts.lineKey, vars) : '');
     if (line && !opts.silent) this.say(line, { force: true, kind: state === 'gone' ? 'farewell' : 'initiative' });
     if (!opts.noReplan) this.planDay('companionship');
     return true;
+  }
+
+  // How her situation sits with her, after the moment's shock has passed (her mood follows
+  // why things changed): hurt after a blow, shaken by fear, heavy-hearted when staying
+  // stopped being worth it, lighter when things come right again.
+  _feelState(state, cause, previous) {
+    const aff = this.mind?.affect;
+    if (!aff?.setTint) return;
+    const day = this.daySeconds();
+    const HURT = { sadness: 0.25, anger: 0.15, fear: 0.06, joy: -0.15, trust: -0.15, affection: -0.08, curiosity: -0.05 };
+    const scale = (o, k) => Object.fromEntries(Object.entries(o).map(([e, v]) => [e, v * k]));
+    const harm = cause === 'hit' || cause === 'hit_again' || cause === 'villager' || cause === 'villager_again' || cause === 'villager_down' || cause === 'villager_gone' || cause === 'downed' || cause === 'violence' || cause === 'abandoned';
+    try {
+      if (state === 'gone') aff.setTint({ sadness: 0.35, anger: 0.12, joy: -0.2, trust: -0.2, affection: -0.1 }, { halfLife: 2 * day, label: 'heartsick', emoji: '😢' });
+      else if (state === 'left') {
+        if (harm) aff.setTint(HURT, { halfLife: 1.2 * day, label: 'hurt', emoji: '💔' });
+        else if (cause === 'fear_left') aff.setTint({ fear: 0.16, sadness: 0.1, joy: -0.12, trust: -0.1 }, { halfLife: 0.6 * day, label: 'shaken', emoji: '😨' });
+        else aff.setTint({ sadness: 0.2, joy: -0.1, trust: -0.08, anger: 0.04 }, { halfLife: day, label: 'heavy-hearted', emoji: '😔' });
+      } else if (state === 'wary') {
+        if (harm) aff.setTint(scale(HURT, 0.6), { halfLife: 0.8 * day, label: 'hurt', emoji: '💔', blend: 0.5 });
+        else if (cause === 'fear') aff.setTint({ fear: 0.1, sadness: 0.05, joy: -0.08 }, { halfLife: 0.5 * day, label: 'uneasy', emoji: '😟', blend: 0.5 });
+        else aff.setTint({ fear: 0.04, sadness: 0.06, joy: -0.06, trust: -0.06 }, { halfLife: 0.6 * day, label: 'guarded', emoji: '😐', blend: 0.5 });
+      } else if (state === 'together' && (previous === 'wary' || previous === 'left' || previous === 'apart')) {
+        aff.setTint({ joy: 0.04, trust: 0.04 }, { halfLife: 0.3 * day, blend: 0.3 });
+      } else if (state === 'apart' && cause === 'amends') aff.setTint({ sadness: 0.05 }, { halfLife: 0.5 * day, blend: 0.5 });
+    } catch (err) {
+      console.error('[autonomy] feelings failed', err);
+    }
   }
 
   // Tell behavior what this state means for her body (DESIGN §16.3, §16.9): together ->
@@ -1415,7 +1493,47 @@ export class Autonomy {
     }
   }
 
-  // Re-evaluate her state against §16.3 (after every deed and every in-game hour).
+  // Is it worth it to her? (DESIGN §19.4) The weighing from her real state, recomputed
+  // at most every half second; `fresh` forces a new one.
+  worth({ fresh = false } = {}) {
+    const c = this._worth;
+    if (!fresh && c && Math.abs(this.now() - c.t) < 0.5 && c.n === this.ledger.length) return c.w;
+    let w;
+    try {
+      w = weighWorth(this);
+    } catch (err) {
+      console.error('[autonomy] weighing failed', err);
+      w = { stay: 0, cost: 0, net: 0, reasons: [], harm: 0, t: this.now() };
+    }
+    w.avg = this.worthTrack.avg == null ? w.net : Math.round(this.worthTrack.avg * 100) / 100;
+    this._worth = { w, t: this.now(), n: this.ledger.length };
+    return w;
+  }
+
+  // A fresh weighing folded into the smoothed one, `step` game seconds after the last.
+  _feedWorth(step) {
+    const w = this.worth({ fresh: true });
+    this.worthTrack.feed(w.net, step, this.sph());
+    w.avg = Math.round(this.worthTrack.avg * 100) / 100;
+    return w;
+  }
+
+  // Time with the player today (the cost of time taken from her own life).
+  _countTogether(step) {
+    const wt = this.worthTrack;
+    const day = this.day();
+    if (wt.togetherDay !== day) {
+      wt.togetherDay = day;
+      wt.togetherToday = 0;
+    }
+    const st = this.companionship;
+    if ((st === 'together' || st === 'wary') && this._playerNear(12 * TILE)) wt.togetherToday += step;
+  }
+
+  // Re-evaluate her state (after every deed, every few seconds and every in-game hour).
+  // Hard lines (LORE §7 "Boundaries") are drawn where the deed happens (_respond); here she
+  // weighs whether staying is still worth it, and only acts when the answer holds for a
+  // while (hysteresis): together <-> wary, -> left, and back on her own terms.
   reconsider(reason = '') {
     const st = this.companionship;
     if (st === 'gone') return st;
@@ -1426,20 +1544,45 @@ export class Autonomy {
       if (this.amendsStatus().ok) this.setCompanionship('apart', '', { cause: 'amends', apartReason: 'amends', lineKey: 'to_apart_amends' });
       return this.companionship;
     }
-    if (s.fear > T.leftFear || s.trust < T.leftTrust) {
-      const last = this.ledger[this.ledger.length - 1];
-      const abandoned = last?.deed === 'abandoned_downed' && this.now() - last.t < 5;
-      const cause = abandoned ? 'abandoned' : s.fear > T.leftFear ? 'fear_left' : 'trust_left';
-      this.setCompanionship('left', '', { cause, lineKey: abandoned ? 'to_left_abandoned' : 'to_left_trust' });
-      if (s.fear > T.leftFear) this._act('flee', { target: 'player', value: this._safePlace() });
+    // She fears for her life: she runs, whatever anyone has asked of her.
+    if (s.fear > T.leftFear) {
+      this.setCompanionship('left', '', { cause: 'fear_left', lineKey: 'to_left_trust' });
+      this._act('flee', { target: 'player', value: this._safePlace() });
       return this.companionship;
     }
-    if (st === 'together' && (s.trust < T.waryTrust || s.fear > T.waryFear)) {
-      this.setCompanionship('wary', '', { cause: s.fear > T.waryFear ? 'fear' : 'trust', lineKey: 'to_wary_trust' });
-    } else if (st === 'wary' && s.trust >= T.calmTrust && s.fear <= T.calmFear && this.now() - this.lastViolentT > 2 * this.sph() && this.now() - this.stateSince > this.sph()) {
+    const w = this.worth();
+    const wt = this.worthTrack;
+    const hold = WORTH.holdHours * this.sph();
+    // Staying stopped being worth it: harm and fear count soonest; anything else only
+    // when the weighing has gone far below the line.
+    if ((wt.belowLeft >= hold && w.harm >= 1.5) || wt.belowGone >= hold) {
+      const last = this.ledger[this.ledger.length - 1];
+      const abandoned = last?.deed === 'abandoned_downed' && this.now() - last.t < this.daySeconds();
+      const why = topCost(w)?.text || '';
+      if (abandoned) this.setCompanionship('left', '', { cause: 'abandoned', lineKey: 'to_left_abandoned' });
+      else this.setCompanionship('left', '', { cause: s.fear > T.waryFear ? 'fear_left' : 'worth_left', vars: { why }, lineKey: s.fear > T.waryFear ? 'to_left_trust' : 'to_left_worth' });
+      if (s.fear > T.waryFear) this._act('flee', { target: 'player', value: this._safePlace() });
+      return this.companionship;
+    }
+    if (st === 'together' && wt.belowWary >= hold) {
+      const top = topCost(w);
+      this.setCompanionship('wary', '', { cause: top?.key === 'fear' ? 'fear' : 'worth_wary', vars: { why: top?.text || '' }, lineKey: top ? 'to_wary_worth' : 'to_wary_trust' });
+    } else if (st === 'wary' && wt.aboveCalm >= hold && s.fear <= T.calmFear && this.now() - this.lastViolentT > 2 * this.sph() && this.now() - this.stateSince > this.sph()) {
       this.setCompanionship('together', '', { cause: 'recovered', lineKey: 'to_together' });
+    } else if (st === 'apart' && this.apartReason === 'amends' && wt.aboveBack >= WORTH.backHours * this.sph() && this._ownTermsOk()) {
+      // Staying is worth it again: she comes back, on her own terms.
+      this.setCompanionship(this._returnState(), '', { cause: 'own_terms', lineKey: 'back_own_terms' });
     }
     return this.companionship;
+  }
+
+  _ownTermsOk() {
+    const s = this.stats();
+    const l = this.lyra();
+    const g = this.game;
+    if (!l || l.downed || l.state === 'sleep' || (g?.state && g.state !== 'playing')) return false;
+    if (s.trust < T.calmTrust || s.fear > T.calmFear || this.now() - this.lastViolentT < this.daySeconds()) return false;
+    return this._playerNear(12 * TILE) && !this._hostileNear(l, 140);
   }
 
   // left -> apart after amends: an apology she believes, trust >= 35, fear <= 30, a day.
@@ -1457,12 +1600,15 @@ export class Autonomy {
 
   _returnState() {
     const s = this.stats();
-    return s.trust < T.waryTrust || s.fear > T.waryFear || this.now() - this.lastViolentT < 2 * this.sph() ? 'wary' : 'together';
+    const avg = this.worthTrack.avg ?? this.worth().net;
+    return s.trust < T.waryTrust || s.fear > T.waryFear || avg < WORTH.wary || this.now() - this.lastViolentT < 2 * this.sph() ? 'wary' : 'together';
   }
 
   _wantsCompany() {
     const s = this.stats();
     if (s.trust < T.calmTrust || s.fear > T.calmFear) return false;
+    // Her own day ends with the player only while their company is worth it to her.
+    if ((this.worthTrack.avg ?? this.worth().net) < WORTH.wary) return false;
     return this.apartReason === 'plans' || (this.apartReason === 'dismissed' && this.day() > this.apartDay);
   }
 
@@ -2370,14 +2516,7 @@ export class Autonomy {
     const day = v.day;
     const askedToday = (k) => this.asked[k] === day;
     const together = v.state === 'together' || v.state === 'wary';
-    // A promise the player is about to break.
-    for (const p of this.promises) {
-      if (p.state !== 'open' || p.by !== 'player' || p.reminded || p.due == null) continue;
-      if (p.due - now < 1.5 * this.sph() && p.due > now) {
-        p.reminded = true;
-        return { lineKey: 'remind_promise', vars: { what: p.text } };
-      }
-    }
+    // (She does not remind the player what they owe her: LORE §7 "Boundaries", tone.)
     if (!together) return null;
     const last = this.ledger[this.ledger.length - 1];
     if (last && last.severity < -0.3 && last.severity > -2.5 && now - last.t < 600 && v.trust >= 15 && !askedToday('forgive_cake')) {
@@ -2438,6 +2577,17 @@ export class Autonomy {
       const n = Math.min(24, hi - this._hourIdx);
       this._hourIdx = hi;
       this._hourly(n);
+    }
+    this._countTogether(step);
+    this._worthAcc += step;
+    if (this._worthAcc >= 2) {
+      this._feedWorth(this._worthAcc);
+      this._worthAcc = 0;
+      this._reconsiderAcc += 1;
+      if (this._reconsiderAcc >= 3) {
+        this._reconsiderAcc = 0;
+        this.reconsider('worth');
+      }
     }
     this._watchDowned(step);
     if (this._pendingBind) this._retryBind();
@@ -2555,6 +2705,7 @@ export class Autonomy {
       if (d.type === 'flee' || d.type === 'leave') return;
       const p = this.player();
       const dist = p ? Math.hypot(p.x - l.x, p.y - l.y) : Infinity;
+      if (!this._relieved && dist > (LEFT_TILES + 4) * TILE) this._feelSafeAgain();
       if (d.type === 'keep_away') {
         if (dist > (LEFT_TILES + 4) * TILE && this.now() - this._keepAwaySince > 20) b.setDirective({ type: 'independent', avoid: 'player', tiles: LEFT_TILES, reason: 'left' });
         return;
@@ -2567,6 +2718,19 @@ export class Autonomy {
       }
     } catch (err) {
       console.error('[autonomy] keeping her distance failed', err);
+    }
+  }
+
+  // Away from someone she was afraid of: relief, under the sadness.
+  _feelSafeAgain() {
+    this._relieved = true;
+    const m = this.mind;
+    try {
+      m?.appraise?.('relief', 0.8, 'safe, away from them');
+      const aff = m?.affect;
+      if (aff?.tintMood?.label === 'shaken') aff.setTint({ sadness: 0.12, joy: -0.04, fear: 0.03 }, { halfLife: 0.6 * this.daySeconds(), label: 'relieved', emoji: '😮‍💨' });
+    } catch {
+      /* optional */
     }
   }
 
@@ -2625,6 +2789,7 @@ export class Autonomy {
       goals: this.agenda.goals.slice(0, 5),
       deeds: this.ledger.slice(-10).reverse(),
       promises: this.promises.filter((p) => p.state === 'open'),
+      worth: this.worth(),
     };
   }
 
@@ -2636,6 +2801,8 @@ export class Autonomy {
     const since = this.stateDay === day ? 'today' : `since day ${this.stateDay}`;
     lines.push(`Companionship: ${this.companionship} (${since}) — her reason: "${this.reason.slice(0, 140)}"`);
     lines.push(`Toward the player: trust ${Math.round(s.trust)}/100, fear ${Math.round(s.fear)}/100, affinity ${Math.round(s.affinity)}, respect ${Math.round(s.respect)}.`);
+    const wl = worthLine(this.worth(), this.worthTrack.avg);
+    if (wl) lines.push(wl.slice(0, 420));
     const deeds = this.ledger.slice(-5).reverse();
     if (deeds.length) lines.push(`Seen them do (newest first): ${deeds.map((e) => `${e.text.replace(/\.$/, '')} (${e.severity > 0 ? '+' : ''}${e.severity})`).join('; ')}.`);
     const h = this.hour();
@@ -2697,6 +2864,7 @@ export class Autonomy {
       downedByPlayer: !!this.downed?.byPlayer,
       promiseSeq: this._promiseSeq,
       shadow: { ...this._shadow },
+      worth: this.worthTrack.serialize(),
     };
   }
 
@@ -2737,6 +2905,9 @@ export class Autonomy {
     this.downed = d.downedByPlayer ? { t: this.now(), byPlayer: true, abandoned: true, waited: 0 } : null;
     this._promiseSeq = d.promiseSeq || this.promises.length;
     if (d.shadow && typeof d.shadow === 'object') Object.assign(this._shadow, d.shadow);
+    this.worthTrack = new WorthTracker();
+    this.worthTrack.deserialize(d.worth);
+    this._worth = null;
     this._blockIdx = -2;
     this._hourIdx = null;
     // Her body follows the state she was in.

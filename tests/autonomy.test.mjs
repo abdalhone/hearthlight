@@ -430,17 +430,16 @@ test('every state: the directive behavior gets, the event, and her reason in her
   assert.deepEqual(STATES, ['together', 'wary', 'apart', 'left', 'gone']);
 });
 
-test('reconsider: together <-> wary by trust and fear, left on fear or broken trust', () => {
+test('reconsider: together <-> wary only when staying stays (or stops being) not worth it; left at once on fear for her life', () => {
   const { game, a, mind } = makeWorld();
-  setRel(mind, { trust: 20 });
+  setRel(mind, { trust: 4, affinity: 0 });
   a.reconsider('test');
-  assert.equal(a.companionship, 'wary');
-  setRel(mind, { trust: 45, fear: 5 });
-  step(game, SPH * 1.2);
-  assert.equal(a.companionship, 'together', 'calm again after an hour');
-  setRel(mind, { fear: 40 });
-  a.reconsider('test');
-  assert.equal(a.companionship, 'wary');
+  assert.equal(a.companionship, 'together', 'one bad moment decides nothing (DESIGN §19.4)');
+  step(game, SPH * 3);
+  assert.equal(a.companionship, 'wary', 'the weighing stayed low');
+  setRel(mind, { trust: 55, affinity: 40, fear: 0 });
+  step(game, SPH * 3);
+  assert.equal(a.companionship, 'together', 'calm again once it is worth it again');
   setRel(mind, { fear: 70 });
   a.reconsider('test');
   assert.equal(a.companionship, 'left');
