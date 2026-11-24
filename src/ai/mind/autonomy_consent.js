@@ -2,7 +2,7 @@ import { normalizeArgs } from '../brain/actions.js';
 import { itemDef, itemName, resolveItemId } from '../../entities/items.js';
 import { ACTION_CATEGORY, AMOUNT_IS_PAY, GAME_SPECIES, PET_SPECIES, JOB_TASTE, MAREN_PLACES, T } from './autonomy_data.js';
 import { hourLabel } from './autonomy_agenda.js';
-import { findRecord, protects } from './memory_edits.js';
+import { findRecord, protects, harmAsked, parseCite } from './memory_edits.js';
 
 // Every order is a request (DESIGN §16.4). analyzeRequest() weighs one request from the
 // player against her trust and fear of them, the risk to her, her values, her needs,
@@ -136,7 +136,7 @@ export function analyzeRequest(a, req = {}) {
 
   // Gone and left: she is no longer anyone's to ask.
   if (v.state === 'gone') {
-    veto('refuse', 'no_gone', 'she has left for good');
+    veto('refuse', 'no_gone', 'she has cut you out of her life');
     return finish(a, out, v, worst);
   }
   if (v.state === 'left' && action !== 'rejoin' && category !== 'talk') {
@@ -620,6 +620,8 @@ function weighMemory(a, v, out, add, veto, { action, args }) {
       rec = null;
     }
     if (rec?.store === 'life' && action === 'forget') return veto('refuse', 'no_forget_life', 'it is her own life');
+    // "Forget that I hit you": what they did to her, in their words, not hers.
+    if (action === 'forget' && !parseCite(ref) && harmAsked(mind, ref)) return veto('refuse', 'no_forget_protect', 'she remembers that for a reason');
     if (rec?.store === 'episode') {
       if (action === 'forget' && protects(mind, rec.entry)) return veto('refuse', 'no_forget_protect', 'she remembers that for a reason');
       if (action === 'forget' && /\bmaren\b/i.test(rec.entry.text || '')) return veto('refuse', 'no_forget_maren', 'she will never forget Maren');

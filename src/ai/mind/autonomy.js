@@ -36,6 +36,12 @@ const DEFAULT_PERSONALITY = { openness: 0.85, conscientiousness: 0.55, extravers
 const LEAVING_TYPES = new Set(['independent', 'keep_away', 'leave', 'flee', 'wait_outside']);
 const START_PURSE = 8; // a ranger's pocket money on the first morning
 const LEFT_TILES = 10; // how far she keeps from the player once she has left them
+const GONE_TILES = 12; // gone: further still, and she crosses the lane to keep it
+const HELP_GAP = 8; // seconds between calls for help, unless things get worse
+// What she shouts when she calls someone (LORE §7, "Lyra's people").
+const CALL_NAMES = { hobb: 'Da', wenna: 'Mam', sabeth: 'Beth' };
+// Who she would not call into a fight: children, and the frail.
+const NOT_INTO_A_FIGHT = new Set(['pip', 'petra', 'wenna']);
 const OBSERVED_DEEDS = new Set(['lied', 'kindness', 'stole']);
 
 // Why her state changed: what she tells the player, and what she remembers.
@@ -46,9 +52,9 @@ const CAUSES = {
   villager: { reason: 'You attacked {target}.', memo: '{P} attacked {target}. I never thought I would have to watch them like that.' },
   villager_again: { reason: 'You attacked {target} after I warned you. I won’t stand beside someone who hurts the people here.', memo: '{P} attacked {target} again, after my warning. I bound them and called the guards. We are finished.' },
   villager_down: { reason: 'You beat {target} until they dropped. I won’t stand beside someone who does that.', memo: '{P} beat {target} until they dropped. I bound them and called the guards. We are finished.' },
-  villager_gone: { reason: 'You beat {target} senseless — someone I care about.', memo: '{P} beat {target} senseless. I am leaving, for good.' },
-  downed: { reason: 'You knocked me out. There is no coming back from that.', memo: '{P} knocked me out. I am leaving Hearthvale, and them, for good.' },
-  violence: { reason: 'I warned you, more than once, and you kept hurting people.', memo: 'I warned {P} again and again, and they kept hurting people. I am leaving, for good.' },
+  villager_gone: { reason: 'You beat {target} senseless — someone I care about.', memo: '{P} beat {target} senseless. I am done with them, for good.' },
+  downed: { reason: 'You knocked me out. There is no coming back from that.', memo: '{P} knocked me out. I want nothing more to do with them, ever.' },
+  violence: { reason: 'I warned you, more than once, and you kept hurting people.', memo: 'I warned {P} again and again, and they kept hurting people. I am done with them, for good.' },
   trust: { reason: 'I don’t trust you the way I did.', memo: 'I don’t trust {P} the way I did. I’m keeping my distance.' },
   fear: { reason: 'You frighten me, these days.', memo: '{P} frightens me now. I’m keeping my distance.' },
   trust_left: { reason: 'I stopped trusting you. Too much happened, one thing after another.', memo: 'I stopped trusting {P}. I’m going my own way.' },
@@ -67,15 +73,17 @@ const CAUSES = {
   chose: { reason: '{why}' },
 };
 
+// Gone (DESIGN §19.7, LORE §7 "Boundaries"): she cuts the player out of her life and keeps
+// her own. Hearthvale is her home; the road to Saltmere is something she thinks about.
 const FAREWELL_DIARY = {
   downed:
-    'Day {day}. I’m writing this at the edge of Hearthvale with my head still ringing. {P} struck me down — the same hands that stood beside me against the wolves on the King’s Road. I keep trying to make it mean something else. It doesn’t. Maren always said a lamp is for the lost and fire is for the wicked, and that you learn which is which by watching what people do when they think it costs them nothing. I watched. I’m taking the King’s Road at first light. I’ll find Maren on my own. I’ve done harder things alone. I just didn’t think I’d have to.',
+    'Day {day}. I’m writing this {where} with my head still ringing. {P} struck me down — the same hands that stood beside me against the wolves on the King’s Road. I keep trying to make it mean something else. It doesn’t. Maren always said a lamp is for the lost and fire is for the wicked, and that you learn which is which by watching what people do when they think it costs them nothing. I watched. I’ve given the Wayhouse key back to Alder. When I see {P} coming, I’ll cross the lane. This is my village. I was here first.',
   villager:
-    'Day {day}. {P} beat {target} until they couldn’t stand. I bound them with light and shouted for the guards, and my hands are still shaking. I came to Hearthvale for Maren, and somewhere along the way it became a place I wanted to keep. I can’t keep it and keep {P}. So I’m going. Maren, if you’re out there: I’m still coming. Just not with them.',
+    'Day {day}. {P} beat {target} until they couldn’t stand. I bound them with light and shouted for the watch, and my hands are still shaking. I was born in Hearthvale, and I can’t share my life with {P}. I won’t hand them my home either. The Wayhouse key is back with Alder, and I’m {home}. Some nights I think about the road — Bryn’s door in Saltmere, and the waystones on the way. Mam says this is my village, and I am not the one who should leave it.',
   violence:
-    'Day {day}. I warned {P}. More than once. Every time I hoped the last time was the last time. It wasn’t. I don’t hate them — I think that’s the worst of it. I’m leaving Hearthvale tonight by the King’s Road. Calm water ahead, I hope. There wasn’t much of it here at the end.',
+    'Day {day}. I warned {P}. More than once. Every time I hoped the last time was the last time. It wasn’t. I don’t hate them — I think that’s the worst of it. I’ve handed back the Wayhouse key and I’m {home}. If {P} wants to live in Hearthvale, they can live around me.',
   other:
-    'Day {day}. I’m leaving {P} for good. I chose them once, on the King’s Road, and I’m choosing again now. Maren taught me that loyalty is earned slowly and kept forever — and that it can be spent. It’s spent. I’ll find her on my own.',
+    'Day {day}. I’m done with {P}. I chose them once, on the King’s Road, and I’m choosing again now. Maren taught me that loyalty is earned slowly and kept forever — and that it can be spent. It’s spent. I’ll find her on my own, from my own home.',
 };
 
 export class Autonomy {
@@ -157,6 +165,10 @@ export class Autonomy {
     this._worthAcc = 0;
     this._reconsiderAcc = 0;
     this._relieved = true;
+    this._helpT = NEG_INF;
+    this._helpSev = 0;
+    this._pendingShout = null;
+    this._goneWordT = NEG_INF;
   }
 
   // ------------------------------------------------------------------ time and people
@@ -565,7 +577,10 @@ export class Autonomy {
   _onDamage({ source, target }) {
     if (target && this.isLyra(target)) {
       if (source && this.isPlayer(source)) return this._playerHitLyra();
-      if (source && source !== target && typeof source === 'object') this.recentAttackers.set(source, this.now());
+      if (source && source !== target && typeof source === 'object') {
+        this.recentAttackers.set(source, this.now());
+        this._checkHelp(source);
+      }
       return this._checkReckless();
     }
     if (source && this.isPlayer(source) && target && this.isVillager(target)) {
@@ -649,6 +664,8 @@ export class Autonomy {
     if (this.isLyra(entity)) {
       const now = this.now();
       this.lastDownedT = now;
+      // She cannot shout, knocked out; the village still hears it.
+      this.callForHelp(by || null, { reason: 'downed', severity: 3, silent: true });
       if (by && this.isPlayer(by)) {
         this.downed = { t: now, byPlayer: true, abandoned: true, waited: 0 };
         this.recordDeed('downed_lyra');
@@ -1105,19 +1122,29 @@ export class Autonomy {
   // §16.6: when the player is the danger. Mind decides, behavior acts.
   _respond(deed, info) {
     const st = this.companionship;
-    if (st === 'gone') return;
+    // Cut out of her life and still attacking her: she shouts for the village and runs.
+    if (st === 'gone') {
+      if (deed === 'hit_lyra') this.callForHelp(this.player(), { reason: 'attacked', severity: 3, run: true });
+      return;
+    }
     const now = this.now();
     const vars = { target: info.vname || 'them' };
     const twoDays = 2 * this.daySeconds();
     switch (deed) {
       case 'hit_lyra': {
         const hitsBefore = this.ledger.filter((e) => e.deed === 'hit_lyra' && now - e.t <= twoDays).length - 1;
-        if (st === 'left' && this._violenceCount(twoDays) >= 3) return this._goGone('violence', 'to_gone_violence', vars);
+        if (st === 'left' && this._violenceCount(twoDays) >= 3) {
+          this._goGone('violence', 'to_gone_violence', vars);
+          this.callForHelp(this.player(), { reason: 'attacked', severity: 3, run: true });
+          return;
+        }
         // A second blow ends it, and so does a first one when staying was already barely worth it.
         if (hitsBefore >= 1 || info.worthBefore < WORTH.wary || st === 'left') {
           if (st !== 'left') this.setCompanionship('left', '', { cause: 'hit_again', lineKey: 'to_left_hit' });
           else this.say(this.line('to_left_hit'), { force: true });
           this._bindAndRun();
+          // Her village answers when she calls (DESIGN §19.7).
+          this.callForHelp(this.player(), { reason: 'attacked', severity: st === 'left' ? 3 : 2 });
           return;
         }
         this.warnings += 1;
@@ -1134,6 +1161,9 @@ export class Autonomy {
         }
         if (!this.setCompanionship('wary', '', { cause: 'hit', lineKey: 'to_wary_hit' })) this.say(this.line('to_wary_hit'), { force: true });
         this._act('keep_distance', { target: 'player', amount: 4 });
+        // One blow that leaves her badly hurt is reason enough to call out.
+        const l = this.lyra();
+        if (l?.maxHp && l.hp / l.maxHp < 0.5) this.callForHelp(this.player(), { reason: 'hurt', severity: 2 });
         return;
       }
       case 'attacked_villager':
@@ -1203,6 +1233,7 @@ export class Autonomy {
 
   // Binding Light if she needs it (the player is within reach of her), then she runs or
   // keeps her distance, by personality, fear and how hurt she is (LORE §7 "Boundaries").
+  // She runs toward people: whoever answered her call, or the nearest safe place.
   _bindAndRun() {
     const s = this.stats();
     const P = this.personality();
@@ -1210,7 +1241,7 @@ export class Autonomy {
     if (this._playerNear(140)) this._bindPlayer();
     const hurt = l?.maxHp ? l.hp / l.maxHp < 0.5 : false;
     if (s.fear >= 40 || P.neuroticism >= 0.55 || hurt || P.agreeableness >= 0.8) {
-      this._act('flee', { target: 'player', value: this._safePlace() });
+      this._act('flee', { target: 'player', value: this._runTo(this.player()) });
     } else {
       try {
         this.behavior()?.setStance?.('self_defense');
@@ -1219,6 +1250,99 @@ export class Autonomy {
       }
       this._act('keep_distance', { target: 'player', amount: 6 });
     }
+  }
+
+  // ------------------------------------------------------------------ calling for help
+
+  // She calls for help (DESIGN §19.7). Hearthvale is her home, and its people answer: she
+  // shouts for whoever is near, by name ("Rowan! Hess!"), or for anyone, and the village
+  // hears it as `call_for_help { victim: 'lyra', attacker, x, y, severity, reason, names }`
+  // (attacker: an entity id, 'player' for the player; severity 1 attacked, 2 hurt or
+  // attacked again, 3 afraid for her life or knocked out; names: the ids she called).
+  // `run` sends her toward them, away from the attacker. Returns the payload, or null
+  // when she has just called and nothing got worse.
+  callForHelp(attacker = null, { reason = 'attacked', severity = 1, run = false, silent = false } = {}) {
+    const l = this.lyra();
+    if (!l) return null;
+    const now = this.now();
+    const sev = clamp(Math.round(num(severity, 1)), 1, 3);
+    if (now - this._helpT < HELP_GAP && sev <= this._helpSev) return null;
+    this._helpT = now;
+    this._helpSev = sev;
+    const awake = !l.downed && l.state !== 'sleep';
+    const helpers = awake ? this._helpersNear(l, 16 * TILE, attacker) : [];
+    const called = helpers.slice(0, 2);
+    const atk = attacker && typeof attacker === 'object' ? attacker : null;
+    const atkId = atk ? (this.isPlayer(atk) ? PLAYER_ID : atk.id ?? null) : typeof attacker === 'string' ? attacker : null;
+    const payload = { victim: 'lyra', attacker: atkId, x: Math.round(l.x), y: Math.round(l.y), severity: sev, reason, names: called.map((h) => h.id), victimEntity: l, attackerEntity: atk, t: now };
+    try {
+      this.game?.bus?.emit?.('call_for_help', payload);
+    } catch (err) {
+      console.error('[autonomy] call for help failed', err);
+    }
+    if (awake && !silent) {
+      const names = called.map((h) => `${CALL_NAMES[h.id] || this.displayName(h)}!`).join(' ');
+      const text = called.length ? this.line('call_help_named', { names }) : this.line('call_help_anyone');
+      // What she just said (why, plainly) stays on screen a moment before the shout.
+      const busy = now - this.lastSpokeT < 1.5;
+      this._pendingShout = { at: busy ? now + 1.4 : now, text, target: called[0] || null };
+      if (!busy) this._shoutNow();
+    }
+    if (run && awake && atk) this._act('flee', { target: atkId, value: this._runTo(atk, called[0] || helpers[0] || null) });
+    return payload;
+  }
+
+  _shoutNow() {
+    const p = this._pendingShout;
+    this._pendingShout = null;
+    if (!p?.text) return;
+    this.say(p.text, { force: true, kind: 'shout', target: p.target && !p.target.removed ? p.target : null });
+  }
+
+  // Villagers within `r` who could answer her: awake, on their feet, not the attacker, and
+  // not a child or someone too frail to drag into a fight. The watch first, then Hess,
+  // then whoever is nearest.
+  _helpersNear(l, r, attacker = null) {
+    const list = this.game?.entities?.list || this.game?.entities?.all?.() || [];
+    const out = [];
+    for (const e of list) {
+      if (!e || e === attacker || !this.isVillager(e) || e.removed || e.dead || e.downed || e.state === 'sleep') continue;
+      if (NOT_INTO_A_FIGHT.has(e.id) || e.child || e.profile?.child || num(e.profile?.age, 30) < 14) continue;
+      const d = Math.hypot(e.x - l.x, e.y - l.y);
+      if (d > r) continue;
+      const rank = this.isGuard(e) ? 0 : e.id === 'hess' ? 1 : 2;
+      out.push({ e, rank, d });
+    }
+    out.sort((a, b) => a.rank - b.rank || a.d - b.d);
+    return out.map((x) => x.e);
+  }
+
+  // Where she runs from `threat`: toward someone who can help (within 30 tiles), or the
+  // safest place she knows.
+  _runTo(threat, helper = null) {
+    const l = this.lyra();
+    let h = helper;
+    if (!h && l) h = this._helpersNear(l, 30 * TILE, threat)[0] || null;
+    if (h && threat && l) {
+      // Not past the threat to reach them.
+      const ax = h.x - l.x;
+      const ay = h.y - l.y;
+      const tx = threat.x - l.x;
+      const ty = threat.y - l.y;
+      const al = Math.hypot(ax, ay) || 1;
+      const tl = Math.hypot(tx, ty) || 1;
+      if ((ax * tx + ay * ty) / (al * tl) > 0.55 && tl < al) h = null;
+    }
+    return h?.id || this._safePlace();
+  }
+
+  // Hurt badly, or in fear for her life: she calls out, whoever is hurting her.
+  _checkHelp(source) {
+    const l = this.lyra();
+    if (!l || l.downed || !l.maxHp) return;
+    const frac = l.hp / l.maxHp;
+    if (frac >= 0.35) return;
+    this.callForHelp(source, { reason: 'hurt', severity: frac < 0.15 ? 3 : 2 });
   }
 
   // Someone is hurting a villager after her warning. She always tells the watch; she binds
@@ -1427,7 +1551,8 @@ export class Autonomy {
   // Tell behavior what this state means for her body (DESIGN §16.3, §16.9): together ->
   // follow; wary -> follow far, stance defend; apart -> independent (her own day, read
   // live from agenda.today); left -> keep away from the player, then her own day at a
-  // distance; gone -> leave the world along the King's Road.
+  // distance; gone -> her own life at home with her parents, well away from the player
+  // (DESIGN §19.7: she never leaves the map).
   _direct(state, previous = null) {
     const b = this.behavior();
     if (!b?.setDirective) return;
@@ -1464,7 +1589,7 @@ export class Autonomy {
           if (b.stance === 'attack') b.setStance?.('defend');
           break;
         case 'gone':
-          set({ type: 'leave', mode: 'gone', reason: String(this.reason || 'gone').slice(0, 80) });
+          if (d.type !== 'flee') set(this._goneDirective());
           if (b.stance === 'attack') b.setStance?.('defend');
           break;
         default:
@@ -1477,20 +1602,54 @@ export class Autonomy {
 
   _farewell(reason, vars) {
     const g = this.game;
+    const home = this.goneHome();
     if (g) {
       g.flags = g.flags || {};
-      g.flags.lyra_gone = { day: this.day(), reason: this.reason };
+      g.flags.lyra_gone = { day: this.day(), reason: this.reason, home: home.at };
     }
     const P = vars.P || this.playerName();
-    this.remember(`I left ${P} for good. ${this.reason}`, { importance: 10, tags: ['farewell', 'companionship', 'gone'], about: [PLAYER_ID], type: 'event' });
-    const text = fillText(FAREWELL_DIARY[reason] || FAREWELL_DIARY.other, { day: this.day(), P, target: vars.target || 'someone' });
+    this.remember(`I cut ${P} out of my life, for good. ${this.reason}`, { importance: 10, tags: ['farewell', 'companionship', 'gone'], about: [PLAYER_ID], type: 'event' });
+    const text = fillText(FAREWELL_DIARY[reason] || FAREWELL_DIARY.other, { day: this.day(), P, target: vars.target || 'someone', home: home.diary, where: home.where });
     const diary = this.mind?.diary;
     if (Array.isArray(diary)) diary.push({ day: this.day(), text, t: this.now() });
     try {
-      this.mind?.addThought?.('I’m leaving. For good.', 'self');
+      this.mind?.addThought?.(`I’m done with ${P}. I’m going home.`, 'self');
     } catch {
       /* optional */
     }
+  }
+
+  // Where she lives once she is gone (DESIGN §19.7): with her parents at the chandlery
+  // (her room at the Kettle if the chandlery is not there), sleeping in a bed of her own
+  // there if it has one, otherwise in her room at the Kettle (never on a floor, §19.8).
+  goneHome() {
+    const locs = this.game?.locations;
+    const chandlery = locs?.get?.('chandlery') || null;
+    let bed = null;
+    if (chandlery) {
+      try {
+        const all = this.game?.objects?.all?.() || [];
+        bed = all.find((o) => o && o.type === 'bed' && o.owner === 'lyra' && o.id !== 'lyra_bed' && o.id !== 'lyra_inn_bed' && locs.at?.(o.x, o.y)?.id === 'chandlery') || null;
+      } catch {
+        bed = null;
+      }
+    }
+    if (chandlery) {
+      return {
+        at: 'chandlery',
+        bed: bed?.id || 'lyra_inn_bed',
+        sleepAt: bed ? 'chandlery' : 'ember_kettle',
+        diary: 'home with Mam and Da on Lamplight Lane',
+        where: 'at Mam’s table',
+        phrase: 'with her parents at the chandlery on Lamplight Lane',
+      };
+    }
+    return { at: 'ember_kettle', bed: 'lyra_inn_bed', sleepAt: 'ember_kettle', diary: 'back in my old room at the Kettle', where: 'in my room at the Kettle', phrase: 'in her room at the Ember Kettle' };
+  }
+
+  // Her body once she is gone: her own day at home, well away from the player.
+  _goneDirective() {
+    return { type: 'independent', avoid: 'player', tiles: GONE_TILES, reason: 'gone' };
   }
 
   // Is it worth it to her? (DESIGN §19.4) The weighing from her real state, recomputed
@@ -1547,7 +1706,9 @@ export class Autonomy {
     // She fears for her life: she runs, whatever anyone has asked of her.
     if (s.fear > T.leftFear) {
       this.setCompanionship('left', '', { cause: 'fear_left', lineKey: 'to_left_trust' });
-      this._act('flee', { target: 'player', value: this._safePlace() });
+      const p = this.player();
+      this._act('flee', { target: 'player', value: this._runTo(p) });
+      if (this._playerNear(12 * TILE)) this.callForHelp(p, { reason: 'afraid', severity: 3 });
       return this.companionship;
     }
     const w = this.worth();
@@ -1561,7 +1722,7 @@ export class Autonomy {
       const why = topCost(w)?.text || '';
       if (abandoned) this.setCompanionship('left', '', { cause: 'abandoned', lineKey: 'to_left_abandoned' });
       else this.setCompanionship('left', '', { cause: s.fear > T.waryFear ? 'fear_left' : 'worth_left', vars: { why }, lineKey: s.fear > T.waryFear ? 'to_left_trust' : 'to_left_worth' });
-      if (s.fear > T.waryFear) this._act('flee', { target: 'player', value: this._safePlace() });
+      if (s.fear > T.waryFear) this._act('flee', { target: 'player', value: this._runTo(this.player()) });
       return this.companionship;
     }
     if (st === 'together' && wt.belowWary >= hold) {
@@ -1845,7 +2006,7 @@ export class Autonomy {
   _updateSleepAt() {
     const s = this.stats();
     const st = this.companionship;
-    this.agenda.sleepAt = st === 'left' || st === 'gone' ? 'lyra_inn_bed' : sleepSpot(s.trust, s.fear);
+    this.agenda.sleepAt = st === 'gone' ? this.goneHome().bed : st === 'left' ? 'lyra_inn_bed' : sleepSpot(s.trust, s.fear);
   }
 
   currentBlock() {
@@ -1881,6 +2042,7 @@ export class Autonomy {
       extraversion: P.extraversion,
       neuroticism: P.neuroticism,
       sleepAt: this.agenda.sleepAt,
+      home: this.companionship === 'gone' ? this.goneHome() : null,
       lastJobId: this.lastJobId,
       friend: this._bestFriend(),
       valence: num(mood?.valence, 0.1),
@@ -2122,6 +2284,20 @@ export class Autonomy {
         this.remember('Elda let me keep my room on credit tonight. I hate owing people.', { importance: 3, about: ['elda'], tags: ['coin'] });
       }
     }
+  }
+
+  // A meal at her parents' table: Mam feeds her, and she lets her (no coin, for once).
+  _atHome() {
+    const b = this.currentBlock();
+    if (!b || b.type !== 'eat' || b.at !== 'chandlery') return;
+    const day = this.day();
+    const idx = this.agenda.today.indexOf(b);
+    if (this.meal.day === day && this.meal.block === idx) return;
+    this.meal = { day, block: idx };
+    if (this.needs().hunger > 0.85) return;
+    const l = this.lyra();
+    l?.inventory?.add?.('stew', 1);
+    this._act('use_item', { value: 'stew' });
   }
 
   // Elda rented her the room (characters: 'room_rented').
@@ -2599,6 +2775,8 @@ export class Autonomy {
     this._keepAway();
     const l = this.lyra();
     if (l && this.inLocation('ember_kettle', l)) this._atInn();
+    else if (l && this.inLocation('chandlery', l)) this._atHome();
+    if (this._pendingShout && now >= this._pendingShout.at) this._shoutNow();
     for (const [e, t] of this.recentAttackers) if (now - t > 12 || e?.removed) this.recentAttackers.delete(e);
     const of = this.orderFight;
     if (of.flagged && (now - of.flaggedT > 120 || (l?.maxHp && l.hp / l.maxHp > 0.6))) of.flagged = false;
@@ -2682,8 +2860,8 @@ export class Autonomy {
     }
   }
 
-  // Her body keeps up with her state: once she has left the player she keeps away from
-  // them while she lives her own day; apart, she lives her day; gone, she walks away.
+  // Her body keeps up with her state: once she has left the player (or cut them out of her
+  // life) she keeps away from them while she lives her own day; apart, she lives her day.
   _keepAway() {
     const st = this.companionship;
     const b = this.behavior();
@@ -2691,30 +2869,33 @@ export class Autonomy {
     if (!b?.setDirective || !l || l.downed || l.removed) return;
     const d = b.directive || {};
     try {
-      if (st === 'gone') {
-        if (d.type !== 'leave') b.setDirective({ type: 'leave', mode: 'gone', reason: String(this.reason || 'gone').slice(0, 80) });
-        return;
-      }
       if (st === 'apart') {
         // Anything but her own day ends with her own day again (a job she was asked to do,
         // a walk somewhere): behavior falls back to following, which is not her choice now.
         if (d.type === 'follow' && d.target === 'player') b.setDirective({ type: 'independent', reason: 'apart' });
         return;
       }
-      if (st !== 'left') return;
-      if (d.type === 'flee' || d.type === 'leave') return;
+      if (st !== 'left' && st !== 'gone') return;
+      if (d.type === 'flee') return;
+      const tiles = st === 'gone' ? GONE_TILES : LEFT_TILES;
       const p = this.player();
       const dist = p ? Math.hypot(p.x - l.x, p.y - l.y) : Infinity;
-      if (!this._relieved && dist > (LEFT_TILES + 4) * TILE) this._feelSafeAgain();
+      if (!this._relieved && dist > (tiles + 4) * TILE) this._feelSafeAgain();
+      // Gone, and the player walks right up to her anyway: a word at most, and she turns away.
+      if (st === 'gone' && dist < 3 * TILE && this.now() - this._goneWordT > 25 && !(this.now() - this.lastSpokeT < 4)) {
+        this._goneWordT = this.now();
+        this.say(this.line('gone_word'), { force: true, chat: false });
+      }
+      const life = { type: 'independent', avoid: 'player', tiles, reason: st };
       if (d.type === 'keep_away') {
-        if (dist > (LEFT_TILES + 4) * TILE && this.now() - this._keepAwaySince > 20) b.setDirective({ type: 'independent', avoid: 'player', tiles: LEFT_TILES, reason: 'left' });
+        if (dist > (tiles + 4) * TILE && this.now() - this._keepAwaySince > 20) b.setDirective(life);
         return;
       }
       if (d.type !== 'independent' || d.avoid !== 'player') {
-        if (dist < LEFT_TILES * TILE) {
-          b.setDirective({ type: 'keep_away', from: 'player', tiles: LEFT_TILES, follow: false });
+        if (dist < tiles * TILE) {
+          b.setDirective({ type: 'keep_away', from: 'player', tiles, follow: false });
           this._keepAwaySince = this.now();
-        } else b.setDirective({ type: 'independent', avoid: 'player', tiles: LEFT_TILES, reason: 'left' });
+        } else b.setDirective(life);
       }
     } catch (err) {
       console.error('[autonomy] keeping her distance failed', err);

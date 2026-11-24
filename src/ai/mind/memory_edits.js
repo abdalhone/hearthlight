@@ -116,6 +116,19 @@ export function protects(mind, m) {
   return null;
 }
 
+// The player asking her to forget what they did to her, in their own words ("forget that
+// I hit you"): the memory of it that protects her, or null.
+const HARM_ASK = /\b(?:i|we)\s+(?:(?:just|once|accidentally|really|nearly)\s+)?(?:hit|struck|strike|hurt|attacked|attack|stabbed|cut|knocked|lied|lie|stole|beat|punched|slapped|kicked|left you|abandoned|scared|frightened|threatened)\b|\bmy (?:sword|blade|fist)\b/i;
+export function harmAsked(mind, text) {
+  if (!mind?.memory?.all || !HARM_ASK.test(String(text || ''))) return null;
+  const list = mind.memory.all();
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i];
+    if (m?.about?.includes(PLAYER_ID) && protects(mind, m)) return m;
+  }
+  return null;
+}
+
 function reasonText(why, fallback) {
   const s = String(why ?? '').replace(/\s+/g, ' ').trim();
   return (s || fallback).slice(0, WHY_MAX);
@@ -295,9 +308,13 @@ function markReframed(m) {
   m.tags.push('reframed');
 }
 
+// The deed a memory is of: the ledger's own memories carry it as a tag; the mind's
+// perception remembers gifts and kindnesses itself (tags 'gift' / 'kindness').
 function deedOf(m) {
-  if (!tagged(m, 'deed')) return null;
-  return m.tags.find((t) => t !== 'deed' && (HARM_DEEDS.has(t) || GOOD_DEEDS.has(t) || SMALL_WRONGS.has(t))) || null;
+  if (tagged(m, 'deed')) return m.tags.find((t) => t !== 'deed' && (HARM_DEEDS.has(t) || GOOD_DEEDS.has(t) || SMALL_WRONGS.has(t))) || null;
+  if (tagged(m, 'kindness')) return 'kindness';
+  if (tagged(m, 'gift')) return m.emotion === 'joy' || m.emotion === 'affection' ? 'gift_liked' : 'gift_disliked';
+  return null;
 }
 
 // The night's tending, after the memory store merged and faded (DESIGN §17.4): knowledge

@@ -149,8 +149,8 @@ export const LINES = {
     tired: ['Bed. At the Kettle. Goodnight.'],
   },
   cond_loan: {
-    warm: ['It’s a loan, not a gift. I keep count.', 'Fine. I’ll want it back, with a honey cake on top.'],
-    cool: ['A loan. I’ll remember.'],
+    warm: ['A loan, not a gift. Pay me back when your purse is heavier.', 'Fine. I’ll want it back, with a honey cake on top.'],
+    cool: ['A loan, mind.'],
     afraid: ['A loan. Don’t make me chase it.'],
     tired: ['Loan. Pay it back.'],
   },
@@ -291,10 +291,10 @@ export const LINES = {
     tired: ['No.'],
   },
   no_gone: {
-    warm: ['Goodbye.'],
-    cool: ['There’s nothing left to ask.', 'Goodbye.', 'I’m leaving. Don’t follow me.'],
-    afraid: ['Stay back. I’m going.'],
-    tired: ['Goodbye.'],
+    warm: ['No.'],
+    cool: ['No.', 'Don’t.'],
+    afraid: ['Stay back.'],
+    tired: ['No.'],
   },
   no_pushed: {
     warm: ['I said no. Asking again won’t change it.', 'Still no. Asking faster doesn’t help.'],
@@ -548,9 +548,9 @@ export const LINES = {
   },
   to_left_hit: {
     warm: ['Twice. You struck me twice. I’m going my own way.', 'You hit me again. I’m going, and you’re staying right there.'],
-    cool: ['Twice. That’s no accident. Stay where you are. I’m going.', 'You struck me again. That ends it. Goodbye.'],
-    afraid: ['Stay away from me! Stay away!', 'No more — I’m going. Don’t follow me!'],
-    tired: ['No more. I’m going.'],
+    cool: ['Twice. That’s no accident. Stay where you are. I’m going.', 'You struck me again. That ends it.'],
+    afraid: ['Twice! You hit me twice — stay away from me!', 'You hit me again! Stay away from me!'],
+    tired: ['Again. No more. I’m going.'],
   },
   to_left_villager: {
     warm: ['I don’t travel with someone who does that. We’re finished.'],
@@ -588,23 +588,45 @@ export const LINES = {
     afraid: ['You left me. I could have died. I’m going.'],
     tired: ['You left me there. I’m going.'],
   },
+  // Gone (DESIGN §19.7): she cuts the player out of her life. Hearthvale is her home;
+  // she is not the one who leaves it.
   to_gone_downed: {
-    warm: ['You knocked me out. Me. I won’t ever be near you again.'],
-    cool: ['You struck me down. There is nothing left to say. Goodbye.', 'I’m leaving Hearthvale. Don’t look for me.'],
-    afraid: ['Don’t come near me. I’m leaving. For good.'],
-    tired: ['I’m leaving. For good.'],
+    warm: ['You knocked me senseless. Me. We’re finished. Stay away from me and mine.'],
+    cool: ['You struck me down. There’s nothing left to say. Stay away from me.', 'That’s the end of us. Don’t come near me again.'],
+    afraid: ['Don’t come near me. Not ever again.'],
+    tired: ['That’s the end of it. Stay away from me.'],
   },
   to_gone_villager: {
-    warm: ['{target} did nothing to you. I’m leaving, and I’m not coming back.'],
-    cool: ['You beat {target} senseless. I’m leaving Hearthvale. For good.'],
-    afraid: ['I can’t be near you. I’m going. Forever.'],
-    tired: ['I’m going. For good.'],
+    warm: ['{target} did nothing to you. We’re finished. Stay away from me.'],
+    cool: ['You beat {target} senseless. I’m done with you. Don’t speak to me again.'],
+    afraid: ['Get away from me. Get away from all of us.'],
+    tired: ['We’re finished. Stay away.'],
   },
   to_gone_violence: {
-    warm: ['I warned you. I warned you more than once. Goodbye.'],
-    cool: ['I warned you. This is the last thing I’ll ever say to you. Goodbye.'],
-    afraid: ['I warned you! I’m going and I’m never coming back!'],
-    tired: ['I warned you. Goodbye.'],
+    warm: ['I warned you. More than once. We’re finished.'],
+    cool: ['I warned you. That’s the last thing I’ll say to you.'],
+    afraid: ['I warned you! Stay away from me!'],
+    tired: ['I warned you. We’re done.'],
+  },
+  // Gone, and the player comes close anyway: a word at most.
+  gone_word: {
+    warm: ['Don’t.', 'No.', '…'],
+    cool: ['No.', 'Don’t.', 'Go.'],
+    afraid: ['Don’t!', 'Back.'],
+    tired: ['No.', '…'],
+  },
+  // Calling for help (DESIGN §19.7): clipped and practical, by name when someone is near.
+  call_help_named: {
+    warm: ['{names} Help me!', '{names} To me!'],
+    cool: ['{names} Here! Now!', '{names} To me!'],
+    afraid: ['{names} Help!', '{names} Help me!'],
+    tired: ['{names} Help…'],
+  },
+  call_help_anyone: {
+    warm: ['Help! Somebody — help!', 'Watch! To me!'],
+    cool: ['Watch! To me!', 'Help! Over here!'],
+    afraid: ['Help! Help me!', 'Somebody help!'],
+    tired: ['Help…!'],
   },
   to_apart_amends: {
     warm: ['I believe you. I’m not ready to travel with you again, but I won’t run from you.', 'All right. You’re not someone I have to hide from any more. Ask me, someday.'],

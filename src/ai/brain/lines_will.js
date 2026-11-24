@@ -360,7 +360,7 @@ export const WILL_LINES = {
     "I'm going to live my own day for a while. You know where to find me.",
     "I've got things to do. Come find me later, if you like.",
     { t: "I'm off on my own business. Don't burn the cottage down.", trait: 'playful' },
-    "We'll go our own ways for now. It's not goodbye.",
+    "We'll go our own ways today. It's not goodbye.",
   ],
   // Said once, when she goes: why, plainly, no speech (LORE §7, tone).
   leaving: [

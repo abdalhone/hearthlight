@@ -139,6 +139,7 @@ const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 export function buildPlan(v) {
   const day = v.day ?? 1;
   const state = v.state || 'together';
+  if (state === 'gone') return revise(gonePlan(v), v);
   const together = state === 'together' || state === 'wary';
   const trusting = (v.trust ?? 30) >= T.calmTrust && (v.fear ?? 0) <= T.calmFear;
   // Whose company she chooses in the "travel" hours.
@@ -199,13 +200,49 @@ export function buildPlan(v) {
     }),
   );
 
-  // Revision mid-day: keep what is still ahead, starting now.
+  return revise(out, v);
+}
+
+// Revision mid-day: keep what is still ahead, starting now.
+function revise(out, v) {
   const from = v.fromHour ?? 7;
   if (from > 7) {
     const kept = out.filter((b) => b.to > from);
     if (kept.length) kept[0].from = Math.max(kept[0].from, Math.round(from * 4) / 4);
     return tendToHerself(kept, v);
   }
+  return out;
+}
+
+// Gone (DESIGN §19.7): she has cut the player out of her life, and lives her own at home:
+// her mother's table, her father's candle vats, the bench on Lamplight Lane at dusk. She
+// still earns her keep. v.home = { at, bed, sleepAt } from the Autonomy (the chandlery,
+// or her room at the Kettle when there is no chandlery). `doing` is what the HUD shows.
+function gonePlan(v) {
+  const home = v.home?.at || 'ember_kettle';
+  const parents = home === 'chandlery';
+  const out = [];
+  out.push(makeBlock(7, 8, 'eat', home, parents ? 'Breakfast at Mam’s table.' : 'Porridge, early, before anyone’s about.', { activity: parents ? 'breakfast with Mam and Da' : 'breakfast at the Kettle', doing: parents ? 'having breakfast with her parents' : 'having breakfast' }));
+  if ((v.purse ?? 0) < 25) {
+    const job = chooseJob(v, 5);
+    out.push(workBlock(8, 12, job, `${cap(job.label)}. Coin doesn’t earn itself.`));
+  } else out.push(makeBlock(8, 12, 'study', home, 'Maren’s notes. I can read them anywhere.', { activity: 'study Maren’s notes', doing: 'reading Maren’s notes' }));
+  out.push(makeBlock(12, 13, 'eat', home, parents ? 'Lunch with Mam and Da.' : 'Something to eat.', { activity: parents ? 'lunch with Mam and Da' : 'lunch', doing: parents ? 'having lunch with her parents' : 'having lunch' }));
+  out.push(
+    makeBlock(13, 18, 'hearth', home, parents ? 'Da’s candles won’t dip themselves, and he won’t admit his eyes are going.' : 'A quiet afternoon. I need one.', {
+      activity: parents ? 'help Da at the candle vats' : 'rest by the fire',
+      doing: parents ? 'helping her father dip candles' : 'resting by the fire',
+    }),
+  );
+  out.push(makeBlock(18, 19.5, 'eat', home, parents ? 'Supper at home. Mam asks no questions, which is how I know she knows.' : 'Supper by the hearth.', { activity: 'supper', doing: parents ? 'having supper at home' : 'having supper' }));
+  out.push(
+    makeBlock(19.5, 21.5, 'rest', home, parents ? 'The bench outside with Mam and Da, while the lamps come on.' : 'An hour by the fire.', {
+      activity: parents ? 'sit on the bench with Mam and Da' : 'rest by the fire',
+      doing: parents ? 'sitting with her parents' : 'resting by the fire',
+    }),
+  );
+  const bed = v.home?.bed || 'lyra_inn_bed';
+  out.push(makeBlock(21.5, 31, 'sleep', v.home?.sleepAt || 'ember_kettle', bed === 'lyra_inn_bed' ? 'My room at the Kettle. Bolt on the door.' : 'My old bed, under my parents’ roof.', { bed }));
   return out;
 }
 
@@ -260,7 +297,7 @@ const DESCRIBE = {
   moonpetals: () => 'looking for moonpetals in the Whisperwood',
   hearth: () => 'by the fire at the Kettle',
   rest: () => 'resting',
-  sleep: (b) => (b.bed === 'lyra_bed' ? 'bed, in the cottage' : 'bed, at the inn'),
+  sleep: (b) => (b.bed === 'lyra_bed' ? 'bed, in the cottage' : b.bed && b.bed !== 'lyra_inn_bed' ? 'bed, at home' : 'bed, at the inn'),
   free: () => 'some time to myself',
 };
 

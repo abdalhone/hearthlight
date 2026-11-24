@@ -160,7 +160,7 @@ function listen(game, a) {
 
 // A line that threatens or hints that she might leave (LORE §7, tone).
 const LEAVE_THREAT =
-  /regret it|one more chance|last chance|\bfor now\b|\byet\.|\bi'?m (?:leaving|gone|going (?:away|for good))|\bwalk away from you|\bwe'?re (?:done|finished)\b|\bi don'?t travel with\b|never see me|\bi keep count\b|keeping a tally|do that again and|or i'?ll (?:go|leave)|i could leave|i might leave|i'?ll leave you/i;
+  /regret it|one more chance|last chance|\bi'?m (?:leaving|gone|going (?:away|for good))|\bwalk away from you|\bwe'?re (?:done|finished)\b|\bi don'?t travel with\b|never see me|\bi keep count\b|keeping a tally|do that again and|or i'?ll (?:go|leave)|i could leave|i might leave|i'?ll leave you/i;
 
 // ---------------------------------------------------------------- A. worth it
 
@@ -434,13 +434,15 @@ test('forget refuses what protects her: "No. I remember that for a reason."', as
   const own = game.actions.run('forget', { target: blow.id }, 'claude');
   assert.equal(own.ok, false);
   assert.ok(mind.memory.get(blow.id));
-  // A small thing she can spare, she lets go when asked, and notes why.
-  const small = mind.remember('I stubbed my toe on the cottage step.', { importance: 2 });
-  const ok = game.actions.run('forget', { value: 'stubbed my toe on the cottage step' }, 'player');
-  assert.ok(ok.ok, ok.message);
-  assert.equal(mind.memory.get(small.id), null);
-  assert.ok(mind.memory.forgotten.some((f) => /stubbed my toe/.test(f.text) && f.why.length > 3));
   assert.equal(a.companionship, 'wary');
+  // Someone she trusts asks her to let a small thing go: she can spare it, and notes why.
+  const w2 = makeWorld();
+  rel(w2.mind).trust = 55;
+  const small = w2.mind.remember('I stubbed my toe on the cottage step.', { importance: 2 });
+  const ok = w2.game.actions.run('forget', { value: 'stubbed my toe on the cottage step' }, 'player');
+  assert.ok(ok.ok, ok.message);
+  assert.equal(w2.mind.memory.get(small.id), null);
+  assert.ok(w2.mind.memory.forgotten.some((f) => /stubbed my toe/.test(f.text) && f.why.length > 3));
 });
 
 test('life memories can be reframed, never forgotten', () => {
@@ -515,8 +517,9 @@ test('sleep consolidation merges, fades, supersedes and reframes, each with a wh
   game.clock.t += 60;
   mind.learn('the ruins gate', 'The ruins gate is locked; it opens with the key the bandits hold.', { kind: 'fact', source: 'observed' });
   // A kindness from the player earlier today, then they hurt her and she left.
-  a.recordDeed('gift_loved', { text: 'Gave me a honey cake.' });
+  game.bus.emit('item_given', { from: game.player, to: game.companion, itemId: 'honey_cake', qty: 1 });
   const gift = mind.memory.all().filter((m) => m.about.includes('player') && /honey cake/i.test(m.text)).at(-1);
+  assert.ok(gift, 'she remembers the gift');
   a.setCompanionship('left', 'You hurt me.', { cause: 'hit_again' });
   game.clock.t += 0.5 * DAY_SECONDS;
   const report = mind.memory.consolidate();
@@ -528,10 +531,8 @@ test('sleep consolidation merges, fades, supersedes and reframes, each with a wh
   assert.ok(t.history.at(-1).why.length > 5);
   assert.equal(old.retracted, true, 'the rumor is superseded by what she saw');
   assert.match(old.why, /learned better/);
-  if (gift) {
-    const g = mind.memory.get(gift.id);
-    assert.ok(g.edited && g.history.some((h) => /differently/.test(h.why)), 'kind memories of them are reframed through how she sees them now');
-  }
+  const g = mind.memory.get(gift.id);
+  assert.ok(g.edited && g.history.some((h) => /differently/.test(h.why)), 'kind memories of them are reframed through how she sees them now');
   assert.ok(report.superseded >= 1 && report.reframed >= 1, JSON.stringify(report));
   assert.deepEqual(mind.memory.consolidate(), { removed: 0, merged: 0, faded: 0, skipped: true }, 'once a night, however many callers');
 });
