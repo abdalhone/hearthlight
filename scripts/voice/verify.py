@@ -65,7 +65,7 @@ def main() -> int:
         head_db = 20 * math.log10(float(head.max()) / (float(vl.frame_rms(audio).max()) + 1e-12) + 1e-12)
         if a["clipped"]:
             problems.append(f"{key}: {a['clipped']} clipped samples")
-        if a["true_peak_db"] > -0.5:
+        if a["true_peak_db"] > -1.0:
             problems.append(f"{key}: true peak {a['true_peak_db']} dBTP")
         if abs(a["lufs"] - vl.TARGET_LUFS) > 1.5 and a["dur"] > 0.6:
             problems.append(f"{key}: {a['lufs']} LUFS")

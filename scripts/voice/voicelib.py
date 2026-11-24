@@ -328,6 +328,25 @@ def encode_mp3(audio: np.ndarray, path: Path, kbps: int = 48) -> None:
     os.replace(tmp, path)
 
 
+MAX_TRUE_PEAK_DB = -1.5  # what a decoded clip may reach between samples
+
+
+def encode_checked(audio: np.ndarray, path: Path, kbps: int = 48, max_tp: float = MAX_TRUE_PEAK_DB) -> tuple[np.ndarray, float]:
+    """Encode, then decode and measure the true peak: MP3 can overshoot the limiter
+    between samples (a hard plosive by a point or more). While it does, limit a little
+    lower and encode again. Returns the audio as encoded and its decoded true peak."""
+    ceiling = CEILING_DB
+    tp = 0.0
+    for _ in range(4):
+        encode_mp3(audio, path, kbps)
+        tp = true_peak_db(decode(path))
+        if tp <= max_tp:
+            break
+        ceiling -= (tp - max_tp) + 0.3
+        audio = limit(audio, ceiling)
+    return audio, tp
+
+
 def decode(path: Path) -> np.ndarray:
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-i", str(path), "-f", "f32le", "-ar", str(SR), "-ac", "1", "pipe:1"]
     p = subprocess.run(cmd, capture_output=True, check=True)

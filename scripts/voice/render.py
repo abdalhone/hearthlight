@@ -51,7 +51,7 @@ def _render_one(job: tuple[str, str, str, str]) -> tuple[str, float, int, str | 
     try:
         audio = vl.render(_synth, text, _cast["voices"][speaker])
         path = Path(out) / f"{key}.mp3"
-        vl.encode_mp3(audio, path, KBPS)
+        audio, _tp = vl.encode_checked(audio, path, KBPS)
         return key, round(len(audio) / vl.SR, 2), path.stat().st_size, None
     except Exception as e:  # one bad line must not stop the batch
         return key, 0.0, 0, f"{type(e).__name__}: {e}"
