@@ -140,7 +140,7 @@ export const memoryPlugin = {
       patterns: [
         /\b(?:tell me (?:more )?about|what (?:was|were)) your (?<q>childhood|brother|little brother|parents|mother|father|mum|mom|dad|family|home|past|life before(?: this)?|youth|first lesson|magic)\b/i,
         /\bwhere (?:did you grow up|were you born|(?:are|'re) you from|do you come from)\b/i,
-        /\bhow did you (?:first )?(?<q>meet maren|find maren|learn magic|get your magic|discover your magic|become a ranger|start out)\b/i,
+        /\bhow did you (?:first )?(?<q>meet maren|find maren|learn magic|get your magic|discover your magic|become a mage|start out)\b/i,
         /\bdo you have (?:any )?(?<q>family|siblings|brothers?|sisters?|parents)\b/i,
         /\bwhat (?:was|were) (?:it|things) like (?<q>growing up|in hearthvale|at home|back home)\b/i,
       ],
@@ -148,8 +148,8 @@ export const memoryPlugin = {
       answer(m, ctx) {
         let q = String(m.groups?.q || m[0]).toLowerCase();
         if (/where|born|from|grow|childhood|youth|hearthvale|home/.test(q) || /where/.test(m[0].toLowerCase())) q = `${q} Hearthvale Lamplight Lane chandlery born`;
-        if (/magic/.test(q)) q = 'magic lamp storm lighthouse';
-        if (/meet maren|find maren|first lesson/.test(q)) q = 'Maren first lesson came beacon';
+        if (/magic/.test(q)) q = 'magic lamps Longwatch night violet Maren';
+        if (/meet maren|find maren|first lesson/.test(q)) q = 'Maren night of the lamps nightgown apprentice';
         if (/sibling|brother/.test(q)) q = 'Ansel Bee Jem Sabeth sister';
         if (/parent|mother|father|mum|mom|dad|family/.test(q)) q = `${q} mother father`;
         return lifeAnswer(ctx, q);

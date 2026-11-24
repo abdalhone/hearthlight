@@ -153,8 +153,8 @@ function doRead(ctx) {
   s.read = true;
   s.pending = null;
   // What the journal teaches her: its pages, the lore it touches, the clues it holds.
-  m.learn("Maren's journal", 'Maren found a half-drowned Lanternwright waygate hall under the Sunken Ruins, still humming, and set wards against something testing them from the far side.', { kind: 'fact', source: 'observed', about: ['maren'] });
-  m.learn("Maren's journal", "Maren went north through the old waygate, toward the Pale Reach, to sing back to sleep the thing the Lanternwrights could not kill, before it wakes.", { kind: 'fact', source: 'observed', about: ['maren'] });
+  m.learn("Maren's journal", "Maren read in the ruins' carvings that the stones of this verse are failing. She found the waygate at the foot of the stair alive, its verse running north to the Crown Ring and past it into the Pale, and she meant to go through.", { kind: 'fact', source: 'observed', about: ['maren'] });
+  m.learn("Maren's journal", "The journal's last page: a wrist with a ring drawn around it, labelled 'where the Song lets go', and: \"If someone comes out, I hope whoever it is is kind.\" Maren went north through the old waygate.", { kind: 'fact', source: 'observed', about: ['maren', 'player'] });
   m.learnItem('maren_journal');
   m.feel('sadness', 0.3, "reading Maren's journal");
   m.sayLines(READ_LINES, { chat: true, gap: 0.9 });
@@ -339,8 +339,7 @@ export const questPlugin = {
       answer(m, ctx) {
         const s = state(ctx.game);
         if (!s.read) return s.stage >= 5 ? "I haven't read it yet. Let me, would you?" : "We haven't found anything of hers yet. Not one page.";
-        const last = MAREN_JOURNAL[MAREN_JOURNAL.length - 1];
-        return `She found a waygate under the ruins, still humming, and something on the far side testing her wards. Then she went through it, north, to sing it back to sleep. The last page is to me: "${shorten(last.text.split('. ').slice(-2).join('. '), 120)}"`;
+        return 'The stones of this verse are failing, she says. The waygate under the ruins is alive, and its verse runs north, to the Crown Ring and past it into the Pale. She meant to go through. The last page is a wrist with a ring around it, and one line: "If someone comes out, I hope whoever it is is kind."';
       },
     },
   ],

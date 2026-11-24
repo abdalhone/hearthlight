@@ -885,15 +885,19 @@ const HANDLERS = {
         const search = shortestSentence(bs, /came (?:north|here|to Hearthvale)|went ahead|vanish|disappear|to find (?:her|Maren)/i, 170);
         const parts = [`I'm ${name}${soul.age ? `, ${soul.age}` : ''}, from ${home}.`];
         if (mentor) parts.push(toFirstPerson(mentor));
-        parts.push(search && search !== mentor ? toFirstPerson(search) : 'Maren, my teacher, vanished near the Sunken Ruins, and I came to find her.');
+        parts.push(search && search !== mentor ? toFirstPerson(search) : 'Maren, my teacher, went into the Sunken Ruins at midsummer and never came back.');
         return clipWords(parts.join(' '), 330);
       }
       case 'origin': {
-        const s1 = pickSentence(bs, /grew up|island|born|home/i);
-        return `${capitalize(shortOrigin(soul.origin) || 'Far from here')}. ${s1 ? toFirstPerson(s1) : ''} I miss the sound of it.`.replace(/\s+/g, ' ').trim();
+        // "Hearthvale: born in the chandlery on Lamplight Lane." -> place, then the detail.
+        const [place, detail] = String(soul.origin || '').split(/:\s*/);
+        const born = detail ? `I was ${lowerFirst(bare(detail))}.` : '';
+        return `${capitalize(place || 'Hearthvale')}. ${born} Da's the lamplighter, Mam keeps the bees. I've lived inside this bell-reach all my life, and I can hear the Wellstone from anywhere on the square.`.replace(/\s+/g, ' ').trim();
       }
+      case 'glasswater':
+        return "That's Maren's home, not mine. I've never been. Sand like crushed glass, she says, and a lagoon that glows on summer nights. I was born here, in the chandlery on Lamplight Lane.";
       case 'age':
-        return `${soul.age || 'Old enough'}. ${this.speech.pick(['Old enough to know better, young enough not to care.', "Don't ask a ranger her age. Ask her kill count. ...Don't ask that either."])}`;
+        return `${soul.age || 'Old enough'}. ${this.speech.pick(['Old enough to know better, young enough not to care.', "Don't ask a mage her age. Ask her kill count. ...Don't ask that either."])}`;
       case 'name':
         return soul.fullName && soul.fullName !== name ? `${soul.fullName}. But ${name} is fine — everyone calls me ${name}.` : `Just ${name}. Short, easy to shout in a fight.`;
       case 'family':
@@ -907,7 +911,11 @@ const HANDLERS = {
           return `I'll tell you something I don't tell people. ${toFirstPerson(sec.text)}`;
         }
         if (sec) return this.line('past_deflect');
-        return s.topic === 'family' ? "My family's back on the Isles. We write. Rarely, and badly." : this.line('secret_none');
+        if (s.topic !== 'family') return this.line('secret_none');
+        if (/\b(?:brothers?|sisters?|siblings)\b/.test(clause.core)) return "No brothers or sisters living. Mam and Da buried three babies before me: Ansel, Bee and little Jem. And there's Beth, who came in out of the grey and got put in my bed. She's my sister, whatever the flame-count says.";
+        if (/\b(?:father|dad|da|pa)\b/.test(clause.core)) return `${VILLAGERS.hobb.take} He's at the chandlery on Lamplight Lane, or up a ladder.`;
+        if (/\b(?:mother|mom|mum|mam|ma)\b/.test(clause.core)) return `${VILLAGERS.wenna.take} Go and say hello; she'll want to touch your face.`;
+        return "My parents are on Lamplight Lane. Da's the lamplighter, Mam keeps the bees. Go and say hello; she'll want to touch your face.";
       }
       case 'maren': {
         const op = this.opinionText('maren');
@@ -916,10 +924,9 @@ const HANDLERS = {
       }
       case 'meet':
         return this.line('meet_story');
-      case 'why': {
-        const s1 = pickSentence(bs, /vanish|followed|came to|maren/i);
-        return `${s1 ? toFirstPerson(s1) : 'Maren. She came here and never came back.'} So here I am.`;
-      }
+      case 'why':
+        // Born here; with the player by her own choice (LORE §7, "This year").
+        return "Here? I was born here. Hearthvale's mine. If you mean here with you: the hearthwatch, the stipend, a second blade for the ruins, and whatever ties you to that ring and to Maren. And you stood with me against the wolves. I noticed.";
       case 'magic':
         return this.line('past_magic');
       case 'likes': {
@@ -1310,7 +1317,7 @@ function activityPhrase(activity) {
   return lowerFirst(a.replace(/_/g, ' '));
 }
 
-// "Kettlewake, the smallest of the Glasswater Isles: a scatter of..." -> the part before the gloss.
+// "Hearthvale: born in the chandlery on Lamplight Lane." -> the part before the gloss.
 function shortOrigin(origin) {
   const t = String(origin || 'far away').split(/[:;(—]/)[0].replace(/[.,\s]+$/, '').trim();
   return t || 'far away';
