@@ -126,9 +126,7 @@ export class Hud {
     this.bottomEl.append(this.hotbar);
     this.el.append(this.turnTip);
     this.placeAskBar();
-    const inp = this.game.input;
-    if (typeof inp?.onStep === 'function') inp.onStep((dt) => this.stepWeave(dt));
-    else this.stepFromUpdate = true;
+    this.game.input?.onStep?.((dt) => this.stepWeave(dt));
   }
 
   stepWeave(dt) {
@@ -909,7 +907,6 @@ export class Hud {
 
   update(dt) {
     const g = this.game;
-    if (this.stepFromUpdate) this.stepWeave(dt);
     this.updateKeepOut(dt);
     if (this.el.hidden || !g.player) return;
     this.tick += dt;
