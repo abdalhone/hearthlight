@@ -39,13 +39,26 @@ import { T as TILE_IDS } from '../world/tiles.js';
 // reaction {id, name, x, y, target, source}, magic_unlocked {kind, id, source},
 // mana_changed {cur, max}, weave_slots {slot, weave} (a slot was set or cleared).
 //
-// Visual/sound layer (r4/fx): game.magicFx, all optional:
+// Other casters (bosses, a foe that weaves): cast(boss, weave, aim) needs no unlocks, mana
+// or slot cooldowns (pace it yourself); its harm follows combat.canHarm; caster.magicPower
+// scales its damage (the player's grows 7% a level). Targets resist by actor.resist or
+// spec.resist { fire: 0.5 }; superArmor / boss / ccResist shorten hard control.
+//
+// Visual/sound layer (r4/fx): set game.magicFx = { ... } (any time; read on every use), all
+// optional:
 //   onEvent(type, payload, magic)   types: cast spawn launch hit end explode bounce pulse
 //       impact armed patch block status reaction familiar dash charge beam_start beam_end
+//       link (a reaction arcing from one target to another) fizzle (a refused cast)
 //   update(dt, magic), drawGround(ctx, ox, oy, time, magic), drawBody(ctx, body, ox, oy, time),
 //   drawLayer(ctx, ox, oy, time, magic) (replaces drawBody for every body),
-//   drawStatuses(ctx, ox, oy, time, magic), getLights(time, magic) -> light[]
-// Anything fx leaves out falls back to the plain look in draw.js.
+//   drawStatuses(ctx, ox, oy, time, magic), getLights(time, magic) -> light[],
+//   sfx: true (combat then stays silent on weave hits; play your own sounds from onEvent)
+// Useful for looks: body.plan.palette / palettes / particles / sounds / light / familiar
+// ({ name, form, attack }), body.plan.shape / essences / twists, body.seed, body.fxState
+// (free per-body slot), magic.holdOf(caster) (charge rings), magic.decals (terrain marks),
+// actor.magicStatus (statuses: s.def.overlay, s.def.color, s.t, s.stacks).
+// Anything fx leaves out falls back to the plain look in draw.js. The layer the renderer
+// draws is magic.layer (an entity added by game.js: drawShadow = ground, draw = bodies).
 
 export const STARTER_WEAVE = Object.freeze({ id: 'spark', name: 'Spark', shape: 'bolt', essences: Object.freeze(['raw']), twists: Object.freeze([]) });
 
@@ -980,6 +993,7 @@ export class Magic {
   _newCast(caster, plan, aim, o = {}) {
     const g = this.game;
     let target = aim?.target && aim.target.type === 'actor' && isAlive(aim.target) && aim.target !== caster ? aim.target : null;
+    let assisted = false;
     let ax = Number.isFinite(aim?.x) ? aim.x : NaN;
     let ay = Number.isFinite(aim?.y) ? aim.y : NaN;
     const probe = { caster, friendly: true, target: null };
@@ -1028,6 +1042,7 @@ export class Magic {
         ay = caster.y + f.y * Math.max(24, range);
       }
     } else if (!target && plan.aimAssist) {
+      // Homing weaves forgive a loose aim: the foe nearest the aim point becomes the mark.
       const probe2 = { caster, friendly: false, target: null };
       let best = null;
       let bd = 52 * 52;
@@ -1039,7 +1054,10 @@ export class Magic {
           best = a;
         }
       }
-      if (best) target = best;
+      if (best) {
+        target = best;
+        assisted = true;
+      }
     }
     if (target && !Number.isFinite(aim?.x)) {
       ax = target.x;
@@ -1052,7 +1070,7 @@ export class Magic {
       plan,
       target,
       friendly,
-      trackTarget: !!target && !Number.isFinite(aim?.x),
+      trackTarget: !!target && (!Number.isFinite(aim?.x) || assisted),
       aimX: ax,
       aimY: ay,
       angle: Math.atan2(ay - caster.y, ax - caster.x) || 0,
