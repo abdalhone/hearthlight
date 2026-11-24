@@ -718,3 +718,162 @@ test("the King's Road runs off both edges of the map on walkable tiles", () => {
     assert.equal(G.isBlockedTile(map.w - 1, y, null), false);
   }
 });
+
+// ---------------------------------------------------------------------------
+// The ground renderer (pure typed arrays, so it runs here without a canvas).
+
+import { buildTileArt, paintChunkBuf, CHUNK } from '../src/art/tiles_art.js';
+
+const ART = buildTileArt(new RNG(7), { withCanvas: false });
+const A = (c) => c >>> 24;
+const lum = (c) => (c & 255) * 0.3 + ((c >>> 8) & 255) * 0.55 + ((c >>> 16) & 255) * 0.15;
+
+function chunkOf(tx, ty) {
+  return [Math.floor(tx / CHUNK), Math.floor(ty / CHUNK)];
+}
+
+test('the ground paints every chunk in Node, fast and deterministically', () => {
+  const { map } = WORLD;
+  const times = [];
+  for (let cy = 0; cy < Math.ceil(map.h / CHUNK); cy++) {
+    for (let cx = 0; cx < map.w / CHUNK; cx++) {
+      const t0 = performance.now();
+      const r = paintChunkBuf(ART, map, cx, cy, map._shadowCasters(cx, cy));
+      times.push(performance.now() - t0);
+      assert.equal(r.buf.w, CHUNK * TILE);
+      // Inside the map every pixel is painted (opaque land or translucent water).
+      const rows = Math.min(CHUNK, map.h - cy * CHUNK) * TILE;
+      for (let i = 0; i < rows * r.buf.w; i += 97) assert.ok(A(r.buf.data[i]) > 0, `chunk ${cx},${cy} pixel ${i} painted`);
+    }
+  }
+  times.sort((a, b) => a - b);
+  assert.ok(times[times.length >> 1] < 60, `median chunk ${times[times.length >> 1].toFixed(1)} ms`);
+  const spot = WORLD.objects.get('fishing_spot');
+  const [cx, cy] = chunkOf(spot.tx, spot.ty);
+  const a = paintChunkBuf(buildTileArt(new RNG(7), { withCanvas: false }), map, cx, cy, []);
+  const b = paintChunkBuf(ART, map, cx, cy, []);
+  assert.deepEqual(Buffer.from(a.buf.data.buffer), Buffer.from(b.buf.data.buffer), 'same art seed, same pixels');
+});
+
+test('water is translucent over the animated sheet, with shore foam and a reflection mask', () => {
+  const { map } = WORLD;
+  const dock = G.objects.get('fishing_spot');
+  const [cx, cy] = chunkOf(dock.tx, dock.ty);
+  const r = paintChunkBuf(ART, map, cx, cy, []);
+  assert.ok(r.hasWater && r.waterBox, 'the lake chunk has water');
+  let water = 0;
+  let deep = 0;
+  for (let i = 0; i < r.buf.data.length; i++) {
+    const a = A(r.buf.data[i]);
+    if (a < 255) water++;
+    if (a < 255 && a < 140) deep++;
+  }
+  assert.ok(water > 2000, 'plenty of translucent water pixels');
+  assert.ok(deep > 0, 'open water lets more of the moving sheet through than the shallows');
+  const wb = r.waterBox;
+  for (let i = 0; i < r.buf.data.length; i++) {
+    if (A(r.buf.data[i]) === 255) continue;
+    const x = i % r.buf.w;
+    const y = (i / r.buf.w) | 0;
+    assert.ok(x >= wb.x && y >= wb.y && x < wb.x + wb.w && y < wb.y + wb.h, 'water box covers all water');
+  }
+  assert.ok(r.foamA && r.foamB, 'two foam layers');
+  assert.ok(r.foamA.data.some((c) => A(c) > 0), 'foam along the shore');
+  assert.ok(r.mask && r.mask.data.some((c) => A(c) > 200), 'banks can be mirrored');
+  // A dry inland chunk has no water machinery at all.
+  const sq = WORLD.locations.get('town_square').center;
+  const [qx, qy] = chunkOf(Math.floor(sq.x / TILE), Math.floor(sq.y / TILE));
+  const q = paintChunkBuf(ART, map, qx, qy, []);
+  assert.equal(q.waterBox, null);
+  assert.equal(q.foamA, null);
+  assert.equal(q.mask, null);
+  // Trees stand on the lake's north bank, so the still water has something to mirror.
+  const bank = WORLD.objects.all().filter((o) => o.objType === 'tree' && [1, 2, 3].some((d) => map.isWater(o.tx, o.ty + d)));
+  assert.ok(bank.length >= 5, `trees on the banks (${bank.length})`);
+});
+
+test('rain: a wet twin of each chunk darkens the land and leaves the water to the dry chunk', () => {
+  const { map } = WORLD;
+  const sq = WORLD.locations.get('town_square').center;
+  const [qx, qy] = chunkOf(Math.floor(sq.x / TILE), Math.floor(sq.y / TILE));
+  const dry = paintChunkBuf(ART, map, qx, qy, []);
+  const wet = paintChunkBuf(ART, map, qx, qy, [], true);
+  let dl = 0;
+  let wl = 0;
+  let bright = 0;
+  let n = 0;
+  for (let ty = qy * CHUNK; ty < (qy + 1) * CHUNK; ty++) {
+    for (let tx = qx * CHUNK; tx < (qx + 1) * CHUNK; tx++) {
+      if (map.tileAt(tx, ty) !== T.COBBLE) continue;
+      for (let k = 0; k < 16; k++) {
+        const i = ((ty - qy * CHUNK) * TILE + k) * dry.buf.w + (tx - qx * CHUNK) * TILE + ((k * 5) & 15);
+        dl += lum(dry.buf.data[i]);
+        const w = lum(wet.buf.data[i]);
+        wl += w;
+        if (w > lum(dry.buf.data[i])) bright++;
+        n++;
+      }
+    }
+  }
+  assert.ok(n > 100, 'the square is cobbled');
+  assert.ok(wl < dl * 0.9, 'wet cobbles are darker overall');
+  assert.ok(bright > 0, 'but their glossy rims catch the light');
+  // Over the lake the wet twin is empty where the water is.
+  const dock = G.objects.get('fishing_spot');
+  const [cx, cy] = chunkOf(dock.tx, dock.ty);
+  const d2 = paintChunkBuf(ART, map, cx, cy, []);
+  const w2 = paintChunkBuf(ART, map, cx, cy, [], true);
+  assert.equal(w2.foamA, null);
+  assert.equal(w2.mask, null);
+  let checked = 0;
+  for (let i = 0; i < d2.buf.data.length; i += 13) {
+    if (A(d2.buf.data[i]) === 255) continue;
+    assert.equal(A(w2.buf.data[i]), 0, 'no water pixels in the wet twin');
+    checked++;
+  }
+  assert.ok(checked > 50);
+});
+
+test('the ground soaks in the rain, dries slowly, and lamps glint on the wet street', () => {
+  const { game } = buildWorld();
+  const map = game.map;
+  game.clock.weather = { type: 'rain', intensity: 1 };
+  for (let i = 0; i < 60 * 4; i++) map.update(1 / 60);
+  const soaking = map.wetness;
+  assert.ok(soaking > 0.4 && soaking < 1, `soaking (${soaking.toFixed(2)})`);
+  for (let i = 0; i < 60 * 6; i++) map.update(1 / 60);
+  assert.equal(map.wetness, 1);
+  game.clock.weather = { type: 'clear', intensity: 0 };
+  for (let i = 0; i < 60 * 10; i++) map.update(1 / 60);
+  assert.ok(map.wetness > 0.75 && map.wetness < 1, 'puddles linger after the rain');
+  // At night a street lamp in the rain throws a short reflection onto the cobbles.
+  game.clock.daylight = 0.05;
+  const lamp = game.objects.all().find((o) => o.objType === 'lamp' && o.kind === 'post');
+  const lit = lamp.getLight(0);
+  assert.ok(Array.isArray(lit) && lit.length === 3, 'light plus two reflection glints');
+  assert.ok(lit[1].y > lamp.y && lit[2].y > lit[1].y, 'reflections fall below the lamp');
+  assert.ok(lit[1].intensity < lit[0].intensity && lit[1].r < lit[0].r);
+  map.wetness = 0;
+  assert.ok(!Array.isArray(lamp.getLight(0)), 'a dry night has the lamp alone');
+  // Candles under the chapel roof never reflect.
+  map.wetness = 1;
+  const candles = game.objects.all().find((o) => o.objType === 'lamp' && o.kind === 'candles');
+  assert.ok(!Array.isArray(candles.getLight(0)));
+});
+
+test('the roof of the building the viewer stands in fades; the others stay', () => {
+  const { game } = buildWorld();
+  const map = game.map;
+  for (const b of map.buildings) b._roof = { canvas: {} }; // no canvas in Node: skip painting
+  const drawn = [];
+  const ctx = { globalAlpha: 1, drawImage: () => drawn.push(ctx.globalAlpha) };
+  const inn = map.buildings.find((b) => b.id === 'ember_kettle');
+  const store = map.buildings.find((b) => b.id === 'general_store');
+  const viewer = { x: (inn.x + 4) * TILE, y: (inn.y + 8) * TILE };
+  for (let t = 0; t <= 2; t += 1 / 30) map.drawRoofs(ctx, 0, 0, map.w * TILE, map.h * TILE, t, viewer);
+  assert.ok(inn._alpha < 0.15, `inn roof faded (${inn._alpha.toFixed(2)})`);
+  assert.ok(store._alpha > 0.99, 'other roofs stay');
+  viewer.y = (inn.y + inn.h + 3) * TILE;
+  for (let t = 2; t <= 4; t += 1 / 30) map.drawRoofs(ctx, 0, 0, map.w * TILE, map.h * TILE, t, viewer);
+  assert.ok(inn._alpha > 0.95, 'and it comes back when you step outside');
+});
