@@ -145,6 +145,16 @@ export class InventoryPanel {
     this.selected = { owner, id };
     this.game.audio?.play('ui_click');
     this.render();
+    // On a phone the item's card (and what you can do with it) may sit below the fold:
+    // bring its buttons into view.
+    requestAnimationFrame(() => {
+      try {
+        const acts = this.detail?.querySelector('.detail-actions, .item-actions, .btn-row') || this.detail;
+        acts?.scrollIntoView?.({ block: 'nearest', behavior: this.ui.reduceMotion ? 'auto' : 'smooth' });
+      } catch {
+        /* old browsers */
+      }
+    });
   }
 
   renderDetail() {

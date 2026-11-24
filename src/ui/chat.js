@@ -889,7 +889,14 @@ export class Chat {
   refreshPeople(force = false) {
     if (!this.mounted || !this.toBar) return;
     const g = this.game;
-    const people = earshotPeople(g, { keep: this.people });
+    // Chips keep their places while you tap: whoever was already here stays where they
+    // were, and newcomers join at the end (never sliding in under your finger).
+    const prev = this.people || [];
+    const rank = (id) => {
+      const i = prev.indexOf(id);
+      return i < 0 ? 1e9 : i;
+    };
+    const people = earshotPeople(g, { keep: this.people }).sort((a, b) => rank(a.id) - rank(b.id));
     const ids = people.map((e) => e.id);
     this.people = ids;
     for (const e of people) this.seenAt.set(e.id, { nx: e.x, ny: e.y, px: g.player?.x ?? 0, py: g.player?.y ?? 0 });

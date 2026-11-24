@@ -37,13 +37,13 @@ export const SETTINGS_LAYOUT = {
     { id: 'village', title: 'Villagers', keys: ['villageAi'] },
   ],
   display: [
-    { id: 'screen', title: 'Screen', keys: ['zoom', 'reduceMotion', 'showFps'] },
+    { id: 'screen', title: 'Screen', keys: ['zoom', 'showQuestLine', 'reduceMotion', 'showFps'] },
     { id: 'words', title: 'Words', keys: ['textSpeed', 'showThoughts'] },
   ],
 };
 
 // Settings the touch and aim controls keep outside DEFAULT_SETTINGS (unset = default).
-export const EXTRA_SETTING_KEYS = ['touchScale', 'leftHanded', 'touchBuzz', 'aimGuides'];
+export const EXTRA_SETTING_KEYS = ['touchScale', 'leftHanded', 'touchBuzz', 'aimGuides', 'showQuestLine'];
 
 // Every key the panel shows, in order, with its tab: [{ key, tab, group }].
 export function settingKeysInLayout() {
@@ -127,6 +127,7 @@ export const SETTING_ROWS = {
       [1.5, 'Closest'],
     ],
   },
+  showQuestLine: { kind: 'toggle', on: true, label: 'Mission line', note: 'The mission you follow, in one line at the top. Tap it for all your missions.' },
   reduceMotion: { kind: 'toggle', label: 'Reduce motion', note: 'Less shaking, flashing and drifting.' },
   showFps: { kind: 'toggle', label: 'Frame rate', note: 'Frames per second, in a corner.' },
   textSpeed: {

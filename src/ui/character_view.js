@@ -116,6 +116,14 @@ export class CharacterView {
         this.slot = this.slot === s ? null : s;
         this.game.audio?.play?.('ui_click');
         this.render();
+        // What the slot offers shows under the slots: bring it into view on a phone.
+        if (this.slot) requestAnimationFrame(() => {
+          try {
+            this.pickEl?.scrollIntoView?.({ block: 'nearest', behavior: this.ui?.reduceMotion ? 'auto' : 'smooth' });
+          } catch {
+            /* old browsers */
+          }
+        });
       });
       this.slotBtns[s] = { b, img, name, up };
       this.slotsEl.append(b);

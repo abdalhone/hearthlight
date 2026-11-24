@@ -8646,3 +8646,245 @@ input[type='range']::-moz-range-thumb {
   padding-top: 4px;
   padding-bottom: 4px;
 }
+
+/* ---------- finger-sized controls everywhere on a touch screen ---------- */
+
+.is-touch .switch {
+  width: 50px;
+  height: 30px;
+}
+.is-touch .switch::after {
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+}
+.is-touch .switch:checked::after {
+  transform: translateX(20px);
+}
+.is-touch input[type='range'] {
+  height: 40px;
+}
+.is-touch input[type='range']::-webkit-slider-thumb {
+  width: 22px;
+  height: 30px;
+  margin-top: -12px;
+}
+.is-touch input[type='range']::-moz-range-thumb {
+  width: 22px;
+  height: 30px;
+}
+.is-touch .set-select .field,
+.is-touch .set-text .field {
+  min-height: 44px;
+}
+.is-touch .segmented .seg {
+  min-height: 42px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.is-touch .panel .btn-small {
+  min-height: 44px;
+}
+.is-touch .panel-missions .tab,
+.is-touch .panel .tabs .tab {
+  min-height: 44px;
+}
+.is-touch .settings-tabs .tab,
+.is-touch .set-tabs .tab {
+  min-height: 44px;
+}
+
+/* The bag sideways: your pack, the chosen item with what you can do with it, her pack —
+   side by side, so the buttons are never below the fold. */
+@media (max-height: 520px) and (min-width: 600px) {
+  .panel-inventory .inv {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 0.9fr);
+    gap: 12px;
+    height: auto;
+  }
+  .panel-inventory .inv-detail-col {
+    grid-column: auto;
+    order: 0;
+    position: sticky;
+    top: 0;
+    align-self: start;
+  }
+}
+
+/* ---------- the Book of Halcyre: one scroller, whatever the swipe starts on ---------- */
+
+.codex-book {
+  height: 100%;
+}
+.codex-book > .codex-page {
+  min-height: 0;
+  overscroll-behavior-y: auto;
+}
+@media (max-width: 640px) {
+  .codex-book {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .codex-chapters {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+  .codex-tab {
+    flex: 1 1 auto;
+    min-height: 40px;
+  }
+}
+@media (max-height: 520px) and (min-width: 600px) {
+  .codex-book {
+    grid-template-columns: 170px minmax(0, 1fr);
+  }
+  .codex-chapters {
+    padding: 8px;
+    gap: 4px;
+  }
+  .codex-tab {
+    min-height: 38px;
+  }
+}
+
+/* ---------- the chat on a phone ---------- */
+
+/* The quick replies wrap onto rows instead of running off the edge. */
+@media (max-width: 640px), (max-height: 520px) {
+  .chat-chips {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    max-height: 84px;
+    overflow-y: auto;
+  }
+  .chat-head .chat-close {
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+  }
+}
+/* Sideways, typing (the keyboard takes most of the height): only the last words and
+   the field — no header, no "To" row, no quick replies. */
+@media (max-height: 520px) {
+  .kb-open .chat .chat-head,
+  .kb-open .chat .chat-to,
+  .kb-open .chat .chat-chips {
+    display: none;
+  }
+  .kb-open .chat .chat-log {
+    min-height: 40px;
+  }
+}
+
+/* ---------- a villager's dialog on a phone ---------- */
+
+.is-touch .dlg-opt .keycap {
+  display: none;
+}
+.dlg-opt {
+  min-height: 44px;
+}
+/* Sideways: their words on the left (they stay put), the choices on the right (they
+   scroll on their own if there are many), the "Say something" field below both. */
+@media (max-height: 520px) and (min-width: 600px) {
+  .panel-dialog {
+    max-height: 100%;
+  }
+  .panel-dialog .panel-body {
+    padding: 8px 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .panel-dialog .dlg {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 6px 10px;
+    align-items: start;
+  }
+  .panel-dialog .dlg-portrait {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+  .panel-dialog .dlg-portrait .portrait-xl {
+    width: 48px;
+    height: 48px;
+  }
+  .panel-dialog .dlg-main {
+    display: contents;
+  }
+  .panel-dialog .dlg-you {
+    grid-column: 2;
+    grid-row: 1;
+    margin: 0;
+  }
+  .panel-dialog .dlg-box {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: stretch;
+    overflow-y: auto;
+    min-height: 0;
+  }
+  .panel-dialog .dlg-you:not([hidden]) + .dlg-box {
+    grid-row: 2;
+  }
+  .panel-dialog .dlg-you[hidden] + .dlg-box {
+    grid-row: 1 / span 2;
+  }
+  .panel-dialog .dlg-text {
+    font-size: var(--fs-m);
+  }
+  .panel-dialog .dlg-extra,
+  .panel-dialog .dlg-options {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: stretch;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .panel-dialog .dlg-extra:not(:empty) ~ .dlg-options {
+    display: none;
+  }
+  .panel-dialog .dlg-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    gap: 6px;
+  }
+  .panel-dialog .dlg-opt {
+    min-height: 42px;
+    padding: 4px 10px;
+    font-size: var(--fs-s);
+  }
+  .panel-dialog .panel-foot.dlg-say {
+    padding: 6px 10px;
+  }
+  .panel-dialog .panel-head {
+    padding: 2px 6px 2px 12px;
+  }
+}
+@media (max-height: 520px) and (min-width: 600px) {
+  .panel-dialog .dlg-extra:has(> .shop) {
+    overflow: hidden;
+  }
+  .panel-dialog .dlg-extra > .shop {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    height: 100%;
+    min-height: 0;
+  }
+  .panel-dialog .dlg-extra > .shop > .shop-panes {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .panel-dialog .dlg-extra > .shop > .btn {
+    flex: none;
+    align-self: flex-end;
+  }
+}
