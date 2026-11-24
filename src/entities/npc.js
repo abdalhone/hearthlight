@@ -2017,6 +2017,14 @@ export class NPC extends Actor {
       this.mode = 'downed';
       this.setState('downed');
     }
+    // Saved while lying in a bed (or sitting on a bench): start beside it, on free floor.
+    if (!this.tileFree(Math.floor(this.x / TILE), Math.floor(this.y / TILE))) {
+      const f = this.freeNear(this.x, this.y + TILE);
+      if (f) {
+        this.x = f.x;
+        this.y = f.y;
+      }
+    }
     this.anchor = { x: this.x, y: this.y };
     this.r.key = null;
   }
