@@ -15,7 +15,7 @@ export const COMPANIONSHIP = Object.freeze({
   wary: { label: 'Wary of you', tone: 'warn', blurb: 'She is still beside you, but guarded: she keeps her distance, turns down risky requests and watches what you do.' },
   apart: { label: 'Living her own life', tone: 'calm', blurb: 'She is going her own way for now. She is friendly, and she may travel with you again if she wants to.' },
   left: { label: 'Left you', tone: 'bad', blurb: 'She broke off after being hurt or betrayed. She will only come back after amends she believes, and time.' },
-  gone: { label: 'Gone', tone: 'grave', blurb: 'She has left Hearthvale for good.' },
+  gone: { label: 'Gone', tone: 'grave', blurb: 'She has cut you out of her life. She lives with her parents in Hearthvale, keeps out of your way, and gives you a word at most.' },
 });
 
 export const COMPANIONSHIP_STATES = Object.keys(COMPANIONSHIP);
@@ -79,7 +79,7 @@ export function handReach(game, maxTiles = HAND_REACH_TILES) {
 // The line under her pack when nothing can be handed over.
 export function reachNote(r, name = 'Lyra') {
   if (!r || r.ok) return '';
-  if (r.why === 'gone') return `${name} is gone. Nothing of yours can reach her now.`;
+  if (r.why === 'gone') return `${name} is gone from your life. She won't take anything from you.`;
   if (r.why === 'downed') return `${name} is knocked out. Help her up first.`;
   if (r.why === 'far') return `${name} is ${r.tiles} paces away. Walk over to her to hand anything across.`;
   return '';

@@ -1047,7 +1047,7 @@ export const BUILTIN_INTENTS = [
     id: 'social.apology', kind: 'social', confidence: 0.86,
     patterns: [
       /^(?:sorry|so sorry|i am sorry|i am so sorry|i apologi[sz]e|my bad|forgive me|i did not mean (?:it|that)|i was wrong|my apologies|apologies|oops|i am sorry for (?:what i said|that|earlier|being rude|being mean))(?: lyra)?$/,
-      /^(?:i am (?:so |really |truly |very |deeply )?sorry(?: for .{1,60})?|please forgive me|forgive me(?: please)?|can you forgive me|will you forgive me|it was an accident|that was an accident|i did not mean to(?: .{1,50})?|it will not happen again|i will never do (?:it|that) again|i messed up|i was wrong(?: .{1,50})?|i regret (?:it|that|what i did))$/,
+      /^(?:i am (?:so |really |truly |very |deeply |terribly )*sorry(?:,? .{1,80})?|please forgive me|forgive me(?: please)?|can you forgive me|will you forgive me|it was an accident|that was an accident|i did not mean to(?: .{1,50})?|it will not happen again|i will (?:never|not ever|not) do (?:it|that|this) (?:ever )?again|i messed up|i was wrong(?:,? .{1,60})?|i regret (?:it|that|what i did))$/,
     ],
     slots: (m, c) => ({ accident: /accident|did not mean/.test(c.core), vow: /never|not happen again/.test(c.core) }),
   },

@@ -26,7 +26,7 @@ const RECALL_HALF_LIFE = 300; // real seconds for "I was just thinking about tha
 
 // What a record's document depends on: when this changes, it is re-indexed.
 function lifeSig(e) {
-  return `${e.title}|${e.text.length}|${e.importance}|${e.people.join(',')}|${e.places.join(',')}`;
+  return `${e.title}|${e.text}|${e.importance}|${e.people.join(',')}|${e.places.join(',')}`;
 }
 
 function episodeSig(m) {
@@ -53,6 +53,19 @@ export class MemoryIndex {
     this.linker = null;
     this._linkerSig = null;
     this.recent = new Map(); // doc key -> { a, t }
+    this._trace = null; // Map(doc key -> hit) of what was recalled while a trace is open
+  }
+
+  // What she recalls while composing one reply (the offline mind's "remembered" chips):
+  // beginTrace(), ...searches..., endTrace() -> [hit] in the order they were recalled.
+  beginTrace() {
+    this._trace = new Map();
+  }
+
+  endTrace() {
+    const t = this._trace;
+    this._trace = null;
+    return t ? [...t.values()] : [];
   }
 
   get size() {
@@ -85,7 +98,8 @@ export class MemoryIndex {
     const mem = m.memory;
     this._sync('episode', `${mem?.size || 0}:${mem?.rev || 0}`, mem ? mem.all() : [], (x) => x.id, episodeSig, (x) => this._episodeDoc(x));
     const kn = m.knowledgeStore;
-    this._sync('knowledge', `${kn?.size || 0}:${kn?.rev || 0}`, kn ? kn.all() : [], (x) => x.id, knowledgeSig, (x) => this._knowledgeDoc(x));
+    // What she retracted is never recalled (DESIGN §17.4).
+    this._sync('knowledge', `${kn?.size || 0}:${kn?.rev || 0}`, kn ? kn.all().filter((k) => !k.retracted) : [], (x) => x.id, knowledgeSig, (x) => this._knowledgeDoc(x));
     const people = this._personDocsIfChanged();
     if (people) this._sync('person', null, people, (d) => d.id, (d) => d.sig, (d) => d);
   }
@@ -454,6 +468,7 @@ export class MemoryIndex {
       out.push({ key: s.d.key, store: s.d.store, id: s.d.id, label: s.d.label, text: s.d.text, score: Math.round(s.score * 1000) / 1000, relevance: Math.round(s.rel * 1000) / 1000, ref: s.d.ref, ents: s.d.ents });
     }
     if (touch) for (const h of out) this.touch(h.key, 0.35);
+    if (this._trace) for (const h of out) if (!this._trace.has(h.key) && this._trace.size < 40) this._trace.set(h.key, h);
     return out;
   }
 

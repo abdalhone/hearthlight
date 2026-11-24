@@ -294,7 +294,7 @@ export class MindPanel {
         'div',
         { class: 'hero-text' },
         h('div', { class: 'hero-name' }, h('span', { text: name }), soul.fullName && soul.fullName !== name ? h('span', { class: 'hero-full', text: soul.fullName }) : null),
-        h('div', { class: 'hero-mood' }, h('span', { class: 'mood-emoji', text: moodEmoji(mood) }), h('span', { text: cs === 'gone' ? 'Gone from Hearthvale' : mood?.label ? `Feeling ${mood.label}` : 'Feeling like herself' })),
+        h('div', { class: 'hero-mood' }, h('span', { class: 'mood-emoji', text: moodEmoji(mood) }), h('span', { text: cs === 'gone' ? 'Wants nothing to do with you' : mood?.label ? `Feeling ${mood.label}` : 'Feeling like herself' })),
         h(
           'div',
           { class: 'hero-bond' },
@@ -763,7 +763,7 @@ export class MindPanel {
         'li',
         { class: 'life-node life-now' },
         h('span', { class: 'life-age', text: 'Now' }),
-        h('div', { class: 'life-card' }, h('h3', { class: 'life-title', text: `Day ${day} in Hearthvale` }), h('p', { class: 'life-text', text: cs === 'gone' ? `${name} has left Hearthvale.` : `${companionshipLabel(cs)}. ${companionshipBlurb(cs)}` })),
+        h('div', { class: 'life-card' }, h('h3', { class: 'life-title', text: `Day ${day} in Hearthvale` }), h('p', { class: 'life-text', text: cs === 'gone' ? `${name} has cut you out of her life. She still lives here, with her parents.` : `${companionshipLabel(cs)}. ${companionshipBlurb(cs)}` })),
       ),
     );
     this.content.append(h('p', { class: 'tab-intro', text: `${name}'s life from the beginning, as she remembers it.` }), line);

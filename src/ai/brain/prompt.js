@@ -24,6 +24,7 @@ const CATALOG_MAX = 1800;
 
 const EMOTIONS = ['joy', 'sadness', 'fear', 'anger', 'trust', 'surprise', 'affection', 'curiosity', 'pride', 'embarrassment', 'calm'];
 export const KNOWLEDGE_KINDS = ['fact', 'lore', 'theory', 'rumor'];
+export const MEMORY_EDIT_OPS = ['update', 'reweight', 'forget', 'retract'];
 
 // Structured-output schema for chat replies. Every object closes its properties and
 // lists them all as required; optional values are nullable.
@@ -31,7 +32,7 @@ const nullable = (schema) => ({ anyOf: [schema, { type: 'null' }] });
 export const RESPONSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['thought', 'say', 'emotion', 'actions', 'memories', 'relationships', 'goal', 'used_memories', 'knowledge'],
+  required: ['thought', 'say', 'emotion', 'actions', 'memories', 'relationships', 'goal', 'used_memories', 'knowledge', 'memory_edits'],
   properties: {
     thought: { type: 'string' },
     say: { type: 'string' },
@@ -85,6 +86,22 @@ export const RESPONSE_SCHEMA = {
         additionalProperties: false,
         required: ['subject', 'text', 'kind'],
         properties: { subject: { type: 'string' }, text: { type: 'string' }, kind: { type: 'string', enum: KNOWLEDGE_KINDS } },
+      },
+    },
+    // She tends her own memory (DESIGN §17.4): ids from the recall context only.
+    memory_edits: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'op', 'text', 'importance', 'why'],
+        properties: {
+          id: { type: 'string' },
+          op: { type: 'string', enum: MEMORY_EDIT_OPS },
+          text: nullable({ type: 'string' }),
+          importance: nullable({ type: 'number' }),
+          why: { type: 'string' },
+        },
       },
     },
   },
@@ -203,7 +220,10 @@ const COMPACT = {
   set_relationship: 'target who, value friend|enemy|rival|crush|family|pet (or -tag), amount affinity -20..20',
   note_about: 'target who, value note',
   remember: 'target about whom, value text, amount importance 1..10',
-  forget: 'value text to match',
+  forget: 'target [id] or value words',
+  edit_memory: 'target [id], value how you now remember it, amount importance',
+  update_knowledge: 'target subject or [k], value corrected text',
+  retract_knowledge: 'target subject or [k], value why',
   set_goal: 'value goal, amount priority 0..1',
   complete_goal: 'value goal',
   express: 'value emotion, amount 0..1',
@@ -281,12 +301,13 @@ ${catalog || '- (no actions available)'}
 
 # Reply format
 Exactly one JSON object:
-{"thought": string, "say": string, "emotion": {"name": string, "intensity": number}, "actions": [{"name": string, "target": string|null, "value": string|null, "amount": number|null}], "memories": [{"text": string, "importance": integer, "about": [string]}], "relationships": [{"person": string, "affinity": number, "trust": number, "respect": number, "note": string|null, "tag": string|null, "opinion": string|null}], "goal": string|null, "used_memories": [string], "knowledge": [{"subject": string, "text": string, "kind": string}]}
+{"thought": string, "say": string, "emotion": {"name": string, "intensity": number}, "actions": [{"name": string, "target": string|null, "value": string|null, "amount": number|null}], "memories": [{"text": string, "importance": integer, "about": [string]}], "relationships": [{"person": string, "affinity": number, "trust": number, "respect": number, "note": string|null, "tag": string|null, "opinion": string|null}], "goal": string|null, "used_memories": [string], "knowledge": [{"subject": string, "text": string, "kind": string}], "memory_edits": [{"id": string, "op": string, "text": string|null, "importance": number|null, "why": string}]}
 - say: spoken aloud, may be "". thought: private, 1-2 sentences. emotion.name: ${EMOTIONS.join('|')}, intensity 0-1.
 - actions: at most 6, from the list, nothing already done. memories: 0-2 worth keeping, importance 1-10, about = ids.
 - relationships: deltas -5..5; note = a fact learned; tag friend|enemy|rival|crush|family|pet or null; opinion = a new one-line opinion or null. goal: a new goal of yours or null.
-- used_memories: the [ids] of memories you drew on (from the context or recall tools).
+- used_memories: the [ids] you drew on.
 - knowledge: 0-2 things learned or believed; kind fact (sure), rumor (hearsay), lore (history) or theory (your guess, kept as a belief).
+- memory_edits: usually []; to remember differently: update (reframe), reweight, forget or retract (a [k] now wrong) by [id], with why. Keep what protects you.
 Reply with the JSON object only.`;
 }
 
@@ -370,7 +391,7 @@ const STATE_TEXT = {
   wary: 'wary: still together, but guarded. You keep your distance, refuse risky requests and watch them.',
   apart: 'apart: you are living your own life for now; friendly, and you may rejoin when you want to.',
   left: 'left: you broke off after they hurt or betrayed you. You avoid them and answer coldly. You come back only after real amends: an apology you believe, trust back above 35, fear below 30, and time.',
-  gone: 'gone: you have left them for good.',
+  gone: 'gone: you have cut them out of your life for good. You live with your parents in Hearthvale, keep out of their way, and give them a word at most.',
 };
 
 function hourText(h) {

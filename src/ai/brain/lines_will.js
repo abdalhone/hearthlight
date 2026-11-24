@@ -33,14 +33,14 @@ export const WILL_LINES = {
     "That's how people end up as a story Elda tells at closing time. No. {reason}.",
     { t: 'I like breathing, {you}. {reason}.', trait: 'playful' },
     'Not with my life on the line. {reason}.',
-    { t: "I didn't cross the sea to die in a ditch for you. {reason}.", state: GUARDED },
+    { t: "I didn't carry you down a mountain to die in a ditch for you. {reason}.", state: GUARDED },
     { t: "Maren taught me the difference between brave and stupid. That's the stupid one. {reason}.", trait: 'bookish' },
     { t: 'No. {reason}. Find someone else to throw at it.', mood: ['angry', 'tense'] },
   ],
   refuse_tired: [
     'Not tonight — I can barely stand. {reason}.',
     "I'm running on nothing, {you}. {reason}.",
-    { t: "If I swing a bow now I'll hit myself. {reason}.", trait: 'playful' },
+    { t: "If I cast now I'll set my own sleeve alight. {reason}.", trait: 'playful' },
     'Ask me after I sleep. {reason}.',
     { t: 'No. {reason}. I need rest, not orders.', state: GUARDED },
   ],
@@ -124,7 +124,7 @@ export const WILL_LINES = {
   counter_taken: ['Good. Then that\'s what we do.', 'Deal.', { t: 'See? Compromise. Look at us.', trait: 'playful' }, 'Alright. Off I go.'],
   counter_declined: ['Suit yourself.', 'Your loss.', { t: "Fine. The offer's on the table if you change your mind.", trait: 'warm' }, 'Then we stay as we are.'],
   ask_declined: [
-    "Fine. I'll remember you said no.",
+    'Fine. Your loss, and a little bit mine.',
     'Suit yourself.',
     { t: 'Your loss. The honey cakes were for both of us.', trait: 'playful' },
     "Alright. I'll ask someone else.",
@@ -139,7 +139,7 @@ export const WILL_LINES = {
   accept_share: [
     'Half is mine, then. Deal.',
     { t: "A fair share? Now we're partners.", trait: 'warm' },
-    { t: 'Split down the middle. I\'m counting, you know.', trait: 'playful' },
+    { t: 'Split down the middle. Partners.', trait: 'playful' },
     "Fine. Half the take is mine.",
   ],
   offer_nothing: [
@@ -157,7 +157,7 @@ export const WILL_LINES = {
     "Yes. You've earned it, road by road.",
   ],
   trust_player_mid: [
-    "Mostly. Don't make me regret it.",
+    'Mostly. More every day.',
     "I'm getting there. Slowly.",
     { t: 'Trust you? Most days. Ask me again after the ruins.', trait: 'playful' },
   ],
@@ -219,7 +219,7 @@ export const WILL_LINES = {
   ],
   wary_greet: [
     'Hello. ...Keep your hands where I can see them.',
-    "Hi. I'm still here. Don't read too much into it.",
+    'Hi. Still here, still thinking.',
     '{player}.',
     { t: 'Oh. It\'s you. Hello.', trait: 'prickly' },
   ],
@@ -270,7 +270,7 @@ export const WILL_LINES = {
   apology_wary: [
     "I hear you. I'm keeping my distance a while longer.",
     "Thank you for saying it. I'm still watching.",
-    { t: "Okay. That helps a little. Don't make me regret it.", trait: 'warm' },
+    { t: 'Okay. That helps a little.', trait: 'warm' },
     "Noted. Prove it, and we'll see.",
   ],
   apology_believed_left: [
@@ -301,9 +301,9 @@ export const WILL_LINES = {
     { t: 'You hit me. You actually hit me.', mood: ['low', 'tense', 'calm'] },
   ],
   deed_hit_again: [
-    "That's it. Stay there.",
-    'No more. I warned you.',
-    "Again?! I'm done.",
+    "You hit me again. Stay there.",
+    'Twice. Stay where you are.',
+    'Again?! Get back!',
     'You will not touch me again.',
   ],
   deed_protected: [
@@ -336,12 +336,12 @@ export const WILL_LINES = {
     { t: 'Next time you pick a fight, pick one we can win.', trait: 'playful' },
     'I almost died for that order. Think about it.',
   ],
-  deed_broke_promise: ['You promised.', 'So much for your word.', "I'll remember that you said it. And that you didn't.", { t: 'A promise is a promise, {player}. Was.', trait: 'steady' }],
+  deed_broke_promise: ['You promised.', 'So much for your word.', "You said it. Then you didn't.", { t: 'A promise is a promise, {player}. Was.', trait: 'steady' }],
   deed_kept_promise: ["You kept your word. I'll remember that.", { t: 'You actually did it. Huh. Thank you.', trait: 'playful' }, 'Thank you. You did what you said.', { t: 'A person of their word. Rare as moonpetals.', trait: 'bookish' }],
   deed_respected_refusal: ['Thank you for not pushing.', { t: 'You let it go. I noticed.', trait: 'steady' }, 'You took no for an answer. That matters.', { t: "Thanks. I know you wanted it.", trait: 'warm' }],
   deed_pushed: ['I already said no.', "Asking again won't change it.", { t: "Pushing me? Really?", mood: ['angry', 'tense', 'calm'] }, 'Stop pushing.'],
   deed_stole: ['Put that back. We are not thieves.', "That isn't yours.", { t: "I didn't see that. I'm going to pretend I didn't see that. Put it back.", trait: 'playful' }, 'Stealing? From people who fed us?'],
-  deed_abandoned: ['You left me lying there.', { t: 'Nobody came. You were right there, and nobody came.', mood: ['low', 'tense', 'calm'] }, 'I woke up alone. Remember that.', "You walked away while I was down. I won't forget it."],
+  deed_abandoned: ['You left me lying there.', { t: 'Nobody came. You were right there, and nobody came.', mood: ['low', 'tense', 'calm'] }, 'I woke up alone.', 'You walked away while I was down.'],
 
   // ---------------------------------------------------- companionship shifts
   became_wary: [
@@ -354,29 +354,31 @@ export const WILL_LINES = {
     "...Fine. You're forgiven. Mostly.",
     "Alright. I'll stop watching your sword hand.",
     { t: "You've been good lately. I noticed. Come on, then.", trait: 'warm' },
-    'Okay. We\'re alright again. Don\'t waste it.',
+    'Okay. We\'re alright again.',
   ],
   going_apart: [
     "I'm going to live my own day for a while. You know where to find me.",
     "I've got things to do. Come find me later, if you like.",
     { t: "I'm off on my own business. Don't burn the cottage down.", trait: 'playful' },
-    "We'll go our own ways for now. It's not goodbye.",
+    "We'll go our own ways today. It's not goodbye.",
   ],
+  // Said once, when she goes: why, plainly, no speech (LORE §7, tone).
   leaving: [
-    "I'm done. Don't follow me.",
-    "I can't travel with someone I'm afraid of. Goodbye.",
-    "I'm leaving. If you ever want to fix this, you'll have to mean it.",
-    "That's enough. I'm going.",
+    "You hurt me. I'm going my own way.",
+    "I can't travel with someone I'm afraid of. I'm going.",
+    "It stopped being good for me. I'm going my own way.",
+    "I can't trust you. I'm going.",
   ],
+  // Gone (DESIGN §19.7): she cuts them out of her life; Hearthvale stays her home.
   gone_farewell: [
     'Goodbye, {player}. I hope you become someone better.',
-    "I'm leaving Hearthvale. Don't come after me.",
-    "This is where I go. Don't follow.",
-    'I stood beside you once. Never again. Goodbye.',
+    'Stay away from me, and from my family.',
+    "You did the one thing I can't forgive. We're finished.",
+    'I stood beside you once. Goodbye.',
   ],
   returning: [
     "...Alright. Let's try this again. Slowly.",
-    "I'm coming back. Don't make me regret it.",
+    "I'm coming back. On my terms.",
     { t: 'I missed this. A little. Don\'t gloat.', trait: 'playful' },
     'Okay. Together again. Carefully.',
   ],
@@ -386,7 +388,7 @@ export const WILL_LINES = {
     "Stop! This isn't who we are!",
     'Put it down! Rowan will hang you for this!',
   ],
-  promise_made: ["I'll hold you to that.", 'A promise, then. I keep count.', { t: 'Promise noted. In ink.', trait: 'bookish' }, "Good. Don't forget it."],
+  promise_made: ["I'll hold you to that.", 'A promise, then.', { t: 'Promise noted. In ink.', trait: 'bookish' }, "Good. Don't forget it."],
   gift_cold: [
     "...Thank you. It doesn't change anything.",
     "I'll take it. Don't read into that.",
@@ -394,10 +396,11 @@ export const WILL_LINES = {
     "You can't buy your way back. But thank you.",
   ],
   fear_bark: ['Stay back.', "Don't come closer.", 'Keep your distance.', 'Not one more step.'],
+  // Guarded, not keeping score out loud: the quiet of someone a few steps back.
   wary_idle: [
-    "I'm watching you.",
-    'Keep your blade sheathed near me.',
-    "I haven't forgotten.",
+    'Mm.',
+    'Road looks quiet.',
+    'Keep to your side of the path.',
     { t: 'Still deciding about you.', trait: 'steady' },
   ],
 
@@ -414,9 +417,9 @@ export const WILL_LINES = {
   ],
 
   // -------------------------------------------------- acks for her own will
-  ack_rejoin: ["...Alright. I'll come with you again.", "Fine. Together, then. For now.", { t: 'I was getting bored without you anyway.', trait: 'playful' }],
+  ack_rejoin: ["...Alright. I'll come with you again.", 'Fine. Together, then.', { t: 'I was getting bored without you anyway.', trait: 'playful' }],
   ack_part_ways: ['Alright. I have my own things to see to.', "Fair. I'll be around the village.", { t: "Finally, a day off. Don't miss me too much.", trait: 'playful' }],
-  ack_promise: ["I'll hold you to that.", 'A promise. I keep count, you know.', { t: 'Promise noted. In ink.', trait: 'bookish' }],
+  ack_promise: ["I'll hold you to that.", 'A promise, then.', { t: 'Promise noted. In ink.', trait: 'bookish' }],
   ack_flee: ['Running — not arguing!', 'Getting out of here!', 'Away. Now.'],
   ack_keep_distance: ["I'll keep my distance.", 'Giving you room.'],
   ack_warn: ["Consider yourself warned.", "I've said it. Listen this time."],

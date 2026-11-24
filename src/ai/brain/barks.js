@@ -129,7 +129,10 @@ export class Barker {
     on('damage', (p) => this.onDamage(p));
     on('death', (p) => this.onDeath(p));
     on('downed', (p) => {
-      if (this.isLyra(p.entity)) this.queue('downed', {}, { priority: 6, urgent: true, kind: 'say', cooldown: 5 });
+      // Knocked down by the player: no jokes and no asking them for anything (her body says what it says).
+      if (this.isLyra(p.entity)) {
+        if (!this.isPlayer(p.by)) this.queue('downed', {}, { priority: 6, urgent: true, kind: 'say', cooldown: 5 });
+      }
       else if (this.isPlayer(p.entity)) this.queue('player_downed', {}, { priority: 6, urgent: true, kind: 'shout', cooldown: 5 });
     });
     on('revived', (p) => {

@@ -597,27 +597,35 @@ test('keep_away: she keeps at least that distance from the player', () => {
   assert.match(b.status(), /keeping her distance/);
 });
 
-test('leave gone: she walks off the map along the King\'s Road and leaves the world', () => {
+test('leave gone: Hearthvale is her home; she stays in the world, well away from the player (DESIGN §19.7)', () => {
   const game = makeGame();
-  const { lyra, b, player } = addLyra(game, { tx: 30, ty: 37, companion: true });
-  player.x = lyra.x;
+  const { lyra, b, player } = addLyra(game, { tx: 30, ty: 30, companion: true });
+  player.x = lyra.x + 20;
   const left = collect(game, 'lyra_left_world');
   const r = b.setDirective({ type: 'leave', mode: 'gone' });
   assert.equal(r.ok, true);
-  assert.equal(b.status(), 'leaving Hearthvale');
-  run(game, 20, () => {
+  assert.doesNotMatch(b.status(), /leaving Hearthvale/);
+  run(game, 40, () => {
     game.camera.x = lyra.x - 240;
     game.camera.y = lyra.y - 135;
-    return left.length > 0;
+    return false;
   });
-  assert.equal(left.length, 1);
-  assert.ok(lyra.x < 2 * TILE || lyra.x > (W - 2) * TILE, 'at the edge of the map');
-  assert.equal(lyra.removed, true);
-  run(game, 0.1);
-  assert.equal(game.entities.get('lyra'), null);
-  // A saved game remembers she is gone.
-  const saved = JSON.parse(JSON.stringify(lyra.serialize()));
-  assert.equal(saved.leftWorld, true);
+  assert.equal(left.length, 0, 'she never walks off the map');
+  assert.equal(lyra.removed, false);
+  assert.equal(game.entities.get('lyra'), lyra);
+  assert.ok(lyra.x > 0 && lyra.x < W * TILE && lyra.y > 0 && lyra.y < H * TILE && game.locations.at(lyra.x, lyra.y), `inside the village (${Math.round(lyra.x / TILE)}, ${Math.round(lyra.y / TILE)}) ${b.status()}`);
+  assert.ok(Math.hypot(lyra.x - player.x, lyra.y - player.y) > 6 * TILE, 'she keeps well away from the player');
+  // Nothing else can take her out of the world either, and an old save brings her home.
+  lyra.leaveWorld('gone');
+  assert.equal(lyra.removed, false);
+  lyra.removed = true;
+  assert.equal(lyra.removed, false);
+  const saved = { ...JSON.parse(JSON.stringify(lyra.serialize())), leftWorld: true, x: -40, y: -40 };
+  const back = new Companion(game, { x: T(5), y: T(5) });
+  back.mind = fakeMind(game);
+  back.deserialize(saved);
+  assert.equal(back.removed, false);
+  assert.ok(game.locations.at(back.x, back.y)?.id === 'ember_kettle', 'home: her room at the Kettle (no chandlery in this world)');
 });
 
 test('Binding Light roots a target for 3 s with a 20 s cooldown; innocents are refused', () => {

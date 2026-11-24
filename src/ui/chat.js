@@ -425,7 +425,7 @@ export class Chat {
     this.sendBtn.disabled = gone;
     this.mic.disabled = gone;
     this.chips.hidden = gone;
-    this.field.placeholder = gone ? `${name} is gone.` : `Say something to ${name}…`;
+    this.field.placeholder = gone ? `${name} won't speak to you.` : `Say something to ${name}…`;
     toggleClass(this.el, 'is-gone', gone);
   }
 

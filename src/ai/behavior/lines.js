@@ -345,7 +345,9 @@ export const say = {
   victory() {
     return line('c.win', ['That settles that.', 'Clear!', "And stay down.", 'All clear. You alright?']);
   },
-  downed() {
+  downed(byYou = false) {
+    // Knocked down by the one standing over her: no asking them for a hand.
+    if (byYou) return line('downed.you', ['You… you did this…', 'Get… away from me…']);
     return line('downed', ["I'm down... help me up?", "Ugh... can't stand... a hand?"]);
   },
   revived(byPlayer) {
@@ -434,7 +436,7 @@ export const say = {
     return line('flee.safe', ['I think I lost it.', "Clear. My heart's still racing.", 'Safe. For now.']);
   },
   leave(mode) {
-    if (mode === 'gone') return line('leave.gone', ["Goodbye. Don't follow me.", "I'm done. I'm leaving Hearthvale. Goodbye.", 'This is where we part. For good.']);
+    if (mode === 'gone') return line('leave.gone', ["Don't follow me.", "We're finished. Leave me be.", 'This is where we part. For good.']);
     if (mode === 'left') return line('leave.left', ["I need to be away from you. Don't follow me.", "I'm going my own way. Leave me be.", "I can't travel with you. Not now."]);
     return line('leave.apart', ["I'll go my own way for a while. Find me if you need me.", 'I have my own day to live. See you around.', "Let's split up for now. I'll be about the village."]);
   },

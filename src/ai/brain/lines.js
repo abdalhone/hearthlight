@@ -624,7 +624,7 @@ export const LINES = {
   ],
   thanks_reply: [
     'Anytime.',
-    { t: "That's what I'm here for. That, and the honey cakes.", trait: 'playful' },
+    { t: "Of course. You'd have done the same, honey cakes or no honey cakes.", trait: 'playful' },
     'You\'d do the same for me. You already have.',
     { t: "Don't mention it. Really — I'll get embarrassed.", trait: 'warm' },
     'Of course, {you}.',

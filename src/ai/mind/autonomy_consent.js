@@ -2,6 +2,7 @@ import { normalizeArgs } from '../brain/actions.js';
 import { itemDef, itemName, resolveItemId } from '../../entities/items.js';
 import { ACTION_CATEGORY, AMOUNT_IS_PAY, GAME_SPECIES, PET_SPECIES, JOB_TASTE, MAREN_PLACES, T } from './autonomy_data.js';
 import { hourLabel } from './autonomy_agenda.js';
+import { findRecord, protects, harmAsked, parseCite } from './memory_edits.js';
 
 // Every order is a request (DESIGN §16.4). analyzeRequest() weighs one request from the
 // player against her trust and fear of them, the risk to her, her values, her needs,
@@ -135,7 +136,7 @@ export function analyzeRequest(a, req = {}) {
 
   // Gone and left: she is no longer anyone's to ask.
   if (v.state === 'gone') {
-    veto('refuse', 'no_gone', 'she has left for good');
+    veto('refuse', 'no_gone', 'she has cut you out of her life');
     return finish(a, out, v, worst);
   }
   if (v.state === 'left' && action !== 'rejoin' && category !== 'talk') {
@@ -247,6 +248,9 @@ export function analyzeRequest(a, req = {}) {
       break;
     case 'opinion':
       weighOpinion(a, v, out, add, veto, { args, target });
+      break;
+    case 'memory':
+      weighMemory(a, v, out, add, veto, { action, args });
       break;
     default:
       add(0.05, null);
@@ -600,6 +604,36 @@ function weighOpinion(a, v, out, add, veto, { args, target }) {
   return add(Math.abs(delta) <= 5 ? 0.2 : -0.2, null, 'no_relationship');
 }
 
+// Asked to forget, or to remember something differently (DESIGN §17.4): her memory is hers.
+// What protects her, her own past and Maren she keeps whoever asks; the rest depends on
+// how far she trusts the one asking. The action's own words are her answer when she agrees.
+function weighMemory(a, v, out, add, veto, { action, args }) {
+  out.quiet = true;
+  const mind = a.mind;
+  if (action === 'forget' || action === 'edit_memory') {
+    const ref = args.target || args.value;
+    if (action === 'forget' && /\bmaren\b/i.test(String(ref || ''))) return veto('refuse', 'no_forget_maren', 'she will never forget Maren');
+    let rec = null;
+    try {
+      rec = ref && mind ? findRecord(mind, ref, { stores: ['episode', 'life'] }) : null;
+    } catch {
+      rec = null;
+    }
+    if (rec?.store === 'life' && action === 'forget') return veto('refuse', 'no_forget_life', 'it is her own life');
+    // "Forget that I hit you": what they did to her, in their words, not hers.
+    if (action === 'forget' && !parseCite(ref) && harmAsked(mind, ref)) return veto('refuse', 'no_forget_protect', 'she remembers that for a reason');
+    if (rec?.store === 'episode') {
+      if (action === 'forget' && protects(mind, rec.entry)) return veto('refuse', 'no_forget_protect', 'she remembers that for a reason');
+      if (action === 'forget' && /\bmaren\b/i.test(rec.entry.text || '')) return veto('refuse', 'no_forget_maren', 'she will never forget Maren');
+      if (action === 'forget' && (rec.entry.pinned || rec.entry.importance >= 8)) return veto('refuse', 'no_forget_keep', 'it matters too much to her');
+    }
+  }
+  // Being told she has a fact wrong is an ordinary conversation; how she remembers her
+  // own life is not something she rewrites for just anyone.
+  if (action === 'update_knowledge' || action === 'retract_knowledge') add(0.25, null);
+  else add(v.trust >= 50 ? 0.15 : v.trust >= 30 ? 0.05 : -0.2, v.trust < 30 ? 'she does not trust you with her memories' : null, 'no_memory');
+}
+
 // Turn the weights into a decision, a condition or counter, and a line in her voice.
 function finish(a, out, v, worst) {
   const tone = a.tone();
@@ -666,9 +700,11 @@ function finish(a, out, v, worst) {
     key = out.pay > 0 && out.category !== 'companionship' ? 'ok_paid' : out.lineKey || 'ok_generic';
   }
   out.condition = out.decision === 'accept_conditional' ? conditionText(out) : null;
-  out.lineKey = out.quiet ? null : key;
+  // Quiet requests answer in the action's own words, but a no is always hers to say.
+  const quiet = out.quiet && (out.decision === 'accept' || out.decision === 'accept_conditional');
+  out.lineKey = quiet ? null : key;
   out.score = Math.round(s * 100) / 100;
-  out.message = out.quiet ? '' : a.lines.pick(key, tone, vars) || a.lines.pick('ok_generic', tone, vars);
+  out.message = quiet ? '' : a.lines.pick(key, tone, vars) || a.lines.pick('ok_generic', tone, vars);
   return out;
 }
 

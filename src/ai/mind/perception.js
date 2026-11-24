@@ -297,6 +297,11 @@ export class Perception {
     }
     if (this.isPlayer(target)) {
       if (this.isSelf(source)) {
+        // Hitting back at someone who just hurt her (self-defense, Binding Light) is no
+        // stray shot to apologize for (DESIGN §16.5).
+        const st = m.autonomy?.companionship;
+        const rt = this.rt();
+        if (st === 'left' || st === 'gone' || (this.playerHits || []).some((x) => rt - x < 60)) return;
         if (this.throttle('hit_player', 20)) {
           m.feel('embarrassment', 0.35, 'hit my friend');
           m.say(pick(['Sorry! Sorry. That was meant for the other one.', 'Oh no. Are you all right? That was me.'], this.game?.rng));

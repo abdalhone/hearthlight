@@ -792,9 +792,11 @@ test('villagers tell their facts in their own words', () => {
 
 test('plugins provide the §12 actions, ungated where they ask nothing of her', () => {
   const { game } = makeGame();
-  const ungated = ['remember', 'forget', 'note_about', 'express', 'set_goal', 'complete_goal', 'read_journal'];
-  for (const name of [...ungated, 'set_relationship', 'talk_to']) assert.ok(game.actions.has(name), name);
+  const ungated = ['remember', 'note_about', 'express', 'set_goal', 'complete_goal', 'read_journal'];
+  for (const name of [...ungated, 'set_relationship', 'talk_to', 'forget', 'edit_memory']) assert.ok(game.actions.has(name), name);
   for (const name of ungated) assert.equal(game.actions.defs.get(name).ungated, true, `${name} is ungated`);
+  // Her memory is hers (DESIGN §17.4): asked to forget or remember differently, she weighs it.
+  assert.ok(!game.actions.defs.get('forget').ungated && !game.actions.defs.get('edit_memory').ungated);
   assert.ok(!game.actions.defs.get('talk_to').ungated, 'talking to someone is a request');
   assert.ok(!game.actions.defs.get('set_relationship').ungated);
 

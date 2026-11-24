@@ -190,6 +190,12 @@ export class LocalBrain {
       const own = matchBuiltinClause(clause, env);
       if (own && WILL_QUESTIONS.has(own.id) && HANDLERS[own.id]) it = own;
     }
+    // "I'm sorry. I was wrong. It won't happen again." is one apology, and gets one answer,
+    // whichever bank (hers or the plugin's) each sentence of it matched.
+    if (it && APOLOGY_INTENTS.has(it.id)) {
+      if (reply._apologyAnswered) return null;
+      reply._apologyAnswered = true;
+    }
     // Gone or broken off: she does not chat like a companion. Requests still get her refusal,
     // and a few things (an apology, "why did you leave?") still reach her.
     if (state === 'left' && !(it && (it.actions?.length || LEFT_HEARS.has(it.id)))) {
@@ -212,8 +218,12 @@ export class LocalBrain {
         // A plugin answer that ignores a refusal would read as obedience: her refusal wins.
         if (typeof text === 'string' && text.trim() && !(clause.results || []).some(isRefusal)) {
           // The plugin says what she does; her terms (a condition, a paid deal) still come first.
+          // When the plugin's text is only the action's own acknowledgement, her terms already
+          // say yes: one reply, not two ("All right, but if it turns ugly..." + "Understood...").
           const terms = this.consentTerms(clause);
-          return terms && !text.includes(terms) ? `${terms} ${text.trim()}` : text.trim();
+          if (!terms || text.includes(terms)) return text.trim();
+          const ackOnly = (clause.results || []).some((r) => r?.message && String(r.message).trim() === text.trim());
+          return ackOnly ? terms : `${terms} ${text.trim()}`;
         }
       }
       if (it.actions.length) return this.ack(clause, reply);
@@ -647,8 +657,44 @@ export class LocalBrain {
 // Her own questions, answered from her will even when a plugin matched the words first.
 const WILL_QUESTIONS = new Set(['ask.trust_me', 'ask.fear_me', 'ask.plan', 'ask.why_left', 'ask.why_refused']);
 
+const APOLOGY_INTENTS = new Set(['social.apology', 'autonomy.apology']);
+
 // What still reaches her when she has left the player.
 const LEFT_HEARS = new Set(['ask.decline', 'social.apology', 'social.greet', 'social.farewell', 'social.insult', 'ask.why_left', 'ask.trust_me', 'ask.fear_me', 'ask.why_refused', 'counter.take', 'counter.decline']);
+
+// The memories an offline reply drew on, as "remembered" chips [{ id, label }] (DESIGN
+// §17.3): what she recalled while composing it (hits from her memory index) and what she
+// remembers of today, kept only when the reply plainly carries their words.
+export function usedMemories(say, candidates = [], { max = 3, since = null } = {}) {
+  const words = contentWords(say);
+  if (words.size < 3) return [];
+  const out = [];
+  const seen = new Set();
+  for (const c of candidates) {
+    if (out.length >= max) break;
+    if (!c || c.store === 'person' || !c.text) continue;
+    const id = c.store === 'life' ? `life:${c.id}` : String(c.id);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    if (since != null && c.store === 'episode' && Number.isFinite(c.ref?.t) && c.ref.t >= since) continue;
+    const mw = contentWords(c.text);
+    let shared = 0;
+    for (const w of mw) if (words.has(w)) shared++;
+    if (shared >= 3 && (shared / Math.max(1, Math.min(mw.size, words.size)) >= 0.5 || shared >= 6)) out.push({ id, label: String(c.label || c.text).slice(0, 60) });
+  }
+  return out;
+}
+
+const CHIP_STOP = new Set(['the', 'and', 'that', 'with', 'this', 'they', 'them', 'their', 'then', 'have', 'from', 'about', 'what', 'when', 'were', 'was', 'for', 'not', 'but', 'too', 'just', 'very', 'your', 'you', 'mine', 'there', 'here', 'into', 'over', 'like', 'some', 'remember', 'course', 'yes', 'well', 'still']);
+
+function contentWords(text) {
+  const out = new Set();
+  for (const w of String(text || '').toLowerCase().split(/[^a-z']+/)) {
+    const x = w.replace(/'s$/, '').replace(/'/g, '');
+    if (x.length >= 3 && !CHIP_STOP.has(x)) out.add(x.length > 5 ? x.replace(/(ing|ed|es|s)$/, '') : x);
+  }
+  return out;
+}
 
 // Which refusal bank fits the gate's reasons (they are free text from the mind).
 export function refusalSituation(verdict, state = 'together', offer = null) {
@@ -1197,12 +1243,20 @@ const HANDLERS = {
     if (this.apologies.length >= 3) {
       believed = false;
       situation = 'apology_repeat';
-    } else if (state === 'left') {
-      believed = rel.trust >= 35 && rel.fear <= 30;
-      situation = believed ? 'apology_believed_left' : 'apology_reject';
-    } else if (state === 'wary') {
-      believed = rel.trust >= 20 && rel.fear <= 45;
-      situation = believed ? 'apology_wary' : 'apology_reject';
+    } else if (state === 'left' || state === 'wary') {
+      // Her will weighed these same words a moment ago (autonomy.receiveApology, which is
+      // what amends rest on): what she says agrees with what she decided.
+      let heard = null;
+      try {
+        heard = g.companion?.mind?.autonomy?.heardNow?.()?.apology || null;
+      } catch {
+        heard = null;
+      }
+      if (heard && typeof heard.believed === 'boolean' && !heard.nothing) believed = heard.believed;
+      else believed = state === 'left' ? rel.trust >= 35 && rel.fear <= 30 : rel.trust >= 20 && rel.fear <= 45;
+      situation = believed ? (state === 'left' ? 'apology_believed_left' : 'apology_wary') : 'apology_reject';
+      // One answer to the whole message: no cold "I'm not answering" tacked on after it.
+      reply._coldSaid = true;
     } else {
       // An accident she can forgive easily; a real hurt needs trust behind the words.
       believed = s.accident ? worst > -3 || rel.trust >= 25 : rel.trust >= 15 || worst > -2;

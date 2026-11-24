@@ -263,6 +263,10 @@ export const questPlugin = {
     const p = ctx.player;
     if (!m || !o || !p || ctx.game?.state !== 'playing' || o.downed) return;
     if (m.perception?.encounter || m.isSpeaking()) return;
+    // Broken off with the player, or cut them out of her life (DESIGN §19.7): she asks them
+    // nothing. The lines wait, in case she ever walks with them again.
+    const cs = m.autonomy?.companionship;
+    if (cs === 'left' || cs === 'gone') return;
     if (Math.hypot(p.x - o.x, p.y - o.y) > 140) return;
     const { lines, after } = s.pending;
     s.pending = null;

@@ -13,10 +13,11 @@
 
 import { SpeechGen, speechContext } from './speech_gen.js';
 import { parseMessage, nluEnv, AMOUNT_FREE, COMMAND_THRESHOLD } from './nlu.js';
-import { LocalBrain } from './local_brain.js';
+import { LocalBrain, usedMemories } from './local_brain.js';
 import { ProviderSet, BrainError, toBrainError, PROVIDER_LABELS } from './providers.js';
 import { buildChatPrompt, buildRules, buildReflectionTask, buildConversationTask, RESPONSE_SCHEMA, REFLECTION_SCHEMA, CONVERSATION_SCHEMA, clip } from './prompt.js';
-import { coerceResponse, coerceReflection, coerceConversation, dedupeActions, MAX_ACTIONS } from './claude_brain.js';
+import { coerceResponse, coerceReflection, coerceConversation, dedupeActions, MAX_ACTIONS, extractJson } from './claude_brain.js';
+import { coerceMemoryEdits, applyMemoryEdits } from '../mind/memory_edits.js';
 import { applyEffects, logConversation, resolvePerson } from './effects.js';
 import { VILLAGERS } from './soul_fallback.js';
 import { Voice } from './voice.js';
@@ -229,7 +230,8 @@ export class Brain {
     return this._localTurn({ text: clean, parsed, executed });
   }
 
-  // When she cannot answer at all: gone for good, knocked out, or out of earshot.
+  // When she cannot answer at all: gone (she has cut the player out of her life), knocked
+  // out, or out of earshot.
   _unreachable() {
     const g = this.game;
     const lyra = g.companion;
@@ -239,10 +241,17 @@ export class Brain {
       this._system(text);
       return { say: '', thought: null, actions: [], provider: 'local', unreachable: why };
     };
-    if (state === 'gone' || !lyra || lyra.removed) {
-      const gone = g.flags?.lyra_gone;
-      const when = gone?.day ? ` on day ${gone.day}` : '';
-      return out(`${name} is gone. She left Hearthvale along the King's Road${when}, and she is not coming back.`, 'gone');
+    if (!lyra || lyra.removed) return out(`${name} isn't here.`, 'gone');
+    if (state === 'gone') {
+      // DESIGN §19.7: she still lives in Hearthvale. Up close she gives a word at most.
+      const will = lyra.mind?.autonomy;
+      if (distanceTiles(g) <= 4 && !lyra.downed && lyra.state !== 'sleep' && will?.line) {
+        const word = will.line('gone_word');
+        will.say?.(word, { force: true });
+        return { say: word, thought: null, actions: [], provider: 'local', unreachable: 'gone' };
+      }
+      const phrase = will?.goneHome?.().phrase || 'in Hearthvale';
+      return out(`${name} won't speak to you. She lives ${phrase} now, and keeps out of your way.`, 'gone');
     }
     if (lyra.downed || lyra.state === 'downed') return out(`${name} is knocked out and can't hear you. Go to her and help her up.`, 'downed');
     const far = EARSHOT[state];
@@ -402,12 +411,21 @@ export class Brain {
     const all = executed.concat(more);
     const env = nluEnv(g);
     let reply;
+    // What she recalls while she composes her answer becomes its "remembered" chips, the
+    // same as Claude's used_memories (DESIGN §17.3).
+    const index = g.companion?.mind?.index;
+    const since = g.clock?.t ?? null;
+    let recalled = [];
     try {
+      index?.beginTrace?.();
       reply = this.local.compose(parsed, env);
     } catch (err) {
       console.error('[brain] offline reply failed', err);
       reply = { say: this.line('unknown_statement') || 'Hm.', thought: null, emotion: null, memories: [], relationships: [], goal: null, actions: [] };
+    } finally {
+      recalled = index?.endTrace?.() || [];
     }
+    reply.chips = this._localChips(reply, recalled, since);
     for (const a of reply.actions || []) {
       if (all.length >= MAX_ACTIONS + 2) break;
       if (!g.actions?.has?.(a.name)) continue;
@@ -421,7 +439,30 @@ export class Brain {
     }
     this._deliver(reply, 'local');
     this._apologyEvent(parsed, reply.apology);
-    return { say: reply.say, thought: reply.thought || null, actions: all, provider: 'local' };
+    return { say: reply.say, thought: reply.thought || null, actions: all, provider: 'local', memories: reply.chips || [] };
+  }
+
+  // Chips for an offline reply: what she recalled for it, plus today's memories (answers
+  // about the day read them straight from the store), kept when the reply carries them.
+  _localChips(reply, recalled, since) {
+    const mind = this.game.companion?.mind;
+    if (!mind || !reply?.say) return [];
+    const cands = [...recalled];
+    try {
+      for (const m of mind.memory?.recent?.(14) || []) cands.push({ store: 'episode', id: m.id, text: m.text, label: m.gist || m.text, ref: m });
+    } catch {
+      /* a partial mind has no recent() */
+    }
+    for (const id of reply.used_memories || []) {
+      const r = mind.lookup?.(id);
+      if (r) cands.unshift({ store: r.store, id: r.store === 'life' ? String(r.id).replace(/^life:/, '') : r.id, text: r.text, label: r.label, ref: r.ref });
+    }
+    try {
+      return usedMemories(reply.say, cands, { since });
+    } catch (err) {
+      console.error('[brain] chips failed', err);
+      return [];
+    }
   }
 
   // What her gut says about requests in the message that did not run at once (§16.10).
@@ -456,7 +497,9 @@ export class Brain {
       }
       const tools = toolMax > 0 ? this._tools(call).slice(0, toolMax) : null;
       const raw = await provider.complete({ rules, task: context, schema: RESPONSE_SCHEMA, tier: g.settings?.modelTier || 'quick', tools: tools && tools.length ? tools : null });
-      result = this._applyClaude(coerceResponse(raw, { actionNames: g.actions?.names?.() || null, maxActions: MAX_ACTIONS }), turn, provider.id, call);
+      const resp = coerceResponse(raw, { actionNames: g.actions?.names?.() || null, maxActions: MAX_ACTIONS });
+      resp.memory_edits = memoryEditsOf(raw);
+      result = this._applyClaude(resp, turn, provider.id, call);
       this.lastError = null;
     } catch (e) {
       this.busy = false;
@@ -562,9 +605,24 @@ export class Brain {
     const items = call?.items || new Map();
     resp.chips = (resp.used_memories || []).filter((id) => items.has(id)).slice(0, 4).map((id) => ({ id, label: items.get(id) }));
     this._learn(resp.knowledge);
+    resp.edited = this._editMemories(resp.memory_edits, call);
     this._deliver(resp, providerId);
     this._apologyEvent(turn.parsed, null, resp);
     return { say: resp.say, thought: resp.thought, actions: turn.executed.concat(ran), provider: providerId, memories: resp.chips };
+  }
+
+  // Her own edits to her memory (DESIGN §17.4), only for ids in what this reply was shown
+  // (the recall context and the tools' results): an id she was not shown is ignored.
+  _editMemories(edits, call) {
+    const mind = this.game.companion?.mind;
+    if (!mind || !Array.isArray(edits) || !edits.length) return [];
+    const allowed = new Set(call?.items ? [...call.items.keys()].map(String) : []);
+    try {
+      return applyMemoryEdits(mind, edits, { allowed, by: 'claude' });
+    } catch (err) {
+      console.error('[brain] memory edits failed', err);
+      return [];
+    }
   }
 
   // Knowledge from a reply: theories stay beliefs, never facts (DESIGN §17.2).
@@ -792,8 +850,8 @@ export class Brain {
   async reflect(reason = 'sleep') {
     const g = this.game;
     const mind = g.companion?.mind;
-    // Gone for good: her last diary entry was written when she left.
-    if (!mind || companionshipOf(g) === 'gone') return null;
+    // Gone, she still keeps her diary: her life goes on without the player (DESIGN §19.7).
+    if (!mind) return null;
     const day = this._sleepT != null ? Math.floor(this._sleepT / DAY_SECONDS) + 1 : g.clock?.day ?? 1;
     const memories = this._dayMemories(day);
     const offline = composeDiary(g, memories, { day });
@@ -937,6 +995,20 @@ export class Brain {
     if (typeof d.why === 'string') this.lastCompanionshipReason = d.why.slice(0, 200);
     this.barks.deserialize(d.barks);
   }
+}
+
+// "memory_edits" from a raw reply (coerceResponse keeps only the round-2 fields).
+function memoryEditsOf(raw) {
+  let data = raw;
+  if (typeof raw === 'string') {
+    try {
+      data = extractJson(raw);
+    } catch {
+      data = null;
+    }
+  }
+  if (Array.isArray(data)) data = data.find((x) => x && typeof x === 'object' && !Array.isArray(x)) || null;
+  return coerceMemoryEdits(data?.memory_edits ?? data?.memoryEdits ?? []);
 }
 
 // A tool result small enough to send back: plain data when it fits, else clipped JSON text.

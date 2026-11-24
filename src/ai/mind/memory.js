@@ -3,11 +3,14 @@ import { tokenize, clamp, clamp01, normName } from './text.js';
 
 // Episodic memory. Each entry:
 //   { id, t (game seconds), day, text, type: 'event'|'fact'|'conversation'|'reflection',
-//     importance 1..10, about [ids], location, tags [], emotion, uses, gist?, when?, count?, pinned? }
+//     importance 1..10, about [ids], location, tags [], emotion, uses, gist?, when?, count?, pinned?,
+//     edited?, history?: [{ t, text, importance, why }] }
 // Recall scores keyword overlap + entity/place match + importance + recency.
 // Consolidation (at sleep) forgets small things and keeps important ones forever.
+// Her memory is hers to tend (DESIGN §17.4): edit() rewrites or reframes a memory and keeps
+// the earlier version in its history; forget() lets one go and notes why in `forgotten`.
 
-export const MEMORY_LIMITS = Object.freeze({ max: 240, text: 280, gist: 80, tags: 8, about: 6 });
+export const MEMORY_LIMITS = Object.freeze({ max: 240, text: 280, gist: 80, tags: 8, about: 6, history: 4, why: 140, forgotten: 16 });
 
 const TYPES = new Set(['event', 'fact', 'conversation', 'reflection']);
 
@@ -20,6 +23,10 @@ export class Memory {
     this.lastAddMerged = false;
     this._tok = new Map(); // id -> Set of stems (not saved)
     this.rev = 0; // bumped on every change, so the recall index knows to refresh
+    this.forgotten = []; // [{ id, text, why, t, day }] what she chose to let go, newest last
+    this.lifeEdits = new Map(); // life entry id -> { text, history }: how she reframed her past
+    this.lastConsolidation = null; // { t, day, removed, merged, faded }
+    this.onConsolidate = null; // (memory, report) => void: the mind's own tending at sleep
   }
 
   // Call after editing memory text in place (e.g. the player renamed themselves).
@@ -74,6 +81,9 @@ export class Memory {
     if (entry.when) m.when = String(entry.when).slice(0, 40);
     if (entry.count > 1) m.count = entry.count | 0;
     if (entry.pinned || m.importance >= 9) m.pinned = true;
+    const hist = cleanHistory(entry.history);
+    if (hist.length) m.history = hist;
+    if (entry.edited || hist.length) m.edited = true;
 
     const dup = dedupe ? this._findRecentDuplicate(m) : null;
     if (dup) {
@@ -117,6 +127,38 @@ export class Memory {
     this._tok.delete(id);
     this.rev++;
     return m;
+  }
+
+  // Rewrite or reweigh a memory, keeping the earlier version (DESIGN §17.4). changes:
+  // { text, importance, why }. Returns the memory, or null when nothing changed.
+  edit(id, { text = null, importance = null, why = '' } = {}) {
+    const m = this.get(id);
+    if (!m) return null;
+    const next = text == null ? m.text : String(text).replace(/\s+/g, ' ').trim().slice(0, MEMORY_LIMITS.text);
+    const imp = Number.isFinite(Number(importance)) && importance !== null ? clamp(Math.round(Number(importance)), 1, 10) : m.importance;
+    if (!next || (next === m.text && imp === m.importance)) return null;
+    const textChanged = next !== m.text;
+    pushHistory(m, { t: this.now(), text: m.text, importance: m.importance, why });
+    m.text = next;
+    m.importance = imp;
+    if (textChanged) delete m.gist;
+    if (imp >= 9) m.pinned = true;
+    this._tok.delete(m.id);
+    this.rev++;
+    return m;
+  }
+
+  // Let a memory go, noting what and why (the memory itself is gone).
+  forget(id, why = '') {
+    const m = this.remove(id);
+    if (!m) return null;
+    this.noteForgotten(m, why);
+    return m;
+  }
+
+  noteForgotten(m, why = '') {
+    this.forgotten.push({ id: m.id, text: String(m.gist || m.text).slice(0, 120), why: String(why || '').slice(0, MEMORY_LIMITS.why), t: Math.round(this.now()), day: m.day });
+    if (this.forgotten.length > MEMORY_LIMITS.forgotten) this.forgotten.splice(0, this.forgotten.length - MEMORY_LIMITS.forgotten);
   }
 
   _tokens(m) {
@@ -199,11 +241,18 @@ export class Memory {
     return drop.size;
   }
 
-  // Sleep consolidation: forget small, stale, unused things; merge same-day repeats.
-  consolidate() {
+  // Sleep consolidation: forget small, stale, unused things; let the day's trivia fade;
+  // merge same-day repeats into one memory. Every change keeps a why (DESIGN §17.4).
+  // Called by whoever puts her to bed (the brain and the mind both may, the same night):
+  // a second call in the same night does nothing.
+  consolidate({ force = false } = {}) {
     const now = this.now();
+    const day = Math.floor(now / DAY_SECONDS) + 1;
+    const last = this.lastConsolidation;
+    if (!force && last && last.day === day && Math.abs(now - last.t) < DAY_SECONDS / 4) return { removed: 0, merged: 0, faded: 0, skipped: true };
     let removed = 0;
     let merged = 0;
+    let faded = 0;
     const keep = [];
     for (const m of this.list) {
       const age = (now - m.t) / DAY_SECONDS;
@@ -218,6 +267,7 @@ export class Memory {
       if (forget) {
         removed++;
         this._tok.delete(m.id);
+        if (m.importance >= 3 || m.edited) this.noteForgotten(m, age >= 3 ? 'Old and small. I let it go.' : 'A small thing. I let it go.');
       } else keep.push(m);
     }
     // Merge near-duplicates from the same day (keep the more important one).
@@ -237,19 +287,40 @@ export class Memory {
       if (target) {
         target.count = (target.count || 1) + (m.count || 1);
         target.uses = (target.uses || 0) + (m.uses || 0);
+        const why = 'The same moment, remembered twice. I keep it as one.';
         if (m.importance > target.importance) {
+          pushHistory(target, { t: now, text: target.text, importance: target.importance, why });
           target.importance = m.importance;
           target.text = m.text;
           this._tok.delete(target.id);
-        }
+        } else if (m.text !== target.text) pushHistory(target, { t: now, text: m.text, importance: m.importance, why });
+        for (const a of m.about) if (!target.about.includes(a) && target.about.length < MEMORY_LIMITS.about) target.about.push(a);
         this._tok.delete(m.id);
         merged++;
       } else out.push(m);
     }
+    // The day's small, unremarked things fade a little each night they go unused.
+    for (const m of out) {
+      if (m.pinned || m.importance !== 2 || (m.uses || 0) > 0) continue;
+      const age = (now - m.t) / DAY_SECONDS;
+      if (age < 0.25 || m.type === 'reflection') continue;
+      pushHistory(m, { t: now, text: m.text, importance: m.importance, why: 'It mattered less than it seemed at the time.' });
+      m.importance -= 1;
+      faded++;
+    }
     this.list = out;
     this.rev++;
     this.prune();
-    return { removed, merged };
+    const report = { removed, merged, faded };
+    this.lastConsolidation = { t: Math.round(now), day, ...report };
+    if (typeof this.onConsolidate === 'function') {
+      try {
+        Object.assign(report, this.onConsolidate(this, report) || {});
+      } catch (err) {
+        console.error('[memory] tending her memories failed', err);
+      }
+    }
+    return report;
   }
 
   serialize() {
@@ -266,15 +337,25 @@ export class Memory {
         if (m.when) o.when = m.when;
         if (m.count > 1) o.count = m.count;
         if (m.pinned) o.pinned = true;
+        if (m.edited) o.edited = true;
+        if (m.history?.length) o.history = m.history.map((h) => ({ ...h }));
         return o;
       }),
+      ...(this.forgotten.length ? { f: this.forgotten.map((x) => ({ ...x })) } : {}),
+      ...(this.lifeEdits.size ? { life: [...this.lifeEdits].map(([id, e]) => ({ id, text: e.text, importance: e.importance, history: (e.history || []).map((h) => ({ ...h })) })) } : {}),
+      ...(this.lastConsolidation ? { c: { ...this.lastConsolidation } } : {}),
     };
   }
 
   deserialize(d) {
     this.list = [];
     this._tok.clear();
+    this.forgotten = [];
+    this.lifeEdits.clear();
     if (!d) return;
+    if (Array.isArray(d.f)) this.forgotten = d.f.filter((x) => x && x.text).slice(-MEMORY_LIMITS.forgotten).map((x) => ({ id: String(x.id || ''), text: String(x.text).slice(0, 120), why: String(x.why || '').slice(0, MEMORY_LIMITS.why), t: Number(x.t) || 0, day: Number(x.day) || 0 }));
+    if (Array.isArray(d.life)) for (const e of d.life) if (e?.id && e.text) this.lifeEdits.set(String(e.id), { text: String(e.text).slice(0, 600), importance: Number.isFinite(e.importance) ? e.importance : undefined, history: cleanHistory(e.history, 600) });
+    if (d.c && Number.isFinite(d.c.t)) this.lastConsolidation = { ...d.c };
     const list = Array.isArray(d) ? d : Array.isArray(d.l) ? d.l : [];
     let maxId = 0;
     for (const e of list) {
@@ -290,6 +371,32 @@ export class Memory {
     this.rev++;
     this.nextId = Math.max(Number(d.n) || 1, maxId + 1);
   }
+}
+
+// Earlier versions of an entry, oldest first, at most MEMORY_LIMITS.history.
+export function cleanHistory(list, maxText = MEMORY_LIMITS.text) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const h of list) {
+    if (!h || typeof h !== 'object' || !h.text) continue;
+    const e = { t: Math.round(Number(h.t) || 0), text: String(h.text).slice(0, maxText), why: String(h.why || '').slice(0, MEMORY_LIMITS.why) };
+    if (Number.isFinite(Number(h.importance)) && h.importance !== null) e.importance = clamp(Math.round(Number(h.importance)), 1, 10);
+    if (Number.isFinite(Number(h.confidence)) && h.confidence !== null) e.confidence = Math.round(clamp01(Number(h.confidence)) * 100) / 100;
+    if (h.kind) e.kind = String(h.kind).slice(0, 12);
+    out.push(e);
+  }
+  return out.slice(-MEMORY_LIMITS.history);
+}
+
+// Keep the earlier version of an entry and mark it edited.
+export function pushHistory(entry, version) {
+  if (!entry || !version?.text) return;
+  const h = cleanHistory([version])[0];
+  if (!h) return;
+  entry.history = Array.isArray(entry.history) ? entry.history : [];
+  entry.history.push(h);
+  if (entry.history.length > MEMORY_LIMITS.history) entry.history.splice(0, entry.history.length - MEMORY_LIMITS.history);
+  entry.edited = true;
 }
 
 function uniq(a) {

@@ -1,7 +1,9 @@
 import { clamp, clamp01 } from './text.js';
 
 // Lyra's feelings. Ten emotions (0..1) drift back toward a baseline that depends on
-// her personality and on a slow "mood" that tracks how her days have been going.
+// her personality, on a slow "mood" that tracks how her days have been going, and on a
+// "tint": how her situation sits with her (hurt after leaving someone who struck her,
+// shaken, heavy-hearted, relieved). The tint lifts slowly, over a day or two of play.
 // Appraisals turn what happens into emotion changes, scaled by her personality:
 // openness feeds curiosity, agreeableness feeds distress at cruelty, neuroticism sets
 // how hard fear lands.
@@ -120,6 +122,17 @@ export function personalityFactors(personality = {}) {
   };
 }
 
+// Which way a tint leans: positive for warm feelings, negative for hard ones.
+function tintValence(tint) {
+  let v = 0;
+  for (const e in tint) {
+    const t = tint[e];
+    if (e === 'joy' || e === 'trust' || e === 'affection' || e === 'pride') v += t;
+    else if (e === 'sadness' || e === 'fear' || e === 'anger') v -= t;
+  }
+  return v;
+}
+
 export class Emotions {
   constructor(personality = {}) {
     // `values` is the plain object exposed as mind.emotions.
@@ -127,6 +140,9 @@ export class Emotions {
     for (const e of EMOTIONS) this.values[e] = 0;
     this.baseline = {};
     this.moodBase = 0.15; // slow valence (-1..1) that tracks recent experience
+    this.tint = {}; // emotion -> offset to its baseline, fading with tintHalfLife
+    this.tintHalfLife = 900;
+    this.tintMood = null; // { label, emoji } her mood reads as while the tint holds
     this.setPersonality(personality);
     for (const e of EMOTIONS) this.values[e] = this.baseline[e];
   }
@@ -153,10 +169,53 @@ export class Emotions {
     b.curiosity = clamp01(0.15 + 0.3 * g('openness'));
     b.pride = clamp01(0.08 + 0.05 * g('conscientiousness') + 0.05 * up);
     b.embarrassment = 0;
+    for (const e in this.tint) if (e in b) b[e] = clamp01(b[e] + this.tint[e]);
+  }
+
+  // How her situation sits with her (DESIGN §19, polish): offsets to the baselines that
+  // fade with `halfLife` seconds of play. `blend` keeps that share of the old tint.
+  setTint(offsets = {}, { halfLife = 900, label = null, emoji = null, blend = 0 } = {}) {
+    const next = {};
+    for (const e of EMOTIONS) {
+      const v = (this.tint[e] || 0) * clamp01(blend) + (Number(offsets[e]) || 0);
+      if (Math.abs(v) >= 0.005) next[e] = clamp(v, -0.5, 0.5);
+    }
+    this.tint = next;
+    this.tintHalfLife = Math.max(30, Number(halfLife) || 900);
+    this.tintMood = label ? { label: String(label), emoji: emoji ? String(emoji) : '😶' } : blend > 0 ? this.tintMood : null;
+    this.computeBaseline();
+    // The feelings themselves move toward where she now stands.
+    for (const e in next) if (next[e] > 0) this.values[e] = Math.max(this.values[e], this.baseline[e]);
+    else this.values[e] = Math.min(this.values[e], this.baseline[e]);
+  }
+
+  // How strongly the tint still holds (its largest offset).
+  tintStrength() {
+    let s = 0;
+    for (const e in this.tint) s = Math.max(s, Math.abs(this.tint[e]));
+    return s;
+  }
+
+  // Time passing outside play (a night's sleep) softens it too.
+  fadeTint(seconds) {
+    if (!(seconds > 0)) return;
+    const k = Math.pow(0.5, seconds / this.tintHalfLife);
+    let any = false;
+    for (const e in this.tint) {
+      this.tint[e] *= k;
+      if (Math.abs(this.tint[e]) < 0.005) delete this.tint[e];
+      else any = true;
+    }
+    if (!any) this.tintMood = null;
+    this.computeBaseline();
   }
 
   // Exponential return toward baseline; dt in seconds of play.
   decay(dt) {
+    for (const e in this.tint) {
+      this.fadeTint(dt);
+      break;
+    }
     const v = this.values;
     const b = this.baseline;
     for (let i = 0; i < EMOTIONS.length; i++) {
@@ -251,7 +310,11 @@ export class Emotions {
     const d = this.dominant();
     let label = null;
     let emoji = null;
-    if (d.excess >= 0.22 && d.value >= 0.4) {
+    // While a hard thing still weighs on her (a hurt, heavy tint), a passing bright feeling
+    // (a new place catching her eye) does not name her mood; a dark one can.
+    const heavy = this.tintMood && this.tintStrength() >= 0.12 && tintValence(this.tint) < 0;
+    const bright = d.name === 'joy' || d.name === 'curiosity' || d.name === 'trust' || d.name === 'affection' || d.name === 'pride' || d.name === 'surprise';
+    if (d.excess >= 0.22 && d.value >= 0.4 && !(heavy && bright)) {
       const hi = d.value > 0.62;
       switch (d.name) {
         case 'joy':
@@ -288,6 +351,8 @@ export class Emotions {
           break;
       }
     }
+    // How her situation sits with her colors the day more than a passing feeling does.
+    if (!label && this.tintMood && this.tintStrength() >= 0.07) [label, emoji] = [this.tintMood.label, this.tintMood.emoji];
     if (!label && needs) {
       if (needs.energy < 0.18) [label, emoji] = ['exhausted', '😴'];
       else if (needs.hunger < 0.18) [label, emoji] = ['starving', '😩'];
@@ -306,12 +371,25 @@ export class Emotions {
   serialize() {
     const v = {};
     for (const e of EMOTIONS) v[e] = Math.round(this.values[e] * 1000) / 1000;
-    return { v, m: Math.round(this.moodBase * 1000) / 1000 };
+    const out = { v, m: Math.round(this.moodBase * 1000) / 1000 };
+    if (Object.keys(this.tint).length) {
+      const t = {};
+      for (const e in this.tint) t[e] = Math.round(this.tint[e] * 1000) / 1000;
+      out.t = { o: t, h: Math.round(this.tintHalfLife), l: this.tintMood };
+    }
+    return out;
   }
 
   deserialize(d) {
     if (!d) return;
     if (Number.isFinite(d.m)) this.moodBase = clamp(d.m, -0.6, 0.7);
+    this.tint = {};
+    this.tintMood = null;
+    if (d.t && typeof d.t === 'object') {
+      for (const e of EMOTIONS) if (Number.isFinite(d.t.o?.[e])) this.tint[e] = clamp(d.t.o[e], -0.5, 0.5);
+      if (Number.isFinite(d.t.h)) this.tintHalfLife = Math.max(30, d.t.h);
+      if (d.t.l?.label) this.tintMood = { label: String(d.t.l.label), emoji: String(d.t.l.emoji || '😶') };
+    }
     this.computeBaseline();
     for (const e of EMOTIONS) if (Number.isFinite(d.v?.[e])) this.values[e] = clamp01(d.v[e]);
   }

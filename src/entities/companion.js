@@ -1,5 +1,5 @@
 import { Actor } from './entity.js';
-import { FACTION, COMPANION_ID } from '../core/constants.js';
+import { FACTION, COMPANION_ID, TILE } from '../core/constants.js';
 import { Mind } from '../ai/mind/mind.js';
 import { Behavior } from '../ai/behavior/behavior.js';
 import { say } from '../ai/behavior/lines.js';
@@ -8,8 +8,8 @@ import { RAMPS } from '../art/palette.js';
 // Lyra: arcane ranger, traveling with the player by her own choice. Her Behavior is
 // her controller and her Mind holds who she is. She never dies: at 0 HP she is
 // downed until the player helps her up (interact) or, after a minute, she gets up
-// alone. The only way she leaves the world is her own: walking off along the King's
-// Road when she is gone for good (DESIGN §16.3).
+// alone. She never leaves the world: Hearthvale is her home, and even when she cuts
+// the player out of her life she lives on in the village (DESIGN §19.7).
 
 const ARCANE_GLOW = RAMPS.arcane[4];
 export const AUTO_REVIVE_SECONDS = 60;
@@ -32,8 +32,8 @@ export class Companion extends Actor {
       ...o,
     });
     this.role = 'companion';
-    this.leftWorld = false; // she walked out of Hearthvale for good
-    this.fade = 1; // 1 = solid; drops to 0 as she walks off the edge of the world
+    this.leftWorld = false; // never true now (DESIGN §19.7); kept for old saves
+    this.fade = 1; // 1 = solid
     this.downedFor = 0;
     this.wasDowned = false;
     this.mindErrAt = -99;
@@ -69,15 +69,37 @@ export class Companion extends Actor {
     this._removed = !!v && !!this.leftWorld;
   }
 
-  // She has walked off the map for good: drop out of the world and say so.
-  leaveWorld(reason = 'gone') {
-    if (this.leftWorld) return;
-    this.leftWorld = true;
-    this.fade = 0;
-    this.removed = true;
+  // Hearthvale is her home (DESIGN §19.7): nothing walks her off the map. A caller that
+  // still asks gets her home instead.
+  leaveWorld() {
+    this.comeHome();
+  }
+
+  // Back home: with her parents at the chandlery, or her room at the Ember Kettle.
+  comeHome() {
+    this.leftWorld = false;
+    this.fade = 1;
+    this._removed = false;
+    const locs = this.game.locations;
+    const home = locs?.get?.('chandlery') || locs?.get?.('ember_kettle') || null;
+    const c = home?.center;
+    if (!c) return;
+    const blocked = (x, y) => !!this.game.isBlockedTile?.(Math.floor(x / TILE), Math.floor(y / TILE), this);
+    let x = c.x;
+    let y = c.y;
+    for (let r = 1; r <= 4 && blocked(x, y); r++) {
+      for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r]]) {
+        if (!blocked(c.x + dx * TILE, c.y + dy * TILE)) {
+          x = c.x + dx * TILE;
+          y = c.y + dy * TILE;
+          break;
+        }
+      }
+    }
+    this.x = x;
+    this.y = y;
     this.moveIntent.x = 0;
     this.moveIntent.y = 0;
-    this.game.bus?.emit?.('lyra_left_world', { actor: this, reason, day: this.game.clock?.day ?? null });
   }
 
   update(dt) {
@@ -117,7 +139,7 @@ export class Companion extends Actor {
       this.downedFor = 0;
       this.behavior.onDowned();
       const p = this.game.player;
-      if (p && Math.hypot(p.x - this.x, p.y - this.y) < 320) this.behavior.say(say.downed(), { force: true, kind: 'whisper' });
+      if (p && Math.hypot(p.x - this.x, p.y - this.y) < 320) this.behavior.say(say.downed(!!p && (this.lastAttacker === p || !!this.mind?.autonomy?.downed?.byPlayer)), { force: true, kind: 'whisper' });
     }
     if (this.state !== 'downed') this.setState('downed');
     this.moveIntent.x = 0;
@@ -213,11 +235,8 @@ export class Companion extends Actor {
     }
     if (d.behavior) this.behavior.deserialize(d.behavior);
     if (d.leftWorld) {
-      // She left this world in that save; she stays gone.
-      this.leftWorld = true;
-      this.fade = 0;
-      this.removed = true;
-      return;
+      // A save from before she could not leave (DESIGN §19.7): she is home again.
+      this.comeHome();
     }
     if (this.downed) {
       this.hp = 0;
