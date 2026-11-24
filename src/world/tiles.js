@@ -8,6 +8,8 @@
 //   prio   which soft terrain spills over which (higher wins)
 //   tall   casts a contact shadow onto the ground south and east of it
 //   low    flyers pass over it (rubble)
+//   raised drawn standing up from the ground (a face, a lip, a planter's rim): it must be
+//          solid, so nobody walks up a wall (DESIGN §19.8: ground reads true)
 
 export const T = {
   VOID: 0,
@@ -45,6 +47,7 @@ const D = (name, o) => ({
   prio: 0,
   tall: false,
   low: false,
+  raised: false,
   ...o,
 });
 
@@ -53,7 +56,7 @@ DEFS[T.VOID] = D('void', { solid: true, wall: true, color: '#141332', cost: 0 })
 DEFS[T.GRASS] = D('grass', { color: '#4a8240', blend: 'grass', prio: 5 });
 DEFS[T.DIRT] = D('dirt path', { color: '#9a7049', cost: 1, blend: 'dirt', prio: 3 });
 DEFS[T.WATER] = D('shallow water', { solid: true, water: true, color: '#3a86bd', blend: 'water', prio: 0 });
-DEFS[T.WALL] = D('wall', { solid: true, wall: true, color: '#c2ab98', tall: true });
+DEFS[T.WALL] = D('wall', { solid: true, wall: true, color: '#c2ab98', tall: true, raised: true });
 DEFS[T.FLOOR] = D('plank floor', { color: '#9c6b43', cost: 1 });
 DEFS[T.DEEP_WATER] = D('deep water', { solid: true, water: true, color: '#25558a', blend: 'water', prio: 0 });
 DEFS[T.TALL_GRASS] = D('tall grass', { color: '#3e7a3c', cost: 1.3, blend: 'tallgrass', prio: 7 });
@@ -63,15 +66,16 @@ DEFS[T.SAND] = D('sand', { color: '#e3cc96', cost: 1.2, blend: 'sand', prio: 1 }
 DEFS[T.FARMLAND] = D('farmland', { color: '#5a3d2e', cost: 1.3, blend: 'farmland', prio: 3 });
 DEFS[T.STONE_FLOOR] = D('stone floor', { color: '#727085', cost: 1 });
 DEFS[T.RUG] = D('rug', { color: '#88312f', cost: 1 });
-DEFS[T.RUIN_WALL] = D('ruined wall', { solid: true, wall: true, color: '#545266', tall: true });
+DEFS[T.RUIN_WALL] = D('ruined wall', { solid: true, wall: true, color: '#545266', tall: true, raised: true });
 DEFS[T.RUIN_FLOOR] = D('ruined flagstones', { color: '#5f5a69', cost: 1.05, blend: 'ruinfloor', prio: 2 });
-DEFS[T.ROCK] = D('rock', { solid: true, wall: true, color: '#727085', tall: true });
+DEFS[T.ROCK] = D('rock', { solid: true, wall: true, color: '#727085', tall: true, raised: true });
 DEFS[T.BRIDGE] = D('bridge', { color: '#8c5a35', cost: 0.95 });
 DEFS[T.DOCK] = D('dock', { color: '#8c5a35', cost: 1 });
-DEFS[T.PALISADE] = D('palisade', { solid: true, wall: true, color: '#6b412a', tall: true });
-DEFS[T.RUBBLE] = D('rubble', { solid: true, color: '#545266', low: true });
+DEFS[T.PALISADE] = D('palisade', { solid: true, wall: true, color: '#6b412a', tall: true, raised: true });
+DEFS[T.RUBBLE] = D('rubble', { solid: true, color: '#545266', low: true, raised: true });
 DEFS[T.GRAVEL] = D('gravel', { color: '#727085', cost: 1.1, blend: 'gravel', prio: 2 });
-DEFS[T.FLOWERBED] = D('flower bed', { color: '#b04a6e', cost: 1.6 });
+// A raised planter with a stone rim: you walk round it, not through it.
+DEFS[T.FLOWERBED] = D('flower bed', { solid: true, low: true, color: '#b04a6e', cost: 1.6, raised: true });
 
 for (let i = 0; i < DEFS.length; i++) if (DEFS[i]) DEFS[i].id = i;
 

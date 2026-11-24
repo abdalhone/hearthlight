@@ -794,19 +794,20 @@ class WorldBuilder {
       sign: 'chandlery',
       smoky: true,
     });
-    // Upstairs (the back): their bed under the eaves. Downstairs: the workroom.
-    this.partition(this.row(103, 107, 41), [[105, 41]]);
+    // Upstairs (the back): their two beds pushed under the eaves either side of one
+    // nightstand. Downstairs: the workroom with the dipping-vat and the racks.
+    this.partition(this.row(103, 107, 41), [[104, 41]]);
     this.bed('hobb', 103, 39);
-    this.bed('wenna', 104, 39);
-    this.decor('nightstand', 106, 39, { name: 'Nightstand' });
+    this.decor('nightstand', 104, 39, { name: 'Nightstand' });
+    this.bed('wenna', 105, 39);
     this.decor('pot', 107, 39, { variant: 'flower' });
-    this.look('dipping_vat', 0, 0, 'dippingVat', { footprint: { x: 103, y: 42, w: 2, h: 1 }, name: 'Dipping vat' });
+    this.look('shelf', 103, 42, 'waxShelf', { variant: 'goods', name: 'Wax shelf' });
+    this.look('candle_rack', 106, 42, 'candleRack', { name: 'Candle rack' });
     this.look('candle_rack', 107, 42, 'candleRack', { name: 'Candle rack' });
-    this.look('candle_rack', 107, 43, 'candleRack', { name: 'Candle rack' });
-    this.look('shelf', 106, 42, 'waxShelf', { variant: 'goods', name: 'Wax shelf' });
-    this.decor('table', 0, 0, { footprint: { x: 103, y: 44, w: 2, h: 1 }, name: 'Work table' });
-    this.decor('chair', 103, 45, { variant: 'right' });
+    this.look('dipping_vat', 0, 0, 'dippingVat', { footprint: { x: 106, y: 44, w: 2, h: 1 }, name: 'Dipping vat' });
+    this.decor('chair', 103, 44, { variant: 'right' });
     this.decor('chair', 107, 45, { variant: 'left', name: "Hobb's chair" });
+    this.decor('pot', 103, 45, { variant: 'plant' });
     // Wenna's dormer: its glow under the thatch at night.
     this.must({ objType: 'window', tx: 105, ty: 38, hidden: true, lightDy: -2, name: 'Dormer' }, { allowSolidGround: true });
     this.must({ objType: 'lamp', id: 'chandlery_door_lamp', tx: 104, ty: 47, kind: 'wall', name: "The Ambrels' door lantern", area: 'lamplight_lane' }, { allowSolidGround: true });
@@ -844,10 +845,9 @@ class WorldBuilder {
     this.look('rack', 75, 64, 'tillyHammers', { variant: 'tools', name: "Tilly's hammers" });
     this.look('shelf', 69, 67, 'ledgerShelf', { variant: 'books', name: 'Ledger shelf' });
     this.look('desk', 71, 67, 'ledgerDesk', { name: "The Reeve's desk", words: ['ledger', 'ledger desk', 'desk'] });
-    this.decor('chair', 71, 68, { variant: 'right' });
-    this.decor('chair', 74, 68, { variant: 'left' });
+    this.decor('chair', 72, 67, { variant: 'left' });
     this.decor('pot', 76, 67, { variant: 'plant' });
-    this.rug(72, 67, 1, 2);
+    this.rug(69, 68, 8, 1);
   }
 
   // --- Weavers' Row --- a short lane south of the square: Nan Pike's house with her
@@ -1253,13 +1253,15 @@ class WorldBuilder {
     }
     this.keep(112, 69, 19, 14);
     this.building({ id: 'dye_cottage', x, y, w: 7, h: 9, door: x + 3, material: 'timber', roof: { style: 'moss', chimneys: [x + 5] }, windowStyle: 'flowers', sign: 'dye', smoky: true });
-    this.partition(this.row(x + 1, x + 5, y + 3), [[x + 3, y + 3]]);
+    // Their beds at the back, either side of a nightstand; the room in front is
+    // Sabeth's sewing and Hess's bows.
+    this.partition(this.row(x + 1, x + 5, y + 3), [[x + 2, y + 3]]);
     this.bed('hess', x + 1, y + 1);
-    this.bed('sabeth', x + 2, y + 1);
-    this.decor('nightstand', x + 4, y + 1, { name: 'Nightstand' });
+    this.decor('nightstand', x + 2, y + 1, { name: 'Nightstand' });
+    this.bed('sabeth', x + 3, y + 1);
     this.decor('pot', x + 5, y + 1, { variant: 'flower' });
-    this.look('table', 0, 0, 'sewingTable', { footprint: { x: x + 1, y: y + 4, w: 2, h: 1 }, name: 'Sewing table' });
-    this.decor('chair', x + 1, y + 5, { variant: 'right' });
+    this.look('table', 0, 0, 'sewingTable', { footprint: { x: x + 1, y: y + 5, w: 2, h: 1 }, name: 'Sewing table' });
+    this.decor('chair', x + 1, y + 6, { variant: 'right' });
     this.look('rack', x + 5, y + 4, 'hessRack', { name: "Hess's rack", variant: 'tools' });
     this.decor('crate', x + 5, y + 6);
     this.decor('barrel', x + 4, y + 6);
