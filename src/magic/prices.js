@@ -458,10 +458,13 @@ export class PriceRuntime {
     }
   }
 
+  // Sleep gives back what lastlight took (the bed heals; the halved body is whole again).
   onSleep() {
     const P = this.player();
     if (this.state.lastlight === 'used') this.state.lastlight = null;
-    if (P) this.stats?.removeModifier(P, this.modId('lastlight', 'cost'));
+    if (!P) return;
+    const had = this.stats?.removeModifier(P, this.modId('lastlight', 'cost'));
+    if (had && !P.downed && !P.dead) P.hp = P.maxHp;
   }
 
   update(dt) {

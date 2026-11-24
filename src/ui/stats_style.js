@@ -89,7 +89,7 @@ const CSS = `
 .sb-price-line { margin: 6px 0 0; font-size: 14px; line-height: 1.3; }
 .sb-price-line .gain { color: #8ff0b8; }
 .sb-price-line .cost { color: #ff7d70; font-weight: 700; }
-.sb-stat-price .sb-stat-value { color: #ff7d70; }
+.sb-stat-price .sb-stat-value { color: #ff7d70; font-size: 12px; overflow-wrap: anywhere; }
 .hb-price, .wbtn-price { position: absolute; top: 2px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, var(--pc, #ff5a5a) 60%, #3a0a0a); box-shadow: 0 0 6px var(--pc, #ff5a5a); pointer-events: none; }
 /* HUD timers */
 .buff-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; pointer-events: auto; }
