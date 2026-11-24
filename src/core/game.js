@@ -15,6 +15,7 @@ import { registerPropArt } from '../art/props_art.js';
 import { registerCharacterArt } from '../art/characters_art.js';
 import { registerItemArt } from '../art/items_art.js';
 import { registerFxArt } from '../art/fx_art.js';
+import { registerBossArt } from '../art/bosses_art.js';
 
 import { Renderer } from '../render/renderer.js';
 import { Lighting } from '../render/lighting.js';
@@ -42,6 +43,7 @@ import { Brain } from '../ai/brain/brain.js';
 import { ClaudeRuntime } from '../platform/claude_runtime.js';
 import { UI } from '../ui/ui.js';
 import { StoryDirector } from '../story/director.js';
+import { BossManager } from '../bosses/manager.js';
 
 export const SAVE_VERSION = 1;
 
@@ -89,6 +91,7 @@ export class Game {
     this.save = new SaveManager(this);
     this.ui = new UI(this, this.uiRoot);
     this.story = new StoryDirector(this); // cutscenes, the prologue, story scenes, the Book of Halcyre
+    this.bosses = new BossManager(this); // the five bosses, their arenas, fights and glyph-shards (§22.3)
 
     // World pieces, created by buildWorld().
     this.map = null;
@@ -118,6 +121,7 @@ export class Game {
       ['characters', () => registerCharacterArt(this.atlas, this.rng.fork(3))],
       ['items', () => registerItemArt(this.atlas, this.rng.fork(4))],
       ['fx', () => registerFxArt(this.atlas, this.rng.fork(5))],
+      ['bosses', () => registerBossArt(this.atlas)],
     ];
     for (const [name, fn] of steps) {
       try {
@@ -164,6 +168,7 @@ export class Game {
       }
     }
     this.spawner = new Spawner(this, world.spawns.spawnZones || []);
+    this.bosses?.onWorldBuilt();
     this.plugins.installAll();
     this.camera.follow(this.player);
     this.camera.snap();
@@ -265,6 +270,7 @@ export class Game {
       this.map.update(dt);
       this.combat.update(dt);
       this.spawner.update(dt);
+      this.bosses?.update(dt);
       this.plugins.update(dt);
       this.brain.update(dt);
       this.lighting.update(dt);

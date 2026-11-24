@@ -196,9 +196,11 @@ class WorldBuilder {
     this.lakeShore();
     this.dyeCottage();
     this.forestLandmarks();
+    this.bossArenas();
     this.wennaHives();
     this.scatter();
     this.decorate();
+    this.bossDecor();
     this.dyeStream();
     this.finishFences();
     this.makeLocations();
@@ -1387,6 +1389,121 @@ class WorldBuilder {
     for (let k = 0; k < 6; k++) {
       const a = (k / 6) * Math.PI * 2;
       this.put({ objType: 'berry_bush', tx: Math.round(bh.x + Math.cos(a) * 2.6), ty: Math.round(bh.y + Math.sin(a) * 2.2) });
+    }
+  }
+
+  // The bosses' arenas (DESIGN §22.3; bosses agent): Greyjaw's den in deep Whisperwood,
+  // the Mother of Slimes' rain-pools in the quarry, an island at the end of a long
+  // boardwalk in Mirror Lake for the Lake's Hum, and the ruins' lower hall (the crypt
+  // opened into the west room) for the Bone Warden. Varek keeps his camp. Each arena is
+  // open, readable ground; spawns.bosses gives centers and radii in pixels.
+  bossArenas() {
+    const at = (x, y) => ({ x: px(x), y: px(y) });
+    const B = (this.spawns.bosses = {});
+    this.bossDeco = [];
+    // Varek: the camp itself, the fire in its middle, the gate he runs for.
+    B.varek = { home: at(140, 11), center: at(140, 15), r: 11 * TILE, exit: at(133, 28) };
+
+    // Greyjaw's den: a clearing in the deep wood north of Berry Hollow, a trail to it.
+    const den = { x: 99, y: 7.5 };
+    this.ellipse(den.x, den.y, 7.5, 5.2, (x, y, r) => {
+      if (r >= 1) return;
+      this.clear[y * W + x] = 1;
+      const g = this.get(x, y);
+      if (g === T.FOREST || g === T.TALL_GRASS) this.set(x, y, r < 0.72 ? T.GRASS : T.FOREST);
+      if (r < 0.8 && this.hash(x, y, 141) < 0.12) this.bossDeco.push([x, y, DECO.BONES]);
+      else if (this.hash(x, y, 142) < 0.25) this.bossDeco.push([x, y, DECO.LEAVES]);
+    });
+    this.path(
+      [
+        [101, 17],
+        [100.5, 13.5],
+        [99.5, 11],
+      ],
+      2,
+      T.DIRT,
+    );
+    B.greyjaw = { home: at(99, 6), center: at(den.x, den.y), r: 7 * TILE };
+
+    // The Mother of Slimes: rain-pools in the open gravel of the quarry.
+    const pools = [
+      [11, 15, 2.6, 1.8],
+      [12, 20.2, 1.9, 1.2],
+      [16.5, 9.2, 1.4, 1.1],
+    ];
+    for (const [cx, cy, rx, ry] of pools) {
+      this.ellipse(cx, cy, rx, ry, (x, y, r) => {
+        if (r >= 1 || this.occ[y * W + x] || this.get(x, y) !== T.GRAVEL) return;
+        this.set(x, y, T.WATER);
+      });
+    }
+    const mh = this.freeNear(16, 15, 2) || { x: 16, y: 15 };
+    B.mother_of_slimes = { home: at(mh.x, mh.y), center: at(16, 15.5), r: 8 * TILE };
+
+    // The Lake's Hum: an island near the middle of Mirror Lake, a boardwalk out to it.
+    const isl = { x: 135, y: 51, rx: 4.6, ry: 3.6 };
+    const land = (x, y) => {
+      const dx = (x + 0.5 - isl.x) / isl.rx;
+      const dy = (y + 0.5 - isl.y) / isl.ry;
+      return Math.hypot(dx, dy) < 1;
+    };
+    for (let y = Math.floor(isl.y - isl.ry - 3); y <= Math.ceil(isl.y + isl.ry + 3); y++) {
+      for (let x = Math.floor(isl.x - isl.rx - 3); x <= Math.ceil(isl.x + isl.rx + 3); x++) {
+        if (!this.inb(x, y)) continue;
+        const dx = (x + 0.5 - isl.x) / isl.rx;
+        const dy = (y + 0.5 - isl.y) / isl.ry;
+        const r = Math.hypot(dx, dy);
+        if (r < 0.72) this.set(x, y, T.GRASS);
+        else if (r < 1) this.set(x, y, T.SAND);
+        else if (r < 1.55 && this.map.isWater(x, y)) this.set(x, y, T.WATER); // shallows round it
+      }
+    }
+    const dock = this.dock || { x1: 120, y: 50 };
+    for (let x = dock.x1 + 1; x < isl.x; x++) {
+      let reached = false;
+      for (const y of [dock.y, dock.y + 1]) {
+        if (land(x, y)) reached = true;
+        else if (this.map.isWater(x, y)) this.set(x, y, T.DOCK);
+      }
+      if (reached) break;
+    }
+    this.keep(Math.floor(isl.x - isl.rx - 1), Math.floor(isl.y - isl.ry - 1), Math.ceil(isl.rx * 2 + 3), Math.ceil(isl.ry * 2 + 3));
+    this.map.version++;
+    this.map._depth = null;
+    // Where it can rise: water just off the island's shore, all the way round.
+    const spots = [];
+    for (let k = 0; k < 10; k++) {
+      const a = (k / 10) * Math.PI * 2;
+      let best = null;
+      for (let s = 1; s <= 3 && !best; s++) {
+        const x = Math.floor(isl.x + Math.cos(a) * (isl.rx + s * 0.8));
+        const y = Math.floor(isl.y + Math.sin(a) * (isl.ry + s * 0.8));
+        if (this.map.isWater(x, y) && this.get(x, y) !== T.DOCK) best = at(x, y);
+      }
+      if (best) spots.push(best);
+      const rx = Math.floor(isl.x + Math.cos(a) * (isl.rx + 1.2));
+      const ry = Math.floor(isl.y + Math.sin(a) * (isl.ry + 1.2));
+      if (this.hash(rx, ry, 143) < 0.5) this.bossDeco.push([rx, ry, DECO.REEDS]);
+    }
+    B.lakes_hum = { home: spots[0] || at(isl.x + isl.rx + 1, isl.y), center: at(isl.x - 0.5, isl.y - 0.5), r: Math.round((isl.rx + 0.6) * TILE), spots };
+
+    // The Bone Warden: the ruins' lower hall, the crypt and the room above it made one.
+    const r = this.ruinsRect;
+    if (r) {
+      for (let x = r.x + 1; x <= r.x + 12; x++) {
+        const g = this.get(x, r.y + 14);
+        if (g === T.RUIN_WALL || g === T.RUBBLE) this.set(x, r.y + 14, T.RUIN_FLOOR);
+      }
+      for (const dx of [4, 9]) this.decor('ruin_pillar', r.x + dx, r.y + 14, { name: 'Broken pillar', variant: 'broken', low: false });
+      B.bone_warden = { home: at(r.x + 6.5, r.y + 12), center: at(r.x + 6.5, r.y + 15), r: 7 * TILE };
+    }
+  }
+
+  // Ground details the arenas want after the general pass (bones in the den, reeds).
+  bossDecor() {
+    for (const [x, y, d] of this.bossDeco || []) {
+      if (!this.inb(x, y) || this.occ[y * W + x]) continue;
+      this.map.deco[y * W + x] = d;
     }
   }
 

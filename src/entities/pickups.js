@@ -218,6 +218,10 @@ export class Pickup extends Entity {
   }
 }
 
+// Glyph-shards (boss and mission rewards that teach the Weave): src/bosses/shard.js.
+//   dropGlyphShard(game, kind, id, x, y, { source, boss, rise }) -> GlyphShard
+export { dropGlyphShard, GlyphShard, grantGlyph } from '../bosses/shard.js';
+
 // Drop items on the ground at (x, y). opts: { pop (default true), lifetime, collectDelay }
 export function dropItem(game, itemId, qty = 1, x = 0, y = 0, opts = {}) {
   if (!itemId || !(qty > 0) || !game?.entities) return null;
