@@ -302,7 +302,7 @@ export class Survival {
     }
     this.falls.set(actor, rec);
     if (player) {
-      this.slowmo = this.fast || opts.load ? null : { t: 0 };
+      this.slowmo = opts.load ? null : { t: 0 };
       rec.wanted = rec.wanted || !!opts.wanted;
       g.bus?.emit?.('fallen', { entity: actor, by, window, cause: rec.cause });
       if (!opts.load) {

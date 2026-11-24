@@ -682,7 +682,7 @@ class WorldBuilder {
       this.decor('pew', 0, 0, { footprint: { x: 90, y: row, w: 3, h: 1 }, name: 'Pew' });
     }
     // The infirmary cot by the shelves, for whoever is carried in when Mira's are full (§27).
-    this.must({ objType: 'bed', id: 'infirmary_cot', footprint: { x: 92, y: 44, w: 1, h: 2 }, owner: 'infirmary', cot: true, variant: 'plain', name: 'Infirmary cot', text: INFIRMARY_TEXT, words: ['infirmary', 'cot'] });
+    this.must({ objType: 'bed', id: 'infirmary_cot', footprint: { x: 92, y: 44, w: 1, h: 2 }, owner: 'infirmary', cot: true, variant: 'plain', sleepSide: 'left', name: 'Infirmary cot', text: INFIRMARY_TEXT, words: ['infirmary', 'cot'] });
   }
 
   // --- Gale's Goods --- the shop at the front, Garrick's back room behind a partition.
@@ -709,11 +709,11 @@ class WorldBuilder {
     ]);
     this.bed('mira', 46, 51);
     this.look('shelf', 47, 51, 'potionShelf', { variant: 'herbs' });
-    for (const [id, x] of [
-      ['sickbed_1', 49],
-      ['sickbed_2', 51],
+    for (const [id, x, side] of [
+      ['sickbed_1', 49, 'right'],
+      ['sickbed_2', 51, 'left'],
     ])
-      this.must({ objType: 'bed', id, footprint: { x, y: 51, w: 1, h: 2 }, owner: 'sickroom', cot: true, variant: 'plain', name: 'Sickroom cot', text: SICKBED_TEXT, words: ['sickroom', 'cot', 'sickbed'] });
+      this.must({ objType: 'bed', id, footprint: { x, y: 51, w: 1, h: 2 }, owner: 'sickroom', cot: true, variant: 'plain', sleepSide: side, name: 'Sickroom cot', text: SICKBED_TEXT, words: ['sickroom', 'cot', 'sickbed'] });
     this.look('cauldron', 50, 55, 'cauldron');
     this.look('shelf', 46, 54, 'potionShelf', { variant: 'potions' });
     this.look('shelf', 51, 54, 'potionShelf', { variant: 'potions' });
@@ -756,7 +756,7 @@ class WorldBuilder {
     this.decor('rack', 58, 64, { name: 'Weapon rack' });
     this.look('table', 0, 0, 'mapTable', { footprint: { x: 59, y: 66, w: 2, h: 1 }, variant: 'map' });
     // The cell nobody has used in years (LORE §10): where the watch carries someone wanted (§27).
-    this.must({ objType: 'bed', id: 'cell_cot', footprint: { x: 61, y: 64, w: 1, h: 2 }, owner: 'cell', cot: true, variant: 'plain', name: 'Cell cot', text: CELL_TEXT, words: ['cell', 'cot'] });
+    this.must({ objType: 'bed', id: 'cell_cot', footprint: { x: 61, y: 64, w: 1, h: 2 }, owner: 'cell', cot: true, variant: 'plain', sleepSide: 'left', name: 'Cell cot', text: CELL_TEXT, words: ['cell', 'cot'] });
     this.decor('barrel', 57, 68);
     this.look('dummy', 67, 67, 'dummy', { name: 'Training dummy' });
     this.decor('banner', 66, 63, { name: 'Guard banner' });
