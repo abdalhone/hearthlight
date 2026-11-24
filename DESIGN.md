@@ -1078,3 +1078,142 @@ Stay 2D pixel art. Take the mood, not the medium, of low-res "lost console game"
 - Fog for depth, wet/glossy ground in rain that reflects lights, mirror-like water.
 - After the upscale: a faint ordered dither (±2 levels) and a soft vignette. Text is always
   drawn at full resolution, never pixelated with the scene.
+
+## 19. Round 3: Hearthvale lives
+
+`docs/LORE.md` is canon from now on. Where LORE and older code or this document disagree,
+LORE wins. **LORE §12** lists every line in the built game that it replaces, with the new
+text; apply it exactly. LORE §9.10 (*Who knows what*) decides what each character may say:
+a truth marked *hidden* is never spoken by anyone until the game reveals it.
+
+The author's rule, again, because round 3 touches it everywhere: Lyra lives for herself.
+She stops the player, runs or leaves **only when that is better for her, or when staying
+is not worth it to her**. She is warm, nosy, teasing good company by default, and she never
+threatens or hints that she might leave. Other villagers live their own lives too: they
+talk to each other, like and dislike each other, gossip, and remember the player.
+
+### 19.1 The eighteen villagers (characters: `src/entities/npc*.js`, `src/art/characters_*`)
+
+- Ten new villagers join the eight, exactly as LORE §6 describes them: `hobb`, `wenna`,
+  `hess`, `sabeth`, `alder`, `petra`, `tilly`, `tansy`, `corran`, `wys`. Their profiles
+  go in a new file `src/entities/npc_data_more.js` (`export const MORE_PROFILES = [...]`
+  and `export const MORE_KNOWS = { bram: { hobb: '…' }, … }` for what the original eight
+  think of the newcomers). `npc_data.js` appends them in one place at the end of the file.
+  Do not rewrite the original eight's entries (the canon agent edits a few of their facts).
+- Every profile follows the NPC schema (§7) plus: `howAreYou: [...]` (their answer to
+  "how are you?", from LORE §6), `saysOutLoud: [...]`, `family: { parent: [], child: [],
+  spouse: [], sibling: [], ward: [] }` (ids), and facts may carry
+  `hiddenFrom: ['lyra']` or `knownBy: [...]` (LORE §9.10). Facts the LORE marks hidden are
+  `topic: 'secret'` with a high `minFamiliarity` and are never offered to Lyra.
+- Homes and days follow LORE §10 *Homes*. Location ids (built by the world agent):
+  `chandlery`, `lamplight_lane`, `ashby_house`, `dye_cottage`, `weavers_row`, `net_shed`,
+  `wenna_hives`. Each villager sleeps in a bed whose `owner` is their id.
+- Wys is faction `guard` and fights like Rowan. Hess hunts: she fights hostile creatures
+  that come near (never villagers, never the player unless there is a crime).
+- Hobb walks the lamp-round at dusk: he lights the village lamps one by one (lamp objects
+  with `state.lit`, see 19.2). After he passes, a lamp stays lit until dawn.
+- Wenna is nearly blind (milky eyes, walks with a stick, keeps a hand out); Petra is 84;
+  both move slowly. Art must make every new villager recognisable at game scale
+  (silhouette, hair, colours, a held item) and give each a portrait.
+
+### 19.2 New places (world: `src/world/*`, `src/art/world_*`, `src/art/props_*`)
+
+LORE §10: Lamplight Lane running east from the chapel behind the smithy, with the Ambrels'
+chandlery at its end and the bench outside; Ashby House on the south side of the square
+facing the well; the dye-vats cottage east of the Wayhouse by the stream above the bridge
+(the stream runs violet and teal below it); Weavers' Row, a short lane south of the square
+with Nan Pike's loom and two or three small houses; Corran's net-shed at the landward end of
+the dock; Wenna's hives among the lindens at Whisperwood's near edge. Beds with owners for
+all ten (Wys gets the second cot in the guardhouse, Tansy a bed in the farmhouse). Village
+lamps along the square and the lanes as objects of type `lamp` with `state.lit` (lit lamps
+give light at night; unlit ones do not). Spawns for the ten new villagers at their homes.
+New props get art and `LOOKS` text. The village must still read clearly and path cleanly:
+every door reachable, no villager stuck.
+
+### 19.3 Village social life (social: `src/ai/social/*`, `src/ai/plugins/social_plugin.js`,
+`src/ai/plugins/village_plugin.js`, and only the `social()`, `chatWith()` and `hears()`
+methods of `npc.js`)
+
+`game.village` (a `Village`, created by `village_plugin.install`) owns the social world:
+
+- **Bonds.** A directed graph `village.bond(a, b) → { affinity -100..100, trust 0..100,
+  familiarity 0..100, tags: ['parent'|'child'|'spouse'|'sibling'|'friend'|'rival'|'crush'|
+  'mentor'|'apprentice'|'ward'|'grudge'…], note }`, seeded from LORE §6 (each profile's
+  relationships and the relationship map) for all 18 villagers and Lyra (`lyra` is a node;
+  her side also lives in `mind.relationships`, which stays the source of truth for her).
+  Bonds drift with every conversation, favor, slight and rumor. Saved and loaded.
+- **Conversations.** `village.converse(aId, bId, { topic })` makes a 2–6 line exchange
+  from both speakers' voices, their bond, the time and weather, what they know, their
+  shared history and the rumors they carry. Topics: small talk, work, family, the player,
+  Lyra, Maren, the bandits, the ward, each other's secrets they know, LORE §5 *In the air
+  this week*. Every line is in character (use each profile's voice and LORE §11), never a
+  generic template that could come from anyone. On screen, the lines play as speech bubbles
+  in turn; off screen, a conversation resolves instantly as a summary. Each conversation is
+  logged: `village.log → [{ t, day, a, b, topic, summary, lines?, effects }]`.
+- **The rhythm.** Villagers who share a place and are awake start conversations on their
+  own (eating, socialising, working side by side, passing in the lane), a few per in-game
+  hour across the village, more in the evening at the Kettle. Lyra takes part as herself:
+  she visits people she loves (her parents most of all, LORE §7 *Lyra's people*), and her
+  side of each conversation comes from her mind (mood, relationships, memories) and is
+  remembered by her mind like any other conversation (`applyConversation`).
+- **Gossip.** Notable events become rumors `{ id, about, text, valence -1..1, source,
+  t, heardBy: [ids] }`: the player's deeds (autonomy `deed` and `crime` events, gifts,
+  help, quests, fights), Lyra's choices (leaving the player, moving back to the Kettle),
+  and village news. Rumors spread one listener at a time in conversations, are retold with
+  small distortions, shift each hearer's `opinionOfPlayer` a little, come up when the
+  player talks to someone ("Heard you pulled the wolf off Tansy."), and reach Lyra as
+  hearsay knowledge (weighed less than what she saw herself).
+- **Talking to anyone.** `village.playerSays(npc, text) → Promise<{ lines: [string],
+  mood?, options? }>`: the player can say anything to any villager. Greetings and "how
+  are you?" get that villager's own answer (`howAreYou`); questions about people, places
+  and topics get what they know at their familiarity with the player; thanks, compliments,
+  insults and threats change their opinion; Lyra overhears if she is near. With a Claude
+  provider available (`game.brain.providers.current()`), the reply comes from Claude: the
+  villager's profile, voice, opinion of the player, the facts they would share, the rumors
+  they carry and the last few exchanges, returning JSON `{ say, opinion_delta, learned?:
+  [fact ids], rumor? }`. Local fallback on any failure. Claude is called **only on a player
+  action** (pressing send), never from a timer.
+- **Listen in.** `village.canListen()` returns the conversation playing near the player,
+  if any; `village.listenIn(conv) → Promise<lines>`: a player action, so with Claude
+  available Claude writes the next exchange between those two (4–8 lines, in their voices,
+  from their bond, their news and rumors); otherwise the local generator does.
+- **While you slept.** On `player_sleep`/`player_wake`: `village.nightSummary(day) →
+  Promise<[string]>` gives 3–6 short lines of the day's village life (who talked, what
+  spread, who fell out, what Lyra did). Local first; with Claude available (sleeping is a
+  player action) Claude may rewrite it as a few warm sentences. Never blocks the sleep.
+- **Always-on mode.** Setting `villageAi: 'player' | 'always'` (default `'player'`).
+  `'always'` works only with the API-key provider and lets Claude write on-screen ambient
+  conversations near the player, at most one every 45 s. Never with claude.ai sampling.
+- Events: `village_talk {a, b, topic, summary}`, `rumor {rumor}`,
+  `bond_changed {a, b, bond}`.
+
+### 19.4 Worth it (autonomy: `src/ai/mind/autonomy*`)
+
+`autonomy.worth() → { stay, cost, net, reasons: [{ text, weight }] }`, recomputed each
+update and shown in the Mind panel. **Stay** is what being with the player gives her: trust
+and affection, the Maren thread (the stranger came from Maren's "other end" and is her best
+clue), shared good days, promises kept, the hearthwatch wage, safety together in danger, the
+player being good to people she loves. **Cost** is what it takes from her: harm done to her,
+fear, lies, broken promises, being pushed after a no, harm to villagers, crimes, dangerous
+asks, and time taken from her own life (her parents, the waystones). Small wrongs she can
+afford are weighed and let go, and fade. State changes come from the weighing with
+hysteresis: `wary` / `apart` / `left` only when the net value stays low; an intervention
+(warn, step between, bind, flee) only when protecting herself or someone she loves is worth
+more than the risk. LORE §7 *Boundaries* sets the hard lines (a second deliberate blow; a
+knock-out of her or someone she loves means `gone`). She never threatens to leave.
+
+### 19.5 Memory editing (mind: `src/ai/mind/*`, `memory_plugin.js`; the `memory_edits`
+field in `src/ai/brain/prompt.js` and its application in `brain.js`)
+
+Implement §17.4 end to end: `edit_memory`, `update_knowledge`, `retract_knowledge`, and
+`forget` with history; `memory_edits` from Claude; sleep consolidation that merges, fades,
+supersedes and reframes; the player's requests weighed like any other request.
+
+### 19.6 UI (ui: `src/ui/*`, `src/styles.css`; render: `src/render/*`)
+
+The villager dialog gains a "Say something…" field (with the mic when dictation exists)
+calling `village.playerSays`; a "Listen in" prompt appears when a conversation plays near
+the player; the morning card shows *While you slept*; the Mind panel's People tab covers all
+eighteen and shows who she is close to and how the village feels about the player; "You &
+her" shows the `worth()` breakdown; memories and knowledge show the *edited* mark and the
+earlier version. All of this works on a phone. Nights get darker per §18.
