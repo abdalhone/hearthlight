@@ -33,6 +33,7 @@ import { NPC_PROFILES } from '../entities/npc_data.js';
 import { spawnCreature } from '../entities/monsters.js';
 import { Spawner } from '../entities/spawner.js';
 import { Combat } from '../entities/combat.js';
+import { Magic } from '../magic/magic.js';
 
 import { ActionRegistry } from '../ai/brain/actions.js';
 import { PluginRegistry } from '../ai/plugins/registry.js';
@@ -81,6 +82,9 @@ export class Game {
     this.audio = new Audio(this);
     this.entities = new EntityManager(this);
     this.combat = new Combat(this);
+    // The Weave (DESIGN §22): spells, statuses, mana and slots. Its look comes from
+    // game.magicFx when the fx layer is present (src/magic/fx.js), else a plain fallback.
+    this.magic = new Magic(this);
     this.interactions = new Interactions(this);
     this.actions = new ActionRegistry(this);
     this.plugins = new PluginRegistry(this);
@@ -164,6 +168,8 @@ export class Game {
       }
     }
     this.spawner = new Spawner(this, world.spawns.spawnZones || []);
+    // Weaves draw through one layer entity: ground marks under everyone, spells over them.
+    this.entities.add(this.magic.layer);
     this.plugins.installAll();
     this.camera.follow(this.player);
     this.camera.snap();
@@ -264,6 +270,7 @@ export class Game {
       this.objects.update(dt);
       this.map.update(dt);
       this.combat.update(dt);
+      this.magic.update(dt);
       this.spawner.update(dt);
       this.plugins.update(dt);
       this.brain.update(dt);
@@ -312,6 +319,7 @@ export class Game {
       spawner: this.spawner?.serialize(),
       plugins: this.plugins.serialize(),
       brain: this.brain.serialize?.() ?? null,
+      magic: this.magic?.serialize?.() ?? null,
     };
   }
 
@@ -321,6 +329,7 @@ export class Game {
     this.flags = { ...(d.flags || {}) };
     this.objects?.deserialize(d.objects);
     this.player?.deserialize(d.player);
+    this.magic?.deserialize?.(d.magic);
     this.companion?.deserialize(d.companion);
     for (const [id, nd] of Object.entries(d.npcs || {})) this.entities.get(id)?.deserialize?.(nd);
     this.spawner?.deserialize(d.spawner);

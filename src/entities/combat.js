@@ -34,6 +34,12 @@ const DEFAULT_MELEE_CD = 0.4;
 const MIN_SHOT_GAP = 0.15; // guards against accidental per-frame shooting
 
 // Experience needed to go from `level` to the next one.
+// The side an actor fights on: its faction, or its charmer's while a song holds it.
+export function sideOf(a) {
+  const by = a?.statusFlags?.charmedBy;
+  return by && by !== a && !by.removed ? by.faction || 'player' : a?.faction;
+}
+
 export function xpToNext(level) {
   const l = Math.max(1, Math.floor(level || 1)) - 1;
   return 20 + l * 18 + l * l * 4;
@@ -228,6 +234,8 @@ export class Combat {
 
   isHostile(a, b) {
     if (!a || !b || a === b) return false;
+    // A charmed creature fights for its charmer's side and nobody holds a grudge meanwhile.
+    if (a.statusFlags?.charmedBy || b.statusFlags?.charmedBy) return factionRelation(sideOf(a), sideOf(b)) === 'hostile';
     // While the player is wanted, the guard and the player are at war (§16.7).
     if ((a.faction === 'guard' && this.hasCrime(b)) || (b.faction === 'guard' && this.hasCrime(a))) return true;
     if (factionRelation(a.faction, b.faction) === 'hostile') return true;
@@ -271,9 +279,11 @@ export class Combat {
     if (!attacker) return true;
     if (this.isPlayer(attacker)) return true;
     if (this.isHostile(attacker, target)) return true;
+    const sa = sideOf(attacker);
+    const st = sideOf(target);
     const spared =
-      factionRelation(attacker.faction, target.faction) === 'ally' ||
-      (attacker.faction === 'player' && (PLAYER_SIDE_SAFE.has(target.faction) || this.isProtected(target)));
+      factionRelation(sa, st) === 'ally' ||
+      (sa === 'player' && (PLAYER_SIDE_SAFE.has(st) || this.isProtected(target)));
     if (spared) return explicit && this.isSelfDefense(attacker, target);
     if (explicit) return true;
     return target.provokedBy === attacker || attacker.provokedBy === target;
@@ -288,6 +298,7 @@ export class Combat {
   melee(attacker, opts = {}) {
     this.lastMeleeHits = 0;
     if (!attacker || attacker.type !== 'actor' || !attacker.isAlive?.()) return false;
+    if (attacker.statusFlags?.disabled) return false; // frozen, stunned, staggered (magic statuses)
     if (this.t < (attacker._meleeReadyAt ?? -Infinity)) return false;
     const g = this.game;
     const target = opts.target && opts.target.type === 'actor' ? opts.target : null;
@@ -341,6 +352,7 @@ export class Combat {
   shoot(attacker, tx, ty, kind = 'bolt', opts = {}) {
     const g = this.game;
     if (!attacker || !attacker.isAlive?.() || !g.entities) return null;
+    if (attacker.statusFlags?.disabled) return null;
     const target = opts.target && opts.target.type === 'actor' ? opts.target : null;
     if (!Number.isFinite(tx) || !Number.isFinite(ty)) {
       if (!target) return null;
@@ -401,19 +413,30 @@ export class Combat {
 
   // opts: { kind, knockback (px/s), crit (bool to force), launch (px/s up), heavy,
   //         dirX, dirY (knockback direction), invuln (seconds), exact (no variance) }
+  // Weaves (src/magic) add: damageType / damageTypes [{type, share}] (target.resist or
+  // its species' resist scales them), penetration (ignores that much defense), dot (a
+  // status tick: lands through i-frames, no stagger, no knockback), quiet (no number or
+  // particles; magic pools its own), silent (no sound), noHitStop, noStagger, deliberate.
   damage(source, target, amount, opts = {}) {
     const g = this.game;
     if (!target || target.type !== 'actor' || target.removed || !target.isAlive?.()) return 0;
     if (source && source.type === 'projectile') source = source.owner || null;
     if (source && source !== target && source.type === 'actor' && !this.canHarm(source, target, true)) return 0;
-    if (target.invuln > 0) return 0;
+    if (target.invuln > 0 && !opts.dot) return 0;
 
     const kind = opts.kind || 'melee';
     let crit = opts.crit;
-    if (crit == null) crit = !!source && kind !== 'fall' && this.random() < CRIT_CHANCE;
+    if (crit == null) crit = !!source && kind !== 'fall' && !opts.dot && this.random() < CRIT_CHANCE;
     const variance = opts.exact ? 1 : 0.9 + this.random() * 0.2;
-    const raw = Math.max(0, Number(amount) || 0) * variance * (crit ? CRIT_MUL : 1);
-    const dealt = Math.max(1, Math.round(raw - (target.def || 0)));
+    let mul = 1;
+    if (opts.damageTypes || opts.damageType) mul *= this.resistMul(target, opts.damageTypes, opts.damageType);
+    const tf = target.statusFlags;
+    if (tf && tf.count) mul *= tf.dmgTaken;
+    const sf = source && source.type === 'actor' ? source.statusFlags : null;
+    if (sf && sf.count) mul *= sf.dmgDealt;
+    const raw = Math.max(0, Number(amount) || 0) * variance * (crit ? CRIT_MUL : 1) * mul;
+    const def = Math.max(0, (target.def || 0) - (opts.penetration || 0));
+    const dealt = Math.max(1, Math.round(raw - def));
     target.hp = Math.max(0, target.hp - dealt);
 
     const isPlayer = this.isPlayer(target);
@@ -423,8 +446,8 @@ export class Combat {
     // Hurting a villager or guard is a crime; set it before anyone hears about the hit.
     const crime = attacker && this.isPlayer(attacker) && this.isLawful(target) ? (target.hp <= 0 ? 'knockout' : 'assault') : null;
     if (crime) this._recordCrime(attacker, target, crime);
-    target.flash = 1;
-    target.invuln = opts.invuln ?? (isPlayer ? 0.55 : isFriend ? 0.35 : 0.12);
+    target.flash = opts.dot ? Math.max(target.flash || 0, 0.55) : 1;
+    if (!opts.dot) target.invuln = opts.invuln ?? (isPlayer ? 0.55 : isFriend ? 0.35 : 0.12);
     target.lastAttacker = source || null;
     target.lastAttackedAt = g.clock?.t ?? this.t;
 
@@ -451,8 +474,8 @@ export class Combat {
     }
     if (opts.launch > 0 && !target.flying) this._launch(target, opts.launch / mass);
 
-    // Brief hit-stun (bosses with superArmor shrug it off).
-    if (!target.superArmor && target.hp > 0) {
+    // Brief hit-stun (bosses with superArmor shrug it off; status ticks never stun).
+    if (!target.superArmor && target.hp > 0 && !opts.noStagger && !opts.dot) {
       target.setState('hurt', isPlayer ? 0.16 : 0.22);
       target.stateTime = 0;
       target.animTime = 0;
@@ -466,11 +489,19 @@ export class Combat {
     }
 
     const heavy = !!(opts.heavy || crit || isPlayer || target.hp <= 0);
-    if (heavy) g.hitStop = Math.max(g.hitStop || 0, HIT_STOP);
+    if (heavy && !opts.noHitStop) g.hitStop = Math.max(g.hitStop || 0, HIT_STOP);
     // People (the party, villagers, guards) bleed coral numbers and cry out; creatures thud.
-    this._hitFx(target, dealt, crit, kind, dx, dy, isFriend || this.isLawful(target), isPlayer, heavy);
+    if (!opts.quiet) this._hitFx(target, dealt, crit, kind, dx, dy, isFriend || this.isLawful(target), isPlayer, heavy && !opts.noHitStop, !!opts.silent);
 
-    g.bus?.emit('damage', { source: source || null, target, amount: dealt, kind, crit: !!crit });
+    const ev = { source: source || null, target, amount: dealt, kind, crit: !!crit };
+    if (opts.magic || opts.damageType) {
+      ev.damageType = opts.damageType || null;
+      ev.magic = true;
+      ev.deliberate = !!opts.deliberate;
+      if (opts.dot) ev.dot = true;
+      if (opts.status) ev.status = opts.status;
+    }
+    g.bus?.emit('damage', ev);
 
     if (target.hp <= 0) {
       if (this.isDownable(target)) this.down(target, source || null);
@@ -530,7 +561,20 @@ export class Combat {
     this.airborne.add(e);
   }
 
-  _hitFx(target, dealt, crit, kind, dx, dy, isFriend, isPlayer, heavy) {
+  // Weaves split damage across types; a target resists each by target.resist[type]
+  // (or its species' spec.resist), 1 = normal, 0.5 = half, 1.5 = weak to it.
+  resistMul(target, types, type) {
+    const res = target?.resist || target?.spec?.resist;
+    if (!res) return 1;
+    if (Array.isArray(types) && types.length) {
+      let m = 0;
+      for (const t of types) m += (t.share ?? 1 / types.length) * (Number.isFinite(res[t.type]) ? res[t.type] : 1);
+      return m;
+    }
+    return Number.isFinite(res[type]) ? res[type] : 1;
+  }
+
+  _hitFx(target, dealt, crit, kind, dx, dy, isFriend, isPlayer, heavy, silent = false) {
     const x = target.x;
     const y = target.y - 10 - (target.z || 0);
     const color = HIT_COLORS[target.species] || '#ffffff';
@@ -541,8 +585,8 @@ export class Combat {
       crit: !!crit,
       kind: crit ? 'crit' : isFriend ? 'hurt' : 'damage',
     });
-    const sound = isFriend ? 'hurt' : kind === 'bolt' ? 'bolt_hit' : 'hit';
-    this._sound(sound, target.x, target.y, { pitch: crit ? 1.2 : 0.9 + this.random() * 0.2 });
+    const sound = isFriend ? 'hurt' : kind === 'bolt' || kind === 'magic' ? 'bolt_hit' : 'hit';
+    if (!silent) this._sound(sound, target.x, target.y, { pitch: crit ? 1.2 : 0.9 + this.random() * 0.2 });
     if (isPlayer) this._shake(3, 0.22);
     else if (heavy) this._shake(1.5, 0.12);
     if (crit) this._flash({ x, y, r: 30, color: '#ffe27a', intensity: 0.5, duration: 0.12 });
@@ -717,6 +761,7 @@ export class Combat {
   // Lyra's healing spell. Returns the HP restored.
   castHeal(caster, target) {
     if (!caster || !target || !caster.isAlive?.() || target.dead || target.downed || target.removed) return 0;
+    if (caster.statusFlags?.disabled) return 0;
     const power = Number.isFinite(caster.healPower) ? caster.healPower : Math.round(10 + (caster.atk || 0) * 1.5 + ((caster.level || 1) - 1) * 2);
     if (target !== caster) caster.faceToward?.(target.x, target.y);
     caster.setState('cast', 0.45);

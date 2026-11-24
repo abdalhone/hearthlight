@@ -105,7 +105,14 @@ export class Companion extends Actor {
   update(dt) {
     if (this.leftWorld) return;
     if (this.dead) this.knockOut();
-    super.update(dt);
+    // Frozen or stunned by a weave (DESIGN §22.1): her behavior holds until it wears off.
+    const ctl = this.controller;
+    if (this.statusFlags?.disabled) this.controller = null;
+    try {
+      super.update(dt);
+    } finally {
+      this.controller = ctl;
+    }
     if (this.downed) this.updateDowned(dt);
     else if (this.wasDowned) {
       this.wasDowned = false;
