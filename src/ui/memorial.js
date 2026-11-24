@@ -93,6 +93,8 @@ export function buildMemorial(ui, m, { final = false } = {}) {
     closeLabel: final ? 'Return to the title' : 'Close',
   });
   panel.pauses = true;
+  // A life's last page is not dismissed by a stray tap beside it: only its buttons close it.
+  if (final) panel.noOutsideClose = true;
   panel.body.append(h('p', { class: 'sv-mem-cause', text: m.cause || 'They died.' }));
   const lyraName = m.companion || 'Lyra';
   panel.body.append(h('h3', { class: 'sv-mem-h', text: `${lyraName}'s diary, that night` }));

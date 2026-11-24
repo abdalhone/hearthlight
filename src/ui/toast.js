@@ -3,6 +3,10 @@
 // In play the stack keeps clear of speech bubbles, the player, Lyra and the HUD: it
 // takes the first free slot under the quest line (or low on the screen), stays put
 // while that slot stays free, and waits out of sight (not aging) when nothing is free.
+// A phone shows one notice at a time (the rest wait their turn, not aging); a tap on a
+// notice puts it away. While a panel is open, notices from before it wait for it to
+// close; one raised while it is open (most often the answer to a tap in it) shows
+// along the bottom edge, clear of the panel's title and close button.
 
 import { h, icon, setText } from './dom.js';
 import { placeStack } from './village_view.js';
@@ -10,7 +14,7 @@ import { placeStack } from './village_view.js';
 const ICON_FOR = { info: 'scroll', good: 'star', warn: 'heart', quest: 'scroll', lyra: 'mind', item: 'bag' };
 const LIFE = { info: 3.6, good: 3.6, warn: 5, quest: 6, lyra: 4.5, item: 2.6 };
 const MAX_VISIBLE = 4;
-const MAX_VISIBLE_SMALL = 3; // phones: fewer at once, so they fit between the HUD and the bubbles
+const MAX_VISIBLE_SMALL = 1; // phones: one at a time, the others wait their turn
 const PLACE_EVERY = 0.1;
 
 // HUD pieces the stack must never cover (the chat is handled on its own).
@@ -40,6 +44,12 @@ export class Toasts {
   constructor(ui) {
     this.ui = ui;
     this.el = h('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' });
+    // A tap puts a notice away (and lets the next one in).
+    this.el.addEventListener('click', (e) => {
+      const el = e.target.closest?.('.toast');
+      const t = el && this.items.find((x) => x.el === el);
+      if (t) this._leave(t);
+    });
     this.items = [];
     this.placeT = 0;
     this.placed = false; // inline position in use (else the stylesheet places the stack)
@@ -91,16 +101,18 @@ export class Toasts {
     // Keyed toasts always carry a title slot, so a later update can add or change it.
     const titleEl = title || key ? h('strong', { class: 'toast-title', text: title || '' }) : null;
     const body = titleEl ? h('div', { class: 'toast-body' }, titleEl, textEl) : textEl;
-    const el = h('div', { class: `toast toast-${kind}` }, ic, body);
-    const t = { el, textEl, titleEl, text: msg, kind, key, age: 0, life: LIFE[kind] ?? 3.6, leaving: false };
+    const el = h('div', { class: `toast toast-${kind}`, title: 'Tap to put away' }, ic, body);
+    const t = { el, textEl, titleEl, text: msg, kind, key, age: 0, life: LIFE[kind] ?? 3.6, leaving: false, inPanel: !!this.ui.stack?.length };
     this.items.push(t);
     this.el.appendChild(el);
     this.placeT = 0; // place the grown stack on the next step
-    const max = this.maxVisible();
-    while (this.items.filter((x) => !x.leaving).length > max) {
+    // Too many waiting: the oldest go (a phone keeps a short queue, not a flood).
+    const cap = this.maxVisible() === MAX_VISIBLE_SMALL ? 4 : MAX_VISIBLE;
+    while (this.items.filter((x) => !x.leaving).length > cap) {
       const old = this.items.find((x) => !x.leaving);
       this._leave(old);
     }
+    this.queue();
     return t;
   }
 
@@ -115,7 +127,29 @@ export class Toasts {
     }, 320);
   }
 
+  // Only so many notices show at once (one on a phone): the rest wait their turn.
+  // While a panel is open, only notices raised since it opened may show.
+  queue() {
+    const max = this.maxVisible();
+    const panel = !!this.ui.stack?.length;
+    let n = 0;
+    for (const t of this.items) {
+      if (t.leaving) continue;
+      const ok = (!panel || t.inPanel) && n < max;
+      if (ok) n++;
+      t.queued = !ok;
+      t.el.classList.toggle('queued', !ok);
+    }
+  }
+
+  clear() {
+    for (const t of [...this.items]) this._leave(t);
+  }
+
   update(dt) {
+    // A notice from inside a panel goes back to waiting like any other once it closes.
+    if (!this.ui.stack?.length) for (const t of this.items) t.inPanel = false;
+    this.queue();
     this.placeT -= dt;
     if (this.placeT <= 0) {
       this.placeT = PLACE_EVERY;
@@ -125,7 +159,7 @@ export class Toasts {
     for (let i = 0; i < this.items.length; i++) {
       const t = this.items[i];
       // A notice waiting its turn (no room for it yet) does not age.
-      if (t.leaving || t.deferred) continue;
+      if (t.leaving || t.deferred || t.queued) continue;
       t.age += dt;
       if (t.age >= t.life) this._leave(t);
     }
@@ -171,7 +205,7 @@ export class Toasts {
     this.el.classList.toggle('on-head', mode === 'on-head');
     this.el.classList.toggle('one-up', mode === 'one-up');
     // The newest notice still showing is the one on screen; the others age unseen.
-    const live = this.items.filter((t) => !t.leaving);
+    const live = this.items.filter((t) => !t.leaving && !t.queued);
     for (const t of this.items) t.el.classList.toggle('head-pick', t === live[live.length - 1]);
     if (!box) return;
     st.setProperty('top', `${Math.round(box.y)}px`, 'important'); // over .modal-open's !important
@@ -194,12 +228,18 @@ export class Toasts {
       this.unplace();
       return;
     }
+    // A phone: the newest notice raised in the panel sits along the bottom edge (the
+    // stylesheet's .modal-open rule); the panel's title and ✕ stay clear.
+    if (this.maxVisible() === MAX_VISIBLE_SMALL) {
+      this.unplace();
+      return;
+    }
     const rb = root.getBoundingClientRect();
     const room = top.el.getBoundingClientRect().top - rb.top - 14;
     // Measured in the stylesheet's layout, all in one step (nothing paints between).
     this.unplace();
     if (room >= this.el.offsetHeight) return;
-    const live = this.items.filter((t) => !t.leaving);
+    const live = this.items.filter((t) => !t.leaving && !t.queued);
     const newest = live[live.length - 1];
     if (!newest) return;
     this.setPanelMode('one-up');
@@ -252,7 +292,7 @@ export class Toasts {
     const ui = this.ui;
     const g = ui.game;
     const root = ui.root;
-    const live = this.items.filter((t) => !t.leaving);
+    const live = this.items.filter((t) => !t.leaving && !t.queued);
     if (live.length && ui.stack?.length) {
       this.placeOverPanel();
       return;

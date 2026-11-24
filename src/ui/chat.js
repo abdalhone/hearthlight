@@ -136,6 +136,7 @@ export class Chat {
       if (this.target !== LYRA && this.away) this.selectTarget(LYRA);
       this.refreshPeople(true);
       this.refreshHeader();
+      this.ui.armBack?.();
     }
     this.unreadBy.set(this.target, 0);
     this.unread = 0;

@@ -27,7 +27,6 @@ const STANCE_ICON = { attack: 'sword', defend: 'shield', passive: 'feather', sel
 const SMALL_QUERY = '(max-width: 640px), (max-height: 520px)';
 const PORTRAIT_PHONE_QUERY = '(max-width: 640px) and (min-height: 521px)';
 const MINI_KEY = 'hearthlight.hud.lyraMini';
-const TURN_TIP_KEY = 'hearthlight.tip.turnPhone';
 // A phone held sideways (or any short window): the HUD becomes one thin top strip.
 const STRIP_QUERY = '(max-height: 520px)';
 // HUD pieces speech bubbles must not hide behind (see Bubbles.setKeepOut).
@@ -132,7 +131,6 @@ export class Hud {
   mountWeave() {
     this.bottomEl = this.el.querySelector('.hud-bottom');
     this.bottomEl.append(this.hotbar);
-    this.el.append(this.turnTip);
     this.placeAskBar();
     this.game.input?.onStep?.((dt) => this.stepWeave(dt));
   }
@@ -157,11 +155,6 @@ export class Hud {
     if (this.el.hidden || !g.player) return;
     this.updateHotbar(dt);
     this.placeAskBar();
-    this.maybeTurnTip();
-    if (this.turnTipT > 0) {
-      this.turnTipT -= dt;
-      if (this.turnTipT <= 0) this.hideTurnTip();
-    }
   }
 
   build() {
@@ -213,10 +206,9 @@ export class Hud {
       h('span', { class: 'lyra-info' }, h('span', { class: 'card-row' }, this.lName, this.lMood, this.lStance), this.lyraLive, this.relRow, this.farewellEl),
       h('span', { class: 'unfold-chev', 'aria-hidden': 'true', text: '›' }),
     );
-    this.lyraCard.addEventListener('click', () => {
-      if (this.isFolded()) this.setMini(false);
-      else this.ui.openMind(this.cs && this.cs !== 'together' ? 'you' : 'now');
-    });
+    // A tap opens her Mind (on a phone her card is only her portrait and mood): what
+    // she feels, and the "Ask her" row for orders and jobs.
+    this.lyraCard.addEventListener('click', () => this.ui.openMind(this.cs && this.cs !== 'together' ? 'you' : 'now'));
     this.foldBtn = h('button', { type: 'button', class: 'lyra-fold', title: "Fold Lyra's card", 'aria-label': "Fold Lyra's card" }, h('span', { class: 'fold-chev', 'aria-hidden': 'true', text: '‹' }));
     this.foldBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -232,22 +224,23 @@ export class Hud {
     this.wLabel = h('span', { class: 'weather-label' });
     const placeCard = h('div', { class: 'card place-card' }, this.place, h('div', { class: 'clock-row' }, this.wIcon, this.clock, h('span', { class: 'dot' }), this.dayEl, this.wLabel));
 
-    // Corner buttons
+    // Corner buttons: talking, and the one menu (DESIGN §24). Every place in the game —
+    // the Spellbook, the bag, her Mind, missions — has its home in the menu; the HUD
+    // keeps only what play needs every second. (On a touch screen the right-thumb
+    // cluster's Talk button stands in for the chat button.)
     this.chatBadge = h('span', { class: 'badge', hidden: true });
-    const chatBtn = button('', { icon: 'talk', cls: 'btn-icon hud-btn', title: 'Talk to Lyra (T)', onClick: () => this.ui.chat.toggle() });
+    const chatBtn = button('', { icon: 'talk', cls: 'btn-icon hud-btn hud-chat', title: 'Talk (T)', onClick: () => this.ui.chat.toggle() });
     chatBtn.append(this.chatBadge);
-    const mindBtn = button('', { icon: 'mind', cls: 'btn-icon hud-btn', title: "Lyra's mind (Tab)", onClick: () => this.ui.toggleMind() });
-    const bagBtn = button('', { icon: 'bag', cls: 'btn-icon hud-btn', title: 'Inventory (I)', onClick: () => this.ui.toggleInventory() });
-    const pauseBtn = button('', { icon: 'pause', cls: 'btn-icon hud-btn', title: 'Pause (Esc)', onClick: () => this.ui.openPause() });
-    mindBtn.classList.add('hud-mind');
+    // Something new for the Spellbook shows as a dot on the menu button (and on the
+    // menu's Spellbook entry) until the book is opened.
     this.bookDot = h('span', { class: 'badge badge-dot', hidden: true });
-    this.bookBtn = h('button', { type: 'button', class: 'btn btn-icon hud-btn hud-book', title: 'Spellbook (B)', 'aria-label': 'Spellbook (B)', hidden: true }, bookIcon(), this.bookDot);
-    this.bookBtn.addEventListener('click', () => this.toggleSpellbook());
-    const corner = h('div', { class: 'hud-buttons' }, chatBtn, mindBtn, bagBtn, this.bookBtn, pauseBtn);
+    this.menuBtn = h('button', { type: 'button', class: 'btn btn-icon hud-btn hud-menu', title: 'Menu (Esc)', 'aria-label': 'Menu' }, icon('menu'), h('span', { class: 'hud-btn-label', text: 'Menu' }), this.bookDot);
+    this.menuBtn.addEventListener('click', () => this.ui.openPause());
+    const corner = h('div', { class: 'hud-buttons' }, chatBtn, this.menuBtn);
 
     // Quest line
     this.questText = h('span', { class: 'quest-text' });
-    this.questLine = h('div', { class: 'quest-line', hidden: true }, icon('scroll'), this.questText);
+    this.questLine = h('button', { type: 'button', class: 'quest-line', hidden: true, title: 'Missions' }, icon('scroll'), this.questText);
     // On a phone the line is one short row; a tap shows all of it for a while.
     this.questOpenT = 0;
     // A tap opens the Missions journal (DESIGN §22.3) when this build has one.
@@ -307,7 +300,6 @@ export class Hud {
     this.fps = h('div', { class: 'fps num', hidden: true });
 
     this.hotbar = this.buildHotbar();
-    this.turnTip = this.buildTurnTip();
 
     this.cardsEl = h('div', { class: 'hud-cards' }, playerCard, this.lyraWrap);
     this.rightEl = h('div', { class: 'hud-right' }, placeCard, corner);
@@ -358,9 +350,6 @@ export class Hud {
       row.append(b);
     }
     this.hbName = h('div', { class: 'hb-name' });
-    const bookBtn = h('button', { type: 'button', class: 'btn btn-icon hb-book', title: 'Spellbook (B)', 'aria-label': 'Spellbook (B)' }, bookIcon(), h('kbd', { class: 'keycap', text: 'B' }));
-    bookBtn.addEventListener('click', () => this.toggleSpellbook());
-    row.append(bookBtn);
     return h('div', { class: 'hotbar', hidden: true }, this.hbName, mana, row);
   }
 
@@ -382,9 +371,6 @@ export class Hud {
       this.newMagic = true;
       if (this.bookDot) this.bookDot.hidden = false;
     });
-    bus.on('game_start', () => {
-      this.turnTipAt = (this.game.time || 0) + 3;
-    });
   }
 
   openSpellbook(slot) {
@@ -403,7 +389,6 @@ export class Hud {
   updateHotbar(dt) {
     const w = this.weaving;
     const live = w.available() && w.slotCount() > 0;
-    if (this.bookBtn.hidden === live) this.bookBtn.hidden = !live;
     toggleClass(this.ui.root, 'has-magic', live);
     if (!live) {
       if (!this.hotbar.hidden) this.hotbar.hidden = true;
@@ -469,34 +454,10 @@ export class Hud {
     }
   }
 
-  // ---------- "Turn your phone sideways for fights." (once) ----------
-
-  buildTurnTip() {
-    const phone = h('span', { class: 'turn-phone', 'aria-hidden': 'true' }, h('i'));
-    const text = h('span', { class: 'turn-text' }, h('b', { text: 'Turn your phone sideways for fights.' }), h('span', { text: 'Move with your left thumb, fight and weave with your right.' }));
-    const tip = h('button', { type: 'button', class: 'turn-tip', hidden: true }, phone, text);
-    tip.addEventListener('click', () => this.hideTurnTip());
-    return tip;
-  }
-
-  maybeTurnTip() {
-    if (this.turnTipAt === undefined || (this.game.time || 0) < this.turnTipAt) return;
-    this.turnTipAt = undefined;
-    if (!this.ui.isTouch || readFlag(TURN_TIP_KEY)) return;
-    const vw = window.innerWidth || 0;
-    const vh = window.innerHeight || 0;
-    if (!(vh > vw)) return;
-    saveFlag(TURN_TIP_KEY);
-    this.turnTip.hidden = false;
-    this.turnTipT = 7;
-  }
-
-  hideTurnTip() {
-    this.turnTip.hidden = true;
-    this.turnTipT = 0;
-  }
-
   // ---------- the compact phone HUD ----------
+  // On a phone the HUD is one thin band: health and mana, Lyra's portrait (a tap opens
+  // her Mind), the tracked mission as one short line, and the menu button. Upright,
+  // the mission line sits under the band; sideways it fills the band's middle.
 
   watchLayout() {
     this.smallMq = media(SMALL_QUERY);
@@ -529,26 +490,25 @@ export class Hud {
     return !!this.smallMq?.matches;
   }
 
+  // Her card is only her portrait and mood on a phone (a tap opens her Mind).
   isFolded() {
-    return this.mini && this.isSmall();
+    return this.isSmall();
   }
 
+  // (Kept for saves of the old preference; the phone card no longer unfolds.)
   setMini(on) {
-    on = !!on;
-    if (on === this.mini) return;
-    this.mini = on;
-    saveMiniPref(on);
+    this.mini = !!on;
+    saveMiniPref(this.mini);
     this.applyMini();
-    this.game.audio?.play(on ? 'ui_close' : 'ui_open');
     this.queueLayout();
   }
 
   applyMini() {
     const folded = this.isFolded();
     toggleClass(this.lyraWrap, 'mini', folded);
-    setAttr(this.lyraCard, 'aria-expanded', this.isSmall() ? String(!folded) : null);
     const name = this.game.settings?.companionName || this.game.companion?.name || 'Lyra';
-    setAttr(this.lyraCard, 'aria-label', folded ? `${name}: show her card` : null);
+    setAttr(this.lyraCard, 'aria-label', folded ? `${name}: open her mind` : null);
+    toggleClass(this.ui.root, 'hud-small', folded);
   }
 
   queueLayout() {
@@ -562,9 +522,9 @@ export class Hud {
     else run();
   }
 
-  // Phone held upright: the quest line tucks in under the corner buttons, beside Lyra's
-  // folded card, or under both cards when hers is open. Elsewhere the stylesheet
-  // places it (top centre).
+  // Phone held upright: the mission line spans the screen under the band. Sideways: it
+  // takes the band's middle, between her portrait and the menu button. Elsewhere the
+  // stylesheet places it (top centre).
   layoutTop() {
     const st = this.center.style;
     if (!this.el.hidden && this.stripMq?.matches) {
@@ -573,10 +533,6 @@ export class Hud {
     }
     this.unplaceStrip();
     if (this.el.hidden || !this.portraitMq?.matches) {
-      if (this.ordersPlaced) {
-        this.ordersPlaced = false;
-        this.ordersWrap.style.left = this.ordersWrap.style.top = '';
-      }
       if (this.questPlaced) {
         st.top = st.left = st.width = st.transform = '';
         this.questPlaced = false;
@@ -586,69 +542,32 @@ export class Hud {
     }
     const root = this.el.getBoundingClientRect();
     const cards = this.cardsEl.getBoundingClientRect();
-    const lyra = this.lyraWrap.getBoundingClientRect();
     const right = this.rightEl.getBoundingClientRect();
     if (!root.width || !right.width) return;
     const gap = 6;
     const edgeL = cards.left - root.left;
     const edgeR = right.right - root.left;
-    // Lyra's Ask button rides beside her folded card (or under her open one).
-    const os = this.ordersWrap.style;
-    let askW = 0;
-    if (!this.ordersWrap.hidden) {
-      const ax = lyra.right - root.left + (this.isFolded() ? 8 : 22);
-      if (ax + 44 + gap <= right.left - root.left || this.isFolded()) {
-        os.left = `${Math.round(ax)}px`;
-        os.top = `${Math.round(lyra.top - root.top + Math.max(0, (lyra.height - 44) / 2))}px`;
-        askW = 44 + 8;
-      } else {
-        os.left = `${Math.round(lyra.left - root.left)}px`;
-        os.top = `${Math.round(lyra.bottom - root.top + gap)}px`;
-      }
-      this.ordersPlaced = true;
-    }
-    let top = right.bottom - root.top + gap;
-    let left = edgeL;
-    let beside = false;
-    if (lyra.bottom - root.top + gap > top) {
-      // Her card reaches below the buttons: sit beside it if the line still has room
-      // (clear of the open card's fold tab, whose tap target reaches past its edge).
-      left = lyra.right - root.left + (this.isFolded() ? 8 : 22) + askW;
-      beside = true;
-    }
-    if (edgeR - left < 200) {
-      top = Math.max(cards.bottom, right.bottom) - root.top + gap;
-      left = edgeL;
-      beside = false;
-    }
+    const top = Math.max(cards.bottom, right.bottom) - root.top + gap;
     st.top = `${Math.round(top)}px`;
-    st.left = `${Math.round(left)}px`;
-    st.width = `${Math.round(edgeR - left)}px`;
+    st.left = `${Math.round(edgeL)}px`;
+    st.width = `${Math.round(edgeR - edgeL)}px`;
     st.transform = 'none';
     this.questPlaced = true;
     this.center.classList.add('tucked');
-    toggleClass(this.center, 'beside', beside);
+    this.center.classList.remove('beside');
   }
 
-  // A phone held sideways: one strip along the top. Lyra's Ask button sits right after
-  // her portrait and the tracked mission takes what is left before the clock.
   layoutStrip() {
     const root = this.el.getBoundingClientRect();
-    const lyra = this.lyraWrap.getBoundingClientRect();
+    const cards = this.cardsEl.getBoundingClientRect();
     const right = this.rightEl.getBoundingClientRect();
-    if (!root.width || !right.width || !lyra.width) return;
-    const gap = 8;
-    const os = this.ordersWrap.style;
-    let left = lyra.right - root.left + gap;
-    if (!this.ordersWrap.hidden) {
-      os.left = `${Math.round(left)}px`;
-      os.top = `${Math.round(lyra.top - root.top + (lyra.height - 44) / 2)}px`;
-      left += 44 + gap;
-    }
+    if (!root.width || !right.width || !cards.width) return;
+    const gap = 10;
+    const left = cards.right - root.left + gap;
     const st = this.center.style;
     const width = right.left - root.left - gap - left;
     st.left = `${Math.round(left)}px`;
-    st.top = `${Math.round(lyra.top - root.top + (lyra.height - 30) / 2)}px`;
+    st.top = `${Math.round(cards.top - root.top + Math.max(0, (Math.min(cards.height, 46) - 34) / 2))}px`;
     st.width = `${Math.max(0, Math.round(width))}px`;
     st.transform = 'none';
     this.center.hidden = width < 70;
@@ -661,8 +580,6 @@ export class Hud {
   unplaceStrip() {
     if (!this.stripPlaced) return;
     this.stripPlaced = false;
-    const os = this.ordersWrap.style;
-    os.left = os.top = '';
     const st = this.center.style;
     st.top = st.left = st.width = st.transform = '';
     this.center.hidden = false;
@@ -923,6 +840,7 @@ export class Hud {
   }
 
   setUnread(n) {
+    this.ui.touch?.setUnread?.(n);
     if (n > 0) {
       setText(this.chatBadge, n > 9 ? '9+' : String(n));
       if (this.chatBadge.hidden) this.chatBadge.hidden = false;
@@ -942,6 +860,10 @@ export class Hud {
     const p = g.player;
     const c = g.companion;
     const s = g.settings || {};
+    // Fallen (§27): the fight is over for now — the combat buttons step aside for the
+    // fall's own screen (Call for help, crawl).
+    toggleClass(this.ui.root, 'player-down', !!p.downed);
+    toggleClass(this.ui.root, 'quest-off', s.showQuestLine === false);
 
     setText(this.pName, s.playerName || p.name || 'Traveler');
     setText(this.pLevel, `Lv ${p.level ?? 1}`);

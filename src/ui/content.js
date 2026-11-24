@@ -79,6 +79,8 @@ export const MENU_ICONS = Object.freeze({
   missions: 'scroll',
   lyra: 'mind',
   character: 'shield',
+  inventory: 'bag',
+  village: 'people',
   save: 'feather',
   quit: 'moon',
 });

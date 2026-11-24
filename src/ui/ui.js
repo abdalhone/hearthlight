@@ -104,9 +104,14 @@ export class UI {
     this.vignette = new Vignette();
     this.modalLayer = h('div', { class: 'modal-layer', hidden: true });
     this.backdrop = h('div', { class: 'modal-backdrop' });
+    // A tap outside a panel closes it, the same as its ✕ (DESIGN r8: everything that
+    // opens closes the same way). Her diary page asks for a button press instead.
     this.backdrop.addEventListener('click', () => {
       const top = this.top();
-      if (top && top.id !== 'confirm' && top.id !== 'diary') this.closeModal(top);
+      if (!top || top.id === 'diary' || top.noOutsideClose) return;
+      // A question (the new-game warning, a reset) treats a tap outside as "no".
+      if (top.id === 'confirm') top.noBtn?.click();
+      else this.leave(top);
     });
     this.modalLayer.append(this.backdrop);
 
@@ -204,9 +209,13 @@ export class UI {
       (e) => {
         if (e.pointerType === 'touch' && !this.isTouch) this.setTouch(true);
         this.hud.outsidePointer(e.target);
+        this.noteWorldDown(e);
       },
       true,
     );
+    window.addEventListener('pointerup', (e) => this.noteWorldUp(e), true);
+    window.addEventListener('pointercancel', () => (this.worldDown = null), true);
+    this.watchBack();
     root.addEventListener('click', (e) => {
       const b = e.target.closest?.('button');
       if (b && !b.disabled && !b.classList.contains('tbtn')) this.game.audio?.play('ui_click', { volume: 0.8 });
@@ -239,6 +248,68 @@ export class UI {
     } catch {
       /* older browsers */
     }
+  }
+
+  // ---------- closing things the same way everywhere ----------
+
+  // A tap on the world (not a drag on the move stick) closes the chat, the way a tap
+  // outside any panel closes it.
+  isWorldTarget(t) {
+    if (!t || !t.closest) return false;
+    if (t === this.game.canvas || t.tagName === 'CANVAS') return !t.closest('.panel, .chat');
+    return !!t.closest('.stick-zone');
+  }
+
+  noteWorldDown(e) {
+    this.worldDown = this.chat.isOpen() && !this.stack.length && this.isWorldTarget(e.target) ? { id: e.pointerId, x: e.clientX, y: e.clientY, at: performance.now() } : null;
+  }
+
+  noteWorldUp(e) {
+    const d = this.worldDown;
+    this.worldDown = null;
+    if (!d || d.id !== e.pointerId) return;
+    const moved = Math.hypot(e.clientX - d.x, e.clientY - d.y);
+    if (moved < 12 && performance.now() - d.at < 450 && this.chat.isOpen()) this.chat.close();
+  }
+
+  // The phone's back gesture (and a browser's back button) closes what is open, one
+  // thing at a time. One guard entry is kept in the page's history while anything is
+  // open; the page never steps back through history itself.
+  watchBack() {
+    if (typeof window === 'undefined' || !window.history?.pushState) return;
+    window.addEventListener('popstate', () => {
+      this.guarded = false;
+      const open = this.stack.length || this.chat.isOpen();
+      if (!open) return;
+      if (this.stack.length) this.closeTop();
+      else this.chat.close();
+      if (this.stack.length || this.chat.isOpen()) this.armBack();
+    });
+  }
+
+  armBack() {
+    if (this.guarded) return;
+    try {
+      if (window.history.state?.hearthlight) {
+        this.guarded = true;
+        return;
+      }
+      window.history.pushState({ hearthlight: 1 }, '');
+      this.guarded = true;
+    } catch {
+      /* a sandboxed page without history: Esc and ✕ still close */
+    }
+  }
+
+  // ✕ or a tap outside: leave this place. A panel opened from the menu goes back to
+  // play (the menu was only the way in); "‹ Menu" in its header goes back to the menu.
+  leave(panel) {
+    if (!panel) return;
+    const i = this.stack.indexOf(panel);
+    if (i < 0) return;
+    const below = this.stack[i - 1];
+    this.closeModal(panel);
+    if (below && below.id === 'pause' && this.top() === below) this.closeModal(below, true);
   }
 
   // A phone's on-screen keyboard covers the bottom of the page without resizing it.
@@ -503,11 +574,21 @@ export class UI {
     this.hud?.closeJobs();
     this.hud?.closeRadial();
     this.touch?.reset();
+    const below = this.top();
     this.stack.push(panel);
     this.modalLayer.append(panel.el);
     this.modalLayer.hidden = false;
     this.root.classList.add('modal-open');
-    panel.closeBtn?.addEventListener('click', () => this.closeModal(panel));
+    panel.closeBtn?.addEventListener('click', () => this.leave(panel));
+    // Opened from the menu: a "‹ Menu" button goes back there (✕ goes back to play).
+    if (below?.id === 'pause' && panel.id !== 'confirm' && panel.head && !panel.backBtn) {
+      const back = h('button', { type: 'button', class: 'btn btn-ghost panel-back', title: 'Back to the menu', 'aria-label': 'Back to the menu' }, h('span', { class: 'panel-back-chev', 'aria-hidden': 'true', text: '‹' }), h('span', { text: 'Menu' }));
+      back.addEventListener('click', () => this.closeModal(panel));
+      panel.backBtn = back;
+      panel.head.prepend(back);
+      panel.el.classList.add('from-menu');
+    }
+    this.armBack();
     this.syncPause();
     this.syncInputEnabled();
     g.audio?.play('ui_open');

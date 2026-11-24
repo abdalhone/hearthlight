@@ -24,13 +24,14 @@ import {
   stanceLabel,
   clamp01,
 } from './format.js';
-import { RESET_WARNING } from './content.js';
+import { RESET_WARNING, COMMANDS, JOBS, DELIVER_OPTIONS, REJOIN } from './content.js';
 import {
   companionshipOf,
   companionshipLabel,
   companionshipTone,
   companionshipBlurb,
   companionshipReason,
+  barMode,
   playerRelation,
   trustWords,
   fearWords,
@@ -54,6 +55,17 @@ import {
 } from './lyra_view.js';
 import { STORY } from '../lore/story.js';
 import { villageOf, villagerRoster, villageFeeling, villagerBonds, villageTalkViews, rumorsAboutPlayer, closestToHer, readWorth, worthView, editHistory, firstName } from './village_view.js';
+
+// Her newest line in the chat (her answer to a request asked from the Mind panel).
+function lastLyraLine(ui) {
+  try {
+    const list = ui.chat?.messages || [];
+    for (let i = list.length - 1; i >= 0; i--) if (list[i]?.from === 'lyra' && list[i].text) return truncate(String(list[i].text), 160);
+  } catch {
+    /* the chat is optional */
+  }
+  return '';
+}
 
 export const MIND_TABS = [
   { id: 'now', label: 'Now' },
@@ -210,15 +222,108 @@ export class MindPanel {
       this.tabsEl.append(b);
     }
     this.content = h('div', { class: 'tab-content', role: 'tabpanel' });
+    // Asking her things (§16.4) lives here, under her portrait: the HUD keeps only her
+    // face, and a tap on it opens this.
+    this.askEl = h('div', { class: 'mind-ask' });
+    this.jobsOpen = false;
     panel.body.classList.add('mind-body');
-    panel.body.append(this.hero, this.tabsEl, this.content);
+    panel.body.append(this.hero, this.askEl, this.tabsEl, this.content);
     panel.onClose = () => {
       this.panel = null;
       this.nowRefs = null;
     };
     this.ui.openModal(panel);
     this.renderHero();
+    this.renderAsk(true);
     this.showTab(this.tab);
+  }
+
+  // ---------- asking her ----------
+
+  // A row of requests (each one she weighs and answers, §16.4): follow, wait, how she
+  // fights, a job; "Ask her to come back" while she is apart. Her answer shows in a
+  // line under the row and in the chat.
+  renderAsk(force = false) {
+    const el = this.askEl;
+    if (!el) return;
+    const g = this.game;
+    const ui = this.ui;
+    const cs = companionshipOf(g);
+    const mode = barMode(cs);
+    const beh = g.companion?.behavior;
+    const dir = beh?.directive?.type;
+    const stance = beh?.stance;
+    const key = `${mode}|${dir}|${stance}|${this.jobsOpen}|${this.askNote || ''}`;
+    if (!force && key === this._askKey) return;
+    this._askKey = key;
+    clear(el);
+    el.hidden = mode === 'hidden';
+    if (mode === 'hidden') return;
+    const name = g.settings?.companionName || g.companion?.name || 'Lyra';
+    const row = h('div', { class: 'ask-row', role: 'group', 'aria-label': `Ask ${name}` });
+    const on = { follow: dir === 'follow', stay: dir === 'stay' || dir === 'guard', attack: stance === 'attack', defend: stance === 'defend', passive: stance === 'passive' };
+    const ask = (id) => {
+      ui.runCommand(id);
+      this.askNote = '';
+      this.lastAskAt = g.time || 0;
+      this.renderAsk(true);
+    };
+    if (mode === 'full') {
+      for (const c of COMMANDS) {
+        const b = button(c.label, { icon: c.icon, cls: `btn-small ask-btn ask-${c.id}`, title: c.hint, onClick: () => ask(c.id) });
+        toggleClass(b, 'active', !!on[c.id]);
+        b.setAttribute('aria-pressed', on[c.id] ? 'true' : 'false');
+        row.append(b);
+      }
+      const jobs = button('Jobs', { icon: 'axe', cls: 'btn-small ask-btn ask-job-toggle', title: 'Ask her to take on a job', onClick: () => {
+        this.jobsOpen = !this.jobsOpen;
+        this.renderAsk(true);
+      } });
+      toggleClass(jobs, 'active', this.jobsOpen || dir === 'job');
+      jobs.setAttribute('aria-expanded', this.jobsOpen ? 'true' : 'false');
+      row.append(jobs);
+    } else {
+      row.append(button(REJOIN.label, { icon: REJOIN.icon, cls: 'btn-small ask-btn ask-rejoin', title: REJOIN.hint, onClick: () => {
+        ui.askBack();
+        this.renderAsk(true);
+      } }));
+    }
+    row.append(button('Talk', { icon: 'talk', cls: 'btn-small ask-btn ask-talk', title: `Talk with ${name}`, onClick: () => {
+      ui.closeAll?.();
+      ui.chat.open(true);
+    } }));
+    el.append(h('div', { class: 'ask-head' }, h('span', { class: 'ask-title', text: `Ask ${name}` }), h('span', { class: 'ask-sub', text: 'She decides for herself' })), row);
+    if (mode === 'full' && this.jobsOpen) {
+      const deliver = this.deliverTo || 'player';
+      const seg = h('div', { class: 'segmented ask-deliver', role: 'radiogroup', 'aria-label': 'Deliver to' });
+      for (const d of DELIVER_OPTIONS) {
+        const b = h('button', { type: 'button', class: 'seg', role: 'radio', 'aria-checked': d.id === deliver ? 'true' : 'false', text: d.label });
+        b.addEventListener('click', () => {
+          this.deliverTo = d.id;
+          this.renderAsk(true);
+        });
+        seg.append(b);
+      }
+      const list = h('div', { class: 'ask-jobs-list' });
+      for (const j of JOBS) {
+        const b = h('button', { type: 'button', class: 'btn job ask-job' }, icon(j.icon), h('span', { class: 'job-text' }, h('span', { class: 'job-name', text: j.label }), h('span', { class: 'job-note', text: j.note })));
+        b.addEventListener('click', () => {
+          ui.runJob(j, this.deliverTo || 'player');
+          this.jobsOpen = false;
+          this.renderAsk(true);
+        });
+        list.append(b);
+      }
+      const stop = button('Ask her to stop', { cls: 'btn-ghost btn-small', onClick: () => {
+        ui.runStopJob();
+        this.jobsOpen = false;
+        this.renderAsk(true);
+      } });
+      el.append(h('div', { class: 'ask-jobs' }, h('div', { class: 'ask-jobs-head' }, h('span', { text: 'Deliver:' }), seg), list, stop));
+    }
+    // Her answer to the last thing asked here, from the chat's newest line of hers.
+    const said = this.lastAskAt !== undefined && (g.time || 0) - this.lastAskAt < 30 ? lastLyraLine(ui) : '';
+    if (said) el.append(h('p', { class: 'ask-answer' }, h('b', { text: `${name}: ` }), document.createTextNode(`“${said}”`)));
   }
 
   close() {
@@ -277,6 +382,7 @@ export class MindPanel {
     if (this.refreshT < 1) return;
     this.refreshT = 0;
     this.renderHero();
+    this.renderAsk();
     if (this.tab === 'now') this.updateNow();
     else if (this.dirty && LIVE_TABS.has(this.tab)) {
       const top = this.content.scrollTop;

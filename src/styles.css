@@ -7818,3 +7818,507 @@ input[type='range']::-moz-range-thumb {
     grid-template-columns: 54px 1fr;
   }
 }
+
+/* ==============================================================
+   r8: the phone pass (the author: "the UI is not really good for the phone… if
+   something I need to click on the settings to show, do not put it in the HUD").
+   One thin HUD band — health and mana, Lyra's face, the tracked mission, Menu — and
+   the right-thumb cluster; every panel fits the screen and closes the same way.
+   ============================================================== */
+
+/* ---------- the HUD band ---------- */
+
+.hud-menu {
+  position: relative;
+  flex-direction: column;
+  gap: 2px;
+}
+.hud-menu .px-icon {
+  --isc: 3;
+}
+.hud-btn-label {
+  display: none;
+  font-family: var(--font-display);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--parch-2);
+}
+.hud-menu .badge-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+}
+.quest-line {
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  pointer-events: auto;
+}
+.quest-off .hud-center {
+  display: none !important;
+}
+
+.hud-small .place-card,
+.hud-small .orders,
+.hud-small .cmdbar,
+.hud-small .jobs-menu,
+.hud-small .lyra-fold,
+.hud-small .unfold-chev,
+.hud-small .player-card .card-row,
+.hud-small .player-card .meter-xp,
+.is-touch.hud-small .hud-chat {
+  display: none !important;
+}
+.hud-small .hud-top {
+  align-items: flex-start;
+  gap: 8px;
+}
+.hud-small .hud-cards {
+  flex-direction: row;
+  align-items: flex-start;
+  width: auto;
+  gap: 6px;
+}
+.hud-small .player-card {
+  width: 150px;
+  gap: 4px;
+  padding: 6px 8px;
+}
+.hud-small .player-card .meter-track {
+  height: 8px;
+}
+.hud-small .player-card .meter-text {
+  min-width: 34px;
+  font-size: 11px;
+}
+.hud-small .lyra-wrap.mini .lyra-card {
+  padding: 3px;
+}
+.hud-small .lyra-wrap.mini .portrait-hud {
+  width: 38px;
+  height: 38px;
+}
+.hud-small .hud-right {
+  flex-direction: row;
+  gap: 6px;
+}
+.hud-small .hud-buttons {
+  display: flex;
+  gap: 6px;
+}
+.hud-small .hud-btn {
+  width: 48px;
+  min-width: 48px;
+  height: 46px;
+  min-height: 46px;
+  padding: 4px;
+}
+.hud-small .hud-btn-label {
+  display: block;
+}
+.hud-small .hud-center.tucked,
+.hud-small .hud-center.in-strip {
+  justify-content: flex-start;
+}
+.hud-small .quest-line {
+  max-width: 100%;
+  min-height: 32px;
+}
+.hud-small .buff-row:empty {
+  display: none;
+}
+
+/* ---------- the right-thumb cluster ---------- */
+
+/* A weave button says what it is: its name under the glyph, its mana on the corner. */
+.wbtn-name {
+  position: absolute;
+  left: -6px;
+  right: -6px;
+  bottom: -15px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  line-height: 12px;
+  text-align: center;
+  color: var(--parch);
+  text-shadow:
+    0 1px 0 #000,
+    1px 0 0 #000,
+    -1px 0 0 #000,
+    0 -1px 0 #000;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.wbtn-mana {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 3px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: #2b4fd8;
+  box-shadow: 0 0 0 2px #0b0a1e;
+  font-family: var(--font-display);
+  font-size: 10px;
+  line-height: 1;
+  color: #fff;
+  pointer-events: none;
+}
+.wbtn-mana:empty {
+  display: none;
+}
+.wbtn.empty .wbtn-name {
+  color: var(--parch-dim);
+}
+.wbtn.empty {
+  border-style: dashed;
+}
+.tcluster .wbtn.empty .wbtn-plus {
+  font-size: 28px;
+  color: var(--ember);
+}
+/* The contextual button with nothing near: Talk (it opens the chat). */
+.tcluster .tbtn-interact.idle {
+  --bc: var(--arcane-deep);
+  background-color: rgba(26, 22, 64, 0.72);
+}
+.tbtn-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+}
+
+/* Fallen (§27): the fight is over for now. Only the fall's own screen (Call for help,
+   crawl) and the move stick remain. */
+.player-down .tcluster .wbtn,
+.player-down .tcluster .tbtn-attack,
+.player-down .tcluster .tbtn-dodge,
+.player-down .tcluster .tbtn-interact,
+.player-down .hud-center {
+  display: none !important;
+}
+
+/* ---------- the menu ---------- */
+
+.is-touch .menu-item .keycap {
+  display: none;
+}
+
+/* ---------- toasts: one at a time on a phone, a tap puts one away ---------- */
+
+.toast {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.toast.queued {
+  display: none;
+}
+/* A notice raised while a panel is open: along the bottom edge, never over the
+   panel's title or its ✕. */
+.hud-small.modal-open .toasts {
+  top: auto !important;
+  bottom: calc(var(--sa-b) + 10px) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: min(420px, calc(100% - 24px)) !important;
+  z-index: 5;
+}
+.hud-small.modal-open .toast {
+  box-shadow:
+    0 -2px 0 0 var(--bc),
+    0 2px 0 0 var(--bc),
+    -2px 0 0 0 var(--bc),
+    2px 0 0 0 var(--bc),
+    0 8px 24px rgba(4, 3, 14, 0.75);
+}
+
+/* ---------- panels: one way to close, the same place on every panel ---------- */
+
+.panel-head .panel-close {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  margin: -4px -4px -4px 0;
+}
+.panel-head .panel-close .px-icon {
+  --isc: 3;
+}
+/* Opened from the menu: "‹ Menu" goes back there; ✕ goes back to play. */
+.panel-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 12px 0 8px;
+  margin: -4px 0 -4px -6px;
+  font-family: var(--font-display);
+  font-size: var(--fs-s);
+}
+.panel-back-chev {
+  font-size: 22px;
+  line-height: 1;
+  margin-top: -2px;
+}
+.from-menu .panel-head > .panel-icon,
+.from-menu .panel-head > .px-icon.panel-icon {
+  display: none;
+}
+
+@media (max-width: 640px), (max-height: 520px) {
+  .panel-head {
+    gap: 8px;
+    padding: 8px 8px 8px 12px;
+  }
+  .panel-title {
+    font-size: var(--fs-l);
+  }
+  .panel-sub {
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+/* A phone held sideways: panels leave a strip of the world on each side, so a tap
+   beside them (which closes them) is easy to find. */
+@media (max-height: 520px) and (min-width: 700px) {
+  .modal-layer {
+    padding-left: calc(var(--sa-l) + 44px);
+    padding-right: calc(var(--sa-r) + 44px);
+    padding-top: calc(var(--sa-t) + 8px);
+    padding-bottom: calc(var(--sa-b) + 8px);
+  }
+  .panel-head {
+    padding: 4px 6px 4px 10px;
+  }
+  .panel-head .panel-close {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    margin: 0;
+  }
+  .panel-sub {
+    display: none;
+  }
+}
+
+/* ---------- Lyra's Mind: asking her, and tabs that all show ---------- */
+
+.mind-ask {
+  flex: none;
+  padding: 6px 16px 10px;
+}
+.mind-ask[hidden] {
+  display: none;
+}
+.ask-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.ask-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-s);
+  color: var(--arcane-pale);
+}
+.ask-sub {
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+}
+.ask-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ask-btn {
+  min-height: 40px;
+  padding: 4px 10px;
+  gap: 5px;
+}
+.ask-btn.active {
+  --bc: var(--arcane);
+  background-color: rgba(106, 82, 201, 0.35);
+  color: var(--arcane-pale);
+}
+.ask-answer {
+  margin: 8px 0 0;
+  font-size: var(--fs-s);
+  color: var(--arcane-pale);
+  font-style: italic;
+}
+.ask-answer b {
+  font-style: normal;
+  font-family: var(--font-display);
+  font-weight: 500;
+}
+.ask-jobs {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ask-jobs-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+  flex-wrap: wrap;
+}
+.ask-jobs-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+}
+.ask-job {
+  justify-content: flex-start;
+  min-height: 44px;
+  text-align: left;
+}
+.ask-deliver .seg {
+  min-height: 36px;
+}
+
+/* An upright phone: her face, the Ask row and the tabs scroll away with what is under
+   them (the tabs stay pinned at the top); every tab shows, two rows of them. */
+@media (max-width: 640px) {
+  .mind-body {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .mind-body > .tab-content {
+    flex: none;
+    overflow: visible;
+    min-height: 60%;
+  }
+  .mind-hero {
+    padding: 10px 12px 4px;
+    gap: 10px;
+  }
+  .mind-hero .portrait-lg {
+    width: 44px;
+    height: 44px;
+  }
+  .mind-hero .hero-name {
+    font-size: var(--fs-l);
+  }
+  .mind-ask {
+    padding: 4px 12px 10px;
+  }
+  .ask-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .mind-body > .tabs {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 4px 8px 0;
+    overflow: visible;
+    background-color: var(--panel-bg);
+  }
+  .mind-body > .tabs .tab {
+    flex: 1 1 18%;
+    min-height: 40px;
+    padding: 6px 4px;
+    font-size: var(--fs-xs);
+    text-align: center;
+  }
+}
+
+/* A phone held sideways: her face and the tabs in a rail on the left; the Ask row and
+   the tab's content on the right. */
+@media (max-height: 520px) and (min-width: 600px) {
+  .mind-body {
+    display: grid;
+    grid-template-columns: 150px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .mind-body > .mind-hero {
+    grid-column: 1;
+    grid-row: 1;
+    padding: 6px 8px;
+    gap: 6px;
+    border-right: 2px solid var(--line-dim);
+  }
+  .mind-body > .mind-hero .hero-text {
+    flex-direction: column;
+    gap: 0;
+  }
+  .mind-body > .mind-hero .hero-name {
+    font-size: var(--fs-m);
+  }
+  .mind-body > .mind-hero .hero-mood {
+    font-size: var(--fs-xs);
+  }
+  .mind-body > .tabs {
+    grid-column: 1;
+    grid-row: 2;
+    flex-direction: column;
+    gap: 0;
+    padding: 0 0 8px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    touch-action: pan-y;
+    border-bottom: 0;
+    border-right: 2px solid var(--line-dim);
+  }
+  .mind-body > .tabs .tab {
+    min-height: 36px;
+    padding: 6px 12px;
+    text-align: left;
+  }
+  .mind-body > .tabs .tab.active::after {
+    left: auto;
+    top: 0;
+    right: -2px;
+    bottom: 0;
+    width: 2px;
+    height: auto;
+  }
+  .mind-body > .mind-ask {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    padding: 6px 10px;
+    border-bottom: 2px solid var(--line-dim);
+  }
+  .mind-ask .ask-head {
+    flex-direction: column;
+    gap: 0;
+    margin: 0;
+  }
+  .mind-ask .ask-sub {
+    display: none;
+  }
+  .mind-ask .ask-btn {
+    min-height: 38px;
+    padding: 2px 8px;
+    font-size: var(--fs-xs);
+  }
+  .mind-ask .ask-jobs,
+  .mind-ask .ask-answer {
+    flex-basis: 100%;
+    margin-top: 2px;
+  }
+  .mind-body > .tab-content {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}

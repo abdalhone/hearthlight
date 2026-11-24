@@ -35,10 +35,10 @@ function spellbookReady(game, ui) {
   return typeof ui?.openSpellbook === 'function' && !!game?.magic;
 }
 
-// The one menu (DESIGN §24). Resume, then the places that are not already one tap away
-// on the HUD, or whose home is here (the HUD's book, her card and the quest line are
-// shortcuts to the same panels), then settings, save and quit. Inventory and the chat
-// live on the HUD only; How to play is under Settings → Controls. Pure:
+// The one menu (DESIGN §24): every place in the game has its home here — the HUD keeps
+// only what play needs every second (her portrait and the quest line are shortcuts to
+// her Mind and the Missions). Resume, then the places, then settings, save and quit.
+// How to play is under Settings → Controls. Pure:
 //   [{ id, group, label, hint, key, run, sub }]
 //   group 'main' — Resume; 'go' — places; 'sys' — Settings, Save, Quit.
 // `run(ctx)`: ctx.close() closes the menu, ctx.save() saves; a panel opened from here
@@ -46,12 +46,13 @@ function spellbookReady(game, ui) {
 export function pauseItems(game, ui) {
   const name = game?.settings?.companionName || game?.companion?.name || 'Lyra';
   const items = [{ id: 'resume', group: 'main', label: 'Resume', hint: '', key: 'Esc', run: (ctx) => ctx.close() }];
-  if (spellbookReady(game, ui)) items.push({ id: 'spellbook', group: 'go', label: 'Spellbook', hint: 'Your weaves and slots', key: 'B', run: () => ui.openSpellbook() });
+  if (spellbookReady(game, ui)) items.push({ id: 'spellbook', group: 'go', label: 'Spellbook', hint: 'Make and change weaves', key: 'B', run: () => ui.openSpellbook() });
+  if (typeof ui?.openInventory === 'function') items.push({ id: 'inventory', group: 'go', label: 'Bag', hint: 'What you carry', key: 'I', run: () => ui.openInventory() });
   if (typeof ui?.openMissions === 'function') items.push({ id: 'missions', group: 'go', label: 'Missions', hint: 'What you took on', key: '', run: () => ui.openMissions('active') });
-  items.push({ id: 'lyra', group: 'go', label: name, hint: 'Her mind and memories', key: 'Tab', run: () => ui.openMind?.(ui.mind?.tab || 'now') });
-  if (game?.villageLife && typeof ui?.openVillageLife === 'function') items.push({ id: 'village', group: 'go', label: 'Hearthvale today', hint: "Who is doing what, and what has gone wrong", key: '', run: () => ui.openVillageLife() });
+  items.push({ id: 'lyra', group: 'go', label: name, hint: 'Her mind; ask her things', key: 'Tab', run: () => ui.openMind?.(ui.mind?.tab || 'now') });
   const character = characterOpener(ui);
-  if (character) items.push({ id: 'character', group: 'go', label: 'Character', hint: 'Your stats and gear', key: '', run: character });
+  if (character) items.push({ id: 'character', group: 'go', label: 'Character', hint: 'Stats and gear', key: 'C', run: character });
+  if (game?.villageLife && typeof ui?.openVillageLife === 'function') items.push({ id: 'village', group: 'go', label: 'Village', hint: 'Hearthvale today', key: 'V', run: () => ui.openVillageLife() });
   const book = bookAction(game, ui) || (() => openCodex(ui));
   const prologue = prologueAction(game);
   items.push({

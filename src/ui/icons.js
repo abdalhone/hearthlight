@@ -302,6 +302,8 @@ export const ICONS = {
     '..kck....',
     '...k.....',
   ],
+  // Three bars: the one menu (DESIGN §24).
+  menu: ['kkkkkkkkk', 'kwwwwwwwk', 'kkkkkkkkk', 'kwwwwwwwk', 'kkkkkkkkk', 'kwwwwwwwk', 'kkkkkkkkk'],
   close: ['kk...kk', 'kwk.kwk', '.kwkwk.', '..kwk..', '.kwkwk.', 'kwk.kwk', 'kk...kk'],
   star: [
     '....k....',

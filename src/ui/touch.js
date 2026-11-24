@@ -22,13 +22,15 @@ const GEOMETRY = {
   landscape: { sword: 78, btn: 56, dodge: 54, use: 52, r1: 96, r2: 162, edge: 14, dragMax: 96 },
   portrait: { sword: 70, btn: 52, dodge: 50, use: 48, r1: 86, r2: 146, edge: 12, dragMax: 84 },
 };
-const INNER = { dodge: 168, slots: [206, 244, 282] };
+// The inner ring holds up to three weaves, spread evenly between these angles (wide
+// enough apart that no two buttons' tap areas touch); more go on the outer ring.
+const INNER = { dodge: 168, slots: { 1: [240], 2: [216, 266], 3: [204, 242, 280] } };
 const OUTER_SPANS = { 1: [222], 2: [207, 237], 3: [196, 222, 248] };
 const USE_ANGLE = 276;
-const DODGE_OUT = 1.04; // the dodge sits a touch further out, clear of the first weave
+const DODGE_OUT = 1.05; // the dodge sits a touch further out, clear of the first weave
 
 // Pure: where every piece of the cluster sits, as offsets (CSS px) from the sword's
-// centre. `count` weave slots (0–6); `mirror` flips it for a left-handed layout.
+// centre. `count` weave buttons shown (0–6); `mirror` flips it for a left-handed layout.
 export function clusterLayout(count, geo, mirror = false) {
   const at = (deg, r) => {
     const a = (deg * Math.PI) / 180;
@@ -37,10 +39,33 @@ export function clusterLayout(count, geo, mirror = false) {
   };
   const slots = [];
   const inner = Math.min(3, count);
-  for (let i = 0; i < inner; i++) slots.push(at(INNER.slots[i], geo.r1));
+  if (inner) for (const deg of INNER.slots[inner]) slots.push(at(deg, geo.r1));
   const outer = Math.max(0, Math.min(3, count - 3));
   if (outer) for (const deg of OUTER_SPANS[outer]) slots.push(at(deg, geo.r2));
   return { dodge: at(INNER.dodge, geo.r1 * DODGE_OUT), use: at(USE_ANGLE, geo.r2), slots };
+}
+
+// Pure: which weave slots get a button. Every slot that holds a weave, in order, then
+// one "new weave" button for the first empty slot (none when all are full). A slot
+// with nothing in it is not a button of its own: one + is enough of an invitation.
+export function shownSlots(count, has) {
+  const out = [];
+  let empty = -1;
+  for (let i = 0; i < count; i++) {
+    if (has(i)) out.push(i);
+    else if (empty < 0) empty = i;
+  }
+  if (empty >= 0) out.push(empty);
+  return out;
+}
+
+// A weave's name, short enough to sit on its button.
+export function shortName(name, max = 9) {
+  const t = String(name || '').trim();
+  if (t.length <= max) return t;
+  const first = t.split(/\s+/)[0];
+  if (first.length <= max) return first;
+  return `${t.slice(0, max - 1)}…`;
 }
 
 function captureOn(el, e) {
@@ -98,8 +123,8 @@ export class TouchControls {
     this.buttons.dodge = this.actionButton('dodge', 'dodge', 'Dodge', 'tbtn-dodge');
     this.useLabel = h('span', { class: 'tbtn-tag' });
     this.buttons.interact = this.actionButton('interact', 'hand', 'Use', 'tbtn-interact');
-    this.buttons.interact.append(this.useLabel);
-    this.buttons.interact.hidden = true;
+    this.talkBadge = h('span', { class: 'badge tbtn-badge', hidden: true });
+    this.buttons.interact.append(this.useLabel, this.talkBadge);
     this.slotWrap = h('div', { class: 'wslots' });
     this.anchor.append(this.slotWrap, this.buttons.dodge, this.buttons.interact, this.buttons.attack);
     this.swordDrag(this.buttons.attack);
@@ -109,12 +134,18 @@ export class TouchControls {
     return this.el;
   }
 
-  // Sword, dodge and the contextual button: held while the finger is down.
+  // Sword, dodge and the contextual button: held while the finger is down. With nothing
+  // near to use, the contextual button is Talk (it opens the chat).
   actionButton(action, ic, label, cls) {
     const b = h('button', { type: 'button', class: `tbtn ${cls}`, 'aria-label': label }, icon(ic), h('span', { class: 'tbtn-label', text: label }));
     b.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       e.preventDefault();
+      if (action === 'interact' && b.classList.contains('idle')) {
+        this.buzz();
+        this.ui.chat?.open?.(true);
+        return;
+      }
       captureOn(b, e);
       b._pid = e.pointerId;
       this.game.input?.setVirtual(action, true);
@@ -166,8 +197,11 @@ export class TouchControls {
     const knob = h('span', { class: 'wbtn-knob', 'aria-hidden': 'true' });
     const ring = h('span', { class: 'wbtn-ring', 'aria-hidden': 'true' });
     const plus = h('span', { class: 'wbtn-plus', 'aria-hidden': 'true', text: '+' });
-    const b = h('button', { type: 'button', class: 'wbtn tbtn', 'aria-label': `Weave ${i + 1}` }, ring, img, cd, plus, knob);
-    const slot = { i, b, img, cd, knob, ring, plus, pid: null, x: 0, y: 0, key: '' };
+    // What the button is: its name under the glyph and its mana on the corner.
+    const name = h('span', { class: 'wbtn-name', 'aria-hidden': 'true' });
+    const cost = h('span', { class: 'wbtn-mana num', 'aria-hidden': 'true' });
+    const b = h('button', { type: 'button', class: 'wbtn tbtn', 'aria-label': `Weave ${i + 1}`, 'data-slot': String(i) }, ring, img, cd, plus, knob, name, cost);
+    const slot = { i, b, img, cd, knob, ring, plus, name, cost, pid: null, x: 0, y: 0, key: '' };
     b.addEventListener('pointerdown', (e) => this.slotDown(slot, e));
     b.addEventListener('pointermove', (e) => this.slotMove(slot, e));
     b.addEventListener('pointerup', (e) => this.slotUp(slot, e, false));
@@ -235,16 +269,25 @@ export class TouchControls {
     });
   }
 
-  layout(force = false) {
+  // Which slots get a button right now (see shownSlots).
+  shown() {
     const w = this.weaving;
     const count = w?.available?.() ? w.slotCount() : 0;
+    return shownSlots(count, (i) => !!w.weaveAt(i));
+  }
+
+  layout(force = false) {
+    const w = this.weaving;
+    const total = w?.available?.() ? w.slotCount() : 0;
+    const shown = this.shown();
+    const count = shown.length;
     const vw = window.innerWidth || 0;
     const vh = window.innerHeight || 0;
     const mode = vw > vh ? 'landscape' : 'portrait';
     const s = this.game.settings || {};
     const scale = Math.max(0.8, Math.min(1.25, Number(s.touchScale) || 1));
     const mirror = !!s.leftHanded;
-    const key = `${mode}|${count}|${scale}|${mirror}`;
+    const key = `${mode}|${shown.join(',')}|${scale}|${mirror}`;
     if (!force && key === this.layoutKey) return;
     this.layoutKey = key;
     const base = GEOMETRY[mode];
@@ -257,14 +300,15 @@ export class TouchControls {
     this.mode = mode;
     toggleClass(this.el, 'lefty', mirror);
     this.el.dataset.mode = mode;
-    // Grow or shrink the row of weave buttons.
-    while (this.slots.length < count) {
+    // One button per slot; only the shown ones are visible.
+    while (this.slots.length < total) {
       const slot = this.makeSlot(this.slots.length);
       this.slots.push(slot);
       this.slotWrap.append(slot.b);
     }
-    for (let i = 0; i < this.slots.length; i++) this.slots[i].b.hidden = i >= count;
-    this.slotCount = count;
+    for (let i = 0; i < this.slots.length; i++) this.slots[i].b.hidden = !shown.includes(i);
+    this.slotCount = total;
+    this.shownKey = shown.join(',');
     const L = clusterLayout(count, geo, mirror);
     const half = geo.sword / 2;
     setStyle(this.anchor, '--ax', `${half + geo.edge}px`);
@@ -272,7 +316,7 @@ export class TouchControls {
     this.place(this.buttons.attack, 0, 0, geo.sword);
     this.place(this.buttons.dodge, L.dodge.x, L.dodge.y, geo.dodge);
     this.place(this.buttons.interact, L.use.x, L.use.y, geo.use);
-    for (let i = 0; i < count; i++) this.place(this.slots[i].b, L.slots[i].x, L.slots[i].y, geo.btn);
+    for (let k = 0; k < count; k++) this.place(this.slots[shown[k]].b, L.slots[k].x, L.slots[k].y, geo.btn);
     setStyle(this.el, '--drag', `${geo.dragMax}px`);
     this.version = -1;
   }
@@ -293,7 +337,7 @@ export class TouchControls {
     this.tick = 0;
     const w = this.weaving;
     const count = w?.available?.() ? w.slotCount() : 0;
-    if (count !== this.slotCount || !this.layoutKey) this.layout();
+    if (count !== this.slotCount || !this.layoutKey || (w && w.version !== this.version && this.shown().join(',') !== this.shownKey)) this.layout();
     if (!w || !count) return;
     const ver = w.version;
     const t = this.game.time || 0;
@@ -402,18 +446,20 @@ export class TouchControls {
     if (w) w.sword = null;
   }
 
-  // The contextual button: shown only when there is something to talk to or use.
+  // The contextual button: what there is to talk to or use nearby ("Talk to Bram",
+  // "Open door"); with nothing near it is Talk, and opens the chat.
   setInteractLabel(label) {
     const b = this.buttons.interact;
     if (!b) return;
     const t = String(label || '').trim();
     toggleClass(b, 'ready', !!t);
-    b.hidden = !t;
-    const verb = t ? t.split(' ')[0] : 'Use';
+    toggleClass(b, 'idle', !t);
+    b.hidden = false;
+    const verb = t ? t.split(' ')[0] : 'Talk';
     setText(b.querySelector('.tbtn-label'), verb.length > 7 ? 'Use' : verb);
     setText(this.useLabel, t);
-    setAttr(b, 'aria-label', t || 'Interact');
-    const ic = /^(talk|ask|greet|chat)/i.test(t) ? 'talk' : 'hand';
+    setAttr(b, 'aria-label', t || 'Talk (open the chat)');
+    const ic = !t || /^(talk|ask|greet|chat)/i.test(t) ? 'talk' : 'hand';
     const img = b.querySelector('.px-icon');
     if (img && img._icon !== ic) {
       img.replaceWith(icon(ic));
@@ -456,6 +502,16 @@ export function paintSlot(slot, rec, i) {
   const label = empty ? `Weave ${i + 1}: empty — open the Spellbook` : `${rec.name}${rec.cost ? ` · ${Math.round(rec.cost)} mana` : ''}${price ? ` · price: ${price.costText}` : ''}`;
   setAttr(b, 'aria-label', label);
   setAttr(b, 'title', label);
-  if (slot.name) setText(slot.name, empty ? '' : rec.name);
+  if (slot.name) setText(slot.name, empty ? 'New' : shortName(rec.name));
   if (slot.cost) setText(slot.cost, empty || !rec.cost ? '' : String(Math.round(rec.cost)));
 }
+
+// The chat's unread count, on the touch Talk button too.
+TouchControls.prototype.setUnread = function setUnread(n) {
+  const b = this.talkBadge;
+  if (!b) return;
+  if (n > 0) {
+    setText(b, n > 9 ? '9+' : String(n));
+    b.hidden = false;
+  } else b.hidden = true;
+};

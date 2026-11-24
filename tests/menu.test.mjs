@@ -77,30 +77,31 @@ function fakeUi({ magic = true, missions = true, character = false, story = true
   return { game, ui, calls };
 }
 
-test('menu: Resume, Spellbook, Missions, Lyra, Character, the Book, Settings, Save, Quit — each once', () => {
+test('menu: Resume, Spellbook, Bag, Missions, Lyra, Character, the Book, Settings, Save, Quit — each once', () => {
   const { game, ui, calls } = fakeUi({ character: true });
   const items = pauseItems(game, ui);
   assert.deepEqual(
     items.map((i) => i.id),
-    ['resume', 'spellbook', 'missions', 'lyra', 'character', 'book', 'settings', 'save', 'quit'],
+    ['resume', 'spellbook', 'inventory', 'missions', 'lyra', 'character', 'book', 'settings', 'save', 'quit'],
   );
   const all = items.flatMap((i) => (i.sub ? [i, i.sub] : [i]));
   assert.equal(new Set(all.map((i) => i.id)).size, all.length, 'ids unique');
   assert.equal(new Set(all.map((i) => i.label)).size, all.length, 'labels unique');
-  // Nothing the HUD already gives one tap away that has its home there.
-  for (const id of ['inventory', 'chat', 'talk', 'pause']) assert.ok(!all.some((i) => i.id === id), id);
+  // Every place has its home here (the HUD keeps only what play needs every second);
+  // the chat and the menu itself are not places.
+  for (const id of ['chat', 'talk', 'pause']) assert.ok(!all.some((i) => i.id === id), id);
   assert.equal(items.find((i) => i.id === 'lyra').label, 'Lyra');
   assert.equal(items.find((i) => i.id === 'book').sub.id, 'prologue');
   const ctx = { close: () => calls.push('close'), save: () => calls.push('save') };
   for (const it of all) it.run(ctx);
-  assert.deepEqual(calls, ['close', 'spellbook', 'missions:active', 'mind:now', 'character', 'book', 'prologue', 'settings', 'save', 'quit']);
+  assert.deepEqual(calls, ['close', 'spellbook', 'inventory', 'missions:active', 'mind:now', 'character', 'book', 'prologue', 'settings', 'save', 'quit']);
   for (const it of all) assert.ok(MENU_ICONS[it.id], `${it.id} has an icon`);
 });
 
 test('menu: what this build lacks is left out, never shown broken', () => {
   const { game, ui } = fakeUi({ magic: false, missions: false, character: false, story: false });
   const ids = pauseItems(game, ui).map((i) => i.id);
-  assert.deepEqual(ids, ['resume', 'lyra', 'book', 'settings', 'save', 'quit']);
+  assert.deepEqual(ids, ['resume', 'inventory', 'lyra', 'book', 'settings', 'save', 'quit']);
   assert.equal(pauseItems(game, ui).find((i) => i.id === 'book').sub, null);
   assert.equal(characterOpener({}), null);
   let opened = 0;
@@ -114,7 +115,7 @@ test('menu: what this build lacks is left out, never shown broken', () => {
 test('menu icons: one per place, all real icons', () => {
   for (const [id, name] of Object.entries(MENU_ICONS)) assert.ok(name === 'spellbook' || ICONS[name], `${id}: ${name}`);
   // The same place never borrows another place's icon.
-  const places = ['prologue', 'book', 'pastLives', 'settings', 'howTo', 'spellbook', 'missions', 'lyra', 'character', 'save', 'quit', 'newGame'];
+  const places = ['prologue', 'book', 'pastLives', 'settings', 'howTo', 'spellbook', 'inventory', 'missions', 'lyra', 'character', 'village', 'save', 'quit', 'newGame'];
   const used = places.map((p) => MENU_ICONS[p]);
   assert.equal(new Set(used).size, used.length, used.join(' '));
 });
