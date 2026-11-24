@@ -1,6 +1,6 @@
 import { TILE } from '../../core/constants.js';
 import { isFriend, isThreat, isInnocent } from './combat_ai.js';
-import { clamp, dist, tileOf, tileCenter, walkable, nearestWalkable, isActorAlive, lineOfSight, safe } from './util.js';
+import { clamp, dist, tileOf, tileCenter, walkable, nearestWalkable, isActorAlive, clearShot, safe } from './util.js';
 
 // Self-preservation (DESIGN §16.5): how dangerous a place is to her right now and
 // where her own limit lies, where safety is when she has to run, the doorway to wait
@@ -258,7 +258,7 @@ export function escapedFrom(game, actor, threat) {
   if (!threat || !isActorAlive(threat) || threat.removed) return true;
   const d = dist(actor.x, actor.y, threat.x, threat.y);
   if (d > 18 * TILE) return true;
-  if (d > 9 * TILE && !lineOfSight(game, actor.x, actor.y - 8, threat.x, threat.y - 8)) return true;
+  if (d > 9 * TILE && !clearShot(game, actor, threat)) return true;
   return false;
 }
 

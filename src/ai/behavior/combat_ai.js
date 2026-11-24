@@ -1,5 +1,5 @@
 import { factionRelation } from '../../entities/entity.js';
-import { clamp, dist, tileOf, walkable, lineOfSight, isActorAlive, warnOnce, safe } from './util.js';
+import { clamp, dist, tileOf, walkable, lineOfSight, clearShot, isActorAlive, warnOnce, safe } from './util.js';
 
 // Lyra in a fight: who counts as a friend, who she should fight under each stance,
 // and how she fights (range first, kite melee foes, dagger when cornered, never
@@ -212,7 +212,7 @@ export class CombatAI {
     const st = b.steering;
     this.trackTarget(target, dt);
     const d = dist(a.x, a.y, target.x, target.y);
-    const los = lineOfSight(g, a.x, a.y - 8, target.x, target.y - 6);
+    const los = clearShot(g, a, target);
     const ranged = isRangedFoe(target);
     let moved = false;
 
@@ -261,12 +261,12 @@ export class CombatAI {
     const a = b.actor;
     const lead = clamp(d / BOLT_SPEED, 0, 0.6);
     let ax = target.x + clamp(this.vx * lead, -24, 24);
-    let ay = target.y - 6 + clamp(this.vy * lead, -24, 24);
-    if (!lineOfSight(g, a.x, a.y - 8, ax, ay)) {
+    let ay = target.y - 3 + clamp(this.vy * lead, -24, 24);
+    if (!lineOfSight(g, a.x, a.y - 3, ax, ay)) {
       ax = target.x;
-      ay = target.y - 6;
+      ay = target.y - 3;
     }
-    if (this.friendInLine(a.x, a.y - 8, ax, ay, target)) {
+    if (this.friendInLine(a.x, a.y - 3, ax, ay, target)) {
       this.friendBlockT = 0.5;
       this.boltCd = 0.15;
       return false;
@@ -294,14 +294,14 @@ export class CombatAI {
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
       if (e === a || e === target || e.type !== 'actor' || e.removed || e.dead) continue;
-      if (e.x < minX || e.x > maxX || e.y - 6 < minY || e.y - 6 > maxY) continue;
+      if (e.x < minX || e.x > maxX || e.y - 3 < minY || e.y - 3 > maxY) continue;
       const ex = e.x - x0;
-      const ey = e.y - 6 - y0;
+      const ey = e.y - 3 - y0;
       const t = (ex * dx + ey * dy) / l2;
       if (t < 0.02 || t > 1.1) continue;
       const px = x0 + dx * t;
       const py = y0 + dy * t;
-      if (Math.hypot(e.x - px, e.y - 6 - py) > 10) continue;
+      if (Math.hypot(e.x - px, e.y - 3 - py) > 10) continue;
       if (e === g.player || isFriend(g, a, e) || isInnocent(g, a, e)) return e;
     }
     return null;

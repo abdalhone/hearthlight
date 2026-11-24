@@ -26,7 +26,7 @@ import {
 } from './safety.js';
 import { runTask, endTask, taskStatus, EMOTES, resolveEmote, handItems } from './tasks.js';
 import { say } from './lines.js';
-import { line, rand, chance, clamp, dist, tileOf, tileCenter, walkable, nearestWalkable, isActorAlive, lineOfSight, nameOf, relOf, goalPhrase, placePhrase, objectName, safe } from './util.js';
+import { line, rand, chance, clamp, dist, tileOf, tileCenter, walkable, nearestWalkable, isActorAlive, lineOfSight, clearShot, nameOf, relOf, goalPhrase, placePhrase, objectName, safe } from './util.js';
 
 // Lyra's body-level mind: her standing order (directive), combat stance, and the
 // priority list that runs every step (DESIGN §10, §16.5):
@@ -703,7 +703,7 @@ export class Behavior {
     if (this.own.exclusive() || !this.playerWelcome()) return false;
     const d = dist(a.x, a.y, p.x, p.y);
     if (d > 300) return false;
-    if (d > 110 || !lineOfSight(g, a.x, a.y - 8, p.x, p.y - 8)) {
+    if (d > 110 || !clearShot(g, a, p)) {
       this.steering.moveTo(p.x, p.y, dt, { arrive: 50, run: 1.35 });
       return true;
     }
@@ -1710,7 +1710,7 @@ export class Behavior {
     const who = nameOf(g, t);
     if (this.bindCd > 0) return { ok: false, message: say.bindCooldown(this.bindCd) };
     if (t !== g.player && isInnocent(g, a, t) && !this.isDefendingAgainst(t) && !(t.target && t.target.type === 'actor')) return { ok: false, message: say.bindRefuse(who) };
-    if (dist(a.x, a.y, t.x, t.y) > BIND_RANGE || !lineOfSight(g, a.x, a.y - 8, t.x, t.y - 8)) return { ok: false, message: say.bindTooFar(who) };
+    if (dist(a.x, a.y, t.x, t.y) > BIND_RANGE || !(clearShot(g, a, t) || lineOfSight(g, a.x, a.y - 8, t.x, t.y - 8))) return { ok: false, message: say.bindTooFar(who) };
     t.rootTime = Math.max(t.rootTime || 0, BIND_SECONDS);
     this.bindCd = BIND_COOLDOWN;
     this.bound = { target: t, fxT: 0 };

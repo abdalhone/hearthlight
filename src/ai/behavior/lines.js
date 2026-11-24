@@ -455,6 +455,7 @@ export const say = {
     return line('bind.no', [`Bind ${name}? ${cap(name)} has done nothing to deserve it.`, `I won't use my magic on ${name}. Not without a reason.`]);
   },
   bindTooFar(name) {
+    if (name === 'you') return "You're out of my reach for Binding Light. I'd need to be closer.";
     return `${cap(name)} is too far for Binding Light. I need to be closer.`;
   },
   noBindTarget() {
