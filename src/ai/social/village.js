@@ -379,6 +379,7 @@ export class Village {
       ex = buildExchange(ctx, first, second, { topic: opts.topic, passing: opts.passing, continuing: opts.continuing, maxLines, playerName: g?.settings?.playerName || '' });
       if (ex.topic === 'maren' && ctx.avoidTopics.has('maren')) ex = buildExchange(ctx, first, second, { topic: 'howare', maxLines, playerName: '' });
     }
+    if (!opts.lines && !opts.passing && !ex.scene && !learned.length) this.onHerMind(ex, otherId, mind);
     if (ctx.avoidTopics.has('maren')) ex.lines = ex.lines.filter((l) => !/\bmaren\b/i.test(l.text));
     const social = safe(() => g?.plugins?.get?.('social'));
     const keeps = !!(mind && social?.applyConversation && !opts.passing);
@@ -396,6 +397,28 @@ export class Village {
       this.emit('conversation', { a: lyra, b: npc, lines: played, topic: conv.topic === 'small' || conv.topic === 'howare' ? null : topicLabel(conv.topic), village: true });
     }
     return conv;
+  }
+
+  // What is on her mind (a recent thought) she tells the people she is close to.
+  onHerMind(ex, otherId, mind) {
+    if (!mind || (this.bond('lyra', otherId)?.affinity ?? 0) < 50 || rnd(this.rng()) > 0.4) return;
+    const now = this.now();
+    const th = [...(mind.thoughts || [])].reverse().find((x) => x && now - (x.t ?? -Infinity) < HOUR * 3 && x.text && x.text.length <= 120 && !/\byou(r)?\b/i.test(x.text) && speakable(x.text) && !/^\W/.test(x.text));
+    if (!th) return;
+    const rng = this.rng();
+    const nv = voiceOf(otherId);
+    const tag = mainTag(this.bond(otherId, 'lyra'));
+    const reply = (tag && say(nv?.as?.[tag], otherId, 'lyra', { rng, direct: true, onlyFor: true })) || say(nv?.warm, otherId, 'lyra', { rng }) || say(nv?.yes, otherId, 'lyra', { rng });
+    if (!reply) return;
+    const said = `${pickAt(ON_MY_MIND, rng)} ${th.text.charAt(0).toUpperCase()}${th.text.slice(1)}`.replace(/([^.!?])$/, '$1.');
+    if (!speakable(said)) return;
+    let at = ex.lines.findIndex((l, i) => i >= 1 && ex.lines[i - 1].speaker === otherId && l.speaker === 'lyra');
+    if (at < 0) at = ex.lines.length && ex.lines[ex.lines.length - 1].speaker === otherId ? ex.lines.length : -1;
+    if (at < 0) return;
+    ex.lines.splice(at, 0, { speaker: 'lyra', text: said }, { speaker: otherId, text: reply });
+    // Keep it a chat: at most six lines, and never one speaker twice running.
+    ex.lines = ex.lines.filter((l, i, a) => i === 0 || a[i - 1].speaker !== l.speaker).slice(0, 6);
+    ex.topic = ex.topic === 'small' ? 'own' : ex.topic;
   }
 
   // Something the villager would tell her at her familiarity, asked and answered.
@@ -1503,6 +1526,8 @@ function spokenFact(f, npc) {
   if (/^(i|i'm|my|we|our)\b/i.test(t) && speakable(t)) return t;
   return null;
 }
+
+const ON_MY_MIND = ['Can I tell you what\u2019s on my mind?', 'I keep thinking about something.', 'Something\u2019s been going round my head all day.'];
 
 const LYRA_ASKS = {
   family: ['How are your people, {n}?', "{n}, you never talk about family. Go on. I'm nosy."],

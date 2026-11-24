@@ -658,3 +658,18 @@ test("Lyra's prompt gets a compact line of village news", () => {
   assert.ok(/wolf off Tansy|thinks of/i.test(s), s);
   assert.ok(people.hobb);
 });
+
+test("what's on her mind comes up with the people she is close to", () => {
+  const { v, mind, people } = withLyra();
+  mind.relationships.ensure(people.wenna);
+  mind.relationships.adjust('wenna', { affinity: 90 }, 'test');
+  mind.addThought('The well hitches at dusk. I can hear it.');
+  let found = false;
+  for (let i = 0; i < 40 && !found; i++) {
+    v.pairAt.clear();
+    const c = v.lyraConverse('wenna', { onScreen: false });
+    if (c && c.lines.some((l) => l.speaker === 'lyra' && /well hitches/.test(l.text))) found = true;
+    if (c) for (let k = 1; k < c.lines.length; k++) assert.notEqual(c.lines[k].speaker, c.lines[k - 1].speaker);
+  }
+  assert.ok(found, 'she told her mother what is on her mind');
+});
