@@ -1431,7 +1431,7 @@ export class NPC extends Actor {
     }
     if (role === 'flee') {
       this.wake();
-      if (attacker) this.startFlee(attacker, 10, 'flee');
+      if (attacker) this.startFlee(attacker, 10, attacker === g.player ? 'crime' : 'flee');
       else this.sayHelp('shout', victim, true);
       return;
     }

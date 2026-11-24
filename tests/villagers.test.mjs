@@ -591,3 +591,38 @@ test('ensureVillagers places anyone the world did not, at home or its stand-in',
   assert.ok(Math.abs(hobb.x / TILE - (kettle.x + kettle.w / 2)) < 6, 'Hobb waits at the Kettle while the chandlery is missing');
   assert.equal(ensureVillagers(g).length, 0, 'idempotent');
 });
+
+test('the bed pose: head top on the pillow row for every build, nothing wider than a bed', async () => {
+  const { BED_HEAD_ROW, FRAME } = await import('../src/art/characters_humanoid.js');
+  for (const p of NPC_PROFILES) {
+    const a = normalizeAppearance({ ...p.appearance, key: p.id });
+    const px = paintHumanoid(a, 'bed', 'down', 0).render();
+    let top = FRAME;
+    let minX = FRAME;
+    let maxX = -1;
+    for (let y = 0; y < FRAME; y++) {
+      for (let x = 0; x < FRAME; x++) {
+        if (!px[(y * FRAME + x) * 4 + 3]) continue;
+        top = Math.min(top, y);
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+      }
+    }
+    assert.ok(top >= BED_HEAD_ROW - 4 && top <= BED_HEAD_ROW + 1, `${p.id} head top at ${top}`);
+    assert.ok(maxX - minX <= 14, `${p.id} fits a bed (${maxX - minX + 1} px wide)`);
+  }
+});
+
+test('bedUnder finds the bed someone is asleep in, and nothing for the awake', async () => {
+  const { bedUnder } = await import('../src/art/characters_bed.js');
+  const bed = { id: 'lyra_bed', objType: 'bed', owner: 'lyra', tx: 10, ty: 10, footprint: { x: 10, y: 9, w: 1, h: 2 } };
+  const g = makeGame({ objects: [bed] });
+  const lyra = addLyra(g, px(10), 10 * TILE + TILE - 4);
+  lyra.state = 'sleep';
+  assert.equal(bedUnder(g, lyra)?.id, 'lyra_bed');
+  lyra.state = 'idle';
+  assert.equal(bedUnder(g, lyra), null);
+  lyra.state = 'sleep';
+  lyra.x = px(14);
+  assert.equal(bedUnder(g, lyra), null, 'asleep on the floor is not in a bed');
+});
