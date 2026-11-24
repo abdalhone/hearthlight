@@ -126,6 +126,9 @@ export function mainOptions(npc, player, tone = dialogueTone(npc, player)) {
   if (p.id === 'aveline' && tone !== 'wronged') opts.push({ id: 'flame', label: hasKeptFlame(npc.game) ? 'Your flame on the altar' : 'Ask about a kept flame' });
   const owed = Number(npc.game?.flags?.miraOwed) || 0;
   if (p.id === 'mira' && owed > 0) opts.push({ id: 'pay_mira', label: `Pay what you owe (${owed})` });
+  // Stats and gear (DESIGN §26): Bram's forge; the chapel's quiet hour to start over.
+  if (p.id === 'bram' && npc.game?.gear && tone !== 'wronged' && tone !== 'cold') opts.push({ id: 'forge', label: 'The forge' });
+  if (p.id === 'aveline' && npc.game?.progression?.spent?.() > 0 && tone !== 'wronged') opts.push({ id: 'respec', label: 'Ask to start over' });
   opts.push({ id: 'bye', label: 'Goodbye' });
   return opts;
 }
@@ -164,6 +167,33 @@ function flameRite(npc, key, player, opts) {
     ],
     options: [
       { id: 'flame:light', label: `Light it (${price} coins)` },
+      { id: 'back', label: 'Not today' },
+    ],
+  };
+}
+
+// The chapel's quiet hour (DESIGN §26): the points a life has spent, given back to spend
+// again, for the price of the candles.
+function quietHour(npc, key, player, opts) {
+  const g = npc.game;
+  const pr = g?.progression;
+  if (!pr) return { lines: ['Not now, child.'], options: opts };
+  const cost = pr.respecCost();
+  if (key === 'respec:yes') {
+    const r = pr.respec();
+    if (!r.ok) return { lines: [r.cost ? `The candles are Hobb's, child, and they cost ${cost} coin. Come back when you can.` : 'There is nothing to undo, child.'], options: opts };
+    try {
+      g.audio?.play?.('heal', { x: npc.x, y: npc.y, pitch: 0.7 });
+      g.ui?.toast?.(`Your points are yours to spend again (${cost} coins). Open your character sheet (C).`, 'good');
+    } catch {
+      /* cosmetic */
+    }
+    return { lines: ['Sit. Breathe. Let what you made of yourself go quiet for a while.', 'There. You are still you. Only the choices are open again.'], options: opts.filter((o) => o.id !== 'respec') };
+  }
+  return {
+    lines: ['Start over? Not your life, child — only what you have made of your hands and your heart since you came.', `An hour in the quiet, and the candles burning. ${cost} coin. Afterwards you choose again.`],
+    options: [
+      { id: 'respec:yes', label: `Sit the quiet hour (${cost} coins)` },
       { id: 'back', label: 'Not today' },
     ],
   };
@@ -250,6 +280,11 @@ export function chooseOption(npc, id, player) {
   }
   if (key === 'flame' || key.startsWith('flame:')) return flameRite(npc, key, player, opts);
   if (key === 'pay_mira') return payMira(npc, player, opts);
+  if (key === 'forge') {
+    if (refusesTrade(npc, player)) return { lines: [line(npc, p.refuse?.length ? p.refuse : p.cold, 'Not today.')], options: opts.filter((o) => o.id !== 'forge') };
+    return { lines: [tone === 'warm' ? 'Show me. Hmph. Good steel, bad edge. Leave it.' : 'Ore. Crystal. Coin. Then we talk.'], open: 'forge', options: opts };
+  }
+  if (key === 'respec' || key === 'respec:yes') return quietHour(npc, key, player, opts);
   if (key === 'shop') {
     if (!p.shop) return { lines: ["I've nothing to sell, I'm afraid."], options: opts };
     if (refusesTrade(npc, player)) return { lines: [line(npc, p.refuse?.length ? p.refuse : p.cold, 'Not today.')], options: opts.filter((o) => o.id !== 'shop') };

@@ -16,6 +16,10 @@ import { hpText, frac, fmtInt, lyraStatusLine, weatherIconKey, weatherLabel, moo
 import { portraitUrl } from './art.js';
 import { companionshipOf, companionshipLabel, companionshipTone, barMode, playerRelation, trustWords, fearWords, farewellText } from './lyra_view.js';
 import { BossBar } from './boss_bar.js';
+// Stats, gear and prices (DESIGN §25–26): the sheet, Bram's forge, the gain/cost timers.
+import { installCharacterView, syncBadge } from './character_view.js';
+import { installForgeView } from './forge_view.js';
+import { ensureStatsStyle, fmtSeconds, PRICE_GLYPH } from './stats_style.js';
 
 const STANCE_ICON = { attack: 'sword', defend: 'shield', passive: 'feather', self_defense: 'shield' };
 
@@ -117,6 +121,9 @@ export class Hud {
     this.mountWeave();
     this.watchLayout();
     this.bindMagic();
+    installCharacterView(ui);
+    installForgeView(ui);
+    ensureStatsStyle();
   }
 
   // The hotbar joins the bottom (under the prompts), the tip the HUD; the Ask bar moves
@@ -140,6 +147,11 @@ export class Hud {
       inp.consume('spellbook');
       const top = this.ui.top?.();
       if (g.state === 'playing' && (!top || top === this.spellbook?.panel)) this.toggleSpellbook();
+    }
+    if (inp?.uiPressed?.('character')) {
+      inp.consume('character');
+      const top = this.ui.top?.();
+      if (g.state === 'playing' && (!top || top === this.ui.character?.panel)) this.ui.character?.toggle?.();
     }
     this.syncCursor();
     if (this.el.hidden || !g.player) return;
@@ -170,6 +182,10 @@ export class Hud {
       this.pMana.el,
       this.pXp.el,
     );
+    // Gains, costs and weaknesses running now (DESIGN §25): small timers; costs in red.
+    this.buffRow = h('div', { class: 'buff-row', 'aria-label': 'Running now' });
+    this.buffKey = '';
+    playerCard.append(this.buffRow);
 
     // Lyra card (tap -> her mind): who she is to you right now, not a unit frame.
     this.lPortrait = h('img', { class: 'portrait portrait-hud', alt: '', draggable: 'false' });
@@ -934,6 +950,7 @@ export class Hud {
   update(dt) {
     const g = this.game;
     this.bossBar?.reveal?.update(dt);
+    this.ui.character?.update?.(dt);
     this.updateKeepOut(dt);
     if (this.el.hidden || !g.player) return;
     this.tick += dt;
@@ -953,6 +970,7 @@ export class Hud {
     else this.pXp.set(0, `${fmtInt(p.xp || 0)} xp`);
     const coins = p.inventory?.count?.('coin') ?? p.gold ?? 0;
     setText(this.pCoins, fmtInt(coins));
+    this.renderBuffs();
 
     if (this.questOpenT > 0) {
       this.questOpenT -= 0.1;
@@ -989,6 +1007,7 @@ export class Hud {
     if (this.slowTick >= 0.5) {
       this.slowTick = 0;
       this.refreshMission();
+      this.safe(() => syncBadge(this.ui));
       if (c) this.refreshMood(c);
       this.refreshCompanion();
     }
@@ -1011,6 +1030,32 @@ export class Hud {
       if (this.fps.hidden) this.fps.hidden = false;
       setText(this.fps, `${g.loop?.fps ?? 0} fps`);
     } else if (!this.fps.hidden) this.fps.hidden = true;
+  }
+
+  // One chip per running gain, cost or weakness: its price's color, seconds left; a tap
+  // says what it is (and douses emberblood).
+  renderBuffs() {
+    const g = this.game;
+    const list = this.safe(() => g.prices?.timers?.(g.player)) || [];
+    const key = list.map((m) => `${m.id}:${Number.isFinite(m.left) ? Math.ceil(m.left) : '-'}`).join('|');
+    if (key === this.buffKey) return;
+    this.buffKey = key;
+    const row = this.buffRow;
+    while (row.firstChild) row.firstChild.remove();
+    for (const m of list.slice(0, 8)) {
+      const dot = h('span', { class: 'buff-dot', 'aria-hidden': 'true' });
+      const glyph = m.price ? PRICE_GLYPH[m.price] || '' : '';
+      if (glyph) dot.textContent = glyph;
+      const left = Number.isFinite(m.left) ? fmtSeconds(m.left) : m.tap ? '✕' : '∞';
+      const chip = h('button', { type: 'button', class: `buff ${m.kind || 'buff'}`, title: `${m.label}${m.tap ? ' (tap to douse)' : ''}` }, dot, h('span', { class: 'num', text: left }));
+      chip.style.setProperty('--pc', m.color || (m.kind === 'cost' || m.kind === 'weak' ? '#ff6b5e' : '#58cf8f'));
+      chip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (m.tap === 'douse') g.prices?.douse?.(m.price);
+        else this.ui.toast(`${m.label}${Number.isFinite(m.left) ? ` — ${fmtSeconds(m.left)} left` : ''}`, m.kind === 'cost' || m.kind === 'weak' ? 'warn' : 'info');
+      });
+      row.append(chip);
+    }
   }
 
   refreshMood(c) {

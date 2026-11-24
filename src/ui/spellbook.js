@@ -12,6 +12,7 @@ import { Weaving } from './weaving.js';
 import { WeavePreview } from './spellbook_preview.js';
 import { shapeIconUrl, essenceIconUrl, twistIconUrl, silhouetteUrl, glyphSize, spellbookIconUrl } from './weave_icons.js';
 import { BOSS_HINTS, GENERIC_HINT, cleanWeave, weavePalette, singular, fallbackName, previewOf, castModeOf } from './weave_meta.js';
+import { ensureStatsStyle, PRICE_GLYPH, PRICE_HINTS } from './stats_style.js';
 
 const SEEN_KEY = 'hearthlight.spellbook.seen';
 
@@ -91,10 +92,10 @@ export class Spellbook {
     // "new" the very first time: it is all new then).
     this.fresh.clear();
     const first = this.seen.size === 0;
-    for (const kind of ['shapes', 'essences', 'twists']) {
-      for (const id of w.ids(kind)) {
+    for (const kind of ['shapes', 'essences', 'twists', 'prices']) {
+      for (const id of kind === 'prices' ? this.priceIds() : w.ids(kind)) {
         const key = `${kind}:${id}`;
-        if (w.isUnlocked(kind, id) && !this.seen.has(key)) {
+        if ((kind === 'prices' ? this.priceUnlocked(id) : w.isUnlocked(kind, id)) && !this.seen.has(key)) {
           if (!first) this.fresh.add(key);
           this.seen.add(key);
         }
@@ -105,6 +106,7 @@ export class Spellbook {
       this.render();
       return;
     }
+    ensureStatsStyle();
     const panel = makePanel({ id: 'spellbook', title: 'Spellbook', subtitle: 'Shape, essences and twists: weave them into something of your own', cls: 'panel-wide panel-spellbook' });
     const ic = h('img', { class: 'px-icon panel-icon', alt: '', 'aria-hidden': 'true', src: spellbookIconUrl() });
     ic.style.setProperty('--iw', '9');
@@ -132,7 +134,29 @@ export class Spellbook {
     const d = cleanWeave(w || { shape: null, essences: [], twists: [] }, 9, 9);
     // Raw is what a weave is when it has no essence: not something to pick.
     d.essences = d.essences.filter((e) => e !== 'raw');
+    // A price (DESIGN §25) rides along with the weave.
+    d.prices = (Array.isArray(w?.prices) ? w.prices : []).filter((x) => typeof x === 'string').slice(0, this.priceLimit());
     this.draft = d;
+  }
+
+  // ---------- prices (DESIGN §25): read straight from the runtime ----------
+
+  priceIds() {
+    const R = this.game.magic?.registry?.prices;
+    return R && typeof R.ids === 'function' ? R.ids() : [];
+  }
+
+  priceDef(id) {
+    return this.game.magic?.registry?.prices?.get?.(id) || null;
+  }
+
+  priceUnlocked(id) {
+    return !!this.game.magic?.unlocked?.prices?.has?.(id);
+  }
+
+  priceLimit() {
+    const n = this.game.magic?.priceSlots;
+    return Number.isFinite(n) ? n : 1;
   }
 
   // ---------- markup ----------
@@ -164,7 +188,9 @@ export class Spellbook {
       this.sections[kind] = { el, grid, count, hint };
       return el;
     };
-    this.buildCol = h('section', { class: 'sb-col sb-build-col' }, sec('shapes', 'Shape'), sec('essences', 'Essences'), sec('twists', 'Twists'));
+    this.buildCol = h('section', { class: 'sb-col sb-build-col' }, sec('shapes', 'Shape'), sec('essences', 'Essences'), sec('twists', 'Twists'), sec('prices', 'Price'));
+    this.priceLineEl = h('p', { class: 'sb-price-line', hidden: true });
+    this.descEl.after(this.priceLineEl);
     p.body.append(this.tabs, h('div', { class: 'sb-main' }, this.previewCol, this.buildCol));
 
     const done = button('Done', { cls: 'btn-ember', onClick: () => this.close() });
@@ -214,6 +240,8 @@ export class Spellbook {
     this.renderSection('shapes', d, pal);
     this.renderSection('essences', d, pal);
     this.renderSection('twists', d, pal);
+    this.renderPrices(d);
+    this.renderPriceLine(ok ? plan : null);
 
     // Footer: clear, copy to another slot
     this.clearBtn.disabled = !w.weaveAt(this.slot);
@@ -240,6 +268,8 @@ export class Spellbook {
       ['Damage', plan ? fmt(plan.dmg) + (Number(plan.count) > 1 ? ` ×${fmt(plan.count)}` : '') : '—', 'dmg'],
       ['Reach', plan ? tiles(pv.type === 'ring' ? pv.radius : pv.range) : '—', 'reach', plan ? (pv.type === 'ring' ? 'Tiles around you' : 'Tiles it reaches') : ''],
     ];
+    const pd = plan?.priceDefs?.[0];
+    if (pd) stats.push(['Price', pd.name, 'price', `${pd.gainText}; ${pd.costText}`]);
     for (const [label, value, cls, title] of stats) this.statsEl.append(h('div', { class: `sb-stat sb-stat-${cls}`, title: title || null }, h('span', { class: 'sb-stat-label', text: label }), h('span', { class: 'sb-stat-value num', text: value })));
     this.statsEl.append(h('div', { class: `sb-stat sb-input sb-input-${mode}`, title: INPUT_NOTE[mode] }, h('span', { class: 'sb-stat-label', text: 'Cast' }), h('span', { class: 'sb-stat-value', text: INPUT_LABEL[mode] })));
   }
@@ -286,6 +316,73 @@ export class Spellbook {
     }
   }
 
+  // The prices row: a red glyph per price; the chosen one's cost in words below.
+  renderPrices(d) {
+    const s = this.sections.prices;
+    if (!s) return;
+    clear(s.grid);
+    const ids = this.priceIds();
+    const any = ids.some((id) => this.priceUnlocked(id));
+    s.el.hidden = !ids.length;
+    const chosen = d.prices || [];
+    setText(s.count, `${chosen.length} / ${this.priceLimit()}`);
+    for (const id of ids) {
+      const def = this.priceDef(id);
+      const unlocked = this.priceUnlocked(id);
+      const on = chosen.includes(id);
+      const glyphEl = h('span', { class: 'sb-price-glyph', 'aria-hidden': 'true', text: PRICE_GLYPH[id] || '◆' });
+      glyphEl.style.setProperty('--pc', def?.color || '#ff5a5a');
+      const t = h(
+        'button',
+        { type: 'button', class: 'sb-tile', 'aria-pressed': on ? 'true' : 'false', title: unlocked ? `${def.name}: ${def.gainText}. Price: ${def.costText}.` : `${def.name} (not found yet)` },
+        glyphEl,
+        h('span', { class: 'sb-tile-name', text: unlocked ? def.name : '???' }),
+        this.fresh.has(`prices:${id}`) ? h('span', { class: 'sb-new', text: 'new' }) : null,
+      );
+      toggleClass(t, 'locked', !unlocked);
+      toggleClass(t, 'on', on);
+      t.addEventListener('click', () => this.tapPrice(id, unlocked));
+      s.grid.append(t);
+    }
+    const hint = this.hint && this.hint.kind === 'prices' ? this.hint : null;
+    s.hint.hidden = !hint && any;
+    clear(s.hint);
+    if (hint) s.hint.append(h('b', { text: `${this.priceDef(hint.id)?.name || ''}: ` }), document.createTextNode(hint.text));
+    else if (!any) s.hint.append(document.createTextNode('Power with a cost. Prices are earned from bosses and from people who trust you with them.'));
+  }
+
+  renderPriceLine(plan) {
+    const el = this.priceLineEl;
+    if (!el) return;
+    clear(el);
+    const pd = plan?.priceDefs?.[0];
+    el.hidden = !pd;
+    if (!pd) return;
+    el.append(h('span', { class: 'gain', text: `Every cast: ${pd.gainText}. ` }), h('span', { class: 'cost', text: `Price: ${pd.costText}.` }));
+  }
+
+  tapPrice(id, unlocked) {
+    if (!unlocked) {
+      this.hint = this.hint && this.hint.kind === 'prices' && this.hint.id === id ? null : { kind: 'prices', id, text: PRICE_HINTS[id] || GENERIC_HINT };
+      this.render();
+      return;
+    }
+    this.hint = null;
+    const d = { ...this.draft, essences: [...this.draft.essences], twists: [...this.draft.twists], prices: [...(this.draft.prices || [])] };
+    if (d.id === 'spark' && d.name === 'Spark') delete d.name;
+    const i = d.prices.indexOf(id);
+    if (i >= 0) d.prices.splice(i, 1);
+    else if (d.prices.length >= this.priceLimit()) d.prices = [id];
+    else d.prices.push(id);
+    if (!d.shape) {
+      this.say('Pick a shape first: a price rides on a weave.', 'warn');
+      this.draft = d;
+      this.render();
+      return;
+    }
+    this.apply(d);
+  }
+
   // ---------- actions ----------
 
   pickSlot(i) {
@@ -318,7 +415,7 @@ export class Spellbook {
     }
     this.hint = null;
     const w = this.weaving;
-    const d = { ...this.draft, essences: [...this.draft.essences], twists: [...this.draft.twists] };
+    const d = { ...this.draft, essences: [...this.draft.essences], twists: [...this.draft.twists], prices: [...(this.draft.prices || [])] };
     // The first weave came with a name ("Spark"); once it changes, it names itself.
     if (d.id === 'spark' && d.name === 'Spark') delete d.name;
     if (kind === 'shapes') d.shape = id;

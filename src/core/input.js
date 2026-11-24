@@ -13,7 +13,7 @@ export const ACTIONS = [
   'up', 'down', 'left', 'right', 'attack', 'dodge', 'interact', 'talk', 'mind', 'inventory', 'menu',
   'cmd1', 'cmd2', 'cmd3', 'cmd4', 'cmd5',
   'weave1', 'weave2', 'weave3', 'weave4', 'weave5', 'weave6',
-  'cast', 'slot_prev', 'slot_next', 'spellbook',
+  'cast', 'slot_prev', 'slot_next', 'spellbook', 'character',
 ];
 
 export const KEYMAP = Object.freeze({
@@ -32,6 +32,7 @@ export const KEYMAP = Object.freeze({
   Numpad1: 'cmd1', Numpad2: 'cmd2', Numpad3: 'cmd3', Numpad4: 'cmd4', Numpad5: 'cmd5',
   KeyQ: 'slot_prev', KeyR: 'slot_next',
   KeyB: 'spellbook',
+  KeyC: 'character', // the character sheet (DESIGN §26)
 });
 
 // Alt (Option on a Mac) + 1–5 asks Lyra, as the plain number row did before weaving.

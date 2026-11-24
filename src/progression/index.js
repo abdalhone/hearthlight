@@ -3,6 +3,11 @@ import { Progression } from './progression.js';
 import { Gear, stockShops } from '../gear/gear.js';
 import { PriceRuntime } from '../magic/prices.js';
 import { NPC_PROFILES } from '../entities/npc_data.js';
+import { dropGlyphShard, grantGlyph } from '../bosses/shard.js';
+
+// Prices the bosses carry (DESIGN §25: "earned like other components"): a glyph-shard
+// of each lies where the boss fell, beside its own.
+export const BOSS_PRICES = Object.freeze({ varek: 'berserk', greyjaw: 'bloodprice', lakes_hum: 'glass', bone_warden: 'overdraw' });
 
 // One call wires DESIGN §25–26 into a game: the stat pipeline (game.stats), levels and
 // points (game.progression), equipment and the forge (game.gear) and the prices'
@@ -43,6 +48,29 @@ export function installProgression(game) {
     // Mission rewards this module understands: { price: id }, { unlock: { kind, id } },
     // { points: n } (the mission system emits every reward it grants).
     bus?.on?.('mission_reward', (p) => grantExtra(game, p?.reward, p?.mission));
+    bus?.on?.('boss_defeated', (p) => dropBossPrice(game, p));
+    bus?.on?.('glyph_shard', (p) => {
+      if (p?.kind === 'price' && p.boss && game.flags) game.flags[`price_shard_${p.boss}`] = 'taken';
+    });
+    // A shard left on the ground when the game was saved is not lost: it comes to you.
+    bus?.on?.('game_start', (p) => {
+      if (!p?.loaded || !game.flags) return;
+      for (const [boss, id] of Object.entries(BOSS_PRICES)) {
+        if (game.flags[`price_shard_${boss}`] !== 'dropped') continue;
+        game.flags[`price_shard_${boss}`] = 'taken';
+        grantGlyph(game, 'price', id, `boss:${boss}`);
+      }
+    });
+    bus?.on?.('magic_unlocked', (p) => {
+      if (p?.kind !== 'price' || p.source === 'dev') return;
+      const d = game.magic?.registry?.prices?.get?.(p.id);
+      if (!d) return;
+      try {
+        game.ui?.toast?.(`A price: ${d.name}. ${cap(d.gainText)} — and ${d.costText}. Attach it to a weave in the Spellbook (B).`, 'warn', { key: `price:${p.id}`, title: 'Power with a cost' });
+      } catch {
+        /* the UI is optional */
+      }
+    });
   } catch {
     /* the bus is optional in tests */
   }
@@ -80,6 +108,29 @@ export function survivalModifiers(game, a) {
     color: '#c9b8a0',
     icon: 'weak',
   }));
+}
+
+function cap(t) {
+  const s = String(t || '');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function dropBossPrice(game, p) {
+  const boss = p?.id;
+  const id = BOSS_PRICES[boss];
+  if (!id || !game.flags || game.flags[`price_shard_${boss}`]) return;
+  if (game.magic?.unlocked?.prices?.has?.(id)) return;
+  const b = p.boss;
+  const x = Number.isFinite(b?.x) ? b.x : game.player?.x ?? 0;
+  const y = Number.isFinite(b?.y) ? b.y : game.player?.y ?? 0;
+  game.flags[`price_shard_${boss}`] = 'dropped';
+  try {
+    if (game.entities?.add) dropGlyphShard(game, 'price', id, x, y + 18, { source: `boss:${boss}`, boss, rise: true, vx: 0, vy: 18 });
+    else grantGlyph(game, 'price', id, `boss:${boss}`);
+  } catch {
+    game.flags[`price_shard_${boss}`] = 'taken';
+    game.magic?.unlock?.('price', id, `boss:${boss}`);
+  }
 }
 
 function grantExtra(game, r, mission) {

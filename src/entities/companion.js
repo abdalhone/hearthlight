@@ -15,6 +15,17 @@ const ARCANE_GLOW = RAMPS.arcane[4];
 export const AUTO_REVIVE_SECONDS = 60;
 export const SELF_REVIVE_HP = 0.15;
 export const PLAYER_REVIVE_HP = 0.4;
+// How much each price weighs on her (DESIGN §25: "berserk frightens her").
+const PRICE_WEIGHT = {
+  berserk: { importance: 8, emotion: 'fear', feel: 0.6, rel: { fear: 8, trust: -3 } },
+  bloodprice: { importance: 5, emotion: 'fear', feel: 0.25, rel: { fear: 2 } },
+  emberblood: { importance: 5, emotion: 'fear', feel: 0.3, rel: { fear: 2 } },
+  glass: { importance: 4, emotion: 'fear', feel: 0.15, rel: null },
+  overdraw: { importance: 4, emotion: 'fear', feel: 0.1, rel: null },
+  lastlight: { importance: 5, emotion: 'sadness', feel: 0.2, rel: null },
+  oath: { importance: 7, emotion: 'surprise', feel: 0.4, rel: { affinity: 3, fear: 1 } },
+  default: { importance: 4, emotion: 'fear', feel: 0.15, rel: null },
+};
 
 export class Companion extends Actor {
   constructor(game, o = {}) {
@@ -50,6 +61,11 @@ export class Companion extends Actor {
     game.bus?.on?.('settings_changed', (p) => {
       if (p?.key === 'companionName' && p.value) this.name = String(p.value).slice(0, 24);
     });
+    // Prices (DESIGN §25): she sees what the stranger pays, says so, remembers it, and
+    // weighs it. Berserk frightens her.
+    game.bus?.on?.('price_paid', (p) => {
+      if (p?.first && p.caster === game.player) this.noticePrice(p.price);
+    });
     // However she gets back up (the player's hand, combat's minute, her own), she says so.
     game.bus?.on?.('revived', (p) => {
       if (p?.entity !== this || this.leftWorld) return;
@@ -57,6 +73,30 @@ export class Companion extends Actor {
       this.behavior.say(say.revived(byPlayer), { force: true });
       if (byPlayer) this.faceToward(p.by.x, p.by.y);
     });
+  }
+
+  noticePrice(id) {
+    const g = this.game;
+    const P = g.player;
+    const d = g.magic?.registry?.prices?.get?.(id);
+    if (!d || !P || this.downed || this.leftWorld) return;
+    const near = Math.hypot(P.x - this.x, P.y - this.y) < 220;
+    const weight = PRICE_WEIGHT[id] || PRICE_WEIGHT.default;
+    const mind = this.mind;
+    try {
+      if (near) this.behavior.say(d.lyra, { force: true });
+      mind?.remember?.(near ? `I watched the stranger weave ${d.name.toLowerCase()} into a spell and pay for it: ${d.costText}.` : `I heard the stranger has been paying for their weaves with ${d.name.toLowerCase()}.`, {
+        importance: weight.importance,
+        about: ['player'],
+        tags: ['price', id, 'weave'],
+        emotion: weight.emotion,
+        type: 'event',
+      });
+      if (near) mind?.feel?.(weight.emotion, weight.feel, `the stranger's ${d.name.toLowerCase()}`);
+      if (weight.rel) mind?.autonomy?.adjustPlayer?.(weight.rel, `price:${id}`);
+    } catch (err) {
+      console.warn('[companion] price notice failed', err);
+    }
   }
 
   // Nothing removes Lyra but her own leaving: a stray removal is ignored and a kill

@@ -333,6 +333,13 @@ export class DialogPanel {
       this.renderGiftPicker();
       return;
     }
+    // Bram's forge (DESIGN §26) opens over the dialogue; closing it comes back here.
+    if (r.open === 'forge' && typeof this.ui.openForge === 'function') {
+      this.mode = 'talk';
+      this.play(r.lines?.length ? r.lines : ['Hmph.'], r.options);
+      this.ui.openForge('upgrade');
+      return;
+    }
     if (r.open === 'shop') {
       this.mode = 'shop';
       this.play(r.lines?.length ? r.lines : ['Take a look.'], r.options);

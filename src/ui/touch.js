@@ -440,7 +440,20 @@ export function paintSlot(slot, rec, i) {
     setStyle(b, '--wd', '');
     setStyle(b, '--wk', '');
   }
-  const label = empty ? `Weave ${i + 1}: empty — open the Spellbook` : `${rec.name}${rec.cost ? ` · ${Math.round(rec.cost)} mana` : ''}`;
+  // A weave that carries a price (DESIGN §25) wears a red mark, and says what it costs.
+  const price = !empty && rec.plan?.priceDefs?.length ? rec.plan.priceDefs[0] : null;
+  let mark = b.querySelector('.wbtn-price');
+  if (price && !mark) {
+    mark = document.createElement('span');
+    mark.className = 'wbtn-price';
+    mark.setAttribute('aria-hidden', 'true');
+    b.append(mark);
+  }
+  if (mark) {
+    mark.hidden = !price;
+    if (price) mark.style.setProperty('--pc', price.color);
+  }
+  const label = empty ? `Weave ${i + 1}: empty — open the Spellbook` : `${rec.name}${rec.cost ? ` · ${Math.round(rec.cost)} mana` : ''}${price ? ` · price: ${price.costText}` : ''}`;
   setAttr(b, 'aria-label', label);
   setAttr(b, 'title', label);
   if (slot.name) setText(slot.name, empty ? '' : rec.name);

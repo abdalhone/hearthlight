@@ -293,9 +293,15 @@ export class GlyphReveal {
     ctx.imageSmoothingEnabled = false;
     const c = glyphCanvas(p.kind, p.id, pal, 4);
     if (c) ctx.drawImage(c, 0, 0, 80, 80);
-    this.kindEl.textContent = p.kind === 'essence' ? 'Essence' : p.kind === 'twist' ? 'Twist' : 'Shape';
+    this.kindEl.textContent = p.kind === 'essence' ? 'Essence' : p.kind === 'twist' ? 'Twist' : p.kind === 'price' ? 'Price' : 'Shape';
     this.lineEl.textContent = revealLine(p.kind, p.id);
     this.subEl.textContent = GLYPH_TEXT[p.kind]?.[p.id] || glyphName(p.kind, p.id);
+    // A price (DESIGN §25) reads as its gain, then its cost.
+    const pd = p.kind === 'price' ? this.game.magic?.registry?.prices?.get?.(p.id) : null;
+    if (pd) {
+      this.lineEl.textContent = `You can pay ${pd.name.toLowerCase()}`;
+      this.subEl.textContent = `${pd.gainText}. Price: ${pd.costText}.`;
+    }
     const g = this.game;
     const book = g.magic ? (g.ui?.isTouch?.() ? 'Open the Spellbook to weave with it.' : 'Open the Spellbook (B) to weave with it.') : 'The Weave will remember it.';
     this.hintEl.textContent = book;

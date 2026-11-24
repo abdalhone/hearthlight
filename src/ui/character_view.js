@@ -1,0 +1,374 @@
+// The character sheet (DESIGN §26): level and experience, the three points each level
+// gives (Vitality, Might, Weave, Focus, Grace, Resolve), what is worn (six slots, rarity
+// colors, compare before you equip, take off), the numbers that come out of it all, and
+// every gain, cost and weakness running now. Opens with C, a tap on the player's card,
+// or the pause menu. One column on a phone held upright, two when there is room.
+
+import { h, button, clear, setText, toggleClass } from './dom.js';
+import { makePanel } from './modal.js';
+import { itemIconUrl } from './art.js';
+import { fmtInt, frac } from './format.js';
+import { STATS, formatStat } from '../core/stats.js';
+import { ATTRS, ATTR_IDS } from '../progression/attributes.js';
+import { SLOTS, SLOT_LABEL, KIND_SLOTS, gearDef, rarityOf, RARITY } from '../gear/gear_data.js';
+import { ensureStatsStyle, fmtSeconds } from './stats_style.js';
+
+// The numbers the sheet shows, in reading order.
+const SHOWN = ['maxHp', 'hpRegen', 'maxMana', 'manaRegen', 'atk', 'spellPower', 'def', 'speed', 'crit', 'critMul', 'dodge', 'resist', 'castSpeed', 'cooldown', 'bleedout', 'carrySpeed'];
+
+function safe(fn, fallback = null) {
+  try {
+    const v = fn();
+    return v === undefined ? fallback : v;
+  } catch (err) {
+    console.warn('[character]', err);
+    return fallback;
+  }
+}
+
+function deltaText(c) {
+  const s = STATS[c.stat];
+  const d = c.delta;
+  const sign = d > 0 ? '+' : '−';
+  const a = Math.abs(d);
+  let v;
+  if (s.fmt === 'pct' || s.fmt === 'mul') v = `${Math.round(a * 100)}%`;
+  else if (s.fmt === 'rate') v = `${Math.round(a * 10) / 10}/s`;
+  else if (s.fmt === 'sec') v = `${Math.round(a)} s`;
+  else v = String(Math.round(a * 10) / 10);
+  return `${sign}${v} ${s.short || s.label}`;
+}
+
+export class CharacterView {
+  constructor(ui) {
+    this.ui = ui;
+    this.game = ui.game;
+    this.panel = null;
+    this.slot = null; // the gear slot being looked at
+    this.t = 0;
+  }
+
+  isOpen() {
+    return !!this.panel && this.ui.stack.includes(this.panel);
+  }
+
+  open(slot = null) {
+    const g = this.game;
+    if (!g.player || !g.progression) return;
+    ensureStatsStyle();
+    if (slot) this.slot = slot;
+    if (this.isOpen()) {
+      this.render();
+      return;
+    }
+    const top = this.ui.top?.();
+    if (top && top.id !== 'pause') this.ui.closeModal(top, true);
+    const panel = makePanel({ id: 'character', title: 'Character', subtitle: '', iconName: 'heart', cls: 'panel-wide panel-character' });
+    panel.pauses = true;
+    panel.onClose = () => {
+      this.panel = null;
+    };
+    this.panel = panel;
+    this.build();
+    this.ui.openModal(panel);
+    this.render();
+  }
+
+  close() {
+    if (this.isOpen()) this.ui.closeModal(this.panel);
+  }
+
+  toggle() {
+    if (this.isOpen()) this.close();
+    else this.open();
+  }
+
+  build() {
+    const p = this.panel;
+    this.lvEl = h('b');
+    this.nameEl = h('div', { class: 'cs-name' });
+    this.xpFill = h('i');
+    this.xpText = h('div', { class: 'cs-xp-text num' });
+    this.pointsEl = h('div', { class: 'cs-points', hidden: true });
+    const hero = h('div', { class: 'cs-hero' }, h('div', { class: 'cs-lv', 'aria-hidden': 'true' }, h('small', { text: 'LEVEL' }), this.lvEl), h('div', { class: 'cs-hero-main' }, this.nameEl, h('div', { class: 'cs-xp' }, this.xpFill), this.xpText, this.pointsEl));
+    this.attrsEl = h('div', { class: 'cs-attrs' });
+    this.attrRows = {};
+    for (const id of ATTR_IDS) {
+      const a = ATTRS[id];
+      const n = h('span', { class: 'cs-attr-n num' });
+      const plus = button('+', { cls: 'btn-ember cs-plus', title: `Spend a point on ${a.name}`, onClick: () => this.spend(id) });
+      const row = h('div', { class: 'cs-attr' }, h('span', { class: 'cs-attr-bar' }), h('div', null, h('div', { class: 'cs-attr-name', text: a.name }), h('div', { class: 'cs-attr-line', text: a.line })), n, plus);
+      row.style.setProperty('--ac', a.color);
+      this.attrRows[id] = { row, n, plus };
+      this.attrsEl.append(row);
+    }
+    this.respecEl = h('p', { class: 'cs-respec' });
+    const left = h('section', { class: 'cs-box' }, hero, this.attrsEl, this.respecEl);
+
+    this.slotsEl = h('div', { class: 'cs-slots' });
+    this.slotBtns = {};
+    for (const s of SLOTS) {
+      const img = h('img', { class: 'cs-slot-img', alt: '' });
+      const name = h('span', { class: 'cs-slot-name' });
+      const up = h('span', { class: 'cs-up num' });
+      const b = h('button', { type: 'button', class: 'cs-slot' }, up, img, h('span', { class: 'cs-slot-label', text: SLOT_LABEL[s] }), name);
+      b.addEventListener('click', () => {
+        this.slot = this.slot === s ? null : s;
+        this.game.audio?.play?.('ui_click');
+        this.render();
+      });
+      this.slotBtns[s] = { b, img, name, up };
+      this.slotsEl.append(b);
+    }
+    this.pickEl = h('div', { class: 'cs-pick' });
+    const right = h('section', { class: 'cs-box' }, h('h3', null, h('span', { text: 'Worn' }), h('span', { class: 'cs-h-note', text: 'Tap a slot to change it' })), this.slotsEl, this.pickEl);
+
+    this.statsEl = h('div', { class: 'cs-stats' });
+    this.effectsEl = h('div', { class: 'cs-effects' });
+    this.effectsBox = h('section', { class: 'cs-box cs-wide' }, h('h3', { text: 'Running now' }), this.effectsEl);
+    const stats = h('section', { class: 'cs-box cs-wide' }, h('h3', null, h('span', { text: 'What it adds up to' }), h('span', { class: 'cs-h-note', text: 'Level, points, gear and what runs now' })), this.statsEl);
+    p.body.append(h('div', { class: 'cs' }, left, right, this.effectsBox, stats));
+    p.foot.append(h('span', { class: 'sb-foot-note', text: 'Points and gear change you at once.' }), h('span', { class: 'sb-spacer' }), button('Done', { cls: 'btn-ember', onClick: () => this.close() }));
+  }
+
+  render() {
+    if (!this.panel) return;
+    const g = this.game;
+    const P = g.player;
+    const pr = g.progression;
+    const S = g.stats;
+    const lv = Math.max(1, P.level || 1);
+    const need = safe(() => g.combat?.xpToNext?.(lv), 0) || 0;
+    setText(this.lvEl, String(lv));
+    setText(this.nameEl, g.settings?.playerName || P.name || 'Traveler');
+    this.xpFill.style.width = `${Math.round(frac(P.xp || 0, need || 1) * 100)}%`;
+    setText(this.xpText, need ? `${fmtInt(P.xp || 0)} / ${fmtInt(need)} xp to level ${lv + 1}` : `${fmtInt(P.xp || 0)} xp`);
+    const un = pr.unspent();
+    this.pointsEl.hidden = un <= 0;
+    setText(this.pointsEl, `${un} point${un === 1 ? '' : 's'} to spend`);
+    this.panel.setTitle('Character', un > 0 ? `Level ${lv} · ${un} point${un === 1 ? '' : 's'} to spend` : `Level ${lv} · each level gives three points`);
+    for (const id of ATTR_IDS) {
+      const r = this.attrRows[id];
+      setText(r.n, String(pr.points[id] || 0));
+      r.plus.disabled = un <= 0;
+    }
+    setText(this.respecEl, pr.spent() ? `Want them back? Sister Aveline can give you a quiet hour in the chapel to start over (${pr.respecCost()} coins).` : 'Spend points as you level. Sister Aveline at the chapel can undo them, for a price.');
+    this.renderSlots();
+    this.renderPick();
+    this.renderStats();
+    this.renderEffects();
+  }
+
+  renderSlots() {
+    const G = this.game.gear;
+    for (const s of SLOTS) {
+      const r = this.slotBtns[s];
+      const id = G.equipped[s];
+      const def = id ? gearDef(id) : null;
+      const rar = def ? def.rarity : 'common';
+      r.b.className = `cs-slot ${id ? `rar-bd-${rar}` : 'empty'} ${this.slot === s ? 'on' : ''}`.trim();
+      r.img.src = itemIconUrl(this.game, id || EMPTY_ICON[s]);
+      setText(r.name, def ? def.name : '—');
+      r.name.className = `cs-slot-name ${def ? `rar-${rar}` : ''}`.trim();
+      const lv = id ? G.level(id) : 0;
+      setText(r.up, lv ? `+${lv}` : '');
+      r.b.title = def ? `${def.name} (${RARITY[rar].label})${lv ? `, upgraded +${lv}` : ''}` : `${SLOT_LABEL[s]}: nothing worn`;
+    }
+  }
+
+  // What can go in the chosen slot: from the bag, with what it would change.
+  renderPick() {
+    clear(this.pickEl);
+    const s = this.slot;
+    if (!s) {
+      this.pickEl.append(h('p', { class: 'cs-empty', text: 'Bram forges and upgrades blades and armor; Sabeth sews cloaks; Garrick sells boots and charms. Bosses leave special pieces.' }));
+      return;
+    }
+    const g = this.game;
+    const G = g.gear;
+    const P = g.player;
+    const worn = G.equipped[s];
+    const head = h('div', { class: 'cs-pick-head' }, h('span', { text: worn ? `${SLOT_LABEL[s]}: ${gearDef(worn).name}` : `${SLOT_LABEL[s]}: nothing worn` }));
+    if (worn) head.append(button('Take off', { cls: 'btn-small btn-ghost', onClick: () => this.unequip(s) }));
+    this.pickEl.append(head);
+    if (worn) {
+      const d = gearDef(worn);
+      this.pickEl.append(h('p', { class: 'cs-empty', text: d.desc }));
+    }
+    const kind = s.startsWith('charm') ? 'charm' : s;
+    const cands = [];
+    for (const it of P.inventory.list()) {
+      const d = gearDef(it.id);
+      if (!d || !(KIND_SLOTS[d.slot] || []).includes(s) || d.slot !== kind) continue;
+      cands.push({ id: it.id, def: d, qty: it.qty });
+    }
+    cands.sort((a, b) => rarityOf(b.id).rank - rarityOf(a.id).rank || a.def.name.localeCompare(b.def.name));
+    if (!cands.length) {
+      this.pickEl.append(h('p', { class: 'cs-empty', text: `Nothing in your bag goes here. ${WHERE[kind] || ''}` }));
+      return;
+    }
+    for (const c of cands) {
+      const cmp = safe(() => G.compare(c.id, s), []) || [];
+      const deltas = h('div', { class: 'cs-deltas' });
+      for (const d of cmp.slice(0, 6)) deltas.append(h('span', { class: `cs-delta ${d.better ? '' : 'worse'}`.trim(), text: deltaText(d) }));
+      if (!cmp.length) deltas.append(h('span', { class: 'cs-delta', text: 'no change' }));
+      const lv = G.level(c.id);
+      const row = h(
+        'div',
+        { class: `cs-cand rar-bd-${c.def.rarity}` },
+        h('img', { alt: '', src: itemIconUrl(g, c.id) }),
+        h('div', null, h('div', { class: `cs-cand-name rar-${c.def.rarity}`, text: `${c.def.name}${lv ? ` +${lv}` : ''}` }), h('div', { class: 'cs-attr-line', text: `${RARITY[c.def.rarity].label}${c.qty > 1 ? ` · ×${c.qty}` : ''}` }), deltas),
+        button('Wear', { cls: 'btn-ember btn-small', onClick: () => this.equip(c.id, s) }),
+      );
+      this.pickEl.append(row);
+    }
+  }
+
+  renderStats() {
+    clear(this.statsEl);
+    const g = this.game;
+    const S = g.stats;
+    const P = g.player;
+    const v = S.all(P);
+    for (const id of SHOWN) {
+      const s = STATS[id];
+      const cell = h('div', { class: 'cs-stat', title: why(S, P, id) }, h('span', { text: s.label }), h('b', { class: 'num', text: formatStat(id, v[id]) }));
+      this.statsEl.append(cell);
+    }
+  }
+
+  renderEffects() {
+    clear(this.effectsEl);
+    const g = this.game;
+    const list = safe(() => g.prices?.timers?.(g.player), []) || [];
+    this.effectsBox.hidden = !list.length;
+    for (const m of list) {
+      const left = Number.isFinite(m.left) ? fmtSeconds(m.left) : m.tap ? 'tap the HUD flame to douse' : 'held';
+      const chip = h('span', { class: `cs-eff ${m.kind}` }, h('span', { text: m.label }), h('span', { class: 'num', text: left }));
+      this.effectsEl.append(chip);
+    }
+  }
+
+  // ---------------------------------------------------------------- actions
+
+  spend(attr) {
+    const r = this.game.progression.spend(attr);
+    if (!r.ok) {
+      this.game.audio?.play?.('error', { volume: 0.5 });
+      this.ui.toast(r.reason, 'info');
+    } else this.game.audio?.play?.('ui_click', { pitch: 1.2 });
+    this.render();
+  }
+
+  equip(id, slot) {
+    const r = this.game.gear.equip(id, slot);
+    if (!r.ok) this.ui.toast(r.reason, 'info');
+    else this.game.audio?.play?.('equip') || this.game.audio?.play?.('pickup');
+    this.render();
+  }
+
+  unequip(slot) {
+    const r = this.game.gear.unequip(slot);
+    if (!r.ok) this.ui.toast(r.reason, 'info');
+    else this.game.audio?.play?.('ui_close');
+    this.render();
+  }
+
+  // Live numbers while it is open (timers run down; buffs come and go).
+  update(dt) {
+    if (!this.isOpen()) return;
+    this.t += dt;
+    if (this.t < 0.5) return;
+    this.t = 0;
+    this.renderEffects();
+  }
+}
+
+// Where each kind of piece comes from (for an empty list).
+const WHERE = {
+  weapon: 'Bram sells and forges blades at the smithy.',
+  armor: 'Bram sells and forges armor at the smithy.',
+  cloak: 'Sabeth sews cloaks at the dye-vats.',
+  boots: "Garrick sells boots at Gale's Goods.",
+  charm: "Garrick sells charms at Gale's Goods.",
+};
+
+// A faint silhouette for an empty slot.
+const EMPTY_ICON = { weapon: 'iron_sword', armor: 'leather_jerkin', cloak: 'traveler_cloak', boots: 'field_boots', charm1: 'hearth_charm', charm2: 'moonglass_bead' };
+
+// A stat's sources in words, for its tooltip.
+function why(S, P, id) {
+  const parts = safe(() => S.breakdown(P, id), []) || [];
+  const fmt = STATS[id];
+  return parts
+    .map((b) => {
+      const bits = [];
+      if (b.add) bits.push(`${b.add > 0 ? '+' : ''}${fmt.fmt === 'pct' ? `${Math.round(b.add * 100)}%` : Math.round(b.add * 100) / 100}`);
+      if (b.pct) bits.push(`${b.pct > 0 ? '+' : ''}${Math.round(b.pct * 100)}%`);
+      if (b.mul !== 1) bits.push(`×${Math.round(b.mul * 100) / 100}`);
+      return `${b.label}: ${bits.join(' ')}`;
+    })
+    .join('\n');
+}
+
+// Wires the sheet into the UI: ui.openCharacter, the C key, the player's card, a
+// points badge on it, and a "Character" entry in the pause menu.
+export function installCharacterView(ui) {
+  if (!ui || ui.character) return ui?.character || null;
+  const view = new CharacterView(ui);
+  ui.character = view;
+  ui.openCharacter = (slot) => view.open(slot);
+  const g = ui.game;
+  try {
+    g.bus?.on?.('ui_open', (p) => {
+      if (p?.panel === 'pause') addPauseEntry(ui, view);
+    });
+    const refresh = () => {
+      if (view.isOpen()) view.render();
+      syncBadge(ui);
+    };
+    for (const ev of ['points_changed', 'level_up', 'gear_changed', 'gear_upgraded', 'respec', 'game_start']) g.bus?.on?.(ev, refresh);
+  } catch {
+    /* the bus is optional */
+  }
+  return view;
+}
+
+function addPauseEntry(ui, view) {
+  const top = ui.top?.();
+  const menu = top?.el?.querySelector?.('.pause-menu');
+  if (!menu || menu.querySelector('.pause-character')) return;
+  const b = button('Character', { icon: 'heart', cls: 'pause-character', key: 'C', onClick: () => {
+    ui.closeModal(top, true);
+    view.open();
+  } });
+  const after = menu.children[1] || null;
+  menu.insertBefore(b, after);
+}
+
+// The player's card shows a glowing count of unspent points; tapping the card opens the sheet.
+export function syncBadge(ui) {
+  const g = ui.game;
+  const card = ui.root?.querySelector?.('.player-card');
+  if (!card) return;
+  if (!card.dataset.sheet) {
+    card.dataset.sheet = '1';
+    card.classList.add('tappable');
+    card.title = 'Character sheet (C)';
+    card.addEventListener('click', (e) => {
+      if (e.target?.closest?.('button')) return;
+      ui.openCharacter?.();
+    });
+  }
+  let badge = card.querySelector('.card-points');
+  if (!badge) {
+    badge = h('span', { class: 'card-points num', hidden: true, title: 'Points to spend: open your character sheet (C)' });
+    const lvl = card.querySelector('.card-level');
+    if (lvl) lvl.after(badge);
+    else card.append(badge);
+  }
+  const n = safe(() => g.progression?.unspent?.(), 0) || 0;
+  badge.hidden = n <= 0;
+  setText(badge, n > 0 ? `+${n}` : '');
+  toggleClass(card, 'has-points', n > 0);
+}

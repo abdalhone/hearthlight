@@ -14,7 +14,8 @@
 //   offer, accept, decline, progress, turnin: [lines in the giver's voice],
 //   board: 'the notice as pinned' (board missions),
 //   objectives: [{ type, label, ... }] (one after another; see tracker.js),
-//   rewards: [{ magic: {kind, id} } | { coins } | { xp } | { maxMana } | { slot: 'weave'|'essence'|'twist' } | { items: [[id, qty]] }],
+//   rewards: [{ magic: {kind, id} } | { coins } | { xp } | { maxMana } | { slot: 'weave'|'essence'|'twist' } | { items: [[id, qty]] }
+//             | { price: id } | { unlock: { kind, id } } | { points: n }   (DESIGN §25–26; src/progression/index.js grants these)],
 //   lyra: { accept?, done? } (her own words when she is near),
 //   tip: string | { desk, touch } (a how-to toast after it is done) }
 //
@@ -523,7 +524,7 @@ export const MISSIONS = [
     progress: ['The middle of the lake. Wait for it to stand up. It always does.'],
     objectives: [{ type: 'defeat', target: 'boss:lakes_hum', count: 1, label: "Quiet the Lake's Hum on Mirror Lake", where: 'mirror_lake' }],
     turnin: ['Hm-hmm. Still. Still as glass.', "Still water keeps its counsel. Doesn't mean it can't be quieted.", "Maybe the boy'll come down to the dock now. Maybe."],
-    rewards: [{ maxMana: 15 }, { items: [['smoked_eel', 2]] }, { coins: 20 }, { xp: 70 }],
+    rewards: [{ maxMana: 15 }, { items: [['smoked_eel', 2], ['humstone', 1]] }, { coins: 20 }, { xp: 70 }],
     lyra: { accept: "Deep water. ...Yes. I'll come. Don't look at me like that.", done: "I stayed on my feet in all that water. Don't you dare tell Corran." },
   },
 
@@ -696,7 +697,7 @@ export const MISSIONS = [
       "Look at that. They didn't muddy. Most colours do.",
       "Cloth takes three dyes if you set the first one properly. So will you. There. Room for a third.",
     ],
-    rewards: [{ slot: 'essence' }, { coins: 10 }, { xp: 20 }],
+    rewards: [{ slot: 'essence' }, { coins: 10 }, { items: [['madder_mantle', 1]] }, { xp: 20 }],
     lyra: { done: "Beth's colours. She made my cloak, you know. So the village would see me coming." },
   },
 
@@ -786,6 +787,133 @@ export const MISSIONS = [
     ],
     rewards: [M('shape', 'beam'), M('twist', 'charge'), { maxMana: 10 }, { xp: 40 }],
     lyra: { done: "It's burning. It's actually burning. Don't say anything. Just... let me look at it." },
+  },
+
+  // ------------------------------------------------------------------ prices and the self-cast surge (DESIGN §25)
+  {
+    id: 'steady_hands',
+    giver: 'mira',
+    title: 'Steady Hands',
+    summary: 'Mira watched your hands shake after a fight. She thinks the light could go into you instead of out of you, the way a tonic does. Sorry. She means it kindly.',
+    hint: 'Mira, at the herbalist, has an idea about your hands.',
+    requires: { missions: ['silverleaf'] },
+    turnIn: null,
+    offer: [
+      "Your hands. Sorry — I noticed. They shake after a fight, like Tilly's do after the bellows.",
+      'Herbs go in, not out. What if the light did too? Turned on yourself, gently. Like a tonic. I could watch you try.',
+      'Bring me three silverleaf for the tonic, then show me. Only if you want to.',
+    ],
+    accept: ['Oh good. Three silverleaf. The bright ones.'],
+    decline: ['No, of course. Sorry. Forget I said it.'],
+    progress: ['Three silverleaf. They grow along the edges of things.'],
+    objectives: [
+      { type: 'bring', item: 'herb', count: 3, label: 'Bring Mira three silverleaf' },
+      {
+        type: 'talk',
+        target: 'mira',
+        label: 'Turn the light on yourself, with Mira watching',
+        lines: [
+          'Now — no, not at me. At you. Hold it against your chest, like a warm stone.',
+          "There. Your colour came back. Whatever you put in it, that's what it gives you. Fire made you bolder. I'd stay away from the dark one.",
+          "It's called a surge, I think. Or I'm calling it that. Sorry. Take these, too: heartwort, for after.",
+        ],
+      },
+    ],
+    rewards: [{ unlock: { kind: 'shape', id: 'surge' } }, { items: [['heartwort_salve', 2]] }, { xp: 20 }],
+    tip: { desk: 'Surge is a self-cast shape: its essences choose what it empowers. Put it on a slot in the Spellbook (B).', touch: 'Surge is a self-cast shape: its essences choose what it empowers. Put it on a weave button in the Spellbook.' },
+    lyra: { done: 'You look... warmer. Is that the weave? Inside you?' },
+  },
+
+  {
+    id: 'hot_blood',
+    giver: 'bram',
+    title: 'Hot Blood',
+    summary: "Bram saw you weave at the forge and grunted. He says iron and blood both run hot, and there's a way to make the second hotter. It costs. He'll show you if you bring the iron.",
+    hint: 'Bram has something to show you about forge-heat, once you have helped at the smithy.',
+    requires: { missions: ['hinge_ore'], done: 5 },
+    offer: [
+      "Hmph. That light of yours. Runs cold.",
+      'Forge runs hot because I feed it. Blood can too. Faster hands. Costs you, every breath it burns. Hmph.',
+      'Four ore. One crystal. Then I show you.',
+    ],
+    accept: ['Hmph. Good.'],
+    decline: ['Hmph. Smart.'],
+    progress: ['Four ore. One crystal. Quarry.'],
+    objectives: [
+      { type: 'bring', item: 'iron_ore', count: 4, label: 'Bring Bram four lumps of iron ore', where: 'stonecut_quarry' },
+      { type: 'bring', item: 'crystal', count: 1, label: 'Bring Bram a glow crystal', where: 'stonecut_quarry' },
+    ],
+    turnin: [
+      'Hmph. Hold your hand over the coals. Closer. Feel it climb your arm?',
+      "That's emberblood. Weaves come quicker while it burns. It burns you too. Put it out before it puts you out.",
+      'And take this. Iron, not pretty. Better than your hands.',
+    ],
+    rewards: [{ price: 'emberblood' }, { items: [['iron_sword', 1]] }, { xp: 30 }],
+    lyra: { done: "Bram gave you what? ...Your hands are smoking. Please don't keep that lit." },
+  },
+
+  {
+    id: 'kept_back',
+    giver: 'aveline',
+    title: 'A Light Kept Back',
+    summary: "Sister Aveline has seen how close you come to the dark. She says some lamps are lit and then covered, kept back for the last of the night. She will show you, at the altar, after dark.",
+    hint: 'Sister Aveline, at the chapel, has something to give you after dark.',
+    requires: { missions: ['down_the_stair'], done: 6 },
+    offer: [
+      'Child. You come back to this village with less of yourself each time. I have noticed.',
+      'There is an old way of keeping a lamp: lit, then covered, kept back for the last dark. Come to the altar after nightfall and I will show you.',
+    ],
+    accept: ['After nightfall, then. The candles will be low.'],
+    decline: ['Then I will pray for you instead. It is cheaper, and less use.'],
+    progress: ['The altar, after nightfall.'],
+    objectives: [
+      { type: 'reach', at: 'chapel', when: 'night', label: 'Come to the chapel after nightfall' },
+      {
+        type: 'talk',
+        target: 'aveline',
+        label: 'Kneel at the altar with Sister Aveline',
+        lines: [
+          'Kneel. Not to me. To the flames. Now: take a little of your own light and do not throw it. Cover it. Keep it back.',
+          'It will hold a wound shut once, when you would fall. Once, until you sleep. And while it holds, you will be half of yourself.',
+          'It cannot restart a heart that has burned itself out, child. Nothing can. Remember that.',
+        ],
+      },
+    ],
+    turnIn: null,
+    rewards: [{ price: 'lastlight' }, { items: [['saints_thread', 1]] }, { xp: 30 }],
+    lyra: { done: 'Aveline gave you a lastlight? ...Good. I hope you never need it.' },
+  },
+
+  {
+    id: 'sworn',
+    giver: 'lyra',
+    title: 'Sworn',
+    summary: 'Lyra wants to try something that rangers on the King\'s Road used to do: a promise with light in it. She is not sure she should. She wants to do it at the lake, where it is quiet.',
+    hint: 'Something Lyra would only do with someone she trusts.',
+    requires: { missions: ['dead_waystone'], trust: 70, day: 3 },
+    turnIn: null,
+    offer: [
+      "Road-wardens used to swear to each other with a light between their hands. Hobb told me. If one bled, the other felt it.",
+      "I don't know if it was ever real. With you it might be. ...I want to try. At the lake. At dusk. Don't make it a big thing.",
+    ],
+    accept: ['Dusk. The jetty. Bring your light.'],
+    decline: ["...All right. Forget I asked."],
+    progress: ['The jetty at Mirror Lake, at dusk.'],
+    objectives: [
+      { type: 'reach', at: 'mirror_lake', when: 'evening', label: 'Meet Lyra at Mirror Lake at dusk' },
+      {
+        type: 'talk',
+        target: 'lyra',
+        label: 'Hold the light between you',
+        lines: [
+          "Hands. Like this. Your light, my warmth. Don't let go yet.",
+          "...I felt that. Like a thread pulled tight. When you swear it, you'll be stronger near me — and when I'm hurt, so are you.",
+          "That's the price. I'm not taking it back. Don't make me regret it.",
+        ],
+      },
+    ],
+    rewards: [{ price: 'oath' }, { xp: 40 }],
+    lyra: { done: "It's still there. The thread. I can feel where you are." },
   },
 ];
 
