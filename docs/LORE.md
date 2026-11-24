@@ -1270,7 +1270,7 @@ The ten new villagers need homes and places to spend their days. Where an existi
 | Wys Pike | `guardhouse` (the second cot) | Patrols of `town_square` and `kings_road`; Sunday dinner on Weavers' Row |
 
 **New buildings inside the village:**
-- **Lamplight Lane and the chandlery.** The lane runs east from the chapel, behind the smithy. The Ambrels' chandlery stands at its end: a narrow two-storey house with the dipping-vat and candle-racks downstairs. Outside is the bench where Hobb and Wenna sit at dusk (the bench north of the smithy), and along the lane are the far lamps Hobb can no longer quite see.
+- **Lamplight Lane and the chandlery.** The lane runs east from the chapel, behind the smithy. The Ambrels' chandlery stands at its end: a narrow two-storey house with the dipping-vat and candle-racks downstairs, Hobb and Wenna's room upstairs, and beside it the little room Lyra grew up in. Her old bed is still made up there, and Wenna airs it every spring whether anyone sleeps in it or not; it is where Lyra sleeps when she comes home (Section 7, *Hearthwatch, and where she sleeps*). Outside is the bench where Hobb and Wenna sit at dusk (the bench north of the smithy), and along the lane are the far lamps Hobb can no longer quite see.
 - **Ashby House.** On the south side of the square, facing the well: the tall stone house of the Reeves, with the ledger-room at the front.
 - **The dye-vats cottage.** East of the Wayhouse, by the stream just above the bridge. It is the last house in Hearthvale, the one the crossroads sign means by "past the last house". The vats stand in the yard, and the stream runs violet and teal below it.
 - **Weavers' Row.** A short lane south of the square, where Nan Pike's loom is.
