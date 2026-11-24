@@ -135,11 +135,15 @@ export function placeCandidates(life, prob, { max = 7 } = {}) {
   const seen = new Set();
   const checked = new Set(prob.checked);
   const t = life.now();
+  // What the village has already searched, or has someone searching now: the watch says.
+  const kase = about ? life.cases?.get?.(about) : null;
+  const searched = kase?.searched || {};
+  const taken = new Set(Object.values(kase?.searchers || {}));
   const add = (id, why) => {
     if (!id || seen.has(id) || BEYOND_WARD.has(id) || id === 'hearthvale') return;
     seen.add(id);
     if (!life.game?.locations?.get?.(id)) return;
-    out.push({ id, name: life.placeName(id), why, checked: checked.has(id), public: PUBLIC.has(id) });
+    out.push({ id, name: life.placeName(id), why, checked: checked.has(id) || id in searched || taken.has(id), public: PUBLIC.has(id) });
   };
   // Where they were meant to be, when it has been a while: they may be back.
   if (prob.place && t - (prob.checkedAt?.[prob.place] ?? prob.since) > 0.6 * HOUR) {
@@ -232,6 +236,9 @@ export function buildInput(life, prob) {
   const playerNear = !!(npc && player && life.playerAskable(npc) && !prob.asked.includes('player'));
   if (playerNear) askable.unshift({ id: 'player', name: life.playerName(), why: 'right here; a stranger who gets about', near: true, d: Math.round(Math.hypot(player.x - npc.x, player.y - npc.y)), score: 2.5, where: life.placeOf(player) });
   const ent = about ? life.entity(about) : null;
+  // The freshest word of them the owner has: their own eyes, or what someone told them.
+  let latest = own ? { t: own.t, fromName: null, place: own.place } : null;
+  for (const h of prob.heard) if ((h.kind === 'seen' || h.kind === 'heard') && Number.isFinite(h.t) && (!latest || h.t > latest.t)) latest = { t: h.t, fromName: h.fromName || 'Someone', place: h.place || null };
   return {
     who: prob.owner,
     name: life.name(prob.owner),
@@ -258,7 +265,9 @@ export function buildInput(life, prob) {
     home: p?.home ? { id: p.home, name: life.placeName(p.home) } : null,
     work: p?.work ? { id: p.work, name: life.placeName(p.work) } : null,
     ownSeenAgo: own ? Math.round(((t - own.t) / HOUR) * 10) / 10 : null,
-    ownSeen: own ? { t: own.t, place: own.place, placeName: life.placeName(own.place), when: whenPhrase(own.t, t), with: own.with, withName: own.with ? life.nameFor(prob.owner, own.with) : null, heading: own.heading } : null,
+    ownSeen: own ? { t: own.t, place: own.place, placeName: life.placeName(own.place), when: whenPhrase(own.t, t), since: sincePhrase(own.t, t), with: own.with, withName: own.with ? life.nameFor(prob.owner, own.with) : null, heading: own.heading } : null,
+    lastKnownAgo: latest ? Math.round(((t - latest.t) / HOUR) * 10) / 10 : null,
+    lastKnown: latest ? { fromName: latest.fromName, when: whenPhrase(latest.t, t), placeName: latest.place ? life.placeName(latest.place) : null } : null,
     heard: prob.heard.slice(-5),
     checked: prob.checked.slice(),
     checkedAt: { ...(prob.checkedAt || {}) },

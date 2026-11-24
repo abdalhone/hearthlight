@@ -506,6 +506,10 @@ export class VillageLife {
       if (rt - (this.murmured?.get(e.id) ?? -Infinity) < 50) continue;
       const line = this.ambientLine(e);
       if (!line) continue;
+      // The same worry, word for word, is not said twice in an afternoon.
+      const last = (this.murmurLast ||= new Map()).get(e.id);
+      if (last && last.line === line && rt - last.at < 400) continue;
+      this.murmurLast.set(e.id, { line, at: rt });
       (this.murmured ||= new Map()).set(e.id, rt);
       this.murmurAt = rt;
       this.sayAloud(e, line);
@@ -636,10 +640,10 @@ export class VillageLife {
 
   startErrand(e, inst, t) {
     const tpl = errandTemplate(inst.tpl) || {};
-    // Nobody runs an errand to someone they know is missing.
-    if (inst.to && this.knowsMissing(e.id, inst.to)) {
+    // Nobody runs an errand to someone they know is missing, or being searched for.
+    if (inst.to && this.knowsSought(e.id, inst.to)) {
       inst.state = 'skipped';
-      inst.result = `${this.name(inst.to)} is missing`;
+      inst.result = `${this.name(inst.to)} is ${this.cases.get(inst.to)?.status === 'search' ? 'being searched for' : 'missing'}`;
       return;
     }
     inst.state = 'active';
@@ -793,6 +797,11 @@ export class VillageLife {
         continue;
       }
       if (whom && this.busyElsewhere(whom)) continue; // on an errand: they'll be back
+      if (this.knowsSought(e.id, x.whom)) {
+        // They know the village is looking for them: nobody sets a place for them.
+        this.expectDone.add(key);
+        continue;
+      }
       if (!this.expectWait.has(key)) this.expectWait.set(key, t);
       if (t - this.expectWait.get(key) < GRACE * (x.late ? 2 : 1)) continue;
       this.expectDone.add(key);
@@ -1019,9 +1028,24 @@ export class VillageLife {
         this.makeStep(e, 'wait', { prob: prob.id, about, place: this.placeOf(e), until: t + (prob.steps <= 1 ? 0.35 : 0.25) * HOUR, doing: about ? `waiting for ${aboutName}` : 'waiting' });
         break;
       default:
+        // Seen within the hour: not lost, only out. The errand waits for later.
+        if (about && this.seenLately(prob) && !this.cases.get(about)?.alarmAt) {
+          this.closeProblem(prob, 'resolved', 'about somewhere; later');
+          this.event('later', `${this.name(prob.owner)} will catch ${aboutName} later.`, { who: prob.owner, about });
+          if (!d.say) this.sayAloud(e, this.line(prob.owner, 'later', { about }));
+          break;
+        }
         this.giveUp(prob, e);
         if (d.say === '' || !d.say) this.sayAloud(e, this.line(prob.owner, 'giveUp', { about }));
     }
+  }
+
+  // Has the owner seen (or been told of) the person they want within the last hour?
+  seenLately(prob) {
+    const t = this.now();
+    let last = this.sight.lastSeen(prob.owner, prob.about)?.t ?? -Infinity;
+    for (const h of prob.heard) if ((h.kind === 'seen' || h.kind === 'heard') && Number.isFinite(h.t)) last = Math.max(last, h.t);
+    return t - last < 1.2 * HOUR;
   }
 
   // ------------------------------------------------------------------ looking, waiting, searching
@@ -1079,7 +1103,7 @@ export class VillageLife {
       if (prob && prob.status === 'open') return this.problemFound(prob, e, this.entity(about));
       return this.found(about, e.id);
     }
-    if (t - step.callAt > 7) {
+    if (t - step.callAt > 11) {
       step.callAt = t;
       this.sayAloud(e, this.line(e.id, 'search', { about }));
     }
@@ -1181,6 +1205,11 @@ export class VillageLife {
       vars.when = whenPhrase(k.t, t);
       vars.placeId = k.heading || k.place;
       info = { kind: 'heard', place: k.place, placeName: this.placeName(k.place), t: k.t, when: vars.when, with: k.with || null, heading: k.heading || null, via: k.from };
+    } else if (fc && (fc.status === 'search' || fc.status === 'missing') && who !== 'lyra' && this.seerKnows(fc, who)) {
+      // They have no sighting, but they know the village is looking: that is the news.
+      key = fc.status === 'missing' ? 'missing' : 'sought';
+      vars.when = s ? sincePhrase(s.t, t) : 'this morning';
+      info = { kind: fc.status === 'missing' ? 'missing' : 'sought' };
     } else if (this.care(who, about) >= 0.6 && habitAt(this.profile(about), this.hour())?.at && habitAt(this.profile(about), this.hour()).at !== exclude) {
       const h = habitAt(this.profile(about), this.hour()).at;
       key = 'guess';
@@ -1229,11 +1258,11 @@ export class VillageLife {
     if ((ans.info.kind === 'seen' || ans.info.kind === 'heard' || ans.info.kind === 'guess') && said) {
       const looked = prob && (prob.checked.includes(said) || prob.place === said) && !(ans.info.t > (prob.checkedAt?.[said] ?? Infinity));
       back = this.line(e.id, looked ? 'already' : 'thanksPlace', { about, placeId: said });
-    } else back = this.line(e.id, 'thanks', { about });
+    } else if (ans.info.kind !== 'sought' && ans.info.kind !== 'missing') back = this.line(e.id, 'thanks', { about });
     const lines = [[e.id, ask], [tgt.id, ans.line]];
     if (back && this.rng()() < 0.8) lines.push([e.id, back]);
     const aboutName = this.name(about);
-    const heardWhat = ans.info.kind === 'seen' ? `saw ${aboutName} ${ans.info.when}${ans.info.headingName ? `, heading for ${ans.info.headingName}` : ` at ${ans.info.placeName}`}${ans.info.withName ? `, with ${this.name(ans.info.with)}` : ''}` : ans.info.kind === 'heard' ? `heard ${aboutName} was at ${ans.info.placeName}` : ans.info.kind === 'guess' ? `guessed ${ans.info.placeName}` : `hasn't seen ${aboutName} since ${ans.info.when}`;
+    const heardWhat = ans.info.kind === 'seen' ? `saw ${aboutName} ${ans.info.when}${ans.info.headingName ? `, heading for ${ans.info.headingName}` : ` at ${ans.info.placeName}`}${ans.info.withName ? `, with ${this.name(ans.info.with)}` : ''}` : ans.info.kind === 'heard' ? `heard ${aboutName} was at ${ans.info.placeName}` : ans.info.kind === 'guess' ? `guessed ${ans.info.placeName}` : ans.info.kind === 'busy' ? `said ${aboutName} is ${ans.info.doing || 'busy'}` : ans.info.kind === 'found' ? `said ${aboutName} has turned up` : ans.info.kind === 'sought' ? `said the watch is searching for ${aboutName}` : ans.info.kind === 'missing' ? `said ${aboutName} is missing` : `hasn't seen ${aboutName} since ${ans.info.when || 'yesterday'}`;
     const summary = `${this.name(e.id)} asked ${this.name(tgt.id)} about ${aboutName}: ${this.name(tgt.id)} ${heardWhat}.`;
     this.event('ask', summary, { who: e.id, about });
     if (prob) {
@@ -1245,6 +1274,8 @@ export class VillageLife {
     if (ans.info.kind === 'seen' || ans.info.kind === 'heard') this.learn(e.id, about, { ...ans.info, from: tgt.id, at: t });
     this.learnAsked(tgt.id, about, e.id, t);
     const c = this.cases.get(about);
+    // Told the news: now they know the village is looking.
+    if ((ans.info.kind === 'sought' || ans.info.kind === 'missing') && c?.rumor) safe(() => this.village?.rumors?.hear?.(this.village.rumors.get(c.rumor), e.id, tgt.id, this.village?.rng?.()));
     if (c && c.status !== 'found' && c.status !== 'dead') {
       if (c.status === 'noticed') c.status = 'asking';
       if (ans.info.kind === 'seen') this.cases.report(c, { by: tgt.id, kind: 'seen', place: ans.info.place, t: ans.info.t, with: ans.info.with, heading: ans.info.heading, at: t, public: true });
@@ -1305,6 +1336,14 @@ export class VillageLife {
     if (!k.by.includes(askerId)) k.by.push(askerId);
     const c = this.cases.get(about);
     if (c && !c.noticers.includes(who) && this.care(who, about) >= 0.6) c.noticers.push(who);
+  }
+
+  // Missing, or the watch is out searching and they know it.
+  knowsSought(who, about) {
+    const c = this.cases.get(about);
+    if (!c) return false;
+    if (c.status === 'search') return this.seerKnows(c, who);
+    return this.knowsMissing(who, about);
   }
 
   knowsMissing(who, about) {
@@ -1636,6 +1675,20 @@ export class VillageLife {
     }
     // Missing turned to grief, or found: she hears when the village does.
     for (const c of this.cases.all()) {
+      if (c.lyra.knew != null && c.status === 'missing' && c.lyra.missing == null) {
+        c.lyra.missing = t;
+        const care = this.lyraCare(c.about);
+        safe(() => mind?.remember?.(`${this.name(c.about)} is missing. The village looked all day; nobody knows where ${pronoun(c.about, 'he')} is, or why.`, { importance: 4 + Math.round(care * 4), about: [c.about], tags: ['missing'], type: 'event', emotion: care >= 0.6 ? 'fear' : 'sadness' }));
+        safe(() => mind?.feel?.(care >= 0.6 ? 'fear' : 'sadness', 0.1 + care * 0.3, `${this.name(c.about)} is missing`));
+      }
+      if (c.lyra.knew != null && c.status === 'found' && c.lyra.relieved == null) {
+        const r = c.foundRumor ? safe(() => this.village?.rumors?.get?.(c.foundRumor)) : null;
+        if (r?.heardBy?.includes('lyra') || c.foundBy === 'lyra') {
+          c.lyra.relieved = t;
+          safe(() => mind?.remember?.(`${this.name(c.about)} turned up safe${c.foundBy ? `; ${c.foundBy === 'lyra' ? 'I' : c.foundBy === 'player' ? this.playerName() : this.name(c.foundBy)} found ${pronoun(c.about, 'him')}` : ''}${c.foundPlace ? ` ${placeAt(c.foundPlace, this.placeName(c.foundPlace))}` : ''}.`, { importance: 3, about: [c.about], tags: ['missing', 'found'], type: 'event', emotion: 'joy' }));
+          safe(() => mind?.feel?.('joy', 0.15, `${this.name(c.about)} is safe`));
+        }
+      }
       if (c.status === 'dead' && c.lyra.knew != null && !c.lyra.grieved) {
         const r = c.deadRumor ? safe(() => this.village?.rumors?.get?.(c.deadRumor)) : null;
         if (r?.heardBy?.includes('lyra')) {
@@ -2292,6 +2345,7 @@ export class VillageLife {
           lastSeen: last ? `${whenPhrase(last.t, t)}, ${placeAt(last.place, this.placeName(last.place))}${last.by && last.by !== 'player' ? ` (${this.name(last.by)} saw ${pronoun(c.about, 'him')})` : ''}` : null,
           searching: Object.entries(c.searchers || {}).map(([id, p]) => ({ id, name: this.name(id), place: this.placeName(p) })),
           searched: Object.keys(c.searched || {}).map((p) => this.placeName(p)),
+          found: c.status === 'found' && c.foundAt != null ? `${clockText(c.foundAt)}${c.foundBy ? `, by ${c.foundBy === 'player' ? 'you' : this.name(c.foundBy)}` : ''}${c.foundPlace ? `, ${placeAt(c.foundPlace, this.placeName(c.foundPlace))}` : ''}` : null,
           timeline: storyOf(c.timeline).map((x) => ({ time: clockText(x.t), text: x.text, kind: x.kind })),
         };
       });

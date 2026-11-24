@@ -36,7 +36,7 @@ export const RUMOR_KINDS = {
   threat: { text: '{stranger} threatened {v}', you: 'you threatened {v}', valence: -0.55, severity: 0.55 },
   apology: { text: '{stranger} said sorry to {v}, and meant it, by the look of it', you: 'you said sorry to {v}', valence: 0.3, severity: 0.25 },
   // Errands and the missing (DESIGN §28, village_life): news about villagers, not the player.
-  asking_after: { text: 'nobody can find {v}', you: 'nobody can find {v}', valence: -0.1, severity: 0.45, about: 'village' },
+  asking_after: { text: 'nobody can find {v}', you: 'nobody can find {v}', valence: -0.2, severity: 0.45, about: 'village' },
   missing: { text: '{v} has gone missing, and nobody knows why', you: '{v} has gone missing', valence: -0.35, severity: 0.8, about: 'village' },
   found_safe: { text: '{v} has turned up safe', you: '{v} has turned up safe', valence: 0.35, severity: 0.6, about: 'village' },
   found_dead: { text: '{v} was found dead', you: '{v} was found dead', valence: -1, severity: 1, about: 'village' },
@@ -139,6 +139,7 @@ export class Rumors {
       if (!r.heardBy.includes(tellerId) || r.heardBy.includes(listenerId)) continue;
       if (r.victim === listenerId) continue; // nobody tells you what happened to you
       if (tellerId === 'lyra' && r.about === 'lyra') continue; // she doesn't gossip about her own choices
+      if (r.about === 'village' && r.victim && !this.current(r, tellerId, listenerId)) continue;
       const age = Math.max(0, nowT - r.t) / 900; // days
       const score = r.severity * 2 + Math.abs(r.valence) - age * 0.6;
       if (score <= -0.5) continue;
@@ -146,6 +147,20 @@ export class Rumors {
     }
     out.sort((a, b) => b[0] - a[0]);
     return out.map((x) => x[1]);
+  }
+
+  // News about a villager (missing, found…) is worth passing on only while it is the latest
+  // about them, never by the person it is about, and good news only to those who heard
+  // the bad ("Garrick's turned up" means nothing to someone who never knew he was lost).
+  current(r, tellerId, listenerId) {
+    if (r.victim === tellerId) return false;
+    let heardTrouble = r.kind !== 'found_safe';
+    for (const o of this.list) {
+      if (o === r || o.about !== 'village' || o.victim !== r.victim) continue;
+      if (o.t > r.t) return false;
+      if (!heardTrouble && o.kind !== 'found_safe' && o.heardBy.includes(listenerId)) heardTrouble = true;
+    }
+    return heardTrouble;
   }
 
   // The teller's own version of the clause (still with placeholders).

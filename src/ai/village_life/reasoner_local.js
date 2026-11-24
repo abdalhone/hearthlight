@@ -92,16 +92,24 @@ export function decideLocal(I, { rng = Math.random, say = () => '', think = () =
     if (asked.size >= 1 || I.steps >= 3) return out('give_up', null, 'giveUp', 'giveUp', {});
   }
 
+  // Seen not an hour ago: they are about somewhere, only not here. No matter for the watch;
+  // the errand can wait until they turn up.
+  const recent = I.lastKnownAgo != null && I.lastKnownAgo < 1.2 && !(I.child && I.night) && !I.caseSearching;
+  if (recent && (asked.size >= 1 || I.steps >= 2)) {
+    const lk = I.lastKnown || {};
+    return out('give_up', null, lk.fromName ? 'about' : 'aboutOwn', 'later', { from: lk.fromName || '', when: lk.when || 'just now' }, `About the village somewhere: seen ${lk.when || 'just now'}.`);
+  }
+
   // The watch itself: once it is clearly more than a stepped-out hour, it searches.
   if (I.isWatch && !I.caseSearching && I.elapsedH >= 1 && (asked.size >= 2 || I.caseStatus === 'asking')) {
-    return out('alarm', null, 'alarm', null, { when: I.ownSeen?.when || 'this morning' });
+    return out('alarm', null, 'alarm', null, { when: I.ownSeen?.since || 'this morning' });
   }
 
   // Enough asking: it is time someone told the watch.
   const worried = care >= 0.6 || I.kind === 'worried';
   const family = care >= 0.95;
   if (!I.watchKnows && !I.isWatch && ((family && asked.size >= 1 && I.elapsedH >= 1) || (asked.size >= 2 && worried && I.elapsedH >= 1.5) || (asked.size >= 3 && I.elapsedH >= 2.5) || (I.elapsedH >= 4 && asked.size >= 1))) {
-    return out('alarm', null, 'alarm', null, { when: I.ownSeen?.when || 'this morning' });
+    return out('alarm', null, 'alarm', null, { when: I.ownSeen?.since || 'this morning' });
   }
 
   // Lyra sees more than most, and she is right here.
@@ -123,7 +131,7 @@ export function decideLocal(I, { rng = Math.random, say = () => '', think = () =
     const p = (I.places || []).find((x) => !x.checked && !x.origin && !x.public);
     if (p) return out('search', p.id, 'search', null, placeVars(p));
   }
-  if (!I.watchKnows && (worried || I.elapsedH >= 3)) return out('alarm', null, 'alarm', null, { when: I.ownSeen?.when || 'this morning' });
+  if (!I.watchKnows && (worried || I.elapsedH >= 3)) return out('alarm', null, 'alarm', null, { when: I.ownSeen?.since || 'this morning' });
 
   return out('give_up', null, 'giveUp', 'giveUp', {});
 }

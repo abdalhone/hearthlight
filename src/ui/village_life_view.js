@@ -35,6 +35,14 @@ export function lifeSections(view) {
   return { cases: view.cases || [], troubled, everyone, events: (view.events || []).slice(-24).reverse() };
 }
 
+// Still looking, or the day's scares are over.
+export function casesHeading(cases) {
+  const list = cases || [];
+  if (list.some((c) => c.status !== 'found' && c.status !== 'dead')) return 'The village is looking for';
+  if (list.some((c) => c.status === 'dead')) return 'Mourned in Hearthvale';
+  return 'Turned up safe';
+}
+
 export function caseLine(c) {
   const [label] = STATUS[c.status] || [c.status];
   return `${c.name}: ${label.toLowerCase()}`;
@@ -106,7 +114,7 @@ export class VillageLifePanel {
 
     // Missing, searched for, found.
     if (S.cases.length) {
-      const sec = h('section', { class: 'life-sec' }, h('h3', { class: 'life-h', text: 'The village is looking for' }));
+      const sec = h('section', { class: 'life-sec' }, h('h3', { class: 'life-h', text: casesHeading(S.cases) }));
       for (const c of S.cases) sec.append(this.caseCard(c));
       body.append(sec);
     }
@@ -148,7 +156,8 @@ export class VillageLifePanel {
     card.append(head);
     const facts = h('dl', { class: 'life-facts' });
     const fact = (k, v) => v && facts.append(h('dt', { text: k }), h('dd', { text: v }));
-    fact('Last seen', c.lastSeen || 'nobody can say');
+    if (c.found) fact('Found', c.found);
+    fact('Last seen', c.found ? null : c.lastSeen || 'nobody can say');
     fact('Missed since', c.since);
     if (c.searching.length) fact('Searching now', c.searching.map((s) => `${s.name} (${s.place})`).join(', '));
     if (c.searched.length) fact('Searched', c.searched.join(', '));

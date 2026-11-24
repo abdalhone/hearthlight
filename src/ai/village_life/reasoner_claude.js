@@ -23,7 +23,7 @@ export const THINK_RULES = [
   'Think as each of them, from ONLY what the brief says they know. Never invent sightings, injuries, deaths, crimes, secrets or reasons why someone is gone. They do not know why; at most they guess, as people do. Keep each villager in their own voice (the voice note), short and spoken.',
   'For each villager give: "thought" (their private first-person thought, one short sentence), "say" (what they say aloud right now, one short sentence in their voice, or "" to say nothing), "action" (one of that villager\'s options), "target" (an id from that option\'s list; null for wait, give_up and alarm; "lyra" for tell_lyra) and "belief" (a short guess where the person might be, or null).',
   'Actions: go = walk to a place and look; search = search a place properly; ask = ask a person; wait = wait here a while; alarm = tell the watch (Captain Rowan or Wys); give_up = leave it for today; tell_lyra = ask Lyra, who sees a lot.',
-  'People are sensible: look where the person usually is, ask whoever is close or most likely to know, follow any word of where they went, and when it stops making sense either tell the watch or let it go. Family and close friends do not let it go.',
+  'People are sensible: look where the person usually is, ask whoever is close or most likely to know, follow any word of where they went, and when it stops making sense either tell the watch or let it go. Family and close friends do not let it go. Someone seen within the last hour is only out and about: no matter for the watch; give_up (try again later) is sensible.',
   'Reply with JSON only: {"decisions":[...]}, one entry per villager, in the order given.',
 ].join('\n');
 
@@ -93,6 +93,7 @@ export function briefFor(I, i) {
       else if (h.kind === 'guess') knows.push(`${h.fromName} guessed ${h.placeName}`);
       else knows.push(`${h.fromName} has not seen them`);
     }
+    if (I.lastKnownAgo != null) knows.push(`freshest word of them is ${I.lastKnownAgo} h old`);
     L.push(`Knows: ${knows.join('; ')}.`);
     L.push(`Cares: ${careText(I.care)}. Watch: ${I.caseSearching ? 'already searching' : I.watchKnows ? 'told' : 'not told'}.`);
   }
