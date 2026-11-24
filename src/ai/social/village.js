@@ -320,7 +320,8 @@ export class Village {
       a,
       b,
       topic: ex.topic || 'small',
-      summary: opts.summary || summarize(a, b, ex.topic, { names: (x) => this.name(x), rumorText }),
+      // The teller first: news told back the other way round is still "B told A".
+      summary: opts.summary || (rumor && ex.teller === b ? summarize(b, a, ex.topic, { names: (x) => this.name(x), rumorText }) : summarize(a, b, ex.topic, { names: (x) => this.name(x), rumorText })),
       lines: lines.map((l) => ({ speaker: l.speaker, text: l.text })),
       effects: { [`${a}>${b}`]: effects.ab, [`${b}>${a}`]: effects.ba, rumor: rumor?.id || undefined },
       source: opts.source || 'local',

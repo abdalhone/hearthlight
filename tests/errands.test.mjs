@@ -535,6 +535,10 @@ test('a failing or slow Claude never stops the village: the local reasoner carri
   assert.ok(life.claude.failed >= 1, 'the call timed out');
   const byLocal = life.problems.flatMap((p) => p.history).filter((h) => h.by === 'local');
   assert.ok(byLocal.length >= 3, `villagers kept deciding (${byLocal.length})`);
+  // No new call from here; the one in flight (if any) times out and its villagers decide alone.
+  life.claude.disabled = true;
+  await new Promise((r) => setTimeout(r, 200));
+  await runAsync(game, 2);
   assert.ok(!life.problems.some((p) => p.awaiting), 'nobody is left waiting on Claude');
   assert.ok(life.cases.get('garrick'));
 });
