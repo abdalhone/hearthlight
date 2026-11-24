@@ -845,3 +845,6 @@ export const LINES = {
   thought_order: ['Alright. I know what to do.', 'Simple enough.', 'Good plan. Mostly.'],
   thought_question: ['They keep asking about me. Nobody has in a long time.', 'Curious one, this traveler.'],
 };
+
+// Situations spoken as world barks (bubbles, not chat).
+export const BARK_SITUATIONS = Object.keys(LINES).filter((k) => !/^(?:ack_|thought_|feel_|need_|opinion_|inventory_|time_|weather_|danger_|know_|where_|today_|memory_|goals_|quest_|past_|insult_|flirt_|apology_|player_(?:sad|tired|hungry|scared|happy|bored|hurt_words|lonely)$|greet|farewell|goodnight)/.test(k));
