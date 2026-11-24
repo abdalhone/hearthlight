@@ -38,7 +38,8 @@ const EAT_LINES = {
 };
 
 export class Mind {
-  constructor(game, owner) {
+  // opts.lorebook: a Lorebook to build her past and knowledge from (default: lore/story.js).
+  constructor(game, owner, opts = {}) {
     this.game = game;
     this.owner = owner;
     this.soul = defaultSoul();
@@ -46,7 +47,7 @@ export class Mind {
     this.emotions = this.affect.values;
     this.needsEngine = new Needs();
     this.needs = this.needsEngine.values;
-    this.lorebook = defaultLorebook();
+    this.lorebook = opts.lorebook || defaultLorebook();
     this.life = buildLife(this.lorebook);
     this.memory = new Memory({ now: () => this.now() });
     this.knowledgeStore = new KnowledgeStore({ now: () => this.now() });
