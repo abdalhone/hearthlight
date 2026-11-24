@@ -1,6 +1,7 @@
 import { TARGET_VIRTUAL_MIN, TILE } from '../core/constants.js';
 import { viewMetrics } from './text_layout.js';
 import { TitleScene } from './title_scene.js';
+import { bedUnder, drawSleeperInBed } from '../art/characters_bed.js';
 
 // The renderer. The world is drawn into a low-res buffer (about 240 world px on the
 // short side) and upscaled by an integer factor, so pixels stay crisp; the buffer is
@@ -230,6 +231,7 @@ export class Renderer {
       if (typeof d.draw !== 'function') continue;
       try {
         d.draw(b, ox, oy, time);
+        if (d._sleeperStamp === this._sleepStamp && d.objType === 'bed') drawSleeperInBed(b, g.atlas, d._sleeper, d, ox, oy, time);
       } catch (err) {
         this._report(`draw:${d.objType || d.type || 'thing'}`, err);
       }
@@ -312,10 +314,21 @@ export class Renderer {
       if (o.x >= x0 && o.x <= x1 && o.y >= y0 && o.y <= y1) list.push(o);
     }
     const ents = g.entities?.all?.() || EMPTY;
+    const stamp = (this._sleepStamp = (this._sleepStamp || 0) + 1);
     for (let i = 0; i < ents.length; i++) {
       const e = ents[i];
       if (e.removed || e.hidden) continue;
-      if (e.x >= x0 && e.x <= x1 && e.y >= y0 && e.y <= y1) list.push(e);
+      if (e.x < x0 || e.x > x1 || e.y < y0 || e.y > y1) continue;
+      // Someone asleep in a bed is drawn with the bed, lying along it (DESIGN §19.8).
+      if (e.state === 'sleep' && e.type === 'actor') {
+        const bed = bedUnder(g, e);
+        if (bed && !bed.hidden) {
+          bed._sleeper = e;
+          bed._sleeperStamp = stamp;
+          continue;
+        }
+      }
+      list.push(e);
     }
     list.sort(bySortY);
     return list;
