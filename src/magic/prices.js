@@ -1,0 +1,574 @@
+import { defineRegistry } from './registry.js';
+import { Shapes } from './shapes.js';
+import { STATUS_POTENCY } from './balance.js';
+
+// PRICES: power with a cost (DESIGN §25) — the Weave's fourth family. A price rides on
+// any weave exactly like a twist (registry entries, compiled into the plan, hooks
+// allowed), and every cast of that weave pays it: a GAIN and a COST, both timed
+// modifiers on the shared stat pipeline (src/core/stats.js). The runtime (`game.prices`)
+// owns what a modifier cannot: berserk's end (the heart gives out: player.fall({ window:
+// 30, cause: 'berserk' })), lastlight's once-per-sleep save, emberblood's burn, oath's
+// tie to Lyra.
+//
+// Entry format (get() fills the rest):
+// {
+//   id, name, adj ('Blood-bought': name fragment), color, glyph,
+//   gain: { label, seconds, add, pct, mul },        null = no timed gain
+//   cost: { label, seconds, add, pct, mul },        seconds null = until it is lifted
+//   gainText, costText (the red line), sentence (the Spellbook's words), lyra (her notice),
+//   refresh: true (a new cast restarts the timers) | false (it runs its course),
+//   onCast(rt, caster, plan), onPlan(plan), and any of the twist hooks.
+// }
+// Surge (a self-cast shape registered here) lets essences choose what a weave empowers.
+
+export const PRICE_SLOTS = 1; // prices a weave may carry
+
+export const PRICES = {
+  bloodprice: {
+    name: 'Bloodprice',
+    adj: 'Blood-bought',
+    color: '#ff5a5a',
+    gain: { label: '+20% damage', seconds: 15, pct: { dmgDealt: 0.2 } },
+    cost: { label: 'Max health −40%', seconds: 120, mul: { maxHp: 0.6 } },
+    gainText: '+20% damage for 15 s',
+    costText: 'max health −40% for 2 min',
+    sentence: 'Paid in blood: it hits harder for a while, and your body is smaller for longer.',
+    lyra: 'You paid for that with your own blood. I saw it go out of you.',
+    refresh: true,
+  },
+  berserk: {
+    name: 'Berserk',
+    adj: 'Berserk',
+    color: '#ff3b2f',
+    gain: { label: 'Berserk: strength ×2, +40% speed', seconds: 120, mul: { atk: 2 }, pct: { speed: 0.4, swing: 0.5, castSpeed: 0.4 }, add: { poise: 1 } },
+    cost: { label: 'Your heart gives out when it ends', seconds: null },
+    gainText: 'strength ×2, +40% speed, faster swings and casts, no stagger for 2 min',
+    costText: 'when it ends your heart gives out: you fall, with 30 s to be saved',
+    sentence: 'The last measure. Two minutes of everything, and then nothing.',
+    lyra: "Stop. Stop! That isn't strength, that's your heart burning down.",
+    refresh: false,
+  },
+  glass: {
+    name: 'Glass',
+    adj: 'Glass',
+    color: '#bfe6ff',
+    gain: { label: '+50% weave power', seconds: 30, pct: { spellPower: 0.5 } },
+    cost: { label: 'Take +50% damage', seconds: 30, mul: { dmgTaken: 1.5 } },
+    gainText: '+50% weave power for 30 s',
+    costText: 'you take +50% damage for 30 s',
+    sentence: 'You turn to glass: everything you weave cuts deeper, and everything cuts you.',
+    lyra: 'You look like you would break if I touched you. Be careful.',
+    refresh: true,
+  },
+  overdraw: {
+    name: 'Overdraw',
+    adj: 'Overdrawn',
+    color: '#9a7dff',
+    gain: { label: 'Weaves cost no mana', seconds: 10, mul: { manaCost: 0 } },
+    cost: { label: 'No mana regeneration', seconds: 30, mul: { manaRegen: 0 } },
+    gainText: 'weaves cost no mana for 10 s',
+    costText: 'then no mana comes back for 30 s',
+    sentence: 'Borrowed weave: free for ten breaths, then the well runs dry.',
+    lyra: "You're spending light you don't have. It'll want paying back.",
+    refresh: false,
+  },
+  emberblood: {
+    name: 'Emberblood',
+    adj: 'Emberblood',
+    color: '#ff8a3a',
+    gain: { label: 'Emberblood: cast 30% faster', seconds: null, pct: { castSpeed: 0.3 } },
+    cost: { label: 'Lose 2% health a second', seconds: null },
+    gainText: 'cast 30% faster while it burns',
+    costText: 'lose 2% health every second until you douse it',
+    sentence: 'Your blood runs hot as a forge: weaves leave your hands faster while it burns you.',
+    lyra: "Your hands are smoking. Put it out. Please put it out.",
+    toggle: true,
+    refresh: true,
+  },
+  lastlight: {
+    name: 'Lastlight',
+    adj: 'Lastlight',
+    color: '#ffe08a',
+    gain: { label: 'Lastlight held', seconds: null },
+    cost: { label: 'Max health −50% until you sleep', seconds: null, mul: { maxHp: 0.5 } },
+    gainText: 'the next time you would fall, you rise whole instead (once per sleep)',
+    costText: 'when it saves you, max health −50% until you next sleep',
+    sentence: 'A light kept back for the last dark. It holds a wound shut once; it cannot restart a heart.',
+    lyra: "Whatever you just held back, I hope you never need it.",
+    refresh: false,
+  },
+  oath: {
+    name: 'Oath',
+    adj: 'Oathbound',
+    color: '#c9a6ff',
+    gain: { label: 'Oath: +30% to everything near Lyra', seconds: 45 },
+    cost: { label: 'When Lyra is hurt, so are you', seconds: 45 },
+    gainText: '+30% to everything while Lyra is near (45 s)',
+    costText: 'whatever hurts Lyra hurts you too',
+    sentence: 'Sworn to her: stronger at her side, and her wounds are yours.',
+    lyra: "I felt that. Like a thread pulled tight between us. ...Don't make me regret it.",
+    refresh: true,
+  },
+};
+
+const MOD_KEYS = ['add', 'pct', 'mul'];
+
+function fillPart(p) {
+  if (!p) return null;
+  const out = { label: p.label || '', seconds: Number.isFinite(p.seconds) ? p.seconds : null };
+  for (const k of MOD_KEYS) if (p[k]) out[k] = { ...p[k] };
+  return out;
+}
+
+function fillPrice(raw, id) {
+  const name = raw.name || id.charAt(0).toUpperCase() + id.slice(1);
+  return {
+    ...raw,
+    name,
+    adj: raw.adj || name,
+    color: raw.color || '#ff5a5a',
+    gain: fillPart(raw.gain),
+    cost: fillPart(raw.cost),
+    gainText: raw.gainText || raw.gain?.label || '',
+    costText: raw.costText || raw.cost?.label || '',
+    sentence: raw.sentence || '',
+    refresh: raw.refresh !== false,
+    toggle: !!raw.toggle,
+  };
+}
+
+export const Prices = defineRegistry('price', PRICES, fillPrice);
+export const getPrice = (id) => Prices.get(id);
+export const priceIds = () => Prices.ids();
+
+// The words a plan carries for its prices (Spellbook, tooltips).
+export function priceLines(plan) {
+  const out = [];
+  for (const d of plan?.priceDefs || []) out.push({ id: d.id, name: d.name, gain: d.gainText, cost: d.costText, color: d.color });
+  return out;
+}
+
+// ------------------------------------------------------------------ surge
+
+// What each essence empowers when a surge is woven at oneself (12 s at one essence;
+// blends share it out like statuses do).
+export const SURGE_BUFFS = {
+  raw: { label: 'weave power', pct: { spellPower: 0.12 } },
+  fire: { label: 'damage', pct: { dmgDealt: 0.12 } },
+  water: { label: 'healing', add: { hpRegen: 1.0 } },
+  frost: { label: 'armor', add: { def: 2, resist: 0.1 } },
+  storm: { label: 'quickness', pct: { castSpeed: 0.15, speed: 0.08 } },
+  earth: { label: 'stoneskin', add: { def: 3 } },
+  wind: { label: 'swiftness', pct: { speed: 0.18 }, add: { dodge: 0.05 } },
+  nature: { label: 'mending', add: { hpRegen: 0.8, resist: 0.05 } },
+  poison: { label: 'cruelty', add: { crit: 0.08 } },
+  light: { label: 'clarity', add: { crit: 0.05, critMul: 0.25 } },
+  dark: { label: 'hunger', add: { atk: 2 }, pct: { spellPower: 0.08 } },
+  iron: { label: 'iron', add: { def: 2, atk: 1 } },
+  song: { label: 'harmony', pct: { cooldown: -0.12 }, add: { resist: 0.08 } },
+};
+export const SURGE_SECONDS = 12;
+
+// The modifier a surge plan gives its caster.
+export function surgeModifier(plan, chargeK = 0) {
+  const ess = plan?.essences?.length ? plan.essences : ['raw'];
+  const pot = STATUS_POTENCY[ess.length] ?? 0.5;
+  const k = ess.length === 1 ? 1 : pot;
+  const mod = { add: {}, pct: {}, mul: {} };
+  const words = [];
+  for (const e of ess) {
+    const b = SURGE_BUFFS[e] || SURGE_BUFFS.raw;
+    words.push(b.label);
+    for (const part of ['add', 'pct']) for (const [s, v] of Object.entries(b[part] || {})) mod[part][s] = Math.round(((mod[part][s] || 0) + v * k) * 1000) / 1000;
+  }
+  const life = Math.max(0.6, Math.min(2.5, plan?.lifeMul || 1));
+  const seconds = Math.round(SURGE_SECONDS * life * (1 + 0.6 * Math.max(0, Math.min(1, chargeK))) * 10) / 10;
+  return { id: 'surge', source: 'surge', label: `Surge: ${[...new Set(words)].join(', ')}`, kind: 'buff', add: mod.add, pct: mod.pct, t: seconds, total: seconds, color: plan?.palette?.glow || '#c9a6ff', icon: 'surge' };
+}
+
+if (!Shapes.has('surge')) {
+  Shapes.register({
+    id: 'surge',
+    name: 'Surge',
+    noun: 'Surge',
+    kind: 'area',
+    harmless: true,
+    self: true,
+    base: { dmg: 0, cost: 12, cooldown: 9, speed: 0, range: 0, radius: 26, count: 1, life: 0.5 },
+    hits: 0,
+    aim: (p) => ({ type: 'ring', range: 0, radius: p.radius }),
+    describe: (n, noun) => `Pours ${noun} into you, empowering you for a while`,
+    emit(ctx) {
+      const p = ctx.plan;
+      for (let i = 0; i < ctx.count; i++) {
+        ctx.spawn('area', { mode: 'ring', x: ctx.ox, y: ctx.oy, angle: ctx.angle, r0: p.radius * 1.4, r1: 3, life: p.life, delay: i * 0.1, follow: true, dmg: 0 });
+      }
+      const rt = ctx.rt;
+      const g = rt?.game;
+      try {
+        g?.prices?.surge?.(ctx.caster, p, ctx.chargeK || 0);
+      } catch (err) {
+        rt?.warn?.('surge', err);
+      }
+    },
+  });
+}
+
+// ------------------------------------------------------------------ the runtime
+
+const OATH_NEAR = 112; // px: "while Lyra is near"
+const EMBER_DRAIN = 0.02; // of max health per second
+const FALL_WINDOW = 30;
+
+function safe(fn, fallback = null) {
+  try {
+    const v = fn();
+    return v === undefined ? fallback : v;
+  } catch {
+    return fallback;
+  }
+}
+
+export class PriceRuntime {
+  constructor(game) {
+    this.game = game;
+    this.state = this.fresh();
+    this.noticed = new Set(); // prices Lyra has already reacted to this session
+    this._emberAcc = 0;
+    this._oathPull = 0;
+    const bus = game.bus;
+    try {
+      bus?.on?.('spell_cast', (p) => this.onCast(p));
+      bus?.on?.('damage', (p) => this.onDamage(p));
+      bus?.on?.('player_wake', () => this.onSleep());
+      bus?.on?.('downed', (p) => {
+        if (p?.entity === game.player) this.onPlayerDown();
+      });
+    } catch {
+      /* the bus is optional in tests */
+    }
+  }
+
+  fresh() {
+    return { berserk: null, overdraw: null, ember: false, lastlight: null, oath: null };
+  }
+
+  get stats() {
+    return this.game.stats || null;
+  }
+
+  player() {
+    return this.game.player || null;
+  }
+
+  isPlayer(a) {
+    return !!a && (a === this.game.player || a.id === 'player');
+  }
+
+  unlocked(id) {
+    return !!this.game.magic?.unlocked?.prices?.has?.(id);
+  }
+
+  // ---------------------------------------------------------------- paying
+
+  onCast(p) {
+    const caster = p?.caster;
+    const plan = p?.plan;
+    if (!this.isPlayer(caster) || !plan?.priceDefs?.length) return;
+    this.pay(caster, plan);
+  }
+
+  pay(caster, plan) {
+    for (const d of plan.priceDefs || []) {
+      if (!d) continue;
+      let first = false;
+      try {
+        first = this.apply(caster, d, plan);
+      } catch (err) {
+        console.warn(`[prices] ${d.id} failed`, err);
+      }
+      try {
+        d.onCast?.(this, caster, plan);
+      } catch (err) {
+        console.warn(`[prices] ${d.id} onCast failed`, err);
+      }
+      this.game.bus?.emit?.('price_paid', { price: d.id, caster, plan, first: !!first });
+    }
+  }
+
+  modId(id, part) {
+    return `price:${id}:${part}`;
+  }
+
+  addPart(actor, d, part, extra = {}) {
+    const p = d[part];
+    if (!p || !this.stats) return null;
+    return this.stats.addModifier(actor, {
+      id: this.modId(d.id, part),
+      source: `price:${d.id}`,
+      label: p.label,
+      kind: part,
+      add: p.add,
+      pct: p.pct,
+      mul: p.mul,
+      t: Number.isFinite(extra.t) ? extra.t : p.seconds,
+      total: Number.isFinite(extra.t) ? extra.t : p.seconds,
+      color: d.color,
+      icon: d.id,
+      price: d.id,
+      tap: extra.tap || null,
+    });
+  }
+
+  active(actor, id, part = 'gain') {
+    return !!this.stats?.getModifier(actor, this.modId(id, part));
+  }
+
+  // Returns true when this cast started the price (rather than refreshing it).
+  apply(actor, d, plan) {
+    const S = this.state;
+    const g = this.game;
+    switch (d.id) {
+      case 'berserk': {
+        if (S.berserk) return false; // it runs its course; casting again changes nothing
+        S.berserk = { t: d.gain.seconds };
+        this.addPart(actor, d, 'gain');
+        this.addPart(actor, d, 'cost', { t: d.gain.seconds });
+        this.toast(`Berserk. ${cap(d.gainText)}. When it ends, your heart gives out.`, 'warn');
+        safe(() => g.audio?.play?.('levelup', { pitch: 0.5, volume: 0.9 }));
+        safe(() => g.camera?.shake?.(5, 0.4));
+        return true;
+      }
+      case 'overdraw': {
+        if (S.overdraw?.gain > 0) return false;
+        S.overdraw = { gain: d.gain.seconds, cost: 0 };
+        this.addPart(actor, d, 'gain');
+        return true;
+      }
+      case 'emberblood': {
+        const was = S.ember;
+        S.ember = true;
+        this.addPart(actor, d, 'gain', { tap: 'douse' });
+        this.addPart(actor, d, 'cost', { tap: 'douse' });
+        if (!was) this.toast('Emberblood burns in you. Tap its flame to douse it.', 'warn');
+        return !was;
+      }
+      case 'lastlight': {
+        if (S.lastlight === 'armed') return false;
+        if (S.lastlight === 'used') {
+          this.toast('Lastlight is spent until you sleep.', 'info');
+          return false;
+        }
+        S.lastlight = 'armed';
+        this.addPart(actor, d, 'gain');
+        return true;
+      }
+      case 'oath': {
+        const was = !!S.oath;
+        S.oath = { t: d.gain.seconds };
+        this.addPart(actor, d, 'cost');
+        return !was;
+      }
+      default: {
+        const was = this.active(actor, d.id, 'gain') || this.active(actor, d.id, 'cost');
+        if (!d.refresh && this.active(actor, d.id, 'gain')) return false;
+        this.addPart(actor, d, 'gain');
+        this.addPart(actor, d, 'cost');
+        if (!was && d.costText) this.toast(`${d.name}: ${d.gainText}. Price: ${d.costText}.`, 'warn');
+        return !was;
+      }
+    }
+  }
+
+  // A surge woven at oneself (the shape's emit calls this).
+  surge(caster, plan, chargeK = 0) {
+    if (!caster || !this.stats) return null;
+    const mod = surgeModifier(plan, chargeK);
+    this.stats.addModifier(caster, mod);
+    if (this.isPlayer(caster)) this.game.bus?.emit?.('surge', { caster, plan, mod });
+    return mod;
+  }
+
+  // ---------------------------------------------------------------- the special ones
+
+  // Called by combat.down before the player falls: lastlight holds the wound shut once.
+  preventFall(target) {
+    if (!this.isPlayer(target) || this.state.lastlight !== 'armed') return false;
+    if (target._fallOpts?.cause === 'berserk') return false; // it cannot restart a heart
+    const d = Prices.get('lastlight');
+    this.state.lastlight = 'used';
+    this.stats?.removeModifier(target, this.modId('lastlight', 'gain'));
+    this.addPart(target, d, 'cost');
+    this.stats?.refresh(target);
+    target._fallOpts = null;
+    target.downed = false;
+    target.hp = target.maxHp;
+    target.invuln = Math.max(target.invuln || 0, 1.5);
+    const g = this.game;
+    safe(() => g.particles?.emit?.('levelup', target.x, target.y - 10, { count: 26, color: '#ffe08a', speed: 50, life: 1 }));
+    safe(() => g.lighting?.flash?.({ x: target.x, y: target.y - 10, r: 110, color: '#ffe08a', intensity: 1, duration: 0.9 }));
+    safe(() => g.audio?.play?.('revive', { x: target.x, y: target.y, pitch: 1.3 }));
+    this.toast('Lastlight! You rise whole. Your body will pay for it until you sleep.', 'warn');
+    g.bus?.emit?.('price_triggered', { price: 'lastlight', actor: target });
+    return true;
+  }
+
+  douse(id = 'emberblood') {
+    const P = this.player();
+    if (id !== 'emberblood' || !this.state.ember || !P) return false;
+    this.state.ember = false;
+    this.stats?.removeModifier(P, 'price:emberblood');
+    this._emberAcc = 0;
+    this.toast('You douse the emberblood.', 'info');
+    this.game.bus?.emit?.('price_ended', { price: 'emberblood', actor: P, why: 'doused' });
+    return true;
+  }
+
+  onDamage(p) {
+    const g = this.game;
+    const P = g.player;
+    if (!this.state.oath || !P || !p?.target || p.target !== g.companion || p.kind === 'oath') return;
+    if (!(p.amount > 0) || !P.isAlive?.()) return;
+    // Her wounds are yours.
+    safe(() => g.combat?.damage?.(null, P, p.amount, { kind: 'oath', exact: true, crit: false, penetration: 99, noHitStop: true, knockback: 0, invuln: 0 }));
+  }
+
+  oathActive() {
+    const g = this.game;
+    const P = g.player;
+    const L = g.companion;
+    if (!this.state.oath || !P || !L || L.removed || L.downed || L.dead) return false;
+    return Math.hypot(P.x - L.x, P.y - L.y) <= OATH_NEAR;
+  }
+
+  // Live modifier for the pipeline: the oath's gain holds only while she is near.
+  provide(actor) {
+    if (!this.isPlayer(actor) || !this.oathActive()) return null;
+    const d = Prices.get('oath');
+    const t = this.state.oath.t;
+    return [{ id: 'price:oath:gain', source: 'price:oath', label: d.gain.label, kind: 'gain', pct: { atk: 0.3, spellPower: 0.3, def: 0.3, speed: 0.1, crit: 0.3, castSpeed: 0.1 }, t, total: d.gain.seconds, color: d.color, icon: 'oath', price: 'oath' }];
+  }
+
+  onPlayerDown() {
+    // Falling puts out the ember.
+    if (this.state.ember) {
+      this.state.ember = false;
+      const P = this.player();
+      if (P) this.stats?.removeModifier(P, 'price:emberblood');
+    }
+  }
+
+  onSleep() {
+    const P = this.player();
+    if (this.state.lastlight === 'used') this.state.lastlight = null;
+    if (P) this.stats?.removeModifier(P, this.modId('lastlight', 'cost'));
+  }
+
+  update(dt) {
+    if (!(dt > 0)) return;
+    const S = this.state;
+    const P = this.player();
+    if (!P) return;
+    if (S.berserk) {
+      S.berserk.t -= dt;
+      if (S.berserk.t <= 0) this.endBerserk(P);
+    }
+    if (S.overdraw) {
+      if (S.overdraw.gain > 0) {
+        S.overdraw.gain -= dt;
+        if (S.overdraw.gain <= 0) {
+          S.overdraw.gain = 0;
+          const d = Prices.get('overdraw');
+          this.stats?.removeModifier(P, this.modId('overdraw', 'gain'));
+          this.addPart(P, d, 'cost');
+          S.overdraw.cost = d.cost.seconds;
+        }
+      } else if (S.overdraw.cost > 0) {
+        S.overdraw.cost -= dt;
+        if (S.overdraw.cost <= 0) S.overdraw = null;
+      } else S.overdraw = null;
+    }
+    if (S.oath) {
+      S.oath.t -= dt;
+      if (S.oath.t <= 0) {
+        S.oath = null;
+        this.stats?.removeModifier(P, 'price:oath');
+      }
+    }
+    if (S.ember && P.isAlive?.()) {
+      this._emberAcc += P.maxHp * EMBER_DRAIN * dt;
+      const whole = Math.floor(this._emberAcc);
+      if (whole > 0) {
+        this._emberAcc -= whole;
+        if (P.hp - whole <= 1) {
+          P.hp = 1;
+          this.state.ember = false;
+          this.stats?.removeModifier(P, 'price:emberblood');
+          this.toast('The emberblood gutters out. There is nothing left in you to burn.', 'warn');
+          this.game.bus?.emit?.('price_ended', { price: 'emberblood', actor: P, why: 'spent' });
+        } else {
+          P.hp -= whole;
+          P.flash = Math.max(P.flash || 0, 0.25);
+        }
+      }
+    }
+  }
+
+  // Two minutes are up: the heart gives out.
+  endBerserk(P) {
+    this.state.berserk = null;
+    this.stats?.removeModifier(P, 'price:berserk');
+    this.game.bus?.emit?.('price_ended', { price: 'berserk', actor: P, why: 'heart' });
+    if (P.downed || P.dead) return false;
+    this.toast('Your heart gives out.', 'warn');
+    if (typeof P.fall === 'function') return P.fall({ window: FALL_WINDOW, cause: 'berserk' });
+    return false;
+  }
+
+  // What the HUD shows: [{ id, price, label, kind, left, total, color, tap }].
+  timers(actor = this.player()) {
+    if (!actor || !this.stats) return [];
+    const out = [];
+    for (const m of this.stats.modifiers(actor)) {
+      if (!m || !(m.price || m.kind === 'buff' || m.kind === 'weak')) continue;
+      out.push({ id: m.id, price: m.price || null, label: m.label, kind: m.kind, left: m.t, total: m.total, color: m.color, icon: m.icon || m.price || m.source, tap: m.tap || null });
+    }
+    if (this.state.berserk) {
+      const b = out.find((x) => x.id === 'price:berserk:cost');
+      if (b) b.left = this.state.berserk.t;
+    }
+    return out;
+  }
+
+  toast(text, kind = 'info') {
+    safe(() => this.game.ui?.toast?.(text, kind));
+  }
+
+  serialize() {
+    const S = this.state;
+    return {
+      berserk: S.berserk ? Math.round(S.berserk.t * 10) / 10 : null,
+      overdraw: S.overdraw ? { gain: Math.round(S.overdraw.gain * 10) / 10, cost: Math.round(S.overdraw.cost * 10) / 10 } : null,
+      ember: !!S.ember,
+      lastlight: S.lastlight === 'armed' || S.lastlight === 'used' ? S.lastlight : null,
+      oath: S.oath ? Math.round(S.oath.t * 10) / 10 : null,
+    };
+  }
+
+  deserialize(d) {
+    const S = this.fresh();
+    if (d && typeof d === 'object') {
+      if (Number.isFinite(d.berserk) && d.berserk > 0) S.berserk = { t: d.berserk };
+      if (d.overdraw && typeof d.overdraw === 'object') S.overdraw = { gain: Math.max(0, Number(d.overdraw.gain) || 0), cost: Math.max(0, Number(d.overdraw.cost) || 0) };
+      S.ember = !!d.ember;
+      if (d.lastlight === 'armed' || d.lastlight === 'used') S.lastlight = d.lastlight;
+      if (Number.isFinite(d.oath) && d.oath > 0) S.oath = { t: d.oath };
+    }
+    this.state = S;
+  }
+}
+
+function cap(s) {
+  const t = String(s || '');
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
