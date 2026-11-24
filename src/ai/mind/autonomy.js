@@ -134,6 +134,7 @@ export class Autonomy {
     this.meal = { day: -1, block: -1 };
     this.rentDay = -1;
     this.lastJobId = null;
+    this._pendingBind = null;
     this.calibrated = false;
     this._heard = null;
     this._promiseSeq = 0;
@@ -1165,7 +1166,7 @@ export class Autonomy {
   _goGone(reason, lineKey, vars, victim = null) {
     const cause = reason === 'downed' ? 'downed' : reason === 'villager' ? 'villager_gone' : 'violence';
     this.setCompanionship('gone', '', { cause, vars, lineKey, goneReason: reason, target: vars?.target, victim });
-    if (reason !== 'downed') this._act('bind', { target: 'player' });
+    if (reason !== 'downed') this._bindPlayer();
   }
 
   // Binding Light, then flee or stand her ground, by personality and fear.
@@ -1173,7 +1174,7 @@ export class Autonomy {
     const s = this.stats();
     const P = this.personality();
     const l = this.lyra();
-    this._act('bind', { target: 'player' });
+    this._bindPlayer();
     const hurt = l?.maxHp ? l.hp / l.maxHp < 0.5 : false;
     if (s.fear >= 40 || P.neuroticism >= 0.55 || hurt || P.agreeableness >= 0.8) {
       this._act('flee', { target: 'player', value: this._safePlace() });
@@ -1189,9 +1190,36 @@ export class Autonomy {
 
   // Bind the player, step between them and the victim, call the guards.
   _bindAndGuard(victim) {
-    this._act('bind', { target: 'player' });
+    this._bindPlayer();
     if (victim?.id) this._act('guard', { target: victim.id });
     this.say(this.line('deed_villager_bind'), { force: true, kind: 'shout', target: this.game?.entities?.get?.('rowan') || null });
+  }
+
+  // Binding Light on the player (behavior's `bind`, run as her own act). A blow can knock
+  // her out of reach or line of sight for a moment: she tries again for two seconds.
+  _bindPlayer() {
+    const r = this._act('bind', { target: 'player' });
+    if (r && r.ok) {
+      this._pendingBind = null;
+      return true;
+    }
+    if (r && this.game?.actions?.has?.('bind')) this._pendingBind = { until: this.now() + 2.5 };
+    return false;
+  }
+
+  _retryBind() {
+    const pb = this._pendingBind;
+    if (!pb) return;
+    const l = this.lyra();
+    if (this.now() > pb.until || !l || l.downed || this.companionship === 'together') {
+      this._pendingBind = null;
+      return;
+    }
+    if (this.player()?.rootTime > 0) {
+      this._pendingBind = null;
+      return;
+    }
+    if (this._playerNear(140)) this._bindPlayer();
   }
 
   // The guards, the inn or the chapel: whichever is nearer to her than to the player.
@@ -2388,6 +2416,7 @@ export class Autonomy {
       this._hourly(n);
     }
     this._watchDowned(step);
+    if (this._pendingBind) this._retryBind();
     if (this.queued.length) this._flushQueued();
     this._followPlan();
     this._checkPromises();
