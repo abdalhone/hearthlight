@@ -266,6 +266,7 @@ export function buildInput(life, prob) {
     night,
     joined: prob.history.some((h) => h.action === 'search'),
     backs: prob.history.filter((h) => h.action === 'go' && h.target === prob.place).length,
+    searches: prob.history.filter((h) => h.action === 'search').length,
     lyraNear: !!(lyra && npc && Math.hypot(lyra.x - npc.x, lyra.y - npc.y) < 160),
     lyraAsked: prob.asked.includes('lyra'),
     belief: prob.belief,

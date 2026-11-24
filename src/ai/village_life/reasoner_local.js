@@ -82,10 +82,13 @@ export function decideLocal(I, { rng = Math.random, say = () => '', think = () =
 
   // The watch is already searching: those who love them join in; others leave it to the watch.
   if (I.caseSearching && !I.isWatch) {
-    if (care >= 0.6 && (I.options || []).includes('search')) {
+    // Each does their share: a couple of places, more for family.
+    const share = care >= 0.85 ? 4 : 2;
+    if (care >= 0.6 && (I.options || []).includes('search') && (I.searches ?? 0) < share) {
       const p = (I.places || []).find((x) => !x.checked && !x.origin && !x.public);
       if (p) return out('search', p.id, I.joined ? 'search' : 'joined', null, placeVars(p));
     }
+    if ((I.searches ?? 0) >= share) return out('give_up', null, 'leaveToWatch', 'giveUp', {});
     if (asked.size >= 1 || I.steps >= 3) return out('give_up', null, 'giveUp', 'giveUp', {});
   }
 
@@ -116,7 +119,7 @@ export function decideLocal(I, { rng = Math.random, say = () => '', think = () =
   }
 
   // Go and look properly, if they matter to you.
-  if (worried && (I.options || []).includes('search')) {
+  if (worried && (I.options || []).includes('search') && (I.searches ?? 0) < (care >= 0.85 ? 4 : 2)) {
     const p = (I.places || []).find((x) => !x.checked && !x.origin && !x.public);
     if (p) return out('search', p.id, 'search', null, placeVars(p));
   }

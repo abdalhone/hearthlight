@@ -828,6 +828,15 @@ export class VillageLife {
     if (existing) return existing;
     const prob = newProblem({ owner: e.id, t, day: this.dayN(), ...data });
     prob.due = t + BEAT;
+    const memo = data.about ? this.dayMemo(e.id, data.about) : null;
+    if (memo) {
+      for (const id of memo.asked) if (!prob.asked.includes(id)) prob.asked.push(id);
+      for (const [pl, at] of Object.entries(memo.checked)) {
+        if (!prob.checked.includes(pl)) prob.checked.push(pl);
+        prob.checkedAt[pl] = Math.max(prob.checkedAt[pl] ?? 0, at);
+      }
+      prob.heard.push(...memo.heard.slice(-6));
+    }
     this.problems.push(prob);
     if (data.errand) {
       const inst = this.book.get(data.errand);
@@ -852,8 +861,27 @@ export class VillageLife {
     return prob;
   }
 
+  // What someone already asked, looked at and heard about a person today.
+  dayMemo(owner, about) {
+    const key = `${this.dayN()}:${owner}:${about}`;
+    this._memo ||= new Map();
+    if (this._memo.size > 400) this._memo.clear();
+    let m = this._memo.get(key);
+    if (!m) this._memo.set(key, (m = { asked: [], checked: {}, heard: [] }));
+    return m;
+  }
+
+  remember(prob) {
+    if (!prob?.about) return;
+    const m = this.dayMemo(prob.owner, prob.about);
+    for (const id of prob.asked) if (!m.asked.includes(id)) m.asked.push(id);
+    for (const [pl, at] of Object.entries(prob.checkedAt || {})) m.checked[pl] = Math.max(m.checked[pl] ?? 0, at);
+    m.heard = [...m.heard, ...prob.heard].slice(-8);
+  }
+
   closeProblem(prob, status, why = '') {
     if (!prob || prob.status !== 'open') return;
+    this.remember(prob);
     prob.status = status;
     prob.resolvedAt = this.now();
     prob.resolution = why;
@@ -1136,7 +1164,7 @@ export class VillageLife {
         vars.with = this.nameFor(who, s.with);
         info.withName = vars.with;
       } else key = 'seen';
-    } else if (k && t - (k.at ?? 0) < 900) {
+    } else if (k && t - (k.at ?? 0) < 900 && k.from !== askerId) {
       key = 'heard';
       vars.from = k.from === askerId ? 'you' : this.nameFor(who, k.from);
       vars.when = whenPhrase(k.t, t);
@@ -1154,6 +1182,12 @@ export class VillageLife {
     }
     let line = this.line(who, key, vars);
     if (!line) line = this.line(who, 'never', { about, listener: askerId }) || 'No.';
+    // Someone who already knows he is being looked for does not ask what is wrong.
+    const c = this.cases.get(about);
+    if (c && (this.seerKnows(c, who) || this.know[who]?.[`asked:${about}`]) && line) {
+      const cut = line.replace(/\s*(?:Is (?:something|anything) wrong|Is something the matter|Why|Why do you ask|What's happened|What's wrong|Is that bad|Is that a clue|Should I have|Is there a matter before the Moot|Is it an incident)\?(?:[^.!?]*\?)*\s*$/i, '').trim();
+      if (cut.length > 3) line = cut;
+    }
     return { line, info };
   }
 
@@ -1180,8 +1214,11 @@ export class VillageLife {
     }
     const ask = this.line(e.id, 'ask', { about, listener: tgt.id });
     let back = null;
-    if (ans.info.kind === 'seen' || ans.info.kind === 'heard' || ans.info.kind === 'guess') back = this.line(e.id, 'thanksPlace', { about, placeId: ans.info.heading || ans.info.place });
-    else back = this.line(e.id, 'thanks', { about });
+    const said = ans.info.heading || ans.info.place;
+    if ((ans.info.kind === 'seen' || ans.info.kind === 'heard' || ans.info.kind === 'guess') && said) {
+      const looked = prob && (prob.checked.includes(said) || prob.place === said) && !(ans.info.t > (prob.checkedAt?.[said] ?? Infinity));
+      back = this.line(e.id, looked ? 'already' : 'thanksPlace', { about, placeId: said });
+    } else back = this.line(e.id, 'thanks', { about });
     const lines = [[e.id, ask], [tgt.id, ans.line]];
     if (back && this.rng()() < 0.8) lines.push([e.id, back]);
     const aboutName = this.name(about);
@@ -1217,6 +1254,7 @@ export class VillageLife {
   // The asked may act in turn: those who love the missing person worry, and look too.
   maybeJoin(tgt, about, askerId) {
     if (!about || !this.isHere(tgt) || this.openProblem(tgt.id) || this.steps.has(tgt.id)) return;
+    if (this.problems.some((p) => p.owner === tgt.id && p.about === about && p.day === this.dayN() && p.status === 'given_up')) return;
     const c = this.cases.get(about);
     const care = this.care(tgt.id, about);
     // The watch hearing the second worried voice starts searching.
@@ -1351,7 +1389,8 @@ export class VillageLife {
     const inst = step.errand ? this.book.get(step.errand) : null;
     const xs = this.steps.get(x.id);
     const xInst = xs?.errand ? this.book.get(xs.errand) : null;
-    const found = this.line(e.id, 'found', { about: x.id, listener: x.id });
+    const kase = this.cases.get(x.id);
+    const found = this.line(e.id, kase?.foundRumor ? 'found' : 'met', { about: x.id, listener: x.id });
     const reply = xInst ? this.line(x.id, 'foundBusy', { about: e.id, listener: e.id, doing: xInst.label }) : this.line(x.id, 'foundReply', { about: e.id, listener: e.id, placeId: this.placeOf(x) || 'hearthvale' });
     const lines = [[e.id, found], [x.id, reply]];
     if (inst && (inst.state === 'planned' || inst.state === 'active') && inStock(this.stock, inst)) {
@@ -1416,7 +1455,7 @@ export class VillageLife {
       if (r?.heardBy?.includes(p.owner) || this.now() - c.foundAt > HOUR * 2) {
         this.closeProblem(p, 'resolved', `heard ${this.name(c.about)} turned up`);
         const e = this.entity(p.owner);
-        if (e) this.sayAloud(e, this.line(p.owner, 'relief', { about: c.about }));
+        if (e && c.foundRumor) this.sayAloud(e, this.line(p.owner, 'relief', { about: c.about }));
       }
     }
     if (this.mourning) for (const [id, m] of Object.entries(this.mourning)) if (m.about === c.about && m.kind === 'worry') delete this.mourning[id];
@@ -1437,6 +1476,7 @@ export class VillageLife {
   // People asking after someone becomes village talk once it is more than a passing absence.
   maybeRumor(c, heardBy) {
     if (c.rumor || this.now() - c.openedAt < 1.2 * HOUR || (c.noticers.length < 2 && this.now() - c.openedAt < 2.5 * HOUR)) return;
+    if (this.steps.get(c.about)?.party) return; // out with a search party: half the village has seen them
     const r = safe(() => this.village?.addRumor?.('asking_after', { victim: c.about, witnesses: heardBy, source: heardBy[0], about: 'village' }));
     if (r) c.rumor = r.id;
   }
