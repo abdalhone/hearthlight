@@ -49,7 +49,7 @@ const STATE_LINES = {
   wary: (n) => `${n} is wary of you now.`,
   apart: (n) => `${n} is going her own way for now.`,
   left: (n) => `${n} has left you.`,
-  gone: (n) => `${n} is gone.`,
+  gone: (n) => `${n} has cut you out of her life. She is home with her own people now.`,
 };
 
 export class UI {
@@ -309,6 +309,21 @@ export class UI {
     bus.on('downed', ({ entity }) => {
       if (isLyra(entity)) this.toast(`${lyraName()} is down! Reach her and press ${this.isTouch ? 'the hand button' : 'E'} to help her up.`, 'warn');
     });
+    // Her village protects her (§19.7): a cry for help is news the player should see,
+    // once per person while it lasts.
+    const helpAt = new Map();
+    bus.on('call_for_help', (p) => {
+      const v = p?.victim;
+      const ent = v && typeof v === 'object' ? v : safe(() => g.entities?.get?.(v));
+      const id = ent?.id || (typeof v === 'string' ? v : '');
+      if (!id || isPlayer(ent)) return;
+      const now = g.time || 0;
+      if (now - (helpAt.get(id) ?? -99) < 15) return;
+      helpAt.set(id, now);
+      const name = isLyra(ent) || id === 'lyra' ? lyraName() : String(ent?.name || id).split(' ')[0];
+      const byYou = isPlayer(p?.attacker) || p?.attacker === 'player';
+      this.toast(byYou ? `${name} is shouting for help, and the village is coming.` : `${name} is shouting for help!`, 'warn', { key: `help:${id}` });
+    });
     bus.on('revived', ({ entity, by }) => {
       if (isLyra(entity)) this.toast(isPlayer(by) ? `You helped ${lyraName()} back to her feet.` : `${lyraName()} is back on her feet.`, 'good');
     });
@@ -428,7 +443,7 @@ export class UI {
     if (!this.chat.messages.length) {
       const intro =
         state === 'gone'
-          ? `${name} is gone. Her diary and her memories are all that is left of her here.`
+          ? `${name} has cut you out of her life. She is still in Hearthvale, with her own people, but she won't talk to you beyond a word.`
           : `${name} travels with you because she chooses to. Talk to her about anything, or ask her for help in plain words; she decides what she does.`;
       this.chat.addMessage({ from: 'system', text: intro });
     }

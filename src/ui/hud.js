@@ -438,7 +438,7 @@ export class Hud {
     }
   }
 
-  // full: every request · collapsed: only Talk and "Ask her back" · hidden: she is gone.
+  // full: every request · collapsed: only Talk and "Ask her back" · hidden: she has cut you off.
   applyMode(mode) {
     if (mode === this.mode) return;
     this.mode = mode;
@@ -486,8 +486,8 @@ export class Hud {
       const narrow = (this.ui.root.clientWidth || 1280) < 640;
       const words = farewellText(mind, g.flags, narrow ? 100 : 180) || this.farewell;
       if (words) this.farewell = words;
-      setText(this.farewellEl, this.farewell ? `“${this.farewell}”` : `${name} walked away down the King's Road.`);
-      setAttr(this.lyraCard, 'title', this.farewell ? `${name}'s last words: “${this.farewell}”` : `${name} is gone`);
+      setText(this.farewellEl, this.farewell ? `“${this.farewell}”` : `${name} has cut you out of her life.`);
+      setAttr(this.lyraCard, 'title', this.farewell ? `${name}'s last words to you: “${this.farewell}”` : `${name} has cut you out of her life`);
       if (this.farewellEl.hidden) this.farewellEl.hidden = false;
       return;
     }

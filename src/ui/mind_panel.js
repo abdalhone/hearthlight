@@ -243,7 +243,7 @@ export class MindPanel {
     const mind = this.mind;
     if (!mind) {
       const gone = companionshipOf(this.game) === 'gone';
-      this.content.append(h('p', { class: 'empty', text: gone ? 'She is gone, and she took her thoughts with her.' : 'Lyra is not here yet. Start a game to meet her.' }));
+      this.content.append(h('p', { class: 'empty', text: gone ? 'She has shut you out of her thoughts.' : 'Lyra is not here yet. Start a game to meet her.' }));
       return;
     }
     const render = {

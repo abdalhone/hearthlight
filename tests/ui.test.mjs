@@ -503,7 +503,7 @@ test('companionship is read defensively and gone wins from the flags', () => {
 
 test('companionship labels and what the bar offers in each state', () => {
   assert.deepEqual(COMPANIONSHIP_STATES, ['together', 'wary', 'apart', 'left', 'gone']);
-  assert.deepEqual(COMPANIONSHIP_STATES.map(companionshipLabel), ['With you', 'Wary of you', 'Living her own life', 'Left you', 'Gone']);
+  assert.deepEqual(COMPANIONSHIP_STATES.map(companionshipLabel), ['With you', 'Wary of you', 'Living her own life', 'Left you', 'Cut you off']);
   assert.equal(companionshipLabel('nonsense'), 'With you');
   assert.deepEqual(COMPANIONSHIP_STATES.map(barMode), ['full', 'full', 'collapsed', 'collapsed', 'hidden']);
   assert.equal(companionshipReason({ autonomy: { reason: '  You hit me.  ' } }), 'You hit me.');
@@ -760,7 +760,7 @@ test('handing her things needs her near, awake and still here', () => {
   assert.equal(handReach(at(16 * 9), 10).ok, true, 'the reach is adjustable');
   assert.equal(reachNote({ ok: true }), '');
   assert.match(reachNote({ ok: false, why: 'far', tiles: 9 }, 'Lyra'), /9 paces away/);
-  assert.match(reachNote({ ok: false, why: 'gone' }, 'Lyra'), /gone/);
+  assert.match(reachNote({ ok: false, why: 'gone' }, 'Lyra'), /won't take anything/);
   assert.match(reachNote({ ok: false, why: 'downed' }, 'Lyra'), /Help her up/);
 });
 

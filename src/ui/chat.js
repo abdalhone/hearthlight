@@ -413,7 +413,7 @@ export class Chat {
     if (last && used && !last.memories?.length) this.attachMemories(last, used);
   }
 
-  // Once she is gone there is no one to talk to; the log stays to read.
+  // Once she has cut the player off she will not talk; the log stays to read.
   setGone(on) {
     const gone = !!on;
     if (gone === this.gone && this.mounted && this.field.disabled === gone) return;
@@ -425,7 +425,7 @@ export class Chat {
     this.sendBtn.disabled = gone;
     this.mic.disabled = gone;
     this.chips.hidden = gone;
-    this.field.placeholder = gone ? `${name} is gone.` : `Say something to ${name}…`;
+    this.field.placeholder = gone ? `${name} won't talk to you.` : `Say something to ${name}…`;
     toggleClass(this.el, 'is-gone', gone);
   }
 

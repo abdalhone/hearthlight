@@ -14,8 +14,8 @@ export const COMPANIONSHIP = Object.freeze({
   together: { label: 'With you', tone: 'good', blurb: 'She travels with you because she chooses to, and for as long as it stays good for her.' },
   wary: { label: 'Wary of you', tone: 'warn', blurb: 'She is still beside you, but guarded: she keeps her distance, turns down risky requests and watches what you do.' },
   apart: { label: 'Living her own life', tone: 'calm', blurb: 'She is going her own way for now. She is friendly, and she may travel with you again if she wants to.' },
-  left: { label: 'Left you', tone: 'bad', blurb: 'She broke off after being hurt or betrayed. She will only come back after amends she believes, and time.' },
-  gone: { label: 'Gone', tone: 'grave', blurb: 'She has left Hearthvale for good.' },
+  left: { label: 'Left you', tone: 'bad', blurb: 'She broke off after being hurt or betrayed, handed back the hearthwatch and keeps away from you. Only amends she believes, and time, might bring her back.' },
+  gone: { label: 'Cut you off', tone: 'grave', blurb: 'She has cut you out of her life. She lives with her own people in the village now, keeps her distance and will not talk to you beyond a word, and Hearthvale stands with her.' },
 });
 
 export const COMPANIONSHIP_STATES = Object.keys(COMPANIONSHIP);
@@ -31,7 +31,7 @@ export function readCompanionship(mind) {
   return stateName(safeGet(() => mind.companionship)) || stateName(safeGet(() => mind.autonomy?.companionship)) || 'together';
 }
 
-// The game-wide view: a recorded departure wins even after her body left the world.
+// The game-wide view: a recorded break wins over whatever her mind reports.
 export function companionshipOf(game) {
   if (game?.flags?.lyra_gone) return 'gone';
   return readCompanionship(game?.companion?.mind);
@@ -50,7 +50,7 @@ export function companionshipBlurb(state) {
 }
 
 // How much of the "Ask Lyra" bar makes sense: everything while she travels with you,
-// only talking and asking her back while she is apart, nothing once she is gone.
+// only talking and asking her back while she is apart, nothing once she has cut you off.
 export function barMode(state) {
   if (state === 'gone') return 'hidden';
   if (state === 'apart' || state === 'left') return 'collapsed';
@@ -79,7 +79,7 @@ export function handReach(game, maxTiles = HAND_REACH_TILES) {
 // The line under her pack when nothing can be handed over.
 export function reachNote(r, name = 'Lyra') {
   if (!r || r.ok) return '';
-  if (r.why === 'gone') return `${name} is gone. Nothing of yours can reach her now.`;
+  if (r.why === 'gone') return `${name} won't take anything from you now.`;
   if (r.why === 'downed') return `${name} is knocked out. Help her up first.`;
   if (r.why === 'far') return `${name} is ${r.tiles} paces away. Walk over to her to hand anything across.`;
   return '';
