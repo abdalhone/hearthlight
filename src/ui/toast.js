@@ -46,7 +46,7 @@ export class Toasts {
     this.lastY = null;
     this.lastX = null;
     this.waiting = false; // no free slot: hidden, and not aging
-    this.panelMode = null; // phones with a panel open: 'one-up' | 'on-head' (see setPanelMode)
+    this.panelMode = null; // a panel is open: 'one-up' | 'on-head' (see setPanelMode)
     this._bubbles = [];
   }
 

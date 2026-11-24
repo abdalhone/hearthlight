@@ -193,6 +193,22 @@ for (const view of VIEWS) {
   }
   await page.evaluate(() => window.__game.ui.closeAll());
 
+  // Typing while the greeting is still being written: the options that appear when it
+  // ends must not take the caret away mid-word.
+  await page.evaluate(() => {
+    const g = window.__game;
+    const npc = g.entities.get('bram') || g.entities.all().find((e) => e.profile && e.id !== 'lyra');
+    g.ui.openDialog(npc);
+  });
+  await page.waitForTimeout(120);
+  if (await page.$('.dlg-say-field')) {
+    await page.click('.dlg-say-field');
+    await page.keyboard.type('Hello there, how is the forge?', { delay: 60 });
+    const race = await page.evaluate(() => ({ value: document.querySelector('.dlg-say-field')?.value, options: document.querySelectorAll('.dlg-options .btn').length }));
+    check(`[${label}] typing while the greeting is written keeps every letter in the field`, race.value === 'Hello there, how is the forge?', JSON.stringify(race));
+  }
+  await page.evaluate(() => window.__game.ui.closeAll());
+
   // ---------- listen in ----------
   const listen = await page.evaluate(async () => {
     const g = window.__game;
@@ -388,6 +404,29 @@ for (const view of VIEWS) {
     return { shown: shown.length, onClose, below, small: innerWidth <= 640 || innerHeight <= 520 };
   });
   check(`[${label}] notices over her open mind keep off the close button${over.small ? ' and stay on the title row' : ''}`, over.shown > 0 && over.onClose === 0 && (!over.small || (over.below === 0 && over.shown === 1)), JSON.stringify(over));
+
+  // A long notice over a tall small panel (her diary): never on the close button, never
+  // half over the title (a banner covers the whole title row or stays off it).
+  const diaryNote = await page.evaluate(async () => {
+    const ui = window.__game.ui;
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    ui.closeAll();
+    ui.showDiary({ day: 1, text: 'A page long enough to fill the panel.\n\n'.repeat(8) });
+    await wait(150);
+    ui.toast('I have my own day to live. Help Tobias bring in his field: 2 coins a bundle, and my purse is light.', 'lyra', { title: 'Lyra is going her own way for now.' });
+    await wait(350);
+    const top = ui.top();
+    const close = top.closeBtn.getBoundingClientRect();
+    const title = top.el.querySelector('.panel-title, h2').getBoundingClientRect();
+    const shown = [...document.querySelectorAll('.toasts .toast:not(.leaving)')].filter((el) => el.getBoundingClientRect().width > 0).map((el) => el.getBoundingClientRect());
+    const hit = (t, r) => t.left < r.right && t.right > r.left && t.top < r.bottom && t.bottom > r.top;
+    const banner = document.querySelector('.toasts').classList.contains('on-head');
+    // Half over the title: the notice overlaps the title's line but does not cover it.
+    const half = shown.filter((t) => hit(t, title) && !(t.top <= title.top && t.bottom >= title.bottom)).length;
+    ui.closeAll();
+    return { shown: shown.length, onClose: shown.filter((t) => hit(t, close)).length, half, banner };
+  });
+  check(`[${label}] a long notice over her diary keeps off the close button and never half-covers the title`, diaryNote.shown > 0 && diaryNote.onClose === 0 && diaryNote.half === 0, JSON.stringify(diaryNote));
 
   // ---------- the phone HUD: compact, the world visible ----------
   const hud = await page.evaluate(async () => {

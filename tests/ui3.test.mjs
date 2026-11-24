@@ -430,3 +430,14 @@ test('a bubble hemmed in under the HUD finds a free spot (even past its speaker)
   assert.ok(!hit(third, first) && !hit(third, second), 'not on another bubble');
   assert.ok(!hit(third, third.body), 'not over its own speaker');
 });
+
+test('warm lights multiply the night through a deeper amber; cool lights keep their color', async () => {
+  const { warmMapColor } = await import('../src/render/lighting.js');
+  const hex = (c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+  const [r, g, b] = hex(warmMapColor('#ffcf7a'));
+  assert.equal(r, 255);
+  assert.ok(g < 0xcf && b < 0x7a, 'green and blue come down');
+  assert.ok(r / g > 255 / 0xcf, 'the amber deepens');
+  assert.equal(warmMapColor('#a995ff'), '#a995ff', "Lyra's violet stays violet");
+  assert.equal(warmMapColor('#aab4ff'), '#aab4ff', 'moonlight stays cool');
+});

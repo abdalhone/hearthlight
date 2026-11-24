@@ -260,8 +260,11 @@ export class DialogPanel {
       b.addEventListener('click', () => this.choose(o.id));
       this.optionsEl.append(b);
     });
+    // Keyboard players land on the first option, unless they are typing in
+    // "Say something…" (the options must not steal the caret mid-word).
     const first = this.optionsEl.querySelector('button');
-    if (first && !this.ui.isTouch) first.focus({ preventScroll: true });
+    const typing = !!this.sayField && document.activeElement === this.sayField;
+    if (first && !this.ui.isTouch && !typing) first.focus({ preventScroll: true });
   }
 
   // Number keys pick options; Enter / Space / E advance the text.
