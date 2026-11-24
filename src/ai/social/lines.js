@@ -86,6 +86,8 @@ export function namesOther(text, speakerId, listenerId) {
 function dropName(text) {
   return text
     .replace(/,\s*\{n\}(?=[.!?,;:]|$)/g, '')
+    // A short sentence that only names them ("That's {n}.") goes entirely.
+    .replace(/(^|[.!?]\s+)[^.!?,]{0,14}\{n\}[.!?]\s*/g, '$1')
     .replace(/^(?:\{n\}[,.!?]?\s*)+/, '')
     .replace(/([.!?]\s+)\{n\}[,.!]\s*/g, '$1')
     .replace(/\s+[—–]\s*\{n\}(?=[.!?])/g, '')
