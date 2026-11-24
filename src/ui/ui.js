@@ -608,9 +608,10 @@ export class UI {
     this.chest.open(chest);
   }
 
-  openSettings() {
+  // `tab`: 'game' | 'controls' | 'sound' | 'minds' | 'display' (the last one by default).
+  openSettings(tab) {
     if (!this.inited) return;
-    this.settings.open();
+    this.settings.open(tab);
   }
 
   openPause() {

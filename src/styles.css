@@ -5016,10 +5016,11 @@ input[type='range']::-moz-range-thumb {
 
 /* ---------- settings: villagers' minds ---------- */
 
-.village-ai .choice.is-disabled {
+.choice.is-disabled {
   opacity: 0.5;
+  cursor: default;
 }
-.village-ai .choice.is-disabled input {
+.choice.is-disabled input {
   cursor: not-allowed;
 }
 
