@@ -150,7 +150,8 @@ export class Hud {
     this.questLine = h('div', { class: 'quest-line', hidden: true }, icon('scroll'), this.questText);
     // On a phone the line is one short row; a tap shows all of it for a while.
     this.questOpenT = 0;
-    this.questLine.addEventListener('click', () => this.toggleQuestFull());
+    // A tap opens the Missions journal (DESIGN §22.3) when this build has one.
+    this.questLine.addEventListener('click', () => (this.game.missions && typeof this.ui.openMissions === 'function' ? this.ui.openMissions('active') : this.toggleQuestFull()));
 
     // Interact prompt
     this.promptKey = h('kbd', { class: 'keycap', text: 'E' });
@@ -529,9 +530,25 @@ export class Hud {
   }
 
   setQuest(text) {
-    const t = String(text || '').trim();
+    this.storyQuest = String(text || '').trim();
+    this.refreshMission(true);
+  }
+
+  // The quest line shows the tracked mission and its objective (DESIGN §22.3), or the
+  // story's objective when no mission is tracked.
+  refreshMission(force = false) {
+    let line = null;
+    try {
+      line = this.game.missions?.hudLine?.() || null;
+    } catch {
+      line = null;
+    }
+    const t = line ? `${line.title}: ${line.text}` : this.storyQuest || '';
+    if (!force && t === this.questShown) return;
+    this.questShown = t;
     setText(this.questText, t);
     setAttr(this.questLine, 'title', t || null);
+    toggleClass(this.questLine, 'is-mission', !!line);
     this.questLine.hidden = !t;
   }
 
@@ -622,6 +639,7 @@ export class Hud {
     // Mood, portrait and how she stands with you change slowly; twice a second is plenty.
     if (this.slowTick >= 0.5) {
       this.slowTick = 0;
+      this.refreshMission();
       if (c) this.refreshMood(c);
       this.refreshCompanion();
     }

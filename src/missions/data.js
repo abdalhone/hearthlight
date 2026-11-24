@@ -2,7 +2,8 @@
 // (src/missions/system.js). Every mission is written in its giver's voice (docs/LORE.md
 // §6, §11) and never says a truth LORE §9 keeps hidden (tests/missions.test.mjs checks
 // every line). Together they grant every shape, essence and twist except the starting
-// bolt and the five boss drops, each exactly once.
+// bolt and the five bosses' ten drops, each exactly once (raw, the violet the stranger
+// wakes weaving, is named in the first lesson).
 //
 // Mission:
 // { id, giver: npcId | 'lyra' | 'board', title, summary, hint,
@@ -71,7 +72,8 @@ export const MISSIONS = [
         ],
       },
     ],
-    rewards: [M('shape', 'strike'), { xp: 10 }],
+    // Raw violet is what they already weave; naming it is part of the lesson.
+    rewards: [M('essence', 'raw'), M('shape', 'strike'), { xp: 10 }],
     lyra: { done: 'Wicks and ashes. Nobody can do that.' },
   },
 

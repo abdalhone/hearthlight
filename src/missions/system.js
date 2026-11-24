@@ -370,8 +370,10 @@ export class MissionSystem {
     const g = this.game;
     const p = g.player;
     const source = `mission:${m.id}`;
+    let already = false;
     if (r.magic) {
       const { kind, id } = r.magic;
+      already = this.unlocked(kind, id);
       this.granted.push({ kind, id, mission: m.id });
       unlockComponent(g, kind, id, source);
     } else if (r.slot) {
@@ -394,7 +396,7 @@ export class MissionSystem {
       if (typeof g.combat?.giveXp === 'function') safe(() => g.combat.giveXp(p, r.xp));
       else p.xp = (p.xp || 0) + r.xp;
     }
-    this.emit('mission_reward', { id: m.id, reward: r, mission: m });
+    this.emit('mission_reward', { id: m.id, reward: r, mission: m, already });
   }
 
   // Unlocks waiting for the runtime (a save from before magic, or magic not merged yet).
@@ -770,7 +772,9 @@ export class MissionSystem {
     const lines = m.offer || [];
     const name = this.giverName('lyra');
     if (auto) {
-      this.lyraLines(lines);
+      // When the story scene already showed her asking, she doesn't ask twice.
+      const told = safe(() => g.story?.seen?.('first_weave'), false);
+      if (!told) this.lyraLines(lines);
       this.accept(m.id, { askLyra: false });
       return;
     }
@@ -1092,7 +1096,7 @@ export class MissionSystem {
   serialize() {
     const state = {};
     for (const [id, s] of Object.entries(this.state)) {
-      state[id] = { status: s.status, step: s.step, n: Math.round(s.n * 100) / 100, t0: Math.round(s.t0 || 0), accepted: s.accepted, done: s.done, spawned: !!s.spawned, lyra: s.lyra || null, lit: s.lit?.slice(0, 12) || [] };
+      state[id] = { status: s.status, step: s.step, n: Math.round(s.n * 100) / 100, t0: Math.round(s.t0 || 0), accepted: s.accepted, done: s.done ?? null, lyra: s.lyra || null, lit: s.lit?.slice(0, 12) || [] };
     }
     return { v: 1, state, tracked: this.tracked, flags: { ...this.flags }, granted: this.granted.slice(), lyraOffered: { ...this.lyraOffered }, playT: Math.round(this.playT) };
   }

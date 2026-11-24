@@ -14,7 +14,11 @@ import { voiceOf, say, rnd, shortName, thirdName, fill, varsFor, topicPool, name
 import { localReply } from './player_talk.js';
 import { TO_YOU } from './voices_player.js';
 import { speakable } from './hidden.js';
+import { WEAVE_RUMORS } from '../../missions/rumors.js';
 import { VILLAGER_RULES, SAY_SCHEMA, LINES_SCHEMA, NIGHT_SCHEMA, buildSayTask, buildListenTask, buildNightTask, coerceSay, coerceLines, coerceNight, cleanLine } from './village_prompt.js';
+
+// What the village says about the stranger's weaving joins the rumor table (DESIGN §22.3).
+for (const [k, v] of Object.entries(WEAVE_RUMORS)) if (!RUMOR_KINDS[k]) RUMOR_KINDS[k] = v;
 
 const DAY = 900; // clock seconds in a game day
 const HOUR = DAY / 24;
@@ -975,7 +979,9 @@ export class Village {
           const hunted = e.lastAttacker === beast && t - (e.lastAttackedAt ?? -Infinity) < 20;
           const fled = e.fleeFrom === beast || (e.mode === 'flee' && dist(e, beast) < 110);
           if (hunted || fled) {
-            this.addRumor('rescued', { victim: e.id, beast: String(beast.species).replace(/_/g, ' '), witnesses: [e.id, ...this.witnessesNear(e.x, e.y)] });
+            // Burned off them with a weave, the story grows in the telling (missions/rumors.js).
+            const woven = !!g?.missions?.wovenKill?.(beast) && !!RUMOR_KINDS.weave_rescue;
+            this.addRumor(woven ? 'weave_rescue' : 'rescued', { victim: e.id, beast: String(beast.species).replace(/_/g, ' '), witnesses: [e.id, ...this.witnessesNear(e.x, e.y)] });
             this.amend(e.id, 'help');
             return;
           }

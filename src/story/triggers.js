@@ -3,6 +3,8 @@
 // and trusting enough for what she would tell), plays once, is remembered by her mind,
 // and is saved as seen. Lyra may decline the hardest one on a given day.
 
+import { MISSION_SCENES } from './scripts_missions.js';
+
 export const SCENES = [
   {
     id: 'meet_ambrels',
@@ -65,6 +67,9 @@ export const SCENES = [
     unlock: ['maren_journal', 'other_end', 'waygates'],
   },
 ];
+
+// The Weave's scenes (DESIGN §22.3): the first time Lyra sees the stranger weave, and more.
+SCENES.push(...MISSION_SCENES);
 
 const CHECK_EVERY = 0.5;
 

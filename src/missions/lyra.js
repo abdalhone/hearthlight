@@ -77,6 +77,7 @@ export class LyraWatch {
     const mind = this.lyra()?.mind;
     if (!this.firstSeen) {
       this.firstSeen = true;
+      this.firstSeenAt = this.missions?.playT ?? 0;
       safe(() => mind?.appraise?.('novelty', 1.3, 'the stranger weaving light'));
       safe(() =>
         mind?.remember?.('The stranger made light out of the empty air: no warmth spent, no breath, just their hands pulling it tight like thread. Nobody can do that. Nobody I know.', {

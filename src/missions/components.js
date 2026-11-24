@@ -104,12 +104,13 @@ export function bossFor(kind, id) {
   return null;
 }
 
-// Every component a mission must grant: all of them but the starting ones and the boss drops.
+// Every component a mission must grant: all of them but the starting bolt and the boss
+// drops. (Raw is unlocked from the start too; the first lesson names it all the same.)
 export function missionComponents() {
   const out = [];
   for (const [kind, ids] of Object.entries(KINDS)) {
     for (const id of ids) {
-      if (STARTING.some((s) => s.kind === kind && s.id === id)) continue;
+      if (kind === 'shape' && id === 'bolt') continue;
       if (isBossReward(kind, id)) continue;
       out.push({ kind, id });
     }
