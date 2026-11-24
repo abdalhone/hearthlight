@@ -47,7 +47,9 @@ export class MagicFx {
     this.effects = new Effects(opts.effects ?? 220);
     this.statusFx = new StatusFx(this);
     this.bounds = new Bounds();
-    this.R = { ctx: null, g: null, ox: 0, oy: 0, w: 480, h: 270, time: 0, dark: 0, bounds: this.bounds, parts: this.parts };
+    // R.lod: a crowded or slow frame draws the long-lived things (runes, walls, trails)
+    // with fewer flourishes.
+    this.R = { ctx: null, g: null, ox: 0, oy: 0, w: 480, h: 270, time: 0, dark: 0, lod: false, bounds: this.bounds, parts: this.parts };
     this.glow = null;
     this.gctx = null;
     this.b1 = null;
@@ -346,6 +348,7 @@ export class MagicFx {
     this.bounds.reset();
     R.g = g;
     R.dark = this.game.lighting?.ambient?.darkness ?? 0;
+    R.lod = this.q < 0.7 || this._viewN > 60;
   }
 
   // Once a frame: how long frames take, and the quality that follows from it.

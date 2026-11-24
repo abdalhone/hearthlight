@@ -1124,7 +1124,7 @@ function drawWall(R, b, L) {
         px(c, x, y - hh, P.core);
         if (g) {
           rect(g, x, y - hh, 1, Math.max(1, hh >> 1), P.spark);
-          if (j % 4 === 0) halo(g, x, y - hh * 0.5, 7, L.halo, 0.35, R.bounds);
+          if (j % (R.lod ? 8 : 4) === 0) halo(g, x, y - hh * 0.5, 7, L.halo, 0.35, R.bounds);
         }
         break;
       }
@@ -1549,7 +1549,7 @@ export function drawBodyGround(R, b) {
       const len = Math.hypot(x2 - x, y2 - y);
       c.globalAlpha = 0.25 * a;
       line(c, x, y, x2, y2, L.look.dark ? DARK_CORE : P.deep, b.r * 1.6);
-      const n = Math.max(1, Math.round(len / 9));
+      const n = Math.max(1, Math.round(len / (R.lod ? 16 : 9)));
       for (let i = 0; i <= n; i++) {
         const q = i / n;
         drawPatch(R, L.look.patch, P, L, x + (x2 - x) * q, y + (y2 - y) * q, Math.max(3, b.r * 0.9), a * 0.9, b.seed + i * 0.13, t);
@@ -1585,11 +1585,17 @@ function drawRune(R, b, L, x, y, t) {
   c.globalAlpha = pulse * fade;
   const a0 = -Math.PI / 2;
   ring(c, x, y, r, P.glow, 1, 0.6, a0, a0 + p * TAU);
-  ring(c, x, y, r * 0.62, P.spark, 1, 0.6, a0 + Math.PI, a0 + Math.PI - p * TAU * 0.999);
-  // Ticks between the circles, turning.
+  if (!R.lod) ring(c, x, y, r * 0.62, P.spark, 1, 0.6, a0 + Math.PI, a0 + Math.PI - p * TAU * 0.999);
+  // Ticks between the circles, turning (four dots instead in a crowded frame).
   const spin = t * (b.armed ? 1.2 : 0.3) + b.seed * 6;
   const ticks = 8;
-  for (let i = 0; i < Math.round(ticks * p); i++) {
+  if (R.lod) {
+    for (let i = 0; i < 4; i++) {
+      const an = spin + (i / 4) * TAU;
+      px(c, x + Math.cos(an) * r * 0.8, y + Math.sin(an) * 0.6 * r * 0.8, i & 1 ? P.glow : P.core);
+    }
+  }
+  for (let i = 0; !R.lod && i < Math.round(ticks * p); i++) {
     const an = spin + (i / ticks) * TAU;
     const cx = Math.cos(an);
     const sy = Math.sin(an) * 0.6;
