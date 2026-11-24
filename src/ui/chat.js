@@ -388,7 +388,10 @@ export class Chat {
   // not show, or the memories it used but did not attach.
   afterReply(r, sentAt) {
     if (!r || typeof r !== 'object') return;
-    const used = r.used_memories || r.usedMemories || r.recalled || null;
+    // `memories` on the result may be the chips the brain cites ({id, label}); new
+    // memories to store (text without an id) are not chips.
+    const cited = Array.isArray(r.memories) ? r.memories.filter((m) => typeof m === 'string' || (m && typeof m === 'object' && m.id)) : null;
+    const used = r.used_memories || r.usedMemories || r.recalled || (cited && cited.length ? cited : null);
     let last = null;
     for (let i = this.messages.length - 1; i >= 0; i--) {
       const m = this.messages[i];

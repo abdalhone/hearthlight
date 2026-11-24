@@ -568,8 +568,14 @@ export class UI {
     this.openModal(panel);
   }
 
+  // The brain may show the page itself while she reflects; the wake event offers it
+  // again. One page opens once.
   showDiary(entry) {
     if (!this.inited || !entry?.text) return;
+    const text = String(entry.text);
+    const now = Date.now();
+    if (this.stack.some((p) => p.id === 'diary') || (this.lastDiary && this.lastDiary.text === text && now - this.lastDiary.at < 120000)) return;
+    this.lastDiary = { text, at: now };
     const panel = buildDiary(this, entry);
     this.openModal(panel);
     this.game.audio?.play('sleep', { volume: 0.5 });

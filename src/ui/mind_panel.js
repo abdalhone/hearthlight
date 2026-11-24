@@ -518,7 +518,7 @@ export class MindPanel {
     }
     const list = h('div', { class: 'people' });
     for (const rel of rels) list.append(this.personCard(rel));
-    this.content.append(h('p', { class: 'tab-intro', text: 'Everyone she knows, and what she honestly thinks of them. Mark someone a friend and attack mode will never touch them; mark an enemy and she treats them as a threat.' }), list);
+    this.content.append(h('p', { class: 'tab-intro', text: 'Everyone she knows, and what she honestly thinks of them. You can ask her to count someone as a friend (attack mode never touches a friend) or as an enemy, but she makes up her own mind.' }), list);
   }
 
   personCard(rel) {
@@ -576,8 +576,8 @@ export class MindPanel {
     if (!isPlayer && rel.id !== 'lyra') {
       const isFriend = tags.includes('friend');
       const isEnemy = tags.includes('enemy');
-      const fBtn = button(isFriend ? 'Unmark friend' : 'Mark friend', { icon: 'heart', cls: `btn-small ${isFriend ? 'btn-ghost' : 'btn-good'}` });
-      const eBtn = button(isEnemy ? 'Unmark enemy' : 'Mark enemy', { icon: 'sword', cls: `btn-small ${isEnemy ? 'btn-ghost' : 'btn-danger'}` });
+      const fBtn = button(isFriend ? 'Ask her: not a friend' : 'Ask her: a friend', { icon: 'heart', cls: `btn-small ${isFriend ? 'btn-ghost' : 'btn-good'}`, title: 'She decides how she sees people; this asks her.' });
+      const eBtn = button(isEnemy ? 'Ask her: not an enemy' : 'Ask her: an enemy', { icon: 'sword', cls: `btn-small ${isEnemy ? 'btn-ghost' : 'btn-danger'}`, title: 'She decides how she sees people; this asks her.' });
       fBtn.addEventListener('click', () => this.setTag(rel, isFriend ? '-friend' : 'friend'));
       eBtn.addEventListener('click', () => this.setTag(rel, isEnemy ? '-enemy' : 'enemy'));
       actions = h('div', { class: 'person-actions' }, fBtn, eBtn);
