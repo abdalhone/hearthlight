@@ -174,6 +174,7 @@ function answer(ctx, b, a, { agree = null, topic = null, extra = {} } = {}) {
     if (l) return l;
   }
   const aff = bond?.affinity ?? 0;
+  if (agree === true) return say(rnd(rng) < 0.5 ? v.yes : v.short, b, a, opts);
   if (agree === false || tag === 'rival' || tag === 'grudge' || aff < -10) return say(rnd(rng) < 0.5 ? v.no : v.tease || v.no, b, a, opts);
   if (aff > 55 && rnd(rng) < 0.3) return say(v.warm, b, a, opts);
   if (rnd(rng) < 0.5) return say(v.yes, b, a, opts);
@@ -226,7 +227,7 @@ export function buildExchange(ctx, a, b, opts = {}) {
       // Someone who loves the one it happened to says more.
       if (rumor.victim && rumor.victim !== b && rumor.valence < 0 && (ctx.bond(b, rumor.victim)?.affinity ?? 0) >= 60) {
         push(line(b, say(vb?.rumor?.bad || vb?.no, b, a, { rng, avoid: new Set(lines.map((l) => l.text)), extra })));
-      } else if (lines.length < maxLines - 1 && rnd(rng) < 0.5) push(line(a, answer(ctx, a, b, { extra })));
+      } else if (lines.length < maxLines - 1 && rnd(rng) < 0.5) push(line(a, answer(ctx, a, b, { agree: true, extra })));
     } else {
       rumor = null;
       topic = 'howare';

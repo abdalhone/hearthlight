@@ -91,7 +91,7 @@ export function understand(text, { selfId = null, locations = null } = {}) {
   }
   let place = null;
   if (!person && !topic && locations?.find && /\b(about|where|what'?s|the)\b/i.test(t)) {
-    const m = t.match(/\babout (?:the )?([a-z' -]{3,30})\??$/i) || t.match(/\bwhere(?:'s| is) (?:the )?([a-z' -]{3,30})\??$/i);
+    const m = t.match(/\babout (?:the )?([a-z' -]{3,30})\??$/i) || t.match(/\bwhere(?:'s| is) (?:the )?([a-z' -]{3,30})\??$/i) || t.match(/\bwhat(?:'s| is) (?:the )?([a-z' -]{3,30})\??$/i);
     if (m) {
       try {
         place = locations.find(m[1]) || null;
@@ -113,7 +113,8 @@ export function localReply(v, npc, text) {
   const u = understand(text, { selfId: id, locations: g?.locations });
   const st = v.standing(id);
   const playerName = g?.settings?.playerName || '';
-  const knowsPlayer = (npc.familiarity ?? 0) >= 12 || (npc.opinionOfPlayer ?? 30) >= 60;
+  // They know the player's name once they have talked a little.
+  const knowsPlayer = (npc.familiarity ?? 0) >= 3 || (v.talks[id]?.length ?? 0) > 0 || (npc.opinionOfPlayer ?? 30) >= 60;
   const extra = { playerName, knowsPlayer };
   const P = (pool, o = {}) => say(pool, id, 'player', { rng, extra, avoid: v.recentPlayerLines(id), ...o });
   const lines = [];

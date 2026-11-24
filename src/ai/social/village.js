@@ -406,7 +406,6 @@ export class Village {
       if (Array.isArray(f.knownBy) && !f.knownBy.includes('lyra') && f.hiddenFrom) return false;
       if ((Number(f.minFamiliarity) || 0) > (rel.familiarity ?? 0)) return false;
       if (rel.notes?.some?.((n) => n.text === f.text)) return false;
-      if (safe(() => mind.knowledge?.has?.(f.text), false)) return false;
       return speakable(f.text) && speakable(f.say || '');
     });
     if (!facts.length) return null;
@@ -759,7 +758,7 @@ export class Village {
     const clause = this.rumors.render(rumor, 'narrator', { stranger: P, version: this.rumors.versionOf(rumor, 'lyra') });
     if (!clause) return;
     const text = `${who} says ${clause}.`;
-    safe(() => mind.learn?.(rumor.about === 'player' ? P : rumor.victim ? this.name(rumor.victim) : 'Hearthvale', text, { kind: 'fact', source: 'told', from: tellerId || null, confidence: 0.4, about: [rumor.about === 'player' ? 'player' : rumor.victim || 'village'].filter(Boolean) }));
+    safe(() => mind.learn?.(rumor.about === 'player' ? P : rumor.victim ? this.name(rumor.victim) : 'Hearthvale', text, { kind: 'rumor', source: 'told', from: tellerId || null, confidence: 0.4, about: [rumor.about === 'player' ? 'player' : rumor.victim || 'village'].filter(Boolean) }));
     if (rumor.about === 'player' && rumor.valence) {
       const rels = mind.relationships;
       if (rels?.get?.('player')) safe(() => rels.adjust('player', { affinity: round1(rumor.valence * 1.5), trust: round1(rumor.valence * 1.2) }, `Heard from ${who} that ${clause}`));

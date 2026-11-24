@@ -94,7 +94,7 @@ export function fill(text, vars = {}) {
   s = s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null && vars[k] !== '' ? String(vars[k]) : m));
   if (/\{\w+\}/.test(s)) return null;
   s = s
-    .replace(/\s+([,.!?])/g, '$1')
+    .replace(/\s+([,!?]|\.(?!\.))/g, '$1')
     .replace(/\s{2,}/g, ' ')
     .replace(/^[\s,.]+/, '')
     .trim();
@@ -123,8 +123,14 @@ export function say(pool, speakerId, listenerId, { rng, vars = null, direct = fa
   const v = vars || varsFor(speakerId, listenerId, extra);
   const order = pool.length === 1 ? [0] : shuffledIdx(pool.length, rng);
   let fallback = null;
+  const noName = !(v.n != null && v.n !== '');
   for (const i of order) {
     const raw = pool[i];
+    // Without a name for them, a line that opens on their name reads wrong: keep it for last.
+    if (noName && /^\{n\}/.test(raw) && pool.some((r) => !/^\{n\}/.test(r))) {
+      fallback = fallback || fill(raw, v);
+      continue;
+    }
     if (!direct && listenerId && listenerId !== 'player' && names(raw, listenerId)) continue;
     if (listenerId === 'lyra' && /\{lyra\}/.test(raw)) continue;
     // Never tell someone about themselves as "the stranger".

@@ -581,3 +581,75 @@ test('exchanges are pure data: buildExchange with a bare context', () => {
   }
   assert.ok(ALIASES.hobb.length);
 });
+
+// ------------------------------------------------------------------ Lyra, with her own mind
+
+import { Mind } from '../src/ai/mind/mind.js';
+import { Inventory } from '../src/entities/items.js';
+import { generateWorld } from '../src/world/worldgen.js';
+import { socialPlugin } from '../src/ai/plugins/social_plugin.js';
+import { relationshipsPlugin } from '../src/ai/plugins/relationships_plugin.js';
+import { memoryPlugin } from '../src/ai/plugins/memory_plugin.js';
+
+const WORLD = (() => {
+  const g = { bus: new EventBus(), rng: new RNG(7), flags: {}, time: 0, clock: { t: 300, hour: 8, daylight: 1, weather: { type: 'clear' } }, entities: { list: [], nearest: () => null }, atlas: null, ui: null };
+  return generateWorld(g, 1337);
+})();
+
+function withLyra({ hour = 18.5 } = {}) {
+  const made = makeGame({ hour });
+  const { game } = made;
+  Object.assign(game, { map: WORLD.map, objects: WORLD.objects, locations: WORLD.locations, spawns: WORLD.spawns });
+  game.bubbles = { said: [], say(e, text) { this.said.push({ id: e?.id, text }); }, thought() {}, icon() {}, isBusy: () => false, clear() {} };
+  const lyra = new Actor(game, { id: 'lyra', name: 'Lyra', faction: 'player', x: made.people.hobb.x + 10, y: made.people.hobb.y, maxHp: 45, inventory: new Inventory({ coin: 8 }) });
+  lyra.behavior = { directive: { type: 'independent' }, stance: 'defend', setDirective(d) { this.directive = { ...d }; return { ok: true }; }, status: () => 'living her own life', emote() {} };
+  game.companion = game.entities.add(lyra);
+  lyra.mind = new Mind(game, lyra);
+  for (const p of [relationshipsPlugin, memoryPlugin, socialPlugin]) game.plugins.register(p);
+  game.plugins.installAll();
+  // Everyone else elsewhere: just Lyra and her parents.
+  for (const [id, e] of Object.entries(made.people)) if (id !== 'hobb' && id !== 'wenna') e.x += 2000;
+  made.people.wenna.x = made.people.hobb.x + 20;
+  made.people.wenna.y = made.people.hobb.y;
+  return { ...made, lyra, mind: lyra.mind };
+}
+
+test('Lyra, on her own time, talks with her parents as herself and her mind keeps it', () => {
+  const { game, v, mind, events, people } = withLyra();
+  mind.relationships.ensure(people.hobb);
+  mind.relationships.ensure(people.wenna);
+  const mem0 = mind.memory.all ? mind.memory.all().length : mind.memory.list.length;
+  run(game, 120);
+  const talks = v.log.filter((c) => c.a === 'lyra' || c.b === 'lyra');
+  assert.ok(talks.length >= 1, 'she talked with someone');
+  assert.ok(talks.every((c) => ['hobb', 'wenna'].includes(c.a === 'lyra' ? c.b : c.a)));
+  assert.ok(events.some((e) => e.type === 'conversation' && e.p.a === game.companion));
+  const mem1 = mind.memory.all ? mind.memory.all().length : mind.memory.list.length;
+  assert.ok(mem1 > mem0, 'remembered');
+  const rel = mind.relationships.get('hobb') || mind.relationships.get('wenna');
+  assert.ok(rel.interactions >= 1);
+  for (const c of talks) for (const l of c.lines) assert.ok(!/\{\w+\}/.test(l.text) && speakable(l.text), l.text);
+});
+
+test('news reaches Lyra as hearsay, weaker than what she saw', () => {
+  const { game, v, mind } = withLyra();
+  const r = v.addRumor('rescued', { victim: 'tansy', beast: 'wolf', witnesses: ['hobb'] });
+  v.converse('hobb', 'lyra', { topic: 'rumor' });
+  assert.ok(r.heardBy.includes('lyra'));
+  const k = mind.knowledgeStore.list.find((x) => /wolf off Tansy/i.test(x.text));
+  assert.ok(k, 'she knows what she heard');
+  assert.equal(k.kind, 'rumor');
+  assert.ok(k.confidence <= 0.5);
+  assert.ok(/says/.test(k.text));
+  assert.ok(game);
+});
+
+test("Lyra's prompt gets a compact line of village news", () => {
+  const { v, people } = withLyra();
+  v.addRumor('rescued', { victim: 'tansy', beast: 'wolf', witnesses: ['hobb', 'lyra'] });
+  v.rumors.list[0].source = 'hobb';
+  const s = v.promptContext();
+  assert.ok(s.length > 0 && s.length <= 480, s);
+  assert.ok(/wolf off Tansy|thinks of/i.test(s), s);
+  assert.ok(people.hobb);
+});
