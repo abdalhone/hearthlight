@@ -6,7 +6,7 @@
 
 export const KINDS = ['shapes', 'essences', 'twists'];
 
-export const SHAPE_IDS = ['bolt', 'blast', 'strike', 'throw', 'beam', 'nova', 'orb', 'summon', 'rune', 'rain', 'wall', 'dash'];
+export const SHAPE_IDS = ['bolt', 'blast', 'strike', 'throw', 'beam', 'nova', 'orb', 'summon', 'rune', 'rain', 'wall', 'dash', 'bind', 'ward'];
 export const ESSENCE_IDS = ['raw', 'fire', 'water', 'frost', 'storm', 'earth', 'wind', 'nature', 'poison', 'light', 'dark', 'iron', 'song'];
 export const TWIST_IDS = ['multishot', 'split', 'pierce', 'bounce', 'chain', 'homing', 'echo', 'big', 'swift', 'burst', 'linger', 'orbit', 'volley', 'spiral', 'leech', 'charge'];
 
@@ -25,6 +25,8 @@ export const SHAPE_INFO = {
   rain: { name: 'Rain', desc: 'Strikes fall on the spot you aim at.', preview: { type: 'circle', range: 130, radius: 34 } },
   wall: { name: 'Wall', desc: 'A barrier across your aim.', preview: { type: 'wall', range: 50, width: 64 } },
   dash: { name: 'Dash', desc: 'A blink that leaves the weave in a trail.', preview: { type: 'line', range: 70, width: 10 } },
+  bind: { name: 'Bind', desc: 'Your own Stillring: a ring that closes on what you aim at and holds it still.', preview: { type: 'bind', range: 150, radius: 10 } },
+  ward: { name: 'Ward', desc: 'A shield on you, or the friend you aim at: it takes blows and stops missiles.', preview: { type: 'shield', range: 110, radius: 13 } },
 };
 
 // Palettes follow DESIGN §22.1 { core, glow, spark, deep }; the runtime's own win.
@@ -181,9 +183,10 @@ export function previewOf(plan, weave) {
 }
 
 // Is a preview aimed at a spot (where the finger's distance matters) or a direction?
+// (A bind is aimed at someone, a ward at whoever it shields: both spots.)
 export function aimsAtSpot(preview) {
   const t = preview?.type;
-  return t === 'circle' || t === 'point' || t === 'wall';
+  return t === 'circle' || t === 'point' || t === 'wall' || t === 'bind' || t === 'shield';
 }
 
 // How a weave is cast: 'hold' (channelled while held: beams), 'charge' (hold to power

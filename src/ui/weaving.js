@@ -713,7 +713,8 @@ export class Weaving {
     const fx = p?.facing?.x ?? 1;
     const fy = p?.facing?.y ?? 0;
     out.auto = true;
-    if (pv?.type === 'ring') {
+    // A ring around you, or a ward (a tap shields yourself).
+    if (pv?.type === 'ring' || pv?.type === 'shield') {
       out.x = o.x + fx;
       out.y = o.y + fy;
       return out;

@@ -2,6 +2,7 @@ import { planLook } from './fx_styles.js';
 import { TAU, hash, flicker } from './fx_util.js';
 import { disc, ell, ring, line, halo, zig, poly, wedge, px, rect, glyphSprite, fistSprite } from './fx_draw.js';
 import { drawFamiliar, drawFamiliarShadow } from './fx_familiars.js';
+import { drawBind, drawBindGround, drawWard, drawWardGround, drawRingMissile } from './fx_wards.js';
 
 // How every body kind looks (DESIGN §22.2: "a render layer drawing every body by kind
 // with its palette, particle style and light"). Each draw function paints the body into
@@ -596,6 +597,11 @@ function drawArc(R, b, L, fs) {
 }
 
 function drawProjectile(R, b, L, fs) {
+  // A bind's ring in flight (DESIGN §22.5), whatever twists it carries.
+  if (b.plan.shapeDef?.missile === 'ring' && (b.mode === 'fly' || b.mode === 'orb')) {
+    drawRingMissile(R, b, L);
+    return;
+  }
   switch (b.mode) {
     case 'fall':
       return drawFall(R, b, L);
@@ -1538,6 +1544,12 @@ export function drawBodyGround(R, b) {
     case 'summon':
       drawFamiliarShadow(R, b, x, y);
       break;
+    case 'bind':
+      drawBindGround(R, b, L);
+      break;
+    case 'ward':
+      drawWardGround(R, b, L, b.plan.ward?.share || 0);
+      break;
     case 'wall': {
       c.globalAlpha = 0.28 * k01((b.life - b.age) / 0.45);
       line(c, b.ox - R.ox, b.oy - R.oy + 1, b.x2 - R.ox, b.y2 - R.oy + 1, '#100a1c', b.r * 2 + 3);
@@ -1640,6 +1652,12 @@ export function drawBody(R, b) {
       break;
     case 'wall':
       drawWall(R, b, L);
+      break;
+    case 'bind':
+      drawBind(R, b, L);
+      break;
+    case 'ward':
+      drawWard(R, b, L);
       break;
     case 'rune':
     case 'trail':

@@ -187,6 +187,17 @@ const SHAPE = {
   dash(S, t, p) {
     S.noise(t, { dur: 0.2, gain: 0.25, filter: { type: 'bandpass', freq: 2400 * p, to: 500, q: 1.3 } });
   },
+  // A ring thrown: a glassy whistle that rises as it spins away.
+  bind(S, t, p) {
+    S.tone(t, { type: 'triangle', freq: 1100 * p, to: 1750 * p, dur: 0.14, gain: 0.06 });
+    S.fm(t + 0.04, { freq: 1568 * p, ratio: 2, index: 0.6, dur: 0.22, gain: 0.035, out: S.wet });
+  },
+  // A ward rising: a shimmer swelling into two soft bell tones.
+  ward(S, t, p) {
+    S.noise(t, { dur: 0.38, a: 0.14, gain: 0.08, filter: { type: 'bandpass', freq: 900, to: 2600, q: 2 } });
+    S.tone(t, { type: 'sine', freq: 392 * p, to: 523.25 * p, dur: 0.42, a: 0.09, gain: 0.08, out: S.wet });
+    S.tone(t + 0.08, { type: 'sine', freq: 784 * p, dur: 0.38, a: 0.05, gain: 0.045, out: S.wet });
+  },
 };
 
 // Reactions: a two-note chime over a flavor of what happened.
@@ -492,6 +503,42 @@ export class MagicSfx {
         case 'crit':
           S.fm(t, { freq: 1760 * p, ratio: 2.5, index: 1.5, dur: 0.2, gain: 0.07 });
           S.noise(t, { dur: 0.05, gain: 0.15, filter: { type: 'highpass', freq: 5000 } });
+          break;
+        // DESIGN §22.5: a ring snapping shut (a click and a falling bell), letting go,
+        // a boss shrugging it off; a ward knocked, turning a missile back or aside,
+        // thickened, shattering.
+        case 'bind':
+          S.noise(t, { dur: 0.03, gain: 0.18, filter: { type: 'highpass', freq: 3500 } });
+          S.fm(t, { freq: 1568 * p, ratio: 2, index: 1.1, dur: 0.22, gain: 0.07, out: S.wet });
+          S.fm(t + 0.09, { freq: 1046.5 * p, ratio: 2, index: 0.9, dur: 0.45, gain: 0.06, out: S.wet });
+          if (plan) HIT[soundOf(plan.essences?.[0] || 'raw')](S, t + 0.02, p, 0.45);
+          break;
+        case 'unbind':
+          S.tone(t, { type: 'triangle', freq: 880 * p, to: 1320 * p, dur: 0.16, gain: 0.035, out: S.wet });
+          break;
+        case 'resist':
+          S.tone(t, { type: 'sine', freq: 140 * p, to: 90 * p, dur: 0.16, gain: 0.14 });
+          S.tone(t, { type: 'sawtooth', freq: 300 * p, to: 220 * p, dur: 0.12, gain: 0.03, filter: { type: 'lowpass', freq: 900 } });
+          break;
+        case 'ward_hit':
+          S.fm(t, { freq: 2350 * p, ratio: 3.4, index: 1.2, dur: 0.14, gain: 0.055 });
+          S.tone(t, { type: 'sine', freq: 230 * p, to: 150 * p, dur: 0.1, gain: 0.1 });
+          if (plan) HIT[soundOf(plan.essences?.[0] || 'raw')](S, t + 0.01, p * 1.2, 0.3);
+          break;
+        case 'reflect':
+          S.tone(t, { type: 'triangle', freq: 1800 * p, to: 2700 * p, dur: 0.08, gain: 0.07 });
+          S.fm(t + 0.03, { freq: 2637 * p, ratio: 2, index: 0.8, dur: 0.2, gain: 0.04, out: S.wet });
+          break;
+        case 'deflect':
+          S.noise(t, { dur: 0.14, gain: 0.16, filter: { type: 'bandpass', freq: 2800 * p, to: 900, q: 1.4 } });
+          break;
+        case 'thicken':
+          S.tone(t, { type: 'sine', freq: 523.25 * p, to: 659.25 * p, dur: 0.3, a: 0.06, gain: 0.05, out: S.wet });
+          break;
+        case 'ward_break':
+          for (let i = 0; i < 4; i++) S.fm(t + i * 0.025, { freq: r(1800, 3200) * p, ratio: 3.1, index: 2, dur: 0.22, gain: 0.055 });
+          S.noise(t, { dur: 0.18, gain: 0.2, filter: { type: 'highpass', freq: 3000 } });
+          S.tone(t, { type: 'sine', freq: 160 * p, to: 60 * p, dur: 0.3, gain: 0.2 });
           break;
         default:
           break;

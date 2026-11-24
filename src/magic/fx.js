@@ -306,6 +306,30 @@ export class MagicFx {
         }
         break;
       }
+      case 'bind': {
+        // The ring's essence shed off its rim, rising a little.
+        const n = this._count(fs, 8, dt);
+        const r = b.cur || b.r;
+        for (let i = 0; i < n; i++) {
+          const it = T[(fs.k = (fs.k || 0) + 1) % T.length];
+          const a = Math.random() * TAU;
+          this._emit(it.style, it.pal, b.x + Math.cos(a) * r, b.y + Math.sin(a) * r * 0.42, 1, Math.cos(a) * 3, Math.sin(a) * 2, 6 + Math.random() * 8);
+        }
+        break;
+      }
+      case 'ward': {
+        // A few motes off the shell (fewer as it weakens); a song ward sheds notes.
+        const s = b.shieldMax > 0 ? Math.max(0, Math.min(1, b.shield / b.shieldMax)) : 1;
+        const n = this._count(fs, 3 + 5 * s, dt);
+        const r = b.cur || b.r;
+        for (let i = 0; i < n; i++) {
+          const it = T[(fs.k = (fs.k || 0) + 1) % T.length];
+          const a = Math.random() * TAU;
+          const z = Math.max(0, 9 - Math.sin(a) * r * 1.08);
+          this._emit(it.style, it.pal, b.x + Math.cos(a) * r, b.y + 1, z, Math.cos(a) * 4, 0, 2 + Math.random() * 4);
+        }
+        break;
+      }
       default:
         break;
     }
@@ -587,6 +611,15 @@ export class MagicFx {
         case 'trail':
           push((b.x + b.x2) / 2, (b.y + b.y2) / 2 - 4, 36, col, 0.5 * (1 - k), fl);
           break;
+        case 'bind':
+          push(b.x, b.y - 4, Math.max(26, (b.cur || b.r) * 2.6), col, (b.age < 0.25 ? 0.9 : 0.5) * strobe, fl);
+          break;
+        case 'ward': {
+          const s = b.shieldMax > 0 ? Math.max(0, Math.min(1, b.shield / b.shieldMax)) : 1;
+          const hit = b.fxState && b.fxState.hitAge >= 0 ? Math.max(0, 1 - (b.age - b.fxState.hitAge) / 0.3) : 0;
+          push(b.x, b.y - 9, Math.max(30, (b.cur || b.r) * 2.8), col, (0.3 + 0.25 * s + 0.4 * hit) * strobe * Math.min(1, (b.life - b.age) / 0.4), fl);
+          break;
+        }
         default:
           break;
       }

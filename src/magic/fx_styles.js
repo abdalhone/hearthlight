@@ -154,6 +154,10 @@ export const STATUS_LOOKS = {
   hearts: { tint: '#ff9ad5', tintK: 0.2, pulse: 'slow', head: 'hearts', parts: [['heart', 1.4, 'head']] },
   mud: { tint: '#5a3f22', tintK: 0.2, feet: 'mud', parts: [['mud', 2.5, 'feet']] },
   steam: { tint: '#e8eef2', tintK: 0.18, head: 'steam', parts: [['steam', 5, 'head']] },
+  // A bind's hold: a pale sheen; the ring itself (fx_wards.js) does the rest.
+  bound: { tint: '#e6dcff', tintK: 0.14, pulse: 'slow' },
+  lull: { tint: '#ffb8e6', tintK: 0.16, pulse: 'slow', parts: [['note', 1.4, 'head']] },
+  none: { tintK: 0 },
 };
 
 export const DEFAULT_STATUS_LOOK = { tintK: 0.2, pulse: 'slow', ring: true };

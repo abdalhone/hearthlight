@@ -167,6 +167,34 @@ export const SHAPE_GLYPHS = {
     '......kkk..',
     '...........',
   ],
+  // The Stillring: a ring closing on a held mark, four ticks drawn in to it.
+  bind: [
+    '.....s.....',
+    '.....c.....',
+    '...kkgkk...',
+    '.kkgd.dgkk.',
+    'kgd..k..dgk',
+    'sc..kck..cs',
+    'kgd..k..dgk',
+    '.kkgd.dgkk.',
+    '...kkgkk...',
+    '.....c.....',
+    '.....s.....',
+  ],
+  // A ward: a shield with a bright rim.
+  ward: [
+    '.kkkkkkkkk.',
+    'kgssssscggk',
+    'kscccccggdk',
+    'kscccccggdk',
+    'kgcccccgddk',
+    '.kgcccggdk.',
+    '.kggccgddk.',
+    '..kgggddk..',
+    '..kkgddkk..',
+    '...kkdkk...',
+    '....kkk....',
+  ],
 };
 
 // A gem in the essence's own palette, with a symbol in its spark tone ('s').

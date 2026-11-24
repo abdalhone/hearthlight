@@ -203,6 +203,13 @@ export class WeavePreview {
     const spread = 0.22;
     const base = { ghost, gen: 0, pierce: this.has('pierce') ? 3 : 0, bounce: this.has('bounce') ? 2 : 0 };
     this.casterPose = this.t;
+    if (shape === 'ward') {
+      // A dome on the stranger; the dummy throws a stone or two at it.
+      const dome = this.body({ ...base, kind: 'dome', x: this.casterX + 4, y: GROUND, life: CYCLE * 0.92, r: 12 * big });
+      if (!dome) return;
+      for (const at of [0.45, 1.1]) this.later(at, () => this.body({ kind: 'foe', x: d.x - 8, y: d.y - 16, vx: -130, vy: 6, life: 1.4, r: 2, dome }));
+      return;
+    }
     if (shape === 'bolt' || shape === 'orb' || shape === 'dash' || shape === 'beam' || !['blast', 'strike', 'throw', 'nova', 'summon', 'rune', 'rain', 'wall'].includes(shape)) {
       if (shape === 'beam') {
         this.body({ ...base, kind: 'beam', x: ox, y: oy, tx, ty, life: 1.1, r: r + 1, tick: 0 });
@@ -229,6 +236,10 @@ export class WeavePreview {
           b.homing = true;
         }
         if (this.has('spiral')) b.spiral = 1;
+        if (shape === 'bind') {
+          b.ring = true;
+          b.homing = true;
+        }
       }
       return;
     }
@@ -281,7 +292,35 @@ export class WeavePreview {
 
   step(b, dt) {
     const d0 = this.dummies[0];
-    if (b.kind === 'timer') return;
+    if (b.kind === 'timer' || b.kind === 'dome') return;
+    if (b.kind === 'foe') {
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      const dome = b.dome;
+      if (b.back) {
+        if (Math.abs(b.x - d0.x) < 6) {
+          this.hitDummy(0, b, 0.6);
+          b.dead = true;
+        }
+        return;
+      }
+      if (dome && this.bodies.includes(dome) && Math.hypot(b.x - dome.x, b.y - (dome.y - 10)) < dome.r + 1) {
+        dome.flareAt = this.t;
+        this.effect({ kind: 'ring', x: b.x, y: b.y, r0: 1, r1: 7, life: 0.25 });
+        for (let i = 0; i < 3; i++) this.particle(b.x, b.y, false, true);
+        const ess = this.weave?.essences || [];
+        if (ess.includes('light') || this.has('bounce')) {
+          b.vx = 160;
+          b.vy = -2;
+          b.back = true;
+        } else if (ess.includes('wind') || this.has('spiral')) {
+          b.vy = -120;
+          b.vx = -40;
+          b.dome = null;
+        } else b.dead = true;
+      }
+      return;
+    }
     if (b.kind === 'proj' || b.kind === 'orb' || b.kind === 'child') {
       if (b.orbit > 0) {
         b.orbit -= dt;
@@ -387,6 +426,10 @@ export class WeavePreview {
   }
 
   onHit(b, d) {
+    if (b.ring) {
+      this.effect({ kind: 'hold', x: d.x, y: d.y, life: 1.5 });
+      d.wob = 0;
+    }
     if (this.has('leech') && !b.ghost) {
       this.effect({ kind: 'thread', x: d.x, y: d.y - 10, x2: this.casterX + 8, y2: GROUND - 10, life: 0.45 });
       this.nums.push({ x: this.casterX + 8, y: GROUND - 26, text: '+', heal: true, age: 0 });
@@ -498,8 +541,10 @@ export class WeavePreview {
     for (const b of this.bodies) if (b.kind === 'rune' || b.kind === 'wall' || b.kind === 'trail') this.drawBody(ctx, b, pal);
     for (let i = this.dummies.length - 1; i >= 0; i--) this.drawDummy(ctx, this.dummies[i]);
     this.drawCaster(ctx, pal);
-    for (const b of this.bodies) if (b.kind !== 'rune' && b.kind !== 'wall' && b.kind !== 'trail') this.drawBody(ctx, b, pal);
-    for (const f of this.fx) if (f.kind !== 'patch') this.drawFx(ctx, f, pal);
+    for (const f of this.fx) if (f.kind === 'hold') this.drawHold(ctx, f, pal);
+    for (const b of this.bodies) if (b.kind === 'dome') this.drawDome(ctx, b, pal);
+    for (const b of this.bodies) if (b.kind !== 'rune' && b.kind !== 'wall' && b.kind !== 'trail' && b.kind !== 'dome') this.drawBody(ctx, b, pal);
+    for (const f of this.fx) if (f.kind !== 'patch' && f.kind !== 'hold') this.drawFx(ctx, f, pal);
     // Numbers at full resolution, so they stay sharp.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const fs = Math.max(10, Math.round(s * 4.2));
@@ -615,9 +660,81 @@ export class WeavePreview {
     ctx.restore();
   }
 
+  // A bind's hold on a dummy: a ring at its foot, bands of light round the post.
+  drawHold(ctx, f, pal) {
+    const k = Math.min(1, f.age / 0.15) * Math.min(1, (f.life - f.age) / 0.3);
+    if (k <= 0) return;
+    const r = 10 * (f.age < 0.2 ? 2 - f.age / 0.2 : 1);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = rgba(pal.deep, 0.8 * k);
+    ctx.beginPath();
+    ctx.ellipse(f.x, f.y, r, r * 0.42, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = rgba(f.age < 0.2 ? '#ffffff' : pal.core, k);
+    ctx.stroke();
+    for (let i = 0; i < 2; i++) {
+      const y = f.y - 4 - i * 4;
+      ctx.strokeStyle = rgba(i ? pal.spark : pal.core, k * (0.9 - i * 0.3) * (0.7 + 0.3 * Math.sin(this.t * 7)));
+      ctx.beginPath();
+      ctx.ellipse(f.x, y, 4, 1.6, 0, 0.2, Math.PI - 0.2);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 4; i++) {
+      const a = this.t * 2.4 + (i / 4) * Math.PI * 2;
+      ctx.fillStyle = rgba(i & 1 ? pal.spark : pal.core, k);
+      ctx.fillRect(Math.round(f.x + Math.cos(a) * r), Math.round(f.y + Math.sin(a) * r * 0.42), 1, 1);
+    }
+  }
+
+  // A ward on the stranger: a dome, rimmed, flaring where it is struck.
+  drawDome(ctx, b, pal) {
+    const k = Math.min(1, b.age / 0.15) * Math.min(1, (b.life - b.age) / 0.3);
+    if (k <= 0) return;
+    const r = b.r * (b.age < 0.15 ? 0.4 + 4 * b.age : 1);
+    const cy = b.y - 10;
+    const flare = Math.max(0, 1 - (this.t - (b.flareAt || -9)) / 0.3);
+    ctx.fillStyle = rgba(pal.glow, (0.12 + 0.18 * flare) * k);
+    ctx.beginPath();
+    ctx.ellipse(b.x, cy, r, r * 1.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = rgba(flare > 0.5 ? '#ffffff' : pal.core, (0.75 + 0.25 * flare) * k);
+    ctx.stroke();
+    ctx.strokeStyle = rgba(pal.spark, 0.9 * k);
+    ctx.beginPath();
+    ctx.ellipse(b.x, cy, r - 2, (r - 2) * 1.08, 0, 3.7, 4.4);
+    ctx.stroke();
+    ctx.strokeStyle = rgba(pal.glow, 0.5 * k);
+    ctx.beginPath();
+    ctx.ellipse(b.x, b.y, r, r * 0.4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
   drawBody(ctx, b, pal) {
     if (b.kind === 'timer') return;
     const ga = b.ghost ? 0.5 : 1;
+    if (b.kind === 'foe') {
+      // A dummy's stone, grey.
+      ctx.fillStyle = '#1a1423';
+      ctx.fillRect(Math.round(b.x - 2), Math.round(b.y - 2), 4, 4);
+      ctx.fillStyle = b.back ? rgba(pal.core, 1) : '#b9ad99';
+      ctx.fillRect(Math.round(b.x - 1), Math.round(b.y - 1), 2, 2);
+      return;
+    }
+    if (b.ring) {
+      // A bind's ring in flight, spinning.
+      const sq = 0.3 + 0.7 * Math.abs(Math.sin(b.age * 8));
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = rgba(pal.deep, ga);
+      ctx.beginPath();
+      ctx.ellipse(b.x, b.y, b.r + 2, (b.r + 2) * sq, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = rgba(pal.core, ga);
+      ctx.stroke();
+      return;
+    }
     if (b.kind === 'proj' || b.kind === 'child' || b.kind === 'orb' || b.kind === 'lob') {
       if (b.kind === 'lob' && b.gx !== undefined) {
         ctx.fillStyle = 'rgba(5,5,15,0.35)';

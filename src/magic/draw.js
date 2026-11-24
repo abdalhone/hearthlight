@@ -446,6 +446,22 @@ export function drawBody(ctx, b, ox, oy, time) {
       ctx.lineCap = 'butt';
       break;
     }
+    case 'bind': {
+      // A ring at the feet, bands on the shins.
+      const r = b.cur || b.r;
+      ring(ctx, x, y, r, p.glow, 0.9, 2, 0.42);
+      ring(ctx, x, y, r, p.core, 1, 1, 0.42);
+      ring(ctx, x, y - 4, Math.max(3, r * 0.45), p.spark, 0.7, 1, 0.45);
+      break;
+    }
+    case 'ward': {
+      // A pale dome over the bearer, rimmed in its colour.
+      const r = b.cur || b.r;
+      const s = b.shieldMax > 0 ? Math.max(0.3, Math.min(1, b.shield / b.shieldMax)) : 1;
+      blob(ctx, x, y - 9, r, p.glow, 0.14 * s, 1.08);
+      ring(ctx, x, y - 9, r, p.core, 0.7 * s, 1, 1.08);
+      break;
+    }
     default:
       disc(ctx, x, y, b.r, p.glow, 0.8);
   }
@@ -696,6 +712,12 @@ export function collectLights(magic, time) {
         break;
       case 'trail':
         push((b.x + b.x2) / 2, (b.y + b.y2) / 2 - 4, 34, L.color, 0.5 * (1 - k));
+        break;
+      case 'bind':
+        push(b.x, b.y - 4, 28, L.color, 0.5);
+        break;
+      case 'ward':
+        push(b.x, b.y - 9, Math.max(30, (b.cur || b.r) * 2.6), L.color, 0.4);
         break;
       default:
         break;

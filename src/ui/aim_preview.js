@@ -105,6 +105,12 @@ export class AimPreview {
       this.fillStroke(ctx, pal, k, thin);
       this.cross(ctx, p.x, p.y, Math.min(rad * 0.5, 6 * s), pal, k);
       if (type === 'circle') this.pulseRing(ctx, p.x, p.y, rad, pal, k);
+    } else if (type === 'bind') {
+      this.drawBind(ctx, r, s, a, o, p, pv, pal, k, thin);
+      return;
+    } else if (type === 'shield') {
+      this.drawShield(ctx, r, s, a, o, pv, pal, k, thin);
+      return;
     } else if (type === 'wall') {
       const half = Math.max(8, ((Number(pv.width) || 60) * s) / 2);
       const cx = p.x;
@@ -138,6 +144,137 @@ export class AimPreview {
     }
     if (a.target && !a.cancel) this.bracket(ctx, r, s, a.target, pal, k);
     if (a.cancel) this.cancelMark(ctx, o.x, o.y - 18 * s, s, k);
+  }
+
+  // A bind (DESIGN §22.5): dots to its mark — the foe under the aim, or the one nearest
+  // it — and a ring closing on the mark's feet. Aimed at a friend it turns coral: that
+  // is an attack.
+  drawBind(ctx, r, s, a, o, p, pv, pal, k, thin) {
+    const g = this.game;
+    let mark = a.target && !a.target.removed && a.target.isAlive?.() !== false ? a.target : null;
+    if (!mark) mark = this.nearestActor(a.x, a.y, 52, (e) => this.hostile(e));
+    const friend = !!mark && this.friendly(mark);
+    const P = friend ? CANCEL : pal;
+    const at = mark ? r.worldToDevice(mark.x, mark.y) : r.worldToDevice(a.x, a.y + 7);
+    this.dots(ctx, o.x, o.y, at.x, at.y - 7 * s, P, k, s, false);
+    const base = Math.max(8, (Number(pv.radius) || 10) * s) + (mark ? Math.min(10, mark.radius ?? 5) * s * 0.4 : 0);
+    const f = g.settings?.reduceMotion ? 1 : 1 - ((this.t * 1.1) % 1);
+    const rad = base * (1 + 0.7 * f * f);
+    for (const [col, w] of [
+      [rgba('#0b0915', 0.45 * k), thin + 3],
+      [rgba(P.core, 0.95 * k), thin],
+    ]) {
+      ctx.lineWidth = w;
+      ctx.strokeStyle = col;
+      ctx.beginPath();
+      ctx.ellipse(at.x, at.y, rad, rad * 0.42, 0, 0, TAU);
+      ctx.stroke();
+    }
+    ctx.fillStyle = rgba(P.glow, 0.22 * k);
+    ctx.beginPath();
+    ctx.ellipse(at.x, at.y, base, base * 0.42, 0, 0, TAU);
+    ctx.fill();
+    // Four ticks pointing in: it closes.
+    ctx.lineWidth = thin;
+    ctx.strokeStyle = rgba(P.spark, 0.95 * k);
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const an = (i / 4) * TAU + Math.PI / 4;
+      const cx = Math.cos(an);
+      const cy = Math.sin(an) * 0.42;
+      ctx.moveTo(at.x + cx * (rad + 6 * s), at.y + cy * (rad + 6 * s));
+      ctx.lineTo(at.x + cx * (rad + 1 * s), at.y + cy * (rad + 1 * s));
+    }
+    ctx.stroke();
+    if (mark && !a.cancel) this.bracket(ctx, r, s, mark, P, k);
+    if (a.cancel) this.cancelMark(ctx, o.x, o.y - 18 * s, s, k);
+  }
+
+  // A ward (DESIGN §22.5): a dome over whoever it will shield — you, or the friend under
+  // (or nearest) the aim.
+  drawShield(ctx, r, s, a, o, pv, pal, k, thin) {
+    const g = this.game;
+    const p = g.player;
+    let who = a.target && !a.target.removed && this.friendly(a.target) ? a.target : null;
+    if (!who && p && Math.hypot(a.x - p.x, a.y + 7 - p.y) > 16) who = this.nearestActor(a.x, a.y, 24, (e) => this.friendly(e));
+    who = who || p;
+    if (!who) return;
+    const feet = r.worldToDevice(who.x, who.y);
+    const mid = r.worldToDevice(who.x, who.y - 9);
+    if (who !== p) this.dots(ctx, o.x, o.y, mid.x, mid.y, pal, k * 0.85, s, false);
+    const rx = Math.max(10, (Number(pv.radius) || 13) * s);
+    const ry = rx * 1.08;
+    ctx.fillStyle = rgba(pal.glow, 0.16 * k);
+    ctx.beginPath();
+    ctx.ellipse(mid.x, mid.y, rx, ry, 0, 0, TAU);
+    ctx.fill();
+    for (const [col, w] of [
+      [rgba('#0b0915', 0.4 * k), thin + 2],
+      [rgba(pal.core, 0.9 * k), thin],
+    ]) {
+      ctx.lineWidth = w;
+      ctx.strokeStyle = col;
+      ctx.beginPath();
+      ctx.ellipse(mid.x, mid.y, rx, ry, 0, 0, TAU);
+      ctx.stroke();
+    }
+    ctx.lineWidth = Math.max(1, thin - 1);
+    ctx.strokeStyle = rgba(pal.spark, 0.8 * k);
+    ctx.beginPath();
+    ctx.ellipse(mid.x, mid.y, rx - 3 * s, ry - 3 * s, 0, 3.7, 4.4);
+    ctx.stroke();
+    ctx.strokeStyle = rgba(pal.glow, 0.6 * k);
+    ctx.beginPath();
+    ctx.ellipse(feet.x, feet.y, rx, rx * 0.42, 0, 0, TAU);
+    ctx.stroke();
+    if (!g.settings?.reduceMotion) {
+      const f = (this.t * 1.2) % 1;
+      ctx.strokeStyle = rgba(pal.spark, 0.45 * (1 - f) * k);
+      ctx.beginPath();
+      ctx.ellipse(mid.x, mid.y, rx * (0.4 + 0.6 * f), ry * (0.4 + 0.6 * f), 0, 0, TAU);
+      ctx.stroke();
+    }
+    if (who !== p && !a.cancel) this.bracket(ctx, r, s, who, pal, k);
+    if (a.cancel) this.cancelMark(ctx, o.x, o.y - 18 * s, s, k);
+  }
+
+  friendly(e) {
+    const g = this.game;
+    if (!e || e.type !== 'actor' || e.removed || e.dead) return false;
+    if (e === g.player || e === g.companion || e.id === 'lyra') return true;
+    try {
+      return !!(g.combat?.isLawful?.(e) || g.combat?.isProtected?.(e));
+    } catch {
+      return false;
+    }
+  }
+
+  hostile(e) {
+    const g = this.game;
+    const p = g.player;
+    if (!e || e === p || e.type !== 'actor' || e.removed || e.dead) return false;
+    try {
+      return !!(g.combat?.isHostile?.(p, e) || e.provokedBy === p);
+    } catch {
+      return false;
+    }
+  }
+
+  // The living actor nearest a world point within `max` px that passes `ok`.
+  nearestActor(x, y, max, ok) {
+    const list = this.game.entities?.all?.() || [];
+    let best = null;
+    let bd = max * max;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (e.type !== 'actor' || e.removed || (typeof e.isAlive === 'function' && !e.isAlive())) continue;
+      const d2 = (e.x - x) ** 2 + (e.y - 7 - y) ** 2;
+      if (d2 < bd && ok(e)) {
+        bd = d2;
+        best = e;
+      }
+    }
+    return best;
   }
 
   // A soft band with a bright dashed spine and a chevron at its end.

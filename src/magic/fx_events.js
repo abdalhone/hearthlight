@@ -66,6 +66,18 @@ function ghostOf(fx, actor, color, life, delay = 0, alpha = 0.55, atX, atY) {
   return e;
 }
 
+// Where a ward was just struck (its ripple, drawn by fx_wards), plus a little of its
+// essence thrown off there and a flash.
+function markHit(fx, b, x, y) {
+  const fs = b.fxState || (b.fxState = {});
+  fs.hitAge = b.age;
+  fs.hx = x;
+  fs.hy = y;
+  const L = planLook(b.plan);
+  burstStyles(fx, L.debris, x, y + 9, 9, 4, 0.9);
+  fx.flash(x, y, 30, L.lightColor, 0.55, 0.12);
+}
+
 const H = {
   cast(fx, p) {
     const plan = p.plan;
@@ -170,7 +182,18 @@ const H = {
     fs.lunge = 0;
     fs.echo = !!(cast?.plan && cast.plan.twists?.includes('echo') && !b.plan.twists.includes('echo'));
     if (b.kind === 'rune') fs.arm = b.armT > 0 ? b.armT : 0.6;
-    if (b.kind === 'summon') {
+    if (b.kind === 'ward') {
+      // A ward rises: a sigil under the bearer, a ring climbing the dome.
+      const e = fx.effects.spawn(FX.SIGIL, b.x, b.y, 0.5);
+      if (e) {
+        e.pal = L.pal;
+        e.r1 = Math.min(26, (b.r || 13) * 1.1);
+        e.glyph = L.look.glyph;
+      }
+      ring(fx, b.x, b.y, 3, (b.r || 13) * 1.1, L.pal.core, L.pal.glow, 0.35, 1, 0, 0.42);
+      ring(fx, b.x, b.y - 9, 2, b.r || 13, L.pal.spark, L.pal.glow, 0.4, 1, 0, 1.08);
+      burstStyles(fx, L.trail, b.x, b.y, 4, 8, 0.8);
+    } else if (b.kind === 'summon') {
       burstStyles(fx, L.debris, b.x, b.y, 6, 10, 1);
       ring(fx, b.x, b.y, 2, 14, L.pal.core, L.pal.glow, 0.35, 1);
     } else if (b.kind === 'projectile' && b.mode === 'arc') {
@@ -673,6 +696,116 @@ const H = {
   beam_end(fx, p) {
     const id = p.body?.cast?.id;
     if (id != null) fx.sound.stopLoop(`bm:${id}`);
+  },
+
+  // ---------------------------------------------------------------- bind and ward (§22.5)
+
+  // A ring closed on someone: it snaps in from wide, a flash, a lock-chime.
+  bind(fx, p) {
+    const t = p.target;
+    if (!t || !p.plan) return;
+    const L = planLook(p.plan);
+    const P = L.pal;
+    const r = Math.max(8, p.body?.r || 10);
+    ring(fx, t.x, t.y, r * 2.8, r, P.core, P.glow, 0.22, 2, 0, 0.42);
+    star(fx, t.x, t.y - 2, p.resisted ? 6 : 9, '#ffffff', L.halo, 0.2, 2);
+    burstStyles(fx, L.debris, t.x, t.y, 2, p.resisted ? 4 : 8, 0.8);
+    fx.parts.burst('twinkle', P, t.x, t.y, 4, 5, 1);
+    fx.flash(t.x, t.y - 6, 46, L.lightColor, p.resisted ? 0.55 : 0.85, 0.22);
+    if (!p.resisted) fx.shake(0.8, 0.08);
+    fx.sound.cue('bind', t.x, t.y, p.plan);
+  },
+
+  // It let go: the ring breaks into motes.
+  unbind(fx, p) {
+    const b = p.body;
+    const t = p.target;
+    if (!b?.plan || !t) return;
+    const L = planLook(b.plan);
+    ring(fx, t.x, t.y, b.r, b.r * 1.8, L.pal.spark, L.pal.glow, 0.25, 1, 0, 0.42);
+    burstStyles(fx, L.trail, t.x, t.y, 2, 5, 0.6);
+    fx.sound.cue('unbind', t.x, t.y, b.plan);
+  },
+
+  // A boss shrugged a bind off.
+  bind_resist(fx, p) {
+    const t = p.target;
+    if (!t || !p.plan) return;
+    const L = planLook(p.plan);
+    ring(fx, t.x, t.y, 6, (t.radius || 8) + 14, L.pal.glow, '#8e8a95', 0.3, 1, 0, 0.42);
+    fx.parts.burst('spark', L.pal, t.x, t.y, 4, 8, 1.3);
+    fx.sound.cue('resist', t.x, t.y);
+  },
+
+  // A blow on a ward: a ripple where it landed (toward whoever struck), a glassy knock.
+  ward_hit(fx, p) {
+    const b = p.body;
+    if (!b?.plan) return;
+    const fs = b.fxState || (b.fxState = {});
+    const src = p.source;
+    const tgt = p.target || b.target;
+    let ux = 0;
+    let uy = -1;
+    if (src && !src.removed) {
+      const dx = src.x - tgt.x;
+      const dy = src.y - tgt.y;
+      const l = Math.hypot(dx, dy) || 1;
+      ux = dx / l;
+      uy = dy / l;
+    }
+    const r = b.cur || b.r;
+    markHit(fx, b, tgt.x + ux * r, tgt.y - 9 + uy * r * 1.08);
+    fx.sound.cue('ward_hit', tgt.x, tgt.y, b.plan);
+  },
+
+  // A missile stopped (or turned back, or turned aside) at the shell.
+  ward_block(fx, p) {
+    const b = p.body;
+    if (!b?.plan) return;
+    const L = planLook(b.plan);
+    const P = L.pal;
+    markHit(fx, b, p.x, p.y);
+    if (p.how === 'reflect') {
+      star(fx, p.x, p.y, 8, '#ffffff', L.halo, 0.18, 0);
+      ring(fx, p.x, p.y, 1, 9, P.core, P.spark, 0.2, 1, 0, 0.8);
+      fx.sound.cue('reflect', p.x, p.y);
+    } else if (p.how === 'deflect') {
+      fx.parts.burst('gust', P, p.x, p.y, 0, 4, 1.2);
+      fx.sound.cue('deflect', p.x, p.y);
+    } else {
+      if (p.color) fx.parts.burst('drop', { core: p.color, glow: p.color, spark: p.color, deep: P.deep }, p.x, p.y, 0, 5, 1);
+      fx.sound.cue('ward_hit', p.x, p.y, b.plan);
+    }
+  },
+
+  // Another ward on top of one: it swells and brightens.
+  ward_thicken(fx, p) {
+    const b = p.body;
+    if (!b?.plan) return;
+    const L = planLook(b.plan);
+    ring(fx, b.x, b.y - 9, (b.cur || b.r) * 0.6, (b.cur || b.r) * 1.2, L.pal.core, L.pal.glow, 0.3, 1, 0, 1.08);
+    fx.parts.burst('twinkle', L.pal, b.x, b.y, 9, 6, 1);
+    fx.sound.cue('thicken', b.x, b.y, b.plan);
+  },
+
+  // Spent: the shell shatters outward.
+  ward_break(fx, p) {
+    const b = p.body;
+    if (!b?.plan) return;
+    const L = planLook(b.plan);
+    const P = L.pal;
+    const r = b.cur || b.r;
+    const e = fx.effects.spawn(FX.SHARDS, b.x, b.y, 0.55);
+    if (e) {
+      e.n = 10;
+      e.r1 = r * 1.3;
+      e.pal = P;
+    }
+    ring(fx, b.x, b.y - 9, r, r * 2, '#ffffff', P.glow, 0.3, 2, 0, 1.08);
+    burstStyles(fx, L.debris, b.x, b.y, 9, 14, 1.3);
+    fx.flash(b.x, b.y - 9, 60, L.lightColor, 0.8, 0.25);
+    fx.shake(1.2, 0.12);
+    fx.sound.cue('ward_break', b.x, b.y, b.plan);
   },
 
   link(fx, p) {
