@@ -5389,7 +5389,6 @@ input[type='range']::-moz-range-thumb {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-=======
 /* ---------- story: cutscenes (src/story/cutscene.js) ---------- */
 
 .cs-root {
@@ -6517,7 +6516,12 @@ input[type='range']::-moz-range-thumb {
   padding: 0;
   background: var(--ink-2);
   cursor: pointer;
-=======
+  box-shadow:
+    0 -2px 0 0 var(--bc),
+    0 2px 0 0 var(--bc),
+    -2px 0 0 0 var(--bc),
+    2px 0 0 0 var(--bc);
+}
 /* ---------- Hearthvale today: errands, problems and the missing (DESIGN §28) ---------- */
 
 .panel-life {
@@ -7763,6 +7767,7 @@ input[type='range']::-moz-range-thumb {
 }
 .how-controls .how-row dt {
   font-family: var(--font-display);
+}
 .life-worry {
   font-size: var(--fs-xs);
   color: var(--rose);
