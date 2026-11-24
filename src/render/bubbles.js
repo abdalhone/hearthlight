@@ -10,6 +10,7 @@ import {
   stackRects,
   edgePoint,
   numberStyle,
+  readableFill,
   uiFontPx,
   pixelUnit,
 } from './text_layout.js';
@@ -236,7 +237,7 @@ export class Bubbles {
     slot.vx = (Math.random() * 2 - 1) * 14;
     slot.vy = -(58 + Math.random() * 14) * (crit ? 1.15 : 1);
     slot.t = 0;
-    slot.life = crit ? 1.15 : style.kind === 'xp' ? 1.3 : 0.95;
+    slot.life = crit ? 1.3 : style.kind === 'xp' ? 1.3 : 1.1;
     slot.text = String(text ?? '');
     slot.fill = style.fill;
     slot.scale = style.scale;
@@ -431,7 +432,10 @@ export class Bubbles {
     return out;
   }
 
-  draw(ctx, r) {
+  // Name tags, speech bubbles, icons and the companion marker, then the floating numbers
+  // on top (a hit must read even while everyone is shouting). opts.numbers false leaves
+  // the numbers for drawNumbers (the renderer puts health bars between the two).
+  draw(ctx, r, opts = {}) {
     if (!r) return;
     this._dpr = r.dpr || 1;
     this._metrics(r);
@@ -442,11 +446,25 @@ export class Bubbles {
     ctx.textBaseline = 'middle';
     const playing = this.game?.state === 'playing' || this.game?.state === 'sleeping';
     if (playing) this._drawNameTags(ctx, r);
-    this._drawNumbers(ctx, r, W, H);
     this._layoutBubbles(ctx, r, W, H);
     for (let i = 0; i < this._vis.length; i++) this._drawBubble(ctx, this._vis[i], r);
     this._drawIcons(ctx, r, W, H);
     if (playing) this._drawCompanionMarker(ctx, r, W, H);
+    if (opts.numbers !== false) this.drawNumbers(ctx, r);
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  // The floating numbers alone (damage, heals, xp), over everything else in the world.
+  drawNumbers(ctx, r) {
+    if (!r) return;
+    this._dpr = r.dpr || 1;
+    this._metrics(r);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.imageSmoothingEnabled = false;
+    ctx.textBaseline = 'middle';
+    this._drawNumbers(ctx, r, ctx.canvas.width, ctx.canvas.height);
     ctx.globalAlpha = 1;
     ctx.textAlign = 'left';
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -546,11 +564,15 @@ export class Bubbles {
       vis.push(b);
     }
     vis.sort(byPriority);
-    // The HUD boxes go first and never move; the bubbles find room around them.
+    this._crowd(vis, r, W, H);
+    // The HUD boxes go first and never move, then the player and Lyra themselves (a
+    // bubble pushed around by a crowd must not hide the two people the scene is about);
+    // the bubbles find room around them.
     const rects = this._rects;
-    const nk = vis.length ? ko.length : 0;
+    const fixed = vis.length ? this._partyBodies(r, W, H, ko) : ko;
+    const nk = vis.length ? fixed.length : 0;
     rects.length = nk + vis.length;
-    for (let i = 0; i < nk; i++) rects[i] = ko[i];
+    for (let i = 0; i < nk; i++) rects[i] = fixed[i];
     for (let i = 0; i < vis.length; i++) rects[nk + i] = vis[i].layout;
     stackRects(rects, rects.length, 2 * u, margin, H, W, nk);
     // A bubble that slid sideways keeps its tail over the speaker.
@@ -560,6 +582,61 @@ export class Bubbles {
       const hi = L.x + L.w - 7 * u;
       L.tailX = lo <= hi ? Math.min(hi, Math.max(lo, L.ax)) : L.x + L.w / 2;
     }
+  }
+
+  // The keep-outs plus the bodies a bubble must not hide (device px), as fixed rects: the
+  // player and Lyra, and up to four foes just hit (the fight is what the screen is about).
+  _partyBodies(r, W, H, ko) {
+    const out = this._fixed || (this._fixed = []);
+    out.length = 0;
+    for (let i = 0; i < ko.length; i++) out.push(ko[i]);
+    const pool = this._bodyRects || (this._bodyRects = Array.from({ length: 6 }, () => ({ fixed: true })));
+    const g = this.game;
+    const party = this._party || (this._party = []);
+    party.length = 0;
+    party.push(g?.player, g?.companion);
+    const bars = g?.renderer?.healthBars?.bars;
+    if (bars?.size) {
+      for (const [a, b] of bars) {
+        if (party.length >= pool.length) break;
+        if (!b.friend && a !== g.player && a !== g.companion) party.push(a);
+      }
+    }
+    for (let k = 0; k < party.length; k++) {
+      const e = party[k];
+      if (!e || e.removed || e.hidden || !Number.isFinite(e.x)) continue;
+      const ax = this._dx(r, e.x);
+      const top = this._dy(r, e.y - headHeight(e) - (e.z || 0));
+      const foot = this._dy(r, e.y) + 2 * r.scale;
+      if (ax < -8 || ax > W + 8 || foot < 0 || top > H) continue;
+      const o = pool[k];
+      const half = Math.max(6, Math.min(24, e.radius || 6)) * r.scale;
+      o.x = ax - half;
+      o.y = top;
+      o.w = 2 * half;
+      o.h = Math.max(0, foot - top);
+      out.push(o);
+    }
+    return out;
+  }
+
+  // A crowd all shouting at once (a fight in the square: the whole village calls out)
+  // would bury the screen, and the people it is about, under bubbles. A small screen
+  // shows only as many as it has room for: Lyra's, the player's, then those nearest the
+  // player; the rest still speak (their words age and go) but are not drawn.
+  _crowd(vis, r, W, H) {
+    const dpr = this._dpr || 1;
+    const cap = Math.max(3, Math.min(7, Math.round((W / dpr) * (H / dpr) / 90000)));
+    if (vis.length <= cap) return;
+    const p = this.game?.player;
+    const px = p ? p.x : r.ox + W / 2 / r.scale;
+    const py = p ? p.y : r.oy + H / 2 / r.scale;
+    const rank = (b) => (b.entity.id === COMPANION_ID ? -2 : b.entity.id === PLAYER_ID ? -1 : Math.hypot(b.entity.x - px, b.entity.y - py));
+    const keep = vis.slice().sort((a, b) => rank(a) - rank(b)).slice(0, cap);
+    const kept = new Set(keep);
+    let n = 0;
+    for (let i = 0; i < vis.length; i++) if (kept.has(vis[i])) vis[n++] = vis[i];
+    vis.length = n;
   }
 
   _drawBubble(ctx, b, r) {
@@ -753,7 +830,7 @@ export class Bubbles {
     ctx.font = this.fonts.number;
     ctx.textAlign = 'center';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = Math.max(2, 2 * this.u);
+    ctx.lineWidth = Math.max(3, 3 * this.u);
     ctx.strokeStyle = OUTLINE;
     for (const n of this.numbers) {
       if (!n.active) continue;
@@ -766,7 +843,8 @@ export class Bubbles {
       ctx.globalAlpha = Math.max(0, fade);
       ctx.setTransform(k, 0, 0, k, dx, dy);
       ctx.strokeText(n.text, 0, 0);
-      ctx.fillStyle = n.fill;
+      // Weaves tint their numbers by essence after they spawn: keep any tint readable.
+      ctx.fillStyle = n.kind === 'damage' || n.kind === 'dot' ? readableFill(n.fill) : n.fill;
       ctx.fillText(n.text, 0, 0);
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);

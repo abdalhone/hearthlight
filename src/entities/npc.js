@@ -49,6 +49,8 @@ const LAMP_AREAS = ['town_square', 'lamplight_lane', 'weavers_row'];
 const TENDERS = new Set(['mira', 'hobb', 'wenna', 'elda', 'aveline']); // heal, help up, walk home
 const HELP_HEAR = [0, 300, 440, 600]; // how far a shout carries, by severity 1..3
 const HELP_SECONDS = 45; // the longest anyone stays on one call
+// What a villager yelps when the stranger's weave catches them by accident.
+const ACCIDENT_YELPS = ['Oi! Mind where that goes!', 'Ow! Watch it!', 'Careful with that!', 'Hey! Not at me!'];
 const DANGER_NEAR = 84; // an attacker this close to the victim keeps carers back
 
 const WORK_OBJECTS = {
@@ -1425,6 +1427,19 @@ export class NPC extends Actor {
     const g = this.game;
     const src = attackerOf(p.source);
     if (!src || src === this || this.downed) return;
+    // Caught by the stranger's weave meant for something else: a yelp, not a call to arms.
+    if (p.accident) {
+      const t0 = now(g);
+      if (t0 - (this._yelpAt ?? -Infinity) > 5) {
+        this._yelpAt = t0;
+        try {
+          g.bubbles?.say?.(this, ACCIDENT_YELPS[Math.floor(Math.random() * ACCIDENT_YELPS.length)], { kind: 'shout' });
+        } catch {
+          /* words are decoration */
+        }
+      }
+      return;
+    }
     const t = now(g);
     const sev = this.hp <= this.maxHp * 0.4 ? 2 : 1;
     if (t - (this._hurtCallAt ?? -Infinity) < 6 && sev <= (this._hurtCallSev ?? 0)) return;
@@ -1457,11 +1472,14 @@ export class NPC extends Actor {
   // fetch the watch, or shout and keep clear.
   onCallForHelp(p, forced = false) {
     const g = this.game;
-    const victim = p?.victim;
-    if (!victim || victim === this || p.attacker === this || victim.removed) return;
+    // Lyra's mind calls with ids (victim 'lyra', attacker 'player' or an id) and the
+    // entities beside them; villagers call with entities. Either way, find who is who.
+    const victim = callEntity(g, p?.victimEntity, p?.victim);
+    const who = callEntity(g, p?.attackerEntity, p?.attacker);
+    if (!victim || victim === this || who === this || victim.removed) return;
     if (!this.isAlive() || this.downed || this.mode === 'downed') return;
     if (this.mode === 'rescue' || this.mode === 'patient') return; // already carrying someone in (§27)
-    const attacker = p.attacker && p.attacker !== victim && !p.attacker.removed ? attackerOf(p.attacker) : null;
+    const attacker = who && who !== victim && !who.removed ? attackerOf(who) : null;
     const sev = Math.max(1, Math.min(3, Math.round(Number(p.severity) || 1)));
     const x = Number.isFinite(p.x) ? p.x : victim.x;
     const y = Number.isFinite(p.y) ? p.y : victim.y;
@@ -1479,6 +1497,13 @@ export class NPC extends Actor {
       h.lastCall = t;
       h.until = Math.max(h.until, t + 20);
       if (forced && h.role === 'shout' && (this.isGuard || this.profile.hunter)) this.startHelp(victim, attacker, sev, x, y, d, true);
+      // The watch and Hess, already on their way: once the one doing it is someone they
+      // would strike (wanted for it, or a beast), they stop shouting or tending and join
+      // the fight (DESIGN §16.6: Lyra calls the watch on the one who came at her).
+      else if (h.role !== 'fight' && attacker && (this.isGuard || this.profile.hunter) && helpRole(this, { victim, attacker, sev, d, incident: incidentFor(g, victim), game: g, forced }) === 'fight') {
+        this.endHelp(true);
+        this.startHelp(victim, attacker, sev, x, y, d, forced);
+      }
       return;
     }
     if (this.mode === 'fight' && this.fightTarget && alive(this.fightTarget) && this.fightTarget !== attacker) return;
@@ -2232,6 +2257,20 @@ function inBounds(loc, o) {
 }
 
 // The actor behind a hit: an arrow's archer, a bolt's caster.
+// Who a call for help names: the entity itself, or its id ('player', 'lyra', a villager's).
+function callEntity(g, ent, ref) {
+  if (ent && typeof ent === 'object') return ent;
+  if (ref && typeof ref === 'object') return ref;
+  if (typeof ref !== 'string' || !ref) return null;
+  if (ref === 'player') return g?.player || null;
+  if (ref === 'lyra' && g?.companion) return g.companion;
+  try {
+    return g?.entities?.get?.(ref) || null;
+  } catch {
+    return null;
+  }
+}
+
 function attackerOf(src) {
   if (!src) return null;
   if (src.type === 'projectile') return src.owner || null;
@@ -2338,7 +2377,7 @@ function installVillageHooks(game) {
   };
   bus.on('damage', (p) => {
     const lyra = game.companion;
-    if (!p || !lyra || p.target !== lyra) return;
+    if (!p || !lyra || p.target !== lyra || p.accident) return;
     const src = attackerOf(p.source);
     if (!src || src === lyra) return;
     const f = lyra.maxHp ? lyra.hp / lyra.maxHp : 1;

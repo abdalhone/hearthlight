@@ -210,7 +210,7 @@ test('one swing that lands twice counts once', () => {
   assert.deepEqual(deeds(a), ['hit_lyra']);
 });
 
-test('hit again: Binding Light on the player, then she runs or stands her ground, and leaves', () => {
+test('hit again: Binding Light on the player, then she runs or stands and fights (DESIGN §16.6), and leaves', () => {
   const { game, player, lyra, a } = makeWorld();
   const binds = collect(game, 'bind');
   const changes = collect(game, 'companionship_changed');
@@ -226,7 +226,8 @@ test('hit again: Binding Light on the player, then she runs or stands her ground
   assert.equal(binds[0].target, player);
   assert.ok(player.rootTime > 0, 'the player is rooted');
   const d = lyra.behavior.directive;
-  assert.ok(d.type === 'flee' || d.type === 'keep_away', `she gets away (${d.type})`);
+  assert.ok(d.type === 'flee' || d.type === 'keep_away' || lyra.behavior.fightingBack(player), `she gets away or stands (${d.type})`);
+  assert.ok(a.lastFightChoice, 'she weighed it');
   assert.equal(a.agenda.sleepAt, 'lyra_inn_bed');
 });
 
@@ -352,14 +353,37 @@ test('villagers: a warning first, then Binding Light, the guards and leaving; kn
 });
 
 test('repeated grave violence after she left: gone', () => {
-  const { game, player, lyra, a } = makeWorld();
-  hit(game, player, lyra);
-  step(game, 2);
-  hit(game, player, lyra);
-  assert.equal(a.companionship, 'left');
-  step(game, 2);
-  hit(game, player, lyra);
-  assert.equal(a.companionship, 'gone');
+  {
+    // She ran (hurt): a third blow after she left cuts them out of her life.
+    const { game, player, lyra, a } = makeWorld();
+    hit(game, player, lyra);
+    step(game, 2);
+    lyra.hp = Math.round(lyra.maxHp * 0.15);
+    hit(game, player, lyra, 1);
+    assert.equal(a.lastFightChoice?.choice, 'flee');
+    assert.equal(a.companionship, 'left');
+    step(game, 2);
+    hit(game, player, lyra, 1);
+    assert.equal(a.companionship, 'gone');
+  }
+  {
+    // She stood and fought: once it is over (they fell), she is gone from them.
+    const { game, player, lyra, a } = makeWorld();
+    hit(game, player, lyra);
+    step(game, 2);
+    hit(game, player, lyra);
+    assert.equal(a.lastFightChoice?.choice, 'fight');
+    assert.equal(a.companionship, 'left');
+    step(game, 1);
+    hit(game, player, lyra);
+    assert.equal(a.companionship, 'left', 'mid-fight, a blow is part of the fight');
+    player.hp = 0;
+    player.downed = true;
+    game.bus.emit('downed', { entity: player, by: lyra });
+    step(game, 1);
+    assert.equal(a.companionship, 'gone');
+    assert.ok(a.ledger.some((e) => e.deed === 'lethal_attack' && e.outcome === 'fallen'));
+  }
 });
 
 test('reckless_order: her HP falls under 30% in a fight the player ordered', () => {

@@ -303,14 +303,32 @@ export function edgePoint(tx, ty, w, h, inset = 0, out = {}) {
 // ---------------------------------------------------------------------------
 // Floating numbers
 
+// Hits must read on a phone, on grass, at night (the author: "the spells do not do any
+// damage"): damage numbers are big, bright and outlined; essence tints are lifted toward
+// white until they are bright enough to stand on any ground (readableFill).
 const NUMBER_STYLES = {
-  damage: { fill: '#f4ead7', scale: 1 },
-  crit: { fill: '#ffe27a', scale: 1.45 },
-  heal: { fill: '#58cf8f', scale: 1.05 },
+  damage: { fill: '#fff6e0', scale: 1.3 },
+  crit: { fill: '#ffe27a', scale: 1.7 },
+  heal: { fill: '#58cf8f', scale: 1.1 },
   xp: { fill: '#e4b83d', scale: 0.9 },
-  hurt: { fill: '#ff6b5e', scale: 1.1 },
+  hurt: { fill: '#ff6b5e', scale: 1.3 },
   info: { fill: '#b9ad99', scale: 0.85 },
 };
+
+const readable = new Map();
+// A tint bright enough to read: lifted toward white until its brightness is at least 200.
+export function readableFill(color) {
+  const c = String(color || '');
+  if (!/^#[0-9a-f]{3,6}$/i.test(c)) return c;
+  let out = readable.get(c);
+  if (out) return out;
+  const rgb = hexToRgbArray(c);
+  const lum = luminance(rgb[0], rgb[1], rgb[2]);
+  out = lum >= 200 ? c : lighten(c, Math.min(0.85, (200 - lum) / Math.max(1, 255 - lum)));
+  if (readable.size > 128) readable.clear();
+  readable.set(c, out);
+  return out;
+}
 
 // Style of a floating number. `color` may be a style name ('damage', 'crit',
 // 'heal', 'xp', 'hurt', 'info') or a CSS color; crits are always big and yellow.

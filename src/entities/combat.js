@@ -279,6 +279,8 @@ export class Combat {
     if (!target || target === attacker || target.type !== 'actor' || target.removed || target.dead) return false;
     if (!attacker) return true;
     if (this.isPlayer(attacker)) return true;
+    // Lyra fighting for her life (§16.6) fights whoever she is fighting, until they fall.
+    if (this.isCompanion(attacker) && attacker.behavior?.fightingBack?.(target)) return true;
     if (this.isHostile(attacker, target)) return true;
     const sa = sideOf(attacker);
     const st = sideOf(target);
@@ -417,7 +419,9 @@ export class Combat {
   // Weaves (src/magic) add: damageType / damageTypes [{type, share}] (target.resist or
   // its species' resist scales them), penetration (ignores that much defense), dot (a
   // status tick: lands through i-frames, no stagger, no knockback), quiet (no number or
-  // particles; magic pools its own), silent (no sound), noHitStop, noStagger, deliberate.
+  // particles; magic pools its own), silent (no sound), noHitStop, noStagger, deliberate,
+  // accident (the player's weave caught a friend it was not aimed at: no crime, no claim
+  // of self-defense, and the event says so for the mind to weigh).
   damage(source, target, amount, opts = {}) {
     const g = this.game;
     if (!target || target.type !== 'actor' || target.removed || !target.isAlive?.()) return 0;
@@ -468,10 +472,11 @@ export class Combat {
     const isPlayer = this.isPlayer(target);
     const isFriend = isPlayer || this.isCompanion(target);
     const attacker = source && source.type === 'actor' ? source : null;
-    if (attacker) this._noteAggression(target, attacker);
+    const accident = !!opts.accident;
+    if (attacker && !accident) this._noteAggression(target, attacker);
     // Hurting a villager or guard is a crime; set it before anyone hears about the hit.
-    // (A blow a ward caught was still a blow.)
-    let crime = attacker && this.isPlayer(attacker) && this.isLawful(target) ? (target.hp <= 0 ? 'knockout' : 'assault') : null;
+    // (A blow a ward caught was still a blow; an accident is not a crime.)
+    let crime = attacker && !accident && this.isPlayer(attacker) && this.isLawful(target) ? (target.hp <= 0 ? 'knockout' : 'assault') : null;
     // Known only to those who could see it (DESIGN §29): a blow nobody saw stays the
     // victim's to tell (game.murder holds it until they do).
     if (crime && g.murder?.screenCrime && !g.murder.screenCrime(attacker, target, crime)) crime = null;
@@ -534,6 +539,7 @@ export class Combat {
       if (opts.dot) ev.dot = true;
       if (opts.status) ev.status = opts.status;
     }
+    if (accident) ev.accident = true;
     g.bus?.emit('damage', ev);
 
     if (target.hp <= 0) {
@@ -559,6 +565,7 @@ export class Combat {
       ev.deliberate = !!opts.deliberate;
       if (opts.dot) ev.dot = true;
     }
+    if (opts.accident) ev.accident = true;
     g.bus?.emit('damage', ev);
     if (crime) this._reportCrime(attacker, target, crime);
     return 0;
@@ -588,6 +595,14 @@ export class Combat {
     }
     // The HUD also reports 'crime' events; the shared key keeps it to one notice.
     if (escalated && this.isPlayer(actor)) this._toast(crimeLine(victim, kind), 'warn', { key: 'crime', title: 'Crime' });
+  }
+
+  // Wanted for a crime someone else saw done and told (Lyra, calling the watch on the one
+  // who came at her: DESIGN §16.6). Sets it on record; the watch is hostile meanwhile.
+  markWanted(actor, victim, kind = 'assault') {
+    if (!actor || !victim) return false;
+    this._recordCrime(actor, victim, kind);
+    return true;
   }
 
   // One 'crime' event per victim and kind in CRIME_EVENT_GAP seconds, not one per hit.

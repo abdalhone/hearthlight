@@ -280,13 +280,14 @@ export class Perception {
     return t != null && this.rt() - t < 30;
   }
 
-  onDamage({ source, target, amount }) {
+  onDamage(ev) {
+    const { source, target, amount } = ev;
     if (!target) return;
     const m = this.mind;
     const sev = this.severity(target, amount);
     if (this.isSelf(target)) {
       if (this.encounter) this.encounter.lyraHurt += amount || 0;
-      if (this.isPlayer(source)) return this.hitByPlayer();
+      if (this.isPlayer(source)) return this.hitByPlayer(ev);
       if (!source || this.isSelf(source)) return;
       this.touchEncounter(source);
       if (this.throttle('hurt', 1.2)) m.appraise('hurt', sev, `hit by ${foeName(source)}`);
@@ -398,13 +399,24 @@ export class Perception {
   // way her fear of the player rises. What it means for the two of them (the ledger,
   // warnings, leaving) is her autonomy's call, so nothing is recorded or said here
   // beyond the gasp of an accident.
-  hitByPlayer() {
+  hitByPlayer(ev = {}) {
     const m = this.mind;
     const t = this.rt();
     const recent = this.playerHits.filter((x) => t - x < 60);
     const firstIn8 = !recent.some((x) => t - x < 8);
+    // A weave says itself whether it was aimed at her: one that caught her on its way to
+    // something else is a stray (and does not count toward "again"); one aimed at her is not.
+    if (ev.accident) {
+      if (this.throttle('friendly_fire', 20)) {
+        m.feel('surprise', 0.3, 'caught by a stray weave');
+        m.relationships.adjust(PLAYER_ID, { affinity: -1, fear: 1 }, 'Caught me by accident');
+        this.raisedFear();
+        if (this.throttle('friendly_fire_say', 30)) m.say(pick(['Ow! Aim it the other way!', 'Hey! I was standing there!', "Careful — that one went through me."], this.game?.rng));
+      }
+      return;
+    }
     this.playerHits = [...recent, t].slice(-6);
-    if (firstIn8 && this.hostileNear(48)) {
+    if (firstIn8 && !ev.deliberate && this.hostileNear(48)) {
       if (this.throttle('friendly_fire', 4)) {
         m.feel('surprise', 0.3, 'caught by a stray swing');
         m.relationships.adjust(PLAYER_ID, { affinity: -1, fear: 1 }, 'Hit me by accident');

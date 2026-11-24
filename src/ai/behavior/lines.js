@@ -469,11 +469,38 @@ export const say = {
   warnOther(name) {
     return line('warn.other', [`Back off, ${name}! I'm warning you.`, `${cap(name)} — one more step and you'll regret it.`, `Stay away, ${name}!`]);
   },
+  // LORE §7: she never threatens. She says what she is doing — defending herself — once.
   selfDefense() {
-    return line('sd', ["You want a fight? Fine!", "Hit me again and see what happens!", "That's it — I'm defending myself!"]);
+    return line('sd', ["Stay back! I'll defend myself!", "No! I won't let you hurt me!", "That's it — I'm defending myself!"]);
   },
   selfDefenseOver() {
-    return line('sd.over', ["...Done. Don't make me do that again.", "Enough. I'm done fighting you."]);
+    return line('sd.over', ["...It's over. I'm done fighting you.", "Enough. I'm done fighting you."]);
+  },
+
+  // --- She fights back (DESIGN §16.6, r8: "she can fight me until I die") ---
+  fightBackStart() {
+    return line('fb.start', ["No. I won't run from you. Not in my own village.", "Enough! I'm defending myself — with everything I have.", "I won't let you hurt me again. I'll stand."]);
+  },
+  fightBackMid() {
+    return line('fb.mid', ['Stop this!', "Why are you doing this?!", 'Stay back!', "I'm still standing!", 'Rowan! Hess! Help me!']);
+  },
+  fightBackHurt() {
+    return line('fb.hurt', ["...I'm not done.", 'Not yet. Not like this.', "Stay on your feet, Lyra."]);
+  },
+  fightBackCover() {
+    return line('fb.cover', ['Behind here—', 'Get clear, catch your breath—']);
+  },
+  fightBackDropped() {
+    return line('fb.down', ["...It's over. Lie still.", "Stay down. Please. It's over.", "Enough. It's over."]);
+  },
+  fightBackFetch() {
+    return line('fb.fetch', ["Mira! Someone fetch Mira — they're down!", "Rowan! It's done. They're down. Get Mira.", 'Somebody get Mira. Quickly.']);
+  },
+  fightBackRelent() {
+    return line('fb.relent', ["...I won't leave anyone to die. Not even you.", "Nobody's coming. ...I won't let you die out here."]);
+  },
+  fightBackLetGo() {
+    return line('fb.go', ["...Go, then. Don't come back at me.", 'Run, then.']);
   },
 };
 

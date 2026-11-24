@@ -21,6 +21,8 @@ export const DEEDS = {
   hit_lyra_accident: { severity: -0.5, kind: 'danger', text: 'Clipped me with a sword in a fight.' },
   hit_lyra: { severity: -3, kind: 'violence', violent: true, grave: true, text: 'Struck me with a sword, and meant it.' },
   downed_lyra: { severity: -10, kind: 'violence', violent: true, grave: true, text: 'Knocked me out cold.' },
+  // DESIGN §16.6 (r8): came at her again and again, meaning it; she stood and fought.
+  lethal_attack: { severity: -8, kind: 'violence', violent: true, grave: true, text: 'Came at me again and again, meaning harm. I fought back until they fell.' },
   abandoned_downed: { severity: -3, kind: 'betrayal', grave: true, text: 'Left me lying knocked out.' },
   killed_harmless: { severity: -1, kind: 'cruelty', text: 'Killed an animal that was no threat to anyone.' },
   attacked_villager: { severity: -3, kind: 'violence', violent: true, grave: true, text: 'Attacked one of the villagers.' },

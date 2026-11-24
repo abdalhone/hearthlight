@@ -917,6 +917,20 @@ I can barely stand." / "Walk into a camp of crossbows first? No. Find someone el
   she steps out of reach (`keep_distance`), state → wary.
 - Hit again, or trust already low: she **binds** the player (Binding Light: roots the target for
   3 s, 20 s cooldown) and flees or fights back by personality and fear; state → left.
+- **She fights back** (r8; the author: "she can fight me until I die — something cooler").
+  Coming at her again, meaning it, she weighs it once by her state (`autonomy.fightWorth`:
+  how hurt she is, fear, anger, how badly she is outmatched, whether help is near, her
+  nature) and either binds and runs to her people (above), or **stands and fights** with
+  everything she has (behavior's fight-back): the Stillring first, quicker and harder bolts,
+  staff strikes when they close in, cover and her own healing (and a potion) when hurt,
+  and she shouts for the watch until someone comes. Going at her like that is assault: the
+  player is wanted, so the watch and Hess fight them on her call. Badly hurt mid-fight she
+  weighs it again (a last stand, or she breaks off and runs). It ends when they fall: she
+  never finishes them (a hit-stop on the blow that drops them; "It's over. Lie still."),
+  holds back from the rescue and sends for Mira and the watch (who carry them off), and
+  comes herself only if nobody does and their time runs short (LORE §7: she never leaves a
+  living person to die). Afterwards she is `gone` from them; the deed (`lethal_attack`),
+  her memory, her diary and the village's rumors keep it. Accidents never start it.
 - The player knocks her out: when she comes to, she leaves for good (`gone`).
 - The player attacks a villager or guard: she shouts a warning, then binds the player, steps
   between, and reports to the guards; trust crashes; knocking out someone she cares about →
@@ -1268,6 +1282,16 @@ me some lore." The lore must reach the player in the game, not only in a file.
   sound, music swells, and voiced lines (§21). Tap/click/Space advances; hold or a Skip
   button skips; it pauses the game; text is drawn at full resolution; it fits a phone in
   portrait and landscape.
+- **A line never waits for its voice** (r8; the author: "the cutscene at the start does not
+  work"). A tap first finishes the typing; the next moves on at once and stops the voice; a
+  tap in a quiet pause (a title card, a held panel) cuts it short. Each line keeps its own
+  clock: it moves on by itself at its reading time, and only a clip that really starts
+  playing (`voice.play`'s `onStart`) may hold it until the clip ends (whichever is later).
+  A clip that is slow, failed, or blocked (audio not yet allowed on an iPhone; a suspended
+  context is never "played" silently) is dropped at the reading time (`maxLatency`,
+  `wanted`), and after three failures in a row the scene carries on silently.
+  `scripts/cutscene_check.mjs` taps the New Game prologue through on a phone (390×640 and
+  844×340) with voices working, blocked and slow: about 14 s of fast taps.
 - **The prologue** (plays on New Game, skippable, replayable from the title screen and the
   menu): Halcyre and the broken Song, the Drift, the warded villages, Hearthvale and its
   Wellstone, Lyra's birth under the Brightfall to old Hobb and Wenna, Maren going into the
@@ -1374,9 +1398,23 @@ registry entry, and it works with every other entry automatically.
   free or useless. Names are generated ("Splitting Ember Bolt", "Echoing Tide Nova").
 - **Mana.** A violet bar under health (start 40, regenerates; grows with level and
   missions). **Four weave slots** on the hotbar to start (six later).
-- **Rules of harm.** Weaves follow combat's rules (`canHarm`, crimes, friendly fire):
-  aimed at a foe they never hurt villagers or Lyra; area weaves spare friends unless the
-  player deliberately targets them (then it is an attack, with all of §19.7's weight).
+- **Rules of harm** (r8; the author: "the spells do not do any damage"). A weave physically
+  hits whoever its strike touches except the caster — bolts, beams, blasts, cones and novas
+  included; what lingers (patches, rains, runes, walls, trails, familiars), a bind's ring and
+  a ward spare friends unless aimed at one. A friend it hits was **aimed at** (a deliberate
+  blow, with all of §19.7's weight) when the aim named them, the aim point sat within 20 px
+  of them with nobody nearer, or a straight weave's line passed within 12 px of them before
+  anyone else (`magic.aimedFriend`, which the aim preview may ask); otherwise it is an
+  **accident**: half damage, no status, no crime, no claim of self-defense, and Lyra and the
+  village weigh it as one (a fight's worth of stray clips is one small wrong). A quick tap
+  auto-aims only at foes. Hits read: big outlined damage numbers (essence tints lifted until
+  they read on any ground), a white blink, and a small health bar under whoever was hurt
+  (`src/render/health_bars.js`: at the feet, since the numbers rise over the head; red under
+  creatures and bosses, a quieter green under villagers and Lyra, never the player; it fades
+  three seconds after the last hit). Numbers and bars are drawn over speech; a small screen
+  draws only as many speech bubbles as it has room for (Lyra's, the player's, then the
+  nearest), and bubbles keep off the player, Lyra and foes just hit (`src/render/bubbles.js`),
+  so a fight in a shouting crowd still reads.
 
 ### 22.2 Runtime contract (`src/magic/magic.js`, `game.magic`)
 

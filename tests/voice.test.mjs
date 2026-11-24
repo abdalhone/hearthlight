@@ -302,6 +302,42 @@ test('one voice at a time: Lyra outranks villagers, villagers never overlap, dup
   assert.equal(priorityOf('hobb'), PRIORITY.villager);
 });
 
+test('a foreground line says when its clip really starts, and a caller that moved on gets nothing', async () => {
+  // onStart reports the clip's length the moment it plays
+  const a = makePlayer();
+  let startedWith = null;
+  const p = a.vp.play({ speaker: 'bram', text: 'Mind the sparks.', onStart: (info) => (startedWith = info) });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(startedWith, { duration: 1 });
+  a.ctx.started[0].onended();
+  assert.equal((await p).reason, 'done');
+  // a caller that no longer wants it (a cutscene tapped past the line) gets it dropped unplayed
+  const b = makePlayer();
+  let want = true;
+  let began = false;
+  const q = b.vp.play({ speaker: 'bram', text: 'Mind the sparks.', wanted: () => want, onStart: () => (began = true) });
+  want = false;
+  assert.equal((await q).reason, 'unwanted');
+  assert.equal(b.ctx.started.length, 0);
+  assert.equal(began, false);
+  // a suspended context (an iPhone before any tap) never holds a clip silent: it is skipped
+  const c = makePlayer();
+  let resumed = 0;
+  c.ctx.state = 'suspended';
+  c.ctx.resume = () => (resumed++, Promise.resolve());
+  const r = await c.vp.play({ speaker: 'bram', text: 'Mind the sparks.' });
+  assert.equal(r.reason, 'suspended');
+  assert.equal(c.ctx.started.length, 0);
+  assert.equal(resumed, 1);
+  assert.equal(c.vp.busy(), false);
+  // a clip slower than the caller's latency is dropped as late
+  const d = makePlayer();
+  const late = d.vp.play({ speaker: 'bram', text: 'Mind the sparks.', maxLatency: 0.5 });
+  d.advance(1);
+  assert.equal((await late).reason, 'late');
+  assert.equal(d.ctx.started.length, 0);
+});
+
 test('bubbles are voiced only near the player and on screen', async () => {
   const { vp, game, bus, ctx } = makePlayer();
   game.player = { x: 0, y: 0 };
