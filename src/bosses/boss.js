@@ -92,11 +92,29 @@ export class Boss extends Creature {
     this.faction = on && this.mode !== 'fight' ? 'wildlife' : this.baseFaction;
   }
 
+  // Beaten, or not out right now: nobody's target, nothing a blow can find.
+  isAlive() {
+    if (this.mode === 'defeat' || this.mode === 'gone') return false;
+    if (this.veiled && this.mode !== 'fight') return false;
+    return super.isAlive();
+  }
+
   // ------------------------------------------------------------ the frame
 
   update(dt) {
     // Skip Creature.update: bosses keep their own telegraph glow.
     Actor.prototype.update.call(this, dt);
+    if (this.mode === 'defeat') {
+      // Not "alive" any more, so no controller runs: the defeat plays out from here,
+      // walking (Varek leaving) included.
+      this.updateDefeat(dt);
+      const mi = this.moveIntent;
+      if (this.mode === 'defeat' && (mi.x || mi.y)) {
+        const s = this.speed * (this.speedMul || 1) * dt;
+        this.game.entities?.moveActor?.(this, mi.x * s, mi.y * s);
+        if (Math.abs(mi.x) > 0.15) this.faceX = mi.x < 0 ? -1 : 1;
+      }
+    }
     this.animT += dt * this.animSpeed;
     updateMarkers(this, dt);
     if (this.hitStreakT > 0) {
@@ -265,6 +283,7 @@ export class Boss extends Creature {
   // combat.damage asks first (through the manager's hook): returns the amount that lands.
   // 0 means it was turned aside (a shield, a body underwater).
   hitMul(source, amount, opts) {
+    this.lastHit = opts || null; // brains read it in onHurt (was it a burn ticking, a heavy blow?)
     if (this.mode !== 'fight') return this.mode === 'idle' ? amount : 0;
     const b = this.brain;
     if (b?.hitMul) return b.hitMul(this, source, amount, opts || {});

@@ -413,8 +413,12 @@ test('the Bone Warden\'s shield turns plain cuts and cracks under heavy blows an
   assert.equal(b.mem.shield.pips, 6);
   g.combat.damage(p, b, 30, { kind: 'melee', heavy: true });
   assert.equal(b.mem.shield.pips, 4, 'a heavy blow cracks it twice');
+  // Weaves crack it once each (a burn ticking does not).
+  g.combat.damage(p, b, 10, { kind: 'magic', dot: true });
+  assert.equal(b.mem.shield.pips, 4, 'a tick of a burn is not a blow');
   for (let i = 0; i < 4; i++) {
     b.invuln = 0;
+    b.t += 0.4;
     g.combat.damage(p, b, 10, { kind: 'magic' });
   }
   assert.equal(b.mem.shield, null, 'broken');

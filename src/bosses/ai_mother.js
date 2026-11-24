@@ -97,7 +97,9 @@ export const motherBrain = {
   // A blow that lands hard tears off a piece of her.
   onHurt(b, src, dealt, kind) {
     if (b.mode !== 'fight') return;
-    const hard = dealt >= 10 || kind === 'magic' || (src === b.game.player && dealt >= 8);
+    const o = b.lastHit || {};
+    if (o.dot || o.tick || o.status) return; // a burn ticking is not a blow
+    const hard = dealt >= 10 || o.heavy || (kind === 'magic' && dealt >= 5) || (src === b.game.player && dealt >= 8);
     if (!hard || b.t - b.mem.splitAt < 1.3) return;
     b.mem.splitAt = b.t;
     bud(b, b.phase >= 2 ? 2 : 1, src && src.type === 'actor' ? src : null);

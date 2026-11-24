@@ -110,8 +110,11 @@ export const wardenBrain = {
       const kind = opts.kind || 'melee';
       const ess = opts.essences || opts.plan?.essences || [];
       let n = 0;
-      if (kind === 'magic' || kind === 'bolt') n = 1 + (Array.isArray(ess) && ess.some((e) => e === 'light' || e === 'fire') ? 1 : 0);
-      else if (opts.heavy) n = 2;
+      const ticking = opts.dot || opts.tick || opts.status;
+      if ((kind === 'magic' || kind === 'bolt') && !ticking && b.t - (b.mem.crackAt ?? -9) > 0.3) {
+        n = 1 + (Array.isArray(ess) && ess.some((e) => e === 'light' || e === 'fire') ? 1 : 0);
+        b.mem.crackAt = b.t;
+      } else if (opts.heavy) n = 2;
       if (n > 0) crack(b, n, src);
       else {
         sound(b, 'boss_clang', { pitch: 0.8, volume: 0.6 });
