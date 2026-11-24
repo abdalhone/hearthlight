@@ -3,7 +3,8 @@
 //
 //   game.voice.say({ speaker, text, kind, entity })   clip if there is one, else the
 //                                                      speaker group's fallback (Lyra's live voice)
-//   game.voice.play({ speaker, text, key?, kind })    the clip only -> Promise<{ ok, reason }>
+//   game.voice.play({ speaker, text, key?, kind })    the clip only, in the foreground (cutscenes,
+//                                                      dialogue) -> Promise<{ ok, reason }>
 //   game.voice.stop()                                 silence whoever is speaking
 //   game.voice.preload([{ speaker, text }])           fetch (and decode) clips ahead of a scene
 //   game.voice.claim({ speaker, stop })               an outside voice (claude.ai tts, the
@@ -223,7 +224,7 @@ export class VoicePlayer {
     this.recent.set(key, t);
     if (this.recent.size > 200) for (const [k, at] of this.recent) if (t - at > DEDUPE_S) this.recent.delete(k);
     return this.loadManifest().then(() => {
-      if (this.manifest.has(key)) return this.play({ speaker: sp, text, key, kind, entity, priority, requestedAt: t });
+      if (this.manifest.has(key)) return this.play({ speaker: sp, text, key, kind, entity, priority, requestedAt: t, bubble: true });
       this.stats.noClip++;
       const fb = this.fallbacks.get(groupOf(sp));
       if (!fb) return { ok: false, reason: 'no_clip' };
@@ -235,13 +236,14 @@ export class VoicePlayer {
   }
 
   // Play the pre-rendered clip of a line. Resolves when it ends (or at once when muted,
-  // missing, outranked or unavailable).
-  play({ speaker, text, key, kind = 'say', entity = null, priority, requestedAt, maxLatency } = {}) {
+  // missing, outranked or unavailable). Called directly (a cutscene, an open dialogue) the
+  // line is in the foreground: it ranks with cutscenes and waits longer for its clip.
+  play({ speaker, text, key, kind = 'say', entity = null, priority, requestedAt, maxLatency, bubble = false } = {}) {
     const sp = speakerIdOf(speaker, this.game) || speakerIdOf(entity, this.game);
     const k = key || lineKey(sp, text);
     if (!k) return done('empty');
     if (!this.enabledFor(sp)) return done('muted');
-    const pr = priority ?? priorityOf(sp, kind);
+    const pr = priority ?? (bubble ? priorityOf(sp, kind) : PRIORITY.cutscene);
     const asked = requestedAt ?? this.now();
     const wait = maxLatency ?? (pr >= PRIORITY.cutscene ? SCENE_LATENCY : BUBBLE_LATENCY);
     return this.loadManifest().then(() => {

@@ -67,7 +67,7 @@ const result = await page.evaluate(
     // Priority: a villager cannot talk over the narrator; the narrator stops Lyra.
     const n = g.voice.play({ speaker: 'narrator', text: narrator.text, kind: 'cutscene' });
     await new Promise((r) => setTimeout(r, 50));
-    out.villagerOverNarrator = await g.voice.play({ speaker: villager.speaker, text: villager.text });
+    out.villagerOverNarrator = await g.voice.say({ speaker: villager.speaker, text: villager.text });
     g.voice.stop();
     out.narrator = await n;
     // An unknown line falls back without a fetch.

@@ -164,7 +164,8 @@ function makePlayer(settings = {}) {
   const bus = new EventBus();
   const known = lineKey('bram', 'Mind the sparks.');
   const lyraKnown = lineKey('lyra', 'Lead on.');
-  const manifest = { [known]: { speaker: 'bram', dur: 1.2 }, [lyraKnown]: { speaker: 'lyra', dur: 0.8 } };
+  const eldaKnown = lineKey('elda', 'Sit, sit.');
+  const manifest = { [known]: { speaker: 'bram', dur: 1.2 }, [lyraKnown]: { speaker: 'lyra', dur: 0.8 }, [eldaKnown]: { speaker: 'elda', dur: 0.7 } };
   const fetched = [];
   const fetchImpl = async (url) => {
     fetched.push(url);
@@ -237,8 +238,8 @@ test('one voice at a time: Lyra outranks villagers, villagers never overlap, dup
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(ctx.started.length, 1);
   advance(3);
-  // another villager line while Bram talks is dropped
-  assert.equal((await vp.play({ speaker: 'bram', text: 'Mind the sparks.' })).reason, 'busy');
+  // another villager's bubble while Bram talks is dropped
+  assert.equal((await vp.say({ speaker: 'elda', text: 'Sit, sit.' })).reason, 'busy');
   // Lyra cuts in
   const lyra = vp.say({ speaker: 'lyra', text: 'Lead on.' });
   assert.equal((await bram).reason, 'interrupted');
@@ -254,6 +255,17 @@ test('one voice at a time: Lyra outranks villagers, villagers never overlap, dup
   assert.equal(vp.claim({ speaker: 'lyra' }), null);
   scene.release();
   assert.equal(vp.busy(), false);
+  // a line played directly (a cutscene, an open dialogue) is in the foreground: it cuts
+  // in over Lyra and waits for its clip
+  advance(5);
+  const l2 = vp.say({ speaker: 'lyra', text: 'Lead on.' });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.ok(vp.speaking('lyra'));
+  const dlg = vp.play({ speaker: 'elda', text: 'Sit, sit.' });
+  assert.equal((await l2).reason, 'interrupted');
+  await new Promise((r) => setTimeout(r, 10));
+  ctx.started[ctx.started.length - 1].onended();
+  assert.equal((await dlg).reason, 'done');
   assert.equal(priorityOf('narrator'), PRIORITY.cutscene);
   assert.equal(priorityOf('lyra_young'), PRIORITY.lyra);
   assert.equal(priorityOf('hobb'), PRIORITY.villager);
