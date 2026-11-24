@@ -22,6 +22,12 @@ import { dropItem } from '../entities/pickups.js';
 
 const own = Object.prototype.hasOwnProperty;
 
+// The items a cost asks for: numeric entries only ({ coin, iron_ore, crystal, wolf_pelt }).
+const NOT_COST = new Set(['level', 'id']);
+export function costEntries(cost) {
+  return Object.entries(cost || {}).filter(([k, v]) => typeof v === 'number' && v > 0 && !NOT_COST.has(k));
+}
+
 function emptySlots() {
   const o = {};
   for (const s of SLOTS) o[s] = null;
@@ -178,9 +184,7 @@ export class Gear {
   afford(cost) {
     const inv = this.player()?.inventory;
     const missing = [];
-    for (const [k, v] of Object.entries(cost || {})) {
-      if (k === 'level' || k === 'id' || k === 'needs' || !(v > 0)) continue;
-      const item = k === 'coin' ? 'coin' : k;
+    for (const [item, v] of costEntries(cost)) {
       const have = inv?.count?.(item) ?? 0;
       if (have < v) missing.push([item, v, have]);
     }
@@ -190,10 +194,7 @@ export class Gear {
   pay(cost) {
     const inv = this.player()?.inventory;
     if (!inv) return false;
-    for (const [k, v] of Object.entries(cost || {})) {
-      if (k === 'level' || k === 'id' || k === 'needs' || !(v > 0)) continue;
-      inv.remove(k, v);
-    }
+    for (const [k, v] of costEntries(cost)) inv.remove(k, v);
     this.game.bus?.emit?.('inventory_changed', { actor: this.player() });
     return true;
   }

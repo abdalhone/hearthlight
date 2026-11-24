@@ -4,6 +4,7 @@ import { Gear, stockShops } from '../gear/gear.js';
 import { PriceRuntime } from '../magic/prices.js';
 import { NPC_PROFILES } from '../entities/npc_data.js';
 import { dropGlyphShard, grantGlyph } from '../bosses/shard.js';
+import { applyGearLook } from '../gear/looks.js';
 
 // Prices the bosses carry (DESIGN §25: "earned like other components"): a glyph-shard
 // of each lies where the boss fell, beside its own.
@@ -49,6 +50,16 @@ export function installProgression(game) {
     // { points: n } (the mission system emits every reward it grants).
     bus?.on?.('mission_reward', (p) => grantExtra(game, p?.reward, p?.mission));
     bus?.on?.('boss_defeated', (p) => dropBossPrice(game, p));
+    // What is worn shows on the sprite (painted once per combination, off the hot path).
+    const look = () => {
+      try {
+        applyGearLook(game);
+      } catch (err) {
+        console.warn('[gear] look failed', err);
+      }
+    };
+    bus?.on?.('gear_changed', look);
+    bus?.on?.('game_start', look);
     bus?.on?.('glyph_shard', (p) => {
       if (p?.kind === 'price' && p.boss && game.flags) game.flags[`price_shard_${p.boss}`] = 'taken';
     });

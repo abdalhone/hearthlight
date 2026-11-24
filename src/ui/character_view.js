@@ -86,32 +86,32 @@ export class CharacterView {
   build() {
     const p = this.panel;
     this.lvEl = h('b');
-    this.nameEl = h('div', { class: 'cs-name' });
+    this.nameEl = h('div', { class: 'chs-name' });
     this.xpFill = h('i');
-    this.xpText = h('div', { class: 'cs-xp-text num' });
-    this.pointsEl = h('div', { class: 'cs-points', hidden: true });
-    const hero = h('div', { class: 'cs-hero' }, h('div', { class: 'cs-lv', 'aria-hidden': 'true' }, h('small', { text: 'LEVEL' }), this.lvEl), h('div', { class: 'cs-hero-main' }, this.nameEl, h('div', { class: 'cs-xp' }, this.xpFill), this.xpText, this.pointsEl));
-    this.attrsEl = h('div', { class: 'cs-attrs' });
+    this.xpText = h('div', { class: 'chs-xp-text num' });
+    this.pointsEl = h('div', { class: 'chs-points', hidden: true });
+    const hero = h('div', { class: 'chs-hero' }, h('div', { class: 'chs-lv', 'aria-hidden': 'true' }, h('small', { text: 'LEVEL' }), this.lvEl), h('div', { class: 'chs-hero-main' }, this.nameEl, h('div', { class: 'chs-xp' }, this.xpFill), this.xpText, this.pointsEl));
+    this.attrsEl = h('div', { class: 'chs-attrs' });
     this.attrRows = {};
     for (const id of ATTR_IDS) {
       const a = ATTRS[id];
-      const n = h('span', { class: 'cs-attr-n num' });
-      const plus = button('+', { cls: 'btn-ember cs-plus', title: `Spend a point on ${a.name}`, onClick: () => this.spend(id) });
-      const row = h('div', { class: 'cs-attr' }, h('span', { class: 'cs-attr-bar' }), h('div', null, h('div', { class: 'cs-attr-name', text: a.name }), h('div', { class: 'cs-attr-line', text: a.line })), n, plus);
+      const n = h('span', { class: 'chs-attr-n num' });
+      const plus = button('+', { cls: 'btn-ember chs-plus', title: `Spend a point on ${a.name}`, onClick: () => this.spend(id) });
+      const row = h('div', { class: 'chs-attr' }, h('span', { class: 'chs-attr-bar' }), h('div', null, h('div', { class: 'chs-attr-name', text: a.name }), h('div', { class: 'chs-attr-line', text: a.line })), n, plus);
       row.style.setProperty('--ac', a.color);
       this.attrRows[id] = { row, n, plus };
       this.attrsEl.append(row);
     }
-    this.respecEl = h('p', { class: 'cs-respec' });
-    const left = h('section', { class: 'cs-box' }, hero, this.attrsEl, this.respecEl);
+    this.respecEl = h('p', { class: 'chs-respec' });
+    const left = h('section', { class: 'chs-box' }, hero, this.attrsEl, this.respecEl);
 
-    this.slotsEl = h('div', { class: 'cs-slots' });
+    this.slotsEl = h('div', { class: 'chs-slots' });
     this.slotBtns = {};
     for (const s of SLOTS) {
-      const img = h('img', { class: 'cs-slot-img', alt: '' });
-      const name = h('span', { class: 'cs-slot-name' });
-      const up = h('span', { class: 'cs-up num' });
-      const b = h('button', { type: 'button', class: 'cs-slot' }, up, img, h('span', { class: 'cs-slot-label', text: SLOT_LABEL[s] }), name);
+      const img = h('img', { class: 'chs-slot-img', alt: '' });
+      const name = h('span', { class: 'chs-slot-name' });
+      const up = h('span', { class: 'chs-up num' });
+      const b = h('button', { type: 'button', class: 'chs-slot' }, up, img, h('span', { class: 'chs-slot-label', text: SLOT_LABEL[s] }), name);
       b.addEventListener('click', () => {
         this.slot = this.slot === s ? null : s;
         this.game.audio?.play?.('ui_click');
@@ -120,14 +120,14 @@ export class CharacterView {
       this.slotBtns[s] = { b, img, name, up };
       this.slotsEl.append(b);
     }
-    this.pickEl = h('div', { class: 'cs-pick' });
-    const right = h('section', { class: 'cs-box' }, h('h3', null, h('span', { text: 'Worn' }), h('span', { class: 'cs-h-note', text: 'Tap a slot to change it' })), this.slotsEl, this.pickEl);
+    this.pickEl = h('div', { class: 'chs-pick' });
+    const right = h('section', { class: 'chs-box' }, h('h3', null, h('span', { text: 'Worn' }), h('span', { class: 'chs-h-note', text: 'Tap a slot to change it' })), this.slotsEl, this.pickEl);
 
-    this.statsEl = h('div', { class: 'cs-stats' });
-    this.effectsEl = h('div', { class: 'cs-effects' });
-    this.effectsBox = h('section', { class: 'cs-box cs-wide' }, h('h3', { text: 'Running now' }), this.effectsEl);
-    const stats = h('section', { class: 'cs-box cs-wide' }, h('h3', null, h('span', { text: 'What it adds up to' }), h('span', { class: 'cs-h-note', text: 'Level, points, gear and what runs now' })), this.statsEl);
-    p.body.append(h('div', { class: 'cs' }, left, right, this.effectsBox, stats));
+    this.statsEl = h('div', { class: 'chs-stats' });
+    this.effectsEl = h('div', { class: 'chs-effects' });
+    this.effectsBox = h('section', { class: 'chs-box chs-wide' }, h('h3', { text: 'Running now' }), this.effectsEl);
+    const stats = h('section', { class: 'chs-box chs-wide' }, h('h3', null, h('span', { text: 'What it adds up to' }), h('span', { class: 'chs-h-note', text: 'Level, points, gear and what runs now' })), this.statsEl);
+    p.body.append(h('div', { class: 'chs' }, left, right, this.effectsBox, stats));
     p.foot.append(h('span', { class: 'sb-foot-note', text: 'Points and gear change you at once.' }), h('span', { class: 'sb-spacer' }), button('Done', { cls: 'btn-ember', onClick: () => this.close() }));
   }
 
@@ -166,10 +166,10 @@ export class CharacterView {
       const id = G.equipped[s];
       const def = id ? gearDef(id) : null;
       const rar = def ? def.rarity : 'common';
-      r.b.className = `cs-slot ${id ? `rar-bd-${rar}` : 'empty'} ${this.slot === s ? 'on' : ''}`.trim();
+      r.b.className = `chs-slot ${id ? `rar-bd-${rar}` : 'empty'} ${this.slot === s ? 'on' : ''}`.trim();
       r.img.src = itemIconUrl(this.game, id || EMPTY_ICON[s]);
       setText(r.name, def ? def.name : '—');
-      r.name.className = `cs-slot-name ${def ? `rar-${rar}` : ''}`.trim();
+      r.name.className = `chs-slot-name ${def ? `rar-${rar}` : ''}`.trim();
       const lv = id ? G.level(id) : 0;
       setText(r.up, lv ? `+${lv}` : '');
       r.b.title = def ? `${def.name} (${RARITY[rar].label})${lv ? `, upgraded +${lv}` : ''}` : `${SLOT_LABEL[s]}: nothing worn`;
@@ -181,19 +181,19 @@ export class CharacterView {
     clear(this.pickEl);
     const s = this.slot;
     if (!s) {
-      this.pickEl.append(h('p', { class: 'cs-empty', text: 'Bram forges and upgrades blades and armor; Sabeth sews cloaks; Garrick sells boots and charms. Bosses leave special pieces.' }));
+      this.pickEl.append(h('p', { class: 'chs-empty', text: 'Bram forges and upgrades blades and armor; Sabeth sews cloaks; Garrick sells boots and charms. Bosses leave special pieces.' }));
       return;
     }
     const g = this.game;
     const G = g.gear;
     const P = g.player;
     const worn = G.equipped[s];
-    const head = h('div', { class: 'cs-pick-head' }, h('span', { text: worn ? `${SLOT_LABEL[s]}: ${gearDef(worn).name}` : `${SLOT_LABEL[s]}: nothing worn` }));
+    const head = h('div', { class: 'chs-pick-head' }, h('span', { text: worn ? `${SLOT_LABEL[s]}: ${gearDef(worn).name}` : `${SLOT_LABEL[s]}: nothing worn` }));
     if (worn) head.append(button('Take off', { cls: 'btn-small btn-ghost', onClick: () => this.unequip(s) }));
     this.pickEl.append(head);
     if (worn) {
       const d = gearDef(worn);
-      this.pickEl.append(h('p', { class: 'cs-empty', text: d.desc }));
+      this.pickEl.append(h('p', { class: 'chs-empty', text: d.desc }));
     }
     const kind = s.startsWith('charm') ? 'charm' : s;
     const cands = [];
@@ -204,20 +204,20 @@ export class CharacterView {
     }
     cands.sort((a, b) => rarityOf(b.id).rank - rarityOf(a.id).rank || a.def.name.localeCompare(b.def.name));
     if (!cands.length) {
-      this.pickEl.append(h('p', { class: 'cs-empty', text: `Nothing in your bag goes here. ${WHERE[kind] || ''}` }));
+      this.pickEl.append(h('p', { class: 'chs-empty', text: `Nothing in your bag goes here. ${WHERE[kind] || ''}` }));
       return;
     }
     for (const c of cands) {
       const cmp = safe(() => G.compare(c.id, s), []) || [];
-      const deltas = h('div', { class: 'cs-deltas' });
-      for (const d of cmp.slice(0, 6)) deltas.append(h('span', { class: `cs-delta ${d.better ? '' : 'worse'}`.trim(), text: deltaText(d) }));
-      if (!cmp.length) deltas.append(h('span', { class: 'cs-delta', text: 'no change' }));
+      const deltas = h('div', { class: 'chs-deltas' });
+      for (const d of cmp.slice(0, 6)) deltas.append(h('span', { class: `chs-delta ${d.better ? '' : 'worse'}`.trim(), text: deltaText(d) }));
+      if (!cmp.length) deltas.append(h('span', { class: 'chs-delta', text: 'no change' }));
       const lv = G.level(c.id);
       const row = h(
         'div',
-        { class: `cs-cand rar-bd-${c.def.rarity}` },
+        { class: `chs-cand rar-bd-${c.def.rarity}` },
         h('img', { alt: '', src: itemIconUrl(g, c.id) }),
-        h('div', null, h('div', { class: `cs-cand-name rar-${c.def.rarity}`, text: `${c.def.name}${lv ? ` +${lv}` : ''}` }), h('div', { class: 'cs-attr-line', text: `${RARITY[c.def.rarity].label}${c.qty > 1 ? ` · ×${c.qty}` : ''}` }), deltas),
+        h('div', null, h('div', { class: `chs-cand-name rar-${c.def.rarity}`, text: `${c.def.name}${lv ? ` +${lv}` : ''}` }), h('div', { class: 'chs-attr-line', text: `${RARITY[c.def.rarity].label}${c.qty > 1 ? ` · ×${c.qty}` : ''}` }), deltas),
         button('Wear', { cls: 'btn-ember btn-small', onClick: () => this.equip(c.id, s) }),
       );
       this.pickEl.append(row);
@@ -232,7 +232,7 @@ export class CharacterView {
     const v = S.all(P);
     for (const id of SHOWN) {
       const s = STATS[id];
-      const cell = h('div', { class: 'cs-stat', title: why(S, P, id) }, h('span', { text: s.label }), h('b', { class: 'num', text: formatStat(id, v[id]) }));
+      const cell = h('div', { class: 'chs-stat', title: why(S, P, id) }, h('span', { text: s.label }), h('b', { class: 'num', text: formatStat(id, v[id]) }));
       this.statsEl.append(cell);
     }
   }
@@ -244,7 +244,7 @@ export class CharacterView {
     this.effectsBox.hidden = !list.length;
     for (const m of list) {
       const left = Number.isFinite(m.left) ? fmtSeconds(m.left) : m.tap ? 'tap the HUD flame to douse' : 'held';
-      const chip = h('span', { class: `cs-eff ${m.kind}` }, h('span', { text: m.label }), h('span', { class: 'num', text: left }));
+      const chip = h('span', { class: `chs-eff ${m.kind}` }, h('span', { text: m.label }), h('span', { class: 'num', text: left }));
       this.effectsEl.append(chip);
     }
   }

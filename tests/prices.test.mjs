@@ -80,7 +80,7 @@ test('a price rides on a weave like a twist: name, words, key, locks and one slo
   const plan = compileWeave(weave('bloodprice', 'bolt', ['fire']));
   assert.ok(plan.ok);
   assert.equal(plan.name, 'Blood-bought Ember Bolt');
-  assert.match(plan.description, /Price \(Bloodprice\)/);
+  assert.match(plan.priceText, /Price \(Bloodprice\): \+20% damage for 15 s; max health −40% for 2 min/);
   assert.deepEqual(plan.prices, ['bloodprice']);
   assert.deepEqual(priceLines(plan).map((l) => l.id), ['bloodprice']);
   assert.notEqual(weaveKey(weave('glass')), weaveKey({ shape: 'bolt', essences: ['raw'], twists: [] }));

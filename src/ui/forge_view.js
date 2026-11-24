@@ -9,7 +9,7 @@ import { itemIconUrl } from './art.js';
 import { fmtInt } from './format.js';
 import { gearDef, gearStats, RARITY } from '../gear/gear_data.js';
 import { describeContribution } from '../core/stats.js';
-import { itemWord } from '../gear/gear.js';
+import { itemWord, costEntries } from '../gear/gear.js';
 import { ensureStatsStyle } from './stats_style.js';
 
 const BRAM_LINES = {
@@ -21,8 +21,7 @@ const BRAM_LINES = {
 
 function costChips(game, cost, have) {
   const wrap = h('div', { class: 'fg-costs' });
-  for (const [k, v] of Object.entries(cost || {})) {
-    if (k === 'level' || k === 'id' || k === 'needs' || !(v > 0)) continue;
+  for (const [k, v] of costEntries(cost)) {
     const owned = have(k);
     const chip = h('span', { class: `fg-cost ${owned < v ? 'short' : ''}`.trim(), title: `${itemWord(k, v)}: you have ${owned}` }, h('img', { alt: '', src: itemIconUrl(game, k) }), h('span', { class: 'num', text: k === 'coin' ? fmtInt(v) : `${v}` }));
     wrap.append(chip);
@@ -136,7 +135,7 @@ export class ForgeView {
     const G = g.gear;
     const list = this.owned();
     if (!list.length) {
-      this.listEl.append(h('p', { class: 'cs-empty', text: 'Bram works blades and armor. Buy or forge one first; then bring it here with ore and crystals.' }));
+      this.listEl.append(h('p', { class: 'chs-empty', text: 'Bram works blades and armor. Buy or forge one first; then bring it here with ore and crystals.' }));
       return;
     }
     for (const { id, worn } of list) {

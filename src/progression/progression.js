@@ -43,7 +43,8 @@ export class Progression {
         if (p?.entity !== g.player) return;
         g.stats?.refresh(g.player);
         const n = this.unspent();
-        if (n > 0) this.toast(`Level ${p.level}! You have ${n} point${n === 1 ? '' : 's'} to spend. Open your character sheet (C).`, 'good');
+        const how = g.ui?.isTouch ? 'tap your card' : 'press C, or click your card';
+        if (n > 0) this.toast(`${n} point${n === 1 ? '' : 's'} to spend: ${how} to open your character sheet.`, 'good');
         bus.emit('points_changed', { unspent: n, points: { ...this.points } });
       });
       bus.on('mission_completed', (p) => {

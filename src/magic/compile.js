@@ -278,9 +278,8 @@ function build(w, twists, gen, key, prices = []) {
   plan.name = plan.autoName;
   plan.id = w.id || `w:${plan.weave.shape}:${plan.weave.essences.join('+')}:${plan.weave.twists.join('+')}${prices.length ? `:${prices.join('+')}` : ''}`;
   plan.description = describeWeave(plan);
-  // Every cast pays: the gain, and the price in plain words.
-  for (const d of priceDefs) plan.description += ` Price (${d.name}): ${d.gainText}; ${d.costText}.`;
-  plan.priceText = priceDefs.map((d) => d.costText).join('; ');
+  // Every cast pays: the gain, and the price in plain words (the UI shows it in red).
+  plan.priceText = priceDefs.map((d) => `Price (${d.name}): ${d.gainText}; ${d.costText}.`).join(' ');
   try {
     plan.aim = { ...shapeDef.aim(plan) };
   } catch {

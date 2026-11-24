@@ -7,6 +7,9 @@ import { itemDef, itemName } from '../entities/items.js';
 import { sortItems, isUsable, fmtInt, capitalize } from './format.js';
 import { dropItem } from '../entities/pickups.js';
 import { handReach, reachNote, companionshipOf } from './lyra_view.js';
+import { gearDef, gearStats, RARITY } from '../gear/gear_data.js';
+import { describeContribution, STATS } from '../core/stats.js';
+import { ensureStatsStyle } from './stats_style.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -20,14 +23,23 @@ function safe(fn, fallback = null) {
 
 function slot(game, it, selected, onClick) {
   const def = it.def || itemDef(it.id) || { name: it.id };
+  const gear = gearDef(it.id);
   const b = h(
     'button',
-    { type: 'button', class: `slot ${selected ? 'selected' : ''} type-${def.type || 'misc'}`.trim(), title: def.name, 'aria-pressed': selected ? 'true' : 'false' },
+    { type: 'button', class: `slot ${selected ? 'selected' : ''} type-${def.type || 'misc'} ${gear ? `rar-bd-${gear.rarity}` : ''}`.trim(), title: def.name, 'aria-pressed': selected ? 'true' : 'false' },
     h('img', { class: 'item-img', alt: '', src: itemIconUrl(game, it.id) }),
     it.qty > 1 ? h('span', { class: 'slot-qty num', text: fmtInt(it.qty) }) : null,
   );
   b.addEventListener('click', onClick);
   return b;
+}
+
+function fmtDelta(c) {
+  const f = STATS[c.stat]?.fmt;
+  const a = Math.abs(c.delta);
+  if (f === 'pct' || f === 'mul') return `${Math.round(a * 100)}%`;
+  if (f === 'sec') return `${Math.round(a)} s`;
+  return String(Math.round(a * 10) / 10);
 }
 
 export class InventoryPanel {
@@ -151,11 +163,30 @@ export class InventoryPanel {
     const def = itemDef(sel.id) || { name: sel.id, type: 'misc', desc: '' };
     const facts = [];
     if (def.heal) facts.push(`Restores ${def.heal} health`);
-    if (def.atk) facts.push(`+${def.atk} attack`);
+    // Gear and buff food (DESIGN §26): what it does, worn or eaten.
+    const gear = gearDef(sel.id);
+    if (gear) {
+      ensureStatsStyle();
+      const lv = g.gear?.level?.(sel.id) || 0;
+      facts.push(`${RARITY[gear.rarity].label} ${gear.slot}${lv ? `, upgraded +${lv}` : ''}`);
+      facts.push(describeContribution(gearStats(sel.id, lv)).join(', '));
+    } else if (def.atk) facts.push(`+${def.atk} attack`);
+    if (def.buff) facts.push(`${def.buff.label}: ${describeContribution(def.buff).join(', ')} for ${Math.round(def.buff.seconds / 60) || 1} min`);
     if (def.value) facts.push(`Worth about ${def.value} coins`);
     const actions = h('div', { class: 'detail-actions' });
     if (sel.owner === 'player') {
-      if (isUsable(def)) actions.append(button(def.type === 'potion' ? 'Drink' : 'Eat', { cls: 'btn-ember', onClick: () => this.use(sel.id) }));
+      if (isUsable(def) || def.buff) actions.append(button(def.type === 'potion' ? 'Drink' : 'Eat', { cls: 'btn-ember', onClick: () => this.use(sel.id) }));
+      if (gear && g.gear) {
+        const cmp = (() => {
+          try {
+            return g.gear.compare(sel.id);
+          } catch {
+            return [];
+          }
+        })();
+        if (cmp.length) facts.push(`If worn: ${cmp.slice(0, 5).map((c) => `${c.delta > 0 ? '+' : '−'}${fmtDelta(c)} ${STATS[c.stat].short || STATS[c.stat].label}`).join(', ')}`);
+        actions.append(button('Wear', { cls: 'btn-ember', onClick: () => this.wear(sel.id) }));
+      }
       const reach = this.reach || handReach(g);
       if (c && reach.why !== 'gone') {
         actions.append(button(`Give to ${lyraName}`, { icon: 'heart_arcane', disabled: !reach.ok, title: reachNote(reach, lyraName) || null, onClick: () => this.give(sel.id, 1) }));
@@ -174,6 +205,17 @@ export class InventoryPanel {
       facts.length ? h('ul', { class: 'detail-facts' }, ...facts.map((f) => h('li', { text: f }))) : null,
       actions,
     ]);
+  }
+
+  wear(id) {
+    const g = this.game;
+    const r = g.gear?.equip?.(id);
+    if (!r?.ok) this.ui.toast(r?.reason || "You can't wear that.", 'info');
+    else {
+      g.audio?.play('pickup');
+      this.ui.toast(`You put on ${itemName(id)}${r.swapped ? ` (${itemName(r.swapped)} back in your pack)` : ''}.`, 'item', { iconUrl: itemIconUrl(g, id) });
+    }
+    this.render();
   }
 
   use(id) {
