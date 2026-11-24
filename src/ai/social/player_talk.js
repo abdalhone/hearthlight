@@ -85,7 +85,10 @@ export function understand(text, { selfId = null, locations = null } = {}) {
       break;
     }
   }
-  if (topic === 'maren') person = person === 'maren' ? null : person;
+  if (topic === 'maren') {
+    person = 'maren';
+    topic = null;
+  }
   let place = null;
   if (!person && !topic && locations?.find && /\b(about|where|what'?s|the)\b/i.test(t)) {
     const m = t.match(/\babout (?:the )?([a-z' -]{3,30})\??$/i) || t.match(/\bwhere(?:'s| is) (?:the )?([a-z' -]{3,30})\??$/i);

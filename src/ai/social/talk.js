@@ -147,26 +147,36 @@ function helloBack(ctx, b, a, extra) {
   return say(rnd(ctx.rng) < 0.5 ? v.short : v.hello, b, a, { rng: ctx.rng, avoid: ctx.recent, extra });
 }
 
-// How b answers what a just said, given who a is to b.
-function answer(ctx, b, a, { agree = null, topic = null } = {}) {
+// b's reply to a's greeting: what a is to b colours it ("Yes, love." to a wife's hello;
+// "Six! It's Brightwater flour!" to Elda's bread price).
+function greetBack(ctx, b, a, extra) {
+  const v = voiceOf(b);
+  if (!v) return null;
+  const tag = mainTag(ctx.bond(b, a));
+  if (tag && v.as?.[tag]?.length && rnd(ctx.rng) < 0.5) {
+    const l = say(v.as[tag], b, a, { rng: ctx.rng, direct: true, avoid: ctx.recent, extra });
+    if (l) return l;
+  }
+  return helloBack(ctx, b, a, extra);
+}
+
+// How b answers what a just said about a topic: their own line on it when they have one,
+// otherwise agreement or argument as befits who a is to them.
+function answer(ctx, b, a, { agree = null, topic = null, extra = {} } = {}) {
   const v = voiceOf(b);
   if (!v) return null;
   const bond = ctx.bond(b, a);
   const tag = mainTag(bond);
   const rng = ctx.rng;
-  const opts = { rng, avoid: ctx.recent };
-  if (topic && hasTopic(b, topic) && rnd(rng) < 0.55) {
+  const opts = { rng, avoid: ctx.recent, extra };
+  if (topic && hasTopic(b, topic) && rnd(rng) < 0.65) {
     const l = say(topicPool(b, topic, { weather: weatherKey(ctx), stance: ctx.stance?.(b) }), b, a, opts);
-    if (l) return l;
-  }
-  if (tag && v.as?.[tag]?.length && rnd(rng) < 0.55) {
-    const l = say(v.as[tag], b, a, { ...opts, direct: true });
     if (l) return l;
   }
   const aff = bond?.affinity ?? 0;
   if (agree === false || tag === 'rival' || tag === 'grudge' || aff < -10) return say(rnd(rng) < 0.5 ? v.no : v.tease || v.no, b, a, opts);
-  if (aff > 55 && rnd(rng) < 0.35) return say(v.warm, b, a, opts);
-  if (rnd(rng) < 0.45) return say(v.yes, b, a, opts);
+  if (aff > 55 && rnd(rng) < 0.3) return say(v.warm, b, a, opts);
+  if (rnd(rng) < 0.5) return say(v.yes, b, a, opts);
   return say(v.short, b, a, opts);
 }
 
@@ -184,7 +194,14 @@ export function buildExchange(ctx, a, b, opts = {}) {
   if (topic === 'rumor_back') return buildExchange(ctx, b, a, { ...opts, topic: 'rumor' });
   const lines = [];
   const push = (l) => {
-    if (l && lines.length < maxLines && !lines.some((x) => x.text === l.text)) lines.push(l);
+    if (!l || lines.length >= maxLines || lines.some((x) => x.text === l.text)) return;
+    const last = lines[lines.length - 1];
+    // One speaker twice running reads as one turn.
+    if (last && last.speaker === l.speaker) {
+      if (last.text.length + l.text.length < 150) last.text = `${last.text} ${l.text}`;
+      return;
+    }
+    lines.push(l);
   };
   // Passing in the lane: a nod each way.
   if (opts.passing || topic === 'small') {
@@ -201,7 +218,7 @@ export function buildExchange(ctx, a, b, opts = {}) {
     const clause = rumor ? ctx.renderRumor?.(rumor, a) : null;
     const tell = clause ? say(va?.rumor?.tell, a, b, { rng, vars: { ...varsFor(a, b, extra), rumor: clause } }) : null;
     if (tell) {
-      push(line(b, rnd(rng) < 0.5 ? helloBack(ctx, b, a, extra) : null));
+      push(line(b, rnd(rng) < 0.5 ? greetBack(ctx, b, a, extra) : null));
       push(line(a, tell));
       const trust = ctx.bond(b, a)?.trust ?? 50;
       const kind = trust < 40 && rnd(rng) < 0.6 ? 'doubt' : rumor.valence > 0.15 ? 'good' : rumor.valence < -0.15 ? 'bad' : rnd(rng) < 0.5 ? 'doubt' : 'good';
@@ -209,7 +226,7 @@ export function buildExchange(ctx, a, b, opts = {}) {
       // Someone who loves the one it happened to says more.
       if (rumor.victim && rumor.victim !== b && rumor.valence < 0 && (ctx.bond(b, rumor.victim)?.affinity ?? 0) >= 60) {
         push(line(b, say(vb?.rumor?.bad || vb?.no, b, a, { rng, avoid: new Set(lines.map((l) => l.text)), extra })));
-      } else if (lines.length < maxLines - 1 && rnd(rng) < 0.5) push(line(a, answer(ctx, a, b, {})));
+      } else if (lines.length < maxLines - 1 && rnd(rng) < 0.5) push(line(a, answer(ctx, a, b, { extra })));
     } else {
       rumor = null;
       topic = 'howare';
@@ -222,15 +239,15 @@ export function buildExchange(ctx, a, b, opts = {}) {
     push(line(b, say(how, b, a, { rng, avoid: ctx.recent, extra })));
     const last = lines[lines.length - 1]?.text || '';
     if (/\b(you|yourself)\?$/i.test(last)) push(line(a, say(ctx.howAreYou?.(a) || va?.howAreYou || va?.short, a, b, { rng, avoid: ctx.recent, extra })));
-    else if (rnd(rng) < 0.5) push(line(a, answer(ctx, a, b, {})));
+    else if (rnd(rng) < 0.5) push(line(a, answer(ctx, a, b, { extra })));
   } else if (topic !== 'rumor') {
     const pool = topicPool(a, topic, { weather: weatherKey(ctx), stance: ctx.stance?.(a) });
     const said = say(pool, a, b, { rng, avoid: ctx.recent, extra });
     if (said) {
-      if (rnd(rng) < 0.35) push(line(b, helloBack(ctx, b, a, extra)));
+      if (rnd(rng) < 0.6) push(line(b, greetBack(ctx, b, a, extra)));
       push(line(a, said));
-      push(line(b, answer(ctx, b, a, { topic })));
-      if (lines.length < maxLines - 1 && rnd(rng) < 0.45) push(line(a, answer(ctx, a, b, {})));
+      push(line(b, answer(ctx, b, a, { topic, extra })));
+      if (lines.length < maxLines - 1 && rnd(rng) < 0.4) push(line(a, answer(ctx, a, b, { extra })));
     } else {
       topic = 'howare';
       push(line(a, say(va?.askHow, a, b, { rng, extra })));
@@ -239,7 +256,8 @@ export function buildExchange(ctx, a, b, opts = {}) {
   }
   // A goodbye, sometimes.
   if (lines.length < maxLines && lines.length >= 3 && rnd(rng) < 0.5) {
-    const who = rnd(rng) < 0.5 ? a : b;
+    // Whoever did not speak last takes their leave.
+    const who = lines[lines.length - 1]?.speaker === a ? b : a;
     const other = who === a ? b : a;
     push(line(who, say(voiceOf(who)?.bye, who, other, { rng, avoid: ctx.recent, extra })));
   }
