@@ -37,7 +37,7 @@ SPEECH_DB = -42.0  # louder than this is speech
 BRIDGE_S = 0.12  # quieter gaps shorter than this do not split speech
 FADE_S = 0.010
 KBPS = 64  # mono MP3, MPEG-2 Layer III at 24 kHz: decodes everywhere, iPhones included
-PIPELINE = "r9.2"  # bump to re-finish every clip (takes are kept)
+PIPELINE = "r9.3"  # bump to re-finish every clip (takes are kept)
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
@@ -98,6 +98,10 @@ def norm_tokens(text: str) -> list[str]:
     """Words as they are compared: lower case, no punctuation, hyphens and numbers spelled
     out, 'hm'/'hmm'/'mm' the same sound."""
     s = str(text).replace("’", "'").replace("‘", "'").replace("…", " ").lower()
+    s = re.sub(r"\bma\s*'\s*am\b", "mam", s)
+    s = re.sub(r"\bwanna\b", "want to", s)
+    s = re.sub(r"\bgonna\b", "going to", s)
+    s = re.sub(r"\bgotta\b", "got to", s)
     s = re.sub(r"[‐-―\-]", " ", s)
     s = re.sub(r"[^a-z0-9' ]+", " ", s)
     out: list[str] = []
@@ -363,8 +367,19 @@ def cut_line(audio: np.ndarray, words: list) -> tuple[np.ndarray, float]:
         w0, w1 = float(words[0][1]), float(words[-1][2])
         keep = [r for r in runs if r[1] > w0 - 0.25 and r[0] < w1 + 0.35]
         runs = keep or runs
-    a = max(0, int(runs[0][0] * SR))
-    b = min(len(audio), int(math.ceil(runs[-1][1] * SR)))
+    # The first sound starts a little before it crosses -42 dB (a soft "If", a breathy
+    # "h"), and the last rings a little after: follow each edge out while it is still
+    # sound (above -62 dB), at most 120 ms before and 150 ms after.
+    db = frame_db(normalize(audio))
+    i0 = int(round(runs[0][0] / FRAME))
+    i1 = int(round(runs[-1][1] / FRAME))
+    lo, hi = max(0, i0 - 12), min(len(db), i1 + 15)
+    while i0 > lo and db[i0 - 1] > -62:
+        i0 -= 1
+    while i1 < hi and db[i1] > -62:
+        i1 += 1
+    a = max(0, int(i0 * FRAME * SR))
+    b = min(len(audio), int(math.ceil(i1 * FRAME * SR)))
     return fade(audio[a:b]), a / SR
 
 
