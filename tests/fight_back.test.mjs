@@ -52,6 +52,9 @@ test('come at her again and again while she is healthy: she stands and fights un
   const t = stepUntil(game, () => fallen(game), 90);
   assert.ok(t >= 0, `the player fell (hp ${p.hp}, lyra ${l.hp}/${l.maxHp})`);
   assert.ok(!p.dead, 'fallen, not dead: she never finishes them');
+  // Her blow dropped them: a beat of stillness on it.
+  assert.equal(l.behavior.fightBack?.downedBy, l, 'alone with her, it was her blow');
+  assert.ok(game.hitStop > 0.2, `a hit-stop on the blow that drops them (${game.hitStop})`);
   const hits = events(game, 'damage').filter((e) => e.source === l && e.target === p && e.amount > 0);
   assert.ok(hits.length >= 3, `her blows landed (${hits.length})`);
   assert.ok(events(game, 'bind').some((e) => e.source === l && e.target === p), 'the Stillring held them');
