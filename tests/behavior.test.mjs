@@ -1048,3 +1048,25 @@ test('fishing at the dock goes through the fishing spot\'s work API', () => {
   assert.equal(lyra.inventory.count('raw_fish'), 2);
   assert.ok(Math.hypot(lyra.x - spot.x, lyra.y - spot.y) < 24, 'on the dock');
 });
+
+test('steering: a waypoint someone stands on counts as reached; making room never shoves her into a wall', () => {
+  const game = makeGame();
+  const { b, lyra, player } = addLyra(game, { tx: 20, ty: 20 });
+  // A path whose first waypoint is where the player stands.
+  player.x = T(18);
+  player.y = T(20);
+  player.solid = true;
+  const goal = { x: T(18), y: T(16) };
+  game.pathfinder.find = () => [{ x: player.x, y: player.y }, { x: goal.x, y: goal.y }];
+  b.setDirective({ type: 'goto', target: `${goal.x},${goal.y}`, then: 'stay' });
+  const ok = run(game, 6, () => b.directive.type === 'stay');
+  assert.ok(ok, 'she got there');
+  assert.ok(Math.hypot(lyra.x - goal.x, lyra.y - goal.y) < 14);
+  // Someone pressing in from the south while a wall stands to her north: no push into it.
+  game.map.solid.add(`${Math.floor(lyra.x / TILE)},${Math.floor(lyra.y / TILE) - 1}`);
+  const other = villager(game, 'bram', 'Bram Ironhand', lyra.x, lyra.y + 6);
+  other.solid = true;
+  b.steering.avoid(null, 0, 0);
+  assert.equal(b.steering.avX, 0);
+  assert.equal(b.steering.avY, 0);
+});
