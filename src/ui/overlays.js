@@ -47,7 +47,7 @@ export function pauseItems(game, ui) {
   const name = game?.settings?.companionName || game?.companion?.name || 'Lyra';
   const items = [{ id: 'resume', group: 'main', label: 'Resume', hint: '', key: 'Esc', run: (ctx) => ctx.close() }];
   if (spellbookReady(game, ui)) items.push({ id: 'spellbook', group: 'go', label: 'Spellbook', hint: 'Your weaves and slots', key: 'B', run: () => ui.openSpellbook() });
-  if (typeof ui?.openMissions === 'function') items.push({ id: 'missions', group: 'go', label: 'Missions', hint: 'What you have taken on', key: '', run: () => ui.openMissions('active') });
+  if (typeof ui?.openMissions === 'function') items.push({ id: 'missions', group: 'go', label: 'Missions', hint: 'What you took on', key: '', run: () => ui.openMissions('active') });
   items.push({ id: 'lyra', group: 'go', label: name, hint: 'Her mind: mood, memories, you', key: 'Tab', run: () => ui.openMind?.(ui.mind?.tab || 'now') });
   const character = characterOpener(ui);
   if (character) items.push({ id: 'character', group: 'go', label: 'Character', hint: 'Your stats and gear', key: '', run: character });
