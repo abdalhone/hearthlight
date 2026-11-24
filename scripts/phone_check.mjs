@@ -437,6 +437,8 @@ async function run([W, H]) {
   check((await stack()).at(-1) === 'mind', `${tag}: her portrait opens her Mind`);
   if (await box('.mind-ask .ask-btn')) check(true, 'ask');
   else check(false, `${tag}: her Mind has the Ask row`);
+  // Opened a second time (the menu opened it before): her face and mood are still there.
+  check(!!(await box('.mind-hero .portrait')), `${tag}: her Mind shows her face and mood when opened again`);
   await shot('12-mind');
   await tapSel('.modal-layer > .panel:last-child .panel-close', 'Mind ✕');
   await wait(400);
@@ -708,6 +710,62 @@ async function run([W, H]) {
     const left = await page.evaluate(() => [...document.querySelectorAll('.toast:not(.leaving)')].map((t) => t.textContent));
     check(!left.some((t) => /First notice/.test(t)), `${tag}: a tap puts a notice away`);
   }
+
+  // ---------- the weave buttons: every name and mana can be read ----------
+  // Nothing else covers them, with two weaves and with six (the ring at its fullest).
+  // Last before the fall: it unlocks every part, which would start the "found" lesson.
+  const covered = async () =>
+    page.evaluate(() => {
+      // Names and badges let taps through (pointer-events: none); hit-test them anyway.
+      const st = document.createElement('style');
+      st.textContent = '.tcluster .wbtn-name, .tcluster .wbtn-mana { pointer-events: auto !important; }';
+      document.head.append(st);
+      const bad = [];
+      for (const b of document.querySelectorAll('.tcluster .wbtn:not([hidden])')) {
+        for (const part of b.querySelectorAll('.wbtn-name, .wbtn-mana')) {
+          const r = part.getBoundingClientRect();
+          if (!r.width || !r.height) continue;
+          for (const [fx, fy] of [[0.2, 0.5], [0.5, 0.5], [0.8, 0.5]]) {
+            const at = document.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy);
+            if (!at || !b.contains(at)) {
+              bad.push(`${part.className.split(' ')[0]} of ${b.getAttribute('aria-label')} under ${at?.className || at?.tagName}`);
+              break;
+            }
+          }
+        }
+      }
+      st.remove();
+      return bad;
+    });
+  for (const n of [1, 5]) {
+    await page.evaluate((n) => {
+      const g = window.__game;
+      g.magic.unlockAll?.();
+      const w = g.ui.hud.weaving;
+      const list = [
+        { name: 'Fireball', shape: 'blast', essences: ['fire'], twists: [] },
+        { name: 'Frost Nova', shape: 'nova', essences: ['frost'], twists: [] },
+        { name: 'Hold', shape: 'bind', essences: ['light'], twists: [] },
+        { name: 'Shield', shape: 'ward', essences: ['earth'], twists: [] },
+        { name: 'Storm Rain', shape: 'rain', essences: ['storm'], twists: [] },
+      ];
+      for (let i = 0; i < 5; i++) w.setSlot(i + 1, i < n ? list[i] : null);
+      const c = g.ui.coach;
+      c.done.found = true;
+      c.foundKind = null;
+      c.stop?.();
+      g.ui.toasts?.clear?.();
+    }, n);
+    await wait(500);
+    const bad = await covered();
+    check(!bad.length, `${tag}: with ${n + 1} weaves every name and mana is in view (${bad.join(' | ')})`);
+    if (n === 5) await shot('04b-hud-six-weaves');
+  }
+  await page.evaluate(() => {
+    const w = window.__game.ui.hud.weaving;
+    for (let i = 1; i < 6; i++) w.setSlot(i, null);
+  });
+  await wait(300);
 
   // ---------- fallen: no fight buttons; the call and the heartbeat in view, clear of the stick ----------
   await page.evaluate(() => window.__game.ui.toasts.clear());

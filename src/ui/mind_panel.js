@@ -233,6 +233,8 @@ export class MindPanel {
       this.nowRefs = null;
     };
     this.ui.openModal(panel);
+    // A fresh panel has an empty hero: whatever was drawn into the last one is gone.
+    this._heroKey = '';
     this.renderHero();
     this.renderAsk(true);
     this.showTab(this.tab);

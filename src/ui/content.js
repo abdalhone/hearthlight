@@ -99,7 +99,7 @@ export const CONTROLS = [
   { id: 'sword', what: 'Sword', keys: 'Left click (toward the mouse), J or Space', pad: 'A', touch: 'The sword button; drag it to aim the swing' },
   { id: 'dodge', what: 'Dodge roll', keys: 'K or Shift', pad: 'B', touch: 'The swirl button beside the sword' },
   { id: 'weave', what: 'Cast a weave', keys: '1 – 6 toward the mouse; hold for beams and charges', pad: 'RT, aimed with the right stick', touch: 'Tap a weave button to cast at the nearest foe; drag from it to aim, let go to cast, drag back onto it to cancel' },
-  { id: 'choose', what: 'Choose a weave', keys: 'Mouse wheel, Q / R or a click on its slot; right click casts it', pad: 'LT / RB', touch: 'No choosing: every round button is one weave (its name under it, its mana on its corner)' },
+  { id: 'choose', what: 'Choose a weave', keys: 'Mouse wheel, Q / R or a click on its slot; right click casts it', pad: 'LT / RB', touch: 'No choosing: every round button is one weave (its name on it, its mana on its corner)' },
   { id: 'spellbook', what: 'Spellbook', keys: 'B', pad: 'Start, then Spellbook', touch: 'Menu → Spellbook, or the + New weave button' },
   { id: 'interact', what: 'Talk to someone, open, pick up', keys: 'E', pad: 'X', touch: 'The round button above the sword: it says what it does (Talk, Open…)' },
   { id: 'listen', what: 'Listen in', keys: 'L', pad: null, touch: 'Tap “Listen in” when two villagers talk nearby' },

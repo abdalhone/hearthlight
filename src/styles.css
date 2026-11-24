@@ -156,6 +156,15 @@ textarea {
   font-style: italic;
   margin: 8px 0;
 }
+/* Controls that are merely "empty" (a weave button or slot with nothing in it yet) are
+   not the italic "nothing here" line above: no margin (it pushed + New 8 px out of its
+   place in the thumb ring and the Spellbook's slot row) and upright letters. */
+.wbtn.empty,
+.sb-tab.empty,
+.chs-slot.empty {
+  margin: 0;
+  font-style: normal;
+}
 
 /* ---------- layers ---------- */
 
@@ -7982,6 +7991,51 @@ input[type='range']::-moz-range-thumb {
 .tcluster .wbtn.empty .wbtn-plus {
   font-size: 28px;
   color: var(--ember);
+}
+/* In the thumb ring the name sits inside the button, under the glyph, like Sword,
+   Dodge and Use: under the button it hid behind the next button down the ring (the
+   first weave's name sat under Dodge). The mana sits on the outer top corner, away
+   from the next weave up the ring (on the inner corner that one covered it); a price
+   mark moves to the other corner, and the "not enough mana" drop to the top. */
+.tcluster .wbtn-icon {
+  width: 27px;
+  height: 27px;
+  transform: translateY(-5px);
+}
+.tcluster .wbtn-plus {
+  transform: translateY(-5px);
+}
+.tcluster .wbtn-name,
+.tcluster .wbtn-mana {
+  /* Placed against the button's own box (in its grid cell they sat a few px off). */
+  grid-area: auto;
+}
+.tcluster .wbtn-name {
+  left: 4px;
+  right: 4px;
+  bottom: 5px;
+  font-size: 9px;
+  line-height: 10px;
+}
+.tcluster .wbtn-mana {
+  right: auto;
+  left: -5px;
+}
+.touch.lefty .tcluster .wbtn-mana {
+  left: auto;
+  right: -5px;
+}
+.tcluster .wbtn-price {
+  left: auto;
+  right: 3px;
+}
+.touch.lefty .tcluster .wbtn-price {
+  left: 3px;
+  right: auto;
+}
+.tcluster .wbtn.starved::after {
+  bottom: auto;
+  top: 4px;
 }
 /* The contextual button with nothing near: Talk (it opens the chat). */
 .tcluster .tbtn-interact.idle {
