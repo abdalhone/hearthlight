@@ -77,18 +77,37 @@ function pickSentence(text, re) {
   return sentences(text).find((s) => re.test(s)) || null;
 }
 
-// Third-person soul text ("She could not save her brother") -> first person.
+function shortestSentence(text, re, max = 200) {
+  let best = null;
+  for (const s of sentences(text)) if (re.test(s) && s.length <= max && (!best || s.length < best.length)) best = s;
+  return best;
+}
+
+// Third-person soul text ("She could not save her brother") -> first person, a sentence at
+// a time: "her" before a noun is "my"; before a preposition it is "me"; at the end of a
+// sentence whose subject is Lyra it is someone else ("Lyra came north to find her").
 export function toFirstPerson(text) {
-  return String(text || '')
+  const parts = String(text || '').match(/[^.!?]+[.!?]*["')]*\s*/g) || [String(text || '')];
+  return parts.map(sentenceToFirstPerson).join('').trim();
+}
+
+function sentenceToFirstPerson(sentence) {
+  const selfSubject = /^\s*(?:Lyra|She)\b/.test(sentence);
+  return sentence
+    .replace(/\bher\b(?=\s+(?:as|to|in|on|at|with|for|and|from|into|by|up|down|out|off|back|away|again|alone|home)\b)/g, 'me')
+    .replace(/\bher\b(?=\s*(?:[.,;:!?"')]|$))/g, selfSubject ? '\u0001' : 'me')
     .replace(/\bShe\b/g, 'I')
     .replace(/\bshe\b/g, 'I')
     .replace(/\bherself\b/g, 'myself')
     .replace(/\bI is\b/g, 'I am')
     .replace(/\bI has\b/g, 'I have')
     .replace(/\bI does\b/g, 'I do')
-    .replace(/\b(I|still|also|never|always|and) (blame|love|hate|miss|want|keep|think|wish|fear|hope|dream|feel|carr(?:y|ie)|lie)s\b/g, (m, a, b) => `${a} ${b.replace(/ie$/, 'y')}`)
+    .replace(/\b(I|still|also|never|always|and) (blame|love|hate|miss|want|keep|think|wish|fear|hope|dream|feel|carr(?:y|ie)|lie|decide|owe|pay)s\b/g, (m, a, b) => `${a} ${b.replace(/ie$/, 'y')}`)
     .replace(/\bher\b/g, 'my')
-    .replace(/\bLyra\b/g, 'I');
+    .replace(/\bHer\b/g, 'My')
+    .replace(/\bLyra's\b/g, 'my')
+    .replace(/\bLyra\b/g, 'I')
+    .replace(/\u0001/g, 'her');
 }
 
 const AFFINITY_TAKES = [
@@ -163,7 +182,14 @@ export class LocalBrain {
   }
 
   answer(clause, reply, env, state = 'together') {
-    const it = clause.intent;
+    let it = clause.intent;
+    // Questions about where she stands with the player and about her own day (DESIGN §16)
+    // are hers to answer: when a plugin question uses the same words, she answers from
+    // her companionship, trust, fear and plan instead.
+    if (it?.source === 'plugin' && !it.actions?.length && env) {
+      const own = matchBuiltinClause(clause, env);
+      if (own && WILL_QUESTIONS.has(own.id) && HANDLERS[own.id]) it = own;
+    }
     // Gone or broken off: she does not chat like a companion. Requests still get her refusal,
     // and a few things (an apology, "why did you leave?") still reach her.
     if (state === 'left' && !(it && (it.actions?.length || LEFT_HEARS.has(it.id)))) {
@@ -618,6 +644,9 @@ export class LocalBrain {
   }
 }
 
+// Her own questions, answered from her will even when a plugin matched the words first.
+const WILL_QUESTIONS = new Set(['ask.trust_me', 'ask.fear_me', 'ask.plan', 'ask.why_left', 'ask.why_refused']);
+
 // What still reaches her when she has left the player.
 const LEFT_HEARS = new Set(['ask.decline', 'social.apology', 'social.greet', 'social.farewell', 'social.insult', 'ask.why_left', 'ask.trust_me', 'ask.fear_me', 'ask.why_refused', 'counter.take', 'counter.decline']);
 
@@ -850,12 +879,18 @@ const HANDLERS = {
     reply.thought = reply.thought || this.line('thought_question');
     switch (s.topic) {
       case 'self': {
-        const mentor = pickSentence(bs, /maren|mentor|vanish/i);
-        return `I'm ${name}${soul.age ? `, ${soul.age}` : ''}, from ${soul.origin || 'far away'}. ${mentor ? toFirstPerson(mentor) : ''}`.trim();
+        // Who she is in three beats: where from, who made her, why she is here.
+        const home = shortOrigin(soul.origin);
+        const mentor = shortestSentence(bs, /\bMaren (?:became|taught|took|found|raised)\b|\bapprentice/i, 170);
+        const search = shortestSentence(bs, /came (?:north|here|to Hearthvale)|went ahead|vanish|disappear|to find (?:her|Maren)/i, 170);
+        const parts = [`I'm ${name}${soul.age ? `, ${soul.age}` : ''}, from ${home}.`];
+        if (mentor) parts.push(toFirstPerson(mentor));
+        parts.push(search && search !== mentor ? toFirstPerson(search) : 'Maren, my teacher, vanished near the Sunken Ruins, and I came to find her.');
+        return clipWords(parts.join(' '), 330);
       }
       case 'origin': {
         const s1 = pickSentence(bs, /grew up|island|born|home/i);
-        return `${capitalize(soul.origin || 'Far from here')}. ${s1 ? toFirstPerson(s1) : ''} I miss the sound of it.`.replace(/\s+/g, ' ').trim();
+        return `${capitalize(shortOrigin(soul.origin) || 'Far from here')}. ${s1 ? toFirstPerson(s1) : ''} I miss the sound of it.`.replace(/\s+/g, ' ').trim();
       }
       case 'age':
         return `${soul.age || 'Old enough'}. ${this.speech.pick(['Old enough to know better, young enough not to care.', "Don't ask a ranger her age. Ask her kill count. ...Don't ask that either."])}`;
@@ -1266,6 +1301,21 @@ function activityPhrase(activity) {
   if (JOB_LABELS[key]) return JOB_LABELS[key];
   if (ACTIVITY_PHRASES[key]) return ACTIVITY_PHRASES[key];
   return lowerFirst(a.replace(/_/g, ' '));
+}
+
+// "Kettlewake, the smallest of the Glasswater Isles: a scatter of..." -> the part before the gloss.
+function shortOrigin(origin) {
+  const t = String(origin || 'far away').split(/[:;(—]/)[0].replace(/[.,\s]+$/, '').trim();
+  return t || 'far away';
+}
+
+// At most n characters, cut after a whole sentence when one fits.
+function clipWords(text, n) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (t.length <= n) return t;
+  const cut = t.slice(0, n);
+  const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+  return end > 40 ? cut.slice(0, end + 1) : `${cut.replace(/\s+\S*$/, '')}…`;
 }
 
 function hpText(r) {

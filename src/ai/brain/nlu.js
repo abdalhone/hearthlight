@@ -854,7 +854,7 @@ export const BUILTIN_INTENTS = [
   // ------------------------------------------------------- questions
   {
     id: 'ask.plan', kind: 'question', confidence: 0.86,
-    patterns: [/^(?:what (?:is|are) your plans?(?: for (?:today|tonight|the day|this morning|this afternoon|this evening))?|what are you (?:doing|up to|planning) (?:today|tonight|this morning|this afternoon|this evening|later)|what will you do (?:today|tonight|later)|do you have (?:any )?plans(?: today| for today| tonight)?|what is on your (?:agenda|schedule)(?: today)?|where are you (?:going|headed) (?:today|tonight|later)|what is your day like)$/],
+    patterns: [/^(?:what (?:is|are) your plans?(?:(?: for)? (?:today|tonight|the day|this morning|this afternoon|this evening))?|what is the plan(?: for)?(?: today| tonight)?|what are you (?:doing|up to|planning) (?:today|tonight|this morning|this afternoon|this evening|later)|what will you do (?:today|tonight|later)|do you have (?:any )?plans(?: today| for today| tonight)?|what is on your (?:agenda|schedule)(?: today)?|where are you (?:going|headed) (?:today|tonight|later)|what is your day like)$/],
   },
   {
     id: 'ask.fear_me', kind: 'question', confidence: 0.87,
@@ -984,7 +984,7 @@ export const BUILTIN_INTENTS = [
   },
   {
     id: 'ask.goals', kind: 'question', confidence: 0.85,
-    patterns: [/^(?:what are your (?:goals|plans)|what is your goal|what are you (?:working towards|hoping for|trying to do)|what do you want to do(?: next)?|what are you after)$/],
+    patterns: [/^(?:what are your goals|what is your goal|what are you (?:working towards|hoping for|trying to do)|what do you want to do(?: next)?|what are you after)$/],
   },
   {
     id: 'ask.can_do', kind: 'question', confidence: 0.85,

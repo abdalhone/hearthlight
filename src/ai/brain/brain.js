@@ -18,6 +18,7 @@ import { ProviderSet, BrainError, toBrainError, PROVIDER_LABELS } from './provid
 import { buildChatPrompt, buildRules, buildReflectionTask, buildConversationTask, RESPONSE_SCHEMA, REFLECTION_SCHEMA, CONVERSATION_SCHEMA, clip } from './prompt.js';
 import { coerceResponse, coerceReflection, coerceConversation, dedupeActions, MAX_ACTIONS } from './claude_brain.js';
 import { applyEffects, logConversation, resolvePerson } from './effects.js';
+import { VILLAGERS } from './soul_fallback.js';
 import { Voice } from './voice.js';
 import { Barker } from './barks.js';
 import { composeDiary } from './diary.js';
@@ -505,10 +506,19 @@ export class Brain {
         execute: (input) => {
           const who = String(input?.name ?? '').slice(0, 60);
           if (!who.trim()) throw new Error('name is empty');
-          const d = mind.dossier(resolvePerson(this.game, who) || who);
-          if (!d) return `You don't know anyone called ${who}.`;
-          for (const m of (d && typeof d === 'object' && (d.memories || d.items)) || []) remember(m?.id, m?.label || m?.text);
-          return smallResult(d, 1600);
+          const id = resolvePerson(this.game, who);
+          const d = mind.dossier(id || who);
+          if (d && typeof d === 'object') {
+            const mems = Array.isArray(d.memories) ? d.memories.filter((m) => m?.id != null && m.text).slice(0, 4) : [];
+            for (const m of mems) remember(m.id, m.label || m.text);
+            const text = typeof d.text === 'string' && d.text ? d.text : smallResult(d, 900);
+            return { text: clip(typeof text === 'string' ? text : JSON.stringify(text), 900), memories: mems.map((m) => ({ id: String(m.id), text: clip(m.text, 160) })) };
+          }
+          if (typeof d === 'string' && d.trim()) return clip(d, 900);
+          // Not met yet: what anyone in the valley could tell her.
+          const sketch = VILLAGERS[id] || VILLAGERS[String(who).toLowerCase().split(/\s+/)[0]];
+          if (sketch) return `You have not really met ${sketch.name} yet. People say: ${sketch.role}.`;
+          return `You don't know anyone called ${who}.`;
         },
       });
     }
@@ -521,7 +531,12 @@ export class Brain {
           const topic = String(input?.topic ?? '').slice(0, 80);
           if (!topic.trim()) throw new Error('topic is empty');
           const r = mind.loreLookup(topic);
-          if (!r || (Array.isArray(r) && !r.length)) return `You don't know anything about ${topic}.`;
+          const entries = Array.isArray(r) ? r : Array.isArray(r?.entries) ? r.entries : [];
+          if (!r || (!entries.length && !r.text && !r.questions?.length)) return `You don't know anything about ${topic}.`;
+          for (const e of entries) remember(e?.id, e?.subject || e?.title || e?.text);
+          if (typeof r === 'object' && !Array.isArray(r) && typeof r.text === 'string' && r.text) {
+            return { text: clip(r.text, 1200), ids: entries.slice(0, 6).map((e) => (e?.id != null ? String(e.id) : null)).filter(Boolean) };
+          }
           return smallResult(r, 1600);
         },
       });
