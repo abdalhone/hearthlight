@@ -5,6 +5,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { SCRIPTS, spokenLines, validateStep, isSpoken, readingMs, speakerName } from '../src/story/scripts.js';
+import { SFX_NAMES, BED_NAMES } from '../src/story/sfx.js';
+import { BOSS_SCRIPTS } from '../src/story/scripts_bosses.js';
+import { MISSION_SCRIPTS } from '../src/story/scripts_missions.js';
 import { PANELS } from '../src/story/panels.js';
 import { CHAPTERS, PAGES, QUESTIONS, PROLOGUE_UNLOCKS, unlocksForEvent } from '../src/story/codex_data.js';
 import { SCENES, sceneContext, lyraState } from '../src/story/triggers.js';
@@ -48,7 +51,7 @@ test('every script step is a valid step, every panel exists', () => {
     assert.ok(Array.isArray(script.steps) && script.steps.length > 0, `${id} has steps`);
     assert.ok(script.title, `${id} has a title`);
     script.steps.forEach((st, i) => {
-      const err = validateStep(st, PANELS);
+      const err = validateStep(st, PANELS, { sfx: SFX_NAMES, beds: BED_NAMES });
       assert.equal(err, null, `${id}[${i}] ${err}: ${JSON.stringify(st)}`);
     });
     // world sections are balanced
@@ -315,4 +318,24 @@ test('scene contexts and speakers', () => {
   assert.equal(speakerName('narrator', g), '');
   assert.equal(speakerName('lyra', { settings: { companionName: 'Lyra' } }), 'Lyra');
   assert.equal(speakerName('aveline', g), 'Sister Aveline');
+});
+
+test('scene sound: every cue names a word of its line and a sound that exists; the prologue has its silence and its slam', () => {
+  const all = { ...SCRIPTS, ...MISSION_SCRIPTS, ...BOSS_SCRIPTS };
+  for (const [id, script] of Object.entries(all)) {
+    script.steps.forEach((st, i) => assert.equal(validateStep(st, PANELS, { sfx: SFX_NAMES, beds: BED_NAMES }), null, `${id}[${i}]`));
+  }
+  // A cue on a word that is not in the line, or an unknown sound, is caught.
+  assert.match(validateStep({ narrate: 'It was you.', key: 'x.0', cues: [{ word: 'them', sfx: 'flash' }] }, null, { sfx: SFX_NAMES, beds: BED_NAMES }), /not in the line/);
+  assert.match(validateStep({ sfx: 'kazoo' }, null, { sfx: SFX_NAMES, beds: BED_NAMES }), /unknown sound/);
+  const steps = SCRIPTS.prologue.steps;
+  const hush = steps.findIndex((s) => s.hush != null);
+  const slam = steps.findIndex((s) => s.slam);
+  const you = steps.findIndex((s) => s.narrate === 'It was you.');
+  assert.ok(hush > 0 && hush < slam && slam < you, 'near silence, then the slam, then "It was you."');
+  // Every scene has a bed under it (no dead air), the prologue changes it as it goes.
+  for (const [id, script] of Object.entries(all)) assert.ok(script.steps.some((s) => s.bed != null), `${id} has a bed`);
+  assert.ok(steps.filter((s) => s.bed != null).length >= 6);
+  // Fear has a heartbeat somewhere.
+  assert.ok(Object.values(all).some((s) => s.steps.some((st) => st.heart > 0 || st.cues?.some((c) => c.heart > 0))));
 });

@@ -1309,28 +1309,50 @@ me some lore." The lore must reach the player in the game, not only in a file.
   learns them (from story.js and what the player has heard), so the player always knows what
   the lore is and why it matters.
 
-## 21. Voices (`src/audio/voice*.js`, `scripts/voice/*`)
+## 21. Voices (`src/audio/voice*.js`, `src/story/sfx.js`, `scripts/voice/*`)
 
-The author asked for voices made with Kokoro (an open-weight text-to-speech model) — "very
-cool" voices, cutscenes with voices, and Lyra talking in that voice.
+The author (r9): "here is voices to use instead of the one you have … and only put voices
+for cutscenes", with their own reference voices and how they make voices and sound for their
+videos; earlier: "you do not have to record voices for AI talking with each other… text is
+enough".
 
-- **Pre-rendered voices.** A build-time pipeline (`scripts/voice/`, Python, `kokoro-onnx`
-  with model files from the kokoro-onnx GitHub releases, cached outside the repo; ffmpeg)
-  renders every fixed line — the prologue and story scenes, the narrator, Lyra's scripted
-  lines and barks, and each villager's greetings, "how are you", farewells, gift reactions
-  and day/night/rain lines — into small compressed clips (`assets/voice/<key>.mp3`, mono, a
-  manifest mapping normalized text → clip and duration). Each character has a distinct cast
-  voice (Kokoro voice or blend, speed, gentle pitch/EQ shaping for age and character). The
-  build copies clips next to the page (`dist/voice/…`) and they are published as artifact
-  files.
-- **Playback** (`src/audio/voice.js`): when a character says a line that has a clip, it plays
-  in sync with the speech bubble (music ducks); clips load on demand and are cached;
-  settings control volume and on/off per group (Lyra, villagers, narrator).
-- **Lyra's live voice.** For lines with no clip (Claude's replies, generated offline lines):
-  optional in-browser Kokoro ("Kokoro voice for everything she says", one-time ~90 MB
-  download of the int8 model, published as artifact files), when it runs in that browser;
-  otherwise claude.ai's voice where offered (desktop), otherwise the browser's own voice if
-  the player enables it, otherwise silence with the text on screen. Never block the game.
+- **Only the cutscenes are spoken**: the prologue, the story scenes in play, the mission
+  scenes and the boss intros (everything `src/story/*` plays). Villagers' barks, Lyra's
+  lines in the world and her chat replies, and people talking to each other are text. There
+  is no live voice (no Kokoro in the browser, no claude.ai reading, no browser speech).
+  Settings → Sound & voices keeps *Spoken scenes* (on/off) and *Voice volume*.
+- **The cast** (`scripts/voice/cast.json`, reasons and measurements in `CASTING.md`): the
+  narrator is the author's Void; Lyra is the author's goth-girl voice (without the glass
+  ring); the men are the author's Bro voice shaped for age and character (Hobb slower and
+  lower with a waver, Varek lower and rough, Corran thin, rough and wavering); the other
+  women are the goth-girl voice reshaped (pitch, vocal-tract size, pace) until they measure
+  clearly apart from Lyra and from each other.
+- **Made the author's way** (`scripts/voice/`): Chatterbox (free TTS) conditioned on the
+  reference (reshaped per character), three seeds per line, each take transcribed with
+  Whisper, the take with every word right kept (ties: the one most like the reference, with
+  no long holes); cut on its real loudness (10 ms frames above -42 dB, gaps under 0.12 s
+  ignored) from the first sound to the last with 10 ms fades; the Void's chain (3 semitones
+  down, a quiet layer an octave lower, echoes at 90 and 160 ms, a small bass boost, -3.5 dB
+  at 350 Hz and +2.5 dB at 2.8 kHz, the words evened out so a line's end never fades); a room
+  or a muffle where a scene is indoors or remembered; -16 LUFS, true peak under -1.5 dBTP;
+  mono MP3. The finished clip is transcribed again: if an effect hid a word, the effects are
+  lightened and it is heard again; its word times go into the manifest. Clips are cached by
+  speaker + text + settings, so only changed lines are spoken again.
+- **Playback** (`src/audio/voice.js`): `voice.play({ speaker, text })` finds the clip by
+  the line's words (a renamed Lyra or a changed line simply has none and types itself).
+  **A line never waits for its voice** (§20). **Captions follow the voice**: each word pops
+  in the moment it is spoken (the clip's word times on the audio clock); without a clip, the
+  line types itself.
+- **Scene sound, made in code** (`src/story/sfx.js`; the author: "every action gets its own
+  sound"): steps `{ sfx }`, `{ bed }`, `{ heart }`, `{ hush: ms }`, `{ slam }`, and `cues` on a
+  spoken line that fire on a word as it is spoken (or typed) — footsteps in snow, the litter
+  creaking, the stone ring's hum, the candles leaning, gravelight, the Wellstone, landings,
+  flashes, cracks; big moments stack a sub thump, a crash, a long ring and a braam. A quiet
+  bed under every scene (wind, a room, the chapel, a drone, whispers, a cave, the village, the
+  lake), a heartbeat where fear lives, and before the prologue's biggest moment ("It was
+  you.") near silence with a thin ringing tone, then the sound slammed back in. Effects duck
+  under every spoken word (a sidechain made from the word times) and the music dips under
+  the voice, so the voice always wins.
 
 ## 22. Magic: the Weave (`src/magic/*`)
 

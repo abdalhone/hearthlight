@@ -1,198 +1,27 @@
 {
   "version": 2,
   "note": "Who speaks in the cutscenes and how (scripts/voice/CASTING.md has the reasons). ref: one of the author's reference voices (refs/<ref>.flac); refShape: how that voice is reshaped into this person before Chatterbox listens to it (pitch and formant in semitones, formant - bigger/older + smaller/younger, tempo); gen: Chatterbox's exaggeration, cfg (lower is slower and calmer) and temperature; moods: gen changes per line mood; fx: shaping after the cut (pitch, tempo, tremor in cents, grit, highpass, lowpass, bass, eq [[Hz, dB, Q]]); void: the narrator's chain.",
-  "seeds": [
-    11,
-    23,
-    37
-  ],
+  "seeds": [11, 23, 37],
   "voices": {
     "narrator": {
       "name": "The Void",
       "ref": "void",
-      "gen": {
-        "exaggeration": 0.35,
-        "cfg": 0.45,
-        "temperature": 0.8
-      },
-      "void": {
-        "pitch": -3.0,
-        "octaveDb": -15.0,
-        "octaveLowpass": 1400,
-        "echo90": 0.22,
-        "echo160": 0.12,
-        "echoLowpass": 4500,
-        "bass": 2.5,
-        "cut350": -3.5,
-        "lift2800": 2.5
-      }
+      "gen": { "exaggeration": 0.35, "cfg": 0.45, "temperature": 0.8},
+      "void": { "pitch": -3.0, "octaveDb": -15.0, "octaveLowpass": 1400, "echo90": 0.22, "echo160": 0.12, "echoLowpass": 4500, "bass": 2.5, "cut350": -3.5, "lift2800": 2.5}
     },
     "lyra": {
       "name": "Lyra",
       "ref": "goth",
-      "gen": {
-        "exaggeration": 0.5,
-        "cfg": 0.5,
-        "temperature": 0.8
-      },
-      "moods": {
-        "angry": {
-          "exaggeration": 0.7,
-          "cfg": 0.45
-        },
-        "happy": {
-          "exaggeration": 0.6
-        },
-        "sad": {
-          "exaggeration": 0.4,
-          "cfg": 0.4
-        },
-        "surprised": {
-          "exaggeration": 0.65
-        },
-        "worried": {
-          "exaggeration": 0.55,
-          "cfg": 0.45
-        }
-      },
+      "gen": { "exaggeration": 0.5, "cfg": 0.5, "temperature": 0.8},
+      "moods": { "angry": { "exaggeration": 0.7, "cfg": 0.45}, "happy": { "exaggeration": 0.6}, "sad": { "exaggeration": 0.4, "cfg": 0.4}, "surprised": { "exaggeration": 0.65}, "worried": { "exaggeration": 0.55, "cfg": 0.45}},
       "fx": {}
     },
-    "hess": {
-      "name": "Hess",
-      "ref": "goth",
-      "refShape": {
-        "pitch": -3.5,
-        "formant": -1.5
-      },
-      "gen": {
-        "exaggeration": 0.3,
-        "cfg": 0.6,
-        "temperature": 0.75
-      },
-      "fx": {
-        "eq": [
-          [
-            220,
-            1.5,
-            1.0
-          ]
-        ],
-        "treble": -1.0
-      }
-    },
-    "wenna": {
-      "name": "Wenna",
-      "ref": "goth",
-      "refShape": {
-        "pitch": -1.5,
-        "formant": 0.4,
-        "tempo": 1.05
-      },
-      "gen": {
-        "exaggeration": 0.5,
-        "cfg": 0.55,
-        "temperature": 0.8
-      },
-      "fx": {
-        "tremor": 14,
-        "highpass": 160,
-        "eq": [
-          [
-            1800,
-            2.5,
-            1.2
-          ]
-        ]
-      }
-    },
-    "aveline": {
-      "name": "Sister Aveline",
-      "ref": "default",
-      "gen": {
-        "exaggeration": 0.3,
-        "cfg": 0.3,
-        "temperature": 0.7
-      },
-      "fx": {
-        "bass": 1.0,
-        "treble": -1.0
-      }
-    },
-    "maren": {
-      "name": "Maren",
-      "ref": "goth",
-      "refShape": {
-        "pitch": -2.5,
-        "formant": -2.0
-      },
-      "gen": {
-        "exaggeration": 0.6,
-        "cfg": 0.45,
-        "temperature": 0.8
-      },
-      "fx": {}
-    },
-    "hobb": {
-      "name": "Hobb",
-      "ref": "bro",
-      "refShape": {
-        "pitch": -2.0,
-        "formant": -0.4,
-        "tempo": 0.9
-      },
-      "gen": {
-        "exaggeration": 0.3,
-        "cfg": 0.3,
-        "temperature": 0.7
-      },
-      "fx": {
-        "tremor": 10,
-        "lowpass": 7500,
-        "tempo": 0.95
-      }
-    },
-    "varek": {
-      "name": "Varek One-Eye",
-      "ref": "bro",
-      "refShape": {
-        "pitch": -4.5,
-        "formant": -1.8
-      },
-      "gen": {
-        "exaggeration": 0.55,
-        "cfg": 0.5,
-        "temperature": 0.8
-      },
-      "fx": {
-        "grit": 0.35,
-        "eq": [
-          [
-            2800,
-            2.5,
-            1.2
-          ]
-        ],
-        "bass": 1.5
-      }
-    },
-    "corran": {
-      "name": "Corran",
-      "ref": "bro",
-      "refShape": {
-        "pitch": 0.5,
-        "formant": -1.5,
-        "tempo": 0.9
-      },
-      "gen": {
-        "exaggeration": 0.45,
-        "cfg": 0.3,
-        "temperature": 0.75
-      },
-      "fx": {
-        "tremor": 16,
-        "grit": 0.3,
-        "lowpass": 6000
-      }
-    }
+    "hess": { "name": "Hess", "ref": "goth", "refShape": { "pitch": -3.5, "formant": -1.5}, "gen": { "exaggeration": 0.3, "cfg": 0.6, "temperature": 0.75}, "fx": { "eq": [[220, 1.5, 1.0]], "treble": -1.0}},
+    "wenna": { "name": "Wenna", "ref": "goth", "refShape": { "pitch": -3.5, "formant": 0.5, "tempo": 1.05}, "gen": { "exaggeration": 0.5, "cfg": 0.55, "temperature": 0.8}, "fx": { "tremor": 14, "highpass": 170, "eq": [[1800, 2.5, 1.2]]}},
+    "aveline": { "name": "Sister Aveline", "ref": "goth", "refShape": { "pitch": -5.0, "formant": -2.4, "tempo": 0.9}, "gen": { "exaggeration": 0.3, "cfg": 0.3, "temperature": 0.7}, "fx": { "bass": 1.5, "treble": -1.5}},
+    "maren": { "name": "Maren", "ref": "goth", "refShape": { "pitch": -2.5, "formant": -2.0}, "gen": { "exaggeration": 0.6, "cfg": 0.45, "temperature": 0.8}, "fx": {}},
+    "hobb": { "name": "Hobb", "ref": "bro", "refShape": { "pitch": -2.0, "formant": -0.4, "tempo": 0.9}, "gen": { "exaggeration": 0.3, "cfg": 0.3, "temperature": 0.7}, "fx": { "tremor": 10, "lowpass": 7500, "tempo": 0.95}},
+    "varek": { "name": "Varek One-Eye", "ref": "bro", "refShape": { "pitch": -5.0, "formant": -2.2}, "gen": { "exaggeration": 0.55, "cfg": 0.5, "temperature": 0.8}, "fx": { "grit": 0.35, "eq": [[2800, 2.5, 1.2]], "bass": 1.5}},
+    "corran": { "name": "Corran", "ref": "bro", "refShape": { "pitch": 2.0, "formant": 0.5, "tempo": 0.9}, "gen": { "exaggeration": 0.45, "cfg": 0.3, "temperature": 0.75}, "fx": { "tremor": 18, "grit": 0.3, "lowpass": 6000}}
   }
 }

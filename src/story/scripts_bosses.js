@@ -16,20 +16,22 @@ export const BOSS_SCRIPTS = {
   boss_varek: {
     title: 'Varek One-Eye',
     steps: [
+      { bed: 'wind', level: 0.8 },
       { camera: { to: 'varek', ms: 900 } },
       { say: 'varek', text: "That's far enough. The toll's paid at the fork, not up here." },
       { say: 'lyra', text: 'He winds up before he swings. Watch his shoulders, and move.', when: 'lyra_near' },
       { say: 'lyra', text: 'And nobody dies on this hill. Not even him.', mood: 'angry', when: 'lyra_near' },
-      { say: 'varek', text: "Brave. Come on, then. Let's see what Hearthvale sends up a hill." },
+      { say: 'varek', text: "Brave. Come on, then. Let's see what Hearthvale sends up a hill.", cues: [{ word: 'Brave.', sfx: 'braam', volume: 0.7 }, { word: 'hill.', sfx: 'thump' }] },
     ],
   },
 
   boss_greyjaw: {
     title: 'Greyjaw',
     steps: [
+      { bed: 'wind', level: 0.6 },
       { camera: { to: 'greyjaw', ms: 1000 } },
-      { narrate: 'The wood goes quiet. Then every wolf in Whisperwood answers one voice.' },
-      { say: 'lyra', text: "Greyjaw. Hess has been tracking him since spring. He's why the packs come so close.", mood: 'worried', when: 'lyra_near' },
+      { narrate: 'The wood goes quiet. Then every wolf in Whisperwood answers one voice.', cues: [{ word: 'quiet.', bed: 'none' }, { word: 'answers', sfx: 'howls' }] },
+      { say: 'lyra', text: "Greyjaw. Hess has been tracking him since spring. He's why the packs come so close.", mood: 'worried', when: 'lyra_near', cues: [{ word: 'Greyjaw.', heart: 80 }] },
       { say: 'lyra', text: "When he crouches, he's coming. Step aside, not back.", when: 'lyra_near' },
     ],
   },
@@ -37,8 +39,9 @@ export const BOSS_SCRIPTS = {
   boss_mother: {
     title: 'The Mother of Slimes',
     steps: [
+      { bed: 'cave' },
       { camera: { to: 'mother_of_slimes', ms: 900 } },
-      { narrate: 'In the deepest rain-pool something vast and pink stirs, and every little slime in the quarry turns to look at you.' },
+      { narrate: 'In the deepest rain-pool something vast and pink stirs, and every little slime in the quarry turns to look at you.', cues: [{ word: 'stirs,', sfx: ['bubbles', 'squelch'] }, { word: 'turns', sfx: 'braam', volume: 0.6 }] },
       { say: 'lyra', text: "That's not a slime. That's a lot of slimes that agreed on something.", mood: 'surprised', when: 'lyra_near' },
       { say: 'lyra', text: 'Hit it hard and it splits. Kill the little ones before it drinks them back.', when: 'lyra_near' },
     ],
@@ -47,8 +50,9 @@ export const BOSS_SCRIPTS = {
   boss_lake: {
     title: "The Lake's Hum",
     steps: [
+      { bed: 'lake' },
       { camera: { to: 'lakes_hum', ms: 1100 } },
-      { narrate: 'Mirror Lake goes still as glass. Then it hums, low, from somewhere under the boards.' },
+      { narrate: 'Mirror Lake goes still as glass. Then it hums, low, from somewhere under the boards.', cues: [{ word: 'still', bed: 'none' }, { word: 'hums,', sfx: ['lake_hum', 'sub'], shake: 2 }] },
       { say: 'corran', text: 'Hm-hmm. Never heard her hum that loud. Mind the edges.', when: 'npc_near:corran' },
       { say: 'lyra', text: "Still water that sits too long stirs. That's the old saying. Nobody said a whole lake.", mood: 'worried', when: 'lyra_near' },
       { say: 'lyra', text: 'It has to come up to hit us. When it does, so do we.', when: 'lyra_near' },
@@ -58,9 +62,10 @@ export const BOSS_SCRIPTS = {
   boss_warden: {
     title: 'The Bone Warden',
     steps: [
+      { bed: 'cave' },
       { camera: { to: 'bone_warden', ms: 1000 } },
-      { narrate: 'In the lower hall the cold light gathers into a lantern, and the lantern lifts.' },
-      { say: 'lyra', text: 'Gravelight. Every Moot in the Lowmarch forbids it, and here it is, walking.', mood: 'worried', when: 'lyra_near' },
+      { narrate: 'In the lower hall the cold light gathers into a lantern, and the lantern lifts.', cues: [{ word: 'light', sfx: 'gravelight' }, { word: 'lifts.', sfx: 'braam', shake: 3 }] },
+      { say: 'lyra', text: 'Gravelight. Every Moot in the Lowmarch forbids it, and here it is, walking.', mood: 'worried', when: 'lyra_near', cues: [{ word: 'Gravelight.', heart: 76 }] },
       { say: 'lyra', text: "That lantern, like the statue upstairs. Maren carried a miner's lantern in here. Hers burned yellow.", mood: 'sad', when: 'lyra_near' },
       { say: 'lyra', text: "Its shield won't take a plain cut. Hit it with something heavy, or with light.", when: 'lyra_near' },
     ],
