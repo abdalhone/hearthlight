@@ -177,6 +177,17 @@ export const SFX = {
     }
     S.noise(t, { dur: 0.5, a: 0.08, gain: 0.04, filter: { type: 'highpass', freq: 6500 }, out: S.wet });
   },
+
+  // The chapel bell (DESIGN §29: a death, a funeral): one slow stroke, a bell's uneven
+  // partials ringing out into the reverb.
+  bell(S, t, p) {
+    const f = 196 * p;
+    for (const [k, g, d] of [[1, 0.2, 3.2], [2.0, 0.09, 2.4], [2.4, 0.07, 2.0], [3.0, 0.05, 1.6], [4.07, 0.03, 1.1], [0.5, 0.08, 3.6]]) {
+      S.tone(t, { type: 'sine', freq: f * k, dur: d, a: 0.004, gain: g });
+      S.tone(t + 0.01, { type: 'sine', freq: f * k * 1.003, dur: d * 0.8, a: 0.01, gain: g * 0.5, out: S.wet });
+    }
+    S.noise(t, { dur: 0.05, gain: 0.12, filter: { type: 'bandpass', freq: 2400 * p, q: 2 } });
+  },
 };
 
 export const SFX_NAMES = Object.keys(SFX);

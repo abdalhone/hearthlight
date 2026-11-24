@@ -602,7 +602,7 @@ export function entryFor(m, npc, e, hour) {
   }
   // The watch looking for the stranger, to ask.
   for (const c of Object.values(m.cases)) {
-    if (!c.seeking || c.lead !== id || m.session) continue;
+    if (!c.seeking || c.lead !== id || m.session || c.state !== 'open' || m.isWanted()) continue;
     const P = m.game.player;
     if (!P || hour < 6 || hour >= 22) continue;
     const key = Math.round(P.x / 48) * 1000 + Math.round(P.y / 48);

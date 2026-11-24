@@ -195,7 +195,14 @@ for (const view of VIEWS) {
   await page.evaluate(() => {
     for (let i = 0; i < 4; i++) (document.querySelector('.panel-questioning .opt-lie') || document.querySelector('.panel-questioning .dlg-opt'))?.click();
   });
-  await page.waitForSelector('.panel-arrest', { timeout: 5000 }).catch(() => {});
+  await page.waitForSelector('.panel-arrest', { timeout: 3000 }).catch(() => {});
+  // Not enough to hold them this time: the Moot sends for the stranger anyway (for the shots).
+  await page.evaluate(() => {
+    const g = window.__game;
+    document.querySelector('.panel-questioning .dlg-opt')?.click();
+    if (!document.querySelector('.panel-arrest')) g.murder.arrestOffer('rowan', 'bram');
+  });
+  await page.waitForSelector('.panel-arrest', { timeout: 3000 }).catch(() => {});
   await page.waitForTimeout(300);
   await shot('10-arrest');
   await page.evaluate(() => document.querySelector('.panel-arrest .opt-quiet')?.click());

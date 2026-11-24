@@ -403,7 +403,7 @@ export class Murder {
 
   holdBegins(v) {
     const g = this.game;
-    safe(() => g.audio?.play?.('heartbeat', { volume: 0.5 }));
+    safe(() => g.audio?.heartbeat?.(0.6));
     // Lyra, if she sees it start, cries out (she cannot stop a blow already falling).
     const L = g.companion;
     if (L && !L.downed && look(g, L, v.x, v.y)) Lyra.sawHold(this, v);
