@@ -107,13 +107,18 @@ test('keyboard mapping follows DESIGN §14', () => {
     KeyW: 'up', ArrowUp: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right',
     KeyJ: 'attack', Space: 'attack', KeyK: 'dodge', ShiftLeft: 'dodge', KeyE: 'interact',
     KeyT: 'talk', Enter: 'talk', Tab: 'mind', KeyM: 'mind', KeyI: 'inventory', Escape: 'menu',
-    Digit1: 'cmd1', Digit2: 'cmd2', Digit3: 'cmd3', Digit4: 'cmd4', Digit5: 'cmd5',
+    Numpad1: 'cmd1', Numpad5: 'cmd5',
+    // DESIGN §22.4: the number row casts weaves; B opens the Spellbook; Q / R pick the slot.
+    Digit1: 'weave1', Digit4: 'weave4', Digit6: 'weave6', KeyB: 'spellbook', KeyQ: 'slot_prev', KeyR: 'slot_next',
   };
   for (const [code, action] of Object.entries(expect)) assert.equal(actionForKey(code), action, code);
+  // Asking Lyra moved to Alt (Option) + 1–5.
+  for (let i = 1; i <= 5; i++) assert.equal(actionForKey(`Digit${i}`, String(i), true), `cmd${i}`);
+  assert.equal(actionForKey('KeyE', 'e', true), null, 'other Alt chords stay with the browser');
   assert.equal(actionForKey('KeyZ'), null);
   assert.equal(actionForKey('', 'e'), 'interact');
   assert.equal(actionForKey('', ' '), 'attack');
-  assert.equal(actionForKey('', '3'), 'cmd3');
+  assert.equal(actionForKey('', '3'), 'weave3');
   assert.equal(actionForKey('', 'Escape'), 'menu', 'named keys fall back to the matching code');
   assert.equal(actionForKey('', 'F5'), null);
   assert.ok(Object.isFrozen(KEYMAP));
@@ -407,7 +412,7 @@ test('every icon grid is rectangular and uses known colors', () => {
 });
 
 test('orders, jobs and acknowledgements are complete', () => {
-  assert.deepEqual(COMMANDS.map((c) => c.key), ['1', '2', '3', '4', '5']);
+  assert.deepEqual(COMMANDS.map((c) => c.key), ['Alt 1', 'Alt 2', 'Alt 3', 'Alt 4', 'Alt 5'], 'the number row casts weaves (§22.4)');
   assert.deepEqual(COMMANDS.map((c) => c.id), ['follow', 'stay', 'attack', 'defend', 'passive']);
   for (const c of COMMANDS) assert.ok(ICONS[c.icon], c.icon);
   assert.deepEqual(

@@ -2,13 +2,14 @@
 // replies, the How to play page. Pure data + small pure pickers (unit-tested).
 
 // The "Ask Lyra" bar. Every button is a request she weighs (DESIGN.md §16.4): it runs
-// game.actions.run(action, args, 'player') and she answers. `key` is the hotkey digit.
+// game.actions.run(action, args, 'player') and she answers. `key` is its hotkey: Alt
+// (Option) + the digit, since the plain number row casts weaves (§22.4).
 export const COMMANDS = [
-  { id: 'follow', label: 'Follow', icon: 'boots', key: '1', action: 'follow', args: { target: 'player' }, hint: 'Ask her to walk with you' },
-  { id: 'stay', label: 'Wait', icon: 'flag', key: '2', action: 'stay', args: {}, hint: 'Ask her to wait here' },
-  { id: 'attack', label: 'Fight', icon: 'sword', key: '3', action: 'set_combat_mode', args: { value: 'attack' }, hint: 'Ask her to fight anything that is not a friend' },
-  { id: 'defend', label: 'Defend', icon: 'shield', key: '4', action: 'set_combat_mode', args: { value: 'defend' }, hint: 'Ask her to fight only what threatens you both' },
-  { id: 'passive', label: 'Hold back', icon: 'feather', key: '5', action: 'set_combat_mode', args: { value: 'passive' }, hint: 'Ask her to stay out of fights' },
+  { id: 'follow', label: 'Follow', icon: 'boots', key: 'Alt 1', action: 'follow', args: { target: 'player' }, hint: 'Ask her to walk with you' },
+  { id: 'stay', label: 'Wait', icon: 'flag', key: 'Alt 2', action: 'stay', args: {}, hint: 'Ask her to wait here' },
+  { id: 'attack', label: 'Fight', icon: 'sword', key: 'Alt 3', action: 'set_combat_mode', args: { value: 'attack' }, hint: 'Ask her to fight anything that is not a friend' },
+  { id: 'defend', label: 'Defend', icon: 'shield', key: 'Alt 4', action: 'set_combat_mode', args: { value: 'defend' }, hint: 'Ask her to fight only what threatens you both' },
+  { id: 'passive', label: 'Hold back', icon: 'feather', key: 'Alt 5', action: 'set_combat_mode', args: { value: 'passive' }, hint: 'Ask her to stay out of fights' },
 ];
 
 // Asking her to travel with you again, once she is apart or has left (§16.3).
@@ -67,12 +68,25 @@ export const HOW_TO_PLAY = [
   {
     title: 'Getting around',
     rows: [
-      ['Move', 'WASD or arrow keys · left stick · touch the left half of the screen'],
-      ['Attack', 'J or Space · A button · the sword button'],
+      ['Move', 'WASD or arrow keys · left stick · on a phone, put your left thumb down anywhere on the left side'],
+      ['Sword', 'Left click (toward the mouse), J or Space · A button · the sword button (drag it to aim the swing)'],
       ['Dodge roll', 'K or Shift · B button · the swirl button (a moment of safety)'],
-      ['Interact', 'E · X button · the hand button: talk to villagers, open doors and chests, read signs'],
+      ['Interact', 'E · X button · the hand button that appears when there is someone to talk to or something to use'],
       ['Listen in', 'L · tap "Listen in" when two villagers are talking nearby'],
       ['Pause', 'Esc · Start button · the pause icon'],
+    ],
+  },
+  {
+    title: 'Weaving',
+    text:
+      'You can do something no one in Hearthvale can: shape raw Drift with your hands. The village calls it weaving. A weave is a shape (how it leaves your hands), up to two essences (what it is made of: fire, frost, storm…) and up to two twists (how it behaves: split, bounce, homing…). You start with a small bolt of raw weave; every new shape, essence and twist is found through people who need a hand and the great foes around the valley. Hold your phone sideways for fights: move with your left thumb, fight and weave with your right.',
+    rows: [
+      ['Cast', '1 – 6 toward the mouse · RT on a gamepad · on a phone, the weave buttons around the sword'],
+      ['Aim', 'The mouse · the right stick · drag from a weave button: the world shows where it goes; let go to cast, drag back onto the button to cancel'],
+      ['Quick cast', 'Tap a weave button: it goes to the nearest foe (or where you face)'],
+      ['Hold', 'Beams flow and charged weaves grow while you hold the key or the button'],
+      ['Choose', 'Mouse wheel, Q / R or a click on its slot; the right button casts the chosen one'],
+      ['Spellbook', 'B · the book button · the pause menu: make weaves, name them, put them in your slots'],
     ],
   },
   {
@@ -93,11 +107,11 @@ export const HOW_TO_PLAY = [
   {
     title: 'Asking her for help',
     rows: [
-      ['1 Follow', 'Ask her to walk with you.'],
-      ['2 Wait', 'Ask her to wait where she is.'],
-      ['3 Fight', 'Ask her to engage every creature nearby that is not a friend. Once she agrees, she does not ask again for each one.'],
-      ['4 Defend', 'Ask her to fight only what threatens you or her.'],
-      ['5 Hold back', 'Ask her to keep out of fights. She still heals.'],
+      ['Alt 1 Follow', 'Ask her to walk with you.'],
+      ['Alt 2 Wait', 'Ask her to wait where she is.'],
+      ['Alt 3 Fight', 'Ask her to engage every creature nearby that is not a friend. Once she agrees, she does not ask again for each one.'],
+      ['Alt 4 Defend', 'Ask her to fight only what threatens you or her.'],
+      ['Alt 5 Hold back', 'Ask her to keep out of fights. She still heals.'],
       ['Jobs', 'Chopping, gathering, fishing, mining, foraging, cooking or collecting loot, delivered to you or the cottage chest.'],
     ],
   },
@@ -126,16 +140,25 @@ export const TITLE_TAGLINES = [
 
 export const CONTROLS_SUMMARY = [
   ['WASD / Arrows', 'Move'],
-  ['J / Space', 'Attack'],
+  ['Mouse', 'Aim'],
+  ['Click / J / Space', 'Sword'],
   ['K / Shift', 'Dodge'],
+  ['1 – 6', 'Cast a weave (hold for beams, charges)'],
+  ['Right click', 'Cast the chosen weave'],
+  ['Wheel / Q / R', 'Choose a weave'],
+  ['B', 'Spellbook'],
   ['E', 'Interact / talk to villagers'],
   ['L', 'Listen in'],
   ['T / Enter', 'Talk to Lyra'],
   ['Tab / M', "Lyra's mind"],
   ['I', 'Inventory'],
-  ['1 – 5', 'Ask Lyra'],
+  ['Alt + 1 – 5', 'Ask Lyra'],
   ['Esc', 'Pause / close'],
 ];
+
+// What the controls part of Settings says about gamepads and touch.
+export const CONTROLS_NOTE =
+  'Gamepad: left stick moves, right stick aims · A sword · B dodge · X interact · Y talk · RT weave · LT / RB choose a weave · Start pause. Phone: hold it sideways for fights; put your left thumb down anywhere on the left to move. On the right: the sword, the dodge and your weaves — drag from a weave to aim, let go to cast, drag back onto it to cancel, or just tap it to cast at the nearest foe.';
 
 // Lines for the reset confirmation and data tab, kept here with the rest of the voice.
 export const RESET_WARNING =

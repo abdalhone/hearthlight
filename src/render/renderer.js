@@ -287,6 +287,19 @@ export class Renderer {
     }
     this._drawVignette(ctx, L ? 0 : 0.3, dt);
 
+    // 5b. Weave aiming (DESIGN §22.4): the aim preview and the mouse reticle, above the
+    // light map so they read at night, under the text.
+    if (g.aimPreview) {
+      try {
+        g.aimPreview.draw(ctx, this);
+      } catch (err) {
+        this._report('aim-preview', err);
+      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
     // 6. Text and markers.
     try {
       g.bubbles?.draw(ctx, this);

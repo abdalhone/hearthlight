@@ -4,6 +4,12 @@
 // On phones the HUD folds small so the world stays visible: Lyra's card shrinks to her
 // portrait and mood (tap to unfold), and the quest line tucks in beside it.
 
+// The Weave's pieces (DESIGN §22.4): the controller, the aim layer, the Spellbook.
+import { Weaving } from './weaving.js';
+import { AimPreview } from './aim_preview.js';
+import { paintSlot } from './touch.js';
+import { spellbookIconUrl, SPELLBOOK_ICON_SIZE } from './weave_icons.js';
+import { Spellbook } from './spellbook.js';
 import { h, icon, setIcon, setText, setStyle, toggleClass, meter, button, setAttr } from './dom.js';
 import { COMMANDS, JOBS, DELIVER_OPTIONS, REJOIN } from './content.js';
 import { hpText, frac, fmtInt, lyraStatusLine, weatherIconKey, weatherLabel, moodEmoji, moodToExpression, stanceLabel } from './format.js';
@@ -16,8 +22,11 @@ const STANCE_ICON = { attack: 'sword', defend: 'shield', passive: 'feather', sel
 const SMALL_QUERY = '(max-width: 640px), (max-height: 520px)';
 const PORTRAIT_PHONE_QUERY = '(max-width: 640px) and (min-height: 521px)';
 const MINI_KEY = 'hearthlight.hud.lyraMini';
+const TURN_TIP_KEY = 'hearthlight.tip.turnPhone';
+// A phone held sideways (or any short window): the HUD becomes one thin top strip.
+const STRIP_QUERY = '(max-height: 520px)';
 // HUD pieces speech bubbles must not hide behind (see Bubbles.setKeepOut).
-const KEEP_OUT_SELECTOR = '.hud .card, .hud-btn, .lyra-fold, .quest-line, .listen-prompt, .interact-prompt, .cmdbar, .orders-btn, .tbtn';
+const KEEP_OUT_SELECTOR = '.hud .card, .hud-btn, .lyra-fold, .quest-line, .listen-prompt, .interact-prompt, .cmdbar, .orders-btn, .tbtn, .wbtn, .hotbar';
 const KEEP_OUT_EVERY = 0.25;
 
 function readMiniPref() {
@@ -35,6 +44,29 @@ function saveMiniPref(on) {
   } catch {
     /* private mode: the choice lasts for this visit only */
   }
+}
+
+function readFlag(key) {
+  try {
+    return window.localStorage?.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveFlag(key) {
+  try {
+    window.localStorage?.setItem(key, '1');
+  } catch {
+    /* private mode: shown again next visit */
+  }
+}
+
+function bookIcon(cls = '') {
+  const img = h('img', { class: `px-icon ${cls}`.trim(), alt: '', draggable: 'false', 'aria-hidden': 'true', src: spellbookIconUrl() });
+  img.style.setProperty('--iw', String(SPELLBOOK_ICON_SIZE.w));
+  img.style.setProperty('--ih', String(SPELLBOOK_ICON_SIZE.h));
+  return img;
 }
 
 function media(q) {
@@ -71,8 +103,52 @@ export class Hud {
     this.layoutT = 0;
     this.keepT = 0;
     this._keep = [];
+    // The Weave (§22.4): one controller for every way of casting, and its aim layer.
+    this.weaving = new Weaving(this.game, ui);
+    this.weaving.bind();
+    this.game.aimPreview = new AimPreview(this.game, this.weaving);
+    this.spellbook = null;
+    this.hbTick = 0;
+    this.hbVersion = -1;
+    this.newMagic = false;
+    ui.openSpellbook = (slot) => this.openSpellbook(slot);
     this.el = this.build();
+    this.mountWeave();
     this.watchLayout();
+    this.bindMagic();
+  }
+
+  // The hotbar joins the bottom (under the prompts), the tip the HUD; the Ask bar moves
+  // beside Lyra for mouse players. Per step, the weave controller runs from the input's
+  // step hook, so it sees every press even while the HUD is hidden or a panel is open.
+  mountWeave() {
+    this.bottomEl = this.el.querySelector('.hud-bottom');
+    this.bottomEl.append(this.hotbar);
+    this.el.append(this.turnTip);
+    this.placeAskBar();
+    this.game.input?.onStep?.((dt) => this.stepWeave(dt));
+  }
+
+  stepWeave(dt) {
+    const g = this.game;
+    this.weaving.update(dt);
+    if (this.weaving.sword && g.input) g.input.setSwingAim(this.weaving.sword.dx, this.weaving.sword.dy);
+    this.ui.touch?.update?.(dt);
+    const inp = g.input;
+    if (inp?.uiPressed('spellbook')) {
+      inp.consume('spellbook');
+      const top = this.ui.top?.();
+      if (g.state === 'playing' && (!top || top === this.spellbook?.panel)) this.toggleSpellbook();
+    }
+    this.syncCursor();
+    if (this.el.hidden || !g.player) return;
+    this.updateHotbar(dt);
+    this.placeAskBar();
+    this.maybeTurnTip();
+    if (this.turnTipT > 0) {
+      this.turnTipT -= dt;
+      if (this.turnTipT <= 0) this.hideTurnTip();
+    }
   }
 
   build() {
@@ -81,6 +157,8 @@ export class Hud {
     this.pName = h('span', { class: 'card-name' });
     this.pLevel = h('span', { class: 'card-level num' });
     this.pHp = meter('meter-hp', 'Health');
+    this.pMana = meter('meter-mana', 'Mana');
+    this.pMana.el.hidden = true;
     this.pXp = meter('meter-xp', 'Experience');
     this.pCoins = h('span', { class: 'coins-num num' });
     const playerCard = h(
@@ -88,6 +166,7 @@ export class Hud {
       { class: 'card player-card' },
       h('div', { class: 'card-row' }, icon('heart', 'card-glyph'), this.pName, this.pLevel, h('span', { class: 'coins' }, icon('coin'), this.pCoins)),
       this.pHp.el,
+      this.pMana.el,
       this.pXp.el,
     );
 
@@ -143,7 +222,11 @@ export class Hud {
     const mindBtn = button('', { icon: 'mind', cls: 'btn-icon hud-btn', title: "Lyra's mind (Tab)", onClick: () => this.ui.toggleMind() });
     const bagBtn = button('', { icon: 'bag', cls: 'btn-icon hud-btn', title: 'Inventory (I)', onClick: () => this.ui.toggleInventory() });
     const pauseBtn = button('', { icon: 'pause', cls: 'btn-icon hud-btn', title: 'Pause (Esc)', onClick: () => this.ui.openPause() });
-    const corner = h('div', { class: 'hud-buttons' }, chatBtn, mindBtn, bagBtn, pauseBtn);
+    mindBtn.classList.add('hud-mind');
+    this.bookDot = h('span', { class: 'badge badge-dot', hidden: true });
+    this.bookBtn = h('button', { type: 'button', class: 'btn btn-icon hud-btn hud-book', title: 'Spellbook (B)', 'aria-label': 'Spellbook (B)', hidden: true }, bookIcon(), this.bookDot);
+    this.bookBtn.addEventListener('click', () => this.toggleSpellbook());
+    const corner = h('div', { class: 'hud-buttons' }, chatBtn, mindBtn, bagBtn, this.bookBtn, pauseBtn);
 
     // Quest line
     this.questText = h('span', { class: 'quest-text' });
@@ -205,6 +288,9 @@ export class Hud {
 
     this.fps = h('div', { class: 'fps num', hidden: true });
 
+    this.hotbar = this.buildHotbar();
+    this.turnTip = this.buildTurnTip();
+
     this.cardsEl = h('div', { class: 'hud-cards' }, playerCard, this.lyraWrap);
     this.rightEl = h('div', { class: 'hud-right' }, placeCard, corner);
     const top = h('div', { class: 'hud-top' }, this.cardsEl, this.rightEl);
@@ -214,16 +300,205 @@ export class Hud {
     return h('div', { class: 'hud', hidden: true }, top, center, bottom, this.ordersWrap, this.jobsMenu, this.fps);
   }
 
+  // ---------- the Weave: hotbar, mana, Spellbook (DESIGN §22.4) ----------
+
+  // Desktop: the weave slots and the mana bar, bottom centre (touch uses the weave arc).
+  buildHotbar() {
+    this.hbManaFill = h('i', { class: 'hb-mana-fill' });
+    this.hbManaCost = h('i', { class: 'hb-mana-cost' });
+    this.hbManaText = h('span', { class: 'hb-mana-text num' });
+    const mana = h('div', { class: 'hb-mana', role: 'meter', 'aria-label': 'Mana' }, h('span', { class: 'hb-mana-track' }, this.hbManaFill, this.hbManaCost), this.hbManaText);
+    this.hbSlots = [];
+    const row = h('div', { class: 'hb-row' });
+    for (let i = 0; i < 6; i++) {
+      const img = h('img', { class: 'wbtn-icon', alt: '', draggable: 'false', 'aria-hidden': 'true' });
+      const cd = h('span', { class: 'wbtn-cd', 'aria-hidden': 'true' });
+      const plus = h('span', { class: 'wbtn-plus', 'aria-hidden': 'true', text: '+' });
+      const key = h('kbd', { class: 'keycap hb-key', text: String(i + 1) });
+      const cost = h('span', { class: 'hb-cost num' });
+      const b = h('button', { type: 'button', class: 'wbtn hslot tbtn', hidden: true }, img, cd, plus, key, cost);
+      const slot = { i, b, img, cd, plus, cost, key: '' };
+      // A click selects the slot (the right button casts the selected one); an empty
+      // slot opens the Spellbook on it.
+      b.addEventListener('click', () => {
+        if (!this.weaving.weaveAt(i)) this.openSpellbook(i);
+        else this.weaving.select(i);
+      });
+      b.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        this.openSpellbook(i);
+      });
+      this.hbSlots.push(slot);
+      row.append(b);
+    }
+    this.hbName = h('div', { class: 'hb-name' });
+    const bookBtn = h('button', { type: 'button', class: 'btn btn-icon hb-book', title: 'Spellbook (B)', 'aria-label': 'Spellbook (B)' }, bookIcon(), h('kbd', { class: 'keycap', text: 'B' }));
+    bookBtn.addEventListener('click', () => this.toggleSpellbook());
+    row.append(bookBtn);
+    return h('div', { class: 'hotbar', hidden: true }, this.hbName, mana, row);
+  }
+
+  // Touch tablets keep the Ask bar at the bottom (the hotbar is the weave arc there);
+  // with a mouse it joins Lyra's column, under her card.
+  placeAskBar() {
+    const touch = !!this.ui.isTouch;
+    if (this._askTouch === touch && this.cmdbar.parentElement) return;
+    this._askTouch = touch;
+    if (touch) this.bottomEl.append(this.cmdbar);
+    else this.cardsEl.append(this.cmdbar);
+    toggleClass(this.cmdbar, 'cmdbar-side', !touch);
+  }
+
+  bindMagic() {
+    const bus = this.game.bus;
+    if (!bus?.on) return;
+    bus.on('magic_unlocked', () => {
+      this.newMagic = true;
+      if (this.bookDot) this.bookDot.hidden = false;
+    });
+    bus.on('ui_open', (p) => {
+      if (p?.panel === 'pause') this.addPauseEntry();
+    });
+    bus.on('game_start', () => {
+      this.turnTipAt = (this.game.time || 0) + 3;
+    });
+  }
+
+  // The pause menu gains "Spellbook" (the menu itself is built elsewhere).
+  addPauseEntry() {
+    if (!this.weaving.available()) return;
+    const top = this.ui.top?.();
+    const menu = top?.el?.querySelector?.('.pause-menu');
+    if (!menu || menu.querySelector('.pause-spellbook')) return;
+    const b = button('Spellbook', { cls: 'pause-spellbook', key: 'B', onClick: () => {
+      this.ui.closeModal(top, true);
+      this.openSpellbook();
+    } });
+    b.prepend(bookIcon());
+    const after = menu.children[2] || null; // after Resume and Lyra's mind
+    menu.insertBefore(b, after);
+  }
+
+  openSpellbook(slot) {
+    if (!this.weaving.available() || this.game.state !== 'playing') return;
+    if (!this.spellbook) this.spellbook = new Spellbook(this.ui, this.weaving);
+    this.newMagic = false;
+    if (this.bookDot) this.bookDot.hidden = true;
+    this.spellbook.open(Number.isInteger(slot) ? slot : this.weaving.selected);
+  }
+
+  toggleSpellbook() {
+    if (this.spellbook?.isOpen?.()) this.spellbook.close();
+    else this.openSpellbook();
+  }
+
+  updateHotbar(dt) {
+    const w = this.weaving;
+    const live = w.available() && w.slotCount() > 0;
+    if (this.bookBtn.hidden === live) this.bookBtn.hidden = !live;
+    toggleClass(this.ui.root, 'has-magic', live);
+    if (!live) {
+      if (!this.hotbar.hidden) this.hotbar.hidden = true;
+      if (!this.pMana.el.hidden) this.pMana.el.hidden = true;
+      return;
+    }
+    this.hbTick += dt;
+    if (this.hbTick < 1 / 20) return;
+    this.hbTick = 0;
+    const mana = w.mana();
+    if (mana && mana.max > 0) {
+      if (this.pMana.el.hidden) this.pMana.el.hidden = false;
+      this.pMana.set(mana.cur / mana.max, `${Math.floor(mana.cur)}/${Math.round(mana.max)}`);
+      toggleClass(this.pMana.el, 'low', mana.cur / mana.max < 0.2);
+    }
+    if (this.ui.isTouch) {
+      if (!this.hotbar.hidden) this.hotbar.hidden = true;
+      return;
+    }
+    if (this.hotbar.hidden) this.hotbar.hidden = false;
+    const n = w.slotCount();
+    const ver = w.version;
+    const t = this.game.time || 0;
+    const sel = w.slotInfo(w.selected);
+    if (mana && mana.max > 0) {
+      setStyle(this.hbManaFill, 'width', `${((100 * Math.max(0, mana.cur)) / mana.max).toFixed(1)}%`);
+      // The selected weave's cost, as a brighter cap at the end of the bar.
+      const c = Math.min(mana.cur, sel.cost || 0);
+      setStyle(this.hbManaCost, 'width', `${((100 * c) / mana.max).toFixed(1)}%`);
+      setStyle(this.hbManaCost, 'left', `${((100 * Math.max(0, mana.cur - c)) / mana.max).toFixed(1)}%`);
+      setText(this.hbManaText, `${Math.floor(mana.cur)} / ${Math.round(mana.max)}`);
+    }
+    for (let i = 0; i < 6; i++) {
+      const slot = this.hbSlots[i];
+      const on = i < n;
+      if (slot.b.hidden === on) slot.b.hidden = !on;
+      if (!on) continue;
+      const rec = w.slotInfo(i);
+      if (ver !== this.hbVersion || slot.key !== rec.key) {
+        slot.key = rec.key;
+        paintSlot(slot, rec, i);
+      }
+      toggleClass(slot.b, 'selected', i === w.selected);
+      const cd = rec.plan ? w.cooldownFrac(i) : 0;
+      setStyle(slot.cd, '--cd', cd.toFixed(3));
+      toggleClass(slot.b, 'cooling', cd > 0.001);
+      toggleClass(slot.b, 'starved', w.starved(i));
+      const f = w.lastFail(i);
+      toggleClass(slot.b, 'shake', !!f && t - f.t < 0.35);
+    }
+    setText(this.hbName, sel.weave ? sel.name : '');
+    this.hbVersion = ver;
+  }
+
+  // Over the world a mouse player sees the reticle (aim_preview.js), not the arrow.
+  syncCursor() {
+    const c = this.game.canvas;
+    if (!c?.style) return;
+    const want = this.game.state === 'playing' && !this.ui.isTouch && !this.ui.stack?.length ? 'none' : '';
+    if (this._cursor !== want) {
+      this._cursor = want;
+      c.style.cursor = want;
+    }
+  }
+
+  // ---------- "Turn your phone sideways for fights." (once) ----------
+
+  buildTurnTip() {
+    const phone = h('span', { class: 'turn-phone', 'aria-hidden': 'true' }, h('i'));
+    const text = h('span', { class: 'turn-text' }, h('b', { text: 'Turn your phone sideways for fights.' }), h('span', { text: 'Move with your left thumb, fight and weave with your right.' }));
+    const tip = h('button', { type: 'button', class: 'turn-tip', hidden: true }, phone, text);
+    tip.addEventListener('click', () => this.hideTurnTip());
+    return tip;
+  }
+
+  maybeTurnTip() {
+    if (this.turnTipAt === undefined || (this.game.time || 0) < this.turnTipAt) return;
+    this.turnTipAt = undefined;
+    if (!this.ui.isTouch || readFlag(TURN_TIP_KEY)) return;
+    const vw = window.innerWidth || 0;
+    const vh = window.innerHeight || 0;
+    if (!(vh > vw)) return;
+    saveFlag(TURN_TIP_KEY);
+    this.turnTip.hidden = false;
+    this.turnTipT = 7;
+  }
+
+  hideTurnTip() {
+    this.turnTip.hidden = true;
+    this.turnTipT = 0;
+  }
+
   // ---------- the compact phone HUD ----------
 
   watchLayout() {
     this.smallMq = media(SMALL_QUERY);
     this.portraitMq = media(PORTRAIT_PHONE_QUERY);
+    this.stripMq = media(STRIP_QUERY);
     const relayout = () => {
       this.applyMini();
       this.queueLayout();
     };
-    for (const mq of [this.smallMq, this.portraitMq]) {
+    for (const mq of [this.smallMq, this.portraitMq, this.stripMq]) {
       try {
         mq?.addEventListener?.('change', relayout);
       } catch {
@@ -284,7 +559,16 @@ export class Hud {
   // places it (top centre).
   layoutTop() {
     const st = this.center.style;
+    if (!this.el.hidden && this.stripMq?.matches) {
+      this.layoutStrip();
+      return;
+    }
+    this.unplaceStrip();
     if (this.el.hidden || !this.portraitMq?.matches) {
+      if (this.ordersPlaced) {
+        this.ordersPlaced = false;
+        this.ordersWrap.style.left = this.ordersWrap.style.top = '';
+      }
       if (this.questPlaced) {
         st.top = st.left = st.width = st.transform = '';
         this.questPlaced = false;
@@ -300,13 +584,28 @@ export class Hud {
     const gap = 6;
     const edgeL = cards.left - root.left;
     const edgeR = right.right - root.left;
+    // Lyra's Ask button rides beside her folded card (or under her open one).
+    const os = this.ordersWrap.style;
+    let askW = 0;
+    if (!this.ordersWrap.hidden) {
+      const ax = lyra.right - root.left + (this.isFolded() ? 8 : 22);
+      if (ax + 44 + gap <= right.left - root.left || this.isFolded()) {
+        os.left = `${Math.round(ax)}px`;
+        os.top = `${Math.round(lyra.top - root.top + Math.max(0, (lyra.height - 44) / 2))}px`;
+        askW = 44 + 8;
+      } else {
+        os.left = `${Math.round(lyra.left - root.left)}px`;
+        os.top = `${Math.round(lyra.bottom - root.top + gap)}px`;
+      }
+      this.ordersPlaced = true;
+    }
     let top = right.bottom - root.top + gap;
     let left = edgeL;
     let beside = false;
     if (lyra.bottom - root.top + gap > top) {
       // Her card reaches below the buttons: sit beside it if the line still has room
       // (clear of the open card's fold tab, whose tap target reaches past its edge).
-      left = lyra.right - root.left + (this.isFolded() ? 8 : 22);
+      left = lyra.right - root.left + (this.isFolded() ? 8 : 22) + askW;
       beside = true;
     }
     if (edgeR - left < 200) {
@@ -321,6 +620,46 @@ export class Hud {
     this.questPlaced = true;
     this.center.classList.add('tucked');
     toggleClass(this.center, 'beside', beside);
+  }
+
+  // A phone held sideways: one strip along the top. Lyra's Ask button sits right after
+  // her portrait and the tracked mission takes what is left before the clock.
+  layoutStrip() {
+    const root = this.el.getBoundingClientRect();
+    const lyra = this.lyraWrap.getBoundingClientRect();
+    const right = this.rightEl.getBoundingClientRect();
+    if (!root.width || !right.width || !lyra.width) return;
+    const gap = 8;
+    const os = this.ordersWrap.style;
+    let left = lyra.right - root.left + gap;
+    if (!this.ordersWrap.hidden) {
+      os.left = `${Math.round(left)}px`;
+      os.top = `${Math.round(lyra.top - root.top + (lyra.height - 44) / 2)}px`;
+      left += 44 + gap;
+    }
+    const st = this.center.style;
+    const width = right.left - root.left - gap - left;
+    st.left = `${Math.round(left)}px`;
+    st.top = `${Math.round(lyra.top - root.top + (lyra.height - 30) / 2)}px`;
+    st.width = `${Math.max(0, Math.round(width))}px`;
+    st.transform = 'none';
+    this.center.hidden = width < 70;
+    this.questPlaced = true;
+    this.stripPlaced = true;
+    this.center.classList.add('in-strip');
+    this.center.classList.remove('tucked', 'beside');
+  }
+
+  unplaceStrip() {
+    if (!this.stripPlaced) return;
+    this.stripPlaced = false;
+    const os = this.ordersWrap.style;
+    os.left = os.top = '';
+    const st = this.center.style;
+    st.top = st.left = st.width = st.transform = '';
+    this.center.hidden = false;
+    this.questPlaced = false;
+    this.center.classList.remove('in-strip');
   }
 
   // Tell the bubbles where the HUD is, so nobody speaks from under a card.
