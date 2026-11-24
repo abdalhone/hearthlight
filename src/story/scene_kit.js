@@ -115,23 +115,35 @@ export function snowField(b, L, seed, { base, amp = 6, freq = 0.01, ramp, lightX
   return line;
 }
 
-// A conifer: stacked jagged tiers, dark with a lit edge, optional snow on the tiers.
+// A conifer: stacked tiers with ragged hems, dark with a lit flank; snow rests along the
+// lit upper edge of each tier (never in stripes across it).
 export function pine(b, x, y, h, { dark = '#0d1a24', mid = '#16303a', lit = '#22474d', snow = null, lightSide = 1, trunk = '#1b120e' } = {}) {
-  const w = Math.max(3, h * 0.42);
-  b.rect(x - 0.5, y - h * 0.18, 1.5, h * 0.18, trunk);
-  const tiers = Math.max(3, Math.round(h / 5));
+  const w = Math.max(2.5, h * 0.36);
+  b.rect(x - 0.5, y - h * 0.16, 1.5, h * 0.16, trunk);
+  const tiers = Math.max(3, Math.round(h / 6));
+  const span = h * 0.86;
   for (let i = 0; i < tiers; i++) {
-    const ty = y - h * 0.12 - (i / tiers) * h * 0.88;
-    const tw = w * (1 - i / tiers) * 0.95 + 1;
-    const th = (h / tiers) * 1.5;
-    const pts = [[x, ty - th], [x + tw, ty], [x - tw, ty]];
-    b.poly(pts, dark);
-    // lit flank
-    b.poly([[x, ty - th], [x + tw * lightSide, ty], [x + tw * 0.25 * lightSide, ty]], mid);
-    b.line(x, ty - th, x + tw * lightSide, ty, lit);
+    const k = i / tiers;
+    const ty = y - h * 0.12 - k * span;
+    const tw = w * (1 - k * 0.82) + 0.5;
+    const th = (span / tiers) * 1.7;
+    const apex = [x, ty - th];
+    b.poly([apex, [x + tw, ty], [x - tw, ty]], dark);
+    b.poly([apex, [x + tw * lightSide, ty], [x + tw * 0.15 * lightSide, ty]], mid);
+    // a ragged hem: every other pixel along the bottom hangs one lower
+    for (let xx = Math.round(x - tw); xx < x + tw; xx += 2) b.px(xx, Math.round(ty), dark);
+    b.line(apex[0], apex[1], x + tw * lightSide, ty, lit);
     if (snow) {
-      b.line(x - tw * 0.8, ty - 0.5, x + tw * 0.6, ty - 0.5, snow, 0.85);
-      b.px(x, ty - th, snow);
+      // a cap along the lit edge, thickest near the tip
+      const n = Math.max(2, Math.round(tw));
+      for (let j = 0; j < n; j++) {
+        const f = j / n;
+        const sx = apex[0] + (tw * lightSide) * f;
+        const sy = apex[1] + th * f;
+        if (f < 0.7) b.px(sx, sy, snow);
+        if (f < 0.35) b.px(sx - lightSide, sy, snow, 0.85);
+      }
+      b.px(apex[0], apex[1], snow);
     }
   }
 }

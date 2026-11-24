@@ -17,7 +17,7 @@ export const STORY_LOOKS = {
   },
   lyra_young: {
     skin: 'fair', hair: 'midnight', hairStyle: 'long', outfit: 'dress', top: 'wine', bottom: 'wine', accent: 'cream',
-    cloak: 'cream', shoes: 'dark_leather', held: 'none', build: 'child', eyes: '#7a64e0', eyeStyle: 'big', blush: true,
+    shoes: 'dark_leather', held: 'none', build: 'child', eyes: '#7a64e0', eyeStyle: 'big', blush: true,
   },
   hobb: {
     skin: 'light', hair: 'white', hairStyle: 'short', accessories: ['glasses'], outfit: 'trousers', top: 'slate',

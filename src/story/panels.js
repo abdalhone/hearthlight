@@ -42,6 +42,7 @@ function sword(b, x, y, len, ang, { blade = ['#2a2f3d', '#5b6478', '#a9b4cc'], h
 
 const crown_ring = {
   id: 'crown_ring',
+  short: 160,
   title: 'The Crown Ring',
   seed: 9,
   pan: 'right',
@@ -139,7 +140,9 @@ const crown_ring = {
 };
 
 import { WORLD_PANELS } from './panels_world.js';
+import { LIFE_PANELS } from './panels_life.js';
+import { JOURNEY_PANELS } from './panels_journey.js';
 
-export const PANELS = { ...WORLD_PANELS, crown_ring };
+export const PANELS = { ...WORLD_PANELS, ...LIFE_PANELS, ...JOURNEY_PANELS, crown_ring };
 
 export { sword, SNOW_DAWN, SNOW_NIGHT, ROCK_BLUE, ROCK_WARM, PEAK_SNOW, STONE_GREY };

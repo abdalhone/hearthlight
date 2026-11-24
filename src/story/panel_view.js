@@ -9,9 +9,11 @@ import { Buf, rng, bayer, hex, clamp } from './paint.js';
 
 const SHORT = 180;
 
-export function panelMetrics(devW, devH) {
+// short: the panel's low-res size on the short side. Panels about people use a coarser
+// grid (bigger pixels) so the game's own sprites fill the frame like a close-up.
+export function panelMetrics(devW, devH, short = SHORT) {
   const shortDev = Math.max(1, Math.min(devW, devH));
-  const s = Math.max(1, Math.round(shortDev / SHORT));
+  const s = Math.max(1, Math.round(shortDev / (short || SHORT)));
   const vw = Math.ceil(devW / s);
   const vh = Math.ceil(devH / s);
   return { s, vw, vh };
@@ -20,12 +22,15 @@ export function panelMetrics(devW, devH) {
 // The layout every painter receives. W, H: the painted buffer (the view plus a margin for
 // drift). cx, cy: the focal point. u: one "unit" (1 at 180 px short side). portrait: the
 // screen is taller than wide, so the text box covers the lower part: keep subjects high.
-export function makeLayout(vw, vh) {
+export function makeLayout(vw, vh, short = SHORT) {
   const mx = Math.ceil(vw * 0.05) + 2;
   const my = Math.ceil(vh * 0.04) + 2;
   const W = vw + mx * 2;
   const H = vh + my * 2;
   const portrait = vh > vw * 1.1;
+  // Compositions are written for a 180 px short side; a panel with a coarser grid keeps
+  // its layout (everything scales by u) while the game's sprites, fixed in size, loom larger.
+  void short;
   const u = Math.min(vw, vh) / SHORT;
   // In portrait the text box takes the bottom ~38%: centre the subject in the top part.
   const cy = my + (portrait ? vh * 0.36 : vh * 0.47);
@@ -114,7 +119,8 @@ const PARTICLE_TYPES = {
 export class PanelInstance {
   constructor(def, vw, vh, opts = {}) {
     this.def = def;
-    this.L = makeLayout(vw, vh);
+    this.L = makeLayout(vw, vh, def.short || SHORT);
+    this.s = opts.s || 1;
     this.L.id = def.id;
     this.seed = def.seed || 7;
     this.layers = [];

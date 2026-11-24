@@ -146,9 +146,10 @@ export class CutscenePlayer {
 
   makePanel(id, opts = {}) {
     const def = PANELS[id];
-    if (!def || !this.metrics) return null;
+    if (!def || !this.devW) return null;
     try {
-      return new PanelInstance(def, this.metrics.vw, this.metrics.vh, opts);
+      const m = panelMetrics(this.devW, this.devH, def.short);
+      return new PanelInstance(def, m.vw, m.vh, { ...opts, s: m.s });
     } catch (err) {
       console.warn('[story] panel failed', id, err);
       return null;
@@ -661,14 +662,18 @@ export class CutscenePlayer {
     if (!this.active || !this.ctx) return;
     const ctx = this.ctx;
     if (!this.panel) return;
-    const s = this.metrics.s;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
     ctx.fillStyle = '#05040c';
     ctx.fillRect(0, 0, this.devW, this.devH);
-    if (this.prevPanel) this.prevPanel.draw(ctx, s, this.devW, this.devH, 1);
-    this.panel.draw(ctx, s, this.devW, this.devH, this.prevPanel ? this.xfade : 1);
-    if (!this.overlay) this.overlay = makeOverlay(this.devW, this.devH, s);
+    if (this.prevPanel) this.prevPanel.draw(ctx, this.prevPanel.s, this.devW, this.devH, 1);
+    this.panel.draw(ctx, this.panel.s, this.devW, this.devH, this.prevPanel ? this.xfade : 1);
+    // The dither and vignette match the current panel's pixel size.
+    const s = this.panel.s;
+    if (!this.overlay || this.overlayS !== s) {
+      this.overlay = makeOverlay(this.devW, this.devH, s);
+      this.overlayS = s;
+    }
     ctx.drawImage(this.overlay, 0, 0);
   }
 
