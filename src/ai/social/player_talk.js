@@ -531,7 +531,10 @@ export function localReply(v, npc, text) {
   const asleep = npc.state === 'sleep' || npc.activity === 'sleep';
   if (asleep) {
     // Asleep: a mumble, or nothing at all.
-    const l = rnd(rng) < 0.4 ? pickProfile(SNORES, rng) : pickProfile(npc.profile?.sleepy, rng) || 'Mmh... go away... sleeping...';
+    const recent = v.recentPlayerLines(id);
+    const fresh = (list) => (Array.isArray(list) ? list.filter((x) => !recent.has(x)) : []);
+    const mumble = fresh(npc.profile?.sleepy);
+    const l = rnd(rng) < 0.4 || !mumble.length ? pickProfile(fresh(SNORES).length ? fresh(SNORES) : SNORES, rng) : pickProfile(mumble, rng);
     return { lines: [l], mood: 'sleepy', delta: 0, intent: 'asleep' };
   }
 

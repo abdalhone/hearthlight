@@ -272,6 +272,26 @@ export class ChatTargetBar {
     this.hint = h('span', { class: 'chat-to-hint', text: 'Walk up to someone to talk to them' });
     this.el = h('div', { class: 'chat-to' }, this.label, this.list);
     this.list.append(this.hint);
+    this.list.addEventListener('scroll', () => this.measure(), { passive: true });
+    // A mouse wheel scrolls the row sideways when it runs on in one line.
+    this.list.addEventListener(
+      'wheel',
+      (e) => {
+        const l = this.list;
+        if (l.scrollWidth <= l.clientWidth + 2 || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+        l.scrollLeft += e.deltaY;
+        e.preventDefault();
+      },
+      { passive: false },
+    );
+  }
+
+  // Whether more people wait past the edge (the row fades there).
+  measure() {
+    const l = this.list;
+    const over = l.scrollWidth > l.clientWidth + 2;
+    toggleClass(l, 'overflows', over);
+    toggleClass(l, 'at-end', !over || l.scrollLeft + l.clientWidth >= l.scrollWidth - 4);
   }
 
   chip(id) {
@@ -320,6 +340,7 @@ export class ChatTargetBar {
     this.hint.hidden = list.length > 1;
     if (this.hint.parentNode !== this.list || this.list.lastChild !== this.hint) this.list.append(this.hint);
     toggleClass(this.el, 'has-people', list.length > 1);
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => this.measure());
   }
 
   // Bring the selected chip into view (the row scrolls sideways on a phone). By hand:

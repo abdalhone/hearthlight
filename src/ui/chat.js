@@ -910,6 +910,8 @@ export class Chat {
     const p = this.game.player;
     let who = 'they';
     if (seen && e && p) who = Math.hypot(p.x - seen.px, p.y - seen.py) > Math.hypot(e.x - seen.nx, e.y - seen.ny) ? 'you' : 'they';
+    // Whatever they were still saying is said before they go.
+    this.flushUnsaid(id);
     const last = this.threadOf(id).slice(-1)[0];
     if (last && last.from !== 'system') this.pushVillager(id, { from: 'system', text: partingLine(e, why, who) });
     if (this.dictState !== 'idle' && this.ownsDictation()) this.stopDictation();
