@@ -235,6 +235,7 @@ export class Door extends WorldObject {
     this.state = { open: false, locked: !!o.locked, keyId: o.keyId ?? null, ...(o.state || {}) };
     this.autoClose = o.autoClose ?? !this.gate;
     this.building = o.building ?? null; // location id of the building it belongs to
+    this.lockedText = o.lockedText ?? null; // a shut house says so in its own words
     this.anim = this.state.open ? 1 : 0; // 0 closed .. 1 open (visual only)
     this._idle = 0;
     this._bumpCd = 0;
@@ -264,7 +265,7 @@ export class Door extends WorldObject {
       } else {
         if (isPlayer(this.game, actor)) {
           this._sound('error');
-          this._toast(actor, `It's locked. You need the ${itemName(this.state.keyId || 'ruins_key')}.`, 'warn');
+          this._toast(actor, this.lockedText || `It's locked. You need the ${itemName(this.state.keyId || 'ruins_key')}.`, this.lockedText ? 'info' : 'warn');
         }
         return false;
       }

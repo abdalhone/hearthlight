@@ -122,4 +122,5 @@ export const DECO = {
   WILDFLOWERS: 16, // dense meadow flowers
   PUDDLE: 17,
   ASH: 18, // scorched ground around camp fires
+  DYE: 19, // violet and teal swirls in the stream below the dye-vats
 };

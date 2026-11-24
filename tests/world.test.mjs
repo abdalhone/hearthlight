@@ -35,7 +35,7 @@ const REQUIRED_LOCATIONS = [
 
 const REQUIRED_OBJECTS = ['home_bed', 'lyra_bed', 'lyra_inn_bed', 'home_chest', 'bandit_chest', 'inn_hearth', 'camp_campfire', 'lake_campfire', 'ruins_gate', 'maren_journal', 'fishing_spot', 'notice_board'];
 
-const NPC_IDS = ['bram', 'elda', 'pip', 'rowan', 'mira', 'tobias', 'aveline', 'garrick'];
+const NPC_IDS = ['bram', 'elda', 'pip', 'rowan', 'mira', 'tobias', 'aveline', 'garrick', 'hobb', 'wenna', 'hess', 'sabeth', 'alder', 'petra', 'tilly', 'tansy', 'corran', 'wys'];
 
 // A minimal stand-in for the game object: enough for the world module.
 function makeGame() {
@@ -575,6 +575,8 @@ test('lights: fires always, lamps and windows only after dark', () => {
   assert.equal(lamp.getLight(0), null);
   assert.equal(win.getLight(0), null);
   game.clock.daylight = 0.05;
+  assert.equal(lamp.getLight(0), null, 'a street lamp nobody has lit stays dark');
+  lamp.light();
   assert.ok(lamp.getLight(0).intensity > 0.5);
   assert.ok(win.getLight(0).intensity > 0.3);
   const forge = game.objects.all().find((o) => o.objType === 'forge');
@@ -849,6 +851,7 @@ test('the ground soaks in the rain, dries slowly, and lamps glint on the wet str
   // At night a street lamp in the rain throws a short reflection onto the cobbles.
   game.clock.daylight = 0.05;
   const lamp = game.objects.all().find((o) => o.objType === 'lamp' && o.kind === 'post');
+  lamp.light();
   const lit = lamp.getLight(0);
   assert.ok(Array.isArray(lit) && lit.length === 3, 'light plus two reflection glints');
   assert.ok(lit[1].y > lamp.y && lit[2].y > lit[1].y, 'reflections fall below the lamp');
