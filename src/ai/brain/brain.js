@@ -31,6 +31,7 @@ const TALK_ORDER_WINDOW = 300; // a conversation may call Claude this long after
 const REFUSAL_MEMORY = 120; // "why not?" refers to a refusal this recent
 const OFFER_WINDOW = 60; // a bare coin offer sweetens a refusal this recent
 const COUNTER_WINDOW = 90; // "deal" accepts a counter-offer this recent
+const ASK_WINDOW = 120; // "yes" to something she asked of the player this recent becomes their promise
 const EARSHOT = { left: 18, apart: 30 }; // tiles: beyond this she cannot hear the chat
 const KNOWLEDGE_SOURCE = { fact: 'player', rumor: 'told', lore: 'lore', theory: 'inferred' };
 const KNOWLEDGE_CONFIDENCE = { fact: 0.8, rumor: 0.4, lore: 0.7, theory: 0.5 };
@@ -58,6 +59,7 @@ export class Brain {
     this.localDelay = browser(); // a beat of "typing" for offline replies, in the browser only
     this.lastRefusal = null; // { name, args, verdict, message, t } of the last request she refused
     this.pendingCounter = null; // { counter: {name, args}, t } she offered instead
+    this.pendingAsk = null; // { text, t }: something she asked of the player (the `request` action)
     this.currentOffer = null; // the coin offer riding on the request being evaluated right now
     this.lastCompanionshipReason = '';
     this._chatRun = false; // true while a chat request runs (the HUD ack stays quiet)
@@ -92,6 +94,7 @@ export class Brain {
       if (!p) return;
       if (p.source === 'player') this.lastPlayerActionAt = this.now();
       if (p.name === 'talk_to' && p.source !== 'self') this.lastTalkOrderAt = this.now();
+      if (p.name === 'request' && p.ok && p.source !== 'player' && p.args?.value) this.pendingAsk = { text: String(p.args.value).slice(0, 200), t: this.now() };
     });
     g.bus?.on('companionship_changed', (p) => {
       if (p?.reason) this.lastCompanionshipReason = String(p.reason).slice(0, 200);
@@ -250,6 +253,17 @@ export class Brain {
         first.runAs = 'self';
       } else {
         first.intent = { id: 'counter.decline', source: 'builtin', kind: 'social', command: false, confidence: 0.9, match: null, slots: {}, actions: [], answer: null };
+      }
+    }
+    const ask = this.pendingAsk && now - this.pendingAsk.t < ASK_WINDOW ? this.pendingAsk : null;
+    if (ask && clauses.length === 1 && (first?.intent?.id === 'social.yes' || first?.intent?.id === 'social.no')) {
+      this.pendingAsk = null;
+      if (first.intent.id === 'social.yes' && this.game.actions?.has?.('promise')) {
+        // Agreeing to what she asked is the player's promise (DESIGN §16.8).
+        first.intent = { id: 'ask.accept', source: 'builtin', kind: 'command', command: true, confidence: 0.95, match: null, slots: {}, actions: [{ name: 'promise', args: { target: 'player', value: ask.text, amount: null } }], answer: null };
+        first.runAs = 'local';
+      } else if (first.intent.id === 'social.no') {
+        first.intent = { id: 'ask.decline', source: 'builtin', kind: 'social', command: false, confidence: 0.9, match: null, slots: {}, actions: [], answer: null };
       }
     }
     const offer = parsed.offer || null;

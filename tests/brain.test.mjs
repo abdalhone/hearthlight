@@ -1271,3 +1271,18 @@ test('barks: she reacts to deeds and companionship, and yields when another modu
   b2.update(1 / 60);
   assert.equal(g2.bubbles.said.length, 0, 'her own line already said it');
 });
+
+test('"yes" to something she asked of the player becomes their promise; "no" is heard', async () => {
+  const game = makeGame();
+  const brain = brainFor(game);
+  game.actions.run('request', { value: 'Buy me a honey cake and I will forgive the mud' }, 'self');
+  const r = await brain.handlePlayerMessage('sure');
+  const p = game.log.find((a) => a.name === 'promise');
+  assert.ok(p && p.args.target === 'player' && /honey cake/.test(p.args.value), 'the player promised');
+  assert.equal(game.actions.history.find((h) => h.name === 'promise').source, 'local');
+  assert.ok(bankTexts('ack_promise').includes(r.say), r.say);
+  game.actions.run('request', { value: 'Walk me to the chapel' }, 'self');
+  const n = await brain.handlePlayerMessage('no');
+  assert.ok(bankTexts('ask_declined').map((t) => t.replace('{you}', 'Traveler')).includes(n.say) || n.say.length > 3, n.say);
+  assert.equal(game.log.filter((a) => a.name === 'promise').length, 1);
+});

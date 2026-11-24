@@ -174,6 +174,7 @@ export class LocalBrain {
     if (!it) return this.unknown(clause, reply, state);
     if (it.id === 'counter.take') return `${this.line('counter_taken')} ${this.ack(clause, reply)}`.trim();
     if (it.id === 'counter.decline') return this.line('counter_declined');
+    if (it.id === 'ask.decline') return this.line('ask_declined');
     if (it.source === 'plugin') {
       if (it.answer) {
         let text = null;
@@ -582,7 +583,7 @@ export class LocalBrain {
 }
 
 // What still reaches her when she has left the player.
-const LEFT_HEARS = new Set(['social.apology', 'social.greet', 'social.farewell', 'social.insult', 'ask.why_left', 'ask.trust_me', 'ask.fear_me', 'ask.why_refused', 'counter.take', 'counter.decline']);
+const LEFT_HEARS = new Set(['ask.decline', 'social.apology', 'social.greet', 'social.farewell', 'social.insult', 'ask.why_left', 'ask.trust_me', 'ask.fear_me', 'ask.why_refused', 'counter.take', 'counter.decline']);
 
 // Which refusal bank fits the gate's reasons (they are free text from the mind).
 export function refusalSituation(verdict, state = 'together', offer = null) {

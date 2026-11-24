@@ -123,6 +123,12 @@ export const WILL_LINES = {
   ],
   counter_taken: ['Good. Then that\'s what we do.', 'Deal.', { t: 'See? Compromise. Look at us.', trait: 'playful' }, 'Alright. Off I go.'],
   counter_declined: ['Suit yourself.', 'Your loss.', { t: "Fine. The offer's on the table if you change your mind.", trait: 'warm' }, 'Then we stay as we are.'],
+  ask_declined: [
+    "Fine. I'll remember you said no.",
+    'Suit yourself.',
+    { t: 'Your loss. The honey cakes were for both of us.', trait: 'playful' },
+    "Alright. I'll ask someone else.",
+  ],
   accept_paid: [
     '{coins} coins? Done. You pay when it\'s done.',
     "For {coins} coins, I'll do it. I'll hold you to that.",
