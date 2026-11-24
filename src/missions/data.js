@@ -66,6 +66,7 @@ export const MISSIONS = [
         type: 'talk',
         target: 'lyra',
         label: 'Come back to Lyra',
+        alone: 'You close your fist on the light instead of throwing it, and it holds. A strike.',
         lines: [
           "That isn't lumencraft. I make light out of my own warmth and throw it. You reach into the air and pull it tight, like thread.",
           'There were marks in it. Little shapes, there and gone. Maren had a word for marks like that: glyphs. The Lanternwrights wrote with them.',

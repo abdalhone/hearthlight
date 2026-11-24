@@ -355,6 +355,22 @@ test('the early curve: strike first, then light within a couple of errands', () 
   assert.ok(game.magic.unlocked.essences.has('light'));
 });
 
+test('when Lyra has cut the player off, the first lesson still happens without her', () => {
+  const game = makeGame();
+  const ms = game.missions;
+  game.companion.mind.companionship = 'gone';
+  prepare(game);
+  tick(game, 8);
+  assert.equal(ms.status('first_spark'), 'active');
+  for (let i = 0; i < 3; i++) ms.onEvent('spell_cast', { caster: game.player, weave: { shape: 'bolt', essences: [], twists: [] } });
+  tick(game, 1);
+  assert.equal(ms.status('first_spark'), 'done');
+  assert.ok(game.magic.unlocked.shapes.has('strike'));
+  assert.equal(game.companion.mind.said.length, 0, 'she said nothing');
+  // Her own later offers never come while she has cut them off.
+  assert.ok(!ms.available().some((m) => m.giver === 'lyra' && ms.lyraOffered[m.id]));
+});
+
 test('without the magic runtime, unlocks wait in game.flags.pendingUnlocks and flush later', () => {
   const game = makeGame({ magic: false });
   const ms = game.missions;
@@ -621,6 +637,7 @@ test('no hidden truth in any mission line, scene, rumor or word about the Weave'
     for (const k of ['offer', 'accept', 'decline', 'progress', 'turnin']) for (const t of m[k] || []) add(`${m.id}.${k}`, t);
     for (const o of m.objectives) {
       add(`${m.id}.label`, o.label);
+      add(`${m.id}.alone`, o.alone);
       for (const t of o.lines || []) add(`${m.id}.talk`, t);
     }
     for (const t of Object.values(m.lyra || {})) add(`${m.id}.lyra`, t);

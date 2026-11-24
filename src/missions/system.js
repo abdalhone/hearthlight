@@ -638,7 +638,14 @@ export class MissionSystem {
     const pl = g.player;
     if (!l || l.removed || l.downed || !pl) return;
     const cs = this.lyraWith();
-    if (cs === 'left' || cs === 'gone') return;
+    if (cs === 'left' || cs === 'gone') {
+      // She will not teach someone she has cut off; the lesson they find alone, if it has one.
+      if (o.alone) {
+        this.toast(o.alone, 'info');
+        this.bump(id, 1);
+      }
+      return;
+    }
     if (Math.hypot(l.x - pl.x, l.y - pl.y) > TALK_REACH) return;
     const mind = l.mind;
     if (safe(() => mind?.isSpeaking?.(), false)) return;
@@ -741,6 +748,9 @@ export class MissionSystem {
     const cs = this.lyraWith();
     if (cs === 'left' || cs === 'gone') {
       this.pending.length = 0;
+      // The first lesson still happens; she just isn't the one giving it.
+      const first = this.get('first_spark');
+      if (first && this.status('first_spark') === 'available' && this.playT - (this.flags.firstWeaveAt ?? this.playT) > 6) this.accept('first_spark', { askLyra: false });
       return;
     }
     const near = Math.hypot(l.x - pl.x, l.y - pl.y) < 150;
