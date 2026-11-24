@@ -1,5 +1,6 @@
 import { PLAYER_ID } from '../../core/constants.js';
-import { shorten, firstSentence, firstName, cap, lowerFirst, pick, normName, timeAgo, playerRef } from './text.js';
+import { shorten, firstSentence, firstName, cap, lowerFirst, pick, normName, timeAgo, playerRef, tokenSet } from './text.js';
+import { jaccard } from './memory.js';
 import { bondOf } from './relationships.js';
 
 // How Lyra brings things back to mind (DESIGN §17.2): the context Claude gets for a
@@ -17,6 +18,12 @@ const SECTION_TITLES = {
 const SECTION_ORDER = ['mind', 'episode', 'knowledge', 'person', 'life'];
 const LINE_MAX = { mind: 120, episode: 240, knowledge: 210, person: 330, life: 240 };
 const SECTION_MAX = { mind: 6, episode: 7, knowledge: 7, person: 3, life: 3 };
+const PER_STORE = [
+  ['episode', 24],
+  ['knowledge', 12],
+  ['life', 5],
+  ['person', 4],
+];
 
 // ---------------------------------------------------------------- ids
 
@@ -77,10 +84,15 @@ function lifeLine(h) {
 // The context for one message: grouped, deduplicated, and never over budget.
 export function recallContext(mind, text, { budget = 3500 } = {}) {
   const idx = mind.index;
-  const hits = idx.search(text, { limit: 30, touch: true });
+  // Each store is searched on its own, so a hundred small memories of one thing never
+  // crowd out what she knows or who she was.
+  const hits = [];
+  for (const [store, limit] of PER_STORE) hits.push(...idx.search(text, { limit, stores: [store], touch: true }));
+  hits.sort((a, b) => b.score - a.score);
   const qEnts = idx.link(text, { query: true });
   const groups = { mind: [], episode: [], knowledge: [], person: [], life: [] };
   const seen = new Set();
+  const shapes = { episode: [], knowledge: [], life: [] };
 
   let loose = 0;
   for (const h of hits) {
@@ -91,6 +103,10 @@ export function recallContext(mind, text, { budget = 3500 } = {}) {
       if (loose >= 2 || h.store !== 'episode' || (h.ref.importance || 0) < 7) continue;
       loose++;
     }
+    // Near-repeats of something already chosen add nothing.
+    const shape = tokenSet(h.text);
+    if (shapes[h.store].some((o) => jaccard(o, shape) >= 0.6)) continue;
+    shapes[h.store].push(shape);
     const line = h.store === 'episode' ? episodeLine(h, mind) : h.store === 'knowledge' ? knowledgeLine(h, mind) : lifeLine(h);
     groups[h.store].push({ line: shorten(line, LINE_MAX[h.store]), item: { id: citeId(h.store, h.id), store: h.store, label: h.label } });
     seen.add(h.key);
@@ -162,9 +178,11 @@ export function recallContext(mind, text, { budget = 3500 } = {}) {
 function resolvePersonId(mind, ref) {
   if (!ref) return null;
   if (typeof ref === 'object' && ref.id) return String(ref.id);
+  if (/^(me|player|the player|you know who)$/i.test(String(ref).trim())) return PLAYER_ID;
   const rel = mind.relationships.get(String(ref));
   if (rel && rel.kind !== 'group') return rel.id;
-  for (const k of mind.index.link(String(ref), { query: true })) if (k.startsWith('person:')) return k.slice(7);
+  // Names, roles and aliases only: "we" and "us" are not anyone's dossier.
+  for (const k of mind.index.link(String(ref))) if (k.startsWith('person:')) return k.slice(7);
   const lore = mind.lorebook?.all('person').find((e) => normName(e.name) === normName(ref) || e.id === String(ref) || e.npcId === String(ref));
   return lore ? lore.npcId || lore.id : null;
 }

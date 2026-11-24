@@ -1,5 +1,5 @@
 import { resolvePerson } from '../mind/voice.js';
-import { localConversation, animalTalk, toSecondPerson } from '../mind/conversation.js';
+import { localConversation, animalTalk, inTheirWords, retold } from '../mind/conversation.js';
 import { lineDuration } from '../mind/mind.js';
 import { clamp, firstName, pick, shorten, firstSentence, lowerFirst, cap, placePhrase, normName, isNamedCreature, tokenSet } from '../mind/text.js';
 
@@ -22,6 +22,11 @@ function state(game) {
   let s = STATE.get(key);
   if (!s) STATE.set(key, (s = { pending: null, talk: null, t: 0 }));
   return s;
+}
+
+// The talk in progress (or the walk to one), for tests and the UI.
+export function socialState(game) {
+  return state(game);
 }
 
 function rt(ctx) {
@@ -110,22 +115,21 @@ function walkTo(ctx, npc) {
 // ---------------------------------------------------------------- the conversation
 
 // Lore the villager knows and she does not, voiced as two lines, plus clues they hold.
-function loreLines(ctx, npc, topic, rel) {
+function loreLines(ctx, npc, topic, rel, limit = 1) {
   const mind = ctx.mind;
   const out = { lines: [], entries: [] };
-  const entries = mind.loreFrom(npc.id, { topic, familiarity: rel?.familiarity ?? 0, limit: topic ? 2 : 1 });
+  const entries = mind.loreFrom(npc.id, { topic, familiarity: rel?.familiarity ?? 0, limit });
   const n = firstName(npc.name);
   for (const e of entries) {
     if (e.kind === 'person' && (e.npcId === npc.id || e.id === npc.id)) continue; // nobody recites their own reputation
     const first = firstSentence(e.text, 170);
     const aboutSelf = new RegExp(`\\b${n.replace(/[^a-z]/gi, '')}\\b`, 'i').test(first);
     if (aboutSelf) {
-      const second = toSecondPerson(first, npc);
-      out.lines.push({ speaker: 'npc', text: pick(["Here's a thing most folk don't know.", 'Well. Since you ask.', 'You may as well hear it from me.'], ctx.game?.rng) });
-      out.lines.push({ speaker: 'lyra', text: `${cap((second || first).replace(/[.!]+$/, ''))}? I'd never have guessed.` });
+      out.lines.push({ speaker: 'npc', text: `${pick(['Since you ask.', 'You may as well hear it from me.', 'Here is a thing most folk do not know.'], ctx.game?.rng)} ${inTheirWords(first, npc, ctx.game)}` });
+      out.lines.push({ speaker: 'lyra', text: pick(["I'd never have guessed.", 'Huh. Thank you for telling me.', "I'll remember that."], ctx.game?.rng) });
     } else {
       out.lines.push({ speaker: 'lyra', text: pick([`What can you tell me about ${lowerFirst(e.title)}?`, `${n}, what do you know about ${lowerFirst(e.title)}?`], ctx.game?.rng) });
-      out.lines.push({ speaker: 'npc', text: shorten(e.text, 220) });
+      out.lines.push({ speaker: 'npc', text: shorten(inTheirWords(e.text, npc, ctx.game), 220) });
     }
     out.entries.push(e);
   }
@@ -137,7 +141,9 @@ function buildLocal(ctx, npc, topic) {
   if (npc.species && !npc.profile) return { ...animalTalk(mind, npc), lore: [] };
   const conv = localConversation(mind, npc, topic);
   const rel = mind.relationships.get(npc.id);
-  const lore = loreLines(ctx, npc, topic, rel);
+  // A chat, not a lecture: about eight lines in all.
+  const room = Math.max(0, Math.floor((9 - conv.lines.length) / 2));
+  const lore = room ? loreLines(ctx, npc, topic, rel, Math.min(room, topic ? 2 : 1)) : { lines: [], entries: [] };
   if (lore.lines.length) {
     // Before her closing line.
     const at = conv.lines.length && conv.lines[conv.lines.length - 1].speaker === 'lyra' ? conv.lines.length - 1 : conv.lines.length;
@@ -311,7 +317,7 @@ export function applyConversation(ctx, npc, result, { topic = null } = {}) {
   const what = tk === 'maren' ? ' about Maren' : topic ? ` about ${shorten(topic, 40)}` : '';
   let text;
   if (result?.animal) text = `Had a word with ${isNamedCreature(npc) ? npc.name : `a ${npc.species || 'creature'}`} ${placePhrase(place)}. It listened better than most people.`;
-  else if (learned.length) text = `Talked with ${npc.name}${what} ${placePhrase(place)}. ${n} told me ${lowerFirst(shorten(learned[0], 170).replace(/[.!]*$/, '.'))}`;
+  else if (learned.length) text = `Talked with ${npc.name}${what} ${placePhrase(place)}. ${n} told me ${lowerFirst(shorten(retold(learned[0], npc), 170).replace(/[.!]*$/, '.'))}`;
   else text = `Talked with ${npc.name}${what} ${placePhrase(place)}. Nothing new, but it was good to talk.`;
   const mem = mind.remember(text, {
     importance: clamp(2 + (learned.length ? 2 : 0) + (tk === 'maren' ? 3 : 0), 2, 8),

@@ -183,6 +183,8 @@ export class MemoryIndex {
       text: e.text,
       body,
       ents: this.linker.linkRecord(body, { about: e.people, places: e.places }),
+      labelEnts: this.linker.link(e.title),
+      labelToks: new Set(tokenize(e.title)),
       importance: e.importance || 6,
       t: null,
       emotion: emotionWeight(e.feeling),
@@ -227,6 +229,8 @@ export class MemoryIndex {
       text: k.text,
       body,
       ents,
+      labelEnts: this.linker.link(k.subject),
+      labelToks: new Set(tokenize(k.subject)),
       importance: base + Math.round((k.confidence ?? 0.7) * 2),
       t: k.t,
       emotion: 0,
@@ -267,6 +271,17 @@ export class MemoryIndex {
   }
 
   // ---------------------------------------------------------------- querying
+
+  // The words of an entity's name ('person:maren' -> maren, ashgrov), cached.
+  _entToks(key) {
+    if (!this._entTokCache || this._entTokFor !== this.linker) {
+      this._entTokCache = new Map();
+      this._entTokFor = this.linker;
+    }
+    let t = this._entTokCache.get(key);
+    if (!t) this._entTokCache.set(key, (t = new Set(tokenize(this.linker.label(key)))));
+    return t;
+  }
 
   link(text, opts) {
     this.refresh();
@@ -359,13 +374,29 @@ export class MemoryIndex {
       }
     }
     const nEnts = qEnts.size;
+    const qSet = new Set(q);
     const scored = [];
     for (const c of cands.values()) {
       const text = c.bm / (c.bm + 2.5);
       let hit = 0;
       if (nEnts) for (const e of qEnts) if (c.d.ents.has(e)) hit++;
       const ent = nEnts ? hit / nEnts : 0;
-      const rel = clamp01(0.6 * text + 0.6 * ent + (text > 0 && ent > 0 ? 0.1 : 0));
+      // What a record is called counts most: "Maren" finds "Maren Ashgrove" before a spell she taught.
+      let head = 0;
+      const lt = c.d.labelToks;
+      if (lt && lt.size) {
+        // How much of the record's name the question covers, by words or by who it names.
+        let covered = 0;
+        for (const t of lt) {
+          if (qSet.has(t)) covered++;
+          else for (const e of qEnts) if (c.d.labelEnts?.has(e) && this._entToks(e).has(t)) {
+            covered++;
+            break;
+          }
+        }
+        head = 0.3 * (covered / lt.size);
+      }
+      const rel = Math.min(1.6, 0.6 * text + 0.6 * ent + (text > 0 && ent > 0 ? 0.1 : 0) + head);
       if (rel <= 0) continue;
       scored.push({ d: c.d, rel, score: W.relevance * rel + this._salience(c.d, now) });
     }

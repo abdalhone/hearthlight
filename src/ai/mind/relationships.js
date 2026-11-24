@@ -20,7 +20,8 @@ const STATS = ['affinity', 'trust', 'respect', 'familiarity', 'fear'];
 
 export function bondScore(rel) {
   if (!rel) return 0;
-  let s = 0.4 * Math.max(0, rel.affinity) + 0.25 * rel.trust + 0.15 * rel.respect + 0.2 * rel.familiarity - 0.15 * rel.fear;
+  // Fear eats a bond faster than familiarity builds one.
+  let s = 0.4 * Math.max(0, rel.affinity) + 0.25 * rel.trust + 0.15 * rel.respect + 0.2 * rel.familiarity - 0.3 * rel.fear;
   if (rel.affinity < 0) s += rel.affinity * 0.3;
   return clamp(s, 0, 100);
 }
