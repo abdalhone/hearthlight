@@ -418,7 +418,8 @@ function decorateBoard(game) {
   };
   const box = h('section', { class: 'mj-board-box' });
   fill();
-  panel.body.append(box);
+  // The village's pinned errands come first; the old notices follow.
+  panel.body.prepend(box);
 }
 
 // ------------------------------------------------------------------ reveals
@@ -441,13 +442,26 @@ function queueReveal(game, r) {
   if (!showing) nextReveal(game);
 }
 
+// A reveal waits while a panel covers the game (the journal, the inventory, a scene);
+// over a villager's dialog it shows at once, since that is where the reward came from.
+function covered(game) {
+  const stack = game.ui?.stack || [];
+  const top = stack[stack.length - 1];
+  if (safe(() => game.story?.isPlaying?.(), false)) return true;
+  return !!top && !/dialog|sign/.test(String(top.id || ''));
+}
+
 function nextReveal(game) {
-  const r = queue.shift();
-  if (!r) {
+  if (!queue.length) {
     showing = false;
     return;
   }
   showing = true;
+  if (covered(game)) {
+    setTimeout(() => nextReveal(game), 500);
+    return;
+  }
+  const r = queue.shift();
   const root = game.ui?.root || game.uiRoot;
   let title;
   let name;
@@ -493,7 +507,7 @@ function nextReveal(game) {
   safe(() => game.audio?.play?.('levelup', { volume: 0.7 }));
   const pl = game.player;
   if (pl) safe(() => game.particles?.emit?.('levelup', pl.x, pl.y - 8, { count: 30 }));
-  setTimeout(done, 5200);
+  setTimeout(done, queue.length ? 3600 : 4800);
 }
 
 function spellbookOpener(game) {
@@ -569,7 +583,7 @@ const CSS = `
 .mj-done { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line-dim); }
 .mj-done .mj-portrait { width: 32px; height: 32px; }
 .mj-dim { color: var(--parch-faint); font-size: var(--fs-s); }
-.mj-board-box { margin-top: 14px; border-top: 2px solid var(--line-dim); padding-top: 4px; }
+.mj-board-box { margin-bottom: 14px; border-bottom: 2px solid var(--line-dim); padding-bottom: 4px; }
 
 .mq-reveal { --hue: #a995ff; position: absolute; left: 50%; top: max(18%, calc(env(safe-area-inset-top, 0px) + 64px)); transform: translateX(-50%);
   display: flex; align-items: center; gap: 14px; width: min(420px, calc(100% - 32px)); padding: 12px 14px; pointer-events: auto; cursor: pointer;

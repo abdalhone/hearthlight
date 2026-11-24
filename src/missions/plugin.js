@@ -88,7 +88,7 @@ export const missionsPlugin = {
     if (active.length) lines.push(`Also taken on: ${active.map((m) => `"${m.title}" for ${ms.giverName(m.giver)}`).join('; ')}.`);
     const done = ms.missions.filter((m) => ms.state[m.id]?.status === 'done').slice(-4);
     if (done.length) lines.push(`Done lately: ${done.map((m) => `"${m.title}"`).join(', ')}.`);
-    const can = ms.granted.slice(-6).map((x) => componentLabel(x.kind, x.id, g).toLowerCase());
+    const can = [...new Set(ms.granted.filter((x) => x.id !== 'raw').slice(-6).map((x) => componentLabel(x.kind, x.id, g).toLowerCase()))];
     if (ms.flags.weave_seen) lines.push(`The stranger can weave (light made from the air with glyphs in it, not lumencraft; nobody knows why).${can.length ? ` Lately learned: ${can.join(', ')}.` : ''}`);
     const seen = ms.lyraWatch?.seenEssences || [];
     if (seen.includes('dark')) lines.push('She has seen them weave dark, which feels to her like the ruins\' gravelight; it worries her.');

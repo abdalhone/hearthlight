@@ -277,6 +277,7 @@ export class MissionSystem {
     s.spawned = false;
     s.spawnIds = [];
     s.lit = [];
+    s.doused = null;
     this.checkInstant(id);
   }
 
@@ -354,13 +355,18 @@ export class MissionSystem {
   complete(id) {
     const m = this.get(id);
     const s = this.state[id];
-    if (!m || !s) return;
+    if (!m || !s || s.status === 'done') return;
     s.status = 'done';
     s.done = this.day();
     if (this.tracked === id) this.tracked = this.active()[0]?.id || null;
     for (const r of m.rewards || []) this.grant(r, m);
     this.emit('mission_completed', { id, mission: m });
     if (m.lyra?.done) this.lyraLine(m.lyra.done, { delay: 2.5 });
+    if (m.tip) {
+      const touch = safe(() => this.game.ui?.isTouch, false);
+      const t = typeof m.tip === 'string' ? m.tip : touch ? m.tip.touch : m.tip.desk;
+      if (t) setTimeout(() => this.toast(t, 'info', { title: 'Tip' }), 1800);
+    }
     this.save();
   }
 
@@ -496,6 +502,15 @@ export class MissionSystem {
     return all.filter((ob) => ob?.objType === 'lamp' && !ob.alwaysLit && (ob.area === o.kindle || inPlace(this.game, o.kindle, ob.x, ob.y)));
   }
 
+  // The wind has the far lamps out when the round starts: there is something to relight.
+  douseLamps(o, s) {
+    const lamps = this.lampsFor(o);
+    const far = lamps.filter((l) => l.far);
+    const out = (far.length >= (o.count ?? 1) ? far : lamps).slice(0, Math.max(o.count ?? 1, far.length));
+    s.doused = out.map((l) => l.id);
+    for (const l of out) safe(() => l.douse?.(null));
+  }
+
   kindleLamp(o, s, pl, aim) {
     const lamps = this.lampsFor(o);
     if (!lamps.length) return { fallback: true };
@@ -503,6 +518,7 @@ export class MissionSystem {
     let bd = Infinity;
     for (const l of lamps) {
       if (s.lit?.includes(l.id)) continue;
+      if (s.doused?.length && !s.doused.includes(l.id) && lamps.filter((x) => s.doused.includes(x.id) && !s.lit?.includes(x.id)).length) continue;
       const d = Math.min(pl ? Math.hypot(l.x - pl.x, l.y - pl.y) : Infinity, aim ? Math.hypot(l.x - aim.x, l.y - aim.y) * 0.8 : Infinity);
       if (d < bd) {
         bd = d;
@@ -653,6 +669,7 @@ export class MissionSystem {
   // An objective that needs foes or stones out there puts them there, once, when its
   // moment comes and the player is where it happens.
   maybeSpawn(id, o, s) {
+    if (o.kindle && !s.doused && whenOk(o.when, this.game.clock)) this.douseLamps(o, s);
     const sp = o.spawn;
     if (!sp || s.spawned) return;
     const g = this.game;
@@ -821,9 +838,10 @@ export class MissionSystem {
     const ok = !verdict || verdict.decision === 'accept' || verdict.decision === 'accept_conditional';
     s.lyra = !verdict ? 'coming' : verdict.decision === 'accept_conditional' ? 'conditions' : ok ? 'coming' : 'declined';
     s.lyraWhy = verdict?.message || verdict?.condition?.text || (typeof verdict?.condition === 'string' ? verdict.condition : '') || '';
-    const line = ok ? m.lyra?.accept || verdict?.message || "I'll come." : verdict?.message || "Not this one. I'll be here when you get back.";
+    // Her terms are hers to say; a plain yes may come in the mission's words.
+    const line = s.lyra === 'conditions' ? verdict?.message || m.lyra?.accept || "I'll come. On my terms." : ok ? m.lyra?.accept || verdict?.message || "I'll come." : verdict?.message || "Not this one. I'll be here when you get back.";
     this.pending.unshift({ lines: [line], wait: 0.8, near: true });
-    if (ok && s.lyra !== 'conditions') {
+    if (ok) {
       // Coming along means walking with the player, which is itself a request she weighs.
       safe(() => g.actions?.run?.('follow', { target: null, value: null, amount: null }, 'player'));
     }

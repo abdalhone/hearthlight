@@ -15,7 +15,8 @@
 //   board: 'the notice as pinned' (board missions),
 //   objectives: [{ type, label, ... }] (one after another; see tracker.js),
 //   rewards: [{ magic: {kind, id} } | { coins } | { xp } | { maxMana } | { slot: 'weave'|'essence'|'twist' } | { items: [[id, qty]] }],
-//   lyra: { accept?, done? } (her own words when she is near) }
+//   lyra: { accept?, done? } (her own words when she is near),
+//   tip: string | { desk, touch } (a how-to toast after it is done) }
 //
 // Times of day for `when`: 'day' 7–18, 'dusk' 17.5–21, 'evening' 17.5–24, 'night'
 // (20.5–5), or { from, to } in hours.
@@ -74,6 +75,7 @@ export const MISSIONS = [
     ],
     // Raw violet is what they already weave; naming it is part of the lesson.
     rewards: [M('essence', 'raw'), M('shape', 'strike'), { xp: 10 }],
+    tip: { desk: 'Press B to open your Spellbook: put Strike on a weave slot, then cast it with 1–4.', touch: 'Open your Spellbook (the book button) and put Strike on a weave button.' },
     lyra: { done: 'Wicks and ashes. Nobody can do that.' },
   },
 
