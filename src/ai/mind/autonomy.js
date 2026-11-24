@@ -41,7 +41,7 @@ const HELP_GAP = 8; // seconds between calls for help, unless things get worse
 // What she shouts when she calls someone (LORE §7, "Lyra's people").
 const CALL_NAMES = { hobb: 'Da', wenna: 'Mam', sabeth: 'Beth', hess: 'Hess', wys: 'Wys', rowan: 'Rowan' };
 // Who she would not call into a fight: children, and the frail.
-const NOT_INTO_A_FIGHT = new Set(['pip', 'petra', 'wenna']);
+const NOT_INTO_A_FIGHT = new Set(['pip', 'tansy', 'petra', 'wenna']);
 const OBSERVED_DEEDS = new Set(['lied', 'kindness', 'stole']);
 
 // Why her state changed: what she tells the player, and what she remembers.

@@ -831,8 +831,9 @@ export class OwnLife {
     const loc = dest?.location || safe('locations.at', () => g.locations?.at?.(a.x, a.y), null);
     g.bus?.emit?.('lyra_fled', { actor: a, from: from || null, location: loc?.id || null, safe: true });
     const fromPlayer = from && from === g.player;
-    b.say(say.fleeSafe(fromPlayer, loc ? placePhrase(loc) : null), { force: true });
     const s = companionshipOf(g);
+    // Gone (DESIGN §19.7): she has nothing more to say to them, not even from safety.
+    if (!(fromPlayer && s === 'gone')) b.say(say.fleeSafe(fromPlayer, loc ? placePhrase(loc) : null), { force: true });
     let next = d.then;
     // Safe from the player but still traveling with them: room to breathe for a minute,
     // then she trails them from a distance.

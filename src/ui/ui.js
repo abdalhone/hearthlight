@@ -48,7 +48,7 @@ const STATE_LINES = {
   wary: (n) => `${n} is wary of you now.`,
   apart: (n) => `${n} is going her own way for now.`,
   left: (n) => `${n} has left you.`,
-  gone: (n) => `${n} is gone.`,
+  gone: (n) => `${n} has cut you out of her life.`,
 };
 
 export class UI {

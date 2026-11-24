@@ -759,3 +759,69 @@ test('what her parents and friends think of the player weighs with her', () => {
   const good = a.worth({ fresh: true }).reasons.find((x) => x.key === 'people');
   assert.ok(good && good.weight > 0.3, JSON.stringify(good));
 });
+
+// ---------------------------------------------------------------- E. found in verification
+
+test('an apology gets one answer, and what she says agrees with what her will decided', async () => {
+  const { game, player, lyra, a, mind, brain } = makeWorld();
+  hit(game, player, lyra);
+  step(game, 2);
+  hit(game, player, lyra);
+  assert.equal(a.companionship, 'left');
+  step(game, 30);
+  lyra.x = player.x + 3 * TILE;
+  lyra.y = player.y;
+  Object.assign(rel(mind), { trust: 30, fear: 20 });
+  const r = await brain.handlePlayerMessage("I'm so sorry I hit you. I was wrong, and I won't ever do it again.");
+  assert.ok(a.apology, 'her will heard an apology');
+  const said = r.say;
+  // One answer, not an apology answer plus "I heard you. I'm not answering."
+  assert.doesNotMatch(said, /not answering|Go away|nothing to say|Leave me be/i, said);
+  if (a.apology.believed) assert.doesNotMatch(said, /I don't\b|don't believe|Words are cheap|Sorry doesn't/i, `believed, and says so: ${said}`);
+  else assert.doesNotMatch(said, /^(?:\.\.\.)?I believe you/i, `doubted, and says so: ${said}`);
+  assert.ok(said.split(/(?<=[.!?])\s+/).length <= 3, `one answer: ${said}`);
+});
+
+test('"will you leave me?" while together: neither a threat, nor a hint, nor a vow', async () => {
+  const { game, a, brain } = makeWorld();
+  const heard = listen(game, a);
+  for (const msg of ['will you leave me?', 'are you going to leave?', 'would you ever leave me?', 'are you leaving me?']) {
+    const r = await brain.handlePlayerMessage(msg);
+    assert.doesNotMatch(r.say, /no idea|don'?t know|we'?ll see|maybe|for now|forever|never leave|promise/i, `${msg} -> ${r.say}`);
+    assert.doesNotMatch(r.say, LEAVE_THREAT, r.say);
+  }
+  assert.equal(a.companionship, 'together');
+  assert.ok(heard.length >= 4);
+});
+
+test('"remember it differently: …" is a request to edit her memory, not a new memory', async () => {
+  const { game, mind, brain } = makeWorld();
+  rel(mind).trust = 60;
+  const m = mind.remember('Ash laughed when I slipped in the mud by the well.', { importance: 4, about: ['player'] });
+  const before = mind.memory.all().length;
+  await brain.handlePlayerMessage('Remember it differently: I was laughing with you, not at you.');
+  const e = mind.memory.get(m.id);
+  assert.match(e.text, /sees it differently: "I was laughing with you, not at you\."/);
+  assert.equal(e.history?.[0]?.text, 'Ash laughed when I slipped in the mud by the well.');
+  assert.ok(mind.memory.all().length <= before, 'no new memory saying "Remember it differently"');
+});
+
+test('she does not apologize for hitting back at a player who just hurt her; her stage lines wait while she has left', () => {
+  const { game, player, lyra, a } = makeWorld();
+  const heard = listen(game, a);
+  hit(game, player, lyra);
+  step(game, 2);
+  hit(game, player, lyra);
+  assert.equal(a.companionship, 'left');
+  game.bus.emit('damage', { source: lyra, target: player, amount: 3, kind: 'bolt', crit: false });
+  step(game, 2);
+  assert.ok(!heard.some((h) => /meant for the other one|That was me/i.test(h.text)), heard.map((h) => h.text).join(' | '));
+  // The Maren quest's next ask ("can I ask you something?") waits while she keeps away.
+  const quest = game.plugins.get('quest');
+  game.bus.emit('new_day', { day: 2 });
+  lyra.x = player.x + 20;
+  lyra.y = player.y;
+  step(game, 6);
+  assert.ok(!heard.some((h) => /can I ask you something|Will you come with me/i.test(h.text)), heard.map((h) => h.text).join(' | '));
+  assert.ok(quest, 'the quest plugin is installed');
+});
