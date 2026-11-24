@@ -6762,11 +6762,15 @@ input[type='range']::-moz-range-thumb {
   }
 }
 
-/* An upright phone: the corner buttons two rows of 44 px, so every target is thumb-sized. */
+/* An upright phone: thumb-sized (44 px) corner buttons in one row. Her mind opens from
+   her card (as when held sideways), so the row is chat, bag, Spellbook, pause and the
+   top band stays slim. */
 @media (max-width: 640px) {
+  .is-touch .hud-mind {
+    display: none;
+  }
   .is-touch .hud-buttons {
-    display: grid;
-    grid-template-columns: repeat(3, 44px);
+    display: flex;
     gap: 4px;
   }
   .is-touch .hud-btn {
@@ -6774,6 +6778,18 @@ input[type='range']::-moz-range-thumb {
     height: 44px;
     min-width: 44px;
     min-height: 44px;
+  }
+  .is-touch .hud-cards {
+    width: min(178px, calc(100vw - 212px));
+  }
+}
+@media (max-width: 339px) {
+  .is-touch .hud-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, 44px);
+  }
+  .is-touch .hud-cards {
+    width: calc(100vw - 120px);
   }
 }
 
