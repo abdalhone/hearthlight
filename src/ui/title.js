@@ -6,6 +6,7 @@ import { h, button, setText, icon } from './dom.js';
 import { makePanel } from './modal.js';
 import { HOW_TO_PLAY, TITLE_TAGLINES } from './content.js';
 import { SAVE_KEY, DAY_SECONDS } from '../core/constants.js';
+import { openCodex } from './codex.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -44,6 +45,9 @@ export class TitleScreen {
     this.newBtn = button('New game', { cls: 'btn-big', onClick: () => this.onNew() });
     const settingsBtn = button('Settings', { icon: 'gear', cls: 'btn-ghost', onClick: () => this.ui.openSettings() });
     const howBtn = button('How to play', { icon: 'book', cls: 'btn-ghost', onClick: () => this.openHowTo() });
+    // The story: watch the prologue again, or read what is known of the world.
+    const prologueBtn = button('Prologue', { icon: 'flame', cls: 'btn-ghost', onClick: () => this.onPrologue() });
+    const bookBtn = button('The Book of Halcyre', { icon: 'scroll', cls: 'btn-ghost', onClick: () => openCodex(this.ui) });
     this.mindLine = h('p', { class: 'mind-line' });
     const tagline = TITLE_TAGLINES[0];
     this.el = h(
@@ -56,7 +60,7 @@ export class TitleScreen {
         { class: 'title-card' },
         h('div', { class: 'logo' }, h('span', { class: 'logo-flame', 'aria-hidden': 'true' }, icon('flame')), h('h1', { class: 'logo-text', text: 'Hearthlight' })),
         h('p', { class: 'tagline', text: tagline }),
-        h('nav', { class: 'title-menu', 'aria-label': 'Main menu' }, this.continueBtn, this.newBtn, h('div', { class: 'title-row' }, settingsBtn, howBtn)),
+        h('nav', { class: 'title-menu', 'aria-label': 'Main menu' }, this.continueBtn, this.newBtn, h('div', { class: 'title-row' }, settingsBtn, howBtn), h('div', { class: 'title-row' }, prologueBtn, bookBtn)),
         this.mindLine,
       ),
       h('footer', { class: 'title-foot', text: 'All art and sound are made in your browser as you play.' }),
@@ -146,7 +150,7 @@ export class TitleScreen {
       this.continueBtn.disabled = true;
       this.game.audio?.play('ui_open');
       try {
-        this.game.newGame();
+        this.game.newGame({ prologue: true });
       } catch (err) {
         console.error('[title] new game failed', err);
         this.busy = false;
@@ -156,6 +160,12 @@ export class TitleScreen {
     if (this.hasSave) {
       this.ui.confirm({ title: 'Start a new journey?', text: 'Your saved game will be replaced the next time this new one saves. Lyra will not remember the old one.', yes: 'Start fresh', no: 'Go back', danger: true }).then((yes) => yes && start());
     } else start();
+  }
+
+  onPrologue() {
+    if (this.busy || this.game.story?.isPlaying?.()) return;
+    this.game.audio?.unlock();
+    this.game.story?.playPrologue({ world: false });
   }
 
   openHowTo() {

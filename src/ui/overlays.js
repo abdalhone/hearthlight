@@ -4,6 +4,7 @@
 import { h, button, setStyle, toggleClass } from './dom.js';
 import { makePanel } from './modal.js';
 import { dayLabel } from './format.js';
+import { openCodex } from './codex.js';
 
 export function buildPause(ui) {
   const g = ui.game;
@@ -28,6 +29,14 @@ export function buildPause(ui) {
     button('Inventory', { icon: 'bag', onClick: () => {
       ui.closeModal(panel, true);
       ui.openInventory();
+    } }),
+    button('The Book of Halcyre', { icon: 'book', onClick: () => {
+      ui.closeModal(panel, true);
+      openCodex(ui);
+    } }),
+    button('Watch the prologue', { icon: 'flame', onClick: () => {
+      ui.closeModal(panel, true);
+      g.story?.playPrologue?.({ world: false });
     } }),
     button('Settings', { icon: 'gear', onClick: () => ui.openSettings() }),
     button('Save game', { icon: 'scroll', onClick: () => g.save?.save?.('manual') }),
