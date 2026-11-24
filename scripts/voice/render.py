@@ -214,38 +214,57 @@ def caption_words(text: str, heard: list, fallback: list, offset: float = 0.0) -
     return out
 
 
+def finish_take(job: dict, info: dict, out: Path) -> dict:
+    """Finish one take and hear it again: the effects at full strength, lightened while
+    they hide a word (the author's check). Returns the best hearing of it."""
+    tried = []
+    for k in LIGHTER:
+        audio, _ = finish_line(job, info, k)
+        dec, tp = vl.encode_checked(audio, out)
+        heard = _W["ears"].words(dec)
+        e, n = vl.word_errors(job["text"], [w[0] for w in heard], _W["names"])
+        tried.append({"final_errors": e, "n": n, "k": k, "audio": audio, "dec": dec, "tp": tp, "heard": heard, "info": info})
+        if e <= info["errors"] or e == 0:
+            break
+    return min(tried, key=lambda t: (t["final_errors"], -t["k"]))
+
+
 def render_job(job: dict) -> dict:
     t0 = time.time()
     try:
-        infos = [take_for(job, t) for t in job["takes"]]
-        # Every take lost a word: another take, up to three more (the author's fix).
-        for t in job.get("retry", []):
-            if min(i["errors"] for i in infos) == 0:
-                break
-            infos.append(take_for(job, t))
-        best = min(infos, key=score)
         out = Path(job["out"]) / f"{job['key']}.mp3"
-        tried = []
-        for k in LIGHTER:
-            audio, _ = finish_line(job, best, k)
-            dec, tp = vl.encode_checked(audio, out)
-            heard = _W["ears"].words(dec)
-            final_errors, n = vl.word_errors(job["text"], [w[0] for w in heard], _W["names"])
-            tried.append((final_errors, -k, audio))
-            if final_errors <= best["errors"]:
+        infos = [take_for(job, t) for t in job["takes"]]
+        retry = list(job.get("retry", []))
+        # Every take lost a word: another take (the author's fix), up to three more.
+        while retry and min(i["errors"] for i in infos) > 0:
+            infos.append(take_for(job, retry.pop(0)))
+        # Finish the best take; if the finished clip still loses a word, the next best
+        # take, then more takes, until one is heard right or none are left.
+        done: set = set()
+        result = None
+        while True:
+            cand = [i for i in sorted(infos, key=score) if i["fp"] not in done]
+            if not cand:
+                if not retry:
+                    break
+                infos.append(take_for(job, retry.pop(0)))
+                continue
+            info = cand[0]
+            done.add(info["fp"])
+            r = finish_take(job, info, out)
+            if result is None or (r["final_errors"], score(r["info"])) < (result["final_errors"], score(result["info"])):
+                result = r
+            if result["final_errors"] == 0 or len(done) >= 6:
                 break
-        if tried[-1][0] > min(t[0] for t in tried):  # the lightest was no better: keep the best heard
-            final_errors, negk, audio = min(tried, key=lambda t: (t[0], t[1]))
-            k = -negk
-            dec, tp = vl.encode_checked(audio, out)
-            heard = _W["ears"].words(dec)
-            final_errors, n = vl.word_errors(job["text"], [w[0] for w in heard], _W["names"])
+        # The file on disk is the last one tried: write the chosen one.
+        result["dec"], result["tp"] = vl.encode_checked(result["audio"], out)
+        best, heard, dec = result["info"], result["heard"], result["dec"]
         words = caption_words(job["text"], heard, best["words"])
         return {
             "key": job["key"], "ok": True, "fp": job["fp"], "seed": best["seed"], "takes": [{k: i[k] for k in ("seed", "errors", "sim", "gap", "prob", "dur")} for i in infos],
-            "errors": best["errors"], "n": n, "final_errors": final_errors, "heard": " ".join(w[0] for w in heard),
-            "dur": round(len(dec) / vl.SR, 3), "lufs": round(vl.lufs(dec), 2), "tp": round(tp, 2), "bytes": out.stat().st_size,
-            "words": words, "secs": round(time.time() - t0, 1), "strength": k, "tried": len(infos),
+            "errors": best["errors"], "n": result["n"], "final_errors": result["final_errors"], "heard": " ".join(w[0] for w in heard),
+            "dur": round(len(dec) / vl.SR, 3), "lufs": round(vl.lufs(dec), 2), "tp": round(result["tp"], 2), "bytes": out.stat().st_size,
+            "words": words, "secs": round(time.time() - t0, 1), "strength": result["k"], "tried": len(infos),
         }
     except Exception as err:  # one bad line never stops the render
         import traceback
@@ -311,7 +330,7 @@ def main() -> int:
         j = plan_line(l, cast)
         j["out"] = str(OUT)
         have = clips.get(l["key"])
-        done_ok = have and (have.get("errors") == 0 or have.get("tried", 3) >= len(j["takes"]) + len(j["retry"]))
+        done_ok = have and (have.get("final_errors") == 0 or have.get("tried", 3) >= len(j["takes"]) + len(j["retry"]))
         if not args.force and done_ok and have.get("fp") == j["fp"] and (OUT / have["file"]).exists():
             continue
         jobs.append(j)
