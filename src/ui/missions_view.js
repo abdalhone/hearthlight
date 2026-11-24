@@ -267,9 +267,14 @@ class Journal {
         h(
           'article',
           { class: `mj-card mj-story${tracked ? ' tracked' : ''}` },
-          h('div', { class: 'mj-row' }, icon('flame', 'mj-ico'), h('div', { class: 'mj-head' }, h('div', { class: 'mj-kicker', text: "Maren's thread" }), h('h3', { class: 'mj-title', text: s.title }))),
+          h(
+            'div',
+            { class: 'mj-row' },
+            icon('flame', 'mj-ico'),
+            h('div', { class: 'mj-head' }, h('div', { class: 'mj-kicker', text: "Maren's thread" }), h('h3', { class: 'mj-title', text: s.title })),
+            h('div', { class: 'mj-side' }, tracked ? h('span', { class: 'mj-pill', text: 'On your HUD' }) : button('Track', { cls: 'btn-small', onClick: () => this.track('story') })),
+          ),
           h('p', { class: 'mj-now', text: s.text }),
-          h('div', { class: 'mj-actions' }, tracked ? h('span', { class: 'mj-pill', text: 'On your HUD' }) : button('Track', { cls: 'btn-small', onClick: () => this.track('story') })),
         ),
       );
     }
@@ -554,7 +559,9 @@ const CSS = `
 .mj-portrait { width: 40px; height: 40px; flex: none; image-rendering: pixelated; background: var(--ink-2); border: 2px solid var(--outline); display: grid; place-items: center; }
 .mj-board { background: #5b4127; }
 .mj-ico { --isc: 3; flex: none; }
-.mj-head { min-width: 0; }
+.mj-head { min-width: 0; flex: 1; }
+.mj-side { flex: none; margin-left: auto; }
+.mj-side .btn { min-height: 44px; }
 .mj-kicker { font-size: var(--fs-xs); color: var(--parch-faint); }
 .mj-title { margin: 0; font-family: var(--font-display); font-size: var(--fs-m, 17px); color: var(--ember-hot); line-height: 1.15; }
 .mj-summary, .mj-now, .mj-where { margin: 8px 0 6px; color: var(--parch-2); line-height: 1.35; }
@@ -605,6 +612,14 @@ const CSS = `
 .mq-reveal-line { font-size: var(--fs-s); color: var(--parch-2); line-height: 1.3; }
 .mq-reveal-btn { flex: none; min-height: 44px; }
 @media (max-width: 520px) { .mq-reveal { gap: 10px; padding: 10px; } .mq-glyph-ring { width: 44px; height: 44px; } .mq-glyph-core { inset: 16px; } .mq-reveal-name { font-size: 20px; } }
-@media (max-height: 520px) { .mq-reveal { top: calc(env(safe-area-inset-top, 0px) + 54px); } .panel-missions { height: 100%; } }
+@media (max-height: 520px) {
+  .mq-reveal { top: calc(env(safe-area-inset-top, 0px) + 54px); }
+  .panel-missions { height: 100%; }
+  .panel-missions .panel-foot { display: none; }
+  .panel-missions .panel-body { padding-top: 8px; }
+  .mj-card { padding: 8px 10px; margin-bottom: 8px; }
+  .mj-summary, .mj-now, .mj-where { margin: 4px 0; }
+  .mj-portrait { width: 32px; height: 32px; }
+}
 @media (prefers-reduced-motion: reduce) { .mq-reveal, .mq-glyph-ring { animation: none; } }
 `;
