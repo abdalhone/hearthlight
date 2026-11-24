@@ -168,6 +168,7 @@ export function tendPlayer(sv, carrier, bed, { arrested = false } = {}) {
       ? `${carrier?.name || 'The watch'} carried you to the guardhouse cell and sent for Mira. When the bleeding would not stop, they moved you to her sickroom. You wake hours later, stitched and aching.`
       : `You wake in a cot at Fennick's Herbs, hours later. ${who}; Mira sat up with you.`;
     if (fine > 0) text += ` The watch kept ${coins(fine)} as a fine.`;
+    text += ' Mending: weaker for a day.';
     if (bill.paid > 0 || bill.owed > 0) text += ` Mira's bill: ${coins(MIRA_BILL)}${bill.owed > 0 ? ` (${bill.owed} still owed)` : ''}.`;
     toast(sv, text, 'warn', { key: 'wake', title: 'Tended' });
     if (mira && mira.distTo?.(P) < 40) speak(sv, mira, pickLine(MIRA_WAKE, g.rng));
@@ -261,7 +262,7 @@ export function flameReturn(sv, rec) {
     requestSave(sv, 'flame');
     g.bus?.emit?.('flame_returned', { lost });
     await fade(sv, 'in', 2.2);
-    toast(sv, `You died. The flame Sister Aveline kept in your name brought you back at dawn, and is spent.${lost > 0 ? ` ${coins(lost)} are gone.` : ''} The whole village knows.`, 'warn', { key: 'wake', title: 'The kept flame' });
+    toast(sv, `You died. The flame Sister Aveline kept in your name brought you back at dawn, and is spent.${lost > 0 ? ` ${coins(lost)} are gone.` : ''} Flame-thin: weaker for a day. The whole village knows.`, 'warn', { key: 'wake', title: 'The kept flame' });
     if (ave && ave.distTo?.(P) < 48) speak(sv, ave, 'Welcome back, child. The flame is spent. Light another before you need it.');
   };
   return (sv.pending = seq());

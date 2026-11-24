@@ -342,7 +342,14 @@ export class Survival {
     const rec = this.falls.get(e);
     if (!rec) return;
     this.resolveFall(e, 'revived');
-    if (isPlayer(this, e) && !this._quiet) this.addCondition('bruised');
+    if (isPlayer(this, e) && !this._quiet) {
+      this.addCondition('bruised');
+      try {
+        this.game.ui?.toast?.(`Back on your feet${p.by && p.by !== e ? `, thanks to ${p.by.name || 'someone'}` : ''}. Bruised: weaker for a few minutes.`, 'warn', { key: 'wake', title: 'Bruised' });
+      } catch {
+        /* the UI is optional */
+      }
+    }
     if (p.by && isPlayer(this, p.by) && !isPlayer(this, e) && !this.saved.includes(e.id)) this.saved.push(e.id);
   }
 
@@ -621,6 +628,7 @@ export class Survival {
     this.reserved.delete(bed.id);
     g.bus?.emit?.('delivered', { carrier, entity: F, bed });
     if (isPlayer(this, F)) {
+      this.rescuedBy(carrier, rec);
       tendPlayer(this, carrier, bed, { arrested: !!rec?.wanted || job?.role === 'arrest' });
       return true;
     }
@@ -650,6 +658,35 @@ export class Survival {
       const lyra = g.companion;
       if (lyra?.mind && dist(lyra, F) < 400) safe(() => lyra.mind.remember(`${g.player?.name || 'The stranger'} carried ${F.name} to Mira's when they were down.`, { importance: 6, about: [PLAYER_ID, F.id], tags: ['kindness'] }));
     }
+  }
+
+  // Someone carried the player in: Lyra remembers it (hers, or someone else's), the one who
+  // did it thinks a little more of the stranger they saved, and the village talks.
+  rescuedBy(carrier, rec) {
+    const g = this.game;
+    if (!carrier) return;
+    if (isLyra(this, carrier)) {
+      this.lyraRemembers(g.player, 'carried');
+      return;
+    }
+    if (isVillager(carrier)) {
+      safe(() => carrier.adjustOpinion?.(3, 'carried them in'));
+      carrier.familiarity = Math.min(100, (carrier.familiarity || 0) + 6);
+      safe(() => g.village?.addRumor?.('rescued_stranger', { victim: carrier.id, witnesses: [carrier.id, 'mira', ...(g.village?.witnessesNear?.(carrier.x, carrier.y) || [])], source: carrier.id }));
+      const lyra = g.companion;
+      if (rec?.lyraCame && lyra?.mind) {
+        const P = g.player?.name && g.player.name !== 'Traveler' ? g.player.name : 'the stranger';
+        safe(() => lyra.mind.remember(`${P} went down in ${rec.place}, bleeding. ${carrier.name} carried them to Mira's and I walked beside them the whole way.`, { importance: 7, about: [PLAYER_ID, carrier.id], tags: ['rescue'], emotion: 'fear' }));
+      }
+    }
+  }
+
+  // The magic runtime's hook (§22): a healing weave on someone lying downed revives them.
+  reviveWith(target, by, how = 'weave', frac = 0.35) {
+    if (!target?.downed) return false;
+    this.reviveFall(target, by, frac);
+    this.game.bus?.emit?.('revived_with', { entity: target, by, how });
+    return true;
   }
 
   // Lyra's memory of a rescue she did.
@@ -782,6 +819,7 @@ export class Survival {
           continue;
         }
         if (t >= p.until) releasePatient(this, a);
+        else this.holdPatient(a, p); // nothing nudges them out of the cot (a swing, a crowd)
       }
     }
     // Weakness caps the player's health.

@@ -280,7 +280,7 @@ export class SettingsPanel {
     nameSec.append(this.textRow('Your name', 'playerName', 20), this.textRow("Your companion's name", 'companionName', 20));
 
     // --- Death (DESIGN §27) ---
-    const deathSec = h('section', { class: 'box' }, h('h3', { text: 'When I die' }));
+    const deathSec = h('section', { class: 'box' }, h('h3', { text: 'Death' }));
     const fallen = !!safe(() => g.survival?.isFallen?.(g.player), false);
     const deathRow = this.selectRow('When I die', 'deathMode', [
       ['final', 'It ends, unless a kept flame burns'],

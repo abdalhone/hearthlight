@@ -28,6 +28,7 @@ export const RUMOR_KINDS = {
   // Death is dangerous (DESIGN §27).
   carried_villager: { text: "{stranger} carried {v} to Mira's on their back when they were down", you: "you carried {v} to Mira's", valence: 0.8, severity: 0.65 },
   carried_lyra: { text: "{stranger} carried {lyra} to Mira's on their back", you: "you carried Lyra to Mira's", valence: 0.8, severity: 0.65, victim: 'lyra' },
+  rescued_stranger: { text: "{stranger} nearly bled out, and {v} carried them to Mira's", you: 'you nearly bled out', valence: 0.05, severity: 0.45 },
   flame_spent: { text: '{stranger} died, and the kept flame on the altar brought them back at dawn', you: 'you came back through the kept flame', valence: 0.05, severity: 0.8 },
   gift: { text: '{stranger} brought {v} a present', you: 'you brought {v} a present', valence: 0.3, severity: 0.15 },
   kindness: { text: '{stranger} has a kind streak', you: 'you have a kind streak', valence: 0.3, severity: 0.2 },
