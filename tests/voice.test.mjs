@@ -8,7 +8,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { normalizeLine, lineKey, isFixedLine, speakerIdOf, hash53 } from '../src/audio/voice_key.js';
+import { normalizeLine, lineKey, isFixedLine, speakerIdOf, hash53, clipSegments, sentencesOf } from '../src/audio/voice_key.js';
 import { VoicePlayer, readManifest, priorityOf, PRIORITY } from '../src/audio/voice.js';
 import { lyraVoiceChain, groupEnabled, groupOf } from '../src/audio/voice_chain.js';
 import { planPacks, packVoices } from '../scripts/voice/pack.mjs';
@@ -85,6 +85,31 @@ test('the committed sample manifest points at real clips', () => {
     assert.ok(v.dur > 0.2 && v.dur < 30, `${key} ${v.dur}`);
     assert.ok(key.startsWith(`${v.speaker}-`));
   }
+});
+
+test('a line made of recorded lines is spoken as those clips in a row', async () => {
+  assert.deepEqual(sentencesOf('Fine. Attack mode! Anything... goes?'), ['Fine.', 'Attack mode!', 'Anything...', 'goes?']);
+  const have = new Set([lineKey('lyra', 'Fine. I will stay at range.'), lineKey('lyra', 'Attack mode.'), lineKey('lyra', 'Anything that is not a friend is fair game.')]);
+  const text = 'Fine. I will stay at range. Attack mode. Anything that is not a friend is fair game.';
+  assert.deepEqual(clipSegments('lyra', text, (k) => have.has(k)), [...have]);
+  assert.equal(clipSegments('lyra', `${text} And one more.`, (k) => have.has(k)), null);
+  assert.equal(clipSegments('lyra', 'Attack mode.', (k) => have.has(k)), null); // one clip is a plain hit
+  // the runtime joins them into one voice
+  const { vp, ctx } = makePlayer();
+  vp.manifest = new Map([...have].map((k) => [k, { speaker: 'lyra', dur: 1, file: `${k}.mp3` }]));
+  vp._manifestP = Promise.resolve(vp.manifest);
+  vp._fetch = async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(4) });
+  ctx.decodeAudioData = async () => ({ sampleRate: 24000, length: 10, getChannelData: () => new Float32Array(10) });
+  ctx.createBuffer = (ch, len, rate) => {
+    const data = new Float32Array(len);
+    return { sampleRate: rate, length: len, duration: len / rate, getChannelData: () => data };
+  };
+  const p = vp.say({ speaker: 'lyra', text });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(ctx.started.length, 1);
+  assert.equal(ctx.started[0].buffer.length, 30 + 2 * Math.round(24000 * 0.12));
+  ctx.started[0].onended();
+  assert.equal((await p).ok, true);
 });
 
 // ------------------------------------------------------------------ packs

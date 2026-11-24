@@ -54,7 +54,7 @@ The first test sentence ("Well now, the lamps are lit and the road home is long.
 step on the bridge tonight, will you?"), rendered, shaped and normalized; rate is the
 average over both test sentences. No voice clipped (raw or finished), none had a silence
 longer than 0.9 s inside a line (Mira's hesitant pauses are the longest, 0.89 s), and
-every line fades out: its last 30 ms sit 36 dB (a bandit's breath) to 76 dB below its
+every line fades out: its last 30 ms sit 36 dB (a bandit's breath) to 79 dB below its
 loudest moment.
 
 | voice | median F0 | F0 p10–p90 | range | rate (syl/s) | HNR | LUFS | true peak | nearest (distance) |

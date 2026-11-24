@@ -72,3 +72,29 @@ export function speakerIdOf(entity, game) {
   const id = entity.profile?.id ?? entity.voiceId ?? (entity.species ? null : entity.id);
   return id ? normalizeSpeaker(id) : null;
 }
+
+// Sentences, punctuation kept ("Fine. Attack mode!" -> ["Fine.", "Attack mode!"]).
+export function sentencesOf(text) {
+  const s = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!s) return [];
+  return (s.match(/[^.!?…]+(?:[.!?…]+["'’”)]*|$)/g) || [s]).map((x) => x.trim()).filter(Boolean);
+}
+
+// A line made of several recorded lines (an acknowledgement, then her reason, then a
+// remark) is spoken as those clips in a row: the fewest consecutive runs of sentences
+// that each have a clip. Returns their keys, or null when any part has none.
+export function clipSegments(speaker, text, hasKey, maxSentences = 12) {
+  const parts = sentencesOf(text);
+  const n = parts.length;
+  if (n < 2 || n > maxSentences) return null;
+  const best = new Array(n + 1).fill(null);
+  best[0] = [];
+  for (let i = 1; i <= n; i++) {
+    for (let j = 0; j < i; j++) {
+      if (!best[j]) continue;
+      const key = lineKey(speaker, parts.slice(j, i).join(' '));
+      if (key && hasKey(key) && (!best[i] || best[j].length + 1 < best[i].length)) best[i] = [...best[j], key];
+    }
+  }
+  return best[n] && best[n].length > 1 ? best[n] : null;
+}

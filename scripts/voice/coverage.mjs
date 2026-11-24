@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startServer } from '../serve.mjs';
-import { lineKey, speakerIdOf, isFixedLine } from '../../src/audio/voice_key.js';
+import { lineKey, speakerIdOf, isFixedLine, clipSegments } from '../../src/audio/voice_key.js';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -67,7 +67,7 @@ for (const h of heard) {
   const sp = SPECIES[h.id] || speakerIdOf(h.id);
   if (!sp || !isFixedLine(h.text) || h.kind === 'thought') continue;
   fixed++;
-  if (known.has(lineKey(sp, h.text))) hit++;
+  if (known.has(lineKey(sp, h.text)) || clipSegments(sp, h.text, (k) => known.has(k))) hit++;
   else misses.push(`${sp}: ${h.text}`);
 }
 console.log(`${heard.length} lines heard; ${hit} of ${fixed} spoken lines have a clip in lines.json (${fixed ? Math.round((hit / fixed) * 100) : 0}%)`);

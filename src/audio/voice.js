@@ -20,7 +20,7 @@
 // Clips live next to the page in voice/: manifest.json, and either loose <key>.mp3 files
 // or packs (several clips in one file, sliced by byte range) made by the build.
 
-import { lineKey, speakerIdOf } from './voice_key.js';
+import { lineKey, speakerIdOf, clipSegments } from './voice_key.js';
 import { groupOf, groupEnabled, VOICE_SETTINGS } from './voice_chain.js';
 
 export const PRIORITY = Object.freeze({ villager: 1, lyra: 2, cutscene: 3 });
@@ -225,6 +225,8 @@ export class VoicePlayer {
     if (this.recent.size > 200) for (const [k, at] of this.recent) if (t - at > DEDUPE_S) this.recent.delete(k);
     return this.loadManifest().then(() => {
       if (this.manifest.has(key)) return this.play({ speaker: sp, text, key, kind, entity, priority, requestedAt: t, bubble: true });
+      const keys = clipSegments(sp, text, (k) => this.manifest.has(k));
+      if (keys) return this.play({ speaker: sp, keys, kind, entity, priority, requestedAt: t, bubble: true });
       this.stats.noClip++;
       const fb = this.fallbacks.get(groupOf(sp));
       if (!fb) return { ok: false, reason: 'no_clip' };
@@ -238,16 +240,17 @@ export class VoicePlayer {
   // Play the pre-rendered clip of a line. Resolves when it ends (or at once when muted,
   // missing, outranked or unavailable). Called directly (a cutscene, an open dialogue) the
   // line is in the foreground: it ranks with cutscenes and waits longer for its clip.
-  play({ speaker, text, key, kind = 'say', entity = null, priority, requestedAt, maxLatency, bubble = false } = {}) {
+  play({ speaker, text, key, keys, kind = 'say', entity = null, priority, requestedAt, maxLatency, bubble = false } = {}) {
     const sp = speakerIdOf(speaker, this.game) || speakerIdOf(entity, this.game);
-    const k = key || lineKey(sp, text);
+    const k = keys?.length ? keys.join('+') : key || lineKey(sp, text);
     if (!k) return done('empty');
     if (!this.enabledFor(sp)) return done('muted');
     const pr = priority ?? (bubble ? priorityOf(sp, kind) : PRIORITY.cutscene);
     const asked = requestedAt ?? this.now();
     const wait = maxLatency ?? (pr >= PRIORITY.cutscene ? SCENE_LATENCY : BUBBLE_LATENCY);
     return this.loadManifest().then(() => {
-      if (!this.manifest.has(k)) {
+      const parts = keys?.length ? keys : [k];
+      if (!parts.every((x) => this.manifest.has(x))) {
         this.stats.noClip++;
         return { ok: false, reason: 'no_clip' };
       }
@@ -260,7 +263,7 @@ export class VoicePlayer {
       const cur = { token, key: k, speaker: sp, priority: pr, source: null, external: null, resolve: null, gain: kind === 'whisper' ? 0.55 : 1 };
       const p = new Promise((res) => (cur.resolve = res));
       this.current = cur;
-      this._buffer(k).then((buf) => {
+      (parts.length > 1 ? this._joined(parts) : this._buffer(k)).then((buf) => {
         if (this.current !== cur) return;
         if (!buf) return this._finish(token, 'unavailable');
         if (this.now() - asked > wait) {
@@ -543,6 +546,29 @@ export class VoicePlayer {
       .finally(() => this.loading.delete(key));
     this.loading.set(key, p);
     return p;
+  }
+
+  // Several clips as one buffer, a short breath between them.
+  _joined(keys) {
+    return Promise.all(keys.map((k) => this._buffer(k))).then((bufs) => {
+      const ctx = this.ctx();
+      if (!ctx || bufs.some((b) => !b)) return null;
+      const rate = bufs[0].sampleRate;
+      const gap = Math.round(rate * 0.12);
+      const len = bufs.reduce((n, b) => n + b.length, 0) + gap * (bufs.length - 1);
+      try {
+        const out = ctx.createBuffer(1, len, rate);
+        const data = out.getChannelData(0);
+        let at = 0;
+        for (const b of bufs) {
+          data.set(b.getChannelData(0), at);
+          at += b.length + gap;
+        }
+        return out;
+      } catch {
+        return null;
+      }
+    });
   }
 
   // decodeAudioData in both its promise and its older callback form (old Safari).

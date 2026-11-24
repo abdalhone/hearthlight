@@ -13,7 +13,8 @@
 //   src/entities/monsters.js      bandit barks
 //   src/ai/brain/lines.js         Lyra's line banks (barks, chat, will), RULES expanded
 //   src/ai/mind/autonomy_lines.js Lyra's will: answers, plans, asks
-//   src/ai/behavior/lines.js, phrases.js   her body-level lines (string literals)
+//   src/ai/behavior/lines.js, phrases.js, src/ai/mind/voice.js   her lines kept inside
+//                                 functions (their fixed string literals)
 //
 // Each line gets key = lineKey(speaker, text) from src/audio/voice_key.js, the same
 // function the game uses to find a clip.
@@ -297,7 +298,7 @@ async function collectLyra() {
       }
     }
   }
-  for (const rel of ['src/ai/behavior/lines.js', 'src/ai/behavior/phrases.js']) {
+  for (const rel of ['src/ai/behavior/lines.js', 'src/ai/behavior/phrases.js', 'src/ai/mind/voice.js']) {
     for (const s of spokenLiterals(rel)) add('lyra', s, `lyra:${path.basename(rel, '.js')}`);
   }
 }
