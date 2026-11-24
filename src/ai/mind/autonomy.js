@@ -2070,6 +2070,8 @@ export class Autonomy {
       neuroticism: P.neuroticism,
       sleepAt: this.agenda.sleepAt,
       home: this.companionship === 'gone' ? this.goneHome() : null,
+      // Her parents still living (DESIGN §29: either may be killed).
+      parents: ['hobb', 'wenna'].filter((id) => !this.game?.murder?.isDead?.(id)).length,
       lastJobId: this.lastJobId,
       friend: this._bestFriend(),
       valence: num(mood?.valence, 0.1),
