@@ -217,6 +217,8 @@ export class DialogPanel {
     const p = g.player;
     if (!npc || !p?.inventory?.has(itemId)) return;
     p.inventory.remove(itemId, 1);
+    // The UI hands the item over, so it reports the hand-over (Lyra sees kindness in it).
+    g.bus.emit('item_given', { from: p, to: npc, itemId, qty: 1 });
     const r = safe(() => npc.receiveGift(itemId, p), null) || { lines: ['Thank you.'], liked: 0 };
     const liked = Number(r.liked) || 0;
     this.setExpression(liked > 0 ? 'happy' : liked < 0 ? 'sad' : 'neutral');

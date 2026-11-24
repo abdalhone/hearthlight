@@ -213,6 +213,19 @@ export class Chat {
     row.append(h('span', { class: 'msg-text', text: m.text }));
     if (m.note) row.append(h('span', { class: 'msg-note', text: `“${m.note}”` }));
     if (m.memories?.length) row.append(this.memoryChips(m.memories));
+    // She asked something on her own: answering is one tap (the brain hears the words).
+    if (m.kind === 'initiative' && /\?["'”’)]*$/.test(m.text) && !this.gone) {
+      const replies = h('div', { class: 'msg-replies' });
+      for (const word of ['Yes.', 'Not now.']) {
+        const b = button(word.replace('.', ''), { cls: 'btn-small btn-ghost' });
+        b.addEventListener('click', () => {
+          for (const x of replies.querySelectorAll('button')) x.disabled = true;
+          this.send(word);
+        });
+        replies.append(b);
+      }
+      row.append(replies);
+    }
     if (m.offer) {
       const b = button(m.offer.label || 'All right', { cls: 'btn-small btn-ghost msg-offer' });
       b.addEventListener('click', () => {
@@ -323,7 +336,9 @@ export class Chat {
     }
     setText(this.status, status);
     toggleClass(this.el, 'is-thinking', this.thinking);
-    const url = portraitUrl(g, 'lyra', this.thinking ? 'neutral' : 'happy');
+    const cs = companionshipOf(g);
+    const expr = this.thinking || cs === 'wary' || cs === 'apart' ? 'neutral' : cs === 'left' || cs === 'gone' ? 'sad' : 'happy';
+    const url = portraitUrl(g, 'lyra', expr);
     if (url && this.portrait.src !== url) this.portrait.src = url;
   }
 
@@ -348,6 +363,7 @@ export class Chat {
     // Echo now so the line appears instantly even if the brain is slow to answer.
     this.addMessage({ from: 'player', text: t });
     this.lastPlayerEcho = { text: t, at: Date.now() };
+    this.lastSentAt = Date.now();
     g.audio?.play('ui_click');
     let p;
     try {

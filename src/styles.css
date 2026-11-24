@@ -1445,6 +1445,14 @@ textarea {
 .msg-offer {
   margin-top: 6px;
 }
+.msg-replies {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.lyra-gone .tbtn-talk {
+  display: none;
+}
 
 /* What she remembered while answering. */
 .mem-wrap {

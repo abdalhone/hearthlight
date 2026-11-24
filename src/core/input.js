@@ -226,7 +226,10 @@ export class Input {
 
   _isHeld(a) {
     if (this.held.has(a) || this.virtual.has(a)) return true;
-    if (this.padHeld.size) for (const k of this.padHeld) if (k.startsWith(a + '#')) return true;
+    if (this.padHeld.size) {
+      const n = a.length;
+      for (const k of this.padHeld) if (k.length > n && k.charCodeAt(n) === 35 && k.startsWith(a)) return true; // 35 = '#'
+    }
     return false;
   }
 
@@ -247,15 +250,24 @@ export class Input {
     this.edge.delete(a);
   }
 
+  // Called every step by the player's controller: fills one reused vector instead of
+  // allocating (read it right away; it changes on the next call).
   moveVector() {
-    if (!this.enabled) return { x: 0, y: 0 };
-    return combineMove(
-      this._isHeld('left'),
-      this._isHeld('right'),
-      this._isHeld('up'),
-      this._isHeld('down'),
-      this.touchVec.x + this.padVec.x,
-      this.touchVec.y + this.padVec.y,
-    );
+    const out = this._mv || (this._mv = { x: 0, y: 0 });
+    if (!this.enabled) {
+      out.x = 0;
+      out.y = 0;
+      return out;
+    }
+    let x = (this._isHeld('right') ? 1 : 0) - (this._isHeld('left') ? 1 : 0) + this.touchVec.x + this.padVec.x;
+    let y = (this._isHeld('down') ? 1 : 0) - (this._isHeld('up') ? 1 : 0) + this.touchVec.y + this.padVec.y;
+    const l = Math.hypot(x, y);
+    if (l > 1) {
+      x /= l;
+      y /= l;
+    }
+    out.x = x;
+    out.y = y;
+    return out;
   }
 }

@@ -215,7 +215,8 @@ export class MindPanel {
     this.content.scrollTop = 0;
     const mind = this.mind;
     if (!mind) {
-      this.content.append(h('p', { class: 'empty', text: 'Lyra is not here yet. Start a game to meet her.' }));
+      const gone = companionshipOf(this.game) === 'gone';
+      this.content.append(h('p', { class: 'empty', text: gone ? 'She is gone, and she took her thoughts with her.' : 'Lyra is not here yet. Start a game to meet her.' }));
       return;
     }
     const render = {

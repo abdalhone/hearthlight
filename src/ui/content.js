@@ -1,4 +1,4 @@
-// Written content for the interface: orders, jobs, Lyra's acknowledgements, quick
+// Written content for the interface: requests, jobs, Lyra's answers, quick
 // replies, the How to play page. Pure data + small pure pickers (unit-tested).
 
 // The "Ask Lyra" bar. Every button is a request she weighs (DESIGN.md §16.4): it runs

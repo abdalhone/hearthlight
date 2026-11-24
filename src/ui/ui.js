@@ -72,6 +72,7 @@ export class UI {
     this.explicitThinking = false;
     this.lastCs = 'together';
     this.lastCompanionReason = '';
+    this.pendingSpeech = []; // her unprompted lines, waiting to join the chat
   }
 
   // ---------- setup ----------
@@ -336,6 +337,17 @@ export class UI {
       else this.toast(`You attacked ${who}. The guards will come for you.`, 'warn', { title: 'Crime', key: 'crime' });
     });
     bus.on('plan_changed', () => this.mind?.markDirty('now'));
+    // What she says aloud to you on her own (announcements, requests, warnings) also
+    // lands in the chat. Replies reach the chat through the brain; waiting a moment
+    // lets those arrive first, so the same line is never shown twice.
+    bus.on('speech', (p) => {
+      if (!isLyra(p?.speaker) || !p.text || g.state !== 'playing') return;
+      const kind = p.kind || 'say';
+      if (kind === 'bark' || kind === 'whisper') return;
+      if (p.target && !isPlayer(p.target)) return;
+      if (this.pendingSpeech.length >= 6) this.pendingSpeech.shift();
+      this.pendingSpeech.push({ text: String(p.text), at: g.time || 0 });
+    });
 
     bus.on('relationship_changed', (p) => {
       this.mind?.markDirty('people');
@@ -743,6 +755,13 @@ export class UI {
       this.invDirty = false;
       if (this.inventory.isOpen()) this.inventory.render();
       if (this.chest.isOpen()) this.chest.render();
+    }
+
+    if (this.pendingSpeech.length && (g.time || 0) - this.pendingSpeech[0].at > 0.6) {
+      const sp = this.pendingSpeech.shift();
+      // Right after the player spoke, her words are a reply: the brain shows those.
+      const replying = Date.now() - (this.chat.lastSentAt || 0) < 9000 || !!safe(() => g.brain?.status?.()?.busy, false);
+      if (!replying) this.chat.addMessage({ from: 'lyra', text: sp.text, kind: 'initiative' });
     }
 
     this.thinkPoll -= dt;

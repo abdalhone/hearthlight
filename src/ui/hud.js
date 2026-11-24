@@ -1,6 +1,6 @@
-// The in-game HUD: player and Lyra cards, place / clock / weather, the quest line,
-// the interact prompt, the command bar (with Jobs menu) and its radial form on small
-// screens. DOM writes happen only when a shown value changes.
+// The in-game HUD: player and Lyra cards (with where she stands with you), place /
+// clock / weather, the quest line, the interact prompt, the "Ask Lyra" bar (with its
+// Jobs menu) and its radial form on small screens. DOM writes happen only on change.
 
 import { h, icon, setIcon, setText, setStyle, toggleClass, meter, button, setAttr } from './dom.js';
 import { COMMANDS, JOBS, DELIVER_OPTIONS, REJOIN } from './content.js';
