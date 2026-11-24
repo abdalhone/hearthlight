@@ -257,7 +257,10 @@ export class Behavior {
   isDefendingAgainst(e) {
     if (!e || this.stance !== 'self_defense') return false;
     const r = this.memory.get(e);
-    return !!r && this.t - r.vsSelf < SELF_DEFENSE_SECONDS;
+    if (r && this.t - r.vsSelf < SELF_DEFENSE_SECONDS) return true;
+    // The combat rules remember who hurt her for longer than her own heat of the moment.
+    const c = this.game.combat;
+    return typeof c?.isSelfDefense === 'function' && !!safe('combat.isSelfDefense', () => c.isSelfDefense(this.actor, e), false);
   }
 
   // The player is a danger to her right now: she has left them, is running from
