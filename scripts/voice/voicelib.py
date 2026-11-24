@@ -37,7 +37,7 @@ SPEECH_DB = -42.0  # louder than this is speech
 BRIDGE_S = 0.12  # quieter gaps shorter than this do not split speech
 FADE_S = 0.010
 KBPS = 64  # mono MP3, MPEG-2 Layer III at 24 kHz: decodes everywhere, iPhones included
-PIPELINE = "r9.1"  # bump to re-finish every clip (takes are kept)
+PIPELINE = "r9.2"  # bump to re-finish every clip (takes are kept)
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
@@ -544,27 +544,32 @@ def finish(audio: np.ndarray, target: float = TARGET_LUFS) -> np.ndarray:
     on = np.nonzero(db > -60)[0]
     if len(on):
         x = x[: min(len(x), int((on[-1] + 1) * FRAME * SR))]
-    for _ in range(4):
+    for _ in range(10):  # limiting a peaky line lowers its loudness: measure again, top up
         gain = target - lufs(x)
-        if abs(gain) < 0.2:
+        if abs(gain) < 0.15:
             break
         x = limit(x * (10 ** (gain / 20)), -2.0)
     return fade(x, FADE_S, 0.03)
 
 
-def encode_checked(audio: np.ndarray, path: Path) -> tuple[np.ndarray, float]:
-    """Encode, decode, measure the true peak; while MP3 overshoots, limit lower and again."""
+def encode_checked(audio: np.ndarray, path: Path, target: float = TARGET_LUFS) -> tuple[np.ndarray, float]:
+    """Encode, decode and measure what the player will hear: MP3 can overshoot the limiter
+    between samples, and its low-pass takes a little loudness from a bright voice. While the
+    decoded clip is off, correct and encode again."""
     ceiling = -2.0
     tp = 0.0
-    for _ in range(5):
+    dec = audio
+    for _ in range(6):
         encode_mp3(audio, path)
         dec = load_audio(path)
         tp = true_peak_db(dec)
-        if tp <= MAX_TRUE_PEAK_DB:
+        off = target - lufs(dec)
+        if tp <= MAX_TRUE_PEAK_DB and abs(off) <= 0.3:
             return dec, tp
-        ceiling -= (tp - MAX_TRUE_PEAK_DB) + 0.3
-        audio = limit(audio, ceiling)
-    return load_audio(path), tp
+        if tp > MAX_TRUE_PEAK_DB:
+            ceiling -= (tp - MAX_TRUE_PEAK_DB) + 0.3
+        audio = limit(audio * 10 ** (off / 20), ceiling)
+    return dec, tp
 
 
 # --------------------------------------------------------------------------- models

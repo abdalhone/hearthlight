@@ -280,6 +280,10 @@ def main() -> int:
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--no-prune", action="store_true")
     args = ap.parse_args()
+    # A stopped render takes its workers with it (each holds a few GB).
+    import signal
+
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
 
     lines = collect()
     cast = load_cast()
