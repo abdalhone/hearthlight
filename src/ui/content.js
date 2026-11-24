@@ -64,71 +64,120 @@ export function pickAck(kind, rand = Math.random()) {
   return list[i];
 }
 
+// One icon for each place you can go, the same on the title, in the menu and on the HUD
+// (DESIGN §24). 'spellbook' is the Spellbook's own painted icon (weave_icons.js).
+export const MENU_ICONS = Object.freeze({
+  resume: 'send',
+  continue: 'send',
+  newGame: 'sun',
+  prologue: 'star',
+  book: 'book',
+  pastLives: 'flame',
+  settings: 'gear',
+  howTo: 'hand',
+  spellbook: 'spellbook',
+  missions: 'scroll',
+  lyra: 'mind',
+  character: 'shield',
+  save: 'chest',
+  quit: 'moon',
+});
+
+// The controls, once, for every device (DESIGN §22.4, §24). How to play shows them for
+// the device in hand (Touch, Keyboard & mouse or Gamepad); Settings → Controls links
+// there instead of repeating them. `null`: that device has no way to do it.
+export const CONTROL_DEVICES = [
+  { id: 'touch', label: 'Touch' },
+  { id: 'keys', label: 'Keyboard & mouse' },
+  { id: 'pad', label: 'Gamepad' },
+];
+
+export const CONTROLS = [
+  { id: 'move', what: 'Move', keys: 'WASD or the arrow keys', pad: 'Left stick or d-pad', touch: 'Put your left thumb down anywhere on the left side and slide' },
+  { id: 'sword', what: 'Sword', keys: 'Left click (toward the mouse), J or Space', pad: 'A', touch: 'The sword button; drag it to aim the swing' },
+  { id: 'dodge', what: 'Dodge roll', keys: 'K or Shift', pad: 'B', touch: 'The swirl button beside the sword' },
+  { id: 'weave', what: 'Cast a weave', keys: '1 – 6 toward the mouse; hold for beams and charges', pad: 'RT, aimed with the right stick', touch: 'Drag from a weave button to aim, let go to cast, drag back onto it to cancel; a tap casts at the nearest foe' },
+  { id: 'choose', what: 'Choose a weave', keys: 'Mouse wheel, Q / R or a click on its slot; right click casts it', pad: 'LT / RB', touch: null },
+  { id: 'spellbook', what: 'Spellbook', keys: 'B', pad: 'Start, then Spellbook', touch: 'The book button, top right' },
+  { id: 'interact', what: 'Talk to someone, open, pick up', keys: 'E', pad: 'X', touch: 'The hand button, when there is something to use' },
+  { id: 'listen', what: 'Listen in', keys: 'L', pad: null, touch: 'Tap “Listen in” when two villagers talk nearby' },
+  { id: 'talk', what: 'Chat with Lyra or anyone near', keys: 'T or Enter', pad: 'Y', touch: 'The speech button, top right' },
+  { id: 'ask', what: 'Ask Lyra for help', keys: 'Alt + 1 – 5, or the Ask Lyra bar', pad: null, touch: 'The ✦ button beside her portrait' },
+  { id: 'mind', what: "Lyra's mind", keys: 'Tab or M, or a click on her card', pad: 'Back', touch: 'Tap her card' },
+  { id: 'inventory', what: 'Inventory', keys: 'I', pad: 'LB', touch: 'The bag button, top right' },
+  { id: 'help', what: 'Call for help when you fall', keys: 'E or H', pad: 'X', touch: 'The Call for help button' },
+  { id: 'menu', what: 'Menu (pause)', keys: 'Esc', pad: 'Start', touch: 'The pause button, top right' },
+];
+
+// The rows of CONTROLS one device can use, as [what, how].
+export function controlsFor(device) {
+  const out = [];
+  for (const c of CONTROLS) if (c[device]) out.push([c.what, c[device]]);
+  return out;
+}
+
+// How to play: what the game is about. The first section is the controls table above.
 export const HOW_TO_PLAY = [
+  { id: 'controls', title: 'Controls', controls: true },
   {
-    title: 'Getting around',
-    rows: [
-      ['Move', 'WASD or arrow keys · left stick · on a phone, put your left thumb down anywhere on the left side'],
-      ['Sword', 'Left click (toward the mouse), J or Space · A button · the sword button (drag it to aim the swing)'],
-      ['Dodge roll', 'K or Shift · B button · the swirl button (a moment of safety)'],
-      ['Interact', 'E · X button · the hand button that appears when there is someone to talk to or something to use'],
-      ['Listen in', 'L · tap "Listen in" when two villagers are talking nearby'],
-      ['Pause', 'Esc · Start button · the pause icon'],
-    ],
-  },
-  {
+    id: 'weaving',
     title: 'Weaving',
     text:
-      'You can do something no one in Hearthvale can: shape raw Drift with your hands. The village calls it weaving. A weave is a shape (how it leaves your hands), up to two essences (what it is made of: fire, frost, storm…) and up to two twists (how it behaves: split, bounce, homing…). You start with a small bolt of raw weave; every new shape, essence and twist is found through people who need a hand and the great foes around the valley. Hold your phone sideways for fights: move with your left thumb, fight and weave with your right.',
-    rows: [
-      ['Cast', '1 – 6 toward the mouse · RT on a gamepad · on a phone, the weave buttons around the sword'],
-      ['Aim', 'The mouse · the right stick · drag from a weave button: the world shows where it goes; let go to cast, drag back onto the button to cancel'],
-      ['Quick cast', 'Tap a weave button: it goes to the nearest foe (or where you face)'],
-      ['Hold', 'Beams flow and charged weaves grow while you hold the key or the button'],
-      ['Choose', 'Mouse wheel, Q / R or a click on its slot; the right button casts the chosen one'],
-      ['Spellbook', 'B · the book button · the pause menu: make weaves, name them, put them in your slots'],
-    ],
+      'You can do something no one in Hearthvale can: shape raw Drift with your hands. The village calls it weaving. A weave is a shape (how it leaves your hands), up to two essences (what it is made of: fire, frost, storm…) and up to two twists (how it behaves: split, bounce, homing…). You start with a small bolt of raw weave; every new shape, essence and twist is found through people who need a hand and the great foes around the valley. Make and name weaves in the Spellbook and put them in your slots. On a phone, hold it sideways for fights.',
   },
   {
+    id: 'lyra',
     title: 'Lyra lives for herself',
     text:
       'Lyra and Hess carried you down off the Hollowcrown; you slept eighty-one days. When you woke, Lyra took the hearthwatch for reasons of her own: the stipend, a second blade for the ruins, and whatever ties you to Maren, the teacher who walked into the Sunken Ruins and never came back. She travels with you because she chooses to, while it is good for her. She weighs everything you ask, and she watches what you do. Treat her well and she will trust you. Hurt her, frighten her or harm the people she loves, and she will stop you, run to her people or shout for help. Hearthvale is her home: she never leaves it, and the village stands with her.',
   },
   {
-    title: 'The village',
+    id: 'talking',
+    title: 'Talking',
     text:
-      'Of the hundred and fifty people in Hearthvale, eighteen are yours to know, and they live their own lives: they work, eat at the Kettle, talk to each other, gossip, and remember what you do. Walk up to anyone and press E (or tap the hand) to talk; type anything into "Say something…" and they answer in their own way. When two of them are talking nearby, press L or tap "Listen in". In the morning, "While you slept" tells you what went on in the village overnight.',
+      'Open the chat and say anything: ask how she feels, what she thinks of someone, what she remembers. Ask for help in plain words, like "would you chop some wood?" or "stay here and keep watch", and offer her a fair share if you want a yes. The "To:" row at the top of the chat lets you speak to any villager within earshot the same way; tap someone in the world to pick them. Small tags under her replies show what she remembered while she answered.',
   },
   {
-    title: 'Talking with her',
-    text:
-      'Press T or Enter (Y on a gamepad) to talk. Say anything: ask how she feels, what she thinks of someone, what she remembers. Ask for help in plain words, like "would you chop some wood?" or "stay here and keep watch". Offer her a fair share if you want a yes. Under her replies, small tags show what she remembered while she answered; tap one to see it.',
-  },
-  {
+    id: 'asking',
     title: 'Asking her for help',
     rows: [
-      ['Alt 1 Follow', 'Ask her to walk with you.'],
-      ['Alt 2 Wait', 'Ask her to wait where she is.'],
-      ['Alt 3 Fight', 'Ask her to engage every creature nearby that is not a friend. Once she agrees, she does not ask again for each one.'],
-      ['Alt 4 Defend', 'Ask her to fight only what threatens you or her.'],
-      ['Alt 5 Hold back', 'Ask her to keep out of fights. She still heals.'],
+      ['Follow', 'Ask her to walk with you.'],
+      ['Wait', 'Ask her to wait where she is.'],
+      ['Fight', 'Ask her to engage every creature nearby that is not a friend. Once she agrees, she does not ask again for each one.'],
+      ['Defend', 'Ask her to fight only what threatens you or her.'],
+      ['Hold back', 'Ask her to keep out of fights. She still heals.'],
       ['Jobs', 'Chopping, gathering, fishing, mining, foraging, cooking or collecting loot, delivered to you or the cottage chest.'],
     ],
   },
   {
-    title: 'Her mind',
+    id: 'village',
+    title: 'The village',
     text:
-      'Tab or M opens Lyra\'s Mind: her mood and plans, how she sees you and what she has seen you do, the people she knows, her memories, what she knows of the world, her life before you met, her diary, her goals and her soul. You can export her whole mind as a file and bring it back later.',
+      'Of the hundred and fifty people in Hearthvale, eighteen are yours to know, and they live their own lives: they work, eat at the Kettle, talk to each other, gossip, and remember what you do. Walk up to anyone to talk; when two of them are talking nearby, you can listen in. In the morning, "While you slept" tells you what went on in the village overnight. Villagers with a gold ! over their heads have work for you; the Missions journal keeps track of it.',
   },
   {
+    id: 'mind',
+    title: 'Her mind',
+    text:
+      "Lyra's Mind shows her mood and plans, how she sees you and what she has seen you do, the people she knows, her memories, what she knows of the world, her life before you met, her diary, her goals and her soul. You can export her whole mind as a file and bring it back later.",
+  },
+  {
+    id: 'falling',
+    title: 'Falling, and death',
+    text:
+      'At no health you fall and lie bleeding. Call for help: Lyra and anyone in earshot may come, help you up or carry you to Mira in time. If nobody does, you die, and unless Sister Aveline keeps a flame for you at the chapel, your story ends for good: the save moves to Past lives. You can carry the fallen too. Settings → Game can soften death to waking at home.',
+  },
+  {
+    id: 'days',
     title: 'Days and nights',
     text:
       'A day lasts about fifteen minutes. Wolves grow bolder at night and moonpetals only open after dark. Sleep in your bed after 6 PM to skip to morning; Lyra writes in her diary while you rest, and the game saves. She sleeps in the spare bed only while she trusts you; otherwise she keeps her old room at the Ember Kettle.',
   },
   {
+    id: 'saving',
     title: 'Saving',
     text:
-      'The game saves on its own every minute, when you sleep and when quests move forward. When played on claude.ai it can also keep a copy in your account, so your journey follows you between devices.',
+      'The game saves on its own every minute, when you sleep and when missions move forward; Menu → Save saves right away. When played on claude.ai it can also keep a copy in your account, so your journey follows you between devices.',
   },
 ];
 
@@ -137,28 +186,6 @@ export const TITLE_TAGLINES = [
   'Some lights are carried. Some walk beside you.',
   'The ruins are quiet. Lyra is not.',
 ];
-
-export const CONTROLS_SUMMARY = [
-  ['WASD / Arrows', 'Move'],
-  ['Mouse', 'Aim'],
-  ['Click / J / Space', 'Sword'],
-  ['K / Shift', 'Dodge'],
-  ['1 – 6', 'Cast a weave (hold for beams, charges)'],
-  ['Right click', 'Cast the chosen weave'],
-  ['Wheel / Q / R', 'Choose a weave'],
-  ['B', 'Spellbook'],
-  ['E', 'Interact / talk to villagers'],
-  ['L', 'Listen in'],
-  ['T / Enter', 'Talk to Lyra'],
-  ['Tab / M', "Lyra's mind"],
-  ['I', 'Inventory'],
-  ['Alt + 1 – 5', 'Ask Lyra'],
-  ['Esc', 'Pause / close'],
-];
-
-// What the controls part of Settings says about gamepads and touch.
-export const CONTROLS_NOTE =
-  'Gamepad: left stick moves, right stick aims · A sword · B dodge · X interact · Y talk · RT weave · LT / RB choose a weave · Start pause. Phone: hold it sideways for fights; put your left thumb down anywhere on the left to move. On the right: the sword, the dodge and your weaves — drag from a weave to aim, let go to cast, drag back onto it to cancel, or just tap it to cast at the nearest foe.';
 
 // Lines for the reset confirmation and data tab, kept here with the rest of the voice.
 export const RESET_WARNING =
