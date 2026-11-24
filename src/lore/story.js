@@ -1,8 +1,45 @@
 // The story of Hearthlight: the world of Halcyre, the village of Hearthvale, its people and
 // Lyra's life from her birth until the day the game begins. This is the author's canon
-// (docs/LORE.md) in the STORY shape of DESIGN §17.1: the lorebook, Lyra's life memories,
-// what she knows, who she can learn things from and the mysteries she chases are all built
-// from this data.
+// (docs/LORE.md) in the STORY shape of DESIGN §17.1. The lorebook (lorebook.js), Lyra's
+// life memories, what she knows, who she can learn things from, the mysteries she chases,
+// the cutscenes and The Book of Halcyre (src/story/*, DESIGN §20) are all built from it.
+//
+// ---------------------------------------------------------------- the shape
+//
+// export const STORY = {
+//   placeholder: false,            // true only for the old stand-in story
+//   title: 'Hearthlight',
+//   premise: string,               // two sentences: the book's opening blurb
+//   world:    [{ id, title, text, tags: [string], aliases: [string],
+//                knownBy: ['everyone'] | ['lyra', npcId, ...], secret: bool }],
+//   timeline: [{ id, when, title, text, tags }],          // oldest first ('Beyond counting' → 'Now')
+//   places:   [{ id, locationId, title, text, tags, knownBy }],
+//   people:   [{ id, npcId|null, name, title, text, tags, knownBy }],
+//   lyraLife: [{ id, age, title, text, people: [ids], places: [locationIds],
+//                feeling: emotion name, importance: 1..10 }],   // birth → today, oldest first
+//   mysteries:[{ id, question, clues: [{ text, foundAt }], truth, knownBy: [ids] }],
+// };
+// export const STORY_VILLAGERS   // the eighteen villager ids
+// export const BOOK_CHAPTERS     // the Book of Halcyre's chapters (see the end of the file)
+//
+// Ids are stable: saves, the lorebook and other modules refer to them. Every text is
+// short (one to three sentences, under about 300 characters) and plain enough to be read
+// aloud or shown on a phone-width page.
+//
+// - world: what people know of Halcyre: the Drift and its weathers, wards, magic, dungeons,
+//   the other villages, Hearthvale's customs, laws, worries and talk. Tags group them:
+//   'drift', 'ward', 'magic', 'dungeon', 'village', 'hearthvale', 'law', 'customs',
+//   'festival', 'history'.
+// - timeline: LORE §4, the history people know, with `when` as said in the valley.
+// - places: one per map location (locationId is a location id from src/world/locations.js;
+//   several entries may share one, e.g. the ruins outside and in).
+// - people: the eighteen villagers (npcId set), then the absent and the dead (npcId null).
+//   `title` is a role ("the lamplighter"). The text is the village's version of them.
+// - lyraLife: her life in her own words (first person), LORE §7.
+// - mysteries: LORE §9. `clues[].foundAt` is a villager id, a location id, an item id or a
+//   story beat ('maren_journal', 'waygate', 'ruins_carvings', 'garrick_alone', ...).
+//   `truth` is the author's: never indexed, searched, spoken or shown until the game
+//   reveals it. `knownBy` names who holds that truth in full (usually nobody; never Lyra).
 //
 // Who knows what (LORE §9.10) is the rule this file is written around:
 // - knownBy: 'lyra', 'everyone', or villager ids. Anyone listed may tell it to anyone, so
@@ -11,10 +48,13 @@
 // - A character secret that Lyra does not know never appears here as an entry: a villager
 //   who knows it would tell her once they were close (recollection.loreFrom). Those live
 //   on the villagers' facts with `knownBy` / `hiddenFrom: ['lyra']` (npc_data*.js).
-// - The hidden truths (LORE §9) are mysteries: a question, clues found at places, people or
-//   items, and a `truth` the lorebook never indexes or lists. `knownBy` on a mystery names
-//   who holds that truth in full (almost always nobody); it is never Lyra.
-// Timeline entries are common knowledge. lyraLife runs from her birth to today, oldest first.
+// - entries with `secret: true` are things only their knowers say, and only to people they
+//   are close to (familiarity 45 and up).
+//
+// Canon since DESIGN §19.7: Hearthvale is Lyra's home and she never leaves it. If the
+// stranger hurts her past forgiving she cuts them out of her life and lives with her
+// parents at the chandlery (her room at the Kettle is hers too), and the village stands
+// with her. The road to Saltmere and the waystones is a dream, never a departure.
 
 // The eighteen villagers of Hearthvale (DESIGN §7, §19.1).
 const VILLAGE = [
@@ -98,8 +138,9 @@ export const STORY = {
     { id: 'flame_count', title: 'The flames on the altar', text: 'Thirty-eight family flames burn on the chapel altar, and anyone can count them: thirty-seven households and the Wayhouse. How many the Wellstone can bear is the most important secret a village keeps, and the Moot keeps it.', tags: ['ward', 'chapel', 'flames'], aliases: ['thirty-eight flames', 'the flame-count'], knownBy: ALL, secret: false },
     { id: 'hearthmoot', title: 'The Hearthmoot', text: "Hearthvale's council: the head of every household that keeps a flame, meeting in the Ember Kettle's back room. It elects a Reeve, Alder Ashby, to keep its ledgers. Captain Rowan Vale keeps the watch and the peace.", tags: ['law', 'hearthvale', 'alder'], aliases: ['the Moot', 'Moot', 'the Reeve'], knownBy: ALL, secret: false },
     { id: 'moot_laws', title: 'The laws of Hearthvale', text: "Keep your flame. No one goes outside the ward alone, and no one past the wall of the Sunken Ruins at all. No blood inside the bell-reach. No delving without leave. Strangers keep threshold night and a season of hearthwatch.", tags: ['law', 'hearthvale'], aliases: ['the laws', 'the second law', 'no blood inside the bell-reach'], knownBy: ALL, secret: false },
-    { id: 'ruins_fine', title: 'The ruins wall', text: "This summer Lyra climbed the wall of the Sunken Ruins alone on Hess's rope. Rowan put it before the Moot. Lyra paid her ten silver the same day, said she would do it again if she had to, and that next time she'd tell the captain first.", tags: ['law', 'ruins', 'lyra', 'rowan', 'hess'], aliases: ['the fine', 'ten silver'], knownBy: ALL, secret: false },
+    { id: 'ruins_fine', title: 'The ruins wall', text: "This summer Lyra climbed the wall of the Sunken Ruins alone on Hess's rope. Rowan put it before the Moot, which fined her ten silver; she paid it the same day, said she would do it again if she had to, and that next time she'd tell the captain first.", tags: ['law', 'ruins', 'lyra', 'rowan', 'hess'], aliases: ['the fine', 'ten silver'], knownBy: ALL, secret: false },
     { id: 'the_stone_question', title: 'The question for Lyra', text: "With Maren gone and the ward thinning, the Moot means to ask Lyra Ambrel, formally at the Sheaf Moot, to marry the Wellstone. Every hearth in the valley has chewed it over. Her answer has always been: not yet.", tags: ['ward', 'wellstone', 'lyra', 'sheaf_moot', 'stone_question'], aliases: ['the stone', 'marry the stone', 'the Moot question'], knownBy: ALL, secret: false },
+    { id: 'looks_after_its_own', title: 'Hearthvale looks after its own', text: "Nobody leaves the ward alone, and nobody inside it is left alone. When someone shouts for help, the watch comes running, the nearest doors open and the healers come with them. The village remembers who hurt one of its own, and for a long time.", tags: ['hearthvale', 'customs', 'law', 'watch'], aliases: ['call for help', 'the village answers', 'her village'], knownBy: ALL, secret: false },
     { id: 'hearthwatch', title: 'Hearthwatch', text: "Someone let in from outside is not left alone under a roof for their first season. A villager holds the key, looks in every day and sleeps under that roof when they judge it right, for a Moot stipend, and may hand the key back.", tags: ['customs', 'stranger', 'law'], aliases: ['the hearthwatch', 'the key', 'the stipend'], knownBy: ALL, secret: false },
     { id: 'threshold_night', title: 'Threshold night', text: "Anyone let in from outside spends their first night under the chapel roof beside the family flames before they sleep anywhere else. The stranger's threshold night lasted eighty-one nights.", tags: ['customs', 'chapel', 'stranger'], aliases: ['threshold-night'], knownBy: ALL, secret: false },
     { id: 'festivals', title: "Hearthvale's festivals", text: "Kindling Day at first thaw, when every hearth is relit from the Ember Kettle. Moonpetal Night in late summer. The Sheaf Moot at harvest. Longwatch at midwinter, the longest night, when nobody sleeps.", tags: ['customs', 'festival'], aliases: ['Kindling Day', 'Moonpetal Night', 'Longwatch', 'joining flames'], knownBy: ALL, secret: false },
@@ -570,5 +611,85 @@ export const STORY = {
     },
   ],
 };
+
+// The Book of Halcyre (DESIGN §20): the lore as an in-game book, in chapters. Each chapter
+// lists story entries as lorebook keys ('world:halcyre', 'place:p_chandlery', ...) in reading
+// order. `unlock` says how its pages open for the player:
+//   'start' - open from the first page of a new game;
+//   'seen'  - each place page opens when the player first enters its locationId;
+//   'met'   - each person page opens when the player first talks to them (npcId), and the
+//             absent ones when someone first names them to the player;
+//   'told'  - each page opens when Lyra tells it (her life: a life memory she shares);
+//   'clue'  - a mystery page opens with its first clue found, and shows only the clues found.
+// A mystery's truth is never a page.
+const keys = (kind, ids) => ids.map((id) => `${kind}:${id}`);
+export const BOOK_CHAPTERS = [
+  {
+    id: 'halcyre', title: 'The Lit Hall', unlock: 'start',
+    blurb: 'Halcyre, the Lanternwrights, and the Song that broke.',
+    entries: [...keys('world', ['halcyre', 'lanternwrights', 'the_song', 'waygates', 'lowmarch', 'crownfells', 'hollowcrown', 'pale_reach']), ...keys('timeline', ['age_of_lanterns', 'unlighting', 'hearth_years', 'crowned_road', 'the_guttering'])],
+  },
+  {
+    id: 'drift', title: 'The Drift', unlock: 'start',
+    blurb: 'Loose magic, moving over the land like weather.',
+    entries: keys('world', ['the_drift', 'glimmer', 'the_grey', 'hollow_wind', 'brightfall', 'the_turning']),
+  },
+  {
+    id: 'wards', title: 'Wards and Kept Flame', unlock: 'start',
+    blurb: 'Why people live close together, and what keeps them alive.',
+    entries: keys('world', ['wards', 'wardstones', 'kept_flame', 'letting_in', 'keepers', 'marrying_the_stone', 'bell_reach', 'ward_customs', 'road_candles', 'waystones', 'kings_road_history']),
+  },
+  {
+    id: 'magic', title: 'Magic', unlock: 'start',
+    blurb: 'Every kind of magic, what it costs, and what the neighbors think.',
+    entries: keys('world', ['hearthcraft', 'lumencraft', 'lyra_workings', 'binding_light', 'lyra_staff', 'greenwit', 'forgesong', 'songcraft', 'brightborn', 'gravelight', 'small_charms']),
+  },
+  {
+    id: 'dungeons', title: 'Dungeons', unlock: 'start',
+    blurb: 'Where the spilled magic pooled, and what it makes.',
+    entries: [...keys('world', ['dungeons', 'dungeon_creatures', 'delving', 'weeping_cut', 'famous_dungeons']), ...keys('place', ['p_sunken_ruins', 'p_ruins_halls'])],
+  },
+  {
+    id: 'lowmarch', title: 'The Other Villages', unlock: 'start',
+    blurb: 'Coals in a dark grate: the places Hearthvale trades with, and the dead ones.',
+    entries: keys('world', ['brightwater', 'saltmere', 'cinderwick', 'owlsend', 'brindlecombe', 'glasswater_isles']),
+  },
+  {
+    id: 'hearthvale', title: 'Hearthvale', unlock: 'start',
+    blurb: 'A kettle-fire, a well and a chapel, kept for three hundred and twelve years.',
+    entries: [
+      ...keys('world', ['hearthvale_founding', 'the_ambrels', 'hearth_faith', 'flame_count', 'hearthmoot', 'moot_laws', 'looks_after_its_own', 'hearthwatch', 'threshold_night', 'festivals', 'sheaf_moot', 'lamplighters_star', 'sayings', 'oil_trouble']),
+      ...keys('timeline', ['hearthvale_founded', 'ruins_locked', 'road_candle']),
+    ],
+  },
+  {
+    id: 'places', title: 'Places', unlock: 'seen',
+    blurb: 'The village and the country around it, as you walk it.',
+    entries: keys('place', ['p_hearthvale', 'p_town_square', 'p_wayhouse', 'p_ember_kettle', 'p_chapel', 'p_smithy', 'p_general_store', 'p_herbalist', 'p_guardhouse', 'p_lamplight_lane', 'p_chandlery', 'p_ashby_house', 'p_dye_cottage', 'p_weavers_row', 'p_farmhouse', 'p_reed_farm', 'p_whisperwood', 'p_wenna_hives', 'p_moonpetal_glade', 'p_quarry', 'p_mirror_lake', 'p_net_shed', 'p_south_meadow', 'p_kings_road', 'p_bandit_camp', 'p_sunken_ruins', 'p_ruins_halls']),
+  },
+  {
+    id: 'people', title: 'The People of Hearthvale', unlock: 'met',
+    blurb: 'Eighteen neighbors, and the people they miss.',
+    entries: keys('person', [...VILLAGE, 'maren', 'bryn', 'davin', 'varek', 'hanna', 'tam', 'june', 'maudie', 'edric', 'ewan', 'jory', 'ansel_bee_jem', 'tarrows', 'rosalind', 'abel', 'osric', 'nan_pike', 'marl', 'holloways', 'biscuit', 'duchess']),
+  },
+  {
+    id: 'story', title: 'The Story So Far', unlock: 'start',
+    blurb: 'From the Brightfall winter to the stranger on the mountain.',
+    entries: [
+      ...keys('timeline', ['hobb_takes_road', 'forge_lit', 'hobb_home', 'border_wars', 'aveline_comes', 'brightfall_winter', 'lyra_born', 'elda_comes', 'hollow_wind_winter', 'greywinter', 'maren_comes', 'night_of_lamps', 'new_reeve', 'jory_returns', 'maudie_goes', 'hanna_dies', 'the_cut', 'rosalind_dies', 'three_years_ago', 'ferry', 'bandits_come', 'the_ambush', 'maren_goes_in', 'stranger_found', 'long_sleep', 'stranger_wakes', 'wolves_on_road', 'now']),
+      ...keys('world', ['maren_preparations', 'other_end', 'the_stranger', 'stranger_whispers', 'varek_band', 'stolen_key', 'ruins_fine', 'the_stone_question']),
+    ],
+  },
+  {
+    id: 'lyra', title: 'Lyra Ambrel', unlock: 'told',
+    blurb: 'Her life, as she tells it.',
+    entries: [...keys('life', STORY.lyraLife.map((e) => e.id)), ...keys('world', ['little_lamp_words', 'far_lamps', 'waystone_night', 'wellstone_hitch', 'elda_lantern'])],
+  },
+  {
+    id: 'mysteries', title: 'Open Questions', unlock: 'clue',
+    blurb: 'What nobody in Hearthvale can answer yet.',
+    entries: keys('mystery', STORY.mysteries.map((e) => e.id)),
+  },
+];
 
 export { VILLAGE as STORY_VILLAGERS };
