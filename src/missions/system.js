@@ -106,7 +106,27 @@ export class MissionSystem {
   }
 
   turnInTo(m) {
-    return m.turnIn === undefined ? m.giver : m.turnIn;
+    const to = m.turnIn === undefined ? m.giver : m.turnIn;
+    return to ? this.standIn(to) : to;
+  }
+
+  // Who gives a mission now: its giver, or (DESIGN §29) whoever stands in for a giver who
+  // has died, or the notice board.
+  standIn(id) {
+    const s = safe(() => this.game.murder?.standIn?.(id), null);
+    return s || id;
+  }
+
+  giverOf(m) {
+    return this.standIn(m.giver);
+  }
+
+  // A stand-in passes on a dead giver's work in their own words first.
+  standInLines(m, npc) {
+    const dead = m.giver;
+    if (this.giverOf(m) === dead) return [];
+    const name = this.giverName(dead).split(' ').pop();
+    return [`${name} meant to ask someone this. ${npc?.id === 'board' ? '' : "I'll see it done for them."}`.trim()];
   }
 
   // ------------------------------------------------------------------ what the player has
@@ -580,6 +600,12 @@ export class MissionSystem {
       s.stepT += step;
       const o = this.objective(id);
       if (!o) continue;
+      // A word for someone who has died (DESIGN §29): it can never be given; the step passes.
+      if (o.type === 'talk' && o.target && o.target !== 'lyra' && safe(() => this.game.murder?.knownDead?.(o.target), false)) {
+        this.toast(`${this.get(id).title}: ${this.giverName(o.target)} is dead. That word will never be given.`, 'info');
+        this.bump(id, objectiveGoal(o));
+        continue;
+      }
       this.maybeSpawn(id, o, s);
       if (o.limit && s.stepT > o.limit) {
         this.toast(`${this.get(id).title}: too slow. Run it again.`, 'warn');
@@ -888,10 +914,10 @@ export class MissionSystem {
       const o = this.objective(m.id);
       if (s.status === 'active' && o?.type === 'talk' && o.target === id) out.push({ id: `mission:talk:${m.id}`, label: `About ${m.title}…` });
     }
-    const offer = this.available().find((m) => m.giver === id);
+    const offer = this.available().find((m) => this.giverOf(m) === id);
     if (offer) out.push({ id: `mission:offer:${offer.id}`, label: 'Need a hand?' });
     if (!out.length) {
-      const mine = this.active().find((m) => m.giver === id && this.state[m.id].status === 'active');
+      const mine = this.active().find((m) => this.giverOf(m) === id && this.state[m.id].status === 'active');
       if (mine) out.push({ id: `mission:progress:${mine.id}`, label: `About ${mine.title}…` });
     }
     return out;
@@ -906,7 +932,7 @@ export class MissionSystem {
       if (this.state[mid]) return { lines: m.progress?.slice(0, 1) || ['…'], options: null };
       this.emit('mission_offered', { id: mid, mission: m, by: npc?.id });
       return {
-        lines: [...(m.offer || [m.summary])],
+        lines: [...this.standInLines(m, npc), ...(m.offer || [m.summary])],
         options: [
           { id: `mission:accept:${mid}`, label: "I'll do it" },
           { id: `mission:decline:${mid}`, label: 'Not now' },
@@ -1013,12 +1039,13 @@ export class MissionSystem {
     }
     let board = false;
     for (const m of this.available()) {
-      if (m.giver === 'board') {
+      const giver = this.giverOf(m);
+      if (giver === 'board') {
         board = true;
         continue;
       }
-      if (m.giver === 'lyra') continue;
-      const e = g.entities?.get?.(m.giver);
+      if (giver === 'lyra') continue;
+      const e = g.entities?.get?.(giver);
       if (e && !e.removed && !seen.has(e.id)) {
         seen.add(e.id);
         out.push({ kind: 'offer', id: m.id, entity: e, x: e.x, y: e.y });
@@ -1040,13 +1067,14 @@ export class MissionSystem {
     if (boss) return `${capFirst(BOSS_NAMES[boss])} carries it, in ${BOSS_PLACES[boss]}.`;
     const m = this.missions.find((x) => (x.rewards || []).some((r) => r.magic?.kind === kind && r.magic?.id === id));
     if (!m) return kind === 'shape' && id === 'bolt' ? 'You woke with it.' : '';
-    const who = this.giverName(m.giver);
+    const giver = this.giverOf(m);
+    const who = this.giverName(giver);
     const st = this.status(m.id);
     if (st === 'done') return `From ${who}: "${m.title}".`;
     if (st === 'active' || st === 'ready') return `${m.title}: ${this.objectiveText(m.id)}.`;
-    if (st === 'available') return m.giver === 'board' ? `On the notice board: "${m.title}".` : `${who} ${this.giverWhere(m.giver)} has work for you: "${m.title}".`;
+    if (st === 'available') return giver === 'board' ? `On the notice board: "${m.title}".` : `${who} ${this.giverWhere(giver)} has work for you: "${m.title}".`;
     const why = this.missing(m)[0];
-    return m.giver === 'board' ? `A notice will go up on the board${why ? `, ${why}` : ''}.` : `${who} ${this.giverWhere(m.giver)} may have work for you${why ? `, ${why}` : ' later'}.`;
+    return giver === 'board' ? `A notice will go up on the board${why ? `, ${why}` : ''}.` : `${who} ${this.giverWhere(giver)} may have work for you${why ? `, ${why}` : ' later'}.`;
   }
 
   // Rewards in words: [{ kind: 'magic'|'slot'|'coins'|..., text }]
@@ -1073,8 +1101,8 @@ export class MissionSystem {
         id: m.id,
         title: m.title,
         summary: m.summary,
-        giver: m.giver,
-        giverName: this.giverName(m.giver),
+        giver: this.giverOf(m),
+        giverName: this.giverName(this.giverOf(m)),
         status: this.status(m.id),
         tracked: this.tracked === m.id,
         lyra: s?.lyra || null,
@@ -1090,7 +1118,7 @@ export class MissionSystem {
         rewards: this.rewardWords(m),
         board: m.board || '',
         hint: m.hint || '',
-        canAccept: !s && (m.giver === 'lyra' || m.giver === 'board') && !this.missing(m).length,
+        canAccept: !s && (m.giver === 'lyra' || this.giverOf(m) === 'board') && !this.missing(m).length,
         turnTo: this.turnInTo(m) ? this.giverName(this.turnInTo(m)) : '',
       };
     };
@@ -1104,8 +1132,8 @@ export class MissionSystem {
       .map((m) => ({ ...card(m), why: this.missing(m)[0] || '' }));
     return {
       active,
-      available: avail.filter((m) => m.giver !== 'board').map(card),
-      board: avail.filter((m) => m.giver === 'board').map(card),
+      available: avail.filter((m) => this.giverOf(m) !== 'board').map(card),
+      board: avail.filter((m) => this.giverOf(m) === 'board').map(card),
       upcoming,
       completed: this.missions.filter((m) => this.state[m.id]?.status === 'done').map(card),
       story: this.storyCard(),

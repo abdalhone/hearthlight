@@ -315,7 +315,11 @@ export class Perception {
       return;
     }
     if (this.isPlayer(source)) {
-      if (isVillagerLike(target) && !this.provoked(target)) this.playerHurtVillager(target, 'assault');
+      if (isVillagerLike(target) && !this.provoked(target)) {
+        // Only what she could see (DESIGN §29).
+        if (this.game?.murder && !this.game.murder.saw('lyra', target)) return;
+        this.playerHurtVillager(target, 'assault');
+      }
       else if (this.isCrueltyTarget(target) && !this.provoked(target)) this.cruelty(target, false);
       else this.touchEncounter(target);
       return;
@@ -619,7 +623,7 @@ export class Perception {
         gist: `watching ${this.P} fall`,
       });
       m.addThought('No. No, no, no. Not again.', 'perception', { show: true });
-    } else if (entity && this.isPlayer(by) && isVillagerLike(entity)) {
+    } else if (entity && this.isPlayer(by) && isVillagerLike(entity) && (!this.game?.murder || this.game.murder.saw('lyra', entity))) {
       this.playerHurtVillager(entity, 'knockout');
     }
   }
@@ -923,6 +927,8 @@ export class Perception {
 
   onCrime({ actor, victim, kind }) {
     if (!this.isPlayer(actor) || !victim) return;
+    // A killing she weighs through game.murder (src/murder/lyra.js).
+    if (kind === 'murder' || kind === 'outside') return;
     this.playerHurtVillager(victim, kind === 'knockout' ? 'knockout' : 'assault');
   }
 

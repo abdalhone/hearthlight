@@ -281,6 +281,15 @@ export class NPC extends Actor {
         console.warn('[npc] village life entry failed', err);
       }
     }
+    // A funeral, the Moot, mourning, the watch looking for someone (DESIGN §29).
+    if (g.murder?.entryFor) {
+      try {
+        const o = g.murder.entryFor(this, e, hour);
+        if (o) e = o;
+      } catch (err) {
+        console.warn('[npc] murder entry failed', err);
+      }
+    }
     return e;
   }
 
@@ -1998,11 +2007,27 @@ export class NPC extends Actor {
   }
 
   getDialogue(player) {
-    return this.withLifeOptions(D.getDialogue(this, player));
+    let d = D.getDialogue(this, player);
+    try {
+      d = this.game.murder?.decorateDialogue?.(this, d) || d;
+    } catch {
+      /* grief is optional */
+    }
+    return this.withLifeOptions(d);
   }
 
   chooseOption(id, player) {
     const key = String(id || '');
+    // A death in the village (DESIGN §29): giving yourself up, the watch's questions.
+    if (key.startsWith('murder:')) {
+      let r = null;
+      try {
+        r = this.game.murder?.dialogOption?.(this, key) || null;
+      } catch (err) {
+        console.warn('[npc] murder option failed', err);
+      }
+      if (r) return r;
+    }
     // Their day (DESIGN §28): "What's wrong?", "Have you seen Garrick?", answering their question.
     if (key.startsWith('life:')) {
       let r = null;
@@ -2027,6 +2052,11 @@ export class NPC extends Actor {
     } catch {
       extra = [];
     }
+    try {
+      extra = [...(this.game.murder?.dialogOptions?.(this) || []), ...extra];
+    } catch {
+      /* optional */
+    }
     if (!extra.length) return d;
     const ids = new Set(d.options.map((o) => o.id));
     return { ...d, options: [...extra.filter((o) => !ids.has(o.id)), ...d.options] };
@@ -2044,11 +2074,14 @@ export class NPC extends Actor {
 
   canInteract(actor) {
     if (this.carriedBy) return false;
+    // The dead lie where they fell (DESIGN §29): a body can be knelt by or lifted.
+    if (this.dead) return !!this.game.murder?.bodyCanInteract?.(this, actor);
     return !!actor && actor === this.game.player && !this.dead && !this.removed && !this.absent;
   }
 
   interactLabel() {
     const n = this.shortName;
+    if (this.dead) return this.game.murder?.bodyLabel?.(this, this.game.player) || '';
     if (this.downed) return this.game.survival?.downedLabel?.(this, this.game.player) || `Help ${n} up`;
     if (this.state === 'sleep') return `Wake ${n}`;
     return `Talk to ${n}`;
@@ -2056,6 +2089,10 @@ export class NPC extends Actor {
 
   interact(actor) {
     const g = this.game;
+    if (this.dead) {
+      g.murder?.bodyInteract?.(this, actor);
+      return;
+    }
     if (this.downed) {
       // A potion, or carry them to Mira's (§27); the old hand up without game.survival.
       if (g.survival) {

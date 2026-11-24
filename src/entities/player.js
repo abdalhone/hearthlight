@@ -416,6 +416,8 @@ export class Player extends Actor {
   // else swing at the air (which still hits anything that wanders into the arc).
   attack() {
     if (!this.isAlive()) return false;
+    // Over someone lying down, the sword is a held, deliberate blow (DESIGN §29).
+    if (this.game.murder?.onAttackPress?.(this)) return true;
     const reach = COMBO[this.combo].range + 10;
     const foe = this._findFoe(reach, true);
     if (!foe) {

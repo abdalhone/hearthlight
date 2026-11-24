@@ -602,6 +602,12 @@ export const LINES = {
     afraid: ['Get away from me. Get away from all of us.'],
     tired: ['We’re finished. Stay away.'],
   },
+  to_gone_murder: {
+    warm: ['You killed {target}. You— get away from me. Don’t ever speak to me again.'],
+    cool: ['{target} is dead because of you. We are finished. Forever.'],
+    afraid: ['Get away from me! Get AWAY! Somebody— ROWAN!'],
+    tired: ['You killed {target}. I have nothing else to say to you. Ever.'],
+  },
   to_gone_violence: {
     warm: ['I warned you. More than once. We’re finished.'],
     cool: ['I warned you. That’s the last thing I’ll say to you.'],

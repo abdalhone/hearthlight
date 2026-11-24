@@ -225,7 +225,7 @@ function revise(out, v) {
 // or her room at the Kettle when there is no chandlery). `doing` is what the HUD shows.
 function gonePlan(v) {
   const home = v.home?.at || 'ember_kettle';
-  const parents = home === 'chandlery';
+  const parents = home === 'chandlery' && (v.parents ?? 2) > 0;
   const out = [];
   out.push(makeBlock(7, 8, 'eat', home, parents ? 'Breakfast at Mam’s table.' : 'Porridge, early, before anyone’s about.', { activity: parents ? 'breakfast with Mam and Da' : 'breakfast at the Kettle', doing: parents ? 'having breakfast with her parents' : 'having breakfast' }));
   if ((v.purse ?? 0) < 25) {

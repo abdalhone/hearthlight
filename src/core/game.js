@@ -50,6 +50,8 @@ import { missionsPlugin, ensureMissions } from '../missions/plugin.js';
 import { BossManager } from '../bosses/manager.js';
 import { Survival } from '../survival/survival.js';
 import { installDeathView } from '../ui/death_view.js';
+import { Murder } from '../murder/murder.js';
+import { MurderView } from '../ui/murder_view.js';
 
 export const SAVE_VERSION = 1;
 
@@ -196,6 +198,15 @@ export class Game {
       console.error('[world] village life failed to start', err);
       this.villageLife = null;
     }
+    // Killing, witnesses, bodies and what the village can know (DESIGN §29).
+    try {
+      this.murder = new Murder(this);
+      this.murder.view = new MurderView(this);
+      this.entities.add(this.murder.layer);
+    } catch (err) {
+      console.error('[world] murder failed to start', err);
+      this.murder = null;
+    }
     this.camera.follow(this.player);
     this.camera.snap();
   }
@@ -305,6 +316,7 @@ export class Game {
       this.bosses?.update(wdt);
       this.plugins.update(wdt);
       this.villageLife?.update(wdt);
+      this.murder?.update(wdt);
       this.brain.update(wdt);
       this.lighting.update(wdt);
       this.particles.update(wdt);
@@ -355,6 +367,7 @@ export class Game {
       survival: this.survival?.serialize?.() ?? null,
       progression: saveProgression(this),
       villageLife: this.villageLife?.serialize?.() ?? null,
+      murder: this.murder?.serialize?.() ?? null,
     };
   }
 
@@ -376,6 +389,11 @@ export class Game {
       this.villageLife?.deserialize?.(d.villageLife);
     } catch (err) {
       console.error('[game] village life could not be restored', err);
+    }
+    try {
+      this.murder?.deserialize?.(d.murder);
+    } catch (err) {
+      console.error('[game] the dead could not be restored', err);
     }
   }
 }
