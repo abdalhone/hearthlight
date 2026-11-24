@@ -216,7 +216,9 @@ const night_of_lamps = {
   ],
   lights(L, t) {
     const { lamps, u, cx, cy } = nolGeom(L);
-    const out = lamps.filter((l) => !l.burst).map((lp, i) => ({ x: lp.x, y: lp.y - 27 * u, r: 44 * u, color: '#a184ff', k: 0.75, flicker: true, depth: 1 }));
+    // Every lamp on the square flares at once as the panel opens, then settles.
+    const flare = Math.max(0, 1 - t / 1.6);
+    const out = lamps.filter((l) => !l.burst).map((lp) => ({ x: lp.x, y: lp.y - 27 * u, r: (44 + flare * 40) * u, color: '#a184ff', k: 0.75 + flare * 0.9, flicker: true, depth: 1 }));
     const b = lamps.find((l) => l.burst);
     out.push({ x: b.x, y: b.y - 26 * u, r: 30 * u, color: '#e8e0ff', k: 0.3 + 0.3 * Math.max(0, Math.sin(t * 3)), depth: 1 });
     out.push({ x: cx - 4 * u, y: cy - 12 * u, r: 36 * u, color: '#c9b8ff', k: 0.22, depth: 1 });
