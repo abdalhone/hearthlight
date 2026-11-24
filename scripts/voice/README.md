@@ -90,3 +90,30 @@ an espeak-ng phonemizer in WebAssembly), the int8 model in parts of 14 MB or les
 Lyra's style vectors only. The player turns it on in Settings ("Kokoro voice for
 everything she says — downloads about 90 MB once"); it is cached in Cache Storage. See
 `KOKORO_LIVE.md` for measurements and status.
+
+## In the game (`src/audio/voice.js`, `game.voice`)
+
+- Speech bubbles: every `speech` event on the bus is voiced when the line has a clip and
+  the speaker is on screen and within 12 tiles of the player (Lyra: 24). Thoughts never.
+- Cutscenes and dialogue call `game.voice.play({ speaker, text, key? })` (a promise that
+  resolves `{ ok, reason }` when the line ends, at once when there is no clip or voices
+  are off; it never rejects). A direct `play` is in the foreground: it ranks with
+  cutscenes, waits up to 10 s for its clip, and cuts in over Lyra and villagers. `key` may
+  be the caller's own id; the clip is found by speaker and text. `game.voice.preload(lines)`
+  fetches a scene's clips ahead; `game.voice.stop()` silences whoever speaks.
+- One voice at a time: cutscene > Lyra > villagers; a villager never talks over another;
+  Lyra's new line replaces her last; the same line asked twice within 2.5 s is said once.
+- A line made of several recorded lines (an acknowledgement, her reason, a remark) plays
+  those clips in a row. Lines with no clip go to the speaker group's fallback; Lyra's is
+  the live-voice chain in `src/ai/brain/voice.js`.
+- Music ducks to 40% under a voice and comes back slowly. Settings: Voices on/off,
+  volume, Lyra / Villagers / Narrator, and for her unrecorded lines: Claude's voice
+  (claude.ai desktop), the browser's voice, and live Kokoro (only when built).
+
+## Sizing a render before a merge
+
+`node scripts/voice/collect.mjs --root ../other-checkout --out /tmp/lines.json` reads
+another checkout's game data. With the villagers' and the story's lines merged, expect
+about 3,750 lines, 230 minutes of speech, about 85 MB at 48 kbps (about 340 packs: two
+publishes), and about an hour of rendering with two jobs. `--kbps 40` (or 32) trims the
+size by a sixth (or a third) if that matters more than the last bit of clarity.

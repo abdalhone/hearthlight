@@ -38,8 +38,9 @@ def fingerprint(spec: dict) -> str:
 KBPS = 48
 
 
-def _init(threads: int, cast: dict) -> None:
-    global _synth, _cast
+def _init(threads: int, cast: dict, kbps: int = 48) -> None:
+    global _synth, _cast, KBPS
+    KBPS = kbps
     os.environ.setdefault("OMP_NUM_THREADS", str(threads))
     _synth = vl.Synth(threads)
     _cast = cast
@@ -74,7 +75,10 @@ def main() -> int:
     ap.add_argument("--force", action="store_true", help="re-render even when up to date")
     ap.add_argument("--prune", action="store_true", help="delete clips whose line is gone")
     ap.add_argument("--budget-mb", type=float, default=90.0, help="warn when the clips exceed this")
+    ap.add_argument("--kbps", type=int, default=48, help="MP3 bitrate (MPEG-2 Layer III at 24 kHz: 32-64 is sensible for speech)")
     args = ap.parse_args()
+    global KBPS
+    KBPS = args.kbps
 
     cast = vl.load_cast()
     doc = load_json(Path(args.lines), None)
@@ -113,7 +117,7 @@ def main() -> int:
     if jobs:
         print(f"[render] {len(jobs)} clips to render with {args.jobs} x {args.threads} threads ...", flush=True)
         speaker_of = {j[0]: j[1] for j in jobs}
-        with mp.get_context("fork").Pool(args.jobs, initializer=_init, initargs=(args.threads, cast)) as pool:
+        with mp.get_context("fork").Pool(args.jobs, initializer=_init, initargs=(args.threads, cast, KBPS)) as pool:
             for i, (key, dur, size, err) in enumerate(pool.imap_unordered(_render_one, jobs, chunksize=2), 1):
                 if err:
                     errors.append((key, err))
