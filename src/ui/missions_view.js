@@ -450,10 +450,12 @@ function queueReveal(game, r) {
 
 // A reveal waits while a panel covers the game (the journal, the inventory, a scene);
 // over a villager's dialog it shows at once, since that is where the reward came from.
+// Nor while the player lies fallen: then the only card on screen is the fall's own.
 function covered(game) {
   const stack = game.ui?.stack || [];
   const top = stack[stack.length - 1];
   if (safe(() => game.story?.isPlaying?.(), false)) return true;
+  if (game.player?.downed || safe(() => game.survival?.isFallen?.(game.player), false)) return true;
   return !!top && !/dialog|sign/.test(String(top.id || ''));
 }
 

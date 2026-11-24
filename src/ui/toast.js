@@ -21,7 +21,9 @@ const PLACE_EVERY = 0.1;
 const ANSWER_WINDOW = 2500; // ms after a tap in a panel: a notice then is its answer
 
 // HUD pieces the stack must never cover (the chat is handled on its own).
-const HUD_SELECTOR = '.hud .card, .hud-btn, .lyra-fold, .quest-line, .listen-prompt, .interact-prompt, .cmdbar, .orders-btn, .tbtn, .jobs-menu, .fps';
+// Also the fallen screen (its Call for help is the one thing to tap then) and the move
+// stick (a notice over it took the thumb meant for walking or crawling).
+const HUD_SELECTOR = '.hud .card, .hud-btn, .lyra-fold, .quest-line, .listen-prompt, .interact-prompt, .cmdbar, .orders-btn, .tbtn, .jobs-menu, .fps, .sv-fallen, .stick-zone .stick';
 
 // Where an element's words actually are (a block heading is wider than its text).
 function textBox(el) {

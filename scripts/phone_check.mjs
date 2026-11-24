@@ -514,8 +514,14 @@ async function run([W, H]) {
       return r ? [r.left + r.width / 2, r.top + r.height / 2] : null;
     });
     if (chatOpt) {
+      const xAt = () => page.evaluate(() => Math.round(document.querySelector('.modal-layer > .panel:last-child .panel-close').getBoundingClientRect().top));
+      const x0 = await xAt();
       await tap(...chatOpt);
-      await wait(1500);
+      await wait(700);
+      const x1 = await xAt();
+      await wait(800);
+      const x2 = await xAt();
+      check(Math.abs(x1 - x0) <= 2 && Math.abs(x2 - x0) <= 2, `${tag}: the dialog's ✕ stays put while they talk (${x0}, ${x1}, ${x2})`);
       const more = await page.evaluate(() => {
         const m = document.querySelector('.panel-dialog .dlg-more');
         return m && !m.hidden ? m.textContent : null;
@@ -803,6 +809,17 @@ async function run([W, H]) {
     check(fallen.inside, `${tag}: fallen: the heartbeat block is on screen`);
     check(fallen.fight === 0, `${tag}: fallen: the fight buttons are put away (${fallen.fight})`);
     check(!fallen.onStick, `${tag}: fallen: Call for help is clear of the move stick`);
+    // The village's news while you lie there keeps off Call for help and the stick.
+    await page.evaluate(() => window.__game.ui.toast('Captain is shouting for help, and the village is coming.', 'warn'));
+    await wait(700);
+    const clash = await page.evaluate(() => {
+      const hit = (a, s) => !!a && !!s && s.width > 0 && a.width > 0 && a.left < s.right && a.right > s.left && a.top < s.bottom && a.bottom > s.top;
+      const call = document.querySelector('.sv-call')?.getBoundingClientRect();
+      const stick = document.querySelector('.stick-zone .stick')?.getBoundingClientRect();
+      return [...document.querySelectorAll('.toast:not(.leaving)')].filter((t) => getComputedStyle(t).display !== 'none' && t.closest('.toasts')?.style.visibility !== 'hidden').map((t) => t.getBoundingClientRect()).filter((r) => hit(r, call) || hit(r, stick)).length;
+    });
+    await shot('17b-fallen-news');
+    check(clash === 0, `${tag}: fallen: a notice keeps off Call for help and the stick`);
   }
 
   check(!errors.length, `${tag}: no page errors (${errors.slice(0, 3).join(' | ')})`);

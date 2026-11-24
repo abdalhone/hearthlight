@@ -106,7 +106,7 @@ export const CONTROLS = [
   { id: 'talk', what: 'Chat with Lyra or anyone near', keys: 'T or Enter', pad: 'Y', touch: 'The Talk button above the sword, when nothing else is near' },
   { id: 'ask', what: 'Ask Lyra for help', keys: 'Alt + 1 – 5, or Ask in her Mind', pad: null, touch: 'Tap her portrait: the Ask row is at the top' },
   { id: 'mind', what: "Lyra's mind", keys: 'Tab or M, or a click on her portrait', pad: 'Back', touch: 'Tap her portrait' },
-  { id: 'inventory', what: 'Inventory', keys: 'I', pad: 'LB', touch: 'Menu → Bag' },
+  { id: 'inventory', what: 'Bag', keys: 'I', pad: 'LB', touch: 'Menu → Bag' },
   { id: 'help', what: 'Call for help when you fall', keys: 'E or H', pad: 'X', touch: 'The Call for help button' },
   { id: 'menu', what: 'Menu (pause)', keys: 'Esc', pad: 'Start', touch: 'The Menu button, top right' },
   { id: 'close', what: 'Close a panel', keys: 'Esc, the ✕, or a click beside it', pad: 'B', touch: 'The ✕, a tap beside it, or your phone’s back gesture' },

@@ -56,7 +56,7 @@ export class InventoryPanel {
 
   open() {
     if (this.isOpen()) return;
-    const panel = makePanel({ id: 'inventory', title: 'Inventory', subtitle: 'What you carry, and what Lyra carries', iconName: 'bag', cls: 'panel-wide' });
+    const panel = makePanel({ id: 'inventory', title: 'Bag', subtitle: 'What you carry, and what Lyra carries', iconName: 'bag', cls: 'panel-wide' });
     this.panel = panel;
     panel.onClose = () => (this.panel = null);
     this.mine = h('div', { class: 'item-grid' });

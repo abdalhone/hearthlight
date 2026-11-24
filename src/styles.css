@@ -8083,6 +8083,17 @@ input[type='range']::-moz-range-thumb {
   width: min(420px, calc(100% - 24px)) !important;
   z-index: 5;
 }
+/* ...and lets taps through to the panel under it (the "Say something" field, "Done
+   trading", Done): it is only the answer to what was just tapped, and goes by itself. */
+.hud-small.modal-open .toast {
+  pointer-events: none;
+}
+/* The send buttons beside the chat's and a villager's field: finger-sized, like ✕. */
+.is-touch .chat-send,
+.is-touch .dlg-send {
+  min-width: 44px;
+  min-height: 44px;
+}
 .hud-small.modal-open .toast {
   box-shadow:
     0 -2px 0 0 var(--bc),
@@ -8817,6 +8828,20 @@ input[type='range']::-moz-range-thumb {
     min-width: 48px;
   }
 }
+/* Sideways on a short phone (844×340 in the claude.ai app) two rows of quick replies
+   left her words a strip 84 px tall: one row that slides, fading at the edge where
+   there are more. */
+@media (max-height: 420px) and (min-width: 600px) {
+  .chat-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-height: none;
+    padding-right: 28px;
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
+  }
+}
 /* Sideways, typing (the keyboard takes most of the height): only the last words and
    the field — no header, no "To" row, no quick replies. */
 @media (max-height: 520px) {
@@ -8837,6 +8862,78 @@ input[type='range']::-moz-range-thumb {
 }
 .dlg-opt {
   min-height: 44px;
+}
+/* On a phone a villager's dialog keeps one height for the whole talk, so its ✕ stays
+   where the thumb last saw it: it grew and shrank with every line and every set of
+   choices (its ✕ jumped about 100 px as the words typed, and a tap meant for it could
+   land on the words). Upright the choices sit at the bottom, near the thumb; sideways
+   the dialog takes the full height (the words left, the choices right). Typing (the
+   keyboard up) lets it shrink to what is left. */
+@media (max-width: 640px) and (min-height: 521px) {
+  .panel-dialog {
+    height: min(500px, 82%);
+    max-height: none;
+  }
+  .panel-dialog .panel-body {
+    display: flex;
+    flex-direction: column;
+  }
+  .panel-dialog .dlg {
+    flex: 1 0 auto;
+    align-items: stretch;
+  }
+  .panel-dialog .dlg-portrait {
+    align-self: flex-start;
+  }
+  .panel-dialog .dlg-extra:not(:empty),
+  .panel-dialog .dlg-extra:empty + .dlg-options {
+    margin-top: auto;
+  }
+  /* Trading: the wares scroll on their own; "Done trading" stays in view under them
+     (with a long list it was below the fold). */
+  .panel-dialog:has(.dlg-extra > .shop) {
+    height: min(580px, 94%);
+  }
+  .panel-dialog:has(.dlg-extra > .shop) .panel-body {
+    overflow: hidden;
+  }
+  .panel-dialog:has(.dlg-extra > .shop) .dlg {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+  .panel-dialog .dlg-main {
+    min-height: 0;
+  }
+  .panel-dialog .dlg-extra:has(> .shop) {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .panel-dialog .dlg-extra > .shop {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .panel-dialog .dlg-extra > .shop > .shop-panes {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .panel-dialog .dlg-extra > .shop > .btn {
+    flex: none;
+  }
+}
+@media (max-height: 520px) and (min-width: 600px) {
+  .panel-dialog {
+    height: 100%;
+  }
+}
+.kb-open .panel-dialog {
+  height: auto;
 }
 /* Sideways: their words on the left (they stay put), the choices on the right (they
    scroll on their own if there are many), the "Say something" field below both. */

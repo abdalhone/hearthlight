@@ -780,7 +780,8 @@ export class MissionSystem {
     const g = this.game;
     const l = g.companion;
     const pl = g.player;
-    if (!l || !pl || l.downed || l.removed) return;
+    // Nor while the player lies fallen: no lessons or offers over the fall.
+    if (!l || !pl || l.downed || l.removed || pl.downed) return;
     const cs = this.lyraWith();
     if (cs === 'left' || cs === 'gone') {
       this.pending.length = 0;

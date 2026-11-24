@@ -30,7 +30,8 @@ const MINI_KEY = 'hearthlight.hud.lyraMini';
 // A phone held sideways (or any short window): the HUD becomes one thin top strip.
 const STRIP_QUERY = '(max-height: 520px)';
 // HUD pieces speech bubbles must not hide behind (see Bubbles.setKeepOut).
-const KEEP_OUT_SELECTOR = '.hud .card, .hud-btn, .lyra-fold, .quest-line, .listen-prompt, .interact-prompt, .cmdbar, .orders-btn, .tbtn, .wbtn, .hotbar';
+// Also the fallen screen's words and Call for help (a bubble over them read as one).
+const KEEP_OUT_SELECTOR = '.hud .card, .hud-btn, .lyra-fold, .quest-line, .listen-prompt, .interact-prompt, .cmdbar, .orders-btn, .tbtn, .wbtn, .hotbar, .sv-fallen';
 const KEEP_OUT_EVERY = 0.25;
 
 function readMiniPref() {
