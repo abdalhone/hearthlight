@@ -137,7 +137,7 @@ test('controls: written once, for every device; How to play starts with them', (
   const keys = Object.fromEntries(controlsFor('keys'));
   assert.match(keys['Menu (pause)'], /Esc/);
   assert.match(keys.Spellbook, /\bB\b/);
-  assert.match(keys.Inventory, /\bI\b/);
+  assert.match(keys.Bag, /\bI\b/); // the bag ("Bag" in the menu and its panel)
   assert.match(keys["Lyra's mind"], /Tab or M/);
   assert.equal(HOW_TO_PLAY[0].id, 'controls');
   assert.ok(HOW_TO_PLAY[0].controls);
