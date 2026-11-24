@@ -192,7 +192,7 @@ export function feelingsAnswer(ctx) {
     case 'content':
     case 'lively':
     case 'at ease':
-      parts.push(pick(['Pretty good, actually.', "Content. Calm water, as we'd say at home."], ctx.game?.rng));
+      parts.push(pick(['Pretty good, actually.', "Content. Flame's lit, as Da says."], ctx.game?.rng));
       break;
     case 'curious':
     case 'fascinated':

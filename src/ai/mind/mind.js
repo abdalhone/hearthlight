@@ -744,7 +744,7 @@ export class Mind {
     );
     const stage = this.questStage();
     parts.push(stage.index >= 6 ? 'Maren went north. So will we.' : stage.index >= 3 ? 'The ruins are waiting. So is she, I hope.' : 'Still no sign of Maren. Tomorrow.');
-    parts.push(pick(['Calm water, little lamp. Sleep.', 'The stars are out. I named six before I gave up.', 'Bed. Now. Before I start rereading her letter again.'], this.game?.rng));
+    parts.push(pick(['Keep your own wick, little lamp. Sleep.', 'The stars are out. I named six before I gave up.', 'Bed. Now. Before I start rereading her star charts again.'], this.game?.rng));
     return parts.join(' ');
   }
 

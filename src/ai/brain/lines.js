@@ -269,11 +269,11 @@ export const LINES = {
     { t: 'Hearthvale. Somebody is baking. Somebody always is.', trait: 'playful' },
     { t: 'Hearthvale. Warm lamps, warmer people.', mood: ['happy', 'calm'] },
     "Back in town. Smell that? Elda's bread.",
-    'Home, more or less.',
+    'Home. Every chimney going, every lamp I know by name.',
   ],
   place_home: [
-    { t: 'Our little cottage. It creaks like a ship. I like that.', trait: 'bookish' },
-    'Home sweet cottage.',
+    { t: "The Wayhouse. It creaks like old Jory's still pacing it. I like that.", trait: 'bookish' },
+    'The Wayhouse. Your roof, my key.',
     { t: "Boots off. I mean it. You'll track mud everywhere.", trait: 'playful' },
     'It\'s good to be inside four walls for a bit.',
   ],
@@ -285,7 +285,7 @@ export const LINES = {
   ],
   place_chapel: [
     'Hush. Even the dust settles quietly in here.',
-    { t: 'I light a candle for Maren every time. Silly, maybe.', minBond: 1 },
+    { t: "Thirty-eight flames on the altar. Ours burns Da's beeswax. So do all the others.", minBond: 1 },
     'The chapel. Let\'s keep our voices down.',
     { t: "Sister Aveline's candles... they never seem to burn down.", trait: 'bookish' },
   ],
