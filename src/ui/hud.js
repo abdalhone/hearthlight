@@ -2,10 +2,11 @@
 // the interact prompt, the command bar (with Jobs menu) and its radial form on small
 // screens. DOM writes happen only when a shown value changes.
 
-import { h, icon, setIcon, setText, toggleClass, meter, button, setAttr } from './dom.js';
-import { COMMANDS, JOBS, DELIVER_OPTIONS } from './content.js';
+import { h, icon, setIcon, setText, setStyle, toggleClass, meter, button, setAttr } from './dom.js';
+import { COMMANDS, JOBS, DELIVER_OPTIONS, REJOIN } from './content.js';
 import { hpText, frac, fmtInt, lyraStatusLine, weatherIconKey, weatherLabel, moodEmoji, moodToExpression, stanceLabel } from './format.js';
 import { portraitUrl } from './art.js';
+import { companionshipOf, companionshipLabel, companionshipTone, barMode, playerRelation, trustWords, fearWords, farewellText } from './lyra_view.js';
 
 const STANCE_ICON = { attack: 'sword', defend: 'shield', passive: 'feather' };
 
@@ -19,6 +20,10 @@ export class Hud {
     this.jobsOpen = false;
     this.radialOpen = false;
     this.lastExpr = '';
+    this.cs = ''; // companionship state last drawn
+    this.mode = ''; // bar mode last applied: full | collapsed | hidden
+    this.farewell = '';
+    this.refusedT = 0;
     this.el = this.build();
   }
 
@@ -38,7 +43,7 @@ export class Hud {
       this.pXp.el,
     );
 
-    // Lyra card (tap -> her mind)
+    // Lyra card (tap -> her mind): who she is to you right now, not a unit frame.
     this.lPortrait = h('img', { class: 'portrait portrait-hud', alt: '', draggable: 'false' });
     this.lName = h('span', { class: 'card-name' });
     this.lMood = h('span', { class: 'mood-emoji', role: 'img' });
@@ -46,13 +51,21 @@ export class Hud {
     this.lStance = h('span', { class: 'stance-badge' }, this.lStanceIcon, h('span', { class: 'stance-text' }));
     this.lHp = meter('meter-lyra', `Lyra's health`);
     this.lStatus = h('div', { class: 'lyra-status' });
+    this.csChip = h('span', { class: 'cs-chip', 'data-tone': 'good' });
+    this.trustFill = h('i', { class: 'mini-fill' });
+    this.fearFill = h('i', { class: 'mini-fill' });
+    this.trustMini = h('span', { class: 'mini mini-trust' }, h('span', { class: 'mini-label', text: 'Trust' }), h('span', { class: 'mini-track' }, this.trustFill));
+    this.fearMini = h('span', { class: 'mini mini-fear' }, h('span', { class: 'mini-label', text: 'Fear' }), h('span', { class: 'mini-track' }, this.fearFill));
+    this.relRow = h('span', { class: 'rel-row' }, this.csChip, this.trustMini, this.fearMini);
+    this.farewellEl = h('span', { class: 'farewell', hidden: true });
+    this.lyraLive = h('span', { class: 'lyra-live' }, this.lHp.el, this.lStatus);
     this.lyraCard = h(
       'button',
       { type: 'button', class: 'card lyra-card', title: "Open Lyra's mind (Tab)" },
       h('span', { class: 'portrait-frame' }, this.lPortrait),
-      h('span', { class: 'lyra-info' }, h('span', { class: 'card-row' }, this.lName, this.lMood, this.lStance), this.lHp.el, this.lStatus),
+      h('span', { class: 'lyra-info' }, h('span', { class: 'card-row' }, this.lName, this.lMood, this.lStance), this.lyraLive, this.relRow, this.farewellEl),
     );
-    this.lyraCard.addEventListener('click', () => this.ui.openMind('now'));
+    this.lyraCard.addEventListener('click', () => this.ui.openMind(this.cs && this.cs !== 'together' ? 'you' : 'now'));
 
     // Place, clock and weather
     this.place = h('div', { class: 'place-name' });
@@ -81,53 +94,51 @@ export class Hud {
     this.prompt = h('button', { type: 'button', class: 'interact-prompt', hidden: true }, this.promptKey, this.promptText);
     this.prompt.addEventListener('click', () => g.input?.press('interact'));
 
-    // Command bar
+    // The "Ask Lyra" bar: every button is a request she weighs and answers (§16.4).
     this.cmdButtons = {};
-    const cmdbar = h('nav', { class: 'cmdbar', 'aria-label': 'Orders for Lyra' });
+    this.barTitle = h('span', { class: 'cmdbar-title', text: 'Ask Lyra' });
+    this.cmdbar = h('nav', { class: 'cmdbar', 'aria-label': 'Ask Lyra' }, this.barTitle);
     for (const c of COMMANDS) {
       const b = button(c.label, { icon: c.icon, cls: `cmd cmd-${c.id}`, key: c.key, title: c.hint, onClick: () => this.ui.runCommand(c.id) });
       this.cmdButtons[c.id] = b;
-      cmdbar.append(b);
+      this.cmdbar.append(b);
     }
-    this.jobsBtn = button('Jobs', { icon: 'axe', cls: 'cmd cmd-jobs', title: 'Give Lyra a job', onClick: (e) => this.toggleJobs(e) });
+    this.jobsBtn = button('Jobs', { icon: 'axe', cls: 'cmd cmd-jobs', title: 'Ask her to take on a job', onClick: (e) => this.toggleJobs(e) });
     this.jobsBtn.append(h('span', { class: 'caret', text: '▾' }));
-    const talkBtn = button('Talk', { icon: 'talk', cls: 'cmd cmd-talk', key: 'T', title: 'Talk to Lyra', onClick: () => this.ui.chat.open(true) });
-    cmdbar.append(this.jobsBtn, talkBtn);
+    this.rejoinBtn = button(REJOIN.label, { icon: REJOIN.icon, cls: 'cmd cmd-rejoin', title: REJOIN.hint, onClick: () => this.ui.askBack() });
+    this.rejoinBtn.hidden = true;
+    const talkBtn = button('Talk', { icon: 'talk', cls: 'cmd cmd-talk', key: 'T', title: 'Talk with Lyra', onClick: () => this.ui.chat.open(true) });
+    this.cmdbar.append(this.jobsBtn, this.rejoinBtn, talkBtn);
 
     this.jobsMenu = this.buildJobsMenu();
 
-    // Radial orders (small screens)
-    this.ordersBtn = button('', { icon: 'spark', cls: 'orders-btn', title: 'Orders for Lyra', onClick: () => this.toggleRadial() });
+    // Radial requests (small screens). Which items show depends on the bar mode.
+    this.ordersBtn = button('', { icon: 'spark', cls: 'orders-btn', title: 'Ask Lyra', onClick: () => this.toggleRadial() });
     this.radial = h('div', { class: 'radial', 'aria-hidden': 'true' });
-    const radialItems = [...COMMANDS.map((c) => ({ id: c.id, label: c.label, icon: c.icon })), { id: 'jobs', label: 'Jobs', icon: 'axe' }, { id: 'talk', label: 'Talk', icon: 'talk' }];
-    // Angles come from CSS (--i): the arc is tuned per screen size there.
-    radialItems.forEach((it, i) => {
+    this.radialItems = [...COMMANDS.map((c) => ({ id: c.id, label: c.label, icon: c.icon })), { id: 'jobs', label: 'Jobs', icon: 'axe' }, { id: REJOIN.id, label: REJOIN.label, icon: REJOIN.icon }, { id: 'talk', label: 'Talk', icon: 'talk' }];
+    for (const it of this.radialItems) {
       const b = button(it.label, { icon: it.icon, cls: `radial-item radial-${it.id}` });
-      b.style.setProperty('--i', String(i));
       b.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (it.id === 'jobs') {
-          this.closeRadial();
-          this.openJobs(true);
-        } else if (it.id === 'talk') {
-          this.closeRadial();
-          this.ui.chat.open(true);
-        } else {
-          this.ui.runCommand(it.id);
-          this.closeRadial();
-        }
+        this.closeRadial();
+        if (it.id === 'jobs') this.openJobs(true);
+        else if (it.id === 'talk') this.ui.chat.open(true);
+        else if (it.id === REJOIN.id) this.ui.askBack();
+        else this.ui.runCommand(it.id);
       });
+      it.el = b;
       this.cmdButtons[`r_${it.id}`] = b;
       this.radial.append(b);
-    });
-    const ordersWrap = h('div', { class: 'orders' }, this.radial, this.ordersBtn);
+    }
+    this.ordersWrap = h('div', { class: 'orders' }, this.radial, this.ordersBtn);
+    this.layoutRadial('full');
 
     this.fps = h('div', { class: 'fps num', hidden: true });
 
     const top = h('div', { class: 'hud-top' }, h('div', { class: 'hud-cards' }, playerCard, this.lyraCard), h('div', { class: 'hud-right' }, placeCard, corner));
     const center = h('div', { class: 'hud-center' }, this.questLine);
-    const bottom = h('div', { class: 'hud-bottom' }, this.prompt, cmdbar);
-    return h('div', { class: 'hud', hidden: true }, top, center, bottom, ordersWrap, this.jobsMenu, this.fps);
+    const bottom = h('div', { class: 'hud-bottom' }, this.prompt, this.cmdbar);
+    return h('div', { class: 'hud', hidden: true }, top, center, bottom, this.ordersWrap, this.jobsMenu, this.fps);
   }
 
   buildJobsMenu() {
@@ -156,11 +167,11 @@ export class Hud {
       });
       list.append(b);
     }
-    const stop = button('Stop current job', { cls: 'btn-ghost btn-small', onClick: () => {
+    const stop = button('Ask her to stop', { cls: 'btn-ghost btn-small', onClick: () => {
       this.ui.runStopJob();
       this.closeJobs();
     } });
-    const menu = h('div', { class: 'jobs-menu', hidden: true, role: 'menu' }, h('div', { class: 'jobs-head' }, h('span', { class: 'jobs-title', text: 'Jobs for Lyra' }), h('span', { class: 'jobs-deliver', text: 'Deliver:' }), seg), list, stop);
+    const menu = h('div', { class: 'jobs-menu', hidden: true, role: 'menu' }, h('div', { class: 'jobs-head' }, h('span', { class: 'jobs-title', text: 'Ask Lyra to take on a job' }), h('span', { class: 'jobs-deliver', text: 'Deliver:' }), seg), list, stop);
     menu.addEventListener('pointerdown', (e) => e.stopPropagation());
     return menu;
   }
@@ -197,6 +208,92 @@ export class Hud {
   closeRadial() {
     if (!this.radialOpen) return;
     this.toggleRadial();
+  }
+
+  // Show the radial items that fit the bar mode and spread them evenly on the arc.
+  layoutRadial(mode) {
+    const show = mode === 'collapsed' ? new Set([REJOIN.id, 'talk']) : new Set(this.radialItems.map((it) => it.id).filter((id) => id !== REJOIN.id));
+    let i = 0;
+    const n = this.radialItems.filter((it) => show.has(it.id)).length;
+    for (const it of this.radialItems) {
+      const on = show.has(it.id);
+      it.el.hidden = !on;
+      if (on) {
+        it.el.style.setProperty('--i', String(i));
+        it.el.style.setProperty('--n', String(n));
+        i++;
+      }
+    }
+  }
+
+  // full: every request · collapsed: only Talk and "Ask her back" · hidden: she is gone.
+  applyMode(mode) {
+    if (mode === this.mode) return;
+    this.mode = mode;
+    const full = mode === 'full';
+    for (const c of COMMANDS) this.cmdButtons[c.id].hidden = !full;
+    this.jobsBtn.hidden = !full;
+    this.rejoinBtn.hidden = mode !== 'collapsed';
+    this.cmdbar.hidden = mode === 'hidden';
+    this.ordersWrap.hidden = mode === 'hidden';
+    this.cmdbar.dataset.mode = mode;
+    if (!full) this.closeJobs();
+    this.closeRadial();
+    this.layoutRadial(mode);
+    this.ui.root.classList.toggle('lyra-gone', mode === 'hidden');
+  }
+
+  // Companionship chip, trust and fear, and what the bar offers. Cheap enough to run
+  // twice a second; `force` redraws at once after an event.
+  refreshCompanion(force = false) {
+    const g = this.game;
+    const c = g.companion;
+    const mind = c?.mind;
+    const state = companionshipOf(g);
+    const name = g.settings?.companionName || c?.name || 'Lyra';
+    if (state !== this.cs || force) {
+      const changed = state !== this.cs;
+      this.cs = state;
+      setText(this.csChip, companionshipLabel(state));
+      this.csChip.dataset.tone = companionshipTone(state);
+      this.lyraCard.dataset.cs = state;
+      this.cmdbar.dataset.cs = state;
+      setText(this.barTitle, state === 'together' ? `Ask ${name}` : state === 'wary' ? `Ask ${name} · she is wary` : companionshipLabel(state));
+      this.applyMode(barMode(state));
+      if (changed && state !== 'gone') this.farewell = '';
+    }
+    const gone = state === 'gone';
+    this.lyraLive.hidden = gone;
+    this.trustMini.hidden = gone;
+    this.fearMini.hidden = gone;
+    this.lStance.hidden = gone;
+    toggleClass(this.lyraCard, 'gone', gone);
+    if (gone) {
+      const words = farewellText(mind, g.flags) || this.farewell;
+      if (words) this.farewell = words;
+      setText(this.farewellEl, this.farewell ? `“${this.farewell}”` : `${name} walked away down the King's Road.`);
+      if (this.farewellEl.hidden) this.farewellEl.hidden = false;
+      return;
+    }
+    if (!this.farewellEl.hidden) this.farewellEl.hidden = true;
+    const rel = playerRelation(mind);
+    this.relRow.classList.toggle('no-rel', !rel);
+    if (rel) {
+      setStyle(this.trustFill, 'width', `${Math.round(rel.trust)}%`);
+      setStyle(this.fearFill, 'width', `${Math.round(rel.fear)}%`);
+      setAttr(this.trustMini, 'title', `Trust ${Math.round(rel.trust)}: she ${trustWords(rel.trust)}`);
+      setAttr(this.fearMini, 'title', `Fear ${Math.round(rel.fear)}: she ${fearWords(rel.fear)}`);
+      toggleClass(this.trustMini, 'low', rel.trust < 25);
+      toggleClass(this.fearMini, 'high', rel.fear > 35);
+    }
+  }
+
+  // A brief shake of her card when she turns a request down.
+  flashRefusal() {
+    this.lyraCard.classList.remove('refused');
+    void this.lyraCard.offsetWidth; // restart the animation
+    this.lyraCard.classList.add('refused');
+    this.refusedT = 0.9;
   }
 
   // Dismiss popovers on any outside tap.
@@ -269,13 +366,18 @@ export class Hud {
       } catch {
         status = '';
       }
-      setText(this.lStatus, lyraStatusLine(status, stance, c.downed));
-      // Mood and portrait change slowly; refresh twice a second.
-      if (this.slowTick >= 0.5) {
-        this.slowTick = 0;
-        this.refreshMood(c);
-      }
+      setText(this.lStatus, lyraStatusLine(status, stance, c.downed, true));
       this.refreshCommands(beh);
+    }
+    // Mood, portrait and how she stands with you change slowly; twice a second is plenty.
+    if (this.slowTick >= 0.5) {
+      this.slowTick = 0;
+      if (c) this.refreshMood(c);
+      this.refreshCompanion();
+    }
+    if (this.refusedT > 0) {
+      this.refusedT -= 0.1;
+      if (this.refusedT <= 0) this.lyraCard.classList.remove('refused');
     }
 
     const loc = this.safe(() => g.locations?.at(p.x, p.y));
@@ -305,7 +407,7 @@ export class Hud {
     setText(this.lMood, moodEmoji(mood));
     setAttr(this.lMood, 'title', mood?.label ? `Mood: ${mood.label}` : null);
     setAttr(this.lMood, 'aria-label', mood?.label ? `Mood: ${mood.label}` : 'Mood');
-    const expr = c.downed ? 'sad' : moodToExpression(mood, mind?.emotions, mind?.needs);
+    const expr = c.downed || this.cs === 'gone' || this.cs === 'left' ? 'sad' : moodToExpression(mood, mind?.emotions, mind?.needs);
     if (expr !== this.lastExpr) {
       const url = portraitUrl(this.game, 'lyra', expr);
       if (url) this.lPortrait.src = url;

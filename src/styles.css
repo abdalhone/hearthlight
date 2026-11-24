@@ -177,8 +177,9 @@ textarea {
 .layer-chat {
   z-index: 4;
 }
+/* Above panels: notices (and her answers) must stay readable while a panel is open. */
 .layer-toasts {
-  z-index: 5;
+  z-index: 8;
 }
 .layer-title {
   z-index: 6;
@@ -741,6 +742,137 @@ textarea {
   text-overflow: ellipsis;
 }
 
+.lyra-live {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Where she stands with you: a chip and two small bars under her status. */
+.rel-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.rel-row.no-rel .mini {
+  display: none;
+}
+.cs-chip {
+  --tone: var(--heal);
+  flex: none;
+  max-width: 100%;
+  padding: 1px 6px;
+  border: 0;
+  background: rgba(10, 9, 25, 0.7);
+  box-shadow: inset 0 0 0 1px var(--tone);
+  color: var(--tone);
+  font-family: var(--font-display);
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cs-chip[data-tone='warn'] {
+  --tone: var(--ember);
+}
+.cs-chip[data-tone='calm'] {
+  --tone: var(--sky);
+}
+.cs-chip[data-tone='bad'] {
+  --tone: var(--danger);
+}
+.cs-chip[data-tone='grave'] {
+  --tone: var(--parch-faint);
+}
+.mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.mini-label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  color: var(--parch-dim);
+  letter-spacing: 0.02em;
+}
+.mini-track {
+  position: relative;
+  flex: 1;
+  min-width: 18px;
+  height: 4px;
+  background: var(--ink-0);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+.mini-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  background: var(--heal);
+  transition: width 0.4s var(--ease);
+}
+.mini-fear .mini-fill {
+  background: var(--danger);
+}
+.mini-trust.low .mini-label {
+  color: var(--ember);
+}
+.mini-fear.high .mini-label {
+  color: var(--danger);
+}
+.farewell {
+  display: block;
+  font-size: var(--fs-xs);
+  font-style: italic;
+  line-height: 1.25;
+  color: var(--parch-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lyra-card[data-cs='wary'] {
+  --bc: var(--ember-deep);
+}
+.lyra-card[data-cs='apart'] {
+  --bc: #3d6f8a;
+}
+.lyra-card[data-cs='left'] {
+  --bc: var(--danger-deep);
+}
+.lyra-card.gone {
+  --bc: var(--line-soft);
+  background-color: rgba(14, 13, 30, 0.88);
+}
+.lyra-card.gone .portrait {
+  filter: grayscale(0.85) brightness(0.75);
+}
+.lyra-card.gone .card-name {
+  color: var(--parch-dim);
+}
+.lyra-card.refused {
+  animation: refuse-shake 0.42s steps(6) 1;
+}
+@keyframes refuse-shake {
+  20% {
+    transform: translateX(-3px);
+  }
+  40% {
+    transform: translateX(3px);
+  }
+  60% {
+    transform: translateX(-2px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+
 .hud-right {
   display: flex;
   flex-direction: column;
@@ -874,6 +1006,46 @@ textarea {
     0 2px 0 0 var(--line-dim),
     -2px 0 0 0 var(--line-dim),
     2px 0 0 0 var(--line-dim);
+}
+
+.cmdbar {
+  position: relative;
+}
+/* A tab on the bar's top edge: these are requests, and she may say no. */
+.cmdbar-title {
+  position: absolute;
+  left: 8px;
+  bottom: 100%;
+  margin-bottom: 2px;
+  padding: 2px 8px 1px;
+  background: rgba(13, 12, 34, 0.86);
+  box-shadow:
+    0 -2px 0 0 var(--line-dim),
+    -2px 0 0 0 var(--line-dim),
+    2px 0 0 0 var(--line-dim);
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--arcane-pale);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.cmdbar[data-cs='wary'] .cmdbar-title {
+  color: var(--ember);
+}
+.cmdbar[data-mode='collapsed'] .cmdbar-title {
+  color: var(--sky);
+}
+.cmdbar[data-cs='left'] .cmdbar-title {
+  color: var(--danger);
+}
+.cmd-rejoin {
+  --bc: var(--arcane-deep);
+  min-width: 112px;
+  color: var(--arcane-pale);
+}
+.cmd-rejoin:hover {
+  --bc: var(--arcane);
 }
 
 .cmd {
@@ -1131,7 +1303,7 @@ textarea {
   --bc: var(--arcane-deep);
   position: absolute;
   left: calc(var(--sa-l) + var(--edge));
-  top: calc(var(--sa-t) + 196px);
+  top: calc(var(--sa-t) + 214px);
   bottom: calc(var(--sa-b) + 96px);
   width: 360px;
   display: flex;
@@ -1204,9 +1376,134 @@ textarea {
   border-left: 3px solid var(--arcane);
   color: var(--arcane-pale);
 }
-.msg-lyra.msg-order {
+.msg-lyra.msg-order,
+.msg-lyra.msg-answer,
+.msg-lyra.msg-problem {
   font-size: var(--fs-s);
-  opacity: 0.85;
+}
+.msg-lyra.msg-problem {
+  border-left-color: var(--ember);
+}
+/* She turned a request down: her words, plainly marked as a no. */
+.msg-lyra.msg-refusal {
+  border-left-color: var(--danger);
+  background: rgba(181, 58, 69, 0.14);
+  color: #f6d6e0;
+}
+/* Something she decided or asks on her own: an announcement, not a reply. */
+.msg-lyra.msg-initiative {
+  max-width: 94%;
+  border-left: 0;
+  padding: 7px 10px 8px 12px;
+  background:
+    linear-gradient(90deg, rgba(169, 149, 255, 0.22), rgba(169, 149, 255, 0.06) 70%),
+    rgba(20, 19, 50, 0.6);
+  box-shadow:
+    inset 3px 0 0 var(--arcane),
+    inset 0 0 0 1px rgba(169, 149, 255, 0.35);
+  color: var(--parch);
+}
+.msg-kicker {
+  display: block;
+  margin-bottom: 2px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--arcane);
+}
+.msg-refusal .msg-kicker {
+  color: var(--danger);
+}
+.msg-text {
+  display: block;
+}
+/* A change in where she stands with you. */
+.msg-system.msg-state {
+  margin: 4px 0;
+  padding: 5px 12px;
+  background: rgba(10, 9, 25, 0.5);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+  color: var(--parch-2);
+  font-family: var(--font-display);
+  font-style: normal;
+  font-size: var(--fs-xs);
+}
+.msg-note {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--font-body);
+  font-style: italic;
+  color: var(--arcane-pale);
+}
+.msg-offer {
+  margin-top: 6px;
+}
+
+/* What she remembered while answering. */
+.mem-wrap {
+  margin-top: 6px;
+}
+.mem-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.mem-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  max-width: 100%;
+  padding: 1px 6px 2px;
+  border: 0;
+  background: rgba(10, 9, 25, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(169, 149, 255, 0.35);
+  color: var(--arcane-pale);
+  font-size: var(--fs-2xs);
+  text-align: left;
+  cursor: pointer;
+}
+.mem-chip:hover,
+.mem-chip[aria-expanded='true'] {
+  box-shadow: inset 0 0 0 1px var(--arcane);
+  background: rgba(51, 38, 122, 0.6);
+}
+.mem-pre {
+  flex: none;
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--arcane);
+}
+.mem-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mem-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 5px;
+  padding: 6px 8px;
+  background: rgba(10, 9, 25, 0.6);
+  border-left: 2px solid var(--arcane-deep);
+  font-size: var(--fs-s);
+  color: var(--parch-2);
+}
+.mem-title {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--fs-xs);
+  color: var(--arcane-pale);
+}
+.mem-where {
+  font-size: var(--fs-2xs);
+  color: var(--parch-faint);
+}
+.chat.is-gone .chat-input {
+  opacity: 0.5;
 }
 .msg-player {
   align-self: flex-end;
@@ -2447,8 +2744,327 @@ input[type='range']::-moz-range-thumb {
 }
 .facts {
   margin: 0;
-  padding-left: 18px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   color: var(--parch-2);
+}
+
+/* Knowledge: a badge for what kind of knowing it is, and where it came from. */
+.fact {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line-dim);
+}
+.kind-badge {
+  --tone: var(--parch-dim);
+  flex: none;
+  min-width: 52px;
+  margin-top: 2px;
+  padding: 1px 5px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--tone);
+  box-shadow: inset 0 0 0 1px var(--tone);
+  background: rgba(10, 9, 25, 0.5);
+}
+.kind-badge.kind-fact {
+  --tone: var(--heal);
+}
+.kind-badge.kind-lore {
+  --tone: var(--ember);
+}
+.kind-badge.kind-theory {
+  --tone: var(--arcane);
+}
+.kind-badge.kind-rumor {
+  --tone: var(--rose);
+}
+.fact.kind-theory .fact-text,
+.fact.kind-rumor .fact-text {
+  font-style: italic;
+}
+.fact-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.fact-src {
+  font-size: var(--fs-xs);
+  color: var(--parch-faint);
+}
+.seg-n {
+  margin-left: 5px;
+  opacity: 0.7;
+}
+.kind-filter {
+  flex-wrap: wrap;
+}
+
+/* Her day. */
+.box-plan {
+  grid-column: 1 / -1;
+}
+.plan {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.plan-row {
+  display: grid;
+  grid-template-columns: 124px 1fr;
+  gap: 10px;
+  padding: 5px 8px;
+  border-left: 3px solid transparent;
+}
+.plan-row.is-now {
+  border-left-color: var(--ember);
+  background: rgba(255, 176, 71, 0.08);
+}
+.plan-row.is-done {
+  opacity: 0.55;
+}
+.plan-time {
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  color: var(--ember);
+  padding-top: 2px;
+}
+.plan-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.plan-what {
+  color: var(--parch);
+}
+.plan-why {
+  font-size: var(--fs-s);
+  font-style: italic;
+  color: var(--arcane-pale);
+}
+.plan-note:empty {
+  display: none;
+}
+.plan-note {
+  margin: 8px 0 0 !important;
+}
+
+/* You and her. */
+.you-state {
+  --bc: var(--arcane-deep);
+}
+.you-state.tone-warn {
+  --bc: var(--ember-deep);
+}
+.you-state.tone-bad {
+  --bc: var(--danger-deep);
+}
+.you-state.tone-calm {
+  --bc: #3d6f8a;
+}
+.you-state.tone-grave {
+  --bc: var(--line-soft);
+}
+.you-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-bottom: 8px;
+}
+.cs-chip-lg {
+  font-size: var(--fs-s);
+  line-height: 20px;
+  padding: 2px 10px;
+}
+.cs-chip-btn {
+  cursor: pointer;
+}
+.you-sum {
+  color: var(--parch-2);
+}
+.you-state .opinion {
+  margin: 0 0 8px;
+}
+.you-bars {
+  margin-top: 6px;
+}
+.ledger {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+.deed {
+  --tone: var(--parch-dim);
+  display: grid;
+  grid-template-columns: 46px 1fr auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line-dim);
+}
+.deed.tone-good {
+  --tone: var(--heal);
+}
+.deed.tone-minor {
+  --tone: var(--ember);
+}
+.deed.tone-bad {
+  --tone: var(--danger);
+}
+.deed.tone-grave {
+  --tone: #ff8f86;
+}
+.deed-sev {
+  font-family: var(--font-display);
+  font-size: var(--fs-s);
+  color: var(--tone);
+  text-align: right;
+}
+.deed.tone-grave .deed-sev {
+  background: rgba(181, 58, 69, 0.3);
+  padding: 0 4px;
+}
+.deed-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.deed-label {
+  color: var(--parch);
+}
+.deed-text {
+  font-size: var(--fs-s);
+  color: var(--parch-dim);
+}
+.deed-when {
+  font-size: var(--fs-xs);
+  color: var(--parch-faint);
+  white-space: nowrap;
+}
+.promise {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line-dim);
+}
+.promise-state {
+  flex: none;
+  min-width: 58px;
+  padding: 1px 5px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--ember);
+  box-shadow: inset 0 0 0 1px var(--ember-deep);
+}
+.promise.state-kept .promise-state {
+  color: var(--heal);
+  box-shadow: inset 0 0 0 1px var(--heal-deep);
+}
+.promise.state-broken .promise-state {
+  color: var(--danger);
+  box-shadow: inset 0 0 0 1px var(--danger-deep);
+}
+.promise.state-kept,
+.promise.state-broken {
+  opacity: 0.75;
+}
+.promise-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.promise-meta {
+  font-size: var(--fs-xs);
+  color: var(--parch-faint);
+}
+
+/* Her life: a line from birth to now. */
+.life {
+  position: relative;
+  margin: 0;
+  padding: 0 0 0 4px;
+  list-style: none;
+}
+.life::before {
+  content: '';
+  position: absolute;
+  left: 76px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: linear-gradient(180deg, var(--arcane-dark), var(--arcane-deep) 70%, var(--ember));
+}
+.life-node {
+  position: relative;
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 24px;
+  padding: 0 0 14px;
+}
+.life-node::before {
+  content: '';
+  position: absolute;
+  left: 69px;
+  top: 6px;
+  width: 8px;
+  height: 8px;
+  background: var(--ink-1);
+  box-shadow:
+    0 0 0 2px var(--arcane),
+    0 0 0 4px var(--ink-1);
+}
+.life-node.imp-8::before,
+.life-node.imp-9::before,
+.life-node.imp-10::before {
+  background: var(--arcane);
+}
+.life-now::before {
+  background: var(--ember);
+  box-shadow:
+    0 0 0 2px var(--ember-hot),
+    0 0 10px 2px rgba(255, 176, 71, 0.5);
+}
+.life-age {
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  color: var(--arcane-pale);
+  text-align: right;
+  padding-top: 2px;
+}
+.life-now .life-age {
+  color: var(--ember);
+}
+.life-title {
+  margin: 0 0 2px;
+  font-family: var(--font-display);
+  font-size: var(--fs-s);
+  font-weight: 500;
+  color: var(--parch);
+}
+.life-text {
+  margin: 0;
+  color: var(--parch-2);
+  white-space: pre-line;
+}
+.hero-bond-label {
+  color: var(--parch-2);
+}
+.portrait-frame.is-gone .portrait {
+  filter: grayscale(0.85) brightness(0.75);
 }
 
 .goals {
@@ -3019,7 +3635,7 @@ input[type='range']::-moz-range-thumb {
   pointer-events: none;
 }
 .radial-item {
-  --a: calc(-84deg + var(--i) * 28deg);
+  --a: calc((var(--i) - (var(--n, 7) - 1) / 2) * 28deg);
   position: absolute;
   left: -28px;
   top: -28px;
@@ -3036,6 +3652,10 @@ input[type='range']::-moz-range-thumb {
     opacity 0.15s;
   transition-delay: calc(var(--i) * 15ms);
   pointer-events: none;
+}
+.radial-rejoin {
+  --bc: var(--arcane);
+  color: var(--arcane-pale);
 }
 .orders.open .radial-item {
   opacity: 1;
@@ -3319,9 +3939,35 @@ input[type='range']::-moz-range-thumb {
   .mind-hero {
     padding: 10px 12px 6px;
   }
+  .hero-bond {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
   .portrait-lg {
     width: 48px;
     height: 48px;
+  }
+  .deed {
+    grid-template-columns: 40px 1fr;
+  }
+  .deed-when {
+    grid-column: 2;
+  }
+  .plan-row {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .life::before {
+    left: 60px;
+  }
+  .life-node {
+    grid-template-columns: 48px 1fr;
+  }
+  .life-node::before {
+    left: 53px;
+  }
+  .mini-label {
+    display: none;
   }
   .hero-name {
     font-size: var(--fs-l);

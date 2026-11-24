@@ -6,8 +6,12 @@ import { h, button, setText, toggleClass, clear } from './dom.js';
 import { CHIPS } from './content.js';
 import { portraitUrl } from './art.js';
 import { cleanLine } from './format.js';
+import { memoryRefs, findMemory, memoryChipLabel, STORE_LABELS, companionshipOf, companionshipLabel } from './lyra_view.js';
+import { STORY } from '../lore/story.js';
 
 const MAX_MESSAGES = 140;
+const DUP_WINDOW_MS = 6000; // the same line from two paths within this window is one message
+const KINDS = new Set(['answer', 'refusal', 'problem', 'initiative', 'state', 'order', 'bark']);
 
 export class Chat {
   constructor(ui) {
@@ -26,6 +30,7 @@ export class Chat {
     this.dictPartial = '';
     this.dictOffs = [];
     this.lastPlayerEcho = { text: '', at: 0 };
+    this.gone = false;
   }
 
   mount() {
@@ -132,19 +137,33 @@ export class Chat {
     return this._open;
   }
 
-  // {from: 'player'|'lyra'|'system'|'npc', text, name}
+  // {from: 'player'|'lyra'|'system'|'npc', text, name, kind?, memories?, offer?, note?}
+  // kind: 'initiative' (her own announcement or request), 'refusal', 'answer' (to a
+  // request), 'problem', 'state' (system: where she stands with you changed).
+  // memories: what she remembered for this reply (ids or {id, label, store, text}).
+  // offer: { label, name, args } a counter-offer the player can accept with one tap.
   addMessage(m) {
-    if (!m || !m.text) return;
+    if (!m || !m.text) return null;
     const from = ['player', 'lyra', 'system', 'npc'].includes(m.from) ? m.from : 'system';
     const text = cleanLine(m.text, 1200);
-    if (!text) return;
+    if (!text) return null;
     const now = Date.now();
     // The UI echoes the player's line at once; the brain may echo it again.
     if (from === 'player' && this.lastPlayerEcho.text === text && now - this.lastPlayerEcho.at < 4000) {
       this.lastPlayerEcho.text = '';
-      return;
+      return null;
     }
-    const msg = { from, text, name: m.name || null, t: now, kind: m.kind || null };
+    const refs = memoryRefs(m.memories || m.used_memories || m.usedMemories);
+    // Her reply can reach the chat twice (the brain, and the UI's fallback): keep one.
+    if (from === 'lyra') {
+      const dup = this.recentLyra(text, now);
+      if (dup) {
+        if (refs.length && !dup.memories?.length) this.attachMemories(dup, refs);
+        return dup;
+      }
+    }
+    const kind = KINDS.has(m.kind) ? m.kind : null;
+    const msg = { from, text, name: m.name || null, t: now, kind, memories: refs, offer: m.offer && m.offer.name ? m.offer : null, note: m.note ? cleanLine(m.note, 300) : '', el: null };
     this.messages.push(msg);
     if (this.messages.length > MAX_MESSAGES) this.messages.shift();
     if (this.mounted) {
@@ -154,6 +173,24 @@ export class Chat {
         this.ui.hud?.setUnread(this.unread);
       }
     }
+    return msg;
+  }
+
+  recentLyra(text, now) {
+    for (let i = this.messages.length - 1; i >= 0 && i >= this.messages.length - 6; i--) {
+      const m = this.messages[i];
+      if (now - m.t > DUP_WINDOW_MS) break;
+      if (m.from === 'lyra' && m.text === text) return m;
+    }
+    return null;
+  }
+
+  // Add "remembered …" chips to a message already shown.
+  attachMemories(msg, list) {
+    const refs = memoryRefs(list);
+    if (!msg || !refs.length) return;
+    msg.memories = refs;
+    if (msg.el && !msg.el.querySelector('.mem-wrap')) msg.el.append(this.memoryChips(refs));
   }
 
   setThinking(on) {
@@ -168,9 +205,23 @@ export class Chat {
   // ---------- internals ----------
 
   _render(m) {
+    const g = this.game;
     const row = h('div', { class: `msg msg-${m.from}${m.kind ? ` msg-${m.kind}` : ''}` });
     if (m.from === 'npc' && m.name) row.append(h('span', { class: 'msg-name', text: m.name }));
+    if (m.kind === 'initiative') row.append(h('span', { class: 'msg-kicker', text: `${g.settings?.companionName || 'Lyra'}, unprompted` }));
+    if (m.kind === 'refusal') row.append(h('span', { class: 'msg-kicker', text: 'She said no' }));
     row.append(h('span', { class: 'msg-text', text: m.text }));
+    if (m.note) row.append(h('span', { class: 'msg-note', text: `“${m.note}”` }));
+    if (m.memories?.length) row.append(this.memoryChips(m.memories));
+    if (m.offer) {
+      const b = button(m.offer.label || 'All right', { cls: 'btn-small btn-ghost msg-offer' });
+      b.addEventListener('click', () => {
+        b.disabled = true;
+        this.ui.ask?.(m.offer.name, m.offer.args || {}, 'counter');
+      });
+      row.append(b);
+    }
+    m.el = row;
     this.log.insertBefore(row, this.thinkingRow.parentNode === this.log ? this.thinkingRow : null);
     while (this.log.childElementCount > MAX_MESSAGES + 1) {
       const first = this.log.firstElementChild;
@@ -178,6 +229,40 @@ export class Chat {
       first.remove();
     }
     this.scrollToEnd();
+  }
+
+  // Small chips naming what she remembered; a tap unfolds the memory itself.
+  memoryChips(refs) {
+    const mind = this.game.companion?.mind || null;
+    const wrap = h('div', { class: 'mem-chips' });
+    const detail = h('div', { class: 'mem-detail', hidden: true });
+    let openId = null;
+    for (const ref of refs) {
+      const found = ref.label ? null : safeFind(mind, ref.id);
+      const chip = h('button', { type: 'button', class: 'mem-chip', 'aria-expanded': 'false' }, h('span', { class: 'mem-pre', text: 'remembered' }), h('span', { class: 'mem-label', text: memoryChipLabel(ref, found) }));
+      chip.addEventListener('click', () => {
+        const same = openId === (ref.id || ref.label);
+        for (const c of wrap.querySelectorAll('.mem-chip')) c.setAttribute('aria-expanded', 'false');
+        if (same) {
+          openId = null;
+          detail.hidden = true;
+          return;
+        }
+        openId = ref.id || ref.label;
+        chip.setAttribute('aria-expanded', 'true');
+        const hit = safeFind(this.game.companion?.mind || null, ref.id);
+        clear(detail);
+        const text = hit?.text || ref.text || ref.label || 'She keeps this one to herself.';
+        const where = [STORE_LABELS[hit?.store || ref.store] || '', hit?.day ? `Day ${hit.day}` : ''].filter(Boolean).join(' · ');
+        if (hit?.title && hit.title !== text) detail.append(h('strong', { class: 'mem-title', text: hit.title }));
+        detail.append(h('span', { class: 'mem-text', text }));
+        if (where) detail.append(h('span', { class: 'mem-where', text: where }));
+        detail.hidden = false;
+        this.scrollToEnd();
+      });
+      wrap.append(chip);
+    }
+    return h('div', { class: 'mem-wrap' }, wrap, detail);
   }
 
   // A conversation Lyra had with a villager, shown as an overheard exchange.
@@ -225,6 +310,8 @@ export class Chat {
       } catch {
         status = '';
       }
+      const cs = companionshipOf(g);
+      if (cs !== 'together') status = status && cs !== 'gone' ? `${companionshipLabel(cs).toLowerCase()} · ${status}` : companionshipLabel(cs);
       const st = (() => {
         try {
           return g.brain?.status?.();
@@ -255,7 +342,7 @@ export class Chat {
 
   send(text) {
     const t = cleanLine(text, 400);
-    if (!t) return;
+    if (!t || this.gone) return;
     const g = this.game;
     if (!g.brain?.handlePlayerMessage) return;
     // Echo now so the line appears instantly even if the brain is slow to answer.
@@ -270,11 +357,53 @@ export class Chat {
       this.addMessage({ from: 'system', text: "Lyra didn't catch that. Try again in a moment." });
       return;
     }
-    Promise.resolve(p).catch((err) => {
-      console.warn('[chat] message failed', err);
-      this.setThinking(false);
-      this.addMessage({ from: 'system', text: "Lyra didn't catch that. Try again in a moment." });
-    });
+    const sentAt = Date.now();
+    Promise.resolve(p).then(
+      (r) => this.afterReply(r, sentAt),
+      (err) => {
+        console.warn('[chat] message failed', err);
+        this.setThinking(false);
+        this.addMessage({ from: 'system', text: "Lyra didn't catch that. Try again in a moment." });
+      },
+    );
+  }
+
+  // The brain shows her reply itself; this only fills gaps: a reply it returned but did
+  // not show, or the memories it used but did not attach.
+  afterReply(r, sentAt) {
+    if (!r || typeof r !== 'object') return;
+    const used = r.used_memories || r.usedMemories || r.recalled || null;
+    let last = null;
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const m = this.messages[i];
+      if (m.t < sentAt - 50) break;
+      if (m.from === 'lyra') {
+        last = m;
+        break;
+      }
+    }
+    const say = typeof r.say === 'string' ? r.say.trim() : '';
+    if (!last && say) {
+      this.addMessage({ from: 'lyra', text: say, memories: used });
+      return;
+    }
+    if (last && used && !last.memories?.length) this.attachMemories(last, used);
+  }
+
+  // Once she is gone there is no one to talk to; the log stays to read.
+  setGone(on) {
+    const gone = !!on;
+    if (gone === this.gone && this.mounted && this.field.disabled === gone) return;
+    this.gone = gone;
+    if (!this.mounted) return;
+    const name = this.game.settings?.companionName || 'Lyra';
+    if (gone && this.dictState !== 'idle') this.stopDictation();
+    this.field.disabled = gone;
+    this.sendBtn.disabled = gone;
+    this.mic.disabled = gone;
+    this.chips.hidden = gone;
+    this.field.placeholder = gone ? `${name} is gone.` : `Say something to ${name}…`;
+    toggleClass(this.el, 'is-gone', gone);
   }
 
   // ---------- dictation ----------
@@ -415,3 +544,10 @@ export class Chat {
   }
 }
 
+function safeFind(mind, id) {
+  try {
+    return findMemory(mind, id, STORY);
+  } catch {
+    return null;
+  }
+}

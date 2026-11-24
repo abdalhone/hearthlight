@@ -125,8 +125,9 @@ export class InventoryPanel {
       }
       if (def.type !== 'quest' && def.type !== 'key') actions.append(button('Drop', { cls: 'btn-ghost', onClick: () => this.drop(sel.id) }));
     } else {
-      actions.append(button('Take one', { onClick: () => this.take(sel.id, 1) }));
-      if (qty > 1) actions.append(button(`Take all ${qty}`, { cls: 'btn-ghost', onClick: () => this.take(sel.id, qty) }));
+      // Her pack is hers (§16): you ask, and she decides whether to hand it over.
+      actions.append(button('Ask for one', { icon: 'hand', onClick: () => this.take(sel.id, 1) }));
+      if (qty > 1) actions.append(button(`Ask for all ${qty}`, { cls: 'btn-ghost', onClick: () => this.take(sel.id, qty) }));
       if (isUsable(def)) actions.append(button(`Ask ${lyraName} to ${def.type === 'potion' ? 'drink' : 'eat'} it`, { cls: 'btn-ghost', onClick: () => this.askUse(sel.id) }));
     }
     appendAll(this.detail, [
@@ -160,11 +161,18 @@ export class InventoryPanel {
     this.render();
   }
 
+  // Asking for something from her pack is a request she weighs; she hands it over
+  // herself. Without a give_item action (an older build), the hand-over is direct.
   take(id, qty) {
     const g = this.game;
     const p = g.player;
     const c = g.companion;
     if (!p || !c) return;
+    if (safe(() => g.actions?.has?.('give_item'), false)) {
+      this.ui.ask('give_item', { target: 'player', value: id, amount: qty }, 'give');
+      this.render();
+      return;
+    }
     const n = c.inventory.transfer(p.inventory, id, qty);
     if (!n) return;
     g.bus.emit('item_given', { from: c, to: p, itemId: id, qty: n });
@@ -173,9 +181,7 @@ export class InventoryPanel {
   }
 
   askUse(id) {
-    const g = this.game;
-    const r = safe(() => g.actions.run('use_item', { value: id }, 'player'), { ok: false, message: '' });
-    this.ui.toast(r.message || (r.ok ? 'Thank you. I needed that.' : "I'm fine for now, really."), 'lyra');
+    this.ui.ask('use_item', { value: id }, 'use');
     this.render();
   }
 

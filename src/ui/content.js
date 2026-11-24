@@ -1,14 +1,18 @@
 // Written content for the interface: orders, jobs, Lyra's acknowledgements, quick
 // replies, the How to play page. Pure data + small pure pickers (unit-tested).
 
-// The command bar. `key` is the hotkey digit; `run` is the action call.
+// The "Ask Lyra" bar. Every button is a request she weighs (DESIGN.md §16.4): it runs
+// game.actions.run(action, args, 'player') and she answers. `key` is the hotkey digit.
 export const COMMANDS = [
-  { id: 'follow', label: 'Follow', icon: 'boots', key: '1', action: 'follow', args: { target: 'player' }, hint: 'Lyra follows you' },
-  { id: 'stay', label: 'Stay', icon: 'flag', key: '2', action: 'stay', args: {}, hint: 'Lyra holds this spot' },
-  { id: 'attack', label: 'Attack', icon: 'sword', key: '3', action: 'set_combat_mode', args: { value: 'attack' }, hint: 'Attack mode: she engages anything that is not a friend' },
-  { id: 'defend', label: 'Defend', icon: 'shield', key: '4', action: 'set_combat_mode', args: { value: 'defend' }, hint: 'Defend: she fights what threatens you or her' },
-  { id: 'passive', label: 'Passive', icon: 'feather', key: '5', action: 'set_combat_mode', args: { value: 'passive' }, hint: 'Passive: she avoids fights but still heals' },
+  { id: 'follow', label: 'Follow', icon: 'boots', key: '1', action: 'follow', args: { target: 'player' }, hint: 'Ask her to walk with you' },
+  { id: 'stay', label: 'Wait', icon: 'flag', key: '2', action: 'stay', args: {}, hint: 'Ask her to wait here' },
+  { id: 'attack', label: 'Fight', icon: 'sword', key: '3', action: 'set_combat_mode', args: { value: 'attack' }, hint: 'Ask her to fight anything that is not a friend' },
+  { id: 'defend', label: 'Defend', icon: 'shield', key: '4', action: 'set_combat_mode', args: { value: 'defend' }, hint: 'Ask her to fight only what threatens you both' },
+  { id: 'passive', label: 'Hold back', icon: 'feather', key: '5', action: 'set_combat_mode', args: { value: 'passive' }, hint: 'Ask her to stay out of fights' },
 ];
+
+// Asking her to travel with you again, once she is apart or has left (§16.3).
+export const REJOIN = { id: 'rejoin', label: 'Ask her back', icon: 'heart_arcane', action: 'rejoin', hint: 'Ask her to travel with you again', fallbackMessage: 'Will you travel with me again?' };
 
 export const JOBS = [
   { id: 'chop_wood', label: 'Chop wood', icon: 'axe', amount: 5, note: 'Oaks and pines in the Whisperwood' },
@@ -26,23 +30,30 @@ export const DELIVER_OPTIONS = [
   { id: 'keep', label: 'She keeps it' },
 ];
 
-// Quick replies under the chat field.
-export const CHIPS = ['Follow me', 'Attack mode', 'How are you?', "What's next?", 'Stay here', 'Tell me about Maren'];
+// Quick replies under the chat field: things you might say to a friend, not commands.
+export const CHIPS = ['How are you?', 'Will you come with me?', "What's on your mind?", 'What do you think of me?', 'Tell me about Maren', 'What are your plans today?'];
 
-// What she says when an order from the command bar succeeds and the action itself
-// returned no words. Several per order so she never sounds like a machine.
+// What she says when she agrees to a request and the action itself returned no
+// words. She agrees because she chooses to: never "yes, master".
 export const ACK_LINES = {
-  follow: ['Right behind you.', "Lead on. I've got your back.", 'Coming! Try not to walk into anything.', 'After you, partner.'],
-  stay: ["I'll hold here.", "Fine, I'll keep this spot warm.", 'Staying put. Call if you need me.', "Here I'll stay. Don't be long."],
-  attack: ['Attack mode. Anything unfriendly is fair game.', 'Gloves off. Let them come.', "Bolts ready. If it isn't a friend, it's a target."],
-  defend: ["I'll guard you. Anything that comes at us answers to me.", 'Defensive. I fight only what threatens us.', 'Covering you.'],
-  passive: ["No fighting. I'll keep my distance and my healing ready.", 'Hands off the bolts. Understood.', "Peaceful it is. I'll still patch you up."],
-  job: ['On it.', 'Leave it to me.', 'Consider it done. Eventually.', 'A bit of honest work. I can do that.'],
-  stop_job: ['Putting it down.', 'Done for now.', 'Fine by me. My arms needed a rest.'],
+  follow: ["All right, I'll walk with you.", "Lead on. I'll say so if I don't like where we're going.", "Fine. Two pairs of eyes beat one.", 'Coming. Try not to walk into anything.'],
+  stay: ["I'll wait here. Not forever.", "Fine. I'll keep this spot warm.", "I'll stay. Call if you need me.", 'Here, then. Be quick about it.'],
+  attack: ["All right. Anything unfriendly is fair game.", "If it isn't a friend, it answers to my bolts.", "Gloves off, then. I'll pull back if it turns ugly."],
+  defend: ["I'll fight what comes at us. Nothing more.", 'Defensive suits me. I fight only what threatens us.', "I'll cover us both."],
+  passive: ["Good. I'd rather not fight at all. I'll keep my healing ready.", 'No bolts, then. I can live with that.', "Peaceful it is. I'll still patch you up."],
+  job: ["I'll do it. My share of it is mine, mind.", "Honest work. I don't mind that.", "All right. It's not as if the wood chops itself.", "Fine. Call it a favor you owe me."],
+  stop_job: ["Putting it down.", 'Done for now. My arms thank you.', 'Fine by me.'],
+  rejoin: ["All right. Let's try this again.", "I'll walk with you. Don't make me regret it."],
+  give: ['Here. Take care of it.', "Fine, it's yours. You owe me one.", 'Catch.'],
+  use: ['Thank you. I needed that.', "Don't mind if I do."],
+  counter: ['Good. That I can do.', 'See? We can agree on things.'],
+  // Only when a refusal arrives without words of its own.
+  refused: ['No. Not this time.', "I'd rather not.", 'Not today.', "That's a no from me."],
+  failed: ["I can't, not right now.", "That isn't going to work from here.", "I tried. It won't happen."],
 };
 
 const lastAck = new Map();
-// Pick a line for an order, never the same one twice in a row. `rand` is 0..1.
+// Pick a line, never the same one twice in a row. `rand` is 0..1.
 export function pickAck(kind, rand = Math.random()) {
   const list = ACK_LINES[kind];
   if (!list || !list.length) return '';
@@ -64,30 +75,35 @@ export const HOW_TO_PLAY = [
     ],
   },
   {
-    title: 'Talking with Lyra',
+    title: 'Lyra lives for herself',
     text:
-      'Press T or Enter (Y on a gamepad) to talk. Say anything: ask how she feels, what she thinks of someone, or give orders in plain words like "follow me", "chop five wood" or "stay here and guard the door". She has her own mind, so she may tease you, refuse what goes against her values, or bring up something she remembers.',
+      'Lyra travels with you because she chooses to: she owes you for the wolves on the King\'s Road, she is curious about you, and two are safer than one while she looks for her mentor. She has her own plans, her own coin and her own limits. She weighs everything you ask, and she watches what you do. Treat her well and she will trust you. Hurt her, frighten her or harm the people she cares about, and she will stop you, run, or leave, and she may never come back.',
   },
   {
-    title: 'Orders',
+    title: 'Talking with her',
+    text:
+      'Press T or Enter (Y on a gamepad) to talk. Say anything: ask how she feels, what she thinks of someone, what she remembers. Ask for help in plain words, like "would you chop some wood?" or "stay here and keep watch". Offer her a fair share if you want a yes. Under her replies, small tags show what she remembered while she answered; tap one to see it.',
+  },
+  {
+    title: 'Asking her for help',
     rows: [
-      ['1 Follow', 'She walks with you.'],
-      ['2 Stay', 'She holds her position.'],
-      ['3 Attack mode', 'She engages every creature that is not a friend nearby, without asking.'],
-      ['4 Defend', 'She fights only what threatens you or her.'],
-      ['5 Passive', 'She keeps out of fights but still heals you.'],
-      ['Jobs', 'Chop wood, gather herbs, fish, mine, forage, cook or collect loot, delivered to you or the cottage chest.'],
+      ['1 Follow', 'Ask her to walk with you.'],
+      ['2 Wait', 'Ask her to wait where she is.'],
+      ['3 Fight', 'Ask her to engage every creature nearby that is not a friend. Once she agrees, she does not ask again for each one.'],
+      ['4 Defend', 'Ask her to fight only what threatens you or her.'],
+      ['5 Hold back', 'Ask her to keep out of fights. She still heals.'],
+      ['Jobs', 'Chopping, gathering, fishing, mining, foraging, cooking or collecting loot, delivered to you or the cottage chest.'],
     ],
   },
   {
     title: 'Her mind',
     text:
-      'Tab or M opens Lyra\'s Mind: her mood and needs, the people she knows and what she thinks of them, her memories, her diary, her goals and her soul. Mark someone as a friend or an enemy there and her attack mode respects it. You can export her whole mind as a file and bring it back later.',
+      'Tab or M opens Lyra\'s Mind: her mood and plans, how she sees you and what she has seen you do, the people she knows, her memories, what she knows of the world, her life before you met, her diary, her goals and her soul. You can export her whole mind as a file and bring it back later.',
   },
   {
     title: 'Days and nights',
     text:
-      'A day lasts about fifteen minutes. Wolves grow bolder at night and moonpetals only open after dark. Sleep in your cottage bed after 6 PM to skip to morning; Lyra writes in her diary while you rest, and the game saves.',
+      'A day lasts about fifteen minutes. Wolves grow bolder at night and moonpetals only open after dark. Sleep in your cottage bed after 6 PM to skip to morning; Lyra writes in her diary while you rest, and the game saves. She sleeps in the cottage only while she trusts you; otherwise she rents a room at the Ember Kettle.',
   },
   {
     title: 'Saving',
@@ -97,7 +113,7 @@ export const HOW_TO_PLAY = [
 ];
 
 export const TITLE_TAGLINES = [
-  'A tale of Hearthvale, and of the friend who walks beside you.',
+  'A tale of Hearthvale, and of a friend who walks beside you by choice.',
   'Some lights are carried. Some walk beside you.',
   'The ruins are quiet. Lyra is not.',
 ];
@@ -110,7 +126,7 @@ export const CONTROLS_SUMMARY = [
   ['T / Enter', 'Talk to Lyra'],
   ['Tab / M', "Lyra's mind"],
   ['I', 'Inventory'],
-  ['1 – 5', 'Orders'],
+  ['1 – 5', 'Ask Lyra'],
   ['Esc', 'Pause / close'],
 ];
 

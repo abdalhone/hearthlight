@@ -15,10 +15,11 @@ import { TitleScreen } from './title.js';
 import { TouchControls } from './touch.js';
 import { buildPause, buildSign, buildDiary, Fader, Vignette } from './overlays.js';
 import { makeConfirm } from './modal.js';
-import { COMMANDS, JOBS, pickAck } from './content.js';
+import { COMMANDS, JOBS, REJOIN, pickAck } from './content.js';
 import { itemIconUrl } from './art.js';
 import { itemName } from '../entities/items.js';
-import { gainText, frac } from './format.js';
+import { gainText, frac, truncate } from './format.js';
+import { companionshipOf, companionshipLabel, companionshipReason, deedLabel } from './lyra_view.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -38,7 +39,16 @@ function clone(o) {
   }
 }
 
-const STANCE_ACK = { attack: 'attack', defend: 'defend', passive: 'passive' };
+const ACCEPTED = new Set(['accept', 'accept_conditional']);
+
+// How the chat marks a change in where she stands with the player.
+const STATE_LINES = {
+  together: (n) => `${n} travels with you again.`,
+  wary: (n) => `${n} is wary of you now.`,
+  apart: (n) => `${n} is going her own way for now.`,
+  left: (n) => `${n} has left you.`,
+  gone: (n) => `${n} is gone.`,
+};
 
 export class UI {
   constructor(game, root) {
@@ -60,6 +70,8 @@ export class UI {
     this.invDirty = false;
     this.thinkPoll = 0;
     this.explicitThinking = false;
+    this.lastCs = 'together';
+    this.lastCompanionReason = '';
   }
 
   // ---------- setup ----------
@@ -291,7 +303,47 @@ export class UI {
       this.chat.addOverheard(`${lyraName()} talked with ${other?.name || 'someone'}`, lines.map((l) => ({ name: nameOf(l.speaker), text: l.text || '' })));
     });
 
-    bus.on('relationship_changed', () => this.mind?.markDirty('people'));
+    // ----- Lyra's own will (§16) -----
+    bus.on('companionship_changed', (p) => this.onCompanionship(p || {}));
+    bus.on('request_evaluated', (p) => {
+      const v = p?.verdict;
+      if (v && v.decision && !ACCEPTED.has(v.decision)) this.hud?.flashRefusal();
+      this.hud?.refreshCompanion(true);
+      this.mind?.markDirty('you');
+    });
+    bus.on('deed', (p) => {
+      this.hud?.refreshCompanion(true);
+      this.mind?.markDirty('you');
+      const sev = Number(p?.severity) || 0;
+      if (Math.abs(sev) < 2) return;
+      const label = deedLabel(p?.deed);
+      const text = String(p?.text || '').trim();
+      if (sev > 0) this.toast(text || `${label}. She noticed.`, 'lyra', { title: `${lyraName()} noticed`, key: `deed:${p?.deed}` });
+      else this.toast(text || `${label}. She will remember it.`, 'warn', { title: sev <= -5 ? `${lyraName()} will not forget this` : `${lyraName()} saw that`, key: `deed:${p?.deed}` });
+    });
+    bus.on('promise', (p) => {
+      this.mind?.markDirty('you');
+      const text = truncate(String(p?.text || '').trim(), 120);
+      if (!text) return;
+      if (p.state === 'kept') this.toast(text, 'good', { title: p.by === 'player' ? 'You kept your word' : `${lyraName()} kept her word` });
+      else if (p.state === 'broken') this.toast(text, 'warn', { title: p.by === 'player' ? 'You broke your word' : `${lyraName()} broke her word` });
+      else this.toast(text, 'lyra', { title: p.by === 'player' ? 'You promised' : `${lyraName()} promised` });
+    });
+    bus.on('crime', (p) => {
+      if (!isPlayer(p?.actor)) return;
+      const who = p?.victim?.name || 'someone';
+      if (p.kind === 'knockout') this.toast(`You knocked ${who} out. Hearthvale will not forget it today, and neither will the guards.`, 'warn', { title: 'Crime', key: 'crime' });
+      else this.toast(`You attacked ${who}. The guards will come for you.`, 'warn', { title: 'Crime', key: 'crime' });
+    });
+    bus.on('plan_changed', () => this.mind?.markDirty('now'));
+
+    bus.on('relationship_changed', (p) => {
+      this.mind?.markDirty('people');
+      if (p?.personId === 'player') {
+        this.mind?.markDirty('you');
+        this.hud?.refreshCompanion(true);
+      }
+    });
     bus.on('memory_added', () => this.mind?.markDirty('memories'));
     bus.on('settings_changed', ({ key }) => {
       if (key === 'reduceMotion') this.applyMotion();
@@ -313,11 +365,19 @@ export class UI {
     const objective = safe(() => qp?.objective?.(g.plugins.ctx)) || '';
     this.hud?.setQuest(objective);
     const name = g.settings?.companionName || g.companion?.name || 'Lyra';
+    const state = companionshipOf(g);
+    this.lastCs = state;
     if (loaded) this.toast(`Welcome back. ${g.clock?.fullString?.() || ''}`.trim(), 'info');
-    else this.toast(`Welcome to Hearthvale. ${name} is at your side.`, 'info');
+    else this.toast(`Welcome to Hearthvale. ${name} walks with you, for her own reasons.`, 'info');
     if (!this.chat.messages.length) {
-      this.chat.addMessage({ from: 'system', text: `${name} walks with you. Talk to her about anything, or give orders in plain words.` });
+      const intro =
+        state === 'gone'
+          ? `${name} is gone. Her diary and her memories are all that is left of her here.`
+          : `${name} travels with you because she chooses to. Talk to her about anything, or ask her for help in plain words; she decides what she does.`;
+      this.chat.addMessage({ from: 'system', text: intro });
     }
+    this.hud?.refreshCompanion(true);
+    this.chat.setGone(state === 'gone');
     this.syncInputEnabled();
   }
 
@@ -560,10 +620,10 @@ export class UI {
     return this.fader.to(0, seconds, this.reduceMotion);
   }
 
-  // ---------- orders ----------
+  // ---------- asking Lyra (§16.4) ----------
 
+  // Every button on the bar is a request: it passes her consent gate and she answers.
   runCommand(id) {
-    const g = this.game;
     if (id === 'talk') {
       this.chat.open(true);
       return;
@@ -573,40 +633,96 @@ export class UI {
       return;
     }
     const cmd = COMMANDS.find((c) => c.id === id);
-    if (!cmd || !g.companion) return;
-    const r = safe(() => g.actions.run(cmd.action, cmd.args, 'player'), { ok: false, message: '' }) || { ok: false };
-    this.reportOrder(r, STANCE_ACK[id] || id);
+    if (cmd) this.ask(cmd.action, cmd.args, id);
   }
 
   runJob(job, deliverTo = 'player') {
-    const g = this.game;
-    if (!g.companion) return;
-    const r = safe(() => g.actions.run('start_job', { target: deliverTo, value: job.id, amount: job.amount }, 'player'), { ok: false, message: '' }) || { ok: false };
-    this.reportOrder(r, 'job');
+    this.ask('start_job', { target: deliverTo, value: job.id, amount: job.amount }, 'job');
   }
 
   runStopJob() {
-    const r = safe(() => this.game.actions.run('stop_job', {}, 'player'), { ok: false, message: '' }) || { ok: false };
-    this.reportOrder(r, 'stop_job');
+    this.ask('stop_job', {}, 'stop_job');
   }
 
-  // Lyra answers an order in her own voice: the action's words, or a fitting line.
-  reportOrder(r, kind) {
+  // "Ask her back" while she is apart or has left. If no plugin offers 'rejoin', the
+  // question goes to her in words instead.
+  askBack() {
+    const g = this.game;
+    if (!g.companion || companionshipOf(g) === 'gone') return;
+    if (safe(() => g.actions?.has?.(REJOIN.action), false)) this.ask(REJOIN.action, {}, 'rejoin');
+    else {
+      this.chat.open(false);
+      this.chat.send(REJOIN.fallbackMessage);
+    }
+  }
+
+  // Run one request as the player and show her answer. Returns the action result.
+  // `fallback` is her line when she agrees and the action gave no words of its own.
+  ask(action, args = {}, kind = action, fallback = '') {
+    const g = this.game;
+    if (!g.companion || companionshipOf(g) === 'gone') return null;
+    const r = safe(() => g.actions.run(action, args, 'player'), null) || { ok: false, message: '' };
+    this.showAnswer(r, kind, fallback);
+    return r;
+  }
+
+  // Her answer to a request, in her own voice: the gate's or the action's words, or a
+  // fitting line of her own. A counter-offer becomes a button under her reply.
+  showAnswer(r, kind, fallback = '') {
+    const g = this.game;
+    const verdict = r?.verdict && typeof r.verdict === 'object' ? r.verdict : null;
+    const refused = !!r?.refused || (!!verdict?.decision && !ACCEPTED.has(verdict.decision));
+    let line = String(r?.message || (refused || verdict?.decision === 'accept_conditional' ? verdict?.message : '') || '').trim();
+    if (!line) line = r?.ok && !refused ? fallback || pickAck(kind) : pickAck(refused ? 'refused' : 'failed');
+    const counter = refused && verdict?.counter?.name ? { label: 'All right, your way', name: String(verdict.counter.name), args: verdict.counter.args || {} } : null;
+    this.lyraSays(line, { kind: refused ? 'refusal' : r?.ok ? 'answer' : 'problem', offer: counter });
+    if (refused) {
+      this.hud?.flashRefusal();
+      g.audio?.play('error', { volume: 0.45, pitch: 0.8 });
+    } else if (!r?.ok) g.audio?.play('error');
+    this.hud?.refreshCompanion(true);
+  }
+
+  // Lyra speaks: a bubble over her head and a line in the chat. When neither the chat
+  // nor she is in view, a toast carries her words.
+  lyraSays(text, { kind = null, offer = null, memories = null } = {}) {
     const g = this.game;
     const c = g.companion;
-    if (r.ok) {
-      const line = r.message || pickAck(kind);
-      if (line && c) {
-        safe(() => g.bubbles?.say?.(c, line, { kind: 'say' }));
-        this.chat.addMessage({ from: 'lyra', text: line, kind: 'order' });
-      }
-    } else {
-      const line = r.message || "I can't do that right now.";
-      safe(() => g.bubbles?.say?.(c, line, { kind: 'say' }));
-      this.chat.addMessage({ from: 'lyra', text: line, kind: 'order' });
-      this.toast(line, 'lyra');
-      g.audio?.play('error');
-    }
+    const line = String(text || '').trim();
+    if (!line) return;
+    if (c && !c.removed) safe(() => g.bubbles?.say?.(c, line, { kind: 'say' }));
+    this.chat.addMessage({ from: 'lyra', text: line, kind, offer, memories });
+    // A panel covers the world (and her bubble); off-screen she cannot be seen either.
+    if (this.stack.length || (!this.chat.isOpen() && !this.lyraInView())) this.toast(line, 'lyra', { title: g.settings?.companionName || c?.name || 'Lyra' });
+  }
+
+  lyraInView() {
+    const g = this.game;
+    const c = g.companion;
+    const cam = g.camera;
+    if (!c || c.removed || !cam) return false;
+    const vw = cam.vw || 0;
+    const vh = cam.vh || 0;
+    return c.x >= cam.x && c.x <= cam.x + vw && c.y >= cam.y && c.y <= cam.y + vh;
+  }
+
+  // Where she stands with the player changed: the HUD, the chat and a toast say so.
+  onCompanionship(p) {
+    const g = this.game;
+    const state = companionshipOf(g);
+    const name = g.settings?.companionName || g.companion?.name || 'Lyra';
+    this.hud?.refreshCompanion(true);
+    this.mind?.markDirty('you');
+    this.chat.setGone(state === 'gone');
+    if (state === this.lastCs) return;
+    this.lastCs = state;
+    const reason = String(p.reason || companionshipReason(g.companion?.mind) || '').trim();
+    this.lastCompanionReason = reason;
+    const head = (STATE_LINES[state] || STATE_LINES.together)(name);
+    this.chat.addMessage({ from: 'system', kind: 'state', text: head, note: reason, state });
+    const kind = state === 'together' ? 'good' : state === 'apart' ? 'lyra' : 'warn';
+    this.toast(reason || head, kind, { title: reason ? head : companionshipLabel(state), key: 'companionship' });
+    g.audio?.play(state === 'together' ? 'magic' : state === 'apart' ? 'ui_open' : 'sleep', { volume: 0.7 });
   }
 
   jobLabel(job) {
@@ -686,10 +802,13 @@ export class UI {
       this.chat.open(true);
       return;
     }
+    // Number keys ask only while she travels with you; apart, she is not yours to direct.
+    const mode = this.hud?.mode || 'full';
     for (let i = 0; i < COMMANDS.length; i++) {
       if (inp.uiPressed(`cmd${i + 1}`)) {
         inp.consume(`cmd${i + 1}`);
-        this.runCommand(COMMANDS[i].id);
+        if (mode === 'full') this.runCommand(COMMANDS[i].id);
+        else if (mode === 'collapsed' && i === 0) this.askBack();
       }
     }
   }

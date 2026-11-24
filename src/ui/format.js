@@ -92,11 +92,12 @@ export function stanceLabel(stance) {
   return STANCE_LABELS[stance] || 'defending';
 }
 
-// The status line under Lyra's portrait: "following you · attack mode".
-export function lyraStatusLine(status, stance, downed = false) {
-  if (downed) return 'knocked out · needs you';
+// The status line under Lyra's portrait: "following you · attack mode". The HUD shows
+// the stance in its own badge, so it asks for the status alone (`bare`).
+export function lyraStatusLine(status, stance, downed = false, bare = false) {
+  if (downed) return 'knocked out · needs help';
   const s = String(status || '').trim() || 'nearby';
-  return `${s} · ${stanceLabel(stance)}`;
+  return bare ? s : `${s} · ${stanceLabel(stance)}`;
 }
 
 // Weather + time of day -> icon key in icons.js.

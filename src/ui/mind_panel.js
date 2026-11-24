@@ -25,15 +25,55 @@ import {
   clamp01,
 } from './format.js';
 import { RESET_WARNING } from './content.js';
+import {
+  companionshipOf,
+  companionshipLabel,
+  companionshipTone,
+  companionshipBlurb,
+  companionshipReason,
+  playerRelation,
+  trustWords,
+  fearWords,
+  sleepsAt,
+  ledgerEntries,
+  ledgerViews,
+  ledgerTally,
+  promiseEntries,
+  promiseViews,
+  agendaOf,
+  planViews,
+  knowledgeEntries,
+  knowledgeKind,
+  groupKnowledge,
+  knowledgeCounts,
+  sourceLabel,
+  confidenceWord,
+  lifeTimeline,
+} from './lyra_view.js';
+import { STORY } from '../lore/story.js';
 
 export const MIND_TABS = [
   { id: 'now', label: 'Now' },
+  { id: 'you', label: 'You & her' },
   { id: 'people', label: 'People' },
   { id: 'memories', label: 'Memories' },
+  { id: 'knowledge', label: 'Knowledge' },
+  { id: 'life', label: 'Her life' },
   { id: 'diary', label: 'Diary' },
   { id: 'goals', label: 'Goals' },
   { id: 'soul', label: 'Soul' },
   { id: 'data', label: 'Data' },
+];
+
+// Tabs rebuilt when their data changes while they are showing.
+const LIVE_TABS = new Set(['you', 'people', 'goals', 'diary', 'knowledge', 'life']);
+const LEDGER_SHOWN = 60;
+const KNOWLEDGE_FILTERS = [
+  ['all', 'All'],
+  ['fact', 'Facts'],
+  ['lore', 'Lore'],
+  ['theory', 'Theories'],
+  ['rumor', 'Rumors'],
 ];
 
 const EMOTIONS = [
@@ -109,7 +149,8 @@ export class MindPanel {
     this.tab = 'now';
     this.refreshT = 0;
     this.memQuery = '';
-    this.memMode = 'moments';
+    this.knowQuery = '';
+    this.knowKind = 'all';
     this.dirty = false;
     this.nowRefs = null;
   }
@@ -178,8 +219,11 @@ export class MindPanel {
     }
     const render = {
       now: () => this.renderNow(),
+      you: () => this.renderYou(),
       people: () => this.renderPeople(),
       memories: () => this.renderMemories(),
+      knowledge: () => this.renderKnowledge(),
+      life: () => this.renderLife(),
       diary: () => this.renderDiary(),
       goals: () => this.renderGoals(),
       soul: () => this.renderSoul(),
@@ -205,7 +249,7 @@ export class MindPanel {
     this.refreshT = 0;
     this.renderHero();
     if (this.tab === 'now') this.updateNow();
-    else if (this.dirty && (this.tab === 'people' || this.tab === 'goals' || this.tab === 'diary')) {
+    else if (this.dirty && LIVE_TABS.has(this.tab)) {
       const top = this.content.scrollTop;
       this.showTab(this.tab);
       this.content.scrollTop = top;
@@ -220,13 +264,14 @@ export class MindPanel {
     const c = g.companion;
     const mind = this.mind;
     const mood = safe(() => mind?.mood?.());
-    const expr = moodToExpression(mood, mind?.emotions, mind?.needs);
+    const cs = companionshipOf(g);
+    const expr = cs === 'gone' || cs === 'left' ? 'sad' : moodToExpression(mood, mind?.emotions, mind?.needs);
     const soul = mind?.soul || {};
     const name = g.settings?.companionName || c?.name || soul.name || 'Lyra';
-    const rel = safe(() => mind?.relationships?.get?.('player'));
+    const rel = playerRelation(mind);
     const bond = safe(() => mind?.relationships?.bond?.('player'));
     const level = bond?.level ?? 0;
-    const key = `${expr}|${name}|${mood?.label}|${level}|${bond?.label}`;
+    const key = `${expr}|${name}|${mood?.label}|${level}|${bond?.label}|${cs}|${Math.round(rel?.trust ?? -1)}|${Math.round(rel?.fear ?? -1)}`;
     if (this._heroKey === key) return;
     this._heroKey = key;
     clear(this.hero);
@@ -235,14 +280,23 @@ export class MindPanel {
     if (url) img.src = url;
     const pips = h('span', { class: 'pips', 'aria-label': `Bond level ${level} of 5` });
     for (let i = 1; i <= 5; i++) pips.append(h('i', { class: i <= level ? 'on' : '' }));
+    const csChip = h('button', { type: 'button', class: 'cs-chip cs-chip-btn', 'data-tone': companionshipTone(cs), title: 'How she stands with you', text: companionshipLabel(cs) });
+    csChip.addEventListener('click', () => this.showTab('you'));
     this.hero.append(
-      h('span', { class: 'portrait-frame large' }, img),
+      h('span', { class: `portrait-frame large${cs === 'gone' ? ' is-gone' : ''}` }, img),
       h(
         'div',
         { class: 'hero-text' },
         h('div', { class: 'hero-name' }, h('span', { text: name }), soul.fullName && soul.fullName !== name ? h('span', { class: 'hero-full', text: soul.fullName }) : null),
-        h('div', { class: 'hero-mood' }, h('span', { class: 'mood-emoji', text: moodEmoji(mood) }), h('span', { text: mood?.label ? `Feeling ${mood.label}` : 'Feeling like herself' })),
-        h('div', { class: 'hero-bond' }, h('span', { text: `With you: ${bond?.label || bondLabel(level)}` }), pips, rel && Number.isFinite(rel.trust) ? h('span', { class: 'hero-trust num', text: `trust ${Math.round(rel.trust)}` }) : null),
+        h('div', { class: 'hero-mood' }, h('span', { class: 'mood-emoji', text: moodEmoji(mood) }), h('span', { text: cs === 'gone' ? 'Gone from Hearthvale' : mood?.label ? `Feeling ${mood.label}` : 'Feeling like herself' })),
+        h(
+          'div',
+          { class: 'hero-bond' },
+          csChip,
+          h('span', { class: 'hero-bond-label', text: `Bond: ${bond?.label || bondLabel(level)}` }),
+          pips,
+          rel ? h('span', { class: 'hero-trust num', text: `trust ${Math.round(rel.trust)}${rel.fear >= 5 ? ` · fear ${Math.round(rel.fear)}` : ''}` }) : null,
+        ),
       ),
     );
   }
@@ -271,9 +325,15 @@ export class MindPanel {
     refs.doing = doing;
     refs.thoughts = thoughts;
     refs.thoughtKey = '';
+    const plan = h('div', { class: 'plan' });
+    const planNote = h('p', { class: 'plan-note muted small' });
+    refs.plan = plan;
+    refs.planNote = planNote;
+    refs.planKey = '';
     this.content.append(
       h('div', { class: 'now-grid' },
         h('section', { class: 'box box-state' }, h('h3', { text: 'Right now' }), stateText, doing),
+        h('section', { class: 'box box-plan' }, h('h3', { text: 'Her day' }), plan, planNote),
         h('section', { class: 'box' }, h('h3', { text: 'Feelings' }), emoGrid),
         h('section', { class: 'box' }, h('h3', { text: 'Needs' }), needGrid),
         h('section', { class: 'box box-thoughts' }, h('h3', { text: 'On her mind' }), thoughts),
@@ -310,6 +370,7 @@ export class MindPanel {
       r.need[k].set(v, `${Math.round(v * 100)}`);
       toggleClass(r.need[k].el, 'low', v < 0.3);
     }
+    this.updatePlan(r, mind);
     const list = Array.isArray(mind.thoughts) ? mind.thoughts : [];
     const last = list[list.length - 1];
     const key = `${list.length}|${last?.t}|${last?.text}`;
@@ -323,6 +384,117 @@ export class MindPanel {
         r.thoughts.append(h('li', { class: `thought src-${t.source || 'self'}` }, h('span', { class: 'thought-text', text: t.text })));
       }
     }
+  }
+
+  // Her own plan for today (§16.1): what she means to do, where and why.
+  updatePlan(r, mind) {
+    const g = this.game;
+    const agenda = agendaOf(mind);
+    const hour = g.clock?.hour ?? 0;
+    const today = Array.isArray(agenda?.today) ? agenda.today : [];
+    const purse = Number(agenda?.purse);
+    const rel = playerRelation(mind);
+    const key = `${today.length}|${today.map((p) => `${p?.from}-${p?.to}-${p?.activity}-${p?.at}`).join(',')}|${Math.floor(hour)}|${purse}|${rel ? sleepsAt(rel) : ''}`;
+    if (key === r.planKey) return;
+    r.planKey = key;
+    clear(r.plan);
+    const names = this.nameLookup();
+    const rows = planViews(today, hour, (id) => names(id, true));
+    if (!rows.length) r.plan.append(h('p', { class: 'empty', text: 'She has not settled on a plan for today. She takes the day as it comes.' }));
+    for (const row of rows) {
+      r.plan.append(
+        h(
+          'div',
+          { class: `plan-row${row.now ? ' is-now' : ''}${row.done ? ' is-done' : ''}` },
+          h('span', { class: 'plan-time num', text: row.time }),
+          h('span', { class: 'plan-main' }, h('span', { class: 'plan-what', text: [row.activity, row.place].filter(Boolean).join(' · ') }), row.why ? h('span', { class: 'plan-why', text: row.why }) : null),
+        ),
+      );
+    }
+    const bits = [];
+    if (Number.isFinite(purse)) bits.push(`Her purse: ${Math.max(0, Math.round(purse))} coins of her own`);
+    if (rel) bits.push(`She sleeps in ${sleepsAt(rel)}`);
+    setText(r.planNote, bits.join(' · '));
+  }
+
+  // ---------- You and her ----------
+
+  renderYou() {
+    const g = this.game;
+    const mind = this.mind;
+    const name = g.settings?.companionName || g.companion?.name || 'Lyra';
+    const cs = companionshipOf(g);
+    const rel = playerRelation(mind);
+    const reason = companionshipReason(mind) || this.ui.lastCompanionReason || '';
+    const today = g.clock?.day || 0;
+
+    const stateBox = h('section', { class: `box you-state tone-${companionshipTone(cs)}` });
+    stateBox.append(
+      h('div', { class: 'you-head' }, h('span', { class: 'cs-chip cs-chip-lg', 'data-tone': companionshipTone(cs), text: companionshipLabel(cs) }), rel ? h('span', { class: 'you-sum', text: `She ${trustWords(rel.trust)}, and ${fearWords(rel.fear)}.` }) : null),
+      reason ? h('blockquote', { class: 'opinion', text: `“${reason}”` }) : null,
+      h('p', { class: 'muted', text: companionshipBlurb(cs) }),
+    );
+    if (rel) {
+      const aff = rel.affinity;
+      const affFill = h('div', { class: `bipolar-fill ${aff < 0 ? 'neg' : 'pos'}` });
+      setStyle(affFill, 'left', `${aff < 0 ? 50 + aff / 2 : 50}%`);
+      setStyle(affFill, 'width', `${Math.abs(aff) / 2}%`);
+      const bars = h('div', { class: 'rel-bars you-bars' });
+      for (const [k, label, cls] of [
+        ['trust', 'Trust', 'meter-trust'],
+        ['fear', 'Fear', 'meter-fear'],
+      ]) {
+        const m = meter(cls, label);
+        m.set(rel[k] / 100, `${Math.round(rel[k])}`);
+        bars.append(h('div', { class: 'bar-row' }, h('span', { class: 'bar-label', text: label }), m.el));
+      }
+      bars.append(h('div', { class: 'bar-row' }, h('span', { class: 'bar-label', text: 'Affinity' }), h('div', { class: 'meter bipolar' }, h('div', { class: 'meter-track' }, h('i', { class: 'mid' }), affFill), h('span', { class: 'meter-text num', text: `${aff > 0 ? '+' : ''}${Math.round(aff)}` }))));
+      const m = meter('meter-respect', 'Respect');
+      m.set(rel.respect / 100, `${Math.round(rel.respect)}`);
+      bars.append(h('div', { class: 'bar-row' }, h('span', { class: 'bar-label', text: 'Respect' }), m.el));
+      stateBox.append(bars);
+    } else stateBox.append(h('p', { class: 'empty', text: 'She has not made up her mind about you yet.' }));
+
+    // What she has seen you do.
+    const ledger = ledgerEntries(mind);
+    const tally = ledgerTally(ledger);
+    const deeds = h('section', { class: 'box you-ledger' }, h('h3', { text: 'What she has seen you do' }));
+    if (!ledger.length) deeds.append(h('p', { class: 'empty', text: `Nothing ${name} holds for or against you yet. She is watching, the way anyone would.` }));
+    else {
+      deeds.append(h('p', { class: 'muted small', text: `${tally.good} kept in your favor · ${tally.bad} held against you` }));
+      const list = h('ol', { class: 'ledger' });
+      const views = ledgerViews(ledger, today);
+      for (const v of views.slice(0, LEDGER_SHOWN)) {
+        list.append(
+          h(
+            'li',
+            { class: `deed tone-${v.tone}` },
+            h('span', { class: 'deed-sev num', title: 'How much it weighed with her', text: v.sev }),
+            h('span', { class: 'deed-main' }, h('span', { class: 'deed-label', text: v.label }), v.text ? h('span', { class: 'deed-text', text: v.text }) : null),
+            h('span', { class: 'deed-when', text: v.when }),
+          ),
+        );
+      }
+      deeds.append(list);
+      if (views.length > LEDGER_SHOWN) deeds.append(h('p', { class: 'muted small', text: `…and ${views.length - LEDGER_SHOWN} older things she has not forgotten.` }));
+    }
+
+    // Promises, both ways.
+    const promises = promiseViews(promiseEntries(mind), { lyraName: name, today });
+    const promBox = h('section', { class: 'box you-promises' }, h('h3', { text: 'Promises' }));
+    if (!promises.length) promBox.append(h('p', { class: 'empty', text: 'No promises between you yet. When she asks something of you and you agree, it is written here.' }));
+    for (const pv of promises) {
+      promBox.append(
+        h(
+          'div',
+          { class: `promise state-${pv.state}` },
+          h('span', { class: 'promise-state', text: pv.stateLabel }),
+          h('span', { class: 'promise-main' }, h('span', { class: 'promise-text', text: pv.text }), h('span', { class: 'promise-meta', text: [pv.by, pv.due].filter(Boolean).join(' · ') })),
+        ),
+      );
+    }
+
+    this.content.append(h('p', { class: 'tab-intro', text: `${name} travels with you by choice. This is how she sees you, and why.` }), stateBox, deeds, promBox);
   }
 
   // ---------- People ----------
@@ -419,18 +591,11 @@ export class MindPanel {
     );
   }
 
+  // Asking her to see someone as a friend or an enemy is a request like any other.
   setTag(rel, value) {
-    const g = this.game;
-    const r = safe(() => g.actions.run('set_relationship', { target: rel.id, value }, 'player'), { ok: false, message: '' });
     const who = rel.name?.split(' ')[0] || rel.id;
-    if (r.ok) {
-      const msg = r.message || (value === 'friend' ? `${who} is a friend now. I won't raise a hand to them.` : value === 'enemy' ? `${who}… fine. I'll treat them as a threat.` : `All right, I'll make up my own mind about ${who}.`);
-      this.ui.toast(msg, 'lyra');
-      g.audio?.play('ui_click');
-    } else {
-      this.ui.toast(r.message || "She won't change how she sees them just like that.", 'lyra');
-      g.audio?.play('error');
-    }
+    const fallback = value === 'friend' ? `${who} is a friend, then. I won't raise a hand to them.` : value === 'enemy' ? `${who}… fine. I'll treat them as a threat.` : `All right. I'll make up my own mind about ${who}.`;
+    this.ui.ask('set_relationship', { target: rel.id, value }, 'tag', fallback);
     const top = this.content.scrollTop;
     this.showTab('people');
     this.content.scrollTop = top;
@@ -447,27 +612,12 @@ export class MindPanel {
 
   renderMemories() {
     const search = h('input', { type: 'search', class: 'field search', placeholder: 'Search her memories…', value: this.memQuery, 'aria-label': 'Search memories' });
-    const seg = h('div', { class: 'segmented' });
-    const modes = [
-      ['moments', 'Moments'],
-      ['knowledge', 'Things she knows'],
-    ];
     const results = h('div', { class: 'memories' });
     const count = h('div', { class: 'count' });
     const draw = () => {
       clear(results);
-      if (this.memMode === 'knowledge') this.drawKnowledge(results, count);
-      else this.drawMoments(results, count);
+      this.drawMoments(results, count);
     };
-    for (const [id, label] of modes) {
-      const b = h('button', { type: 'button', class: 'seg', role: 'radio', 'aria-checked': this.memMode === id ? 'true' : 'false', text: label });
-      b.addEventListener('click', () => {
-        this.memMode = id;
-        for (const el of seg.children) el.setAttribute('aria-checked', el === b ? 'true' : 'false');
-        draw();
-      });
-      seg.append(b);
-    }
     let timer = 0;
     search.addEventListener('input', () => {
       clearTimeout(timer);
@@ -476,7 +626,8 @@ export class MindPanel {
         draw();
       }, 120);
     });
-    this.content.append(h('div', { class: 'toolbar' }, search, seg), count, results);
+    search.addEventListener('keydown', (e) => e.stopPropagation());
+    this.content.append(h('div', { class: 'toolbar' }, search), count, results);
     draw();
   }
 
@@ -503,26 +654,104 @@ export class MindPanel {
     }
   }
 
-  drawKnowledge(results, count) {
-    const list = listFrom(this.mind.knowledge, ['all', 'list', 'entries']);
-    const q = this.memQuery.trim().toLowerCase();
-    const found = list.filter((k) => k && k.text && (!q || `${k.subject} ${k.text}`.toLowerCase().includes(q)));
-    setText(count, list.length ? `${found.length} of ${list.length} things she knows` : '');
-    if (!found.length) {
-      results.append(h('p', { class: 'empty', text: list.length ? 'Nothing she knows matches that.' : 'She will learn about places, people and things as you explore.' }));
-      return;
+  // ---------- Knowledge (§17.2) ----------
+
+  renderKnowledge() {
+    const list = knowledgeEntries(this.mind);
+    const counts = knowledgeCounts(list);
+    const search = h('input', { type: 'search', class: 'field search', placeholder: 'Search what she knows…', value: this.knowQuery, 'aria-label': 'Search knowledge' });
+    const seg = h('div', { class: 'segmented kind-filter', role: 'radiogroup', 'aria-label': 'Kind of knowledge' });
+    const results = h('div', { class: 'knowledge' });
+    const count = h('div', { class: 'count' });
+    const names = this.nameLookup();
+    const draw = () => {
+      clear(results);
+      const groups = groupKnowledge(list, { query: this.knowQuery, kind: this.knowKind, nameOf: (id) => names(id, true) });
+      const n = groups.reduce((a, gr) => a + gr.items.length, 0);
+      setText(count, list.length ? `${n} of ${list.length} things she knows` : '');
+      if (!groups.length) {
+        results.append(h('p', { class: 'empty', text: list.length ? 'Nothing she knows matches that.' : 'She learns about places, people and old stories as she lives here: from what she sees, what villagers tell her, and what you say.' }));
+        return;
+      }
+      for (const gr of groups) {
+        const ul = h('ul', { class: 'facts' });
+        for (const k of gr.items.slice(0, 40)) {
+          const kind = knowledgeKind(k);
+          const src = sourceLabel(k, (id) => names(id));
+          const conf = kind === 'theory' || kind === 'rumor' ? confidenceWord(k.confidence) : '';
+          ul.append(
+            h(
+              'li',
+              { class: `fact kind-${kind}` },
+              h('span', { class: `kind-badge kind-${kind}`, text: kind }),
+              h('span', { class: 'fact-main' }, h('span', { class: 'fact-text', text: k.text }), src || conf ? h('span', { class: 'fact-src', text: [src, conf].filter(Boolean).join(' · ') }) : null),
+            ),
+          );
+        }
+        results.append(h('section', { class: 'fact-group' }, h('h3', { class: 'day-head', text: gr.label }), ul));
+      }
+    };
+    for (const [id, label] of KNOWLEDGE_FILTERS) {
+      const b = h('button', { type: 'button', class: 'seg', role: 'radio', 'aria-checked': this.knowKind === id ? 'true' : 'false' }, label, h('span', { class: 'seg-n num', text: String(counts[id] || 0) }));
+      b.addEventListener('click', () => {
+        this.knowKind = id;
+        for (const el of seg.children) el.setAttribute('aria-checked', el === b ? 'true' : 'false');
+        draw();
+      });
+      seg.append(b);
     }
-    const bySubject = new Map();
-    for (const k of found) {
-      const s = k.subject || 'Other';
-      if (!bySubject.has(s)) bySubject.set(s, []);
-      bySubject.get(s).push(k);
+    let timer = 0;
+    search.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        this.knowQuery = search.value;
+        draw();
+      }, 120);
+    });
+    search.addEventListener('keydown', (e) => e.stopPropagation());
+    this.content.append(
+      h('p', { class: 'tab-intro', text: 'What she knows of the world, and how she came to know it. Theories are her own beliefs and rumors are hearsay: she holds them more loosely than facts.' }),
+      h('div', { class: 'toolbar' }, search, seg),
+      count,
+      results,
+    );
+    draw();
+  }
+
+  // ---------- Her life (§17.1) ----------
+
+  renderLife() {
+    const g = this.game;
+    const mind = this.mind;
+    const name = g.settings?.companionName || g.companion?.name || 'Lyra';
+    const items = lifeTimeline({ mind, story: STORY, soul: mind.soul });
+    const names = this.nameLookup();
+    const line = h('ol', { class: 'life' });
+    if (!items.length) line.append(h('li', { class: 'empty', text: 'She keeps her past to herself for now.' }));
+    for (const it of items) {
+      const who = it.people.map((id) => names(id)).filter(Boolean);
+      const where = it.places.map((id) => names(id, true)).filter(Boolean);
+      const meta = [where.join(', '), who.length ? `with ${who.join(', ')}` : '', it.feeling].filter(Boolean).join(' · ');
+      line.append(
+        h(
+          'li',
+          { class: `life-node imp-${Math.min(10, Math.max(1, Math.round(it.importance)))}` },
+          h('span', { class: 'life-age', text: it.ageLabel }),
+          h('div', { class: 'life-card' }, h('h3', { class: 'life-title', text: it.title }), it.text && it.text !== it.title ? h('p', { class: 'life-text', text: it.text }) : null, meta ? h('div', { class: 'memory-meta', text: meta }) : null),
+        ),
+      );
     }
-    for (const [subject, items] of bySubject) {
-      const ul = h('ul', { class: 'facts' });
-      for (const k of items.slice(-20)) ul.append(h('li', { text: k.text }));
-      results.append(h('section', { class: 'fact-group' }, h('h3', { class: 'day-head', text: capitalize(this.nameLookup()(subject, true) || subject) }), ul));
-    }
+    const cs = companionshipOf(g);
+    const day = g.clock?.day || 1;
+    line.append(
+      h(
+        'li',
+        { class: 'life-node life-now' },
+        h('span', { class: 'life-age', text: 'Now' }),
+        h('div', { class: 'life-card' }, h('h3', { class: 'life-title', text: `Day ${day} in Hearthvale` }), h('p', { class: 'life-text', text: cs === 'gone' ? `${name} has left Hearthvale.` : `${companionshipLabel(cs)}. ${companionshipBlurb(cs)}` })),
+      ),
+    );
+    this.content.append(h('p', { class: 'tab-intro', text: `${name}'s life from the beginning, as she remembers it.` }), line);
   }
 
   // id -> display name for people and places mentioned in memories.
@@ -728,6 +957,7 @@ export class MindPanel {
       ['Diary pages', Array.isArray(mind.diary) ? mind.diary.length : 0],
       ['Goals', Array.isArray(mind.goals) ? mind.goals.length : 0],
       ['Things she knows', listFrom(mind.knowledge, ['all', 'list']).length],
+      ['Deeds she remembers', ledgerEntries(mind).length],
       ['Size', bytesLabel(utf8Bytes(json))],
     ];
     const statGrid = h('dl', { class: 'stats' });
@@ -835,7 +1065,7 @@ export class MindPanel {
     const resetBtn = button('Reset her mind', { icon: 'heart', cls: 'btn-danger', onClick: () => this.confirmReset() });
 
     this.content.append(
-      h('p', { class: 'tab-intro', text: 'Everything above lives here as data: her soul, feelings, memories, people, diary and goals. Export it to keep a copy, move her to another device, or bring her back after a fresh start.' }),
+      h('p', { class: 'tab-intro', text: 'Everything above lives here as data: her soul, feelings, memories, what she knows, the people in her life, how she sees you, her diary and her goals. Export it to keep a copy, move her to another device, or bring her back after a fresh start.' }),
       statGrid,
       h('section', { class: 'box' }, h('h3', { text: 'Export' }), exportRow, manual),
       h('section', { class: 'box' }, h('h3', { text: 'Import' }), h('p', { class: 'muted', text: 'Restore a mind saved from Hearthlight. It replaces what she knows now.' }), h('div', { class: 'data-actions' }, importBtn, fileInput)),
