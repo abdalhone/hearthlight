@@ -1,7 +1,8 @@
 // Browser checks for the round-3 interface (DESIGN.md §19.6), in headless Chromium:
 // the villager dialog's "Say something…" field, Listen in, the morning's "While you
 // slept", the People tab (every villager), her worth-it breakdown, edited memories,
-// toasts that never cover bubbles or the quest line, and panels that fit a phone.
+// toasts that never cover bubbles or the quest line, panels that fit a phone, the
+// compact phone HUD (Lyra's card folds, 40 px targets) and the story's menu entries.
 // Where the village or her worth() are not in this build yet, small stubs stand in.
 //   node scripts/ui3_check.mjs [--src]        (after `npm run build` unless --src)
 // Screenshots go to $SHOTS (default screenshots/), named ui3-*.png.
