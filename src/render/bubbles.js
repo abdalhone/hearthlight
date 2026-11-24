@@ -57,7 +57,29 @@ const ICON_ALIASES = {
   ellipsis: '...',
   nervous: 'sweat',
   embarrassed: 'sweat',
+  embarrassment: 'sweat',
   worried: 'sweat',
+  fear: 'sweat',
+  afraid: 'sweat',
+  scared: 'sweat',
+  // Emotion names from Lyra's mind, so express(emotion) can show something fitting.
+  joy: 'note',
+  happy: 'note',
+  laugh: 'note',
+  cheer: 'note',
+  dance: 'note',
+  pride: 'note',
+  proud: 'note',
+  trust: 'heart',
+  affection: 'heart',
+  hug: 'heart',
+  anger: 'anger',
+  curiosity: '?',
+  curious: '?',
+  sadness: '...',
+  sad: '...',
+  cry: '...',
+  tired: 'zzz',
 };
 
 // Tail of a speech box, in bubble pixels, pointing down. O = outline, E = edge, F = fill.
@@ -124,6 +146,14 @@ export class Bubbles {
     this._fontPx = 0;
     this._portrait = undefined;
     this._time = 0;
+    // Bubbles measured before the pixel font arrived would be the wrong width.
+    if (typeof document !== 'undefined' && document.fonts?.addEventListener) {
+      document.fonts.addEventListener('loadingdone', () => {
+        this._fontPx = 0;
+        for (const b of this.items) b.widths = null;
+        this._tagWidths.clear();
+      });
+    }
   }
 
   // ---------------------------------------------------------------- API
@@ -666,7 +696,7 @@ export class Bubbles {
     ctx.textAlign = 'center';
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
-      if (e.removed || e === p || !(e.profile || e.role) || !e.name) continue;
+      if (e.removed || e === p || e.id === COMPANION_ID || !(e.profile || e.role) || !e.name) continue;
       const d = Math.hypot(e.x - p.x, e.y - p.y);
       if (d > NAME_TAG_RANGE) continue;
       if (this.hasBubble(e)) continue;

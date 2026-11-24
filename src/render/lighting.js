@@ -43,6 +43,7 @@ export class Lighting {
 
     this._sprites = new Map();
     this._hot = new Map();
+    this._soft = new Map();
     this.lightmap = null;
     this.lctx = null;
   }
@@ -203,6 +204,19 @@ export class Lighting {
     return s;
   }
 
+  // In the light map a light only restores brightness, slightly tinted; its color
+  // comes mostly from the additive glow, so warm light on green grass reads warm
+  // instead of olive.
+  mapSprite(color) {
+    const key = color || DEFAULT_COLOR;
+    let s = this._soft.get(key);
+    if (s) return s;
+    if (this._soft.size > 96) this._soft.clear();
+    s = this.sprite(lighten(key.startsWith('#') ? key : DEFAULT_COLOR, 0.3));
+    this._soft.set(key, s);
+    return s;
+  }
+
   // A whiter, tighter version of a light's sprite for bloom on bright lights.
   hotSprite(color) {
     const key = color || DEFAULT_COLOR;
@@ -226,6 +240,23 @@ export class Lighting {
       this.lightmap.height = lh;
     }
     return this.lightmap;
+  }
+
+  _ensureLiftmap(w, h) {
+    if (!this.liftmap) {
+      this.liftmap = document.createElement('canvas');
+      this.qctx = this.liftmap.getContext('2d');
+    }
+    if (this.liftmap.width !== w || this.liftmap.height !== h || !this._liftGradient) {
+      this.liftmap.width = w;
+      this.liftmap.height = h;
+      const g = this.qctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.1, w / 2, h / 2, Math.hypot(w, h) * 0.55);
+      g.addColorStop(0, '#0e1538');
+      g.addColorStop(0.6, '#0b1130');
+      g.addColorStop(1, '#03050f');
+      this._liftGradient = g;
+    }
+    return this.liftmap;
   }
 
   // ---------------------------------------------------------------- composite
@@ -291,7 +322,7 @@ export class Lighting {
         const li = this.lights[i];
         const rr = fr[i];
         l.globalAlpha = a > 1 ? 1 : a;
-        l.drawImage(this.sprite(li.color), (li.x - ox - rr) / D, (li.y - oy - rr) / D, (2 * rr) / D, (2 * rr) / D);
+        l.drawImage(this.mapSprite(li.color), (li.x - ox - rr) / D, (li.y - oy - rr) / D, (2 * rr) / D, (2 * rr) / D);
       }
       if (vignette > 0.01) {
         // Fit the vignette to the visible part of the map (the map is one pixel wider).
@@ -308,32 +339,40 @@ export class Lighting {
       ctx.globalCompositeOperation = 'multiply';
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(lm, -r.subX, -r.subY, lm.width * D * scale, lm.height * D * scale);
-      // Multiplying cannot turn green grass blue, so lift the shadows toward navy at
-      // night with 'screen': dark pixels gain a moonlit blue, lit ones barely change.
+      // Multiplying cannot turn green grass blue, so at night the shadows are lifted
+      // toward navy with 'screen'. The lift lives in its own small map with every
+      // light cut out of it, so lit ground keeps its warm color, and it fades toward
+      // the edges so the vignette survives.
       const night = Math.max(0, Math.min(1, (amb.darkness - 0.3) / 0.45)) * (1 - this.indoor * 0.75);
-      // The lift fades toward the edges so the vignette survives it.
       if (night > 0.01) {
-        const W = ctx.canvas.width;
-        const H = ctx.canvas.height;
-        if (!this._lift || this._liftCtx !== ctx) {
-          this._liftCtx = ctx;
-          this._lift = ctx.createRadialGradient(0, 0, 0.15, 0, 0, 1);
-          this._lift.addColorStop(0, '#0e1538');
-          this._lift.addColorStop(0.6, '#0b1130');
-          this._lift.addColorStop(1, '#03050f');
+        const lift = this._ensureLiftmap(lm.width, lm.height);
+        const q = this.qctx;
+        q.globalCompositeOperation = 'source-over';
+        q.globalAlpha = 1;
+        q.clearRect(0, 0, lift.width, lift.height);
+        q.fillStyle = this._liftGradient;
+        q.fillRect(0, 0, lift.width, lift.height);
+        q.globalCompositeOperation = 'destination-out';
+        q.imageSmoothingEnabled = true;
+        for (let i = 0; i < n; i++) {
+          const a = fk[i] * 1.3;
+          if (a < 0.02) continue;
+          const li = this.lights[i];
+          const rr = fr[i] * 0.85;
+          q.globalAlpha = a > 1 ? 1 : a;
+          q.drawImage(this.sprite('#ffffff'), (li.x - ox - rr) / D, (li.y - oy - rr) / D, (2 * rr) / D, (2 * rr) / D);
         }
+        q.globalAlpha = 1;
+        q.globalCompositeOperation = 'source-over';
         ctx.globalCompositeOperation = 'screen';
         ctx.globalAlpha = night;
-        ctx.fillStyle = this._lift;
-        ctx.setTransform((W / 2) * 1.2, 0, 0, (H / 2) * 1.2, W / 2, H / 2);
-        ctx.fillRect(-1, -1, 2, 2);
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(lift, -r.subX, -r.subY, lift.width * D * scale, lift.height * D * scale);
         ctx.globalAlpha = 1;
       }
     }
 
     // Additive glow: subtle by day, a warm halo at night, plus bloom on bright lights.
-    const gk = 0.07 + 0.34 * amb.darkness;
+    const gk = 0.08 + 0.46 * amb.darkness;
     const bloom = Math.max(0, amb.darkness - 0.3) * 0.55;
     ctx.globalCompositeOperation = 'lighter';
     ctx.imageSmoothingEnabled = true;
@@ -343,7 +382,7 @@ export class Lighting {
       if (a < 0.01) continue;
       const cx = (li.x - ox) * scale - r.subX;
       const cy = (li.y - oy) * scale - r.subY;
-      const R = fr[i] * 0.62 * scale;
+      const R = fr[i] * 0.7 * scale;
       ctx.globalAlpha = a > 1 ? 1 : a;
       ctx.drawImage(this.sprite(li.color), cx - R, cy - R, R * 2, R * 2);
       if (bloom > 0 && fk[i] > 0.55) {

@@ -425,6 +425,8 @@ test('icons accept aliases and the thinking dots clear when she speaks', () => {
   assert.equal(b.icons.length, 1, 'one icon per entity');
   assert.equal(b.icon(e, 'love').name, 'heart');
   assert.equal(b.icon(e, 'angry').name, 'anger');
+  assert.equal(b.icon(e, 'affection').name, 'heart', 'emotion names map to icons');
+  assert.equal(b.icon(e, 'curiosity').name, '?');
   assert.equal(b.icon(e, 'not-an-icon'), null);
   b.icon(e, '...');
   b.say(e, 'Here is what I think.');
