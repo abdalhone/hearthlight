@@ -330,3 +330,27 @@ export function glyphSize(kind, id) {
   const grid = kind === 'shapes' ? SHAPE_GLYPHS[id] || SHAPE_GLYPHS.orb : kind === 'essences' ? GEM : TWIST_GLYPHS[id] || TWIST_GLYPHS.big;
   return { w: Math.max(...grid.map((r) => r.length)), h: grid.length };
 }
+
+// The Spellbook's own mark: a violet-bound book with an ember glyph.
+const BOOK = [
+  '.kkkkkkk.',
+  'kAaaaaaak',
+  'kAaeeeaak',
+  'kAaeAeaak',
+  'kAaeeeaak',
+  'kAaaaaaak',
+  'kAwwwwwwk',
+  'kAkkkkkkk',
+  '.k.......',
+];
+
+export function spellbookIconUrl() {
+  let u = cache.get('book');
+  if (u === undefined) {
+    u = toUrl(svgFromGrid(BOOK, (ch) => FIXED[ch] || null));
+    cache.set('book', u);
+  }
+  return u;
+}
+
+export const SPELLBOOK_ICON_SIZE = { w: 9, h: 9 };

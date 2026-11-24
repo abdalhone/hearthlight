@@ -2,13 +2,14 @@
 // replies, the How to play page. Pure data + small pure pickers (unit-tested).
 
 // The "Ask Lyra" bar. Every button is a request she weighs (DESIGN.md §16.4): it runs
-// game.actions.run(action, args, 'player') and she answers. `key` is the hotkey digit.
+// game.actions.run(action, args, 'player') and she answers. `key` is its hotkey: Alt
+// (Option) + the digit, since the plain number row casts weaves (§22.4).
 export const COMMANDS = [
-  { id: 'follow', label: 'Follow', icon: 'boots', key: '1', action: 'follow', args: { target: 'player' }, hint: 'Ask her to walk with you' },
-  { id: 'stay', label: 'Wait', icon: 'flag', key: '2', action: 'stay', args: {}, hint: 'Ask her to wait here' },
-  { id: 'attack', label: 'Fight', icon: 'sword', key: '3', action: 'set_combat_mode', args: { value: 'attack' }, hint: 'Ask her to fight anything that is not a friend' },
-  { id: 'defend', label: 'Defend', icon: 'shield', key: '4', action: 'set_combat_mode', args: { value: 'defend' }, hint: 'Ask her to fight only what threatens you both' },
-  { id: 'passive', label: 'Hold back', icon: 'feather', key: '5', action: 'set_combat_mode', args: { value: 'passive' }, hint: 'Ask her to stay out of fights' },
+  { id: 'follow', label: 'Follow', icon: 'boots', key: 'Alt 1', action: 'follow', args: { target: 'player' }, hint: 'Ask her to walk with you' },
+  { id: 'stay', label: 'Wait', icon: 'flag', key: 'Alt 2', action: 'stay', args: {}, hint: 'Ask her to wait here' },
+  { id: 'attack', label: 'Fight', icon: 'sword', key: 'Alt 3', action: 'set_combat_mode', args: { value: 'attack' }, hint: 'Ask her to fight anything that is not a friend' },
+  { id: 'defend', label: 'Defend', icon: 'shield', key: 'Alt 4', action: 'set_combat_mode', args: { value: 'defend' }, hint: 'Ask her to fight only what threatens you both' },
+  { id: 'passive', label: 'Hold back', icon: 'feather', key: 'Alt 5', action: 'set_combat_mode', args: { value: 'passive' }, hint: 'Ask her to stay out of fights' },
 ];
 
 // Asking her to travel with you again, once she is apart or has left (§16.3).

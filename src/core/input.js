@@ -68,7 +68,7 @@ const PREVENT = new Set(['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'A
 // How long a sword aim (a click toward the mouse, a drag on the sword button) stays fresh.
 export const SWING_AIM_SECONDS = 0.4;
 // Wheel travel (in pixels of deltaY) per slot step; a notched wheel gives ~100 per notch.
-export const WHEEL_STEP = 60;
+export const WHEEL_STEP = 100;
 
 export function actionForKey(code, key, alt = false) {
   if (alt) return (code && ALT_KEYMAP[code]) || null;
@@ -108,9 +108,15 @@ export function wheelSteps(rest, deltaY, deltaMode = 0) {
     acc += WHEEL_STEP;
     steps--;
   }
-  // A long scroll is a few steps, never a spin through the whole bar.
-  if (steps > 2) steps = 2;
-  if (steps < -2) steps = -2;
+  // One wheel event is at most one step (a notch), never a spin through the whole bar.
+  if (steps > 1) {
+    steps = 1;
+    acc = 0;
+  }
+  if (steps < -1) {
+    steps = -1;
+    acc = 0;
+  }
   return { steps, rest: acc };
 }
 

@@ -162,21 +162,28 @@ export function weavePalette(weave, plan, entryOf = null) {
 }
 
 // The aim preview descriptor for a plan: the runtime's, else the shape's default.
+// The runtime calls it plan.aim (r4/core); plan.preview is accepted too.
 export function previewOf(plan, weave) {
-  const pv = plan?.preview;
+  const pv = plan?.aim || plan?.preview;
   const shape = weave?.shape || plan?.shape || 'bolt';
   const base = SHAPE_INFO[shape]?.preview || SHAPE_INFO.bolt.preview;
+  const count = Number(plan?.count) > 1 ? Math.min(7, Number(plan.count)) : 1;
   if (!pv || typeof pv !== 'object' || !pv.type) {
     const range = Number(plan?.range) > 0 ? Number(plan.range) : base.range;
-    return { ...base, range, count: Number(plan?.count) > 1 ? Number(plan.count) : 1 };
+    return { ...base, range, count };
   }
-  return { ...base, ...pv };
+  const out = { ...base, ...pv };
+  if (out.count == null) out.count = count;
+  // A wall is a line laid across the aim, at the spot aimed at.
+  if (out.across && out.type === 'line') out.type = 'wall';
+  if (out.type === 'wall' && Number(out.length) > 0) out.width = Number(out.length);
+  return out;
 }
 
 // Is a preview aimed at a spot (where the finger's distance matters) or a direction?
 export function aimsAtSpot(preview) {
   const t = preview?.type;
-  return t === 'circle' || t === 'point';
+  return t === 'circle' || t === 'point' || t === 'wall';
 }
 
 // How a weave is cast: 'hold' (channelled while held: beams), 'charge' (hold to power
@@ -184,8 +191,9 @@ export function aimsAtSpot(preview) {
 export function castModeOf(plan, weave) {
   if (!plan && !weave) return 'quick';
   const twists = (weave?.twists || plan?.twists || []).map((t) => (typeof t === 'string' ? t : t?.id));
-  if (plan?.mode === 'hold' || plan?.held || plan?.channel || plan?.hold) return 'hold';
-  if (plan?.mode === 'charge' || plan?.charge || twists.includes('charge')) return 'charge';
+  if (plan?.input === 'hold' || plan?.mode === 'hold' || plan?.held === true || plan?.channel) return 'hold';
+  if (plan?.input === 'charge' || plan?.mode === 'charge' || twists.includes('charge')) return 'charge';
+  if (plan?.input === 'tap') return 'quick';
   if ((weave?.shape || plan?.shape) === 'beam') return 'hold';
   return 'quick';
 }

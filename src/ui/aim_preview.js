@@ -38,7 +38,7 @@ export class AimPreview {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     try {
-      if (w.hover && g.settings?.aimGuides !== false) this.drawAim(ctx, r, s, w.hover, 0.42);
+      if (w.hover && g.settings?.aimGuides !== false) this.drawAim(ctx, r, s, w.hover, 0.55);
       for (let i = 0; i < w.aims.length; i++) this.drawAim(ctx, r, s, w.aims[i], 1);
       if (w.sword) this.drawSword(ctx, r, s, w.sword);
     } finally {
@@ -66,7 +66,7 @@ export class AimPreview {
     const ang = Math.atan2(uy, ux);
     const range = Math.max(8, Number(pv.range) || 0) * s;
     const type = pv.type || 'line';
-    const thin = Math.max(2, Math.round(s * 0.75));
+    const thin = Math.max(2, Math.round(s * 0.9));
 
     if (type === 'line' || type === 'beam') {
       const width = Math.max(4, (Number(pv.width) || 6) * s);
@@ -107,8 +107,8 @@ export class AimPreview {
       if (type === 'circle') this.pulseRing(ctx, p.x, p.y, rad, pal, k);
     } else if (type === 'wall') {
       const half = Math.max(8, ((Number(pv.width) || 60) * s) / 2);
-      const cx = o.x + ux * range;
-      const cy = o.y + uy * range;
+      const cx = p.x;
+      const cy = p.y;
       const nx = -uy;
       const ny = ux;
       const thick = Math.max(5, 6 * s);
@@ -155,13 +155,16 @@ export class AimPreview {
     ctx.lineTo(ex - nx * hw, ey - ny * hw);
     ctx.lineTo(x - nx * hw * 0.4, y - ny * hw * 0.4);
     ctx.closePath();
-    ctx.fillStyle = rgba(pal.glow, 0.2 * k);
+    ctx.fillStyle = rgba(pal.glow, 0.3 * k);
     ctx.fill();
+    ctx.lineWidth = Math.max(1, thin - 1);
+    ctx.strokeStyle = rgba(pal.glow, 0.55 * k);
+    ctx.stroke();
     // Dark under-stroke so the spine reads on snow and on sand.
     ctx.setLineDash([thin * 3, thin * 2.5]);
     ctx.lineDashOffset = -this.t * thin * 14;
-    ctx.lineWidth = thin + 2;
-    ctx.strokeStyle = rgba('#0b0915', 0.45 * k);
+    ctx.lineWidth = thin + 3;
+    ctx.strokeStyle = rgba('#0b0915', 0.5 * k);
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(ex, ey);
@@ -182,7 +185,7 @@ export class AimPreview {
   }
 
   fillStroke(ctx, pal, k, thin, evenodd = false) {
-    ctx.fillStyle = rgba(pal.glow, 0.2 * k);
+    ctx.fillStyle = rgba(pal.glow, 0.28 * k);
     if (evenodd) ctx.fill('evenodd');
     else ctx.fill();
     ctx.lineWidth = thin + 2;

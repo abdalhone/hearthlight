@@ -412,7 +412,7 @@ test('every icon grid is rectangular and uses known colors', () => {
 });
 
 test('orders, jobs and acknowledgements are complete', () => {
-  assert.deepEqual(COMMANDS.map((c) => c.key), ['1', '2', '3', '4', '5']);
+  assert.deepEqual(COMMANDS.map((c) => c.key), ['Alt 1', 'Alt 2', 'Alt 3', 'Alt 4', 'Alt 5'], 'the number row casts weaves (§22.4)');
   assert.deepEqual(COMMANDS.map((c) => c.id), ['follow', 'stay', 'attack', 'defend', 'passive']);
   for (const c of COMMANDS) assert.ok(ICONS[c.icon], c.icon);
   assert.deepEqual(
