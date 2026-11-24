@@ -13,7 +13,8 @@
 //   turnIn: npcId (default: the giver) | null (rewards on the last objective),
 //   offer, accept, decline, progress, turnin: [lines in the giver's voice],
 //   board: 'the notice as pinned' (board missions),
-//   objectives: [{ type, label, ... }] (one after another; see tracker.js),
+//   objectives: [{ type, label, ... }] (one after another; see tracker.js; a talk step with
+//               Lyra may carry `trust` and `notNow`: she teaches only while she trusts you),
 //   rewards: [{ magic: {kind, id} } | { coins } | { xp } | { maxMana } | { slot: 'weave'|'essence'|'twist' } | { items: [[id, qty]] }
 //             | { price: id } | { unlock: { kind, id } } | { points: n }   (DESIGN §25–26; src/progression/index.js grants these)],
 //   lyra: { accept?, done? } (her own words when she is near),
@@ -387,6 +388,39 @@ export const MISSIONS = [
     ],
     rewards: [{ slot: 'weave' }, { coins: 40 }, { xp: 80 }],
     lyra: { accept: "I'll come to bring him in. Not to watch anyone put a knife in him.", done: 'Rowan made a joke. Write it down. Nobody will believe you.' },
+  },
+
+  {
+    id: 'hold_the_hem',
+    giver: 'wys',
+    title: 'Two Is a Patrol',
+    summary: "Wys walks the King's Road in the afternoons, where the wood comes down to it, and the wolves have been at the hem again. He would like someone to walk it with him. He says it is the Captain's rule.",
+    hint: 'Wys, on watch, wants a word about the road.',
+    requires: { missions: ['quarry_watch'], done: 6 },
+    danger: 'kings_road',
+    offer: [
+      "Citizen! Oh. It's you. Hello. I mean: a word. Officially.",
+      "I walk the King's Road in the afternoons. Where the wood comes down to it. The wolves have been at the hem again.",
+      "Would you walk it with me? Not because I need anyone. The Captain says two is a patrol and one is a target. That's all. Officially.",
+    ],
+    accept: ["Good! Right. The road, in the afternoon. I'll be the one holding the spear."],
+    decline: ["Understood! That's fine. One is a target, but I'm a very alert target."],
+    progress: ["The King's Road, in the afternoon. Where the wood comes down. I'll be there. Being alert."],
+    objectives: [
+      { type: 'reach', entity: 'wys', radius: 48, when: { from: 13, to: 17 }, label: "Find Wys on the King's Road in the afternoon", where: 'kings_road' },
+      { type: 'protect', at: 'kings_road', seconds: 35, when: { from: 13, to: 18 }, spawn: { species: 'wolf', count: 3 }, label: 'Stand in front of Wys until the wolves give up' },
+    ],
+    turnin: [
+      "You were in front of me. Before I'd even got the spear round. Your light went round me like a cloak, the way the chapel keeps the family flames.",
+      'The wolf hit it and just stopped. Like walking into a wall that was not there. Here, and not past here.',
+      "The Captain says a watchman's first job is to stand in front of someone. You do it with light. That's a ward, that is. Keep it. And don't tell Lyra I said thank you. I'll tell her. Officially.",
+    ],
+    rewards: [M('shape', 'ward'), { maxMana: 5 }, { coins: 10 }, { xp: 35 }],
+    tip: {
+      desk: 'Ward shields you, or the friend you aim it at: it takes blows, stops arrows, bolts and spells, and answers whoever strikes it. Tap its key to shield yourself.',
+      touch: 'Ward shields you, or the friend you drag it onto: it takes blows and stops arrows, bolts and spells. A tap shields yourself.',
+    },
+    lyra: { accept: 'Wys asked you? Not me? ...Good for him. Go on.', done: 'Wys just walked past the Kettle like he was ten feet tall. What did you do to him?' },
   },
 
   {
@@ -787,6 +821,47 @@ export const MISSIONS = [
     ],
     rewards: [M('shape', 'beam'), M('twist', 'charge'), { maxMana: 10 }, { xp: 40 }],
     lyra: { done: "It's burning. It's actually burning. Don't say anything. Just... let me look at it." },
+  },
+
+  // DESIGN §22.5: the stranger's own Stillring, taught by Lyra only if she trusts them.
+  // The lesson waits while she is not sure of them (the talk step's `trust`).
+  {
+    id: 'polite_way',
+    giver: 'lyra',
+    title: 'The Polite Way to Say Stop',
+    summary: "Lyra has a working of Maren's she has never shown anyone: the Stillring. She thinks you could weave it, and she has decided she wants you to. She says she is sure of you. Mostly.",
+    hint: "Something of Maren's that Lyra would only teach someone she trusts.",
+    requires: { missions: ['dead_waystone'], trust: 72, day: 3 },
+    turnIn: null,
+    offer: [
+      "Maren had a working nobody else had. She made it herself, out of lamp-light and ward-chalk. The Stillring: a ring round someone's feet that says, for a few heartbeats, not past here.",
+      "I've never taught it to anyone. She never said I could. She never said I couldn't, either.",
+      "She called it the polite way to say stop. I think you'd use it that way. I'm sure of you. Mostly. Walk out to the moonpetal glade with me at dusk?",
+    ],
+    accept: ['Dusk, then. The moonpetals open about when the lamps do.'],
+    decline: ["All right. It's kept this long. So have I."],
+    progress: ["The moonpetal glade, at dusk. I'll find you there. Or you'll find me."],
+    objectives: [
+      { type: 'reach', at: 'moonpetal_glade', when: 'dusk', label: 'Walk to the moonpetal glade with Lyra at dusk' },
+      {
+        type: 'talk',
+        target: 'lyra',
+        trust: 70,
+        label: 'Let Lyra teach you the Stillring',
+        notNow: "Not tonight. Ask me again when I'm sure of you.",
+        lines: [
+          "Stand there. Feet apart. Breathe in until it nearly hurts, and stop. That's the whole Stillring, really: knowing where to stop.",
+          "Now draw it round that stump. Not hard. Close it, like a hand round a candle flame. ...There. You pulled it tighter than I do. Mine doesn't sting. Yours does, a little.",
+          "One thing, and then I won't say it again. It's for stopping, not for hurting. If you ever close it on me, or on anyone in this village who didn't earn it, I'll know exactly what you meant by it. So will everyone else.",
+        ],
+      },
+    ],
+    rewards: [M('shape', 'bind'), { maxMana: 5 }, { xp: 40 }],
+    tip: {
+      desk: 'Bind throws a ring that closes on what you aim at and holds it: rooted, no blows, no weaves. Bosses shake it off sooner each time.',
+      touch: 'Bind throws a ring that closes on what you drag it onto and holds it still. Bosses shake it off sooner each time.',
+    },
+    lyra: { done: "Maren would have made us do it forty more times. ...I'm glad it was you." },
   },
 
   // ------------------------------------------------------------------ prices and the self-cast surge (DESIGN §25)

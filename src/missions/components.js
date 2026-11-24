@@ -3,7 +3,7 @@
 // their names, so missions, hints and reward reveals read well even before the runtime
 // is merged. Ids are a contract: never rename them.
 
-export const SHAPES = ['bolt', 'blast', 'strike', 'throw', 'beam', 'nova', 'orb', 'summon', 'rune', 'rain', 'wall', 'dash'];
+export const SHAPES = ['bolt', 'blast', 'strike', 'throw', 'beam', 'nova', 'orb', 'summon', 'rune', 'rain', 'wall', 'dash', 'bind', 'ward'];
 export const ESSENCES = ['raw', 'fire', 'water', 'frost', 'storm', 'earth', 'wind', 'nature', 'poison', 'light', 'dark', 'iron', 'song'];
 export const TWISTS = ['multishot', 'split', 'pierce', 'bounce', 'chain', 'homing', 'echo', 'big', 'swift', 'burst', 'linger', 'orbit', 'volley', 'spiral', 'leech', 'charge'];
 
@@ -55,6 +55,8 @@ export const WORDS = {
     rain: ['Brightfall', 'light that falls on a spot like snow on a still night'],
     wall: ['Line', 'a barrier: here, and not past here'],
     dash: ['Wardrun', 'a blink across the ground that leaves the weave in your track'],
+    bind: ['Stillring', "Maren's ring of light round someone's feet: the polite way to say stop"],
+    ward: ['Ward', 'light kept round someone like a cloak: here, and not past here'],
   },
   essence: {
     raw: ['Violet', 'the weave with nothing in it but itself'],

@@ -650,6 +650,16 @@ export class MissionSystem {
     const mind = l.mind;
     if (safe(() => mind?.isSpeaking?.(), false)) return;
     if (safe(() => (mind?.perception?.threats ?? 0) > 0, false)) return;
+    // Some lessons are hers to give only while she trusts you (DESIGN §22.5): wary of
+    // you, or less sure of you than she was, she says so once and waits.
+    if (o.trust && (cs === 'wary' || this.lyraTrust() < o.trust)) {
+      const s = this.state[id];
+      if (s && !s.notNow) {
+        s.notNow = true;
+        if (o.notNow) this.lyraLines([o.notNow]);
+      }
+      return;
+    }
     this.lyraLines(o.lines || []);
     this.bump(id, 1);
   }
