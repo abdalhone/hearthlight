@@ -15,6 +15,7 @@ import { COMMANDS, JOBS, DELIVER_OPTIONS, REJOIN } from './content.js';
 import { hpText, frac, fmtInt, lyraStatusLine, weatherIconKey, weatherLabel, moodEmoji, moodToExpression, stanceLabel } from './format.js';
 import { portraitUrl } from './art.js';
 import { companionshipOf, companionshipLabel, companionshipTone, barMode, playerRelation, trustWords, fearWords, farewellText } from './lyra_view.js';
+import { BossBar } from './boss_bar.js';
 
 const STANCE_ICON = { attack: 'sword', defend: 'shield', passive: 'feather', self_defense: 'shield' };
 
@@ -298,7 +299,15 @@ export class Hud {
     const center = h('div', { class: 'hud-center' }, this.questLine);
     this.center = center;
     const bottom = h('div', { class: 'hud-bottom' }, this.listenBtn, this.prompt, this.cmdbar);
-    return h('div', { class: 'hud', hidden: true }, top, center, bottom, this.ordersWrap, this.jobsMenu, this.fps);
+    const hud = h('div', { class: 'hud', hidden: true }, top, center, bottom, this.ordersWrap, this.jobsMenu, this.fps);
+    // The boss health bar (src/ui/boss_bar.js) lives in the HUD while a fight is on.
+    try {
+      this.bossBar = new BossBar(g, hud);
+      hud.append(this.bossBar.el);
+    } catch (err) {
+      console.error('[hud] boss bar failed', err);
+    }
+    return hud;
   }
 
   // ---------- the Weave: hotbar, mana, Spellbook (DESIGN §22.4) ----------
@@ -924,6 +933,7 @@ export class Hud {
 
   update(dt) {
     const g = this.game;
+    this.bossBar?.reveal?.update(dt);
     this.updateKeepOut(dt);
     if (this.el.hidden || !g.player) return;
     this.tick += dt;
