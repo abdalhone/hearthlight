@@ -64,7 +64,7 @@ function fakeRuntime(json) {
 
 // The real Companion (Mind, Autonomy, Behavior), the real registries with every plugin,
 // and a real Brain (offline unless a runtime is given).
-function makeWorld({ hour = 10, day = 1, runtime = null } = {}) {
+function makeWorld({ hour = 10, day = 1, runtime = null, locs = LOCS, objects = [] } = {}) {
   const game = {};
   game.bus = new EventBus();
   game.settings = { playerName: 'Ash' };
@@ -88,9 +88,9 @@ function makeWorld({ hour = 10, day = 1, runtime = null } = {}) {
     buildingAt: () => null,
     isIndoors: () => false,
   };
-  game.objects = { all: () => [], get: () => null, inRadius: () => [], nearest: () => null, isBlockingTile: () => false, doorAt: () => null, findByWord: () => null };
+  game.objects = { all: () => objects, get: (id) => objects.find((o) => o.id === id) || null, inRadius: () => [], nearest: () => null, isBlockingTile: () => false, doorAt: () => null, findByWord: () => null };
   game.entities = new EntityManager(game);
-  game.locations = new LocationIndex(LOCS);
+  game.locations = new LocationIndex(locs);
   game.pathfinder = { find: (sx, sy, gx, gy) => [{ x: gx, y: gy }] };
   game.bubbles = { said: [], say(e, t) { this.said.push(t); }, icon() {}, thought() {}, number() {}, clear() {} };
   game.ui = { chat: { messages: [], addMessage(m) { this.messages.push(m); }, open() {}, setThinking() {} }, toast() {}, showDiary() {} };
@@ -585,4 +585,177 @@ test('a reframe asked for by the player keeps her own memory, with their side be
   assert.equal(no.ok, false);
   assert.equal(no.refused, true);
   assert.equal(a.companionship, 'together');
+});
+
+// ---------------------------------------------------------------- D. her village protects her (DESIGN §19.7)
+
+function guard(game, id, name, x, y) {
+  const v = villager(game, id, name, x, y);
+  v.faction = 'guard';
+  return v;
+}
+
+test('attacking her never removes her from the world: hit, knocked out, hit again, days later she is still home', () => {
+  const { game, player, lyra, a } = makeWorld();
+  const left = [];
+  game.bus.on('lyra_left_world', (p) => left.push(p));
+  const removed = [];
+  game.bus.on('entity_removed', (p) => p?.entity === lyra && removed.push(p));
+  hit(game, player, lyra);
+  step(game, 2);
+  hit(game, player, lyra);
+  assert.equal(a.companionship, 'left');
+  step(game, 30, 0.5);
+  // Knocked senseless by the player: when she comes to, she cuts them out of her life.
+  lyra.hp = 0;
+  lyra.downed = true;
+  game.bus.emit('downed', { entity: lyra, by: player });
+  lyra.downed = false;
+  lyra.hp = 20;
+  game.bus.emit('revived', { entity: lyra, by: null });
+  assert.equal(a.companionship, 'gone');
+  // ...and the player keeps at it.
+  player.x = lyra.x + 12;
+  player.y = lyra.y;
+  step(game, 10, 0.5);
+  hit(game, player, lyra);
+  step(game, 2 * DAY_SECONDS, 1);
+  assert.deepEqual(left, [], 'she never walks off the map');
+  assert.deepEqual(removed, []);
+  assert.equal(lyra.removed, false);
+  assert.equal(game.entities.get('lyra'), lyra);
+  assert.ok(lyra.x > 0 && lyra.y > 0 && lyra.x < W * TILE && lyra.y < H * TILE, 'inside Hearthvale');
+  assert.ok(game.locations.at(lyra.x, lyra.y), 'somewhere in the village');
+  const d = lyra.behavior.directive;
+  assert.notEqual(d.type, 'leave', 'no leaving directive');
+  assert.equal(a.companionship, 'gone');
+  assert.ok(game.flags.lyra_gone?.farewell?.length > 40, 'the farewell words are kept for the HUD');
+  assert.doesNotMatch(game.flags.lyra_gone.farewell, /King’s Road at first light|leaving Hearthvale/);
+});
+
+test('call_for_help: by name when someone is near, the watch first, never a child; she runs toward people', () => {
+  const { game, player, lyra, a } = makeWorld();
+  const calls = [];
+  game.bus.on('call_for_help', (p) => calls.push(p));
+  const rowan = guard(game, 'rowan', 'Captain Rowan Vale', lyra.x - 80, lyra.y + 20);
+  const hess = villager(game, 'hess', 'Hesper Morrow', lyra.x - 60, lyra.y - 30);
+  const pip = villager(game, 'pip', 'Pip', lyra.x - 20, lyra.y);
+  pip.profile.age = 9;
+  hit(game, player, lyra);
+  assert.equal(calls.length, 0, 'the first blow: a warning, not a call');
+  step(game, 2);
+  hit(game, player, lyra);
+  assert.equal(a.companionship, 'left');
+  assert.equal(calls.length, 1, 'the second blow: she calls for help');
+  const c = calls[0];
+  assert.equal(c.victim, 'lyra');
+  assert.equal(c.attacker, 'player');
+  assert.ok(Number.isFinite(c.x) && Number.isFinite(c.y));
+  assert.ok(c.severity >= 2 && c.severity <= 3, String(c.severity));
+  assert.deepEqual(c.names, ['rowan', 'hess'], 'the watch first, then Hess; never Pip');
+  step(game, 2, 0.25);
+  assert.ok(game.bubbles.said.some((t) => /^Rowan! Hess!/.test(t)), game.bubbles.said.join(' | '));
+  // Afraid for her life (or badly hurt), she runs toward them, not just anywhere.
+  lyra.hp = Math.round(lyra.maxHp * 0.3);
+  rel(lyra.mind).fear = 50;
+  step(game, 10, 0.5);
+  hit(game, player, lyra);
+  const last = calls.at(-1);
+  assert.equal(last.severity, 3);
+  const dir = lyra.behavior.directive;
+  if (dir.type === 'flee') assert.ok(['rowan', 'hess', 'guardhouse', 'ember_kettle', 'chapel'].includes(dir.to), `she runs toward people (${dir.to})`);
+  assert.ok(rowan && hess);
+});
+
+test('call_for_help: badly hurt by a wolf, she shouts for anyone; knocked out, the village still hears it', () => {
+  const { game, lyra, a } = makeWorld();
+  const calls = [];
+  game.bus.on('call_for_help', (p) => calls.push(p));
+  const w = wolf(game, lyra.x + 20, lyra.y);
+  lyra.hp = Math.round(lyra.maxHp * 0.6);
+  game.bus.emit('damage', { source: w, target: lyra, amount: 6, kind: 'bite', crit: false });
+  assert.equal(calls.length, 0, 'a bite she can take');
+  lyra.hp = Math.round(lyra.maxHp * 0.3);
+  game.bus.emit('damage', { source: w, target: lyra, amount: 6, kind: 'bite', crit: false });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].attacker, 'wolf_1');
+  assert.equal(calls[0].reason, 'hurt');
+  assert.deepEqual(calls[0].names, []);
+  assert.ok(game.bubbles.said.some((t) => /Help|Watch/.test(t)), game.bubbles.said.join(' | '));
+  lyra.hp = 0;
+  lyra.downed = true;
+  game.bus.emit('downed', { entity: lyra, by: w });
+  assert.equal(calls.at(-1).reason, 'downed');
+  assert.equal(calls.at(-1).severity, 3);
+  assert.equal(a.companionship, 'together', 'a wolf is not the player');
+});
+
+test('gone keeps her in the village with a home: her parents at the chandlery, a bed of her own, a word at most', async () => {
+  // No chandlery in this world: her room at the Kettle.
+  {
+    const { game, player, lyra, a, brain } = makeWorld();
+    a.setCompanionship('gone', 'You knocked me out.', { cause: 'downed', goneReason: 'downed' });
+    const home = a.goneHome();
+    assert.equal(home.at, 'ember_kettle');
+    assert.equal(a.agenda.sleepAt, 'lyra_inn_bed');
+    const today = a.agenda.today;
+    assert.ok(today.length >= 4);
+    assert.ok(today.every((b) => b.type !== 'travel' && b.company !== 'player'), 'nothing with the player');
+    const sleep = today.find((b) => b.type === 'sleep');
+    assert.equal(sleep.bed, 'lyra_inn_bed');
+    assert.equal(sleep.at, 'ember_kettle');
+    // Far away: the chat says where she lives; close up, a word at most.
+    lyra.x = player.x + 30 * TILE;
+    const far = await brain.handlePlayerMessage('Lyra, please talk to me');
+    assert.equal(far.unreachable, 'gone');
+    const sys = game.ui.chat.messages.filter((m) => m.from === 'system').at(-1);
+    assert.match(sys.text, /won't speak to you\. She lives in her room at the Ember Kettle/);
+    lyra.x = player.x + TILE;
+    const near = await brain.handlePlayerMessage('Lyra, please talk to me');
+    assert.ok(near.say.split(/\s+/).length <= 1, `a word at most: ${near.say}`);
+  }
+  // With the chandlery on Lamplight Lane and a bed of her own there: home with Mam and Da.
+  {
+    const locs = [...LOCS, { id: 'chandlery', name: 'The Chandlery', kind: 'building', indoor: true, bounds: { x: 50, y: 30, w: 6, h: 5 } }];
+    const bed = { id: 'lyra_old_bed', type: 'bed', objType: 'bed', owner: 'lyra', x: T(52), y: T(32) };
+    const { game, a, lyra } = makeWorld({ locs, objects: [bed] });
+    a.setCompanionship('gone', 'You knocked me out.', { cause: 'downed', goneReason: 'downed' });
+    const home = a.goneHome();
+    assert.equal(home.at, 'chandlery');
+    assert.equal(home.bed, 'lyra_old_bed');
+    assert.equal(a.agenda.sleepAt, 'lyra_old_bed');
+    const today = a.agenda.today;
+    assert.ok(today.filter((b) => b.type !== 'work').every((b) => b.at === 'chandlery'), JSON.stringify(today.map((b) => [b.type, b.at])));
+    assert.equal(today.find((b) => b.type === 'sleep').bed, 'lyra_old_bed');
+    assert.ok(today.some((b) => /Mam|Da/.test(b.activity)));
+    assert.match(game.flags.lyra_gone.farewell, /Mam’s table/);
+    assert.equal(lyra.removed, false);
+  }
+});
+
+test('what her parents and friends think of the player weighs with her', () => {
+  const { game, mind, a } = makeWorld();
+  const hobb = villager(game, 'hobb', 'Hobb Ambrel', T(40), T(40));
+  hobb.opinionOfPlayer = 30;
+  hobb.profile.startOpinion = 30;
+  const mira = villager(game, 'mira', 'Mira Fennick', T(42), T(40));
+  mira.opinionOfPlayer = 30;
+  mira.profile.startOpinion = 30;
+  mind.relationships.ensure(hobb);
+  mind.relationships.get('hobb').affinity = 90;
+  mind.relationships.ensure(mira);
+  mind.relationships.get('mira').affinity = 75;
+  const n0 = a.worth({ fresh: true }).net;
+  assert.ok(!a.worth({ fresh: true }).reasons.some((r) => r.key === 'people'), 'no change, no reason');
+  hobb.opinionOfPlayer = 5;
+  mira.opinionOfPlayer = 8;
+  const bad = a.worth({ fresh: true });
+  const r = bad.reasons.find((x) => x.key === 'people');
+  assert.ok(r && r.weight < -0.5, JSON.stringify(r));
+  assert.match(r.text, /Mam and Da/);
+  assert.ok(bad.net < n0 - 0.5);
+  hobb.opinionOfPlayer = 85;
+  mira.opinionOfPlayer = 70;
+  const good = a.worth({ fresh: true }).reasons.find((x) => x.key === 'people');
+  assert.ok(good && good.weight > 0.3, JSON.stringify(good));
 });

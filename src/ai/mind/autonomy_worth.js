@@ -79,7 +79,46 @@ const WORDS = {
   slights: () => 'Small things. I can afford them.',
   danger: () => 'You keep pointing me at things that could kill me.',
   time: () => 'Every hour with you is one away from Mam and Da, and the waystones.',
+  people: (c) =>
+    c.peopleWeight >= 0
+      ? c.parentsLead
+        ? 'Mam and Da like you. That counts for a lot with me.'
+        : 'The people I love like you.'
+      : c.parentsLead
+        ? c.peopleWeight < -0.8
+          ? 'Mam and Da want nothing to do with you.'
+          : 'Mam and Da don’t trust you.'
+        : c.peopleWeight < -0.8
+          ? 'The people I love have turned against you.'
+          : 'The people I love don’t trust you.',
 };
+
+// Her parents (LORE §7, "Lyra's people"): what they think weighs most with her.
+const PARENTS = new Set(['hobb', 'wenna']);
+
+// What the people she loves think of the player (DESIGN §19.7): how far each one's
+// opinion has moved since they met (0..100, from npc.js), and where it stands, weighted
+// by how much she loves them; her parents count most. -> { w, parentsLead }
+function whatTheyThink(a) {
+  const list = a.game?.entities?.list || [];
+  let w = 0;
+  let parents = 0;
+  for (const e of list) {
+    if (!e || e.removed || !Number.isFinite(e.opinionOfPlayer) || !a.isVillager?.(e)) continue;
+    const parent = PARENTS.has(e.id);
+    const aff = num(a.relOf(e.id)?.affinity, 0);
+    if (!parent && aff < 45) continue;
+    const op = e.opinionOfPlayer;
+    const start = num(e.profile?.startOpinion, 30);
+    let d = (op - start) / 50 + (op >= 70 ? 0.3 : op <= 10 ? -0.3 : 0);
+    if (Math.abs(d) < 0.04) continue;
+    d *= parent ? 1 : aff / 100;
+    w += d;
+    if (parent) parents += d;
+  }
+  w = Math.max(-1.8, Math.min(1, w));
+  return { w, parentsLead: Math.abs(parents) >= Math.abs(w) * 0.5 && Math.abs(parents) > 0.05 };
+}
 
 // Reasons that come from harm or fear: the only ones that can make her break off (left)
 // before staying is plainly not worth it at all.
@@ -151,6 +190,12 @@ export function weighWorth(a) {
     }
     if (danger > 0.05) addTo('safety', Math.min(1.2, danger));
   }
+
+  // What her parents and friends think of the player.
+  const people = whatTheyThink(a);
+  ctx.peopleWeight = people.w;
+  ctx.parentsLead = people.parentsLead;
+  addTo('people', people.w);
 
   // Time taken from her own life: her parents, the waystones, her own day.
   const hours = num(a.worthTrack?.togetherToday, 0) / a.sph();

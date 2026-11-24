@@ -10,14 +10,12 @@ import {
   entranceSpot,
   chooseSafePlace,
   escapedFrom,
-  edgeExit,
-  atMapEdge,
   openSpotAway,
   companionshipOf,
   isTogether,
   need,
 } from './safety.js';
-import { rand, chance, dist, tileOf, tileCenter, walkable, nearestWalkable, isActorAlive, onScreen, nameOf, placePhrase, safe } from './util.js';
+import { rand, chance, dist, tileOf, tileCenter, walkable, nearestWalkable, isActorAlive, nameOf, placePhrase, safe } from './util.js';
 
 // The directives of a person living her own life (DESIGN §16.9): her own day from
 // her plan (`independent`), running to safety (`flee`), leaving (`leave`), keeping
@@ -30,6 +28,9 @@ export const LEAVE_MODES = ['apart', 'left', 'gone'];
 const LEFT_AVOID_TILES = 8;
 const NIGHT_ENTRY = Object.freeze({ from: 22, to: 6, activity: 'sleep', at: null });
 const LEFT_LIFE = Object.freeze({ type: 'independent', avoid: 'player', tiles: LEFT_AVOID_TILES });
+// Gone (DESIGN §19.7): Hearthvale is her home. She cuts the player out of her life and
+// lives her own day at home, further from them still; she never leaves the map.
+const GONE_LIFE = Object.freeze({ type: 'independent', avoid: 'player', tiles: LEFT_AVOID_TILES + 2 });
 const APART_LIFE = Object.freeze({ type: 'independent' });
 const HOURS_TO_SECONDS = 900 / 24; // real seconds per in-game hour
 
@@ -269,7 +270,7 @@ export class OwnLife {
     if (!prev || !next || prev.type !== next.type || !this.st) return false;
     if (next.type === 'independent') return (prev.avoid || null) === (next.avoid || null);
     if (next.type === 'keep_away') return prev.from === next.from && !!prev.follow === !!next.follow;
-    if (next.type === 'leave') return prev.mode === next.mode && next.mode !== 'gone';
+    if (next.type === 'leave') return prev.mode === next.mode;
     return false;
   }
 
@@ -379,10 +380,9 @@ export class OwnLife {
     }
   }
 
-  // Combat by stance does not run while she is running away or walking out of the world.
+  // Combat by stance does not run while she is running away.
   exclusive() {
-    const d = this.b.directive;
-    return d.type === 'flee' || (d.type === 'leave' && d.mode === 'gone');
+    return this.b.directive.type === 'flee';
   }
 
   // --- independent: her own day ---
@@ -498,6 +498,8 @@ export class OwnLife {
     if (day.mode === 'eat' && where) return `having a meal ${where.at}`;
     if (day.mode === 'study' && where) return `studying ${where.at}`;
     if (day.mode === 'sleep') return 'going to bed';
+    // Her mind's plan can say in words what she is doing ("helping her father dip candles").
+    if (typeof day.entry?.doing === 'string' && day.entry.doing) return day.entry.doing.slice(0, 60);
     const base = MODE_LABEL[day.mode] || 'living her own day';
     return where && day.mode !== 'with_player' ? `${base} ${where.at}` : base;
   }
@@ -837,7 +839,7 @@ export class OwnLife {
     const breathe = { type: 'keep_away', from: 'player', tiles: 6, seconds: 60, then: { type: 'follow', target: 'player', distance: 'far' } };
     if (!next || (fromPlayer && next.type === 'follow')) next = fromPlayer ? (s === 'together' || s === 'wary' ? breathe : { type: 'independent' }) : { type: 'follow', target: 'player', distance: 'normal' };
     if (!fromPlayer && (s === 'apart' || s === 'left')) next = { type: 'independent', ...(s === 'left' ? { avoid: 'player' } : {}) };
-    if (s === 'gone') next = { type: 'leave', mode: 'gone' };
+    if (s === 'gone') next = { type: 'independent', avoid: 'player', reason: 'gone' };
     const r = b.setDirective(next, { quiet: true });
     if (!r.ok) b.setDirective({ type: 'stay', x: a.x, y: a.y }, { quiet: true });
     return true;
@@ -845,63 +847,11 @@ export class OwnLife {
 
   // --- leave ---
 
+  // Apart, left or gone: she lives her own day; when she left you, she keeps her distance,
+  // and gone, further still. Hearthvale is her home (DESIGN §19.7): nobody walks her off
+  // the map.
   runLeave(dt, d) {
-    if (d.mode !== 'gone') {
-      // Apart or left: she lives her own day; when she left you, she keeps her distance.
-      return this.runIndependent(dt, d.mode === 'left' ? LEFT_LIFE : APART_LIFE);
-    }
-    const b = this.b;
-    const g = this.game;
-    const a = this.actor;
-    const st = this.st;
-    st.t = (st.t || 0) + dt;
-    if (b.task) b.cancelTask();
-    if (st.fade > 0) {
-      b.steering.setIntent(st.dirX || 1, st.dirY || 0, 0.5, 1);
-      st.fade += dt;
-      a.fade = Math.max(0, 1 - st.fade / 1.2);
-      if (st.fade >= 1.2) this.vanish(d);
-      return true;
-    }
-    if (!st.exit) st.exit = edgeExit(g, a) || { x: a.x, y: a.y, none: true };
-    const ex = st.exit;
-    const p = g.player;
-    const seen = onScreen(g, a.x, a.y, 16);
-    // She walks the whole way; only after a long while out of anyone's sight, far
-    // from the player, is she simply gone (a player who runs after her can still
-    // catch a last glimpse of her on the road).
-    if (!seen && (!p || dist(a.x, a.y, p.x, p.y) > 28 * TILE)) st.farT += dt;
-    else st.farT = 0;
-    if (st.farT > 30) return this.vanish(d);
-    if (ex.none || dist(a.x, a.y, ex.x, ex.y) < 10 || atMapEdge(g, a, 0)) {
-      const ux = ex.none ? a.x - (p?.x ?? a.x - 1) : ex.x - (g.map?.w ? (g.map.w * TILE) / 2 : a.x - 1);
-      const uy = ex.none ? a.y - (p?.y ?? a.y) : 0;
-      const l = Math.hypot(ux, uy) || 1;
-      st.dirX = ux / l;
-      st.dirY = uy / l;
-      st.fade = 0.0001;
-      return true;
-    }
-    const r = b.steering.moveTo(ex.x, ex.y, dt, { arrive: 6, maxNodes: 30000 });
-    if (r === 'moving') st.blockedT = 0;
-    else {
-      st.blockedT = (st.blockedT || 0) + dt;
-      // No path: walk straight for it; the world is not keeping her.
-      if (st.blockedT > 3) b.steering.setIntent(ex.x - a.x, ex.y - a.y, 1, 1);
-      if (st.blockedT > 20 && !seen) return this.vanish(d);
-    }
-    return true;
-  }
-
-  vanish(d) {
-    const a = this.actor;
-    this.b.steering.stop();
-    if (typeof a.leaveWorld === 'function') a.leaveWorld(d.reason || 'gone');
-    else {
-      a.removed = true;
-      this.game.bus?.emit?.('lyra_left_world', { actor: a, reason: d.reason || 'gone', day: this.game.clock?.day ?? null });
-    }
-    return true;
+    return this.runIndependent(dt, d.mode === 'gone' ? GONE_LIFE : d.mode === 'left' ? LEFT_LIFE : APART_LIFE);
   }
 
   // --- keep_away ---
@@ -1031,8 +981,7 @@ export class OwnLife {
         return from ? `running from ${nameOf(g, from)}` : 'running for safety';
       }
       case 'leave':
-        if (d.mode === 'gone') return 'leaving Hearthvale';
-        if (d.mode === 'left') return 'keeping to herself';
+        if (d.mode === 'gone' || d.mode === 'left') return this.day?.label || 'keeping to herself';
         return this.day?.label || 'living her own life';
       case 'keep_away':
         return `keeping her distance from ${nameOf(g, this.st?.from || this.resolveWho(d.from))}`;

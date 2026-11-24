@@ -230,7 +230,8 @@ export class Brain {
     return this._localTurn({ text: clean, parsed, executed });
   }
 
-  // When she cannot answer at all: gone for good, knocked out, or out of earshot.
+  // When she cannot answer at all: gone (she has cut the player out of her life), knocked
+  // out, or out of earshot.
   _unreachable() {
     const g = this.game;
     const lyra = g.companion;
@@ -240,10 +241,17 @@ export class Brain {
       this._system(text);
       return { say: '', thought: null, actions: [], provider: 'local', unreachable: why };
     };
-    if (state === 'gone' || !lyra || lyra.removed) {
-      const gone = g.flags?.lyra_gone;
-      const when = gone?.day ? ` on day ${gone.day}` : '';
-      return out(`${name} is gone. She left Hearthvale along the King's Road${when}, and she is not coming back.`, 'gone');
+    if (!lyra || lyra.removed) return out(`${name} isn't here.`, 'gone');
+    if (state === 'gone') {
+      // DESIGN §19.7: she still lives in Hearthvale. Up close she gives a word at most.
+      const will = lyra.mind?.autonomy;
+      if (distanceTiles(g) <= 4 && !lyra.downed && lyra.state !== 'sleep' && will?.line) {
+        const word = will.line('gone_word');
+        will.say?.(word, { force: true });
+        return { say: word, thought: null, actions: [], provider: 'local', unreachable: 'gone' };
+      }
+      const phrase = will?.goneHome?.().phrase || 'in Hearthvale';
+      return out(`${name} won't speak to you. She lives ${phrase} now, and keeps out of your way.`, 'gone');
     }
     if (lyra.downed || lyra.state === 'downed') return out(`${name} is knocked out and can't hear you. Go to her and help her up.`, 'downed');
     const far = EARSHOT[state];
@@ -842,8 +850,8 @@ export class Brain {
   async reflect(reason = 'sleep') {
     const g = this.game;
     const mind = g.companion?.mind;
-    // Gone for good: her last diary entry was written when she left.
-    if (!mind || companionshipOf(g) === 'gone') return null;
+    // Gone, she still keeps her diary: her life goes on without the player (DESIGN §19.7).
+    if (!mind) return null;
     const day = this._sleepT != null ? Math.floor(this._sleepT / DAY_SECONDS) + 1 : g.clock?.day ?? 1;
     const memories = this._dayMemories(day);
     const offline = composeDiary(g, memories, { day });

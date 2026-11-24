@@ -390,7 +390,7 @@ export class UI {
     if (!this.chat.messages.length) {
       const intro =
         state === 'gone'
-          ? `${name} is gone. Her diary and her memories are all that is left of her here.`
+          ? `${name} has cut you out of her life. She still lives in Hearthvale, and she will not speak to you.`
           : `${name} travels with you because she chooses to. Talk to her about anything, or ask her for help in plain words; she decides what she does.`;
       this.chat.addMessage({ from: 'system', text: intro });
     }

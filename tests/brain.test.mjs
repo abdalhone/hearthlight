@@ -1181,7 +1181,8 @@ test('when she has left or is gone she does not answer like a companion; apologi
   const r = await brain.handlePlayerMessage('please come back');
   assert.equal(calls, 0, 'nobody to ask');
   assert.equal(r.say, '');
-  assert.ok(/gone/.test(game.ui.chat.messages.at(-1).text) && game.ui.chat.messages.at(-1).from === 'system');
+  // Gone (DESIGN §19.7): she still lives in Hearthvale, and will not speak to the player.
+  assert.ok(/won't speak to you/.test(game.ui.chat.messages.at(-1).text) && game.ui.chat.messages.at(-1).from === 'system');
 
   const g2 = makeGame();
   const b2 = brainFor(g2);

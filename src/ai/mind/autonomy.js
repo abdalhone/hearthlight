@@ -39,7 +39,7 @@ const LEFT_TILES = 10; // how far she keeps from the player once she has left th
 const GONE_TILES = 12; // gone: further still, and she crosses the lane to keep it
 const HELP_GAP = 8; // seconds between calls for help, unless things get worse
 // What she shouts when she calls someone (LORE §7, "Lyra's people").
-const CALL_NAMES = { hobb: 'Da', wenna: 'Mam', sabeth: 'Beth' };
+const CALL_NAMES = { hobb: 'Da', wenna: 'Mam', sabeth: 'Beth', hess: 'Hess', wys: 'Wys', rowan: 'Rowan' };
 // Who she would not call into a fight: children, and the frail.
 const NOT_INTO_A_FIGHT = new Set(['pip', 'petra', 'wenna']);
 const OBSERVED_DEEDS = new Set(['lied', 'kindness', 'stole']);
@@ -1603,13 +1603,14 @@ export class Autonomy {
   _farewell(reason, vars) {
     const g = this.game;
     const home = this.goneHome();
+    const P = vars.P || this.playerName();
+    const text = fillText(FAREWELL_DIARY[reason] || FAREWELL_DIARY.other, { day: this.day(), P, target: vars.target || 'someone', home: home.diary, where: home.where });
     if (g) {
       g.flags = g.flags || {};
-      g.flags.lyra_gone = { day: this.day(), reason: this.reason, home: home.at };
+      // The HUD keeps showing these words, whatever she writes in her diary later.
+      g.flags.lyra_gone = { day: this.day(), reason: this.reason, home: home.at, farewell: text };
     }
-    const P = vars.P || this.playerName();
     this.remember(`I cut ${P} out of my life, for good. ${this.reason}`, { importance: 10, tags: ['farewell', 'companionship', 'gone'], about: [PLAYER_ID], type: 'event' });
-    const text = fillText(FAREWELL_DIARY[reason] || FAREWELL_DIARY.other, { day: this.day(), P, target: vars.target || 'someone', home: home.diary, where: home.where });
     const diary = this.mind?.diary;
     if (Array.isArray(diary)) diary.push({ day: this.day(), text, t: this.now() });
     try {
@@ -1750,12 +1751,16 @@ export class Autonomy {
   amendsStatus() {
     const s = this.stats();
     const out = { ok: false, missing: null, reason: '' };
-    if (this.companionship === 'gone') return { ok: false, missing: 'gone', reason: 'she has left for good' };
+    if (this.companionship === 'gone') return { ok: false, missing: 'gone', reason: 'she has cut you out of her life' };
     const since = this.companionship === 'left' ? this.stateSince : this._leftSince ?? this.stateSince;
     if (!this.apology?.believed || this.apology.t < since) return { ...out, missing: 'apology', reason: 'she has not heard an apology she believes' };
     if (s.trust < T.amendsTrust) return { ...out, missing: 'trust', reason: `she doesn’t trust you enough yet (${Math.round(s.trust)})` };
     if (s.fear > T.amendsFear) return { ...out, missing: 'fear', reason: `she is still afraid of you (${Math.round(s.fear)})` };
     if (this.now() - since < this.daySeconds()) return { ...out, missing: 'time', reason: 'it has been less than a day' };
+    // Her people stand with her (DESIGN §19.7): while those she loves want nothing to do
+    // with the player, amends with her come slowly too.
+    const people = this.worth().reasons.find((r) => r.key === 'people');
+    if (people && people.weight < -0.8) return { ...out, missing: 'people', reason: 'the people she loves have not forgiven you' };
     return { ok: true, missing: null, reason: 'you made amends' };
   }
 

@@ -230,7 +230,7 @@ test('hit again: Binding Light on the player, then she runs or stands her ground
   assert.equal(a.agenda.sleepAt, 'lyra_inn_bed');
 });
 
-test('knocked out by the player: the deed now, and when she comes to she leaves for good', () => {
+test('knocked out by the player: the deed now, and when she comes to she cuts them out of her life, at home in Hearthvale', () => {
   const { game, player, lyra, a } = makeWorld();
   const changes = collect(game, 'companionship_changed');
   lyra.hp = 0;
@@ -245,9 +245,11 @@ test('knocked out by the player: the deed now, and when she comes to she leaves 
   assert.equal(changes.at(-1).state, 'gone');
   assert.equal(game.flags.lyra_gone.day, 1);
   assert.ok(game.flags.lyra_gone.reason.length > 5);
-  assert.equal(lyra.behavior.directive.type, 'leave');
-  assert.equal(lyra.behavior.directive.mode, 'gone');
-  assert.ok(lyra.mind.diary.some((d) => /King’s Road/.test(d.text)), 'a last diary entry');
+  // DESIGN §19.7: she never leaves the map; she lives her own day, well away from the player.
+  assert.equal(lyra.behavior.directive.type, 'independent');
+  assert.equal(lyra.behavior.directive.avoid, 'player');
+  assert.equal(lyra.removed, false);
+  assert.ok(lyra.mind.diary.some((d) => /Wayhouse key/.test(d.text) && /my village/.test(d.text) && !/leaving Hearthvale/i.test(d.text)), 'a diary entry: home, not the road');
   assert.ok(lyra.mind.memory.all().some((m) => /for good/.test(m.text) && m.importance >= 9), 'a farewell memory');
 });
 
@@ -413,8 +415,8 @@ test('every state: the directive behavior gets, the event, and her reason in her
   assert.equal(b.directive.type, 'keep_away');
   assert.equal(b.directive.from, 'player');
   a.setCompanionship('gone', 'for good');
-  assert.equal(b.directive.type, 'leave');
-  assert.equal(b.directive.mode, 'gone');
+  assert.equal(b.directive.type, 'independent');
+  assert.equal(b.directive.avoid, 'player');
   assert.deepEqual(
     changes.map((c) => [c.previous, c.state]),
     [
