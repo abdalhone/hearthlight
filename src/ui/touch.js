@@ -314,7 +314,7 @@ export class TouchControls {
 
   buzz() {
     try {
-      if (this.game.settings?.reduceMotion) return;
+      if (this.game.settings?.reduceMotion || this.game.settings?.touchBuzz === false) return;
       navigator.vibrate?.(8);
     } catch {
       /* vibration is optional */

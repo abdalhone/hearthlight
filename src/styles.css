@@ -6216,6 +6216,11 @@ input[type='range']::-moz-range-thumb {
   .clock-row {
     font-size: 12px;
   }
+  .clock-row .day,
+  .clock-row .dot,
+  .weather-label {
+    display: none;
+  }
   .hud-right {
     flex-direction: row;
     align-items: center;
@@ -6630,9 +6635,6 @@ input[type='range']::-moz-range-thumb {
   .sb-grid {
     grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
   }
-  .sb-copy-label {
-    display: none;
-  }
 }
 
 /* A phone held sideways: two tight columns, the tabs down the left edge. */
@@ -6701,9 +6703,6 @@ input[type='range']::-moz-range-thumb {
   }
   .panel-spellbook .panel-foot {
     padding: 6px 10px;
-  }
-  .sb-copy-label {
-    display: none;
   }
 }
 
@@ -6853,4 +6852,13 @@ input[type='range']::-moz-range-thumb {
 }
 .tcluster .tbtn-interact.ready {
   animation: ready-glow 1.2s ease-in-out infinite;
+}
+
+/* Left-handed: the stick lives on the right, the cluster on the left (touch.js mirrors it). */
+.touch.lefty .stick-zone {
+  left: auto;
+  right: 0;
+}
+.touch.lefty .stick {
+  left: calc(100% - var(--sa-r) - 96px);
 }

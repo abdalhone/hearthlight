@@ -43,6 +43,14 @@ function glyph(src, kind, id, cls = 'sb-glyph') {
   return img;
 }
 
+// World pixels as tiles (16 px), the unit a player can see on the ground.
+function tiles(px) {
+  const v = Number(px);
+  if (!Number.isFinite(v) || v <= 0) return '—';
+  const t = v / 16;
+  return t < 3 ? String(Math.round(t * 2) / 2) : String(Math.round(t));
+}
+
 function fmt(n, digits = 0) {
   const v = Number(n);
   if (!Number.isFinite(v)) return '—';
@@ -230,9 +238,9 @@ export class Spellbook {
       ['Mana', plan ? fmt(plan.cost) + (plan.drain ? '/s' : '') : '—', 'mana'],
       ['Cooldown', plan ? `${fmt(plan.cooldown, 1)}s` : '—', 'cd'],
       ['Damage', plan ? fmt(plan.dmg) + (Number(plan.count) > 1 ? ` ×${fmt(plan.count)}` : '') : '—', 'dmg'],
-      ['Reach', plan ? (pv.type === 'ring' ? `${fmt(pv.radius)} around` : fmt(pv.range)) : '—', 'reach'],
+      ['Reach', plan ? tiles(pv.type === 'ring' ? pv.radius : pv.range) : '—', 'reach', plan ? (pv.type === 'ring' ? 'Tiles around you' : 'Tiles it reaches') : ''],
     ];
-    for (const [label, value, cls] of stats) this.statsEl.append(h('div', { class: `sb-stat sb-stat-${cls}` }, h('span', { class: 'sb-stat-label', text: label }), h('span', { class: 'sb-stat-value num', text: value })));
+    for (const [label, value, cls, title] of stats) this.statsEl.append(h('div', { class: `sb-stat sb-stat-${cls}`, title: title || null }, h('span', { class: 'sb-stat-label', text: label }), h('span', { class: 'sb-stat-value num', text: value })));
     this.statsEl.append(h('div', { class: `sb-stat sb-input sb-input-${mode}`, title: INPUT_NOTE[mode] }, h('span', { class: 'sb-stat-label', text: 'Cast' }), h('span', { class: 'sb-stat-value', text: INPUT_LABEL[mode] })));
   }
 
@@ -322,7 +330,7 @@ export class Spellbook {
         const limit = w.limit(kind);
         if (list.length >= limit) {
           this.say(kind === 'essences' ? `A weave holds ${limit} essence${limit === 1 ? '' : 's'} for now. Tap one to take it out first.` : `A weave holds ${limit} twist${limit === 1 ? '' : 's'} for now. Tap one to take it out first.`, 'warn');
-          this.game.audio?.play?.('ui_error', { volume: 0.5 });
+          this.game.audio?.play?.('error', { volume: 0.5 });
           this.render();
           return;
         }

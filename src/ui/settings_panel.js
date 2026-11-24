@@ -4,7 +4,7 @@
 import { h, button, clear, setText } from './dom.js';
 import { makePanel } from './modal.js';
 import { saveApiKey, loadApiKey, DEFAULT_SETTINGS } from '../core/settings.js';
-import { CONTROLS_SUMMARY } from './content.js';
+import { CONTROLS_SUMMARY, CONTROLS_NOTE } from './content.js';
 
 const BRAIN_CHOICES = [
   ['auto', 'Automatic', 'Claude on claude.ai when available, then your API key, else her offline mind.'],
@@ -287,9 +287,25 @@ export class SettingsPanel {
 
     // --- Controls ---
     const ctrlSec = h('section', { class: 'box' }, h('h3', { text: 'Controls' }));
+    // Touch and aiming options (DESIGN §22.4).
+    ctrlSec.append(
+      this.selectRow(
+        'Touch buttons',
+        'touchScale',
+        [
+          [0.9, 'Smaller'],
+          [1, 'Normal'],
+          [1.15, 'Larger'],
+        ],
+        1,
+      ),
+      this.toggleRow('Left-handed touch layout (move on the right)', 'leftHanded'),
+      this.toggleRow('Buzz on touch buttons', 'touchBuzz', true),
+      this.toggleRow('Show the aim guide under the mouse', 'aimGuides', true),
+    );
     const dl = h('dl', { class: 'controls' });
     for (const [k, v] of CONTROLS_SUMMARY) dl.append(h('div', { class: 'control' }, h('dt', null, h('kbd', { class: 'keycap', text: k })), h('dd', { text: v })));
-    ctrlSec.append(dl, h('p', { class: 'muted small', text: 'Gamepad: A attack · B dodge · X interact · Y talk · Start pause. Touch: drag on the left half to move; buttons on the right.' }));
+    ctrlSec.append(dl, h('p', { class: 'muted small', text: CONTROLS_NOTE }));
 
     body.append(h('div', { class: 'settings-grid' }, mindSec, h('div', { class: 'settings-col' }, voiceSec, soundSec, dispSec), h('div', { class: 'settings-col' }, nameSec, saveSec, ctrlSec)));
 
@@ -325,9 +341,10 @@ export class SettingsPanel {
     return wrap;
   }
 
-  toggleRow(label, key) {
+  // `onByDefault`: a setting that is on until the player turns it off (unset = on).
+  toggleRow(label, key, onByDefault = false) {
     const s = this.game.settings;
-    const input = h('input', { type: 'checkbox', class: 'switch', checked: !!s[key] });
+    const input = h('input', { type: 'checkbox', class: 'switch', checked: onByDefault ? s[key] !== false : !!s[key] });
     input.addEventListener('change', () => this.set(key, input.checked));
     return h('label', { class: 'form-row toggle-row' }, h('span', { class: 'form-label', text: label }), input);
   }
@@ -345,12 +362,13 @@ export class SettingsPanel {
     return h('label', { class: 'form-row range-row' }, h('span', { class: 'form-label', text: label }), input, out);
   }
 
-  selectRow(label, key, options) {
+  selectRow(label, key, options, fallback = options[0]?.[0]) {
     const s = this.game.settings;
     const sel = h('select', { class: 'field', 'aria-label': label });
+    const cur = s[key] ?? fallback;
     for (const [v, text] of options) {
       const o = h('option', { value: String(v), text });
-      if (String(s[key]) === String(v)) o.selected = true;
+      if (String(cur) === String(v)) o.selected = true;
       sel.append(o);
     }
     sel.addEventListener('change', () => {

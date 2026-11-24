@@ -589,7 +589,8 @@ export class Weaving {
 
   fail(slot, reason) {
     this.fails.push({ slot, reason: reason || '', t: this.game.time || 0 });
-    if (reason === 'mana' || reason === 'no_mana' || reason === 'mana_low') this.game.audio?.play?.('ui_error', { volume: 0.5 });
+    // The runtime's own fizzle (and the fx layer's sound) usually says it; else a soft no.
+    if (reason === 'mana' && !this.game.magicFx) this.game.audio?.play?.('error', { volume: 0.35 });
   }
 
   lastFail(slot) {
