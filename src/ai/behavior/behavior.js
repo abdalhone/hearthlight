@@ -23,6 +23,7 @@ import {
   swordArcPush,
   inSwordArc,
   openSpotAway,
+  allowedAt,
 } from './safety.js';
 import { runTask, endTask, taskStatus, EMOTES, resolveEmote, handItems } from './tasks.js';
 import { say } from './lines.js';
@@ -859,6 +860,9 @@ export class Behavior {
       const hittingHer = r && this.t - r.vsSelf < 6 && dist(a.x, a.y, t.x, t.y) < 160;
       if (!hittingHer) t = null;
     }
+    // Nor into a place too dangerous for her (§16.5): from outside she shoots what she
+    // can see in range, and lets the rest go.
+    if (t && !allowedAt(g, a, t.x, t.y) && (dist(a.x, a.y, t.x, t.y) > 120 || !clearShot(g, a, t))) t = null;
     this.target = t;
     if (t && !prev) this.onCombatStart(t);
     if (!t && prev) this.onCombatEnd();
@@ -907,7 +911,7 @@ export class Behavior {
       const r = this.bind(g.player);
       if (r.ok) return true;
     }
-    this.combatAI.fight(this.target, dt, {});
+    this.combatAI.fight(this.target, dt, { stayOut: !allowedAt(g, a, this.target.x, this.target.y) });
     return true;
   }
 
@@ -1669,6 +1673,10 @@ export class Behavior {
     // Villagers and pets she will not raise a hand against unless they struck first.
     if (!canHarm(g, a, e)) return { ok: false, message: say.refuseInnocent(nameOf(g, e)) };
     if (dist(a.x, a.y, e.x, e.y) > 420) return { ok: false, message: say.tooFar(nameOf(g, e)) };
+    if (!allowedAt(g, a, e.x, e.y) && (dist(a.x, a.y, e.x, e.y) > 120 || !clearShot(g, a, e))) {
+      const place = dangerousPlaceAt(g, e.x, e.y);
+      return { ok: false, message: say.riskRefuse(placePhrase(place)) };
+    }
     this.cancelTask();
     this.idle.reset();
     const hadTarget = !!this.target;

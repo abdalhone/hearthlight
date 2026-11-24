@@ -832,7 +832,10 @@ export class OwnLife {
     b.say(say.fleeSafe(fromPlayer, loc ? placePhrase(loc) : null), { force: true });
     const s = companionshipOf(g);
     let next = d.then;
-    if (!next || (fromPlayer && next.type === 'follow')) next = fromPlayer ? (s === 'together' || s === 'wary' ? { type: 'keep_away', from: 'player', tiles: 6 } : { type: 'independent' }) : { type: 'follow', target: 'player', distance: 'normal' };
+    // Safe from the player but still traveling with them: room to breathe for a minute,
+    // then she trails them from a distance.
+    const breathe = { type: 'keep_away', from: 'player', tiles: 6, seconds: 60, then: { type: 'follow', target: 'player', distance: 'far' } };
+    if (!next || (fromPlayer && next.type === 'follow')) next = fromPlayer ? (s === 'together' || s === 'wary' ? breathe : { type: 'independent' }) : { type: 'follow', target: 'player', distance: 'normal' };
     if (!fromPlayer && (s === 'apart' || s === 'left')) next = { type: 'independent', ...(s === 'left' ? { avoid: 'player' } : {}) };
     if (s === 'gone') next = { type: 'leave', mode: 'gone' };
     const r = b.setDirective(next, { quiet: true });

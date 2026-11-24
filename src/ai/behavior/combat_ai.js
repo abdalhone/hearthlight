@@ -224,7 +224,12 @@ export class CombatAI {
     } else if (d >= 40) this.cornered = Math.max(0, this.cornered - dt);
 
     if (!moved) {
-      if (d > 100 || !los) {
+      if (opts.stayOut && (d > 100 || !los)) {
+        // The target is somewhere she will not follow it: hold at the edge.
+        st.stop();
+        a.faceToward(target.x, target.y);
+        moved = true;
+      } else if (d > 100 || !los) {
         st.moveTo(target.x, target.y, dt, { arrive: los ? 85 : 26, run: d > 160 ? 1.3 : 1, ignore: target });
         moved = true;
       } else if (this.friendBlockT > 0) {
