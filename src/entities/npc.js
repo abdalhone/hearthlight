@@ -189,6 +189,10 @@ export class NPC extends Actor {
 
   update(dt) {
     super.update(dt);
+    if (this.slipT > 0) {
+      this.slipT -= dt;
+      if (this.slipT <= 0) this.solid = true;
+    }
     if (this.downed) {
       this.downedFor += dt;
       if (this.downedFor >= KNOCKOUT_SECONDS) this.getUp();
@@ -227,6 +231,12 @@ export class NPC extends Actor {
       this.socialT = 0.9 + this.jitter * 0.4;
       this.social();
     }
+  }
+
+  // Let others pass through for a moment (the walker calls this when a crowd jams).
+  slipThrough(seconds = 1.5) {
+    this.solid = false;
+    this.slipT = Math.max(this.slipT || 0, seconds);
   }
 
   // ------------------------------------------------------------ schedule

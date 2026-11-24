@@ -45,6 +45,12 @@ export class Walker {
     this.replans = 0;
     this.direct = false; // no route found: walk straight at the goal
     this.opened = []; // doors this walker opened and still has to close
+    // Net progress, sampled every half second: in a crowd at a doorway each step forward
+    // is pushed straight back by the others, so `actor.moved` alone never reads stuck.
+    this._pt = 0;
+    this._px = actor.x;
+    this._py = actor.y;
+    this._stalled = false;
   }
 
   get active() {
@@ -57,6 +63,10 @@ export class Walker {
     this.goal = { x, y };
     this.replans = 0;
     this.stuckT = 0;
+    this._pt = 0;
+    this._px = this.actor.x;
+    this._py = this.actor.y;
+    this._stalled = false;
     this._plan();
     return true;
   }
@@ -187,12 +197,24 @@ export class Walker {
       mi.x /= l;
       mi.y /= l;
     }
-    // Stuck: trying to move but going nowhere.
-    if ((a.moved ?? 1) < 0.05 && a.lockTime <= 0 && !(a.rootTime > 0)) this.stuckT += dt;
+    // Stuck: trying to move but going nowhere, either pressed against something or held
+    // in place by a crowd (moving each step, but no net progress).
+    const trying = a.lockTime <= 0 && !(a.rootTime > 0);
+    this._pt += dt;
+    if (this._pt >= 0.5) {
+      this._stalled = trying && Math.hypot(a.x - this._px, a.y - this._py) < 2.5;
+      this._pt = 0;
+      this._px = a.x;
+      this._py = a.y;
+    }
+    if (trying && ((a.moved ?? 1) < 0.05 || this._stalled)) this.stuckT += dt;
     else this.stuckT = Math.max(0, this.stuckT - dt * 2);
     if (this.stuckT > 0.9) {
       this.stuckT = 0;
       this.replans++;
+      // Jammed among other people (a doorway at the end of lunch): villagers slip past
+      // each other for a moment instead of shoving forever.
+      if (typeof a.slipThrough === 'function' && this._crowded()) a.slipThrough(1.6);
       if (this.replans > 3) {
         this.stop();
         return 'stuck';
@@ -200,6 +222,18 @@ export class Walker {
       this._plan();
     }
     return 'moving';
+  }
+
+  // Another person close enough to be what holds us up.
+  _crowded() {
+    const a = this.actor;
+    const ents = this.game.entities;
+    if (!ents?.query) return false;
+    try {
+      return ents.query(a.x, a.y, (a.radius || 5) * 3, (e) => e !== a && e.type === 'actor' && e.solid && !e.removed && !e.dead).length > 0;
+    } catch {
+      return false;
+    }
   }
 
   // Open a closed door on the next tile we are walking into.

@@ -126,6 +126,8 @@ function speakerStyle(entity, kind) {
 function headHeight(e) {
   if (Number.isFinite(e.headHeight)) return e.headHeight;
   if (Number.isFinite(e.bubbleHeight)) return e.bubbleHeight;
+  // Lying in a bed, head on the pillow: bubbles sit on the headboard, clear of the face.
+  if (e.inBed && e.state === 'sleep' && Number.isFinite(e.inBed.y)) return Math.max(12, e.y - e.inBed.y + 34);
   if (e.state === 'downed' || e.state === 'sleep' || e.downed) return 12;
   if (e.kind === 'animal' || e.kind === 'monster') return 16;
   return 26;
@@ -697,6 +699,7 @@ export class Bubbles {
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
       if (e.removed || e === p || e.id === COMPANION_ID || !(e.profile || e.role) || !e.name) continue;
+      if (e.inBed && e.state === 'sleep') continue; // asleep: the bed says whose it is
       const d = Math.hypot(e.x - p.x, e.y - p.y);
       if (d > NAME_TAG_RANGE) continue;
       if (this.hasBubble(e)) continue;
