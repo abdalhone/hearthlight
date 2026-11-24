@@ -395,13 +395,15 @@ export class Bubbles {
     const out = this._ko;
     while (out.length < src.length) out.push({ x: 0, y: 0, w: 0, h: 0, fixed: true });
     out.length = src.length;
+    // A little air around each box, so a bubble never sits flush against a card.
+    const pad = 2 * dpr;
     for (let i = 0; i < src.length; i++) {
       const a = src[i];
       const o = out[i];
-      o.x = a.x * dpr;
-      o.y = a.y * dpr;
-      o.w = a.w * dpr;
-      o.h = a.h * dpr;
+      o.x = a.x * dpr - pad;
+      o.y = a.y * dpr - pad;
+      o.w = a.w * dpr + 2 * pad;
+      o.h = a.h * dpr + 2 * pad;
     }
     return out;
   }
@@ -525,6 +527,12 @@ export class Bubbles {
       b.origY = b.layout.y;
       b.layout.ax = ax;
       b.layout.tailPad = 7 * u;
+      // The speaker's own body: a bubble pushed around by a crowd must not cover it.
+      const body = b.layout.body || (b.layout.body = { x: 0, y: 0, w: 0, h: 0 });
+      body.x = ax - 8 * r.scale;
+      body.y = ay;
+      body.w = 16 * r.scale;
+      body.h = Math.max(0, footY - ay);
       // Stacking may move a bubble away from its speaker, never onto them.
       b.layout.maxBottom = b.layout.below ? Infinity : Math.max(b.layout.y + b.layout.h, ay - lp.gap);
       b.layout.minTop = b.layout.below ? Math.min(b.layout.y, footY + lp.gap) : -Infinity;
@@ -569,7 +577,9 @@ export class Bubbles {
     else {
       this._box(ctx, x, y, w, h, u, OUTLINE, s.edge, s.fill);
       if (!displaced) this._tail(ctx, x, y, h, L.tailX, L.below, u, s);
-      else this._leader(ctx, L.tailX, L.below ? y : y + h, b.ax, b.ay, u, s.edge);
+      // The leader leaves from the edge that faces the speaker (a crowd can push a
+      // bubble to the other side of them).
+      else this._leader(ctx, L.tailX, y > b.ay ? y : y + h < b.ay ? y + h : L.below ? y : y + h, b.ax, b.ay, u, s.edge);
     }
 
     // Text, typed out for speech; thoughts simply fade in.

@@ -416,3 +416,17 @@ test('speech bubbles find room around fixed HUD boxes instead of hiding under th
   stackRects([a, b], 2, 4, 4, 686, 390, 2);
   assert.equal(b.x, 196);
 });
+
+test('a bubble hemmed in under the HUD finds a free spot (even past its speaker) instead of hiding under a card', async () => {
+  const { stackRects } = await import('../src/render/text_layout.js');
+  const hud = { x: 0, y: 0, w: 390, h: 125 }; // the phone's top band
+  const first = { x: 70, y: 140, w: 190, h: 60 };
+  const second = { x: 70, y: 210, w: 190, h: 70 };
+  // Above its speaker (maxBottom), boxed in by the two bubbles below and the HUD above.
+  const third = { x: 120, y: 150, w: 190, h: 60, ax: 200, tailPad: 14, maxBottom: 280, body: { x: 190, y: 280, w: 24, h: 40 } };
+  stackRects([hud, first, second, third], 4, 4, 4, 844, 390, 1);
+  const hit = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  assert.ok(!hit(third, hud), `not under the HUD (y=${third.y})`);
+  assert.ok(!hit(third, first) && !hit(third, second), 'not on another bubble');
+  assert.ok(!hit(third, third.body), 'not over its own speaker');
+});

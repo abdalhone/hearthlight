@@ -225,6 +225,39 @@ export function stackRects(rects, count = rects.length, gap = 4, margin = 0, scr
       moved++;
       continue;
     }
+    // Hemmed in (a crowd under the HUD): any free spot near the rects in the way,
+    // above or below its speaker, before climbing blindly over everything (the
+    // caller draws a leader line to a bubble that moved off its speaker).
+    if (fixed > 0) {
+      const xs = [r.x];
+      const ys = [r.y];
+      const body = r.body; // the speaker, whom the bubble must not cover either
+      if (body) ys.push(body.y + body.h + gap, body.y - gap - r.h);
+      for (let j = 0; j < i; j++) {
+        const o = rects[j];
+        xs.push(o.x + o.w + gap, o.x - gap - r.w);
+        ys.push(o.y - gap - r.h, o.y + o.h + gap);
+      }
+      for (const x of xs) {
+        for (const y of ys) {
+          if (x < margin || y < margin || x + r.w > screenW - margin || y + r.h > screenH - margin) continue;
+          if (body && x < body.x + body.w && x + r.w > body.x && y < body.y + body.h && y + r.h > body.y) continue;
+          if (hitsPlaced(rects, i, x, y, r.w, r.h, gap)) continue;
+          const cost = Math.abs(x - r.x) + Math.abs(y - r.y) * 1.6;
+          if (cost < bestCost) {
+            bestCost = cost;
+            bestX = x;
+            bestY = y;
+          }
+        }
+      }
+      if (bestCost < Infinity) {
+        r.x = bestX;
+        r.y = bestY;
+        moved++;
+        continue;
+      }
+    }
     const startY = r.y;
     for (let pass = 0; pass < 10; pass++) {
       let hit = null;
