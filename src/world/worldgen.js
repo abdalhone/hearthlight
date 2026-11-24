@@ -322,22 +322,19 @@ class WorldBuilder {
       for (let y = KINGS_ROAD_Y; y < KINGS_ROAD_Y + 3; y++) if (!WATERY[this.get(x, y)]) this.set(x, y, T.DIRT);
     }
     this.keep(0, KINGS_ROAD_Y - 1, W, 5);
-    // The bridge over the stream, with a plank on each bank.
+    // The bridge over the stream: one straight deck spanning every row of the road,
+    // resting a plank's width on each bank.
+    let x0 = Infinity;
+    let x1 = -Infinity;
     for (let y = KINGS_ROAD_Y; y < KINGS_ROAD_Y + 3; y++) {
-      let x0 = Infinity;
-      let x1 = -Infinity;
       for (let x = 118; x < 145; x++) {
         if (WATERY[this.get(x, y)]) {
-          this.set(x, y, T.BRIDGE);
           x0 = Math.min(x0, x);
           x1 = Math.max(x1, x);
         }
       }
-      if (x0 < Infinity) {
-        this.set(x0 - 1, y, T.BRIDGE);
-        this.set(x1 + 1, y, T.BRIDGE);
-      }
     }
+    if (x0 < Infinity) this.fill(x0 - 1, KINGS_ROAD_Y, x1 - x0 + 3, 3, T.BRIDGE);
     // Forest road from the village's north gate to the heart of Whisperwood.
     this.path(
       [
@@ -1013,6 +1010,41 @@ class WorldBuilder {
     this.must({ objType: 'sign', id: 'sign_dock', tx: shore - 2, ty: 53, title: SIGNS.dock.title, text: SIGNS.dock.text, name: 'Dock sign' });
     this.decor('barrel', shore - 2, 49);
     this.lakeCenterTile = { x: shore - 2, y: 51 };
+    this.bankTrees();
+  }
+
+  // Trees along the north banks of the lake and the village pond, so the still water
+  // has something to mirror. A loose, uneven line: gaps, mixed oaks and pines.
+  bankTrees() {
+    const L = this.lake;
+    const plant = (x, y, kind) => {
+      const g = this.get(x, y);
+      if (g !== T.GRASS && g !== T.TALL_GRASS && g !== T.SAND) return false;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (this.inb(x + dx, y + dy) && this.trunk[(y + dy) * W + x + dx]) return false;
+      // Never on a path or right against the water's edge.
+      if (this.map.isWater(x, y + 1) || this.map.isWater(x - 1, y) || this.map.isWater(x + 1, y)) return false;
+      const o = this.put({ objType: 'tree', tx: x, ty: y, kind, v: Math.floor(this.hash(x, y, 91) * (kind === 'pine' ? 2 : 3)) });
+      if (o) this.trunk[y * W + x] = 1;
+      return !!o;
+    };
+    for (let x = Math.ceil(L.cx - L.rx + 4); x <= Math.floor(L.cx + L.rx - 2); x++) {
+      if (this.hash(x, 0, 92) < 0.45) continue;
+      let top = -1;
+      for (let y = Math.floor(L.cy - L.ry - 3); y < L.cy; y++) {
+        if (this.map.isWater(x, y)) {
+          top = y;
+          break;
+        }
+      }
+      if (top < 0) continue;
+      const back = this.hash(x, top, 93) < 0.5 ? 2 : 3;
+      plant(x, top - back, this.hash(x, top, 94) < 0.35 ? 'pine' : 'oak');
+    }
+    for (const [x, y] of [
+      [60, 74],
+      [64, 74],
+    ])
+      plant(x, y, 'oak');
   }
 
   forestLandmarks() {
@@ -1289,7 +1321,8 @@ class WorldBuilder {
     const r = this.ruinsRect;
     this.loc('sunken_ruins', { x: r.x, y: r.y, w: r.w, h: r.h }, [r.x + 20, r.y + 5]);
     this.loc('south_meadow', { x: 48, y: 88, w: 78, h: 31 }, [86, 100]);
-    this.loc('kings_road', { x: 0, y: KINGS_ROAD_Y, w: W, h: 3 }, [70, KINGS_ROAD_Y + 1]);
+    // One row of verge on each side: the painted road wanders a little past its tiles.
+    this.loc('kings_road', { x: 0, y: KINGS_ROAD_Y - 1, w: W, h: 5 }, [70, KINGS_ROAD_Y + 1]);
     this.loc('wilds', { x: 0, y: 0, w: W, h: H }, [140, 100]);
   }
 
