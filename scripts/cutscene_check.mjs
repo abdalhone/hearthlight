@@ -116,10 +116,35 @@ async function listen(size, voice) {
   await page.evaluate(() => {
     const g = window.__game;
     const cp = g.story.player;
-    const rec = (window.__listen = { lines: 0, voiced: 0, typed: 0, samples: 0, early: 0, lateMax: 0, lateOver: 0, beds: new Set(), heart: 0, hush: 0, slam: 0, lastText: '', stalls: 0, lastChange: performance.now() });
+    const rec = (window.__listen = { startedAt: performance.now(), lines: 0, voiced: 0, typed: 0, samples: 0, early: 0, lateMax: 0, lateOver: 0, beds: new Set(), heart: 0, hush: 0, slam: 0, lastText: '', stalls: 0, lastChange: performance.now() });
     let lastTyping = null;
+    // Listen to the mix itself (everything goes through the master bus): never dead air,
+    // and the voice on top of the effects.
+    let an = null;
+    let buf = null;
+    rec.levels = { voice: [], rest: [], dead: 0, frames: 0 };
+    const level = () => {
+      const a = g.audio;
+      if (!an && a?.ctx && a.master) {
+        an = a.ctx.createAnalyser();
+        an.fftSize = 2048;
+        a.master.connect(an);
+        buf = new Float32Array(an.fftSize);
+      }
+      if (!an) return null;
+      an.getFloatTimeDomainData(buf);
+      let e = 0;
+      for (let i = 0; i < buf.length; i++) e += buf[i] * buf[i];
+      return 10 * Math.log10(e / buf.length + 1e-12);
+    };
     const frame = () => {
       if (!g.story.isPlaying()) return;
+      const db = level();
+      if (db != null && cp.sound && !cp.sound.hushed && performance.now() - rec.startedAt > 3000) {
+        rec.levels.frames++;
+        if (db < -60) rec.levels.dead++;
+        (g.voice.speaking() ? rec.levels.voice : rec.levels.rest).push(db);
+      }
       const ty = cp.typing;
       const snd = cp.sound;
       if (snd) {
@@ -176,7 +201,9 @@ async function listen(size, voice) {
   const r = await page.evaluate(() => {
     const L = window.__listen;
     const g = window.__game;
-    return { ...L, beds: [...L.beds], playing: g.story.isPlaying(), state: g.state, voice: { ...g.voice.stats } };
+    const med = (a) => (a.length ? [...a].sort((x, y) => x - y)[a.length >> 1] : null);
+    const mix = { voiceDb: med(L.levels.voice), restDb: med(L.levels.rest), deadAir: L.levels.frames ? Math.round((1000 * L.levels.dead) / L.levels.frames) / 1000 : null };
+    return { ...L, levels: undefined, mix, beds: [...L.beds], playing: g.story.isPlaying(), state: g.state, voice: { ...g.voice.stats } };
   });
   const finished = !r.playing && r.state === 'playing';
   const ok =
@@ -186,8 +213,10 @@ async function listen(size, voice) {
     r.lateMax <= 1 &&
     (voice === 'ok' ? r.voiced >= Math.min(8, r.lines - 2) && r.voice.played >= r.voiced : r.voiced === 0) &&
     r.beds.length >= 1 &&
+    (r.mix.deadAir == null || r.mix.deadAir < 0.02) &&
+    (voice !== 'ok' || r.mix.voiceDb == null || r.mix.restDb == null || r.mix.voiceDb > r.mix.restDb + 6) &&
     (!finished || (r.hush > 0 && r.slam > 0 && r.heart > 0));
-  const row = { label, ok, seconds: Math.round(took), finished, lines: r.lines, voiced: r.voiced, samples: r.samples, wordsEarly: r.early, wordsLateMax: r.lateMax, lateSamples: r.lateOver, beds: r.beds, heartFrames: r.heart, hushFrames: r.hush, slams: r.slam, stalls: r.stalls, voice: r.voice, errors };
+  const row = { label, ok, seconds: Math.round(took), finished, lines: r.lines, voiced: r.voiced, samples: r.samples, wordsEarly: r.early, wordsLateMax: r.lateMax, lateSamples: r.lateOver, beds: r.beds, heartFrames: r.heart, hushFrames: r.hush, slams: r.slam, stalls: r.stalls, mix: r.mix, voice: r.voice, errors };
   console.log(JSON.stringify(row));
   if (!ok) failures.push(label);
   await context.close();

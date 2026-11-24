@@ -6,6 +6,7 @@
     "narrator": {
       "name": "The Void",
       "ref": "void",
+      "refShape": { "pitch": 3.0, "formant": 3.0},
       "gen": { "exaggeration": 0.35, "cfg": 0.45, "temperature": 0.8},
       "void": { "pitch": -3.0, "octaveDb": -15.0, "octaveLowpass": 1400, "echo90": 0.22, "echo160": 0.12, "echoLowpass": 4500, "bass": 2.5, "cut350": -3.5, "lift2800": 2.5}
     },

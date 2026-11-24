@@ -568,7 +568,7 @@ export class CutscenePlayer {
     // they are spoken; without one (or if it is late) it types itself.
     let expect = null;
     try {
-      expect = voice?.clip?.(speaker, text) || null;
+      expect = voice && voice.enabled?.() !== false ? voice.clip?.(speaker, text) || null : null;
     } catch {
       expect = null;
     }
