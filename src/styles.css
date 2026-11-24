@@ -7263,6 +7263,11 @@ input[type='range']::-moz-range-thumb {
   .menu-sys {
     padding-top: 8px;
   }
+  /* Notices sit over the menu's header here: they wait while it is open (the Save
+     button says how saving went). */
+  .ui:has(.modal-layer > .panel-pause:last-child) .layer-toasts {
+    visibility: hidden;
+  }
 }
 
 /* The title menu: Continue and New game, the story, then Settings and How to play. */
