@@ -616,6 +616,11 @@ export class Mind {
   wake(p = {}) {
     this.needsEngine.sleep();
     this.appraise('rest', 1, 'a night of sleep');
+    // A night's distance takes a little of the edge off her fear of the player, unless
+    // they frightened her in the last few hours.
+    const pr = this.relationships.get(PLAYER_ID);
+    const sph = this.game?.clock?.secondsPerHour || 37.5;
+    if (pr && pr.fear > 0 && this.now() - this.perception.lastFearT > 4 * sph) pr.fear = Math.round(pr.fear * 0.9 * 10) / 10;
     this.affect.moodBase = clamp(this.affect.moodBase + 0.05, -0.6, 0.7);
     const day = this._sleepDay ?? Math.max(1, (p.day ?? this.game?.clock?.day ?? 2) - 1);
     if (this._sleepDay == null) this._sleepDay = day;

@@ -15,6 +15,7 @@ import {
   joinList,
   firstSentence,
   placePhrase,
+  itemPhrase,
 } from './text.js';
 import { FIRST_IMPRESSIONS, KNOWN_PLACES } from './soul.js';
 import { itemName, itemDef } from '../../entities/items.js';
@@ -101,8 +102,6 @@ const GIFT_LINES = {
 const CRUELTY_LINES = {
   wildlife: ["Hey! It wasn't doing anything to you.", 'Was that necessary?', 'Leave it be. Please.'],
   pet: ['Not the cat. Never the cat.', 'That is Pip\'s cat. What is wrong with you?'],
-  villager: ['What are you doing?! Stop!', '{n} is one of ours. Stop it. Now.'],
-  child: ["That's a child. STOP."],
 };
 
 export class Perception {
@@ -127,6 +126,11 @@ export class Perception {
     this._placeT = 0;
     this._meetT = 0;
     this._slowT = 0;
+    this._placeRefresh = 0;
+    this.seenAt = new Map(); // person id -> real time she last noticed them (working memory)
+    this.lastFearT = -Infinity; // game time the player last frightened her
+    this._fearDecayT = null; // game time fear last eased
+    this.playerHits = []; // real times the player's attacks landed on her
   }
 
   rt() {
@@ -236,6 +240,20 @@ export class Perception {
         return;
       case 'settings_changed':
         return this.onSettings(p);
+      case 'crime':
+        return this.onCrime(p);
+      case 'deed':
+        return this.onDeed(p);
+      case 'companionship_changed':
+        return this.onCompanionship(p);
+      case 'request_evaluated':
+        return this.onRequestEvaluated(p);
+      case 'promise':
+        return this.onPromise(p);
+      case 'plan_changed':
+        return this.onPlanChanged(p);
+      case 'conversation':
+        return this.onConversation(p);
       default:
         return;
     }
@@ -258,14 +276,7 @@ export class Perception {
     const sev = this.severity(target, amount);
     if (this.isSelf(target)) {
       if (this.encounter) this.encounter.lyraHurt += amount || 0;
-      if (this.isPlayer(source)) {
-        if (this.throttle('friendly_fire', 20)) {
-          m.feel('surprise', 0.3, 'hit by a friend');
-          m.relationships.adjust(PLAYER_ID, { affinity: -1.5 }, 'Hit me by accident');
-          if (this.throttle('friendly_fire_say', 40)) m.say(pick(['Ow! Same side, remember?', 'Watch the swing! I bruise.'], this.game?.rng));
-        }
-        return;
-      }
+      if (this.isPlayer(source)) return this.hitByPlayer();
       if (!source || this.isSelf(source)) return;
       this.touchEncounter(source);
       if (this.throttle('hurt', 1.2)) m.appraise('hurt', sev, `hit by ${foeName(source)}`);
@@ -289,7 +300,8 @@ export class Perception {
       return;
     }
     if (this.isPlayer(source)) {
-      if (this.isCrueltyTarget(target) && !this.provoked(target)) this.cruelty(target, false);
+      if (isVillagerLike(target) && !this.provoked(target)) this.playerHurtVillager(target, 'assault');
+      else if (this.isCrueltyTarget(target) && !this.provoked(target)) this.cruelty(target, false);
       else this.touchEncounter(target);
       return;
     }
@@ -340,43 +352,119 @@ export class Perception {
     }
   }
 
+  // Is a hostile creature close to her? (Telling a stray swing from a deliberate one.)
+  hostileNear(r) {
+    const o = this.owner;
+    const list = this.game?.entities?.all?.();
+    if (!o || !list) return false;
+    const r2 = r * r;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (e === o || e.removed || e.type !== 'actor' || e.dead || this.isPlayer(e)) continue;
+      if (typeof e.isAlive === 'function' && !e.isAlive()) continue;
+      const dx = e.x - o.x;
+      const dy = e.y - o.y;
+      if (dx * dx + dy * dy > r2) continue;
+      if (factionRelation('player', e.faction) === 'hostile' || (e.species && !this.mind.relationships.isFriend(e))) return true;
+    }
+    return false;
+  }
+
+  raisedFear() {
+    this.lastFearT = this.game?.clock?.t ?? 0;
+  }
+
+  // The player's blow landed on her (DESIGN §16.2): an accident when a hostile creature
+  // is within 48 px of her and it is the first hit in 8 s; otherwise deliberate. Either
+  // way her fear of the player rises. What it means for the two of them (the ledger,
+  // warnings, leaving) is her autonomy's call, so nothing is recorded or said here
+  // beyond the gasp of an accident.
+  hitByPlayer() {
+    const m = this.mind;
+    const t = this.rt();
+    const recent = this.playerHits.filter((x) => t - x < 60);
+    const firstIn8 = !recent.some((x) => t - x < 8);
+    this.playerHits = [...recent, t].slice(-6);
+    if (firstIn8 && this.hostileNear(48)) {
+      if (this.throttle('friendly_fire', 4)) {
+        m.feel('surprise', 0.3, 'caught by a stray swing');
+        m.relationships.adjust(PLAYER_ID, { affinity: -1, fear: 1 }, 'Hit me by accident');
+        this.raisedFear();
+        if (this.throttle('friendly_fire_say', 30)) m.say(pick(['Ow! Same side, remember?', 'Watch the swing! I bruise.', "Mind your edge! That was my arm."], this.game?.rng));
+      }
+      return;
+    }
+    const again = recent.length > 0;
+    m.appraise('betrayal', again ? 1.3 : 1, `${this.P} hit me`);
+    m.relationships.adjust(PLAYER_ID, { fear: again ? 12 : 8 }, again ? 'Hit me again' : 'Hit me, and meant it');
+    this.raisedFear();
+    m.notice(`person:${PLAYER_ID}`, { source: 'threat', amount: 0.9, reminisce: false });
+    if (this.throttle('hit_on_purpose_thought', 8)) {
+      m.addThought(again ? `Again. ${cap(this.P)} hit me again.` : `${cap(this.P)} hit me. That was no accident.`, 'perception', { show: true, minGap: 4 });
+    }
+  }
+
+  // The player struck a villager or a guard (assault), knocked one out, or worse. Her
+  // feelings and her fear of the player are hers to have here; the deed itself goes to
+  // the ledger (autonomy), which also decides what she does about it.
+  playerHurtVillager(target, kind = 'assault') {
+    if (!target) return;
+    const m = this.mind;
+    const gap = kind === 'assault' ? 10 : 30;
+    if (!this.throttle(`${kind}_${target.id}`, gap)) return;
+    const n = firstName(target.name || 'someone');
+    const child = isChild(target);
+    const fear = kind === 'killed' ? 18 : kind === 'knockout' ? 10 : child ? 7 : 5;
+    m.appraise('cruelty', kind === 'assault' ? 1 : 1.4, `${this.P} hurt ${n}`);
+    m.appraise('betrayal', kind === 'assault' ? 0.5 : 0.9, `${this.P} hurt ${n}`);
+    m.relationships.adjust(PLAYER_ID, { fear }, kind === 'assault' ? `Attacked ${n}` : `Knocked ${n} down`);
+    this.raisedFear();
+    m.notice(`person:${target.id}`, { source: 'threat', amount: 0.8, reminisce: false });
+    m.notice(`person:${PLAYER_ID}`, { source: 'threat', amount: 0.9, reminisce: false });
+    if (this.throttle(`villager_thought_${target.id}`, 20)) {
+      const line =
+        kind === 'assault'
+          ? child
+            ? `${n} is a child. What is ${this.P} doing?`
+            : `${cap(this.P)} just struck ${n}. ${n}, who never did anything to anyone.`
+          : `${n} is down, and ${this.P} did it. I don't know who I'm walking beside.`;
+      m.addThought(line, 'perception', { show: true, minGap: 4 });
+    }
+  }
+
+  // Cruelty to a harmless creature or a pet: it upsets her and lowers her opinion of the
+  // player. A kill also goes to the ledger (autonomy, 'killed_harmless'), so she keeps a
+  // memory only of the hurt, not of the kill.
   cruelty(target, killed) {
     const m = this.mind;
+    if (isVillagerLike(target)) return this.playerHurtVillager(target, killed ? 'killed' : 'assault');
     if (!this.throttle(`cruel_${target.id}`, killed ? 1 : 25) || !this.throttle(killed ? 'cruel_kill' : 'cruel', killed ? 3 : 6)) return;
-    const villager = isVillagerLike(target);
-    const child = isChild(target);
     const rel = m.relationships.get(target.id);
     const pet = !!rel?.tags.includes('pet') || target.species === 'cat';
-    const what = villager ? target.name : `${pet ? 'the' : 'a'} ${foeName(target)}`;
-    m.appraise('cruelty', villager ? 1.3 : killed ? 1.1 : 0.8, `${this.P} hurt ${what}`);
-    const changes = villager
-      ? { affinity: killed ? -35 : -10, trust: killed ? -30 : -8, respect: killed ? -25 : -6, fear: killed ? 20 : 4 }
-      : { affinity: killed ? -5 : -3, respect: killed ? -3 : -2, trust: -1 };
+    const what = rel && isNamedCreature(target) ? target.name : `${pet ? 'the' : 'a'} ${foeName(target)}`;
+    m.appraise('cruelty', killed ? 1.1 : 0.8, `${this.P} hurt ${what}`);
+    const changes = { affinity: killed ? -3 : -3, respect: killed ? -2 : -2, trust: -1, fear: killed ? 2 : 1 };
     if (pet) {
       changes.affinity -= 4;
       changes.trust -= 3;
+      changes.fear += 2;
     }
     m.relationships.adjust(PLAYER_ID, changes, killed ? `Killed ${what}` : `Hurt ${what} for no reason`);
-    m.relationships.addNote(PLAYER_ID, killed ? `Killed ${what} for no reason.` : `Hurt ${what} that wasn't doing anything.`, 'observed');
-    const P = cap(this.P);
-    const text = villager
-      ? killed
-        ? `${P} killed ${target.name}. Struck down one of our own, ${this.where()}. I don't know who I'm walking beside anymore.`
-        : `${P} attacked ${target.name} for no reason I could see. I shouted. I'd do it again.`
-      : killed
-        ? `${P} killed ${what} that never threatened anyone. I keep seeing it.`
-        : `${P} hurt ${what} that wasn't doing anything. I didn't like it.`;
-    m.remember(text, {
-      importance: villager ? (killed ? 10 : child ? 9 : 8) : killed ? 6 : 4,
-      about: rel ? [PLAYER_ID, target.id] : [PLAYER_ID],
-      tags: ['cruelty', target.species || 'villager'],
-      emotion: 'anger',
-      gist: villager ? `what ${this.P} did to ${firstName(target.name)}` : `the ${foeName(target)} ${this.P} hurt`,
-    });
+    this.raisedFear();
+    m.relationships.addNote(PLAYER_ID, killed ? `Killed ${what} that never threatened anyone.` : `Hurt ${what} that wasn't doing anything.`, 'observed');
+    if (!killed) {
+      m.remember(`${cap(this.P)} hurt ${what} that wasn't doing anything${this.place ? ` ${this.where()}` : ''}. I didn't like it.`, {
+        importance: pet ? 6 : 4,
+        about: rel ? [PLAYER_ID, target.id] : [PLAYER_ID],
+        tags: ['cruelty', target.species || 'creature'],
+        emotion: 'anger',
+        gist: `the ${foeName(target)} ${this.P} hurt`,
+      });
+    }
     if (this.throttle('cruel_say', killed ? 6 : 18)) {
-      const kind = child ? 'child' : villager ? 'villager' : pet ? 'pet' : 'wildlife';
-      const line = killed && !villager ? "...You didn't have to do that." : pick(CRUELTY_LINES[kind], this.game?.rng);
-      m.say(line.replace('{n}', firstName(target.name)), { kind: villager ? 'shout' : 'say' });
+      const kind = pet ? 'pet' : 'wildlife';
+      const line = killed ? (pet ? 'You killed the cat. ...Get away from me.' : "...You didn't have to do that.") : pick(CRUELTY_LINES[kind], this.game?.rng);
+      m.say(line, { kind: 'say' });
     }
   }
 
@@ -488,9 +576,18 @@ export class Perception {
     const m = this.mind;
     if (this.isSelf(entity)) {
       if (this.encounter) this.encounter.lyraDowned = true;
+      if (this.isPlayer(by)) {
+        // The player knocked her out. The ledger and her leaving are autonomy's; the
+        // terror is hers.
+        m.appraise('betrayal', 1.6, `${this.P} knocked me down`);
+        m.relationships.adjust(PLAYER_ID, { fear: 25 }, 'Knocked me out');
+        this.raisedFear();
+        m.addThought(`${cap(this.P)}... did this. To me.`, 'perception');
+        return;
+      }
       m.appraise('loss', 0.5, 'knocked down');
       m.feel('embarrassment', 0.2, 'knocked down');
-      m.remember(`I went down ${this.where()}${by && !this.isPlayer(by) ? `, to ${plural(foeName(by), 1)}` : ''}. Everything went grey.`, {
+      m.remember(`I went down ${this.where()}${by ? `, to ${plural(foeName(by), 1)}` : ''}. Everything went grey.`, {
         importance: 7,
         tags: ['downed', by?.species].filter(Boolean),
         emotion: 'fear',
@@ -507,6 +604,8 @@ export class Perception {
         gist: `watching ${this.P} fall`,
       });
       m.addThought('No. No, no, no. Not again.', 'perception', { show: true });
+    } else if (entity && this.isPlayer(by) && isVillagerLike(entity)) {
+      this.playerHurtVillager(entity, 'knockout');
     }
   }
 
@@ -515,7 +614,8 @@ export class Perception {
     if (this.isSelf(entity)) {
       if (this.isPlayer(by)) {
         m.appraise('rescue', 1, `${this.P} came back for me`);
-        m.relationships.adjust(PLAYER_ID, { trust: 12, affinity: 8, respect: 3, familiarity: 2 }, 'Came back for me');
+        // The ledger adds its own weight for this deed (revived_lyra); this is the gratitude.
+        m.relationships.adjust(PLAYER_ID, { trust: 6, affinity: 4, respect: 2, familiarity: 2 }, 'Came back for me');
         m.relationships.addNote(PLAYER_ID, 'Came back for me when I was down.', 'observed');
         m.remember(`${cap(this.P)} came back for me. I was down ${this.where()}, and they came back for me.`, {
           importance: 9,
@@ -589,6 +689,7 @@ export class Perception {
   onItemGained({ actor, itemId, from }) {
     const m = this.mind;
     if (!this.isSelf(actor)) return;
+    if (itemId && itemId !== 'coin') m.notice(`item:${itemId}`, { source: 'item', amount: 0.5 });
     if (itemId === 'moonpetal' && this.throttle('moonpetal_gain', 30)) {
       m.feel('joy', 0.18, 'a moonpetal');
       if (this.throttle('moonpetal_memory', 600)) {
@@ -607,6 +708,7 @@ export class Perception {
 
   onItemGiven({ from, to, itemId, qty }) {
     if (!itemId) return;
+    if ((this.isSelf(to) || this.isSelf(from)) && itemId !== 'coin') this.mind.notice(`item:${itemId}`, { source: 'item', amount: 0.5, reminisce: this.isSelf(to) });
     if (this.isSelf(to) && from && !this.isSelf(from)) return this.giftReceived(from, itemId, qty || 1);
     if (this.isPlayer(from) && to && !this.isSelf(to) && (isVillagerLike(to) || to.profile)) {
       if (!this.throttle(`kind_${to.id}`, 300)) return;
@@ -614,7 +716,7 @@ export class Perception {
       m.appraise('kindness', 0.6, `${this.P} gave ${to.name} a gift`);
       m.relationships.adjust(PLAYER_ID, { affinity: 2, respect: 1 }, `Was kind to ${firstName(to.name)}`);
       m.relationships.addNote(PLAYER_ID, `Gave ${firstName(to.name)} a gift, unasked.`, 'observed');
-      m.remember(`${cap(this.P)} gave ${to.name} ${itemName(itemId, qty || 1).toLowerCase()}. Small kindnesses add up.`, {
+      m.remember(`${cap(this.P)} gave ${to.name} ${itemPhrase(itemId, itemName(itemId), qty || 1)}. Small kindnesses add up.`, {
         importance: 3,
         about: [PLAYER_ID, to.id],
         tags: ['kindness', 'gift'],
@@ -643,13 +745,13 @@ export class Perception {
     const base = { gift_loved: { affinity: 7, trust: 2, familiarity: 2 }, gift_liked: { affinity: 4, familiarity: 1 }, gift_neutral: { affinity: 1.5 }, gift_disliked: { affinity: -1 } }[kind];
     const scaled = {};
     for (const [k, v] of Object.entries(base)) scaled[k] = v > 0 ? v * fresh : v;
-    m.relationships.adjust(giverId, scaled, `Gave me ${itemName(itemId, qty).toLowerCase()}`);
+    m.relationships.adjust(giverId, scaled, `Gave me ${itemPhrase(itemId, itemName(itemId), qty)}`);
     const rel = m.relationships.get(giverId);
     if (rel) rel.interactions++;
     const gname = this.isPlayer(giver) ? cap(this.P) : giver.name;
     const reaction = { gift_loved: 'I could have cried.', gift_liked: 'It made my day.', gift_neutral: 'Thoughtful.', gift_disliked: 'I smiled anyway.' }[kind];
     if (n < 2) {
-      m.remember(`${gname} gave me ${itemName(itemId, qty).toLowerCase()}. ${reaction}`, {
+      m.remember(`${gname} gave me ${itemPhrase(itemId, itemName(itemId), qty)}. ${reaction}`, {
         importance: kind === 'gift_loved' ? 6 : kind === 'gift_liked' ? 4 : 3,
         about: [giverId],
         tags: ['gift', itemId],
@@ -665,6 +767,7 @@ export class Perception {
   onItemUsed({ actor, itemId }) {
     if (!this.isSelf(actor)) return;
     const m = this.mind;
+    m.notice(`item:${itemId}`, { source: 'item', amount: 0.4 });
     m._ateFlag = true;
     if (m.needsEngine.eat(itemId) > 0 && itemId === 'honey_cake') m.feel('joy', 0.15, 'honey cake');
     if (itemDef(itemId)?.type === 'potion') m.appraise('relief', 0.5, 'a potion');
@@ -712,7 +815,7 @@ export class Perception {
     m.appraise('achievement', 1, `finished ${jobLabel(job)}`);
     if (id === 'fish' || id === 'forage' || id === 'gather_herbs') m.needsEngine.satisfy('fun', 0.05);
     if (this.throttle(`job_mem_${id}`, 300)) {
-      const items = Array.isArray(result?.items) ? result.items.map((x) => itemName(x.id, x.qty).toLowerCase()) : [];
+      const items = Array.isArray(result?.items) ? result.items.map((x) => itemPhrase(x.id, itemName(x.id), x.qty)) : [];
       m.remember(`Finished ${jobLabel(job)}${this.place ? ` ${this.where()}` : ''}${items.length ? `: ${joinList(items)}` : ''}.`, {
         importance: 3,
         about: [PLAYER_ID],
@@ -736,6 +839,7 @@ export class Perception {
     const m = this.mind;
     if (!text) return;
     m.addConversation('player', String(text));
+    m.noticeText(String(text));
     m.needsEngine.satisfy('social', 0.07);
     if (this.throttle('chat_social', 10)) m.appraise('social', 0.6, 'talking with you');
     const day = this.game?.clock?.day ?? 1;
@@ -757,6 +861,7 @@ export class Perception {
     }
     if (this.isPlayer(speaker)) return;
     if (!this.near(speaker, NOTICE_RADIUS)) return;
+    if (this.throttle(`heard_topics_${speaker.id}`, 6)) m.noticeText(String(text), { source: 'overheard', amount: 0.3 });
     if (/\bmaren\b/i.test(text) && this.throttle('heard_maren', 120)) {
       m.appraise('hope', 0.6, `${speaker.name} spoke of Maren`);
       m.remember(`Heard ${speaker.name || 'someone'} mention Maren: "${firstSentence(text, 120)}"`, {
@@ -796,6 +901,92 @@ export class Perception {
     if (!this.near(npc, NOTICE_RADIUS) || !this.throttle(`topic_maren_${npc.id}`, 60)) return;
     this.mind.appraise('hope', 0.7, `asking ${npc.name} about Maren`);
     this.mind.addThought(`Every word, ${this.P}. I'm listening to every word.`, 'perception', { show: true });
+  }
+
+  // ---------------------------------------------------------------- her own will (§16.9)
+
+  onCrime({ actor, victim, kind }) {
+    if (!this.isPlayer(actor) || !victim) return;
+    this.playerHurtVillager(victim, kind === 'knockout' ? 'knockout' : 'assault');
+  }
+
+  // A deed entered her ledger (autonomy records and remembers it); here it is felt.
+  onDeed({ deed, severity, text }) {
+    const m = this.mind;
+    const sev = Number(severity) || 0;
+    const cause = String(text || deed || '');
+    if (sev <= -2) m.appraise('betrayal', clamp(-sev / 4, 0.4, 1.6), cause);
+    else if (sev < 0) {
+      m.feel('anger', 0.08 * -sev, cause);
+      m.feel('sadness', 0.05 * -sev, cause);
+    } else if (sev >= 2) m.appraise('goodness', clamp(sev / 3, 0.5, 1.2), cause);
+    else if (sev > 0) {
+      m.feel('trust', 0.08 * sev, cause);
+      m.feel('joy', 0.06 * sev, cause);
+    }
+    if (sev) m.notice(`person:${PLAYER_ID}`, { source: 'deed', amount: clamp(0.4 + Math.abs(sev) * 0.1, 0.4, 1), reminisce: false });
+  }
+
+  onCompanionship({ state, previous }) {
+    const m = this.mind;
+    const P = this.P;
+    let line = null;
+    if (state === 'wary') {
+      m.appraise('threat', 0.5, 'wary of them');
+      line = `I'm keeping my distance from ${P} for now. I hate that I have to.`;
+    } else if (state === 'left') {
+      m.appraise('loss', 0.7, `leaving ${P}`);
+      m.feel('anger', 0.3, `leaving ${P}`);
+      line = `I'm on my own again. Better alone than beside someone I have to watch.`;
+    } else if (state === 'gone') {
+      m.appraise('grief', 0.9, `done with ${P}`);
+      line = "That's the end of it. I'll grieve the person I thought they were, and keep walking.";
+    } else if (state === 'apart') {
+      m.feel('joy', 0.05, 'my own day');
+      line = 'My own day, my own road. It feels good. A little strange, but good.';
+    } else if (state === 'together') {
+      m.appraise('relief', previous === 'left' || previous === 'wary' ? 0.7 : 0.4, `back with ${P}`);
+      m.feel('trust', 0.12, `back with ${P}`);
+      line = previous === 'left' || previous === 'wary' ? `Together again. Don't make me regret it, ${P}.` : `Back on the road with ${P}. I missed this, a little.`;
+    }
+    m.notice(`person:${PLAYER_ID}`, { source: 'companionship', amount: 0.8, reminisce: false });
+    if (line) m.addThought(line, 'perception', { show: true, minGap: 8 });
+  }
+
+  // Her gut said no to something the player asked: a flicker of resolve, nothing more.
+  onRequestEvaluated({ action, verdict }) {
+    const d = verdict?.decision;
+    if (!d || !String(d).startsWith('refuse')) return;
+    const m = this.mind;
+    m.feel('anger', 0.04, `asked to ${action}`);
+    m.feel('pride', 0.03, 'held my ground');
+    const why = Array.isArray(verdict.reasons) && verdict.reasons[0] ? String(verdict.reasons[0]) : '';
+    if (this.throttle('refusal_thought', 20)) m.addThought(`I said no${action ? ` to ${String(action).replace(/_/g, ' ')}` : ''}.${why ? ` ${cap(why.replace(/[.!]*$/, '.'))}` : ''} I meant it.`, 'perception');
+  }
+
+  onPromise({ by, state }) {
+    const m = this.mind;
+    const player = by === 'player' || by === PLAYER_ID;
+    if (state === 'kept') {
+      if (player) m.appraise('kindness', 0.8, 'a promise kept');
+      else m.feel('pride', 0.1, 'kept my word');
+    } else if (state === 'broken') {
+      if (player) {
+        m.feel('sadness', 0.18, 'a broken promise');
+        m.feel('anger', 0.12, 'a broken promise');
+      } else m.feel('embarrassment', 0.2, 'broke my word');
+    } else if (player) m.feel('trust', 0.04, 'a promise');
+  }
+
+  onPlanChanged() {
+    this.mind.thinker.nudge(8);
+  }
+
+  onConversation({ a, b, topic }) {
+    const other = this.isSelf(a) ? b : this.isSelf(b) ? a : null;
+    if (!other?.id || this.isPlayer(other)) return;
+    this.mind.notice(`person:${other.id}`, { source: 'conversation', amount: 0.7, reminisce: false });
+    if (topic) this.mind.noticeText(String(topic), { source: 'conversation', amount: 0.5 });
   }
 
   onTrade({ itemId, bought }) {
@@ -900,7 +1091,14 @@ export class Perception {
     const o = this.owner;
     const loc = this.game?.locations?.at?.(o.x, o.y) || null;
     const id = loc?.id || null;
-    if (id === this.place) return;
+    if (id === this.place) {
+      // Where she is stays on her mind while she is there.
+      if (id && this.rt() - this._placeRefresh > 20) {
+        this._placeRefresh = this.rt();
+        this.mind.workingMemory.activate(`place:${id}`, { label: loc.name, amount: 0.35, source: 'place' });
+      }
+      return;
+    }
     const prev = this.place;
     this.place = id;
     this.placeSince = this.rt();
@@ -910,6 +1108,13 @@ export class Perception {
 
   enterPlace(loc, prev) {
     const m = this.mind;
+    this._placeRefresh = this.rt();
+    const first = !this.seenPlaces.has(loc.id);
+    // What there is to know about a place, she learns by being there (DESIGN §17.2).
+    const learned = m.learnPlace(loc.id);
+    if (!first) m.notice(`place:${loc.id}`, { source: 'place', amount: 0.8, label: loc.name });
+    else m.workingMemory.activate(`place:${loc.id}`, { label: loc.name, amount: 0.8, source: 'place' });
+    if (first && learned.length && learned[0].kind !== 'lore') m.thinker.queue('clue', learned[0], 6);
     if (!this.seenPlaces.has(loc.id)) {
       this.seenPlaces.add(loc.id);
       this.firstVisit = true;
@@ -961,6 +1166,7 @@ export class Perception {
     if (!list) return;
     const rels = this.mind.relationships;
     const t = g.clock?.t ?? 0;
+    const now = this.rt();
     let threats = 0;
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
@@ -972,8 +1178,33 @@ export class Perception {
       const rel = rels.map.get(e.id);
       if (rel && d2 < 120 * 120) rel.lastSeen = t;
       if (d2 < 120 * 120 && e.faction && factionRelation('player', e.faction) === 'hostile' && (typeof e.isAlive !== 'function' || e.isAlive())) threats++;
+      // A familiar face brings them, and what she associates with them, to mind.
+      if (rel && rel.firstMet != null && !this.isPlayer(e) && d2 < 100 * 100) {
+        const seen = this.seenAt.get(e.id);
+        if ((seen == null || now - seen > 45) && hasLineOfSight(g, o.x, o.y, e.x, e.y)) {
+          this.seenAt.set(e.id, now);
+          this.mind.notice(`person:${e.id}`, { source: 'person', amount: 0.55, label: rel.name });
+        }
+      }
     }
     this.threats = threats;
+    this.easeFear();
+  }
+
+  // Fear of the player fades slowly once they stop giving her reasons: about a point
+  // every two in-game hours of peace (sleep eases it a little more, see Mind.wake).
+  easeFear() {
+    const c = this.game?.clock;
+    if (!c) return;
+    const t = c.t;
+    const sph = c.secondsPerHour || 37.5;
+    if (this._fearDecayT == null || t < this._fearDecayT) this._fearDecayT = t;
+    const hours = (t - this._fearDecayT) / sph;
+    if (hours < 1) return;
+    this._fearDecayT = t;
+    if (t - this.lastFearT < 2 * sph) return;
+    const rel = this.mind.relationships.get(PLAYER_ID);
+    if (rel && rel.fear > 0) rel.fear = Math.max(0, Math.round((rel.fear - 0.5 * hours) * 10) / 10);
   }
 
   // First impressions, from her soul's notes on the villagers or from the profile.
@@ -990,19 +1221,22 @@ export class Perception {
     const place = this.placeObj();
 
     if (e.species === 'cat' && !e.profile) {
+      // Pip's stray (Biscuit, if it has a name of its own): a pet from the first scratch.
+      const named = isNamedCreature(e) ? e.name : null;
+      const call = named || 'the stray';
       rel.affinity = Math.max(rel.affinity, 35);
       rel.familiarity = Math.max(rel.familiarity, 10);
       if (!rel.tags.includes('pet')) rel.tags.push('pet');
-      rels.setOpinion(rel.id, "Pip's stray. Scruffy, smug and entirely in charge of this village. Ours now, whether it agrees or not.", 'impression');
-      m.remember(`Met the stray cat Pip follows around${place ? ` ${placePhrase(place)}` : ''}. It looked at me like I owed it money. I've decided it's ours.`, {
+      rels.setOpinion(rel.id, `${named ? `${named}: ` : ''}Pip's stray. Scruffy, smug and entirely in charge of this village. Ours now, whether it agrees or not.`, 'impression');
+      m.remember(`Met ${named ? `${named}, the stray cat` : 'the stray cat'} Pip follows around${place ? ` ${placePhrase(place)}` : ''}. ${named ? 'It' : 'It'} looked at me like I owed it money. I've decided it's ours.`, {
         importance: 4,
         about: [rel.id],
         tags: ['meeting', 'cat', 'pet'],
         emotion: 'affection',
-        gist: 'meeting the stray cat',
+        gist: `meeting ${named || 'the stray cat'}`,
       });
-      m.addThought("Hello, cat. You're Pip's, aren't you? Then you're ours, too.", 'meeting', { show: true });
-      m.feel('affection', 0.12, 'a cat');
+      m.addThought(`Hello, ${named ? named : 'cat'}. You're Pip's, aren't you? Then you're ours, too.`, 'meeting', { show: true });
+      m.feel('affection', 0.12, `meeting ${call}`);
     } else {
       const fi = FIRST_IMPRESSIONS[e.id] || this.impressionFromProfile(e);
       rel.affinity = clamp(fi.affinity, -100, 100);
@@ -1086,11 +1320,14 @@ export class Perception {
   }
 
   serialize() {
-    return { seen: [...this.seenPlaces], met: [...this.met] };
+    const out = { seen: [...this.seenPlaces], met: [...this.met] };
+    if (Number.isFinite(this.lastFearT)) out.fearT = Math.round(this.lastFearT);
+    return out;
   }
 
   deserialize(d) {
     if (!d) return;
+    if (Number.isFinite(d.fearT)) this.lastFearT = d.fearT;
     if (Array.isArray(d.seen)) this.seenPlaces = new Set([...KNOWN_PLACES, ...d.seen.map(String)]);
     if (Array.isArray(d.met)) this.met = new Set(d.met.map(String));
   }

@@ -103,6 +103,10 @@ const APPRAISALS = {
   meeting: (p) => ({ curiosity: 0.12 * p.O, joy: 0.06 * p.E, embarrassment: 0.02 * p.N }),
   level_up: () => ({ pride: 0.3, joy: 0.25, surprise: 0.1 }),
   rest: () => ({ fear: -0.2, anger: -0.2, surprise: -0.3, joy: 0.05 }),
+  // Someone she travels with turned on her or on the innocent.
+  betrayal: (p) => ({ surprise: 0.3, fear: 0.22 * p.N, anger: 0.24, sadness: 0.14 * p.A, trust: -0.25, joy: -0.2, affection: -0.1 }),
+  // Someone proved themselves: a rescue, a kept promise, a good deed she saw.
+  goodness: (p) => ({ trust: 0.2, affection: 0.14 * p.A, joy: 0.18, fear: -0.08 }),
 };
 
 export function personalityFactors(personality = {}) {

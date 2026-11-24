@@ -182,6 +182,22 @@ export function chance(p, rng = null) {
   return r < p;
 }
 
+// ---------- items ----------
+
+// Things you count in "some", not "a".
+const MASS_ITEMS = new Set(['bread', 'stew', 'iron_ore', 'slime_gel', 'wheat', 'stone', 'wood', 'coin', 'berries', 'raw_fish']);
+
+// "a honey cake", "some bread", "three healing potions" (name: the item's display name).
+export function itemPhrase(id, name, qty = 1) {
+  const n = String(name || id || 'something').toLowerCase();
+  if (qty > 1) {
+    if (MASS_ITEMS.has(id) || /s$/.test(n)) return `${countWord(qty)} ${id === 'wood' ? 'logs of wood' : n}`;
+    return `${countWord(qty)} ${n.replace(/(sh|ch|x|s)$/, '$1e')}s`;
+  }
+  if (MASS_ITEMS.has(id) || /s$/.test(n)) return `some ${n}`;
+  return `${/^[aeiou]/.test(n) ? 'an' : 'a'} ${n}`;
+}
+
 // ---------- the player and the world ----------
 
 export function playerName(game) {

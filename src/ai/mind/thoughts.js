@@ -1,5 +1,5 @@
 import { PLAYER_ID } from '../../core/constants.js';
-import { pick, cap, firstName, playerRef, partOfDay, shorten, firstSentence, placePhrase, joinList } from './text.js';
+import { pick, cap, firstName, playerRef, partOfDay, shorten, firstSentence, placePhrase, joinList, lowerFirst } from './text.js';
 import { STAGE_THOUGHTS } from './maren.js';
 import { bondOf } from './relationships.js';
 import { activeGoals } from './goals.js';
@@ -108,6 +108,10 @@ export class ThoughtGenerator {
   }
 
   fromQueued(p) {
+    if (p.kind === 'clue' && p.data?.text) {
+      // A piece of one of her open questions, found just now.
+      return `${shorten(p.data.text, 120).replace(/[.!]?$/, '.')} Another piece. I don't like where it points.`;
+    }
     if (p.kind === 'place' && p.data) {
       const ctx = this.context();
       const list = PLACE_THOUGHTS[p.data.id] || KIND_THOUGHTS[p.data.kind];
@@ -175,6 +179,8 @@ export class ThoughtGenerator {
     this.playerCands(ctx, add);
     this.goalCands(ctx, add);
     this.memoryCands(ctx, add);
+    this.lifeCands(ctx, add);
+    this.selfCands(ctx, add);
     this.soulCands(ctx, add);
     this.activityCands(ctx, add);
     if (!cands.length) return null;
@@ -300,6 +306,62 @@ export class ThoughtGenerator {
       add('player:6', 'Home is a person now. Maren would laugh at me.', 1);
     }
     if (rel.respect < 10 || rel.affinity <= -10) add('player:hurt', `I keep thinking about what ${P} did. I don't know what to make of it.`, 1.4);
+    if (rel.fear >= 30) {
+      add('player:fear:0', `I flinch when ${P} draws steel now. I never used to.`, 1.8);
+      add('player:fear:1', `I keep a few steps between me and ${P}. Just in case. I hate that "just in case" is a thing now.`, 1.4);
+    } else if (rel.fear >= 12) add('player:fear:2', `I'm watching ${P}'s hands more than I'd like to.`, 1.1);
+  }
+
+  // Her own life, apart from anyone (DESIGN §16): her plan, her purse, her choice.
+  selfCands(ctx, add) {
+    const m = this.mind;
+    const P = ctx.P;
+    const comp = m.companionship;
+    if (comp === 'wary') add('self:wary', `I'm still here. Watching. ${cap(P)} has to earn the rest back.`, 1.8);
+    else if (comp === 'apart') add('self:apart', "A day to myself. I'd forgotten how loud my own thoughts are.", 1.6);
+    else if (comp === 'left') {
+      add('self:left:0', `I don't need ${P}. I'll keep saying it until it's true.`, 1.8);
+      add('self:left:1', 'Better alone than beside someone I have to watch.', 1.4);
+    } else {
+      add('self:choice:0', "I'm here because I chose to be. Funny how much that matters to me.", 0.5);
+      add('self:choice:1', "Two swords are safer than one on these roads. That's part of why I stay. Only part.", 0.5);
+    }
+    const purse = Number(m.agenda?.purse);
+    if (Number.isFinite(purse)) {
+      if (purse < 5) add('self:purse:low', "My purse is nearly empty. Honest work, and soon. Mira pays for silverleaf, I'm told.", 1.1);
+      else if (purse >= 20) add('self:purse:full', `${purse} coins of my own. A room at the Kettle if I need one, and a honey cake if I want one.`, 0.8);
+    }
+    const plan = m.currentPlan?.();
+    if (plan?.activity) {
+      const where = plan.at ? ctx.game?.locations?.get?.(plan.at)?.name || String(plan.at).replace(/_/g, ' ') : null;
+      const what = lowerFirst(String(plan.activity).replace(/_/g, ' ').replace(/[.!]+$/, ''));
+      add(`self:plan:${plan.activity}`, `My plan for now: ${what}${where ? `, ${placePhrase({ id: plan.at, name: where })}` : ''}.${plan.why ? ` ${cap(String(plan.why).replace(/[.!]*$/, '.'))}` : ''} My day, my choice.`, 1.2);
+    }
+  }
+
+  // Her past, when something brings it up: what is on her mind first, else a chapter
+  // that shares a person or place with where she is.
+  lifeCands(ctx, add) {
+    const m = this.mind;
+    const tails = {
+      sadness: "Some days it's right there under my ribs.",
+      affection: "I'd give a lot for one more evening like that.",
+      pride: 'I still stand a little taller for it.',
+      fear: 'I can still feel how cold my hands were.',
+      joy: 'Good days, those.',
+    };
+    let entry = null;
+    const warm = m.workingMemory.list(6).find((it) => it.store === 'life' && it.activation > 0.25);
+    if (warm) entry = (m.life || []).find((e) => e.id === warm.id) || null;
+    if (!entry && ctx.loc && m.index) {
+      const hit = m.index.byEntity(`place:${ctx.loc.id}`, { stores: ['life'], limit: 1 })[0];
+      if (hit) entry = hit.ref;
+    }
+    if (!entry && ctx.night && (m.game?.rng?.next?.() ?? Math.random()) < 0.35) entry = pick((m.life || []).filter((e) => e.importance >= 7), m.game?.rng) || null;
+    if (!entry) return;
+    const first = firstSentence(entry.text, 110);
+    const text = /^(I|My)\b/.test(first) && first.length < 90 ? first : `${entry.title.replace(/[.!]+$/, '')}. ${tails[entry.feeling] || 'Funny what comes back to you.'}`;
+    add(`life:${entry.id}`, text, warm ? 1.6 : 0.9);
   }
 
   goalCands(ctx, add) {

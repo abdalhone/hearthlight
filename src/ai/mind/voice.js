@@ -1,6 +1,6 @@
 import { PLAYER_ID } from '../../core/constants.js';
 import { resolveEntity } from '../resolve.js';
-import { normName, firstName, cap, shorten, pick, joinList, playerRef, lowerFirst, timeAgo } from './text.js';
+import { normName, firstName, cap, shorten, pick, joinList, playerRef, lowerFirst, timeAgo, itemPhrase } from './text.js';
 import { bondOf } from './relationships.js';
 import { activeGoals } from './goals.js';
 import { FOOD_PREFERENCE } from './needs.js';
@@ -258,8 +258,8 @@ export function hungerAnswer(ctx) {
   const h = mind.needs.hunger;
   const inv = ctx.companion?.inventory;
   const food = inv ? FOOD_PREFERENCE.find((id) => inv.has(id)) : null;
-  if (h < 0.3) return food ? `Starving. I've ${itemName(food).toLowerCase()} in my satchel; I'll eat it now, if that's all right.` : "Starving, and my satchel's empty. A honey cake would save a life. Mine.";
-  if (h < 0.55) return food ? `I could eat. There's ${itemName(food).toLowerCase()} in my satchel for later.` : 'I could eat. Not urgent. Yet.';
+  if (h < 0.3) return food ? `Starving. I've ${itemPhrase(food, itemName(food))} in my satchel; I'll eat it now, if that's all right.` : "Starving, and my satchel's empty. A honey cake would save a life. Mine.";
+  if (h < 0.55) return food ? `I could eat. There's ${itemPhrase(food, itemName(food))} in my satchel for later.` : 'I could eat. Not urgent. Yet.';
   return pick(["No, I'm fine. Ask me again in an hour; the answer will change.", 'Full, for once. Elda would be proud.'], ctx.game?.rng);
 }
 
