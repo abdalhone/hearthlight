@@ -338,9 +338,9 @@ export function luminance(r, g, b) {
 // Ambient light (a multiply color, 255 = untouched) through the day.
 // Warm golden morning, neutral noon, orange then pink dusk, deep blue night.
 export const AMBIENT_KEYS = [
-  [0, [46, 54, 104]],
-  [4.6, [46, 54, 104]],
-  [5.4, [92, 80, 132]],
+  [0, [18, 23, 56]],
+  [4.4, [18, 23, 56]],
+  [5.4, [86, 76, 128]],
   [6.2, [214, 150, 132]],
   [7.0, [255, 204, 152]],
   [8.6, [255, 236, 208]],
@@ -349,10 +349,10 @@ export const AMBIENT_KEYS = [
   [17.2, [255, 232, 196]],
   [18.3, [255, 186, 140]],
   [19.2, [218, 138, 152]],
-  [20.0, [130, 104, 162]],
-  [20.8, [70, 72, 128]],
-  [21.6, [46, 54, 104]],
-  [24, [46, 54, 104]],
+  [20.0, [124, 100, 158]],
+  [20.8, [58, 62, 118]],
+  [21.8, [18, 23, 56]],
+  [24, [18, 23, 56]],
 ];
 
 const RAIN_TINT = [0.66, 0.73, 0.86];
@@ -360,7 +360,7 @@ const CLOUD_TINT = [0.86, 0.88, 0.94];
 const FOG_TINT = [0.9, 0.93, 0.97];
 const INDOOR_TINT = [0.9, 0.81, 0.69];
 const INDOOR_FLOOR = [58, 46, 50];
-const MOONLIGHT = [14, 14, 18];
+const MOONLIGHT = [10, 11, 16];
 const LIGHTNING = [236, 240, 255];
 const _k = [0, 0, 0];
 
