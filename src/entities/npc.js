@@ -1725,8 +1725,9 @@ export class NPC extends Actor {
     if (this.profile.id === 'tobias') this.shooBoars();
     if (asleep) return;
     const quiet = t - (g._npcSayAt ?? -Infinity) < SAY_GAP;
-    // Lyra nearby.
-    if (lyra && alive(lyra) && this.distTo(lyra) < 56 && t - this.lyraAt > 75 && !quiet && this.canSee(lyra)) {
+    // Lyra nearby (not small talk in the minutes after somebody hurt her).
+    const shaken = lyra && g._helpIncidents?.get?.(lyra) && t - g._helpIncidents.get(lyra).t < 150;
+    if (lyra && alive(lyra) && !shaken && this.distTo(lyra) < 56 && t - this.lyraAt > 75 && !quiet && this.canSee(lyra)) {
       const st = companionshipOf(g);
       const alone = st === 'apart' || st === 'left' || (p && Math.hypot(p.x - lyra.x, p.y - lyra.y) > 220);
       let list = this.profile.lyra;

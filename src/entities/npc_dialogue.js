@@ -17,6 +17,22 @@ import { pickLine, now, rand } from './creature_util.js';
 //   warm / normal / wary   by opinion
 
 const OPEN_DIALOGUE_SECONDS = 10;
+// Friendship takes days, not one long conversation: what chatting, asking and gifts add
+// to a villager's familiarity with the player is capped per day, so the secrets kept for
+// friends (LORE §9.10) cannot be had by clicking through every question at once.
+const FAMILIARITY_PER_DAY = 12;
+
+export function befriend(npc, n) {
+  const day = npc.game?.clock?.day ?? 1;
+  if (npc.famDay !== day) {
+    npc.famDay = day;
+    npc.famToday = 0;
+  }
+  const k = Math.max(0, Math.min(n, FAMILIARITY_PER_DAY - (npc.famToday || 0)));
+  npc.famToday = (npc.famToday || 0) + k;
+  npc.familiarity = Math.min(100, (npc.familiarity || 0) + k);
+  return k;
+}
 
 export function firstName(npc) {
   const parts = String(npc?.name || '').replace(/"[^"]*"\s*/g, '').trim().split(/\s+/);
@@ -222,7 +238,7 @@ function talkLines(npc, player, tone) {
   }
   if ((npc.talkFamToday || 0) < 8) {
     npc.talkFamToday = (npc.talkFamToday || 0) + 3;
-    npc.familiarity = Math.min(100, (npc.familiarity || 0) + 3);
+    befriend(npc, 3);
   }
   return out;
 }
@@ -243,7 +259,7 @@ export function answerTopic(npc, topicId, player) {
   } catch {
     /* listeners must not break the conversation */
   }
-  npc.familiarity = Math.min(100, (npc.familiarity || 0) + 2);
+  befriend(npc, 2);
   const lines = [];
   if (t.id === 'lyra') {
     const about = aboutLyraLine(npc) || nearLyraLine(npc);
@@ -314,7 +330,7 @@ export function receiveGift(npc, itemId, giver) {
     const base = liked > 0 ? 8 : liked < 0 ? -4 : 2;
     const soured = tone === 'wronged' || tone === 'cold' || tone === 'afraid';
     npc.adjustOpinion?.(Math.round(base * k * (soured && base > 0 ? 0.5 : 1)), `gift ${itemId}`);
-    npc.familiarity = Math.min(100, (npc.familiarity || 0) + (liked > 0 ? 6 : 3));
+    befriend(npc, liked > 0 ? 6 : 3);
   } else if (giver) {
     // Lyra (or someone else) handing things over: say it aloud for everyone to hear.
     const who = giver.name ? String(giver.name).split(' ')[0] : '';
