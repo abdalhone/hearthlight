@@ -784,6 +784,32 @@ test('her purse: her own coin, earned on job_done while she lives apart', () => 
   assert.equal(a.purse(), 20);
 });
 
+test('starving or spent, her plan changes: a meal or rest comes first', () => {
+  const { game, a, mind } = makeWorld({ hour: 14, day: 3 });
+  const plans = collect(game, 'plan_changed');
+  mind.needs.hunger = 0.1;
+  a._checkNeeds();
+  assert.equal(plans.at(-1).reason, 'needs');
+  assert.equal(a.currentBlock().type, 'eat');
+  assert.equal(a.currentBlock().at, 'ember_kettle');
+  mind.needs.hunger = 0.9;
+  mind.needs.energy = 0.1;
+  a._checkNeeds();
+  assert.equal(a.currentBlock().type, 'rest');
+});
+
+test('record_deed: Claude records only what she alone can judge (a lie)', () => {
+  const { game, a } = makeWorld();
+  const r = game.actions.run('record_deed', { value: 'lied', target: 'Said they had never been to the ruins. Their boots say otherwise.' }, 'claude');
+  assert.ok(r.ok);
+  assert.equal(a.ledger.at(-1).deed, 'lied');
+  assert.equal(a.ledger.at(-1).severity, -2);
+  const n = a.ledger.length;
+  assert.equal(game.actions.run('record_deed', { value: 'hit_lyra' }, 'claude').ok, false);
+  assert.equal(a.ledger.length, n);
+  assert.equal(game.actions.get('record_deed').ungated, true);
+});
+
 test('buildPlan: apart without trust keeps her own company all day', () => {
   const plan = buildPlan({ day: 5, state: 'left', trust: 10, fear: 50, purse: 4, energy: 0.8, hunger: 0.7, questStage: 1, dangerOf: () => 0 });
   assert.ok(plan.every((b) => b.company !== 'player'));

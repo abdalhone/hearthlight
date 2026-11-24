@@ -34,6 +34,7 @@ const DEFAULT_PERSONALITY = { openness: 0.85, conscientiousness: 0.55, extravers
 const LEAVING_TYPES = new Set(['independent', 'keep_away', 'leave', 'flee', 'wait_outside']);
 const START_PURSE = 8; // a ranger's pocket money on the first morning
 const LEFT_TILES = 10; // how far she keeps from the player once she has left them
+const OBSERVED_DEEDS = new Set(['lied', 'kindness', 'stole']);
 
 // Why her state changed: what she tells the player, and what she remembers.
 const CAUSES = {
@@ -1100,6 +1101,17 @@ export class Autonomy {
           return;
         }
         this.warnings += 1;
+        if (st === 'apart') {
+          // Living her own day: a warning and some distance, then back to her day.
+          this.say(this.line('to_wary_hit'), { force: true });
+          this._act('keep_distance', { target: 'player', amount: 5 });
+          try {
+            this.behavior()?.setDirective?.({ type: 'keep_away', from: 'player', tiles: 5, follow: false, seconds: 30, then: { type: 'independent' } });
+          } catch (err) {
+            console.error('[autonomy] keep away failed', err);
+          }
+          return;
+        }
         if (!this.setCompanionship('wary', '', { cause: 'hit', lineKey: 'to_wary_hit' })) this.say(this.line('to_wary_hit'), { force: true });
         this._act('keep_distance', { target: 'player', amount: 4 });
         return;
@@ -2100,6 +2112,10 @@ export class Autonomy {
     } else if (!viaActions) {
       if (RE.yes.test(t)) heard.answered = this._answer(true);
       else if (RE.no.test(t)) heard.answered = this._answer(false);
+      // Nobody else answers for her: she does.
+      const ans = heard.answered;
+      if (ans?.kind === 'request') this.say(this.line(ans.yes ? 'req_yes' : 'req_no'), { force: true });
+      else if (ans?.kind === 'counter' && ans.yes) this.say(this.line('counter_taken'), { force: true });
     } else if (RE.no.test(t) && this.pendingRequest && this.now() - this.pendingRequest.t < 120) {
       heard.answered = this._answer(false);
     }
@@ -2455,6 +2471,25 @@ export class Autonomy {
       /* keep the old weights */
     }
     this.reconsider('hour');
+    this._checkNeeds();
+  }
+
+  // Starving or spent: her plan for the rest of the day changes (once per change).
+  _checkNeeds() {
+    const n = this.needs();
+    const band = `${n.hunger < 0.25 ? 'h' : ''}${n.energy < 0.2 ? 'e' : ''}`;
+    if (band === (this._needsBand ?? '')) return;
+    this._needsBand = band;
+    if (band && this.hour() >= 7) this.planDay('needs');
+  }
+
+  // A deed only she can judge, reached through Claude (the record_deed action): a lie,
+  // a kindness, a theft. The rest she sees for herself on the bus.
+  recordObservedDeed(deed, text = '') {
+    const d = String(deed || '').toLowerCase().trim();
+    if (!OBSERVED_DEEDS.has(d)) return null;
+    const words = String(text || '').trim().slice(0, 140);
+    return this.recordDeed(d, words ? { text: words } : {});
   }
 
   // A refusal the player did not push for a minute: they respected it.

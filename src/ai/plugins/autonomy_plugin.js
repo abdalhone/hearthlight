@@ -151,6 +151,17 @@ export const autonomyPlugin = {
         return p ? { ok: true, message: '', promise: { text: p.text, by: p.by, due: p.due } } : { ok: false, message: '' };
       },
     },
+    record_deed: {
+      description: "Something the player did that changes how you see them and that only you can judge: 'lied' (they lied to you), 'kindness' (to someone who needed it), 'stole'. Hits, gifts, rescues and promises you see for yourself; never record those.",
+      params: { value: "'lied' | 'kindness' | 'stole'", target: 'what happened, in your words' },
+      ungated: true,
+      run(args, ctx) {
+        const a = autonomyOf(ctx);
+        if (!a) return { ok: false, message: '' };
+        const e = a.recordObservedDeed(args.value, args.target);
+        return e ? { ok: true, message: '' } : { ok: false, message: '' };
+      },
+    },
   },
 
   // Offline answers about the two of them (DESIGN §11 intent shape). The brain tries

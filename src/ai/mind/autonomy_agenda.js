@@ -204,7 +204,25 @@ export function buildPlan(v) {
   if (from > 7) {
     const kept = out.filter((b) => b.to > from);
     if (kept.length) kept[0].from = Math.max(kept[0].from, Math.round(from * 4) / 4);
-    return kept;
+    return tendToHerself(kept, v);
+  }
+  return out;
+}
+
+// Critical needs come first (§16.5): a meal now when she is starving, an hour's rest
+// when she is spent, before whatever the day had planned.
+function tendToHerself(plan, v) {
+  const now = plan[0];
+  if (!now || now.type === 'sleep') return plan;
+  const h = now.from;
+  let need = null;
+  if ((v.hunger ?? 0.7) < 0.25 && now.type !== 'eat') need = makeBlock(h, h + 1, 'eat', 'ember_kettle', 'I need to eat something. Now.', { activity: 'a meal at the Kettle' });
+  else if ((v.energy ?? 0.8) < 0.2 && now.type !== 'rest' && now.type !== 'hearth') need = makeBlock(h, h + 1, 'rest', 'ember_kettle', 'I’m spent. An hour by the fire, or I’ll fall over.');
+  if (!need) return plan;
+  const out = [need];
+  for (const b of plan) {
+    if (b.to <= need.to) continue;
+    out.push(b.from < need.to ? { ...b, from: need.to } : b);
   }
   return out;
 }
