@@ -89,7 +89,10 @@ function lowerStart(text) {
 
 // A note rather than a sentence ("First time at the mill."): set off after the time of day.
 const FRAGMENT_START = /^(?:First|Back|Finally|Another|Still|Just|Nearly|Almost|No|Not)\b/;
+// A note that starts with what she did ("Met Pip in the square."): "This morning I met Pip".
+const DID_START = /^(?:Met|Got|Paid|Found|Gave|Saw|Took|Had|Went|Heard|Learned|Lost|Bought|Sold|Spent|Helped|Walked|Fought|Ate|Slept|Spotted|Watched|Lit|Read|Told|Asked|Visited)\b/;
 function whenSaid(part, text) {
+  if (DID_START.test(text)) return `${part} I ${text[0].toLowerCase()}${text.slice(1)}`;
   if (FRAGMENT_START.test(text)) return `${part}: ${text[0].toLowerCase()}${text.slice(1)}`;
   return `${part} ${lowerStart(text)}`;
 }
@@ -115,7 +118,7 @@ const PLAYER_LINES = [
   ],
   // bond 2-3
   [
-    '{player} made me laugh today. I am keeping count, and I am not telling them.',
+    '{player} made me laugh today. I am not telling them that.',
     "Travelling with {player} is getting easy. Too easy. I'll have to start worrying about that.",
   ],
   // bond 4-5

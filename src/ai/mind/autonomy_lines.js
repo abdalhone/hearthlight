@@ -840,6 +840,19 @@ export const LINES = {
     afraid: ['{reason}'],
     tired: ['{reason}'],
   },
+  // "Will you leave me?" while together or apart: neither a threat nor a vow.
+  ans_will_leave: {
+    warm: ['I’m right here, you goose. Ask me something harder.', 'Look at me. Do I look like I’m going anywhere? Eat your bread.'],
+    cool: ['I’m here. That’s my answer.', 'I’m walking with you. That’s my choice, and it’s a good one so far.'],
+    afraid: ['I’m here.'],
+    tired: ['I’m right here. Too tired to go anywhere, anyway.'],
+  },
+  ans_will_leave_apart: {
+    warm: ['I’m living my own day, not leaving you. You know where to find me.', 'Leave? I’m only down the lane. Come and find me.'],
+    cool: ['I’m living my own day. You know where I’ll be.'],
+    afraid: ['I’m about the village. That’s all.'],
+    tired: ['I’m just living my day.'],
+  },
   ans_not_left: {
     warm: ['Leave? I’m right here, you goose.', 'I haven’t gone anywhere. Look: right here.'],
     cool: ['I’m right here.'],

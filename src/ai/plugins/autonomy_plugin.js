@@ -206,6 +206,23 @@ export const autonomyPlugin = {
       },
     },
     {
+      // "Will you leave me?" while she is with them: no threat, no hint, and no vow either
+      // (LORE §7 "Boundaries", tone). She lives her own day; she is not leaving anyone.
+      id: 'autonomy.will_leave',
+      patterns: [
+        inStates(
+          STATES_SHE_TALKS_IN,
+          /^(?:will|would|are|is|do) you (?:ever |someday |one day |eventually )?(?:going to |gonna |planning to |want to |thinking of |think you(?:'ll| will) )?(?:leave|leaving|abandon|ditch|walk out on|go away from)(?: me| us)?(?: (?:for good|forever|someday|one day|too|again|now|soon))?\??$|^(?:will|would) you (?:ever )?go away\b|^(?:will|would|are) you (?:going to )?stay(?: with me)?(?: forever| always)?\??$|^you(?:'re| are)n'?t (?:going to |gonna )?leave(?: me)?\b/i,
+        ),
+      ],
+      confidence: 0.87,
+      answer(m, ctx) {
+        const a = autonomyOf(ctx);
+        if (!a) return null;
+        return line(a, a.companionship === 'apart' ? 'ans_will_leave_apart' : 'ans_will_leave');
+      },
+    },
+    {
       id: 'autonomy.why_left',
       patterns: [
         inStates(

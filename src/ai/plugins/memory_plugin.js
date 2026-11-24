@@ -264,22 +264,7 @@ export const memoryPlugin = {
       },
     },
     {
-      id: 'mem.remember',
-      examples: ['remember that Pip loves cats', "don't forget that Bram likes iron ore", 'keep in mind that the bandits come at night', 'remember: I hate spiders'],
-      patterns: [
-        /^(?:(?:hey|lyra|please|and|also|oh)[, ]+)*(?:remember|don't forget|do not forget|never forget|keep in mind)(?:,)? (?!when\b|the time\b|how\b|what\b|who\b|me\b|us\b|that time\b|where\b)(?:that |this[:,]? |[:,] ?)?(?<text>.{3,})$/i,
-        /^(?:(?:hey|lyra|please)[, ]+)*remember[:,] (?<text>.{3,})$/i,
-      ],
-      command: true,
-      confidence: 0.9,
-      actions(m) {
-        return [{ name: 'remember', args: { target: null, value: m.groups.text.trim(), amount: 6 } }];
-      },
-      answer(m, ctx, results) {
-        return results?.[0]?.message || null;
-      },
-    },
-    {
+      // Before mem.remember: "remember it differently: …" is an edit, not a new memory.
       id: 'mem.edit',
       examples: ['remember it differently', 'remember that differently: I was trying to help', "don't remember it like that", 'please remember the wolf fight differently: it was my idea'],
       patterns: [
@@ -292,6 +277,22 @@ export const memoryPlugin = {
         const what = m.groups?.what ? m.groups.what.trim() : null;
         const text = m.groups?.text ? m.groups.text.trim() : null;
         return [{ name: 'edit_memory', args: { target: what, value: text, amount: null } }];
+      },
+      answer(m, ctx, results) {
+        return results?.[0]?.message || null;
+      },
+    },
+    {
+      id: 'mem.remember',
+      examples: ['remember that Pip loves cats', "don't forget that Bram likes iron ore", 'keep in mind that the bandits come at night', 'remember: I hate spiders'],
+      patterns: [
+        /^(?:(?:hey|lyra|please|and|also|oh)[, ]+)*(?:remember|don't forget|do not forget|never forget|keep in mind)(?:,)? (?!when\b|the time\b|how\b|what\b|who\b|me\b|us\b|that time\b|where\b)(?:that |this[:,]? |[:,] ?)?(?<text>.{3,})$/i,
+        /^(?:(?:hey|lyra|please)[, ]+)*remember[:,] (?<text>.{3,})$/i,
+      ],
+      command: true,
+      confidence: 0.9,
+      actions(m) {
+        return [{ name: 'remember', args: { target: null, value: m.groups.text.trim(), amount: 6 } }];
       },
       answer(m, ctx, results) {
         return results?.[0]?.message || null;
