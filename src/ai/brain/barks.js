@@ -163,7 +163,9 @@ export class Barker {
       const other = this.isLyra(p.a) ? p.b : this.isLyra(p.b) ? p.a : null;
       if (other && !this.isPlayer(other) && other.name) {
         this.greeted.set(other.id, this.now());
-        this.queue('npc_meet', { name: firstName(other.name) }, { priority: 1.6, cooldown: 20 });
+        // Someone she has known all her life is a friend in the street, not a new face.
+        if (p.known) this.queue(other.id === 'pip' ? 'see_child' : 'see_friend', { name: firstName(other.name) }, { priority: 1.2, cooldown: 20, chance: 0.7 });
+        else this.queue('npc_meet', { name: firstName(other.name) }, { priority: 1.6, cooldown: 20 });
       }
     });
     on('item_gained', (p) => this.onItem(p));

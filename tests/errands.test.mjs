@@ -572,3 +572,22 @@ test('eighteen villagers with errands and sightings cost well under 1 ms per fra
   assert.ok(life.perf.n > 10000);
   assert.ok(life.perf.avg < 0.25, `average ${life.perf.avg.toFixed(4)} ms`);
 });
+
+test('the village view: who is sought, who turned up, and what everyone is about', async () => {
+  const { lifeSections, casesHeading, caseLine } = await import('../src/ui/village_life_view.js');
+  const game = makeWorld({ hour: 9 });
+  const life = game.villageLife;
+  run(game, 1);
+  life.vanish('garrick');
+  life.startSearch('garrick', 'rowan', { by: 'hobb' });
+  let S = lifeSections(life.view());
+  assert.equal(S.everyone.length, 17, 'the gone are not listed as going about their day');
+  assert.equal(casesHeading(S.cases), 'The village is looking for');
+  assert.match(caseLine(S.cases[0]), /Garrick: the watch is searching/);
+  life.markBack('garrick');
+  run(game, 0.5);
+  life.found('garrick', 'hobb');
+  S = lifeSections(life.view());
+  assert.equal(casesHeading(S.cases), 'Turned up safe');
+  assert.match(S.cases[0].found, /by Hobb/);
+});

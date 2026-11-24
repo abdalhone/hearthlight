@@ -1403,12 +1403,15 @@ export class VillageLife {
     const when = last ? sincePhrase(last.t, t) : prob ? sincePhrase(prob.since, t) : 'this morning';
     const lines = [[e.id, this.line(e.id, 'alarm', { about, listener: leader.id, when })]];
     this.event('alarm', `${this.name(e.id)} told ${this.name(leader.id)} that nobody has seen ${this.name(about)} since ${when}.`, { who: e.id, about });
+    // The watch is already out: the captain says so, and that is that.
+    const already = c && (c.status === 'search' || c.status === 'missing');
+    if (already) lines.push([leader.id, this.line(leader.id, 'alreadyLooking', { about, listener: e.id })]);
     this.talk(e, leader, lines, {
       topic: 'news',
-      summary: `${this.name(e.id)} told ${this.name(leader.id)} that ${this.name(about)} is missing.`,
+      summary: already ? `${this.name(e.id)} told ${this.name(leader.id)} that ${this.name(about)} is missing; the watch is already looking.` : `${this.name(e.id)} told ${this.name(leader.id)} that ${this.name(about)} is missing.`,
       step,
       after: () => {
-        this.startSearch(about, leader.id, { by: e.id });
+        if (!already) this.startSearch(about, leader.id, { by: e.id });
         if (prob && prob.status === 'open') prob.due = this.now() + BEAT;
       },
     });
@@ -1595,6 +1598,7 @@ export class VillageLife {
     for (const id of searchers) {
       const e = this.entity(id);
       if (!e || !this.available(e)) continue;
+      if (c.searchers?.[id] && this.steps.get(id)?.kind === 'search') continue; // already out looking
       const p = this.openProblem(id);
       if (p && p.about === about) this.closeProblem(p, 'resolved', 'joined the search');
       else if (p) continue;
