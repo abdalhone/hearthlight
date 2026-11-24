@@ -415,7 +415,7 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
       const ox = (tx - tx0) * TILE + Math.round((ih(tx, ty, 302) - 0.5) * 6);
       const oy = (ty - ty0) * TILE + Math.round((ih(tx, ty, 303) - 0.5) * 4);
       // The wet twin leaves water pixels empty, lily pads included: the dry chunk shows them.
-      blitDeco(out, spr, ox, oy, mat, !wet && (d === DECO.LILY || d === DECO.REEDS));
+      blitDeco(out, spr, ox, oy, mat, !wet && (d === DECO.LILY || d === DECO.REEDS || d === DECO.DYE));
     }
   }
 

@@ -779,8 +779,8 @@ class WorldBuilder {
   // joins it to the main street. The Ambrels' narrow two-storey house stands at its
   // end, the bench outside, and the far lamps beyond.
   lamplightLane() {
-    this.fill(94, 48, 15, 2, T.COBBLE);
-    this.fill(94, 50, 3, 9, T.COBBLE);
+    this.fill(94, 48, 15, 1, T.COBBLE);
+    this.fill(94, 49, 3, 10, T.COBBLE);
     this.building({
       id: 'chandlery',
       x: 102,
@@ -827,7 +827,7 @@ class WorldBuilder {
       door: 73,
       material: 'stone',
       floor: T.FLOOR,
-      roof: { style: 'slate', chimneys: [70, 76] },
+      roof: { style: 'red', chimneys: [70, 76] },
       sign: 'ashby',
       smoky: true,
     });
@@ -1614,7 +1614,7 @@ class WorldBuilder {
     room('guardhouse', 60, 67);
     room('farmhouse', 24, 52);
     // Round 3 (LORE §10): the lanes and homes of the ten who joined the eight.
-    this.loc('lamplight_lane', { x: 94, y: 46, w: 16, h: 4 }, [99, 48], { parent: 'hearthvale' });
+    this.loc('lamplight_lane', { x: 94, y: 46, w: 16, h: 3 }, [99, 48], { parent: 'hearthvale' });
     room('chandlery', 105, 44, 'lamplight_lane');
     room('ashby_house', 73, 67);
     this.loc('weavers_row', { x: 59, y: 73, w: 19, h: 10 }, [70, 80], { parent: 'hearthvale' });

@@ -320,6 +320,33 @@ function ash(rng) {
   });
 }
 
+// Dye in the stream below Sabeth's vats: translucent violet and teal ribbons drawn out
+// along the current (it runs south), so the animated water still moves underneath.
+const DYE_COLORS = [
+  [rgb('#8a3cc8', 190), rgb('#c890f0', 160)],
+  [rgb('#1aa29c', 190), rgb('#7ae0d4', 160)],
+];
+
+function dye(rng) {
+  return sprite((b) => {
+    const n = 2 + Math.floor(rng.next() * 2);
+    for (let k = 0; k < n; k++) {
+      const [c, lit] = DYE_COLORS[(k + Math.floor(rng.next() * 2)) % 2];
+      let x = 2 + rng.next() * 12;
+      const y0 = Math.floor(rng.next() * 6);
+      const len = 6 + Math.floor(rng.next() * 9);
+      const ph = rng.next() * Math.PI * 2;
+      for (let j = 0; j < len && y0 + j < 16; j++) {
+        x += Math.sin(ph + j * 0.6) * 0.7;
+        const xi = Math.round(x);
+        b.blend(xi, y0 + j, c);
+        b.blend(xi + 1, y0 + j, j < len / 2 ? lit : c);
+        if (j % 3 === 1) b.blend(xi - 1, y0 + j, c, 0.5);
+      }
+    }
+  });
+}
+
 // deco id -> array of PixelBuf variants.
 export function buildDecos(rng) {
   const many = (n, fn) => Array.from({ length: n }, (_, k) => fn(rng.fork(1000 + k * 7 + n)));
@@ -342,5 +369,6 @@ export function buildDecos(rng) {
   D[DECO.CABBAGE] = many(3, cabbage);
   D[DECO.PUDDLE] = many(3, puddle);
   D[DECO.ASH] = many(2, ash);
+  D[DECO.DYE] = many(5, dye);
   return D;
 }

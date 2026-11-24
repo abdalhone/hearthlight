@@ -1049,6 +1049,119 @@ export class Bed extends WorldObject {
     this.words = ['bed', 'sleep', ...ownWords, ...(o.words || [])];
     // A free spot beside the bed for whoever sleeps here.
     this.sleepSpot = { x: this.x + (o.sleepSide === 'left' ? -TILE : TILE), y: this.y - 6 };
+    // Which way it lies, where the head goes, and where a sleeper's feet point (DESIGN
+    // §19.8: a sleeper lies the way the bed is oriented, head on the pillow).
+    this.orient = f.w > f.h ? 'h' : 'v';
+    this.pillow = { x: this.x, y: this.y - f.h * TILE + 8 };
+    this.lie = { x: this.x, y: this.y - 6 };
+    this.sleeper = null;
+    this._scanT = this.phase * 0.25;
+  }
+
+  // Whoever lies down in a bed is drawn by the bed: head on the pillow, the blanket
+  // pulled up over them, never a sideways figure across the quilt. Any humanoid in the
+  // 'sleep' state lying on the bed counts; while they do, the renderer skips the actor
+  // itself (actor.hidden) and the bed paints them in.
+  update(dt) {
+    this._scanT -= dt;
+    if (this._scanT > 0) return;
+    this._scanT = 0.2;
+    if (this.sleeper && !this.holds(this.sleeper)) this._release();
+    if (this.sleeper) return;
+    const list = this.game?.entities?.all?.() || this.game?.entities?.list || [];
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (e && e.inBed !== this && !e.inBed?.holds?.(e) && this.holds(e) && this._drawable(e)) {
+        this._claim(e);
+        break;
+      }
+    }
+  }
+
+  // A bed is furniture to everyone but the one who sleeps in it: its owner can step into
+  // it (and out again in the morning), so a villager lies down in the bed, not beside it.
+  blocksTile(tx, ty, actor) {
+    if (actor && this.owner && this.owner !== 'player' && actor.id === this.owner) return false;
+    return super.blocksTile(tx, ty, actor);
+  }
+
+  holds(e) {
+    return !!e && !e.removed && !this.removed && e.state === 'sleep' && !e.downed && Math.abs(e.x - this.x) <= 10 && e.y > this.y - 34 && e.y < this.y + 4;
+  }
+
+  _drawable(e) {
+    const atlas = this.game?.atlas;
+    return !!atlas?.has?.(`char:${e.spriteKey}:sleep:down`) && atlas.getMeta?.(`char:${e.spriteKey}`)?.kind !== 'creature';
+  }
+
+  _claim(e) {
+    this.sleeper = e;
+    e.inBed = this;
+    const d = Object.getOwnPropertyDescriptor(e, 'hidden');
+    if (d && d.get) return;
+    let own = d ? !!d.value : false;
+    Object.defineProperty(e, 'hidden', {
+      configurable: true,
+      enumerable: false,
+      get() {
+        const b = e.inBed;
+        return own || (!!b && b.sleeper === e && b.holds(e));
+      },
+      set(v) {
+        own = !!v;
+      },
+    });
+  }
+
+  _release() {
+    const e = this.sleeper;
+    this.sleeper = null;
+    if (e && e.inBed === this) e.inBed = null;
+  }
+
+  draw(ctx, ox, oy, time) {
+    super.draw(ctx, ox, oy, time);
+    const e = this.sleeper;
+    if (e && this.holds(e)) this._drawSleeper(ctx, ox, oy, time, e);
+  }
+
+  // The lying frame has the head to the left; a quarter turn clockwise stands it head-up
+  // on the mattress. Frame pixel (fx, fy) lands at (X0 - fy, Y0 + fx); paintLying made
+  // the lying frame from the standing one as (fx, fy) = (y, 38 - x), so the turned image
+  // is the standing figure with its left edge at X0 - 39 and its top at Y0.
+  _drawSleeper(ctx, ox, oy, time, e) {
+    const atlas = this.game?.atlas;
+    const spr = atlas?.get?.(`char:${e.spriteKey}:sleep:down`);
+    if (!spr) return;
+    const img = spr.frames[Math.floor(Math.max(0, time) * (spr.fps || 1.2)) % spr.frames.length];
+    const sx = Math.round(this.x - ox);
+    const sy = Math.round(this.y - oy);
+    const bed = atlas.get(this.sprite) || atlas.get('prop:bed');
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(sx - 7, sy - 33, 14, 31);
+    ctx.clip();
+    // Head on the pillow: the standing figure's crown (about y 4) sits at the pillow top.
+    ctx.translate(sx + 23, sy - 35);
+    ctx.rotate(Math.PI / 2);
+    ctx.drawImage(img, 0, 0);
+    ctx.restore();
+    // The blanket: the bed's own quilt redrawn over the body from the shoulders down,
+    // with its folded edge turned back a little higher than when the bed is empty.
+    if (bed) {
+      const q = bed.frames[0];
+      const top = 13;
+      ctx.drawImage(q, 1, top, 14, 34 - top - 2, sx - 7, sy - bed.oy + top, 14, 34 - top - 2);
+      ctx.fillStyle = 'rgba(244,238,222,0.95)';
+      ctx.fillRect(sx - 6, sy - bed.oy + top, 12, 1);
+      ctx.fillStyle = 'rgba(40,30,40,0.35)';
+      ctx.fillRect(sx - 6, sy - bed.oy + top + 1, 12, 1);
+      // The shape of a body under it: a soft ridge down the middle.
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(sx - 3, sy - bed.oy + top + 3, 4, 14);
+      ctx.fillStyle = 'rgba(0,0,0,0.10)';
+      ctx.fillRect(sx + 2, sy - bed.oy + top + 3, 2, 14);
+    }
   }
 
   canInteract(actor) {
