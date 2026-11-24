@@ -662,7 +662,6 @@ const APOLOGY_INTENTS = new Set(['social.apology', 'autonomy.apology']);
 // What still reaches her when she has left the player.
 const LEFT_HEARS = new Set(['ask.decline', 'social.apology', 'social.greet', 'social.farewell', 'social.insult', 'ask.why_left', 'ask.trust_me', 'ask.fear_me', 'ask.why_refused', 'counter.take', 'counter.decline']);
 
-// Which refusal bank fits the gate's reasons (they are free text from the mind).
 // The memories an offline reply drew on, as "remembered" chips [{ id, label }] (DESIGN
 // §17.3): what she recalled while composing it (hits from her memory index) and what she
 // remembers of today, kept only when the reply plainly carries their words.
@@ -697,6 +696,7 @@ function contentWords(text) {
   return out;
 }
 
+// Which refusal bank fits the gate's reasons (they are free text from the mind).
 export function refusalSituation(verdict, state = 'together', offer = null) {
   if (verdict?.decision === 'refuse_and_act') return 'refuse_and_act';
   if (state === 'left' || state === 'gone') return 'refuse_left';
