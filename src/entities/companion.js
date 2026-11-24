@@ -2,36 +2,132 @@ import { Actor } from './entity.js';
 import { FACTION, COMPANION_ID } from '../core/constants.js';
 import { Mind } from '../ai/mind/mind.js';
 import { Behavior } from '../ai/behavior/behavior.js';
+import { say } from '../ai/behavior/lines.js';
+import { RAMPS } from '../art/palette.js';
 
-// STUB (owned by the behavior agent).
-// Contract: new Companion(game, { x, y }) ; id = COMPANION_ID ; faction = FACTION.PLAYER
-//  .mind     = new Mind(game, this)        (ai/mind/mind.js)
-//  .behavior = new Behavior(game, this)    (ai/behavior/behavior.js)
-//  The behavior acts as the controller. Talking to her (interact) opens the chat.
+// Lyra: arcane ranger, the player's companion. Her Behavior is her controller and
+// her Mind holds who she is. She never dies: at 0 HP she is downed until the
+// player helps her up (interact) or, after a minute, she gets up alone.
+
+const ARCANE_GLOW = RAMPS.arcane[4];
+export const AUTO_REVIVE_SECONDS = 60;
+export const SELF_REVIVE_HP = 0.15;
+export const PLAYER_REVIVE_HP = 0.4;
+
 export class Companion extends Actor {
   constructor(game, o = {}) {
     super(game, {
       id: COMPANION_ID,
       name: game.settings?.companionName || 'Lyra',
+      kind: 'human',
       faction: FACTION.PLAYER,
       maxHp: 50,
       atk: 7,
+      def: 1,
       speed: 80,
       spriteKey: 'lyra',
+      perceptionRadius: 180,
       ...o,
     });
-    this.mind = new Mind(game, this);
+    this.role = 'companion';
+    this.downedFor = 0;
+    this.wasDowned = false;
+    this.mindErrAt = -99;
+    // One light object reused every frame (the renderer collects lights per frame).
+    this.glow = { x: 0, y: 0, r: 34, color: ARCANE_GLOW, intensity: 0 };
+    this.mind = null;
+    try {
+      this.mind = new Mind(game, this);
+    } catch (err) {
+      console.error('[companion] mind failed to start', err);
+    }
     this.behavior = new Behavior(game, this);
     this.controller = this.behavior;
+    game.bus?.on?.('settings_changed', (p) => {
+      if (p?.key === 'companionName' && p.value) this.name = String(p.value).slice(0, 24);
+    });
   }
 
+  // Lyra never leaves the world: a stray removal is ignored and a kill becomes a knockout.
+  get removed() {
+    return false;
+  }
+
+  set removed(v) {}
+
   update(dt) {
+    if (this.dead) this.knockOut();
     super.update(dt);
-    this.mind.update(dt);
+    if (this.downed) this.updateDowned(dt);
+    else if (this.wasDowned) {
+      this.wasDowned = false;
+      this.downedFor = 0;
+      this.behavior.onRevived();
+    }
+    if (this.mind) {
+      try {
+        this.mind.update(dt);
+      } catch (err) {
+        if (this.age - this.mindErrAt > 5) {
+          this.mindErrAt = this.age;
+          console.error('[companion] mind update failed', err);
+        }
+      }
+    }
+  }
+
+  knockOut() {
+    this.dead = false;
+    this.hp = 0;
+    if (!this.downed) {
+      this.downed = true;
+      this.game.bus?.emit?.('downed', { entity: this, by: this.lastAttacker || null });
+    }
+  }
+
+  updateDowned(dt) {
+    if (!this.wasDowned) {
+      this.wasDowned = true;
+      this.downedFor = 0;
+      this.behavior.onDowned();
+      const p = this.game.player;
+      if (p && Math.hypot(p.x - this.x, p.y - this.y) < 320) this.behavior.say(say.downed(), { force: true, kind: 'whisper' });
+    }
+    if (this.state !== 'downed') this.setState('downed');
+    this.moveIntent.x = 0;
+    this.moveIntent.y = 0;
+    this.downedFor += dt;
+    if (this.downedFor >= AUTO_REVIVE_SECONDS) this.reviveBy(this, SELF_REVIVE_HP);
+  }
+
+  // Revive through combat (its effects and event); fall back to doing it here.
+  reviveBy(by, fraction) {
+    const c = this.game.combat;
+    if (c && typeof c.revive === 'function') {
+      try {
+        c.revive(this, by, fraction);
+      } catch (err) {
+        console.error('[companion] combat.revive failed', err);
+      }
+    }
+    if (this.downed) {
+      this.downed = false;
+      this.dead = false;
+      this.hp = Math.max(1, Math.round(this.maxHp * fraction));
+      this.invuln = 1.5;
+      this.setState('idle');
+      this.game.bus?.emit?.('revived', { entity: this, by });
+    }
+    this.wasDowned = false;
+    this.downedFor = 0;
+    this.behavior.onRevived(by);
+    const byPlayer = by && by === this.game.player;
+    this.behavior.say(say.revived(byPlayer), { force: true });
+    if (byPlayer) this.faceToward(by.x, by.y);
   }
 
   canInteract(actor) {
-    return actor === this.game.player;
+    return !!actor && actor === this.game.player;
   }
 
   interactLabel() {
@@ -39,16 +135,53 @@ export class Companion extends Actor {
   }
 
   interact(actor) {
-    this.game.ui.chat.open();
+    if (this.downed) {
+      this.reviveBy(actor, PLAYER_REVIVE_HP);
+      return;
+    }
+    if (actor) this.faceToward(actor.x, actor.y);
+    this.game.ui?.chat?.open?.();
+  }
+
+  // A soft violet glow that grows with the dark; dim while she is down.
+  getLight(time) {
+    const dark = 1 - (this.game.clock?.daylight ?? 1);
+    if (dark < 0.12 || this.dead) return null;
+    const g = this.glow;
+    const pulse = 0.92 + 0.08 * Math.sin(time * 2.3);
+    g.x = this.x;
+    g.y = this.y - (this.downed ? 4 : 10);
+    g.r = (this.downed ? 20 : 34) + 3 * Math.sin(time * 1.7);
+    g.intensity = dark * (this.downed ? 0.22 : 0.5) * pulse;
+    return g;
   }
 
   serialize() {
-    return { ...super.serialize(), mind: this.mind.serialize(), behavior: this.behavior.serialize() };
+    let mind = null;
+    try {
+      mind = this.mind?.serialize?.() ?? null;
+    } catch (err) {
+      console.error('[companion] mind serialize failed', err);
+    }
+    return { ...super.serialize(), mind, behavior: this.behavior.serialize(), downedFor: this.downed ? Math.round(this.downedFor) : 0 };
   }
 
   deserialize(d) {
+    if (!d) return;
     super.deserialize(d);
-    if (d?.mind) this.mind.deserialize(d.mind);
-    if (d?.behavior) this.behavior.deserialize(d.behavior);
+    if (d.mind && this.mind) {
+      try {
+        this.mind.deserialize(d.mind);
+      } catch (err) {
+        console.error('[companion] mind deserialize failed', err);
+      }
+    }
+    if (d.behavior) this.behavior.deserialize(d.behavior);
+    if (this.downed) {
+      this.hp = 0;
+      this.setState('downed');
+      this.wasDowned = true;
+      this.downedFor = Math.min(AUTO_REVIVE_SECONDS - 5, d.downedFor || 0);
+    }
   }
 }
