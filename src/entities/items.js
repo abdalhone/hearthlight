@@ -26,11 +26,10 @@ export const ITEMS = {
   ruins_key: { name: 'Rusted Key', type: 'key', value: 0, desc: 'Stamped with the Sunken Ruins crest.' },
   maren_journal: { name: "Maren's Journal", type: 'quest', value: 0, desc: "Lyra's mentor's journal, water-stained." },
   lantern: { name: 'Lantern', type: 'tool', value: 15, desc: 'Lights the dark.' },
-  // Creature drops (added by the combat module). Ids and names avoid short pronoun-like
-  // substrings ("me", "it") so resolveItemId() stays predictable for chat parsing.
+  // Creature drops (added by the combat module). Ids and names avoid common short words as
+  // substrings ("me", "it", "the") so resolveItemId() stays predictable for chat parsing.
   venison: { name: 'Venison', type: 'food', value: 5, heal: 3, desc: 'Lean red meat from the Whisperwood. Better over a fire.' },
   egg: { name: 'Egg', type: 'food', value: 3, heal: 4, desc: 'Brown and speckled, still warm from the nest.' },
-  feather: { name: 'Feather', type: 'material', value: 1, desc: 'Soft, barred and light as a breath. Good for fletching.' },
   bat_wing: { name: 'Bat Wing', type: 'material', value: 4, desc: 'Leathery and thin as paper. Mira swears it soothes a cough.' },
   boar_tusk: { name: 'Boar Tusk', type: 'material', value: 8, desc: 'A curved ivory hook. Bram can set it into a knife handle.' },
   antler: { name: 'Antler', type: 'material', value: 7, desc: 'A forked deer antler, worn smooth as river stone.' },
@@ -46,20 +45,54 @@ export function itemName(id, qty = 1) {
   return qty > 1 ? `${qty} × ${d.name}` : d.name;
 }
 
+// Words that are never an item on their own: chat parsing may hand over a bare pronoun or
+// article ("give me", "her", "the"), and loose substring matching would turn "me" into
+// slime gel and "her" into a herb.
+const NOT_ITEMS = new Set(
+  'i me my mine it its her hers him his he she you your we us our they them the a an and or of to so up in on at this that these those some any one all thing things stuff'.split(' '),
+);
+
+// Everyday words for items ("a loaf", "some money", "the key").
+const ITEM_ALIASES = {
+  loaf: 'bread',
+  loaves: 'bread',
+  money: 'coin',
+  gold: 'coin',
+  silver: 'coin',
+  cash: 'coin',
+  fur: 'wolf_pelt',
+  petal: 'moonpetal',
+  petals: 'moonpetal',
+  diary: 'maren_journal',
+  lamp: 'lantern',
+};
+
 // Find an item id from loose text ("healing potions", "fish", "honey cake").
 export function resolveItemId(text) {
   if (!text) return null;
-  const t = String(text).toLowerCase().trim().replace(/[^a-z0-9_ ]/g, '');
+  const t = String(text)
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9_ ]/g, '')
+    .replace(/^(?:(?:a|an|the|some|my|your|her|his|our|that|this|those|these)\s+)+/, '');
+  if (!t || NOT_ITEMS.has(t)) return null;
   if (ITEMS[t]) return t;
+  if (ITEM_ALIASES[t]) return ITEM_ALIASES[t];
   const snake = t.replace(/\s+/g, '_');
   if (ITEMS[snake]) return snake;
+  const compact = t.replace(/\s+/g, ''); // "moon petal(s)"
+  if (ITEMS[compact]) return compact;
+  if (ITEMS[compact.replace(/s$/, '')]) return compact.replace(/s$/, '');
   const singular = snake.replace(/(es|s)$/, '');
   if (ITEMS[singular]) return singular;
+  const plural = snake.replace(/y$/, 'ies'); // "berry"
+  if (plural !== snake && ITEMS[plural]) return plural;
   let best = null;
   for (const [id, def] of Object.entries(ITEMS)) {
     const n = def.name.toLowerCase();
     if (n === t || n.replace(/s$/, '') === t.replace(/s$/, '')) return id;
-    if (!best && (n.includes(t) || t.includes(n) || id.includes(singular))) best = id;
+    // Partial matches need a real fragment of a word, not one or two letters.
+    if (!best && (t.includes(n) || (t.length >= 3 && (n.includes(t) || id.includes(singular))))) best = id;
   }
   return best;
 }

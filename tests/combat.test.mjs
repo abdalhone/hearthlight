@@ -17,7 +17,7 @@ import { DAY_SECONDS } from '../src/core/constants.js';
 import { Player, COMBO, STARTING_INVENTORY } from '../src/entities/player.js';
 import { Pickup, dropItem, pickupToastText } from '../src/entities/pickups.js';
 import { Projectile } from '../src/entities/projectiles.js';
-import { ITEMS } from '../src/entities/items.js';
+import { ITEMS, resolveItemId } from '../src/entities/items.js';
 import { PAINTED_ICONS, itemIconIds } from '../src/art/items_art.js';
 
 // ---------------------------------------------------------------- a small fake game
@@ -864,4 +864,18 @@ test('every item has a painted icon', () => {
   for (const id of Object.keys(ITEMS)) assert.ok(PAINTED_ICONS.includes(id), `icon for ${id}`);
   assert.ok(PAINTED_ICONS.includes('unknown'));
   assert.ok(itemIconIds().includes('unknown'));
+});
+
+test('item names resolve from loose words, never from pronouns or articles', () => {
+  for (const w of ['me', 'her', 'it', 'the', 'a', 'some', 'you']) assert.equal(resolveItemId(w), null, w);
+  assert.equal(resolveItemId('healing potions'), 'potion');
+  assert.equal(resolveItemId('Honey Cake'), 'honey_cake');
+  assert.equal(resolveItemId('fish'), 'raw_fish');
+  assert.equal(resolveItemId('a loaf'), 'bread');
+  assert.equal(resolveItemId('the rusted key'), 'ruins_key');
+  assert.equal(resolveItemId('loaf'), 'bread');
+  assert.equal(resolveItemId('berry'), 'berries');
+  assert.equal(resolveItemId('moon petals'), 'moonpetal');
+  assert.equal(resolveItemId('money'), 'coin');
+  for (const id of Object.keys(ITEMS)) assert.equal(resolveItemId(id), id);
 });

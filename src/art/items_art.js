@@ -201,7 +201,7 @@ const union =
   (x, y) =>
     ms.some((m) => m(x, y));
 
-// Points along a quadratic curve, for horns, feathers and tusks.
+// Points along a quadratic curve, for horns, antlers and tusks.
 function bezier(p0, p1, p2, n = 40) {
   const pts = [];
   for (let i = 0; i <= n; i++) {
@@ -778,26 +778,6 @@ const ICONS = {
       p.set(x, y, '#8a6f4a');
     p.set(6, 6, '#fffaf0');
     p.set(6, 7, '#fbf3dc');
-  },
-
-  feather(p) {
-    const pts = bezier([3.6, 13.2], [5, 5], [12.4, 2.4]);
-    for (let y = 0; y < N; y++) {
-      for (let x = 0; x < N; x++) {
-        const n = nearestOnCurve(pts, x + 0.5, y + 0.5);
-        if (n.t < 0.12) {
-          if (n.d < 0.6) p.set(x, y, '#8a7f6c');
-          continue;
-        }
-        const w = 2.7 * Math.pow(Math.sin(Math.PI * Math.min(1, (n.t - 0.12) / 0.92)), 0.55);
-        if (n.d > w) continue;
-        if (n.side > 0 && n.t > 0.5 && n.t < 0.58) continue; // a split in the vane
-        let c = n.side < 0 ? '#f0eef5' : '#c8c5d0';
-        if (n.d < 0.55) c = '#e2d2b0';
-        else if (Math.floor(n.t * 14) % 3 === 0) c = n.side < 0 ? '#c9b48a' : '#a8946c';
-        p.set(x, y, c);
-      }
-    }
   },
 
   bat_wing(p) {
