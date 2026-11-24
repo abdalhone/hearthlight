@@ -184,7 +184,7 @@ export const worldPlugin = {
       },
       answer(m, ctx, results) {
         const r = results?.[0];
-        if (r && !r.ok) {
+        if (r && !r.ok && !r.refused) {
           const itemId = resolveItemId(m.groups?.item);
           const job = itemId && jobForItem(itemId);
           if (job && /don't have any/.test(r.message || '')) return `${r.message} I could go get some, if you like.`;

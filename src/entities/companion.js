@@ -5,9 +5,11 @@ import { Behavior } from '../ai/behavior/behavior.js';
 import { say } from '../ai/behavior/lines.js';
 import { RAMPS } from '../art/palette.js';
 
-// Lyra: arcane ranger, the player's companion. Her Behavior is her controller and
-// her Mind holds who she is. She never dies: at 0 HP she is downed until the
-// player helps her up (interact) or, after a minute, she gets up alone.
+// Lyra: arcane ranger, traveling with the player by her own choice. Her Behavior is
+// her controller and her Mind holds who she is. She never dies: at 0 HP she is
+// downed until the player helps her up (interact) or, after a minute, she gets up
+// alone. The only way she leaves the world is her own: walking off along the King's
+// Road when she is gone for good (DESIGN §16.3).
 
 const ARCANE_GLOW = RAMPS.arcane[4];
 export const AUTO_REVIVE_SECONDS = 60;
@@ -30,6 +32,8 @@ export class Companion extends Actor {
       ...o,
     });
     this.role = 'companion';
+    this.leftWorld = false; // she walked out of Hearthvale for good
+    this.fade = 1; // 1 = solid; drops to 0 as she walks off the edge of the world
     this.downedFor = 0;
     this.wasDowned = false;
     this.mindErrAt = -99;
@@ -48,14 +52,29 @@ export class Companion extends Actor {
     });
   }
 
-  // Lyra never leaves the world: a stray removal is ignored and a kill becomes a knockout.
+  // Nothing removes Lyra but her own leaving: a stray removal is ignored and a kill
+  // becomes a knockout.
   get removed() {
-    return false;
+    return !!this._removed;
   }
 
-  set removed(v) {}
+  set removed(v) {
+    this._removed = !!v && !!this.leftWorld;
+  }
+
+  // She has walked off the map for good: drop out of the world and say so.
+  leaveWorld(reason = 'gone') {
+    if (this.leftWorld) return;
+    this.leftWorld = true;
+    this.fade = 0;
+    this.removed = true;
+    this.moveIntent.x = 0;
+    this.moveIntent.y = 0;
+    this.game.bus?.emit?.('lyra_left_world', { actor: this, reason, day: this.game.clock?.day ?? null });
+  }
 
   update(dt) {
+    if (this.leftWorld) return;
     if (this.dead) this.knockOut();
     super.update(dt);
     if (this.downed) this.updateDowned(dt);
@@ -127,7 +146,7 @@ export class Companion extends Actor {
   }
 
   canInteract(actor) {
-    return !!actor && actor === this.game.player;
+    return !!actor && actor === this.game.player && !this.leftWorld;
   }
 
   interactLabel() {
@@ -143,16 +162,28 @@ export class Companion extends Actor {
     this.game.ui?.chat?.open?.();
   }
 
+  draw(ctx, ox, oy, time) {
+    if (this.leftWorld) return;
+    if (this.fade >= 1) {
+      super.draw(ctx, ox, oy, time);
+      return;
+    }
+    const a = ctx.globalAlpha;
+    ctx.globalAlpha = a * Math.max(0, this.fade);
+    super.draw(ctx, ox, oy, time);
+    ctx.globalAlpha = a;
+  }
+
   // A soft violet glow that grows with the dark; dim while she is down.
   getLight(time) {
     const dark = 1 - (this.game.clock?.daylight ?? 1);
-    if (dark < 0.12 || this.dead) return null;
+    if (dark < 0.12 || this.dead || this.leftWorld) return null;
     const g = this.glow;
     const pulse = 0.92 + 0.08 * Math.sin(time * 2.3);
     g.x = this.x;
     g.y = this.y - (this.downed ? 4 : 10);
     g.r = (this.downed ? 20 : 34) + 3 * Math.sin(time * 1.7);
-    g.intensity = dark * (this.downed ? 0.22 : 0.5) * pulse;
+    g.intensity = dark * (this.downed ? 0.22 : 0.5) * pulse * Math.max(0, Math.min(1, this.fade));
     return g;
   }
 
@@ -163,7 +194,7 @@ export class Companion extends Actor {
     } catch (err) {
       console.error('[companion] mind serialize failed', err);
     }
-    return { ...super.serialize(), mind, behavior: this.behavior.serialize(), downedFor: this.downed ? Math.round(this.downedFor) : 0 };
+    return { ...super.serialize(), mind, behavior: this.behavior.serialize(), downedFor: this.downed ? Math.round(this.downedFor) : 0, leftWorld: this.leftWorld || undefined };
   }
 
   deserialize(d) {
@@ -177,6 +208,13 @@ export class Companion extends Actor {
       }
     }
     if (d.behavior) this.behavior.deserialize(d.behavior);
+    if (d.leftWorld) {
+      // She left this world in that save; she stays gone.
+      this.leftWorld = true;
+      this.fade = 0;
+      this.removed = true;
+      return;
+    }
     if (this.downed) {
       this.hp = 0;
       this.setState('downed');

@@ -1,6 +1,7 @@
 import { TILE } from '../../core/constants.js';
 import { resolveItemId } from '../../entities/items.js';
 import { say } from './lines.js';
+import { allowedAt } from './safety.js';
 import {
   rand,
   chance,
@@ -11,6 +12,7 @@ import {
   standSpotFor,
   isActorAlive,
   itemsPhrase,
+  nameOf,
   safe,
   warnOnce,
 } from './util.js';
@@ -217,6 +219,7 @@ export class JobRunner {
     this.quietKeep = false;
     this.lootItem = null;
     this.preferred = null;
+    this.own = false; // her own work (her plan, for her purse), not an order
   }
 
   get game() {
@@ -235,7 +238,8 @@ export class JobRunner {
     this.reset();
     this.job = job;
     this.quietKeep = !!spec.quiet;
-    this.deliverTo = ['player', 'chest', 'keep'].includes(spec.deliverTo) ? spec.deliverTo : 'player';
+    this.own = !!spec.own;
+    this.deliverTo = this.deliveryTarget(spec.deliverTo);
     this.targetRef = spec.targetRef ?? null;
     this.count = Math.max(0, spec.count || 0);
     this.gathered = { ...(spec.gathered || {}) };
@@ -266,6 +270,14 @@ export class JobRunner {
     }
     if (!spec.resume) this.emit('job_started', { label: job.label, amount: this.amount, deliverTo: this.deliverTo });
     return { ok: true, message: spec.quiet ? say.pickingUp() : say.jobStart(job, this.amount, this.deliverTo) };
+  }
+
+  // 'player' | 'chest' | 'keep', or the id of someone to hand the haul to (a buyer).
+  deliveryTarget(v) {
+    if (v == null || v === '') return 'player';
+    if (['player', 'chest', 'keep'].includes(v)) return v;
+    const e = this.game.entities?.get?.(String(v));
+    return e && e.type === 'actor' && e !== this.actor ? e.id : 'player';
   }
 
   reset() {
@@ -323,7 +335,7 @@ export class JobRunner {
 
   emit(type, extra = {}) {
     const g = this.game;
-    g.bus?.emit?.(type, { actor: this.actor, job: this.job?.id ?? null, ...extra });
+    g.bus?.emit?.(type, { actor: this.actor, job: this.job?.id ?? null, own: this.own, ...extra });
   }
 
   // --- searching ---
@@ -347,7 +359,7 @@ export class JobRunner {
     const a = this.actor;
     const out = [];
     if (job.kind === 'object') {
-      const filter = (o) => job.types.includes(o.objType) && !this.isBlacklisted(o) && canWorkSafe(o, a);
+      const filter = (o) => job.types.includes(o.objType) && !this.isBlacklisted(o) && canWorkSafe(o, a) && allowedAt(g, a, o.x, o.y);
       if (this.preferred && filter(this.preferred)) out.push({ obj: this.preferred, score: -1e9 });
       let list = safe('objects.inRadius', () => g.objects?.inRadius?.(this.searchX, this.searchY, this.searchR, filter), []) || [];
       if (!list.length && !this.preferred) list = safe('objects.all', () => (g.objects?.all?.() || []).filter(filter), []) || [];
@@ -367,7 +379,7 @@ export class JobRunner {
         out.push({ obj: e, score: dist(a.x, a.y, e.x, e.y) });
       }
     } else if (job.kind === 'cook') {
-      const isFire = (o) => (o.objType === 'campfire' || o.objType === 'hearth') && !this.isBlacklisted(o);
+      const isFire = (o) => (o.objType === 'campfire' || o.objType === 'hearth') && !this.isBlacklisted(o) && allowedAt(g, a, o.x, o.y);
       const list = safe('objects.inRadius', () => g.objects?.inRadius?.(a.x, a.y, 90 * TILE, isFire), []) || [];
       for (const o of list) out.push({ obj: o, score: dist(a.x, a.y, o.x, o.y) });
     } else if (job.kind === 'fish') {
@@ -491,7 +503,7 @@ export class JobRunner {
     // Nothing left in reach.
     if (this.job.kind === 'loot' && this.count > 0) return this.beginDeliver();
     if (this.count > 0) {
-      if (this.amount && this.count < this.amount) {
+      if (this.amount && this.count < this.amount && !this.own) {
         this.partialNote = true;
         this.b.say(say.jobPartial(this.job, this.count, this.amount), { force: true });
       }
@@ -726,6 +738,14 @@ export class JobRunner {
   stepDeliver(dt) {
     const g = this.game;
     const a = this.actor;
+    if (this.deliverTo !== 'player' && this.deliverTo !== 'chest' && this.deliverTo !== 'keep') {
+      const who = g.entities?.get?.(this.deliverTo);
+      if (!who || !isActorAlive(who)) return this.finish(null, true);
+      const d = dist(a.x, a.y, who.x, who.y);
+      const res = this.b.steering.moveTo(who.x, who.y, dt, { arrive: 22, run: d > 12 * TILE ? 1.2 : 1, ignore: who, maxNodes: 20000 });
+      if (res === 'arrived') return this.handOver(who);
+      return this.checkDeliverBlocked(res, dt);
+    }
     if (this.deliverTo === 'player') {
       const p = g.player;
       if (!p || !isActorAlive(p)) return this.finish(null);
@@ -749,31 +769,44 @@ export class JobRunner {
     if (res === 'blocked' || res === 'locked' || res === 'stuck') {
       this.blockedT += dt;
       if (this.blockedT > 6) {
-        this.b.say("I couldn't get to you, so I'll hold on to everything for now.", { force: true });
+        if (this.deliverTo === 'player') this.b.say("I couldn't get to you, so I'll hold on to everything for now.", { force: true });
         return this.finish(null, true);
       }
     } else this.blockedT = 0;
     return 'running';
   }
 
+  // Hand the haul to the player, or to someone she works for (a buyer: the
+  // autonomy module credits her purse from job_done's `earned`).
   handOver(p) {
     const g = this.game;
     const a = this.actor;
+    const isPlayer = p === g.player;
     a.faceToward(p.x, p.y);
     const given = [];
+    let earned = 0;
+    const buys = !isPlayer ? p.profile?.shop?.buys || null : null;
     for (const { id, qty } of this.gatheredList()) {
-      const n = moveItems(a.inventory, p.inventory, id, qty);
+      const n = p.inventory ? moveItems(a.inventory, p.inventory, id, qty) : a.inventory.remove(id, qty);
       if (!n) continue;
       given.push({ id, qty: n });
-      g.bus?.emit?.('item_given', { from: a, to: p, itemId: id, qty: n });
-      g.bus?.emit?.('item_gained', { actor: p, itemId: id, qty: n, from: 'gift' });
+      if (buys && Number.isFinite(buys[id])) earned += buys[id] * n;
+      g.bus?.emit?.('item_given', { from: a, to: p, itemId: id, qty: n, sale: !isPlayer });
+      if (isPlayer) g.bus?.emit?.('item_gained', { actor: p, itemId: id, qty: n, from: 'gift' });
     }
     if (given.length) {
-      safe('audio.play', () => g.audio?.play?.('pickup', { x: p.x, y: p.y }));
-      safe('bubbles.icon', () => g.bubbles?.icon?.(a, 'heart'));
-      this.b.say(say.jobDelivered(given, 'player'), { force: true });
+      safe('audio.play', () => g.audio?.play?.(isPlayer ? 'pickup' : 'coin', { x: p.x, y: p.y }));
+      if (isPlayer) {
+        safe('bubbles.icon', () => g.bubbles?.icon?.(a, 'heart'));
+        this.b.say(say.jobDelivered(given, 'player'), { force: true });
+      } else this.b.say(say.jobDeliveredTo(given, nameOf(g, p)));
     }
-    return this.finish({ items: given, deliveredTo: 'player' });
+    const result = { items: given, deliveredTo: isPlayer ? 'player' : p.id };
+    if (!isPlayer) {
+      result.buyer = p.id;
+      result.earned = earned;
+    }
+    return this.finish(result);
   }
 
   stashInChest(chest) {
@@ -795,7 +828,7 @@ export class JobRunner {
   finish(result, silent = false) {
     const items = result?.items || this.gatheredList();
     const deliveredTo = result?.deliveredTo || 'keep';
-    if (!result && !silent && !this.quietKeep) {
+    if (!result && !silent && !this.quietKeep && !this.own) {
       if (items.length) this.b.say(say.jobKept(items), { force: true });
       else if (this.job.kind !== 'loot') this.b.say(say.jobDoneNothing(this.job), { force: true });
     }
@@ -812,7 +845,7 @@ export class JobRunner {
     this.phase = 'idle';
     this.target = null;
     this.b.steering.stop();
-    this.b.say(reason, { force: true });
+    if (!this.own) this.b.say(reason, { force: true });
     this.emit('job_failed', { reason });
     this.b.onJobEnded(false);
     return 'failed';
@@ -824,7 +857,9 @@ export class JobRunner {
     if (!this.active || !this.job) return '';
     if (this.phase === 'deliver') {
       const phrase = itemsPhrase(this.gatheredList());
-      return this.deliverTo === 'chest' ? `taking ${phrase} to the chest` : `bringing you ${phrase}`;
+      if (this.deliverTo === 'chest') return `taking ${phrase} to the chest`;
+      if (this.deliverTo === 'player') return `bringing you ${phrase}`;
+      return `taking ${phrase} to ${nameOf(this.game, this.game.entities?.get?.(this.deliverTo))}`;
     }
     if (this.amount) return `${this.job.label} (${this.count}/${this.amount})`;
     return this.count ? `${this.job.label} (${this.count})` : this.job.label;
@@ -840,6 +875,7 @@ export class JobRunner {
       count: this.count,
       gathered: { ...this.gathered },
       delivering: this.phase === 'deliver',
+      own: this.own,
     };
   }
 

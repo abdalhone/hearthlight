@@ -125,6 +125,8 @@ export function taskStatus(b, task) {
     case 'give':
       return task.to === b.game.player ? 'bringing you something' : `bringing ${nameOf(b.game, task.to)} a gift`;
     case 'sit':
+      if (task.tend) return 'catching her breath';
+      if (task.lookUp) return 'watching the stars';
       return task.fire ? 'warming up by the fire' : 'sitting down';
     case 'sleep':
       return task.phase === 'asleep' ? 'sleeping' : 'heading to bed';
@@ -395,6 +397,7 @@ function runSit(b, task, dt) {
   }
   b.steering.stop();
   if (task.fire) a.faceToward(task.fire.x, task.fire.y);
+  else if (task.lookUp && a.dir !== 'up') a.faceDir?.('up');
   if (a.state !== 'sit') a.setState('sit');
   task.t = (task.t || 0) + dt;
   if (task.maxTime && task.t > task.maxTime) {

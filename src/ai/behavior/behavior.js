@@ -2,20 +2,44 @@ import { TILE, PLAYER_ID } from '../../core/constants.js';
 import { itemDef, resolveItemId } from '../../entities/items.js';
 import { resolveEntity, resolveLocation, normalizeRef } from '../resolve.js';
 import { Steering } from './steering.js';
-import { CombatAI, selectTarget, isFriend, isThreat, ATTACK_RADIUS, STANCES } from './combat_ai.js';
+import { CombatAI, selectTarget, isFriend, isThreat, isInnocent, ATTACK_RADIUS, STANCES, SELF_DEFENSE_SECONDS } from './combat_ai.js';
 import { JobRunner, DIRECTIVE_JOBS } from './jobs.js';
 import { IdleLife } from './idle.js';
+import { OwnLife, OWN_DIRECTIVES } from './own_life.js';
+import {
+  LOW_HP_DISENGAGE,
+  DISENGAGE_RECOVER,
+  companionshipOf,
+  isTogether,
+  need,
+  inBounds,
+  dangerousPlaceAt,
+  isTooRisky,
+  asLocation,
+  chooseSafePlace,
+  threatsNear,
+  fightWinnable,
+  lovedDownedNearby,
+  swordArcPush,
+  openSpotAway,
+} from './safety.js';
 import { runTask, endTask, taskStatus, EMOTES, resolveEmote, handItems } from './tasks.js';
 import { say } from './lines.js';
 import { line, rand, chance, clamp, dist, tileOf, tileCenter, walkable, nearestWalkable, isActorAlive, lineOfSight, nameOf, relOf, goalPhrase, placePhrase, objectName, safe } from './util.js';
 
 // Lyra's body-level mind: her standing order (directive), combat stance, and the
-// priority list that runs every step (DESIGN §10):
-//   1 downed (handled by the Companion) · 2 survival · 3 support · 4 combat per
-//   stance · tasks (interact, give, sit, sleep, emote) · 5 the directive · 6 idle life.
-// Standing orders persist until changed; she never asks permission per enemy.
+// priority list that runs every step (DESIGN §10, §16.5):
+//   1 downed (handled by the Companion) · 2 self-preservation (running, leaving,
+//   getting out of a fight she is losing) and survival (potions, healing herself) ·
+//   3 support · 4 combat per stance · critical needs · tasks (interact, give, sit,
+//   sleep, emote) · 5 the directive · 6 idle life.
+// Standing orders persist until changed; she never asks permission per enemy. Her
+// own life (independent, flee, leave, keep_away, wait_outside) lives in own_life.js.
 
-export const DIRECTIVE_TYPES = ['follow', 'stay', 'wait', 'goto', 'job', 'guard', 'patrol', 'explore', 'free'];
+export const DIRECTIVE_TYPES = ['follow', 'stay', 'wait', 'goto', 'job', 'guard', 'patrol', 'explore', 'free', ...OWN_DIRECTIVES];
+export const BIND_COOLDOWN = 20;
+export const BIND_SECONDS = 3;
+const BIND_RANGE = 140;
 export const FOLLOW_DISTANCES = ['close', 'normal', 'far'];
 export const HEAL_COOLDOWN = 12;
 export const LOW_HP = 0.35;
@@ -42,12 +66,16 @@ const STANCE_WORDS = {
   pacifist: 'passive',
   calm: 'passive',
   hold: 'passive',
+  self: 'self_defense',
+  selfdefense: 'self_defense',
+  selfdefence: 'self_defense',
 };
 
 export function normalizeStance(mode) {
   if (!mode) return null;
   const n = String(mode)
     .toLowerCase()
+    .replace(/self[\s_-]*defen[cs]e/g, 'selfdefense')
     .replace(/[^a-z ]/g, ' ')
     .replace(/\b(mode|stance|be|go|get|set|to)\b/g, ' ')
     .trim()
@@ -82,8 +110,6 @@ export class Behavior {
     this.retreatT = 0;
     this.scanT = 0;
     this.memoryT = 0;
-    this.fallback = false;
-    this.fallbackSaid = false;
     this.pendingVictory = false;
     this.barkAt = -99;
     this.lastSpokeAt = -99;
@@ -104,6 +130,27 @@ export class Behavior {
     this.gotoBlockedT = 0;
     this.holdReturning = false;
     this.freeReturning = false;
+    // Her own life and self-preservation (DESIGN §16).
+    this.own = new OwnLife(this);
+    this.idleAnchor = null; // where her own-life idling centers
+    this.disengaging = null; // { t, clearT, dest, repickT } while getting out of a losing fight
+    this.coverSaidAt = -99;
+    this.bindCd = 0;
+    this.bound = null; // { target, fxT } while Binding Light holds someone
+    this.lastPlayerHitAt = -99;
+    this.deliberateHits = [0, 0, 0, 0].map(() => -99); // ring of times the player hit her on purpose
+    this.hitI = 0;
+    this.autoSD = null; // { prev, until } while self-defense was switched on by being attacked
+    this.riskT = 0;
+    this.riskSaidAt = -99;
+    this.tendT = 2;
+    this.restAt = -99;
+    this.starveSaidAt = -99;
+    this.lastSpeechText = '';
+    this.lastSpeechAt = -99;
+    this.sleepPos = null;
+    this.arcPush = { x: 0, y: 0 };
+    this.threatBuf = [];
     this.subscribe();
   }
 
@@ -118,8 +165,12 @@ export class Behavior {
     bus.on('downed', (p) => p?.entity === this.actor && this.onDowned());
     bus.on('revived', (p) => p?.entity === this.actor && this.onRevived(p.by));
     bus.on('player_wake', () => this.onPlayerWake());
+    bus.on('player_sleep', () => this.onPlayerSleep());
     bus.on('speech', (p) => {
-      if (p?.speaker === this.actor && !this.speaking) this.brainSpokeAt = this.t;
+      if (p?.speaker !== this.actor) return;
+      if (!this.speaking) this.brainSpokeAt = this.t;
+      this.lastSpeechText = p.text || '';
+      this.lastSpeechAt = this.t;
     });
   }
 
@@ -139,13 +190,106 @@ export class Behavior {
     const player = this.game.player;
     if (tgt === player && src !== this.actor) this.rec(src).vsPlayer = this.t;
     if (tgt === this.actor) {
-      if (src !== player) this.rec(src).vsSelf = this.t;
+      this.rec(src).vsSelf = this.t;
+      if (src === player) this.onHitByPlayer();
       // Woken or startled out of a seat by a hit.
       if (this.task && (this.task.kind === 'sleep' || this.task.kind === 'sit')) this.cancelTask();
       this.idle.reset();
     }
     if (src === player && tgt !== this.actor) this.rec(tgt).byPlayer = this.t;
     this.scanT = 0;
+  }
+
+  // The player's sword hit her. An accident when something hostile is right next to
+  // her and it is the first hit in 8 s (DESIGN §16.2); otherwise on purpose. Being hit
+  // on purpose again (or at all, once she has left) switches self-defense on.
+  onHitByPlayer() {
+    const accident = this.hostileWithin(48) && this.t - this.lastPlayerHitAt > 8;
+    this.lastPlayerHitAt = this.t;
+    if (accident) return;
+    this.deliberateHits[this.hitI] = this.t;
+    this.hitI = (this.hitI + 1) % this.deliberateHits.length;
+    let recent = 0;
+    for (const h of this.deliberateHits) if (this.t - h < 20) recent++;
+    const s = companionshipOf(this.game);
+    if (recent >= 2 || s === 'left' || s === 'gone') this.enterSelfDefense();
+  }
+
+  hostileWithin(r) {
+    const g = this.game;
+    const a = this.actor;
+    const list = g.entities?.list || [];
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (e === a || e === g.player || e.type !== 'actor' || !isActorAlive(e)) continue;
+      if (Math.abs(e.x - a.x) > r || Math.abs(e.y - a.y) > r) continue;
+      if (dist(a.x, a.y, e.x, e.y) <= r && isThreat(g, a, e) && !isFriend(g, a, e)) return true;
+    }
+    return false;
+  }
+
+  enterSelfDefense() {
+    if (this.stance !== 'self_defense') {
+      const prev = this.stance;
+      this.setStance('self_defense');
+      this.autoSD = { prev, until: this.t + 15 };
+      this.bark(say.selfDefense(), 'shout', 3);
+    } else if (this.autoSD) this.autoSD.until = this.t + 15;
+  }
+
+  // Self-defense she switched on herself ends once nobody has hit her for a while.
+  updateSelfDefense() {
+    const sd = this.autoSD;
+    if (!sd) return;
+    if (this.stance !== 'self_defense') {
+      this.autoSD = null;
+      return;
+    }
+    if (this.t < sd.until) return;
+    this.autoSD = null;
+    this.setStance(sd.prev || 'defend');
+    const p = this.game.player;
+    if (p && dist(this.actor.x, this.actor.y, p.x, p.y) < 10 * TILE) this.say(say.selfDefenseOver());
+  }
+
+  // Is she fighting `e` because `e` attacked her? (For combat's friendly-fire rules.)
+  isDefendingAgainst(e) {
+    if (!e || this.stance !== 'self_defense') return false;
+    const r = this.memory.get(e);
+    return !!r && this.t - r.vsSelf < SELF_DEFENSE_SECONDS;
+  }
+
+  // The player is a danger to her right now: she has left them, is running from
+  // them or keeping away from them, or they are attacking her.
+  playerIsDanger() {
+    const g = this.game;
+    const p = g.player;
+    if (!p) return false;
+    const s = companionshipOf(g);
+    if (s === 'left' || s === 'gone') return true;
+    const d = this.directive;
+    if ((d.type === 'flee' || d.type === 'keep_away') && (d.from === 'player' || d.from === p.id)) return true;
+    if (this.isDefendingAgainst(p)) return true;
+    for (let i = 0; i < this.deliberateHits.length; i++) if (this.t - this.deliberateHits[i] < 6) return true;
+    return false;
+  }
+
+  // Does she want the player's company at the moment?
+  playerWelcome() {
+    const s = companionshipOf(this.game);
+    return s !== 'left' && s !== 'gone' && !this.playerIsDanger();
+  }
+
+  // Who she is most likely running from: the player when they are the danger, else
+  // whoever she is fighting or whatever threatens her most closely.
+  likelyThreat() {
+    const g = this.game;
+    const a = this.actor;
+    if (g.player && this.playerIsDanger()) return g.player;
+    if (this.currentTarget) return this.currentTarget;
+    const att = a.lastAttacker;
+    if (att && att !== g.player && isActorAlive(att) && (g.clock?.t ?? 0) - (a.lastAttackedAt ?? -99) < 10) return att;
+    return this.nearestThreat();
   }
 
   onAttack(p) {
@@ -181,17 +325,37 @@ export class Behavior {
   onRevived() {
     this.steering.reset();
     this.scanT = 0;
-    this.fallbackSaid = false;
+    this.disengaging = null;
+  }
+
+  // The player's sleep moves Lyra to their side; living apart she wakes where she slept.
+  onPlayerSleep() {
+    const a = this.actor;
+    this.sleepPos = this.livingApart() ? { x: a.x, y: a.y } : null;
   }
 
   onPlayerWake() {
+    const a = this.actor;
     if (this.task?.kind === 'sleep') {
-      endTask(this, this.task, false);
+      endTask(this, this.task, !!this.sleepPos);
       this.task = null;
+    }
+    if (this.sleepPos) {
+      const bed = this.lyraBed();
+      const spot = bed ? nearestWalkable(this.game, bed.x, bed.y + 8, 2, a) : null;
+      a.x = spot?.x ?? this.sleepPos.x;
+      a.y = spot?.y ?? this.sleepPos.y;
+      this.sleepPos = null;
     }
     this.idle.reset();
     this.steering.reset();
     this.px = NaN;
+  }
+
+  // Not traveling with the player right now (her own day, leaving, keeping away).
+  livingApart() {
+    const t = this.directive.type;
+    return t === 'independent' || t === 'leave' || t === 'keep_away' || t === 'flee' || !isTogether(this.game);
   }
 
   // --- speech ---
@@ -201,6 +365,8 @@ export class Behavior {
   say(text, opts = {}) {
     if (!text) return false;
     const now = this.t;
+    // The same words from her twice in a row (an order's answer echoed by two systems).
+    if (text === this.lastSpeechText && now - this.lastSpeechAt < 3) return false;
     if (!opts.force) {
       if (now - this.lastSpokeAt < 4 || now - this.brainSpokeAt < 6) return false;
       if (this.game.brain?.busy) return false;
@@ -236,10 +402,14 @@ export class Behavior {
     if (this.potionCd > 0) this.potionCd -= dt;
     if (this.eatCd > 0) this.eatCd -= dt;
     if (this.retreatT > 0) this.retreatT -= dt;
+    if (this.bindCd > 0) this.bindCd -= dt;
     this.memoryT -= dt;
     if (this.memoryT <= 0) this.pruneMemory();
     try {
+      this.updateSelfDefense();
       this.think(dt);
+      this.keepOutOfSwing();
+      this.updateBound(dt);
     } catch (err) {
       this.steering.stop();
       if (this.t - this.errAt > 5) {
@@ -248,6 +418,39 @@ export class Behavior {
       }
     }
     this.steering.updateDoors(dt);
+  }
+
+  // Never stand where the player's sword is about to land (DESIGN §16.7).
+  keepOutOfSwing() {
+    const a = this.actor;
+    if (a.downed || a.lockTime > 0 || this.task?.kind === 'sleep') return;
+    if (!swordArcPush(this.game, a, this.arcPush)) return;
+    if (this.task?.kind === 'sit' || this.task?.kind === 'emote') this.cancelTask();
+    const mi = a.moveIntent;
+    let x = mi.x * 0.4 + this.arcPush.x;
+    let y = mi.y * 0.4 + this.arcPush.y;
+    const l = Math.hypot(x, y) || 1;
+    mi.x = x / l;
+    mi.y = y / l;
+    a.speedMul = Math.max(a.speedMul || 1, 1.15);
+  }
+
+  // Binding Light's glow while it holds someone.
+  updateBound(dt) {
+    const bd = this.bound;
+    if (!bd) return;
+    const t = bd.target;
+    if (!t || t.removed || t.dead || !(t.rootTime > 0)) {
+      this.bound = null;
+      return;
+    }
+    bd.fxT -= dt;
+    if (bd.fxT <= 0) {
+      bd.fxT = 0.22;
+      const ang = this.t * 5;
+      const g = this.game;
+      safe('particles.emit', () => g.particles?.emit?.('magic', t.x + Math.cos(ang) * 9, t.y - 2 + Math.sin(ang) * 4, { count: 1 }));
+    }
   }
 
   think(dt) {
@@ -265,8 +468,10 @@ export class Behavior {
       return;
     }
     if (this.survival(dt)) return;
+    if (this.preserve(dt)) return;
     if (this.support(dt)) return;
     if (this.combat(dt)) return;
+    if (this.tendNeeds(dt)) return;
     if (this.task) {
       const r = runTask(this, this.task, dt);
       if (r === 'done') this.task = null;
@@ -320,8 +525,6 @@ export class Behavior {
     const a = this.actor;
     const frac = a.maxHp > 0 ? a.hp / a.maxHp : 1;
     if (frac >= LOW_HP) {
-      this.fallback = false;
-      this.fallbackSaid = false;
       if (frac < 0.5 && !this.target && this.eatCd <= 0) {
         this.eatCd = 20;
         const food = this.bestFood(false);
@@ -344,13 +547,147 @@ export class Behavior {
         return true;
       }
     }
-    const p = this.game.player;
-    this.fallback = !!(this.target && p && p !== a && isActorAlive(p));
-    if (this.fallback && !this.fallbackSaid) {
-      this.fallbackSaid = true;
-      this.bark(say.fallingBack(), 'shout', 3);
+    return false;
+  }
+
+  // --- 2b self-preservation (DESIGN §16.5): overrides every order ---
+
+  // In a fight under 30% HP she gets out, attack mode or not, unless someone she
+  // loves is down beside her and the fight still looks winnable.
+  preserve(dt) {
+    const g = this.game;
+    const a = this.actor;
+    if (this.own.exclusive()) return false;
+    const frac = a.maxHp > 0 ? a.hp / a.maxHp : 1;
+    const ds = this.disengaging;
+    if (ds) {
+      ds.t += dt;
+      const threats = threatsNear(g, a, 170, this.threatBuf);
+      ds.clearT = threats.length ? 0 : ds.clearT + dt;
+      if ((frac >= DISENGAGE_RECOVER && !threats.length) || ds.clearT > 3 || ds.t > 45) {
+        this.disengaging = null;
+        this.steering.reset();
+        this.say(say.disengageOver());
+        return false;
+      }
+      this.runFromThreats(dt, threats, ds);
+      return true;
+    }
+    if (frac >= LOW_HP_DISENGAGE) return false;
+    const threats = threatsNear(g, a, 150, this.threatBuf);
+    const fighting = !!this.currentTarget;
+    if (!fighting && !threats.length) return false;
+    const loved = lovedDownedNearby(g, a);
+    if (loved && fightWinnable(g, a, threats)) {
+      if (this.t - this.coverSaidAt > 15) {
+        this.coverSaidAt = this.t;
+        this.bark(say.coverLoved(nameOf(g, loved)), 'shout', 3);
+      }
+      return false;
+    }
+    this.disengaging = { t: 0, clearT: 0, dest: null, repickT: 0 };
+    this.target = null;
+    this.focusTarget = null;
+    this.retreatT = 0;
+    this.cancelTask();
+    this.idle.reset();
+    this.steering.reset();
+    this.bark(say.disengage(), 'shout', 2);
+    g.bus?.emit?.('self_preservation', { actor: a, reason: 'low_hp', stance: this.stance, directive: plainDirective(this.directive) });
+    return true;
+  }
+
+  // Get clear of `threats`: away from the closest first, then toward safety (the
+  // player when she trusts them and they are clear of it, else guards, the inn, the chapel).
+  runFromThreats(dt, threats, ds) {
+    const g = this.game;
+    const a = this.actor;
+    let near = null;
+    let nd = Infinity;
+    for (const e of threats) {
+      const d = dist(a.x, a.y, e.x, e.y);
+      if (d < nd) {
+        nd = d;
+        near = e;
+      }
+    }
+    if (this.potionCd <= 0 && a.inventory?.has?.('potion')) {
+      this.potionCd = 5;
+      if (this.consume('potion')) return;
+    }
+    if (this.healCd <= 0 && nd > 40) {
+      const amt = this.castHeal(a);
+      this.healCd = amt != null ? HEAL_COOLDOWN : 2;
+      if (amt != null) return;
+    }
+    ds.repickT -= dt;
+    if (!ds.dest || ds.repickT <= 0) {
+      ds.repickT = 1.5;
+      ds.dest = this.safetyPoint(near);
+    }
+    if (near && nd < 56) {
+      const spot = openSpotAway(g, a, near.x, near.y, 88);
+      if (spot) {
+        this.steering.moveTo(spot.x, spot.y, dt, { arrive: 6, run: 1.45 });
+        return;
+      }
+    }
+    if (ds.dest) {
+      const r = this.steering.moveTo(ds.dest.x, ds.dest.y, dt, { arrive: 20, run: 1.4, maxNodes: 12000 });
+      if (r !== 'moving') this.steering.stop();
+    } else this.steering.stop();
+  }
+
+  safetyPoint(threat) {
+    const g = this.game;
+    const a = this.actor;
+    const p = g.player;
+    if (p && p !== a && isActorAlive(p) && this.playerWelcome() && (!threat || dist(p.x, p.y, threat.x, threat.y) > 48)) {
+      // Behind the player, as seen from the threat.
+      if (!threat) return { x: p.x, y: p.y };
+      const ux = p.x - threat.x;
+      const uy = p.y - threat.y;
+      const l = Math.hypot(ux, uy) || 1;
+      return nearestWalkable(g, p.x + (ux / l) * 24, p.y + (uy / l) * 24, 2, a) || { x: p.x, y: p.y };
+    }
+    return chooseSafePlace(g, a, threat);
+  }
+
+  // --- critical needs: she stops and tends to herself ---
+
+  tendNeeds(dt) {
+    this.tendT -= dt;
+    if (this.tendT > 0 || this.task?.tend) return false;
+    this.tendT = 2;
+    const g = this.game;
+    const d = this.directive;
+    if (d.type === 'flee' || (d.type === 'leave' && d.mode === 'gone')) return false;
+    if (need(g, 'hunger') < 0.1) {
+      if (this.eatOwnFood()) this.say(say.starving());
+      else if (this.t - this.starveSaidAt > 120) {
+        this.starveSaidAt = this.t;
+        this.say(say.starvingNoFood());
+      }
+    }
+    if (need(g, 'energy') < 0.1 && this.t - this.restAt > 90 && !this.anyThreatClose() && this.task?.kind !== 'sleep') {
+      this.restAt = this.t;
+      this.startSit(null, 25);
+      if (this.task) this.task.tend = true;
+      this.say(say.exhausted(), { force: true });
+      return true;
     }
     return false;
+  }
+
+  // Eat from her own pack (the mind picks what she likes; else the sensible choice).
+  eatOwnFood() {
+    const m = this.actor.mind;
+    if (typeof m?.tryEat === 'function') {
+      const id = safe('mind.tryEat', () => m.tryEat({ force: true }), null);
+      if (id) return id;
+    }
+    const food = this.bestFood(false);
+    return food && this.consume(food) ? food : null;
   }
 
   // --- 3 support ---
@@ -361,6 +698,7 @@ export class Behavior {
     const a = this.actor;
     const p = g.player;
     if (!p || p === a || !isActorAlive(p) || !(p.maxHp > 0) || p.hp / p.maxHp >= SUPPORT_HP) return false;
+    if (this.own.exclusive() || !this.playerWelcome()) return false;
     const d = dist(a.x, a.y, p.x, p.y);
     if (d > 300) return false;
     if (d > 110 || !lineOfSight(g, a.x, a.y - 8, p.x, p.y - 8)) {
@@ -448,6 +786,12 @@ export class Behavior {
     const d = this.directive;
     const g = this.game;
     switch (d.type) {
+      case 'independent':
+      case 'leave':
+        return this.idleAnchor || this.actor;
+      case 'keep_away':
+      case 'wait_outside':
+        return this.actor;
       case 'follow':
         return this.followTarget() || this.actor;
       case 'stay':
@@ -487,10 +831,13 @@ export class Behavior {
     const gp = this.guardPoint();
     const guarding = this.directive.type === 'guard';
     const radius = guarding ? Math.max(ATTACK_RADIUS, this.directive.radius || 0) : ATTACK_RADIUS;
+    // Attack mode is an order for when she travels with the player; living her own
+    // day she only fights what threatens her.
+    const ownDay = this.directive.type === 'independent' || this.directive.type === 'leave';
     let t = selectTarget({
       game: g,
       self: a,
-      stance: this.stance,
+      stance: ownDay && this.stance === 'attack' ? 'defend' : this.stance,
       player: g.player,
       now: this.t,
       memory: this.memory,
@@ -528,6 +875,10 @@ export class Behavior {
   combat(dt) {
     const g = this.game;
     const a = this.actor;
+    if (this.own.exclusive()) {
+      this.target = null;
+      return false;
+    }
     if (this.retreatT > 0) {
       const p = g.player;
       if (p && p !== a) {
@@ -546,7 +897,12 @@ export class Behavior {
       if (this.stance === 'passive' && this.combatAI.keepAway(dt)) return true;
       return false;
     }
-    this.combatAI.fight(this.target, dt, { fallback: this.fallback });
+    // Someone she trusted turned on her: Binding Light first, then she answers.
+    if (this.target === g.player && this.bindCd <= 0 && dist(a.x, a.y, g.player.x, g.player.y) < BIND_RANGE) {
+      const r = this.bind(g.player);
+      if (r.ok) return true;
+    }
+    this.combatAI.fight(this.target, dt, {});
     return true;
   }
 
@@ -559,7 +915,7 @@ export class Behavior {
 
   taskShouldYield() {
     const t = this.task;
-    if (!t || t.kind !== 'sit' || t.phase !== 'seated') return false;
+    if (!t || t.kind !== 'sit' || t.phase !== 'seated' || t.tend) return false;
     const d = this.directive;
     if (d.type === 'follow') {
       const target = this.followTarget();
@@ -597,10 +953,14 @@ export class Behavior {
     return asleep ? h >= 19 || h < 6 : h >= 19 || h < 5.5;
   }
 
+  // Her bed: the one her plans name (her own at the cottage while she trusts the
+  // player, a room at the Ember Kettle otherwise), else her cottage bed.
   lyraBed() {
     const g = this.game;
     const a = this.actor;
+    const at = a.mind?.agenda?.sleepAt;
     return (
+      (at ? safe('objects.get', () => g.objects?.get?.(at)) : null) ||
       safe('objects.get', () => g.objects?.get?.('lyra_bed')) ||
       safe('objects.nearest', () => g.objects?.nearest?.((o) => o.objType === 'bed' && /lyra/i.test(`${o.id} ${o.name}`), a.x, a.y, Infinity)) ||
       null
@@ -621,7 +981,17 @@ export class Behavior {
     const d = this.directive;
     switch (d.type) {
       case 'follow':
+        if (this.followRisk(dt)) return true;
         return this.doFollow(dt, d.distance);
+      case 'independent':
+      case 'flee':
+      case 'leave':
+      case 'keep_away':
+      case 'wait_outside': {
+        const busy = this.own.run(dt);
+        if (!busy) this.idleAnchor = this.game.player || this.actor;
+        return busy;
+      }
       case 'stay':
         return this.doHold(d.x, d.y, dt);
       case 'wait':
@@ -648,6 +1018,27 @@ export class Behavior {
         this.directive = { ...FOLLOW_DEFAULT };
         return false;
     }
+  }
+
+  // Following the player into a place too dangerous for her: she stops at the
+  // entrance and waits outside, and says so (DESIGN §16.5).
+  followRisk(dt) {
+    this.riskT -= dt;
+    if (this.riskT > 0) return false;
+    this.riskT = 0.5;
+    const g = this.game;
+    const a = this.actor;
+    const target = this.followTarget();
+    if (!target || target !== g.player) return false;
+    const loc = dangerousPlaceAt(g, target.x, target.y);
+    if (!loc || inBounds(loc, a.x, a.y) || !isTooRisky(g, a, loc)) return false;
+    const r = this.setDirective({ type: 'wait_outside', location: loc.id, then: plainDirective(this.directive), risky: true }, { quiet: true });
+    if (!r.ok) return false;
+    if (this.t - this.riskSaidAt > 25) {
+      this.riskSaidAt = this.t;
+      this.say(r.message, { force: true });
+    }
+    return true;
   }
 
   doFollow(dt, distance = 'normal') {
@@ -895,7 +1286,8 @@ export class Behavior {
 
   idleLife(dt) {
     const d = this.directive;
-    const mode = d.type === 'free' ? 'free' : d.type === 'follow' || (d.type === 'guard' && d.target) ? 'follow' : 'stay';
+    const own = d.type === 'independent' || d.type === 'leave' || d.type === 'keep_away';
+    const mode = d.type === 'free' ? 'free' : d.type === 'follow' || (d.type === 'guard' && d.target) ? 'follow' : own ? 'own' : 'stay';
     if (mode === 'follow' && this.playerIdleT < PLAYER_IDLE_LIFE) {
       this.idle.reset();
       return;
@@ -916,6 +1308,16 @@ export class Behavior {
     let goal = null;
     let patrol = null;
     let explore = null;
+    let ownState = null;
+    // Self-preservation outranks orders: she will not walk into a place whose risk is
+    // over her limit; she goes as far as the entrance and waits there instead.
+    if (!opts.restoring && ['goto', 'explore', 'patrol', 'guard'].includes(d.type)) {
+      const risky = this.riskyDestination(d);
+      if (risky) {
+        const w = this.setDirective({ type: 'wait_outside', location: risky.id, risky: true, then: plainDirective(prev.type === 'follow' ? prev : FOLLOW_DEFAULT) }, { quiet: true });
+        return { ok: false, message: say.riskRefuse(placePhrase(risky)), waitingOutside: !!w.ok };
+      }
+    }
     switch (d.type) {
       case 'follow': {
         const ref = d.target ?? 'player';
@@ -972,6 +1374,8 @@ export class Behavior {
         break;
       }
       case 'job': {
+        const jobPlace = !opts.restoring && d.targetRef ? asLocation(g, d.targetRef) : null;
+        if (jobPlace && !inBounds(jobPlace, a.x, a.y) && isTooRisky(g, a, jobPlace)) return { ok: false, message: say.riskRefuse(placePhrase(jobPlace)) };
         if (DIRECTIVE_JOBS.includes(d.job)) {
           const alt = d.job === 'patrol' ? { type: 'patrol', location: d.targetRef || null } : d.targetRef ? { type: 'guard', target: d.targetRef } : { type: 'guard' };
           return this.setDirective(alt, opts);
@@ -1058,8 +1462,14 @@ export class Behavior {
         next = { type: 'free' };
         message = say.free();
         break;
-      default:
-        return { ok: false, message: "I'm not sure what you'd like me to do." };
+      default: {
+        if (!OWN_DIRECTIVES.includes(d.type)) return { ok: false, message: "I'm not sure what you'd like me to do." };
+        const r = this.own.setup(d, prev);
+        if (!r.ok) return r;
+        next = r.next;
+        message = r.message;
+        ownState = r.state;
+      }
     }
 
     // Commit.
@@ -1068,6 +1478,7 @@ export class Behavior {
       this.jobs.stop();
       if (next.type !== 'wait' && !opts.restoring) g.bus?.emit?.('job_failed', { actor: a, job: snap?.job ?? prev.job, reason: 'Stopped to do something else.', stopped: true });
     }
+    this.own.clear();
     this.cancelTask();
     this.idle.reset();
     if (next.type !== 'goto') this.steering.reset();
@@ -1076,11 +1487,32 @@ export class Behavior {
     this.goal = goal;
     this.patrol = patrol;
     this.explore = explore;
+    if (ownState) this.own.begin(ownState);
+    this.idleAnchor = null;
     this.gotoBlockedT = 0;
     this.holdReturning = false;
     this.freeReturning = false;
     if (!opts.silent) g.bus?.emit?.('directive_changed', { directive: plainDirective(next), previous: plainDirective(prev) });
     return { ok: true, message };
+  }
+
+  // The dangerous place a goto/explore/patrol/guard order would take her into, when
+  // it is over her limit and she is not in it already; else null.
+  riskyDestination(d) {
+    const g = this.game;
+    const a = this.actor;
+    let loc = null;
+    if (d.type === 'explore' || d.type === 'patrol') loc = d.location ? asLocation(g, d.location) : null;
+    else {
+      const ref = d.target;
+      if (ref == null || ref === '' || (d.type === 'guard' && (ref === 'player' || ref === PLAYER_ID))) return null;
+      const goal = safe('resolveGoal', () => this.resolveGoal(ref), null);
+      if (!goal) return null;
+      if (goal.entity && goal.entity.type === 'actor') return null; // going to someone, not somewhere
+      loc = goal.location && (goal.location.danger || 0) >= 1 ? goal.location : dangerousPlaceAt(g, goal.x, goal.y);
+    }
+    if (!loc || inBounds(loc, a.x, a.y)) return null;
+    return isTooRisky(g, a, loc) ? loc : null;
   }
 
   // The job directive as it stands now, with progress, so a wait can resume it.
@@ -1190,7 +1622,8 @@ export class Behavior {
     const prev = this.stance;
     if (m === prev) return { ok: true, message: say.stanceSame(m) };
     this.stance = m;
-    if (m === 'passive') {
+    if (m !== 'self_defense') this.autoSD = null;
+    if (m === 'passive' || m === 'self_defense') {
       this.focusTarget = null;
       this.target = null;
     }
@@ -1241,6 +1674,8 @@ export class Behavior {
   }
 
   retreat() {
+    // When the player is the danger, regrouping with them is no retreat: she runs.
+    if (this.playerIsDanger() && this.game.player) return this.setDirective({ type: 'flee', from: 'player' });
     this.clearFocus();
     this.target = null;
     this.cancelTask();
@@ -1251,6 +1686,65 @@ export class Behavior {
     this.retreatT = 6;
     this.steering.reset();
     return { ok: true, message: say.retreat() };
+  }
+
+  // Binding Light (DESIGN §16.9): roots someone in place for 3 s; 20 s cooldown.
+  bind(ref = null) {
+    const g = this.game;
+    const a = this.actor;
+    let t = null;
+    if (ref && typeof ref === 'object') t = ref;
+    else if (ref != null && String(ref).trim()) t = resolveEntity(g, String(ref), a);
+    else t = this.likelyThreat();
+    if (!t || t.type !== 'actor' || !isActorAlive(t)) return { ok: false, message: ref ? say.noSuchTarget(String(ref)) : say.noBindTarget() };
+    if (t === a) return { ok: false, message: say.refuseSelf() };
+    const who = nameOf(g, t);
+    if (this.bindCd > 0) return { ok: false, message: say.bindCooldown(this.bindCd) };
+    if (t !== g.player && isInnocent(g, a, t) && !this.isDefendingAgainst(t) && !(t.target && t.target.type === 'actor')) return { ok: false, message: say.bindRefuse(who) };
+    if (dist(a.x, a.y, t.x, t.y) > BIND_RANGE || !lineOfSight(g, a.x, a.y - 8, t.x, t.y - 8)) return { ok: false, message: say.bindTooFar(who) };
+    t.rootTime = Math.max(t.rootTime || 0, BIND_SECONDS);
+    this.bindCd = BIND_COOLDOWN;
+    this.bound = { target: t, fxT: 0 };
+    a.faceToward(t.x, t.y);
+    a.setState('cast', 0.45);
+    this.steering.stop();
+    // A ring of arcane light around their feet, a flash, a chime.
+    for (let i = 0; i < 10; i++) {
+      const ang = (i / 10) * Math.PI * 2;
+      safe('particles.emit', () => g.particles?.emit?.('magic', t.x + Math.cos(ang) * 11, t.y - 2 + Math.sin(ang) * 5, { count: 2 }));
+    }
+    safe('particles.emit', () => g.particles?.emit?.('magic', a.x + (t.x - a.x) * 0.1, a.y - 14, { count: 6 }));
+    safe('lighting.flash', () => g.lighting?.flash?.({ x: t.x, y: t.y - 8, r: 52, color: '#b9a6ff', intensity: 1, duration: 0.6 }));
+    safe('audio.play', () => g.audio?.play?.('magic', { x: t.x, y: t.y }));
+    safe('bubbles.icon', () => g.bubbles?.icon?.(t, '!'));
+    const text = say.bind(who);
+    this.say(text, { force: true, kind: 'shout', target: t });
+    g.bus?.emit?.('bind', { source: a, target: t, seconds: BIND_SECONDS });
+    if (t === g.player || t.profile) {
+      safe('mind.remember', () =>
+        a.mind?.remember?.(t === g.player ? 'I had to bind you with Binding Light to stop you.' : `I bound ${t.name || who} with Binding Light.`, { importance: 6, about: [t.id], type: 'event', tags: ['binding_light'] }),
+      );
+    }
+    return { ok: true, message: text };
+  }
+
+  // A sharp warning (DESIGN §16.9): a shouted bubble, a speech event, a memory.
+  warn(ref = null, text = null) {
+    const g = this.game;
+    const a = this.actor;
+    let t = null;
+    if (ref && typeof ref === 'object') t = ref;
+    else if (ref != null && String(ref).trim()) t = resolveEntity(g, String(ref), a);
+    else t = g.player;
+    if (!t || t.type !== 'actor') return { ok: false, message: say.noSuchTarget(String(ref ?? 'them')) };
+    if (t === a) return { ok: false, message: "Warn myself? Consider me warned." };
+    const who = nameOf(g, t);
+    const words = String(text || '').trim().slice(0, 140) || (t === g.player ? say.warnPlayer() : say.warnOther(who));
+    a.faceToward(t.x, t.y);
+    safe('bubbles.icon', () => g.bubbles?.icon?.(a, 'anger'));
+    this.say(words, { force: true, kind: 'shout', target: t });
+    safe('mind.remember', () => a.mind?.remember?.(`I warned ${t === g.player ? 'you' : t.name || who}: "${words}"`, { importance: 6, about: [t.id], type: 'event', tags: ['warning'] }));
+    return { ok: true, message: words };
   }
 
   emote(name) {
@@ -1412,6 +1906,7 @@ export class Behavior {
     const a = this.actor;
     if (a.downed) return 'downed';
     if (this.task?.kind === 'sleep' && this.task.phase === 'asleep') return 'sleeping';
+    if (this.disengaging) return 'getting out of the fight';
     if (this.retreatT > 0) return 'retreating';
     const t = this.currentTarget;
     if (t) return `fighting ${nameOf(g, t)}`;
@@ -1449,6 +1944,12 @@ export class Behavior {
         return `exploring ${placePhrase(this.explore?.loc).name}`;
       case 'free':
         return idle || 'wandering nearby';
+      case 'independent':
+      case 'flee':
+      case 'leave':
+      case 'keep_away':
+      case 'wait_outside':
+        return (d.type === 'independent' || d.type === 'leave' ? idle : '') || this.own.status() || 'living her own day';
       default:
         return 'thinking';
     }
@@ -1456,7 +1957,9 @@ export class Behavior {
 
   serialize() {
     const d = this.directive;
-    const out = { v: 1, stance: this.stance, directive: plainDirective(d) };
+    // Self-defense she switched on in the heat of a fight is not a standing stance.
+    const stance = this.autoSD ? this.autoSD.prev || 'defend' : this.stance;
+    const out = { v: 1, stance, directive: plainDirective(d) };
     if (d.type === 'job') out.job = this.jobs.serialize();
     if (d.type === 'wait') out.waitLeft = Math.round(this.waitLeft * 10) / 10;
     if (d.type === 'patrol' && this.patrol) out.patrolIndex = this.patrol.i;

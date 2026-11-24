@@ -3,8 +3,11 @@ import { goalPhrase, dist } from '../behavior/util.js';
 import { say } from '../behavior/lines.js';
 import { isFriend, isThreat } from '../behavior/combat_ai.js';
 
-// Core orders: where Lyra goes and how she fights. Every action returns
-// { ok, message } with the message in her voice (an acknowledgement, or why not).
+// Core orders: where Lyra goes and how she fights, plus what she does to keep
+// herself safe (flee, keep_distance, bind, warn, wait_outside: DESIGN §16.9). Every
+// action returns { ok, message } with the message in her voice (an acknowledgement,
+// or why not). Requests from the player pass her consent gate before they get here;
+// her own choices (source 'self' / 'claude') do not.
 
 const ABSENT = { ok: false, message: "I'm not here right now." };
 
@@ -24,7 +27,7 @@ const answer = (m, ctx, results) => firstMessage(results);
 export const coreCommandsPlugin = {
   id: 'core_commands',
   name: 'Core commands',
-  description: 'Follow, stay, wait, travel, combat modes, attack, retreat, guard, patrol, explore, free will, emotes.',
+  description: 'Follow, stay, wait, travel, combat modes, attack, retreat, guard, patrol, explore, free will, emotes; flee, keep distance, Binding Light, warnings, waiting outside.',
 
   actions: {
     follow: {
@@ -79,8 +82,8 @@ export const coreCommandsPlugin = {
       },
     },
     set_combat_mode: {
-      description: 'Combat stance: attack (engage everything that is not a friend), defend (protect the player and herself), passive (never attack, still heal).',
-      params: { value: "'attack' | 'defend' | 'passive'" },
+      description: 'Combat stance: attack (engage everything that is not a friend), defend (protect the player and herself), passive (never attack, still heal), self_defense (fight only whoever attacks her, the player included).',
+      params: { value: "'attack' | 'defend' | 'passive' | 'self_defense'" },
       run(args, ctx) {
         const b = body(ctx);
         if (!b) return ABSENT;
@@ -158,6 +161,51 @@ export const coreCommandsPlugin = {
         return b ? b.sit() : ABSENT;
       },
     },
+    flee: {
+      description: 'Run to safety (the guards, the inn, the chapel), away from a threat, until she is safe.',
+      params: { target: 'who to run from (default: the threat, or the player when the player is the danger)', value: 'where to run (a location; default the safest place)' },
+      run(args, ctx) {
+        const b = body(ctx);
+        if (!b) return ABSENT;
+        return b.setDirective({ type: 'flee', from: cleanRef(args.target), to: args.value || null });
+      },
+    },
+    keep_distance: {
+      description: 'Keep away from someone (default the player): never closer than the given number of tiles, away from corners.',
+      params: { target: 'who to keep away from (default the player)', amount: 'tiles (default 4)' },
+      run(args, ctx) {
+        const b = body(ctx);
+        if (!b) return ABSENT;
+        return b.setDirective({ type: 'keep_away', from: cleanRef(args.target) || 'player', tiles: args.amount ?? 4 });
+      },
+    },
+    bind: {
+      description: 'Binding Light: root someone in place for 3 seconds (20 s cooldown). For stopping a threat, or the player when the player is the danger.',
+      params: { target: 'who to bind (default: the current threat)' },
+      run(args, ctx) {
+        const b = body(ctx);
+        if (!b) return ABSENT;
+        return b.bind(cleanRef(args.target));
+      },
+    },
+    warn: {
+      description: 'A sharp spoken warning to someone (default the player); she remembers it.',
+      params: { target: 'who to warn (default the player)', value: 'the words (optional)' },
+      run(args, ctx) {
+        const b = body(ctx);
+        if (!b) return ABSENT;
+        return b.warn(cleanRef(args.target), args.value);
+      },
+    },
+    wait_outside: {
+      description: 'Wait near the entrance of a place instead of going in (default: the place the player is in).',
+      params: { target: 'the place (default the one the player is in)' },
+      run(args, ctx) {
+        const b = body(ctx);
+        if (!b) return ABSENT;
+        return b.setDirective({ type: 'wait_outside', location: cleanRef(args.target) });
+      },
+    },
   },
 
   // Order matters: specific phrasings first (stances before "attack <x>", waits
@@ -207,11 +255,71 @@ export const coreCommandsPlugin = {
       answer,
     },
     {
+      id: 'core.flee',
+      patterns: [
+        cmd(String.raw`(?:run|flee|escape|get|hurry|make a run for it)\s+(?:away\s+)?(?:back\s+)?to\s+(?:the\s+)?(?<to>inn|tavern|kettle|ember kettle|chapel|guardhouse|guards?|town|village|safety|somewhere safe)`),
+        cmd(String.raw`(?:run away|flee|run for (?:it|your life)|save yourself|get to safety|get out of (?:here|there)|escape|hide|run)`),
+      ],
+      command: true,
+      confidence: 0.9,
+      actions: (m) => {
+        const to = m.groups?.to;
+        const place = !to || /safety|somewhere safe/i.test(to) ? null : /guard/i.test(to) ? 'guardhouse' : /town|village/i.test(to) ? 'town_square' : /inn|tavern|kettle/i.test(to) ? 'ember_kettle' : to;
+        return [act('flee', null, place)];
+      },
+      answer,
+    },
+    {
       id: 'core.retreat',
-      patterns: [cmd(String.raw`(?:retreat|fall back|pull back|back off|disengage|regroup|run(?: away)?|flee|get out of there|run for it|withdraw|abort|get back here now|leave it)`)],
+      patterns: [cmd(String.raw`(?:retreat|fall back|pull back|back off|disengage|regroup|withdraw|abort|get back here now|leave it)`)],
       command: true,
       confidence: 0.92,
       actions: () => [act('retreat')],
+      answer,
+    },
+    {
+      id: 'core.bind',
+      patterns: [
+        cmd(String.raw`(?:use\s+)?binding light(?:\s+on\s+(?<who>[a-z][\w' -]{0,30}?))?`),
+        cmd(String.raw`(?:bind|root|snare|immobili[sz]e)\s+(?<who>[a-z][\w' -]{0,30}?)(?:\s+in place)?`),
+        cmd(String.raw`(?:hold|pin|freeze)\s+(?<who>that [\w'-]+|it|him|her|them|'?em)\s+(?:in place|down|still)`),
+      ],
+      command: true,
+      confidence: 0.88,
+      actions: (m) => [act('bind', cleanRef(m.groups?.who))],
+      answer,
+    },
+    {
+      id: 'core.warn',
+      patterns: [cmd(String.raw`(?:warn|threaten)\s+(?<who>[a-z][\w' -]{0,30}?)(?:\s+off)?`), cmd(String.raw`tell\s+(?<who>[a-z][\w' -]{0,30}?)\s+to\s+(?:back off|stay away|leave)`)],
+      command: true,
+      confidence: 0.84,
+      actions: (m) => [act('warn', cleanRef(m.groups?.who))],
+      answer,
+    },
+    {
+      id: 'core.keep_distance',
+      patterns: [
+        cmd(String.raw`(?:keep (?:your )?distance|stay away|keep away|keep clear|stay clear)\s+from\s+(?<who>[a-z][\w' -]{0,30}?)`),
+        cmd(String.raw`(?:don'?t|do not) (?:come|get) (?:near|close to)\s+(?<who>me|us|[a-z][\w' -]{0,30}?)`),
+      ],
+      command: true,
+      confidence: 0.86,
+      actions: (m) => {
+        const w = cleanRef(m.groups?.who);
+        return [act('keep_distance', !w || /^(me|us)$/i.test(w) ? 'player' : w, null, 5)];
+      },
+      answer,
+    },
+    {
+      id: 'core.wait_outside',
+      patterns: [
+        cmd(String.raw`(?:wait|stay|hang back|keep watch)\s+(?:for me\s+)?(?:right\s+)?(?:outside|out here|out there|by the (?:door|entrance|gate))(?:\s+(?:of\s+)?(?:the\s+)?(?<place>[a-z][\w' -]{1,40}?))?`),
+        cmd(String.raw`(?:don'?t|do not|no need to) (?:come|follow me) (?:in|inside)(?:\s+(?:the\s+)?(?<place>[a-z][\w' -]{1,40}?))?`),
+      ],
+      command: true,
+      confidence: 0.88,
+      actions: (m) => [act('wait_outside', cleanRef(m.groups?.place))],
       answer,
     },
     {

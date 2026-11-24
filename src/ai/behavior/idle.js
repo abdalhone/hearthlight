@@ -9,7 +9,8 @@ import { fireSeat } from './tasks.js';
 //
 // Modes: 'follow' (you stand idle; stays within a few tiles of you),
 //        'stay'   (holding a spot; nothing that moves her),
-//        'free'   (her own will; roams within ~8 tiles of you).
+//        'free'   (her own will; roams within ~8 tiles of you),
+//        'own'    (living her own day; roams around her own spot, b.idleAnchor).
 
 const DIRS = ['down', 'left', 'right', 'up'];
 const GATHER_TYPES = ['herb', 'berry_bush', 'moonpetal'];
@@ -57,7 +58,7 @@ export class IdleLife {
     this.cooldown -= dt;
     if (this.cooldown > 0) return false;
     this.act = this.choose(mode);
-    this.cooldown = mode === 'free' ? rand(0.6, 2) : rand(2, 4.5);
+    this.cooldown = mode === 'free' || mode === 'own' ? rand(0.6, 2) : rand(2, 4.5);
     return !!this.act;
   }
 
@@ -70,21 +71,23 @@ export class IdleLife {
     const p = g.player;
     const clock = g.clock;
     const night = !!clock?.isNight || clock?.phase === 'dusk';
-    const anchor = mode === 'stay' ? a : p || a;
-    const reach = mode === 'free' ? 9 * TILE : 5 * TILE;
+    const own = mode === 'own';
+    const anchor = mode === 'stay' ? a : own ? b.idleAnchor || a : p || a;
+    const reach = mode === 'free' || own ? 9 * TILE : 5 * TILE;
+    const roams = mode === 'free' || own;
     const opts = [];
     opts.push(['look', 3]);
-    if (p && p !== a && dist(a.x, a.y, p.x, p.y) < 10 * TILE) opts.push(['glance', 2]);
+    if (p && p !== a && dist(a.x, a.y, p.x, p.y) < 10 * TILE && (!own || b.playerWelcome())) opts.push(['glance', 2]);
     if (b.t - this.humAt > 25) opts.push(['hum', 1.2]);
     if (mode !== 'stay') {
       const chilly = night || g.clock?.weather?.type === 'rain';
       const fire = chilly ? this.nearestFire(anchor, reach) : null;
       if (fire) opts.push([{ kind: 'fire', fire }, 5]);
-      const cat = b.t - this.catAt > 40 ? this.nearestCat(anchor, mode === 'free' ? 10 * TILE : 6 * TILE) : null;
+      const cat = b.t - this.catAt > 40 ? this.nearestCat(anchor, roams ? 10 * TILE : 6 * TILE) : null;
       if (cat) opts.push([{ kind: 'cat', cat }, 3]);
       if (b.t - this.flowerAt > 50 && !g.map?.isIndoors?.(a.x, a.y)) opts.push(['flower', 1]);
     }
-    if (mode === 'free') {
+    if (roams) {
       opts.push(['wander', 3]);
       opts.push(['rest', 1.2]);
       const gather = this.nearestGatherable(a, 6 * TILE);
@@ -145,7 +148,7 @@ export class IdleLife {
         act.label = 'resting';
         break;
       case 'wander': {
-        const spot = this.wanderSpot();
+        const spot = this.wanderSpot(mode === 'own' ? b.idleAnchor : null);
         if (!spot) return null;
         act.spot = spot;
         act.label = 'wandering nearby';
@@ -367,12 +370,13 @@ export class IdleLife {
     return g.entities?.nearest?.(anchor.x, anchor.y, r, (e) => e.type === 'pickup' && !e.removed) || null;
   }
 
-  // A walkable point within ~8 tiles of the player, a few tiles from where she is.
-  wanderSpot() {
+  // A walkable point within ~8 tiles of the player (or of her own anchor), a few
+  // tiles from where she is.
+  wanderSpot(anchor = null) {
     const b = this.b;
     const g = b.game;
     const a = b.actor;
-    const p = g.player || a;
+    const p = anchor || g.player || a;
     for (let i = 0; i < 8; i++) {
       const ang = Math.random() * Math.PI * 2;
       const r = rand(2, 8) * TILE;

@@ -5,13 +5,16 @@ import { clamp, dist, tileOf, walkable, lineOfSight, isActorAlive, warnOnce, saf
 // and how she fights (range first, kite melee foes, dagger when cornered, never
 // shoot through walls or past the player).
 
-export const STANCES = ['attack', 'defend', 'passive'];
+export const STANCES = ['attack', 'defend', 'passive', 'self_defense'];
 export const ATTACK_RADIUS = 150; // attack mode scan radius around her (or the guard point)
 export const DEFEND_RADIUS = 90; // defend mode: hostiles this close to the player or her
 export const BOLT_COOLDOWN = 1.1;
 export const DAGGER_COOLDOWN = 0.55;
 const BOLT_SPEED = 220; // px/s, for leading moving targets
 const MEMORY_SECONDS = 9; // how long "it attacked you" stays relevant
+export const SELF_DEFENSE_SECONDS = 10; // how long someone who hit her stays a fair target
+const PRESSED_SECONDS = 3; // passive: only a foe hitting her right now, right here
+const PRESSED_RANGE = 40;
 
 // The one friend test (DESIGN §10): her mind's relationships decide. Without a
 // mind, the player, villagers and guards are friends.
@@ -27,6 +30,17 @@ export function isFriend(game, self, e) {
     }
   }
   return e === game.player || e.id === 'player' || e.faction === 'player' || e.faction === 'villager' || e.faction === 'guard';
+}
+
+// People and animals she never fights on her own initiative, whatever the stance
+// (DESIGN §16.4 values): villagers, guards, the cat, the chickens, anyone's pet.
+// Only someone actually attacking her in self_defense gets past this.
+export function isInnocent(game, self, e) {
+  if (!e || e === game.player || e.id === 'player') return false;
+  if (e.faction === 'villager' || e.faction === 'guard' || e.profile) return true;
+  if (e.species === 'cat' || e.species === 'chicken' || e.pet === true) return true;
+  if (e.tags && typeof e.tags.has === 'function' && e.tags.has('pet')) return true;
+  return false;
 }
 
 export function isHostile(game, self, e) {
@@ -72,10 +86,12 @@ function isFightable(e, self) {
 // Choose who to fight right now, or null. ctx:
 // { game, self, stance, player, now, memory (Map entity -> {vsPlayer, vsSelf, byPlayer}),
 //   center {x,y} (guard point or her position), radius (attack scan), guardRadius?, current, focus }
+// Stances: attack (every non-friend nearby), defend (threats to the player or her),
+// passive (only a foe hitting her right now), self_defense (only whoever attacked
+// her, the player included: the one case that bypasses isFriend).
 export function selectTarget(ctx) {
   const { game, self, stance, player, now, memory, current, focus } = ctx;
   if (focus && isFightable(focus, self) && !isFriend(game, self, focus)) return focus;
-  if (stance === 'passive') return null;
   const list = game.entities?.list || game.entities?.all?.() || [];
   const cx = ctx.center?.x ?? self.x;
   const cy = ctx.center?.y ?? self.y;
@@ -88,14 +104,22 @@ export function selectTarget(ctx) {
     if (!isFightable(e, self)) continue;
     const ds = dist(self.x, self.y, e.x, e.y);
     if (ds > 280) continue;
-    if (isFriend(game, self, e)) continue;
     const rec = memory?.get(e);
+    const hitHerAgo = rec ? now - rec.vsSelf : Infinity;
+    const attackedHer = hitHerAgo < SELF_DEFENSE_SECONDS;
+    const selfDefense = stance === 'self_defense' && attackedHer;
+    if (!selfDefense && (isFriend(game, self, e) || isInnocent(game, self, e))) continue;
     const vsPlayer = (rec && now - rec.vsPlayer < MEMORY_SECONDS) || (player && (e.target === player || e.ai?.target === player));
     const vsSelf = (rec && now - rec.vsSelf < MEMORY_SECONDS) || e.target === self || e.ai?.target === self;
     const byPlayer = rec && now - rec.byPlayer < MEMORY_SECONDS;
     let eligible = false;
     if (stance === 'attack') {
       eligible = dist(cx, cy, e.x, e.y) <= scan || ((vsPlayer || vsSelf) && ds <= 220);
+    } else if (stance === 'self_defense') {
+      eligible = attackedHer && ds <= 240;
+    } else if (stance === 'passive') {
+      // Self-preservation outranks the order: a foe biting her now gets the dagger.
+      eligible = hitHerAgo < PRESSED_SECONDS && ds <= PRESSED_RANGE;
     } else {
       // defend: threats that attack or approach the player or her, plus the player's fights
       if (vsPlayer || vsSelf || byPlayer) eligible = ds <= 240;
@@ -165,7 +189,7 @@ export class CombatAI {
     this.lastY = t.y;
   }
 
-  // One step of fighting `target`. opts: { fallback (low HP: hide behind the player) }
+  // One step of fighting `target`.
   fight(target, dt, opts = {}) {
     const b = this.b;
     const g = b.game;
@@ -176,19 +200,6 @@ export class CombatAI {
     const los = lineOfSight(g, a.x, a.y - 8, target.x, target.y - 6);
     const ranged = isRangedFoe(target);
     let moved = false;
-
-    if (opts.fallback && g.player && isActorAlive(g.player)) {
-      const p = g.player;
-      const ux = p.x - target.x;
-      const uy = p.y - target.y;
-      const ul = Math.hypot(ux, uy) || 1;
-      const gx = p.x + (ux / ul) * 20;
-      const gy = p.y + (uy / ul) * 20;
-      if (dist(a.x, a.y, gx, gy) > 10) {
-        st.moveTo(gx, gy, dt, { arrive: 8, run: 1.3 });
-        moved = true;
-      }
-    }
 
     if (!moved && d < 40 && !ranged) {
       if (this.kite(target)) {
@@ -276,7 +287,7 @@ export class CombatAI {
       const px = x0 + dx * t;
       const py = y0 + dy * t;
       if (Math.hypot(e.x - px, e.y - 6 - py) > 10) continue;
-      if (e === g.player || isFriend(g, a, e)) return e;
+      if (e === g.player || isFriend(g, a, e) || isInnocent(g, a, e)) return e;
     }
     return null;
   }

@@ -1,4 +1,4 @@
-import { parseQty } from './util.js';
+import { parseQty, line } from './util.js';
 
 // Helpers for the offline brain's command intents (DESIGN §11). Patterns are
 // anchored at the start of a clause and allow polite lead-ins ("hey lyra, could
@@ -42,13 +42,25 @@ export function parseDuration(text) {
   return null;
 }
 
-// Lyra's answer to a command: report a refusal first, else the last thing she said.
+// Lyra's answer to a command. When she refused (her consent gate said no), the
+// answer is her refusal and never an acknowledgement; then any other problem;
+// else the last thing she said.
 export function firstMessage(results) {
   if (!Array.isArray(results) || !results.length) return null;
+  const refused = results.find((r) => r && r.refused);
+  if (refused) return refused.message || refusalLine(refused.verdict);
   const bad = results.find((r) => r && r.ok === false && r.message);
   if (bad) return bad.message;
   for (let i = results.length - 1; i >= 0; i--) if (results[i]?.message) return results[i].message;
   return null;
+}
+
+// A refusal with no words attached: say no, and why when the verdict says.
+export function refusalLine(verdict) {
+  const why = Array.isArray(verdict?.reasons) ? String(verdict.reasons[0] || '').trim() : '';
+  const counter = verdict?.decision === 'counter';
+  if (why) return `${counter ? 'Not like that' : 'No'} — ${why.replace(/[.!]+$/, '')}.`;
+  return line('refuse.plain', ["No. Not this time.", "I'd rather not.", "No. Ask me something else.", "That's a no from me."]);
 }
 
 // Strip pronouns and filler from a captured reference ("that wolf" stays; "it" -> null).
