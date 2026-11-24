@@ -1,9 +1,11 @@
-// Small health bars over whoever was just hurt (the author: "the spells do not do any
-// damage" — hits must read). A creature or a boss that takes a blow shows a bar over its
-// head: what is left, a pale stretch for what it just lost (draining after a beat), and a
-// white blink on the hit. A villager or Lyra who is hurt shows a thinner, quieter bar.
-// Bars fade a few seconds after the last hit. Drawn in screen space over the light map,
-// so they read at night; never over the player (the HUD has their health).
+// Small health bars under whoever was just hurt (the author: "the spells do not do any
+// damage" — hits must read). A creature or a boss that takes a blow shows a bar at its
+// feet (over its head rise the damage numbers, and names, speech and icons sit): what
+// is left, a pale stretch for what it just lost (draining after a beat), and a white
+// blink on the hit. A villager or Lyra who is hurt shows a thinner, quieter bar. Bars
+// fade a few seconds after the last hit. Drawn in screen space over the light map and
+// the speech, so they read at night and in a crowd; never under the player (the HUD has
+// their health).
 //
 //   new HealthBars(game)      listens for 'damage' and 'death' on game.bus
 //   bars.draw(ctx, renderer, dt)
@@ -27,14 +29,6 @@ function friendly(game, a) {
   } catch {
     return false;
   }
-}
-
-function headOf(a) {
-  if (Number.isFinite(a.headHeight)) return a.headHeight;
-  if (a.boss) return Math.max(30, (a.radius || 10) * 2.6 + 8);
-  if (a.state === 'downed' || a.downed) return 12;
-  if (a.kind === 'animal' || a.kind === 'monster') return 15;
-  return 25;
 }
 
 export class HealthBars {
@@ -110,10 +104,12 @@ export class HealthBars {
       const w = Math.round(Math.max(worldW * s, (b.friend ? 26 : 32) * dpr));
       const h = Math.round(Math.max((b.friend ? 2 : 3) * dpr, (b.friend ? 1.5 : 2.2) * s));
       const pad = Math.max(1, Math.round(dpr));
+      // Under the feet (below the shadow): the space over a head belongs to names,
+      // speech, icons and the damage numbers rising out of the hit.
       const cx = (a.x - r.ox) * s - r.subX;
-      const top = (a.y - headOf(a) - (a.z || 0) - 4 - r.oy) * s - r.subY;
+      const top = (a.y + (a.boss ? 6 : 3) - r.oy) * s - r.subY;
       const x = Math.round(cx - w / 2);
-      const y = Math.round(top - h);
+      const y = Math.round(top);
       ctx.globalAlpha = alpha;
       // frame
       ctx.fillStyle = 'rgba(12, 8, 20, 0.85)';

@@ -584,15 +584,25 @@ export class Bubbles {
     }
   }
 
-  // The keep-outs plus the player's and Lyra's bodies on screen (device px), as fixed rects.
+  // The keep-outs plus the bodies a bubble must not hide (device px), as fixed rects: the
+  // player and Lyra, and up to four foes just hit (the fight is what the screen is about).
   _partyBodies(r, W, H, ko) {
     const out = this._fixed || (this._fixed = []);
     out.length = 0;
     for (let i = 0; i < ko.length; i++) out.push(ko[i]);
-    const pool = this._bodyRects || (this._bodyRects = [{ fixed: true }, { fixed: true }]);
+    const pool = this._bodyRects || (this._bodyRects = Array.from({ length: 6 }, () => ({ fixed: true })));
     const g = this.game;
-    const party = [g?.player, g?.companion];
-    for (let k = 0; k < 2; k++) {
+    const party = this._party || (this._party = []);
+    party.length = 0;
+    party.push(g?.player, g?.companion);
+    const bars = g?.renderer?.healthBars?.bars;
+    if (bars?.size) {
+      for (const [a, b] of bars) {
+        if (party.length >= pool.length) break;
+        if (!b.friend && a !== g.player && a !== g.companion) party.push(a);
+      }
+    }
+    for (let k = 0; k < party.length; k++) {
       const e = party[k];
       if (!e || e.removed || e.hidden || !Number.isFinite(e.x)) continue;
       const ax = this._dx(r, e.x);
@@ -600,9 +610,10 @@ export class Bubbles {
       const foot = this._dy(r, e.y) + 2 * r.scale;
       if (ax < -8 || ax > W + 8 || foot < 0 || top > H) continue;
       const o = pool[k];
-      o.x = ax - 6 * r.scale;
+      const half = Math.max(6, Math.min(24, e.radius || 6)) * r.scale;
+      o.x = ax - half;
       o.y = top;
-      o.w = 12 * r.scale;
+      o.w = 2 * half;
       o.h = Math.max(0, foot - top);
       out.push(o);
     }
