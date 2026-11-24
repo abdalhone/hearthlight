@@ -16,7 +16,8 @@ import { parseMessage, nluEnv, AMOUNT_FREE, COMMAND_THRESHOLD } from './nlu.js';
 import { LocalBrain, usedMemories } from './local_brain.js';
 import { ProviderSet, BrainError, toBrainError, PROVIDER_LABELS } from './providers.js';
 import { buildChatPrompt, buildRules, buildReflectionTask, buildConversationTask, RESPONSE_SCHEMA, REFLECTION_SCHEMA, CONVERSATION_SCHEMA, clip } from './prompt.js';
-import { coerceResponse, coerceReflection, coerceConversation, dedupeActions, MAX_ACTIONS } from './claude_brain.js';
+import { coerceResponse, coerceReflection, coerceConversation, dedupeActions, MAX_ACTIONS, extractJson } from './claude_brain.js';
+import { coerceMemoryEdits, applyMemoryEdits } from '../mind/memory_edits.js';
 import { applyEffects, logConversation, resolvePerson } from './effects.js';
 import { VILLAGERS } from './soul_fallback.js';
 import { Voice } from './voice.js';
@@ -488,7 +489,9 @@ export class Brain {
       }
       const tools = toolMax > 0 ? this._tools(call).slice(0, toolMax) : null;
       const raw = await provider.complete({ rules, task: context, schema: RESPONSE_SCHEMA, tier: g.settings?.modelTier || 'quick', tools: tools && tools.length ? tools : null });
-      result = this._applyClaude(coerceResponse(raw, { actionNames: g.actions?.names?.() || null, maxActions: MAX_ACTIONS }), turn, provider.id, call);
+      const resp = coerceResponse(raw, { actionNames: g.actions?.names?.() || null, maxActions: MAX_ACTIONS });
+      resp.memory_edits = memoryEditsOf(raw);
+      result = this._applyClaude(resp, turn, provider.id, call);
       this.lastError = null;
     } catch (e) {
       this.busy = false;
@@ -594,9 +597,24 @@ export class Brain {
     const items = call?.items || new Map();
     resp.chips = (resp.used_memories || []).filter((id) => items.has(id)).slice(0, 4).map((id) => ({ id, label: items.get(id) }));
     this._learn(resp.knowledge);
+    resp.edited = this._editMemories(resp.memory_edits, call);
     this._deliver(resp, providerId);
     this._apologyEvent(turn.parsed, null, resp);
     return { say: resp.say, thought: resp.thought, actions: turn.executed.concat(ran), provider: providerId, memories: resp.chips };
+  }
+
+  // Her own edits to her memory (DESIGN §17.4), only for ids in what this reply was shown
+  // (the recall context and the tools' results): an id she was not shown is ignored.
+  _editMemories(edits, call) {
+    const mind = this.game.companion?.mind;
+    if (!mind || !Array.isArray(edits) || !edits.length) return [];
+    const allowed = new Set(call?.items ? [...call.items.keys()].map(String) : []);
+    try {
+      return applyMemoryEdits(mind, edits, { allowed, by: 'claude' });
+    } catch (err) {
+      console.error('[brain] memory edits failed', err);
+      return [];
+    }
   }
 
   // Knowledge from a reply: theories stay beliefs, never facts (DESIGN §17.2).
@@ -969,6 +987,20 @@ export class Brain {
     if (typeof d.why === 'string') this.lastCompanionshipReason = d.why.slice(0, 200);
     this.barks.deserialize(d.barks);
   }
+}
+
+// "memory_edits" from a raw reply (coerceResponse keeps only the round-2 fields).
+function memoryEditsOf(raw) {
+  let data = raw;
+  if (typeof raw === 'string') {
+    try {
+      data = extractJson(raw);
+    } catch {
+      data = null;
+    }
+  }
+  if (Array.isArray(data)) data = data.find((x) => x && typeof x === 'object' && !Array.isArray(x)) || null;
+  return coerceMemoryEdits(data?.memory_edits ?? data?.memoryEdits ?? []);
 }
 
 // A tool result small enough to send back: plain data when it fits, else clipped JSON text.
