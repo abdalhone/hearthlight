@@ -1596,3 +1596,43 @@ notices and has opinions (berserk frightens her).
 - Grief is real and lasting: family and friends mourn (their days change, their lines
   change), the village talks, the Moot meets, the dead person's work goes undone or
   passes to someone else.
+
+### 29.1 How it is built (`src/murder/*`, `game.murder`; UI `src/ui/murder_view.js`)
+
+- **Knowing** (`witness.js`): `look(game, seer, x, y)` → `{ clarity: 'clear'|'glimpse' }` or
+  null: awake and up, the same space (both outdoors or the same building), within range
+  (150 px by day falling to 56 px in the dark, 118 px under a lit lamp or fire, 210 px in a
+  room, 40 px for Wenna), and a line of sight (walls block it; two trees in the way block
+  it). Clear = close, or near in good light: they know who. `combat.damage` asks
+  `murder.screenCrime()` before recording a crime: a blow nobody saw is no crime yet; the
+  victim knows and tells the first person who reaches them, or the watch once up. Lyra's
+  perception and autonomy, and the village's gossip, only take what was seen.
+- **The finishing blow**: the attack button over a downed villager starts a held strike
+  (`FINISH_HOLD` 1.5 s, a ring closing over them); the first time, a plain warning
+  (`flags.finisherWarned`). Never Lyra, never Pip or Tansy. `murder.kill(v)` →
+  `villageLife.markGone(id, { cause: 'killed', keepBody: true })`; the body lies still.
+- **Seen**: wanted (`player.crime = { level: 3, kind: 'murder' }`), the cries, the bell,
+  `crime {kind: 'murder'}`, rumor `murder`, opinions to the floor, shops refuse, Lyra goes
+  (`murdered_villager` deed → `gone`). **Unseen**: nothing; §28 runs.
+- **Bodies**: lift (`survival.startCarry`), and lay down / sink in the lake (back on the
+  shore in 2–4 days, found in the morning) / hide in the deep woods (a search of the wood
+  or Hess may find it) / leave in the ruins (kept). Seen carrying it: clearly → murder;
+  a glimpse → a clue. Found → covered, laid out on a bier in the chapel, a funeral next
+  dusk (a scene if the player is there), buried behind the chapel (a grave you can read).
+- **The watch** (`investigation.js`): evidence from real knowledge (witnesses, carrying,
+  over the body, last seen with, near the place and time, lies to anyone that sightings
+  contradict, harm done before, the answers given) → suspicion (noisy-OR; ×0.8 out past
+  the ward with nothing strong: "it could have been the bandits"). The lead (Rowan, else
+  Wys, Hess, Alder) comes to ask: truth, lie, dodge or confess per question; ≥ 0.6 →
+  "Go quietly / Run". The Moot (Alder, else Elda, Petra…) tries the stranger: guilty
+  (a confession, a clear eyewitness, or suspicion ≥ 0.75) → *outside* for 3 days, the
+  kept flame put out and barred, half the coin to the family; or not proven. Wanted and
+  never caught: the Moot judges in their absence.
+- **Grief and the world**: mourning (family 30 days, close friends 14, friends 4; family
+  stay home of a morning, pray at dusk), grief in their first words, the Moot meets, the
+  work passes (`HEIRS`, village_life `COVER`; the shop goes with it) or stays undone,
+  missions pass to a stand-in or the notice board (`STAND_INS`; a word for the dead is
+  skipped), the Maren thread goes through Petra, Mira or Elda if Aveline is gone, Lyra
+  goes home to her surviving parent. Events: `villager_killed`, `murder_witnessed`,
+  `body_hidden`, `body_found`, `murder_case`, `questioned`, `arrested`, `moot_met`,
+  `funeral`, `moot_verdict`. Saved in `save.murder`.
