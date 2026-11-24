@@ -1240,8 +1240,11 @@ export class Autonomy {
     const l = this.lyra();
     if (this._playerNear(140)) this._bindPlayer();
     const hurt = l?.maxHp ? l.hp / l.maxHp < 0.5 : false;
-    if (s.fear >= 40 || P.neuroticism >= 0.55 || hurt || P.agreeableness >= 0.8) {
-      this._act('flee', { target: 'player', value: this._runTo(this.player()) });
+    // Someone who can help is in reach: she runs to them, however brave she is.
+    const p = this.player();
+    const helper = l ? this._helpersNear(l, 30 * TILE, p)[0] || null : null;
+    if (helper || s.fear >= 40 || P.neuroticism >= 0.55 || hurt || P.agreeableness >= 0.8) {
+      this._act('flee', { target: 'player', value: this._runTo(p, helper) });
     } else {
       try {
         this.behavior()?.setStance?.('self_defense');

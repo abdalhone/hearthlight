@@ -139,7 +139,7 @@ export class Companion extends Actor {
       this.downedFor = 0;
       this.behavior.onDowned();
       const p = this.game.player;
-      if (p && Math.hypot(p.x - this.x, p.y - this.y) < 320) this.behavior.say(say.downed(), { force: true, kind: 'whisper' });
+      if (p && Math.hypot(p.x - this.x, p.y - this.y) < 320) this.behavior.say(say.downed(!!p && this.lastAttacker === p), { force: true, kind: 'whisper' });
     }
     if (this.state !== 'downed') this.setState('downed');
     this.moveIntent.x = 0;

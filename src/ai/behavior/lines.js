@@ -345,7 +345,9 @@ export const say = {
   victory() {
     return line('c.win', ['That settles that.', 'Clear!', "And stay down.", 'All clear. You alright?']);
   },
-  downed() {
+  downed(byYou = false) {
+    // Knocked down by the one standing over her: no asking them for a hand.
+    if (byYou) return line('downed.you', ['You… you did this…', 'Get… away from me…']);
     return line('downed', ["I'm down... help me up?", "Ugh... can't stand... a hand?"]);
   },
   revived(byPlayer) {

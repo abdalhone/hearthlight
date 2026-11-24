@@ -122,6 +122,17 @@ export function personalityFactors(personality = {}) {
   };
 }
 
+// Which way a tint leans: positive for warm feelings, negative for hard ones.
+function tintValence(tint) {
+  let v = 0;
+  for (const e in tint) {
+    const t = tint[e];
+    if (e === 'joy' || e === 'trust' || e === 'affection' || e === 'pride') v += t;
+    else if (e === 'sadness' || e === 'fear' || e === 'anger') v -= t;
+  }
+  return v;
+}
+
 export class Emotions {
   constructor(personality = {}) {
     // `values` is the plain object exposed as mind.emotions.
@@ -299,7 +310,11 @@ export class Emotions {
     const d = this.dominant();
     let label = null;
     let emoji = null;
-    if (d.excess >= 0.22 && d.value >= 0.4) {
+    // While a hard thing still weighs on her (a hurt, heavy tint), a passing bright feeling
+    // (a new place catching her eye) does not name her mood; a dark one can.
+    const heavy = this.tintMood && this.tintStrength() >= 0.12 && tintValence(this.tint) < 0;
+    const bright = d.name === 'joy' || d.name === 'curiosity' || d.name === 'trust' || d.name === 'affection' || d.name === 'pride' || d.name === 'surprise';
+    if (d.excess >= 0.22 && d.value >= 0.4 && !(heavy && bright)) {
       const hi = d.value > 0.62;
       switch (d.name) {
         case 'joy':
