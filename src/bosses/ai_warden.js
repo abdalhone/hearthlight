@@ -286,7 +286,6 @@ export const wardenBrain = {
         sound(b, 'boss_shield', { volume: 1 });
         flashLight(b, b.x, b.y - 14, 90, '#7fb2ff', 0.8, 0.5);
         b.game.bosses?.onShield?.(b, true);
-        b.bark('...', 'say', 0);
       },
       end(b) {
         b.invuln = 0;

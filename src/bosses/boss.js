@@ -443,7 +443,8 @@ export class Boss extends Creature {
     if (this.veiled || this.alpha <= 0.01) return;
     const sx = Math.round(this.x - ox);
     const sy = Math.round(this.y - oy - (this.z || 0));
-    const flash = Math.max(this.flash || 0, this.telegraph > 0 ? this.telegraph * (0.3 + 0.3 * Math.sin(time * 26)) : 0);
+    // A wind-up pulses, never so white the pose underneath stops reading.
+    const flash = Math.max(this.flash || 0, this.telegraph > 0 ? this.telegraph * (0.14 + 0.14 * Math.sin(time * 22)) : 0);
     const blink = this.invuln > 0 && this.invuln < 50 && this.mode === 'fight' ? (Math.floor(this.invuln * 20) % 2 ? 0.7 : 1) : 1;
     try {
       this.brain?.drawUnder?.(ctx, this, sx, sy, time);
@@ -470,6 +471,19 @@ export class Boss extends Creature {
       L = this.brain?.light?.(this, time) || null;
     } catch {
       L = null;
+    }
+    // A wind-up glows in the boss's own color: the tell you can see from across the arena.
+    if (this.telegraph > 0.05 && this.mode === 'fight') {
+      const T = this._tlight || (this._tlight = { x: 0, y: 0, r: 46, color: this.info.accent || '#ff6b5e', intensity: 0, flicker: 0 });
+      T.x = this.x;
+      T.y = this.y - 14 - (this.z || 0);
+      T.intensity = 0.25 + 0.55 * this.telegraph * (0.75 + 0.25 * Math.sin((time || 0) * 22));
+      const list = this._lights || (this._lights = []);
+      list.length = 0;
+      if (Array.isArray(L)) list.push(...L);
+      else if (L) list.push(L);
+      list.push(T);
+      return list;
     }
     return L;
   }
