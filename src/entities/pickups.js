@@ -31,6 +31,7 @@ export class Pickup extends Entity {
     this.glintOffset = (hashString(String(this.id)) % 100) / 40;
     const glow = GLOWING[this.itemId];
     this._light = glow ? { x: 0, y: 0, r: 22, color: glow, intensity: 0.55, flicker: 0.1 } : null;
+    this._sprite = null; // atlas name, resolved on first draw (the atlas fills at boot)
   }
 
   get sortY() {
@@ -169,9 +170,13 @@ export class Pickup extends Entity {
     ctx.fillRect(sx - w + 1, sy - 2, w * 2 - 2, 1);
 
     const atlas = this.game.atlas;
-    const name = atlas?.has?.(`icon:${this.itemId}`) ? `icon:${this.itemId}` : 'icon:unknown';
+    let name = this._sprite;
+    if (!name && atlas?.has) {
+      name = atlas.has(`icon:${this.itemId}`) ? `icon:${this.itemId}` : 'icon:unknown';
+      if (atlas.has(name)) this._sprite = name;
+    }
     let drawn = false;
-    if (atlas?.has?.(name)) {
+    if (name && atlas?.has?.(name)) {
       if (this.itemId === 'coin' && this.qty >= 3) atlas.draw(ctx, name, 0, sx + 3, sy - hz - 2);
       drawn = atlas.draw(ctx, name, 0, sx, sy - hz);
     }

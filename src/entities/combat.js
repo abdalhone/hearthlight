@@ -1,13 +1,17 @@
 import { factionRelation } from './entity.js';
-import { PLAYER_ID, COMPANION_ID } from '../core/constants.js';
+import { PLAYER_ID, COMPANION_ID, DAY_SECONDS } from '../core/constants.js';
 import { itemDef, itemName } from './items.js';
 import { Projectile } from './projectiles.js';
 import { dropItem, updatePickupToasts } from './pickups.js';
 
 // Combat rules for every actor: melee arcs, projectiles, damage, healing, death,
-// knock-outs, items that heal, experience. Contract in DESIGN.md ("Combat").
+// knock-outs, crimes, items that heal, experience. Contract in DESIGN.md ("Combat", §16.7).
 // Every visual/audio side effect goes through a guarded helper so a bug in another
 // module can never break a fight.
+//
+// Who may hurt whom (§16.7): the player's sword hits everyone it touches (the player can
+// do wrong); everyone else hits enemies, provokers and the target they chose, and spares
+// their own side unless defending themselves from it.
 
 export const CRIT_CHANCE = 0.1;
 export const CRIT_MUL = 1.5;
@@ -17,6 +21,13 @@ export const SELF_REVIVE_SECONDS = 60;
 export const SELF_REVIVE_FRACTION = 0.15;
 export const LEVEL_HP = 8;
 export const LEVEL_ATK = 1;
+// Crimes (§16.7). Times are game seconds on game.clock.t (one per real second).
+export const ASSAULT_SECONDS = 90;
+export const CRIME_EVENT_GAP = 10; // one 'crime' event per victim and kind in this window
+export const SELF_DEFENSE_WINDOW = 60; // how long someone who hurt you stays a fair target
+// The characters module gets knocked-out villagers up after 30 s; this is only a safety net.
+export const NPC_REVIVE_FALLBACK = 40;
+export const NPC_REVIVE_FRACTION = 0.5;
 const PROVOKE_MEMORY = 45; // game seconds a creature stays angry at whoever hurt it
 const DEFAULT_MELEE_CD = 0.4;
 const MIN_SHOT_GAP = 0.15; // guards against accidental per-frame shooting
@@ -27,8 +38,9 @@ export function xpToNext(level) {
   return 20 + l * 18 + l * l * 4;
 }
 
-// Factions the player's side (the player and Lyra) can never hurt.
+// Factions Lyra (the player's side, but not the player) never hurts unprovoked.
 const PLAYER_SIDE_SAFE = new Set(['player', 'villager', 'guard']);
+const LAWFUL = new Set(['villager', 'guard']);
 // Wildlife that fights back when hurt; every other animal runs.
 const FIGHTS_BACK = new Set(['boar', 'wolf']);
 
@@ -56,8 +68,17 @@ export class Combat {
     this.downedAt = new Map(); // actor -> this.t when knocked out
     this.airborne = new Set(); // actors launched by heavy hits (z arc)
     this.lastMeleeHits = 0;
+    this.aggressions = new WeakMap(); // victim -> Map(attacker -> clock time of the last hit)
+    this.crimeLog = new Map(); // `${victimId}:${kind}` -> clock time of the last 'crime' event
+    this._baseAtk = new WeakMap(); // actor -> attack at level 1 (to rebuild it after a load)
     this._warned = new Set();
     try {
+      game.bus?.on?.('entity_added', (p) => {
+        const e = p?.entity;
+        if (e && (e.id === PLAYER_ID || e.id === COMPANION_ID) && Number.isFinite(e.atk)) {
+          this._baseAtk.set(e, e.atk - (Math.max(1, e.level || 1) - 1) * LEVEL_ATK);
+        }
+      });
       game.bus?.on?.('game_start', (p) => {
         if (p?.loaded) this._restoreLevelStats(game.companion);
       });
@@ -73,11 +94,26 @@ export class Combat {
     this._updateDying(dt);
     this._updateDowned();
     this._updateAirborne(dt);
+    this._updateCrime();
     try {
       updatePickupToasts(this.game, dt);
     } catch (err) {
       this._warn('pickup toasts', err);
     }
+  }
+
+  // Game time for crimes and grudges (the clock is saved; the combat clock is not).
+  now() {
+    return this.game.clock?.t ?? this.t;
+  }
+
+  // A crime runs out on its own; the guards calm down and the player hears about it.
+  _updateCrime() {
+    const p = this.game.player;
+    const c = p?.crime;
+    if (!c || c.until > this.now()) return;
+    p.crime = null;
+    if (p.isAlive?.()) this._toast('The guards have stopped looking for you. Hearthvale breathes out.', 'info');
   }
 
   _updateDying(dt) {
@@ -108,9 +144,14 @@ export class Combat {
         this.downedAt.delete(a);
         continue;
       }
-      // The player wakes at home (player.js); everyone else gets up on their own.
-      if (a !== g.player && a.id !== PLAYER_ID && this.t - t0 >= SELF_REVIVE_SECONDS) {
-        this.revive(a, a, SELF_REVIVE_FRACTION);
+      // The player wakes at home (player.js); Lyra gets up alone after a minute; villagers
+      // are helped up by their own logic, and this only catches one that was forgotten.
+      if (this.isPlayer(a)) continue;
+      const down = this.t - t0;
+      if (this.isCompanion(a) || a.downable === true) {
+        if (down >= SELF_REVIVE_SECONDS) this.revive(a, a, SELF_REVIVE_FRACTION);
+      } else if (down >= NPC_REVIVE_FALLBACK) {
+        this.revive(a, a, NPC_REVIVE_FRACTION);
       }
     }
   }
@@ -135,48 +176,87 @@ export class Combat {
 
   // ---------------------------------------------------------------- rules
 
-  isDownable(a) {
-    const g = this.game;
-    return !!a && (a === g.player || a === g.companion || a.id === PLAYER_ID || a.id === COMPANION_ID || a.downable === true);
+  isPlayer(a) {
+    return !!a && (a === this.game.player || a.id === PLAYER_ID);
   }
 
-  // Villagers (anything with an NPC profile) and actors flagged essential never die.
+  isCompanion(a) {
+    return !!a && (a === this.game.companion || a.id === COMPANION_ID);
+  }
+
+  // A villager or guard: a person of Hearthvale (not an animal, not the player's party).
+  isLawful(a) {
+    if (!a || a.type !== 'actor' || a.species || this.isPlayer(a) || this.isCompanion(a)) return false;
+    return LAWFUL.has(a.faction) || (!!a.profile && a.faction !== 'bandit');
+  }
+
+  // Knocked out at 0 HP instead of killed: the player, Lyra, villagers and guards (§16.7),
+  // and anything flagged essential or downable.
+  isDownable(a) {
+    if (!a) return false;
+    return this.isPlayer(a) || this.isCompanion(a) || a.downable === true || this.isEssential(a) || this.isLawful(a);
+  }
+
+  // Anything with an NPC profile, and actors flagged essential, never die.
   isEssential(a) {
     return !!a && (a.essential === true || !!a.profile);
   }
 
-  // Creatures the player's side never hurts: villagers, pets, Pip's cat.
+  // People and pets Lyra never hurts unless they hurt her first: villagers, Pip's cat.
   isProtected(a) {
-    return !!a && (this.isEssential(a) || a.species === 'cat' || a.pet === true || !!a.tags?.has?.('pet'));
+    return !!a && (this.isEssential(a) || this.isLawful(a) || a.species === 'cat' || a.pet === true || !!a.tags?.has?.('pet'));
   }
 
   isHostile(a, b) {
     if (!a || !b || a === b) return false;
+    // While the player is wanted, the guard and the player are at war (§16.7).
+    if ((a.faction === 'guard' && this.hasCrime(b)) || (b.faction === 'guard' && this.hasCrime(a))) return true;
     if (factionRelation(a.faction, b.faction) === 'hostile') return true;
     return this._provokedAgainst(b, a) || this._provokedAgainst(a, b);
+  }
+
+  // Is this actor wanted for a crime right now? (Defaults to the player.)
+  hasCrime(actor = this.game.player) {
+    const c = actor?.crime;
+    return !!c && c.until > this.now();
   }
 
   // Is `creature` angry at `other` because `other` hurt it recently?
   _provokedAgainst(creature, other) {
     if (creature.provokedBy !== other || creature.provokedMode !== 'fight') return false;
-    const now = this.game.clock?.t ?? this.t;
-    return now - (creature.provokedAt ?? -Infinity) < PROVOKE_MEMORY;
+    return this.now() - (creature.provokedAt ?? -Infinity) < PROVOKE_MEMORY;
+  }
+
+  // Did `aggressor` hurt `defender` recently enough that striking back is self-defense?
+  isSelfDefense(defender, aggressor) {
+    const t = this.aggressions.get(defender)?.get(aggressor);
+    return t != null && this.now() - t < SELF_DEFENSE_WINDOW;
+  }
+
+  _noteAggression(victim, attacker) {
+    let m = this.aggressions.get(victim);
+    if (!m) this.aggressions.set(victim, (m = new Map()));
+    const now = this.now();
+    m.set(attacker, now);
+    if (m.size > 8) for (const [k, t] of m) if (now - t >= SELF_DEFENSE_WINDOW) m.delete(k);
   }
 
   // May `attacker` hurt `target`? `explicit` = the attacker chose this target on purpose.
-  // The player's area swings hit hostile and neutral creatures; anyone else's area
-  // swings hit only enemies. Allies and the player's own people are always spared.
+  // - The player hits every actor (friendly fire: Lyra, villagers and guards included).
+  // - Anyone may hit those hostile to them (factions, provoked animals, guards vs a wanted player).
+  // - Allies, and for Lyra the people of the village and pets, are spared unless they are
+  //   the chosen target and hurt the attacker first (self-defense, §16.5).
+  // - Neutral creatures are hit when chosen, or when they provoked or were provoked.
   canHarm(attacker, target, explicit = false) {
     if (!target || target === attacker || target.type !== 'actor' || target.removed || target.dead) return false;
     if (!attacker) return true;
-    const af = attacker.faction;
-    const tf = target.faction;
-    if (af === 'player' && (PLAYER_SIDE_SAFE.has(tf) || this.isProtected(target))) return false;
-    const rel = factionRelation(af, tf);
-    if (rel === 'ally') return false;
+    if (this.isPlayer(attacker)) return true;
+    if (this.isHostile(attacker, target)) return true;
+    const spared =
+      factionRelation(attacker.faction, target.faction) === 'ally' ||
+      (attacker.faction === 'player' && (PLAYER_SIDE_SAFE.has(target.faction) || this.isProtected(target)));
+    if (spared) return explicit && this.isSelfDefense(attacker, target);
     if (explicit) return true;
-    if (attacker === this.game.player || attacker.id === PLAYER_ID) return true;
-    if (rel === 'hostile') return true;
     return target.provokedBy === attacker || attacker.provokedBy === target;
   }
 
@@ -314,13 +394,16 @@ export class Combat {
     if (crit == null) crit = !!source && kind !== 'fall' && this.random() < CRIT_CHANCE;
     const variance = opts.exact ? 1 : 0.9 + this.random() * 0.2;
     const raw = Math.max(0, Number(amount) || 0) * variance * (crit ? CRIT_MUL : 1);
-    let dealt = Math.max(1, Math.round(raw - (target.def || 0)));
-    // Villagers stagger instead of dying; a dead innkeeper would break the village.
-    if (dealt >= target.hp && this.isEssential(target) && !this.isDownable(target)) dealt = Math.max(0, target.hp - 1);
-    target.hp -= dealt;
+    const dealt = Math.max(1, Math.round(raw - (target.def || 0)));
+    target.hp = Math.max(0, target.hp - dealt);
 
-    const isPlayer = target === g.player || target.id === PLAYER_ID;
-    const isFriend = isPlayer || target === g.companion || target.id === COMPANION_ID;
+    const isPlayer = this.isPlayer(target);
+    const isFriend = isPlayer || this.isCompanion(target);
+    const attacker = source && source.type === 'actor' ? source : null;
+    if (attacker) this._noteAggression(target, attacker);
+    // Hurting a villager or guard is a crime; set it before anyone hears about the hit.
+    const crime = attacker && this.isPlayer(attacker) && this.isLawful(target) ? (target.hp <= 0 ? 'knockout' : 'assault') : null;
+    if (crime) this._recordCrime(attacker, target, crime);
     target.flash = 1;
     target.invuln = opts.invuln ?? (isPlayer ? 0.55 : isFriend ? 0.35 : 0.12);
     target.lastAttacker = source || null;
@@ -365,7 +448,8 @@ export class Combat {
 
     const heavy = !!(opts.heavy || crit || isPlayer || target.hp <= 0);
     if (heavy) g.hitStop = Math.max(g.hitStop || 0, HIT_STOP);
-    this._hitFx(target, dealt, crit, kind, dx, dy, isFriend, isPlayer, heavy);
+    // People (the party, villagers, guards) bleed coral numbers and cry out; creatures thud.
+    this._hitFx(target, dealt, crit, kind, dx, dy, isFriend || this.isLawful(target), isPlayer, heavy);
 
     g.bus?.emit('damage', { source: source || null, target, amount: dealt, kind, crit: !!crit });
 
@@ -373,7 +457,51 @@ export class Combat {
       if (this.isDownable(target)) this.down(target, source || null);
       else this.kill(target, source || null);
     }
+    if (crime) this._reportCrime(attacker, target, crime);
     return dealt;
+  }
+
+  // ---------------------------------------------------------------- crimes (§16.7)
+
+  // Assault: wanted for 90 s. Knocking someone out: wanted for the rest of the day.
+  // Repeat offences only ever extend and escalate what is already on record.
+  _recordCrime(actor, victim, kind) {
+    const now = this.now();
+    const level = kind === 'knockout' ? 2 : 1;
+    const endOfDay = (Math.floor(now / DAY_SECONDS) + 1) * DAY_SECONDS;
+    const until = kind === 'knockout' ? Math.max(endOfDay, now + ASSAULT_SECONDS) : now + ASSAULT_SECONDS;
+    const prev = this.hasCrime(actor) ? actor.crime : null;
+    if (prev) {
+      if (level >= prev.level) {
+        prev.level = level;
+        prev.kind = kind;
+      }
+      prev.until = Math.max(prev.until, until);
+      prev.victimId = victim.id ?? null;
+      prev.t = now;
+      return;
+    }
+    actor.crime = { level, kind, until, victimId: victim.id ?? null, since: now, t: now };
+    if (this.isPlayer(actor)) {
+      const who = shortName(victim.name);
+      this._toast(
+        kind === 'knockout'
+          ? `You knocked ${who} out cold. The guard will be after you until the day is done.`
+          : `You struck ${who}. The guard will be after you for a while.`,
+        'warn',
+      );
+    }
+  }
+
+  // One 'crime' event per victim and kind in CRIME_EVENT_GAP seconds, not one per hit.
+  _reportCrime(actor, victim, kind) {
+    const now = this.now();
+    const key = `${victim.id}:${kind}`;
+    const last = this.crimeLog.get(key);
+    if (last != null && now - last < CRIME_EVENT_GAP && now >= last) return;
+    this.crimeLog.set(key, now);
+    if (this.crimeLog.size > 64) for (const [k, t] of this.crimeLog) if (now - t >= CRIME_EVENT_GAP) this.crimeLog.delete(k);
+    this.game.bus?.emit('crime', { actor, victim, kind });
   }
 
   _provoke(creature, source) {
@@ -396,7 +524,10 @@ export class Combat {
     this._particles('hit', x, y, { count: crit ? 10 : 6, color, dir: { x: dx, y: dy }, spread: 1.1, speed: crit ? 90 : 65, life: 0.35 });
     if (crit) this._particles('spark', x, y, { count: 6, color: '#ffe27a', speed: 70, life: 0.3 });
     const text = crit ? `${dealt}!` : String(dealt);
-    this._number(target.x, target.y - 22 - (target.z || 0), text, isFriend ? COLORS.dmgFriend : crit ? COLORS.crit : COLORS.dmg);
+    this._number(target.x, target.y - 22 - (target.z || 0), text, isFriend ? COLORS.dmgFriend : crit ? COLORS.crit : COLORS.dmg, {
+      crit: !!crit,
+      kind: crit ? 'crit' : isFriend ? 'hurt' : 'damage',
+    });
     const sound = isFriend ? 'hurt' : kind === 'bolt' ? 'bolt_hit' : 'hit';
     this._sound(sound, target.x, target.y, { pitch: crit ? 1.2 : 0.9 + this.random() * 0.2 });
     if (isPlayer) this._shake(3, 0.22);
@@ -480,7 +611,7 @@ export class Combat {
   }
 
   _xpPopup(target, xp) {
-    this._number(target.x, target.y - 34, `+${xp} xp`, COLORS.xp);
+    this._number(target.x, target.y - 34, `+${xp} xp`, COLORS.xp, { kind: 'xp' });
   }
 
   // Death fade without touching other modules' draw code: wrap this instance's draw
@@ -557,7 +688,7 @@ export class Combat {
     const got = Math.min(want, Math.max(0, target.maxHp - target.hp));
     if (got <= 0) return 0;
     target.hp += got;
-    this._number(target.x, target.y - 22, `+${got}`, COLORS.heal);
+    this._number(target.x, target.y - 22, `+${got}`, COLORS.heal, { kind: 'heal' });
     this.game.bus?.emit('heal', { source: source || null, target, amount: got });
     return got;
   }
@@ -629,12 +760,17 @@ export class Combat {
     return xpToNext(level);
   }
 
+  // Experience needed to reach `level` from the one below it (HUD helpers ask this way).
+  xpForLevel(level) {
+    return xpToNext(Math.max(1, (Math.floor(level) || 2) - 1));
+  }
+
   _levelUpFx(actor) {
     const g = this.game;
     this._sound('levelup', actor.x, actor.y);
     this._particles('levelup', actor.x, actor.y - 10, { count: 24, color: '#ffe27a', speed: 40, life: 1.1 });
     this._flash({ x: actor.x, y: actor.y - 10, r: 90, color: '#ffe08a', intensity: 0.9, duration: 0.8 });
-    this._number(actor.x, actor.y - 34, 'LEVEL UP!', COLORS.level);
+    this._number(actor.x, actor.y - 34, 'LEVEL UP!', COLORS.level, { crit: true });
     if (actor === g.player) {
       this._toast(`Level ${actor.level}! You feel steadier on your feet. (+${LEVEL_HP} max HP, +${LEVEL_ATK} attack)`, 'good');
     } else if (actor === g.companion) {
@@ -642,12 +778,13 @@ export class Combat {
     }
   }
 
-  // After loading a save, Actor.deserialize restores level but not attack; rebuild it.
+  // After loading a save, Actor.deserialize restores level but not attack; rebuild it
+  // from the level-1 attack seen when the actor joined (idempotent if a module restored it).
   _restoreLevelStats(a) {
-    if (!a || a._levelStatsRestored) return;
-    a._levelStatsRestored = true;
+    if (!a || !Number.isFinite(a.atk)) return;
     const lv = Math.max(1, a.level || 1);
-    if (lv > 1 && Number.isFinite(a.atk)) a.atk += (lv - 1) * LEVEL_ATK;
+    const base = this._baseAtk.get(a) ?? a.atk;
+    a.atk = base + (lv - 1) * LEVEL_ATK;
   }
 
   // ---------------------------------------------------------------- guarded side effects
@@ -670,9 +807,9 @@ export class Combat {
     }
   }
 
-  _number(x, y, text, color) {
+  _number(x, y, text, color, opts) {
     try {
-      this.game.bubbles?.number?.(x, y, text, color);
+      this.game.bubbles?.number?.(x, y, text, color, opts);
     } catch (err) {
       this._warn('bubbles', err);
     }
@@ -708,6 +845,15 @@ export class Combat {
     this._warned.add(what);
     console.warn(`[combat] ${what} failed`, err);
   }
+}
+
+// "Captain Rowan Vale" -> "Rowan", "Garrick "Gale" Hale" -> "Garrick", for short lines.
+export function shortName(name) {
+  const words = String(name || '')
+    .replace(/["'][^"']*["']/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w && !/^(captain|sister|brother|old|young|master|mistress|sir|lady)$/i.test(w));
+  return words[0] || 'them';
 }
 
 // A short label for UIs that offer to use an item ("Eat Bread (+8 HP)"); '' if it is not usable.

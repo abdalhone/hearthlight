@@ -10,7 +10,9 @@ import { slashSprite, SLASH_FRAMES } from './combat_fx.js';
 
 // The player: 8-way movement with a touch of momentum, a three-hit sword combo,
 // a dodge roll, interaction, harvesting with the sword, and waking up at home
-// after being knocked out. Contract in DESIGN.md ("Player").
+// after being knocked out. Contract in DESIGN.md ("Player", §16.7).
+// The sword spares no one it touches (combat.canHarm): auto-aim only ever turns the
+// blade toward fair game, so hurting a friend takes a deliberate swing at them.
 
 export const PLAYER_BASE = Object.freeze({ maxHp: 60, atk: 6, def: 0, speed: 76 });
 export const STARTING_INVENTORY = Object.freeze({ potion: 2, bread: 2, coin: 30 });
@@ -112,6 +114,21 @@ export class Player extends Actor {
     this._prompt = null;
     this._down = null; // knocked-out sequence
     this._light = { x: 0, y: 0, r: 72, color: '#ffb047', intensity: 0.85, flicker: 0.12 };
+    this._bindLight = { x: 0, y: 0, r: 34, color: '#ffe08a', intensity: 0.7, flicker: 0.2 };
+    this._rootShown = 0; // seconds the binding ring has been visible (for its fade-in)
+    // { level 1|2, kind 'assault'|'knockout', until (game.clock.t), victimId, since, t } while wanted.
+    this.crime = null;
+    try {
+      game.bus?.on?.('settings_changed', (p) => {
+        if (p?.key === 'playerName' && p.value) this.name = String(p.value).slice(0, 24);
+      });
+    } catch {
+      /* a bus is optional in tests */
+    }
+  }
+
+  get rooted() {
+    return this.rootTime > 0;
   }
 
   // Coins are the source of truth; gold mirrors them.
@@ -163,6 +180,7 @@ export class Player extends Actor {
       this.workBar.t -= dt;
       if (this.workBar.t <= 0) this.workBar = null;
     }
+    this._rootShown = this.rootTime > 0 ? this._rootShown + dt : 0;
     super.update(dt);
     this._afterMove(dt);
     if (this.downed) this._tickDown(dt);
@@ -184,6 +202,8 @@ export class Player extends Actor {
     const dodgePress = !!input?.pressed('dodge') || (dodgeHeld && !this._heldDodge);
     this._heldAttack = atkHeld;
     this._heldDodge = dodgeHeld;
+    // Binding Light holds the body in place mid-roll; the sword arm stays free.
+    if (this.rolling && this.rootTime > 0) this._endRoll();
     if (canAct) {
       const mv = input.moveVector();
       mx = mv?.x || 0;
@@ -193,6 +213,8 @@ export class Player extends Actor {
       // Holding the button keeps swinging once each swing finishes (chopping, phones).
       else if (atkHeld && this.lockTime <= 0 && !this.rolling) this.attackBuffer = Math.max(this.attackBuffer, 0.05);
       if (input.pressed('interact') && !this.rolling) this.tryInteract();
+    } else {
+      this.attackBuffer = 0; // a press made just before a menu opened must not swing after it
     }
     this._inX = mx;
     this._inY = my;
@@ -223,6 +245,14 @@ export class Player extends Actor {
     let tx = 0;
     let ty = 0;
     let rate = DECEL;
+    if (this.rootTime > 0) {
+      // Rooted: no drift, and no stored momentum to lurch with when the light fades.
+      v.x = 0;
+      v.y = 0;
+      this.moveIntent.x = 0;
+      this.moveIntent.y = 0;
+      return;
+    }
     if (this.lockTime > 0) {
       rate = DECEL * 2; // planted while swinging or staggered
     } else if (mx || my) {
@@ -310,7 +340,7 @@ export class Player extends Actor {
     if (this.comboTimer <= 0) this.combo = 0;
     const step = this.combo;
     const c = COMBO[step];
-    let lunge = c.lunge;
+    let lunge = this.rootTime > 0 ? 0 : c.lunge;
     if (target) {
       this.faceToward(target.x, target.y);
       // Do not shove into an enemy that is already in your face.
@@ -363,8 +393,10 @@ export class Player extends Actor {
     return true;
   }
 
-  // Nearest creature in front that the sword may hit. fightingOnly: enemies, or
+  // Nearest creature in front worth turning the blade toward. fightingOnly: enemies, or
   // creatures already in a fight with the player (so a chase is not interrupted by a tree).
+  // Otherwise also game animals. Never people or pets: the sword still hits them if they
+  // stand in the arc, but it never seeks them out.
   _findFoe(reach, fightingOnly) {
     const g = this.game;
     const combat = g.combat;
@@ -385,7 +417,8 @@ export class Player extends Actor {
       const front = d < 8 ? 1 : (dx * fx + dy * fy) / d;
       if (front < 0.25) continue;
       if (!combat.canHarm(this, e, false)) continue;
-      if (fightingOnly && !(combat.isHostile?.(this, e) || e.provokedBy === this)) continue;
+      const fighting = !!(combat.isHostile?.(this, e) || e.provokedBy === this);
+      if (fightingOnly ? !fighting : !fighting && !this._isGame(e)) continue;
       const score = d - front * 10;
       if (score < bestScore) {
         best = e;
@@ -393,6 +426,18 @@ export class Player extends Actor {
       }
     }
     return best;
+  }
+
+  // Animals that are fair to hunt: creatures, but not pets, Pip's cat or anyone's person.
+  _isGame(e) {
+    if (!e.species || e === this.game.companion) return false;
+    const combat = this.game.combat;
+    try {
+      if (combat?.isProtected?.(e) || combat?.isLawful?.(e)) return false;
+    } catch {
+      return false;
+    }
+    return true;
   }
 
   // ------------------------------------------------------------ harvesting
@@ -497,6 +542,10 @@ export class Player extends Actor {
 
   tryDodge(mx = 0, my = 0) {
     if (this.dodgeCd > 0 || this.rolling || !this.isAlive()) return false;
+    if (this.rootTime > 0) {
+      this._strain();
+      return false;
+    }
     if (this.lockTime > 0) {
       // Roll out of a swing or a stagger once it has landed; never out of sitting or casting.
       const cancellable = this.state === 'attack' || this.state === 'hurt' || this.state === 'work';
@@ -562,15 +611,28 @@ export class Player extends Actor {
       gh.anim = this.animTime * 2.2;
       gh.a = 0.4;
     }
-    if (k >= 1) {
-      this.rolling = false;
-      this.z = 0;
-      this.lockTime = 0;
-      try {
-        this.game.particles?.emit?.('dust', this.x, this.y, { count: 3, speed: 14, life: 0.35 });
-      } catch {
-        /* effects are optional */
-      }
+    if (k >= 1) this._endRoll();
+  }
+
+  _endRoll() {
+    this.rolling = false;
+    this.z = 0;
+    this.lockTime = 0;
+    try {
+      this.game.particles?.emit?.('dust', this.x, this.y, { count: 3, speed: 14, life: 0.35 });
+    } catch {
+      /* effects are optional */
+    }
+  }
+
+  // Trying to roll out of Binding Light: the ring flares and holds.
+  _strain() {
+    const g = this.game;
+    try {
+      g.particles?.emit?.('magic', this.x, this.y - 2, { count: 4, color: '#ffe08a', speed: 18, life: 0.4 });
+      g.audio?.play?.('magic', { x: this.x, y: this.y, volume: 0.4, pitch: 1.3 });
+    } catch {
+      /* effects are optional */
     }
   }
 
@@ -623,7 +685,10 @@ export class Player extends Actor {
 
   onDowned(by) {
     if (this._down) return;
-    this._down = { t: 0, fading: false, woke: false, by: by || null };
+    // Beaten by the guard while wanted: the matter is settled where you fell.
+    const arrested = !!by && by.faction === 'guard' && !!this.crime;
+    if (arrested) this.crime = null;
+    this._down = { t: 0, fading: false, woke: false, by: by || null, arrested };
     this.rolling = false;
     this.swing = null;
     this.combo = 0;
@@ -687,11 +752,12 @@ export class Player extends Actor {
     this.hurtBlink = 0;
     g.combat?.downedAt?.delete?.(this);
 
-    // Lyra comes home too: she carried you, or a patrol carried you both.
+    // Lyra comes home too, if she is still traveling with you and was there: she carried
+    // you, or a patrol carried you both. She does not carry someone she was fighting off.
     const lyra = g.companion;
     let carrier = null;
     let bothDown = false;
-    if (lyra && !lyra.removed && !lyra.dead) {
+    if (this._lyraWouldCarry(lyra, d.by)) {
       bothDown = !!lyra.downed;
       if (bothDown) {
         try {
@@ -719,8 +785,11 @@ export class Player extends Actor {
     g.bus?.emit('revived', { entity: this, by: carrier });
 
     let text = 'You wake in your own bed, bruised but breathing.';
-    if (carrier) text = `${carrier.name || 'Lyra'} carried you home. ${text}`;
+    if (d.arrested) {
+      text = `${d.by?.name || 'The guard'} hauled you home to sleep it off. ${text} The matter is settled, this time.`;
+    } else if (carrier) text = `${carrier.name || 'Lyra'} carried you home. ${text}`;
     else if (bothDown) text = `Captain Rowan's patrol found you both on the road and carried you home. ${text}`;
+    else text = `Someone from the village found you and carried you home. ${text}`;
     if (lost > 0) text += ` ${lost} ${lost === 1 ? 'coin' : 'coins'} went missing on the way.`;
     try {
       g.ui?.toast?.(text, 'warn');
@@ -729,6 +798,22 @@ export class Player extends Actor {
     } catch {
       /* the UI is optional */
     }
+  }
+
+  // Lyra only carries you home while she still travels with you (§16.3), was close enough
+  // to see you fall, and was not the one you were fighting.
+  _lyraWouldCarry(lyra, downedBy) {
+    const g = this.game;
+    if (!lyra || lyra.removed || lyra.dead || lyra === downedBy) return false;
+    if (g.flags?.lyra_gone) return false;
+    let state = 'together';
+    try {
+      state = lyra.mind?.companionship ?? lyra.mind?.autonomy?.companionship ?? 'together';
+    } catch {
+      state = 'together';
+    }
+    if (state !== 'together' && state !== 'wary') return false;
+    return Math.hypot(lyra.x - this.x, lyra.y - this.y) < 480;
   }
 
   _homeSpot() {
@@ -764,8 +849,16 @@ export class Player extends Actor {
   // ------------------------------------------------------------ light and drawing
 
   // A lantern lights the way at night; without one, a faint glow keeps you visible.
-  getLight() {
+  getLight(time = 0) {
     if (this.dead) return null;
+    if (this.rootTime > 0 && !this.downed) {
+      // Binding Light glows gold around the feet, day or night.
+      const B = this._bindLight;
+      B.x = this.x;
+      B.y = this.y - 2;
+      B.intensity = 0.55 + 0.2 * Math.sin(time * 9);
+      return B;
+    }
     const day = this.game.clock?.daylight ?? 1;
     if (day > 0.6) return null;
     const L = this._light;
@@ -804,6 +897,8 @@ export class Player extends Actor {
       });
     }
 
+    const bound = this.rootTime > 0 && !this.downed;
+    if (bound) this._drawBinding(ctx, sx, sy, time, false);
     const sw = this.swing;
     const slashBehind = sw && this.dir === 'up';
     if (slashBehind) this._drawSlash(ctx, sx, sy - hz);
@@ -814,7 +909,48 @@ export class Player extends Actor {
       state: this.state,
     });
     if (sw && !slashBehind) this._drawSlash(ctx, sx, sy - hz);
+    if (bound) this._drawBinding(ctx, sx, sy, time, true);
     if (this.workBar) this._drawWorkBar(ctx, sx, sy - hz);
+  }
+
+  // Lyra's Binding Light: a ring of gold runes at the feet with bands of light that wrap
+  // the legs. The back half of the ring is drawn before the body, the front half after,
+  // so the ring reads as circling the player. Plain rects, no allocations per frame.
+  _drawBinding(ctx, sx, sy, time, front) {
+    const grow = Math.min(1, this._rootShown / 0.18);
+    const fade = Math.min(1, this.rootTime / 0.35);
+    const a = grow * fade;
+    if (a <= 0.02) return;
+    const rx = 4 + 6 * grow;
+    const ry = rx * 0.42;
+    const spin = time * 2.6;
+    const prev = ctx.globalAlpha;
+    for (let i = 0; i < 14; i++) {
+      const ang = spin + (i / 14) * Math.PI * 2;
+      const s = Math.sin(ang);
+      if (front ? s < 0 : s >= 0) continue;
+      const x = Math.round(sx + Math.cos(ang) * rx);
+      const y = Math.round(sy + s * ry);
+      const rune = i % 3 === 0;
+      ctx.globalAlpha = prev * a * (front ? 1 : 0.7);
+      ctx.fillStyle = rune ? '#fff4c0' : '#ffe08a';
+      ctx.fillRect(x, y, 1, 1);
+      if (rune) {
+        ctx.fillStyle = '#ffb047';
+        ctx.fillRect(x, y - 1, 1, 1);
+      }
+    }
+    if (front) {
+      // Two thin bands of light wrapping the shins, shimmering.
+      const pulse = 0.6 + 0.4 * Math.sin(time * 11);
+      ctx.globalAlpha = prev * a * pulse;
+      ctx.fillStyle = '#fff4c0';
+      ctx.fillRect(sx - 4, sy - 3, 9, 1);
+      ctx.globalAlpha = prev * a * pulse * 0.6;
+      ctx.fillStyle = '#ffe08a';
+      ctx.fillRect(sx - 3, sy - 6, 7, 1);
+    }
+    ctx.globalAlpha = prev;
   }
 
   _drawSlash(ctx, sx, sy) {
@@ -840,9 +976,21 @@ export class Player extends Actor {
 
   // ------------------------------------------------------------ saving
 
+  serialize() {
+    const out = super.serialize();
+    const c = this.crime;
+    if (c) out.crime = { level: c.level, kind: c.kind, until: c.until, victimId: c.victimId ?? null, since: c.since ?? c.t ?? 0 };
+    return out;
+  }
+
   deserialize(d) {
     super.deserialize(d);
     if (!d) return;
+    const c = d.crime;
+    this.crime =
+      c && Number.isFinite(c.until)
+        ? { level: c.level === 2 ? 2 : 1, kind: c.kind === 'knockout' ? 'knockout' : 'assault', until: c.until, victimId: c.victimId ?? null, since: c.since ?? 0, t: c.since ?? 0 }
+        : null;
     // Attack is not saved; it follows from the level.
     this.atk = this.baseAtk + (Math.max(1, this.level || 1) - 1) * LEVEL_ATK;
     if (!this.downed && this.hp <= 0) this.hp = Math.max(1, Math.round(this.maxHp * WAKE_HP));

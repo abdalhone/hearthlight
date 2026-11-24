@@ -3,7 +3,16 @@ import assert from 'node:assert/strict';
 import { EventBus } from '../src/core/events.js';
 import { EntityManager } from '../src/entities/manager.js';
 import { Actor } from '../src/entities/entity.js';
-import { Combat, xpToNext, LEVEL_HP, LEVEL_ATK, SELF_REVIVE_SECONDS } from '../src/entities/combat.js';
+import {
+  Combat,
+  xpToNext,
+  LEVEL_HP,
+  LEVEL_ATK,
+  SELF_REVIVE_SECONDS,
+  ASSAULT_SECONDS,
+  CRIME_EVENT_GAP,
+} from '../src/entities/combat.js';
+import { DAY_SECONDS } from '../src/core/constants.js';
 import { Player, COMBO, STARTING_INVENTORY } from '../src/entities/player.js';
 import { Pickup, dropItem, pickupToastText } from '../src/entities/pickups.js';
 import { Projectile } from '../src/entities/projectiles.js';
@@ -152,27 +161,67 @@ test('heavy hits freeze the world briefly and knock targets back', () => {
 
 // ---------------------------------------------------------------- who may hit whom
 
-test('the player never hurts villagers, guards, Lyra or the cat, but hits monsters and wildlife', () => {
+test('friendly fire: the player\'s sword hits everyone in its arc, Lyra and villagers included', () => {
   const g = makeGame();
+  const ev = log(g);
   const p = addPlayer(g);
   const lyra = addLyra(g, { x: 112, y: 100 });
-  const villager = actor(g, { faction: 'villager', x: 114, y: 96 });
-  const guard = actor(g, { faction: 'guard', x: 114, y: 104 });
-  const cat = actor(g, { faction: 'wildlife', x: 110, y: 100 });
-  cat.species = 'cat';
+  const villager = actor(g, { faction: 'villager', x: 114, y: 96, maxHp: 40 });
+  const guard = actor(g, { faction: 'guard', x: 114, y: 104, maxHp: 40 });
   const slime = actor(g, { faction: 'monster', x: 113, y: 102, maxHp: 40 });
-  const deer = actor(g, { faction: 'wildlife', x: 111, y: 98, maxHp: 40 });
-  deer.species = 'deer';
+  const behind = actor(g, { faction: 'villager', x: 80, y: 100, maxHp: 40 });
   p.faceDir('right');
-  assert.equal(g.combat.melee(p, { arc: Math.PI * 1.9, range: 30 }), true);
-  assert.equal(g.combat.lastMeleeHits, 2);
-  for (const friend of [lyra, villager, guard, cat]) assert.equal(friend.hp, friend.maxHp, `${friend.faction} untouched`);
-  assert.ok(slime.hp < 40);
-  assert.ok(deer.hp < 40);
-  // Even a direct damage call from the player's side is refused.
-  villager.invuln = 0;
-  assert.equal(g.combat.damage(p, villager, 50), 0);
-  assert.equal(g.combat.damage(lyra, p, 50), 0, 'Lyra cannot hurt the player');
+  assert.equal(g.combat.melee(p, { arc: 2, range: 30 }), true);
+  assert.equal(g.combat.lastMeleeHits, 4);
+  for (const hit of [lyra, villager, guard, slime]) assert.ok(hit.hp < hit.maxHp, `${hit.faction} was hit`);
+  assert.equal(behind.hp, 40, 'nobody behind the swing is touched');
+  // The damage payload stays exact so Lyra can tell an accident from an attack.
+  const onLyra = of(ev, 'damage').find((d) => d.target === lyra);
+  assert.deepEqual(Object.keys(onLyra).sort(), ['amount', 'crit', 'kind', 'source', 'target']);
+  assert.equal(onLyra.source, p);
+  assert.equal(onLyra.kind, 'melee');
+  assert.equal(onLyra.amount, lyra.maxHp - lyra.hp);
+  // A direct call from the player is not filtered either.
+  behind.invuln = 0;
+  assert.ok(g.combat.damage(p, behind, 5) > 0);
+});
+
+test('auto-aim turns the blade toward foes and game, never toward friends', () => {
+  const g = makeGame();
+  const p = addPlayer(g);
+  addLyra(g, { x: 100, y: 116 });
+  const villager = actor(g, { faction: 'villager', x: 116, y: 100, maxHp: 40 });
+  p.faceDir('up');
+  press(g, 'attack');
+  assert.equal(p.dir, 'up', 'swinging near friends does not snap toward them');
+  assert.equal(villager.hp, 40);
+  step(g, 0.6);
+  const rabbit = actor(g, { faction: 'wildlife', x: p.x - 12, y: p.y - 6, maxHp: 10 });
+  rabbit.species = 'rabbit';
+  press(g, 'attack');
+  assert.equal(p.dir, 'left', 'game animals in front draw the blade');
+  assert.ok(rabbit.hp < 10);
+});
+
+test('Lyra spares the player and villagers, but may strike back at whoever hurt her', () => {
+  const g = makeGame();
+  const p = addPlayer(g, { x: 112 });
+  const lyra = addLyra(g, { x: 100, y: 100 });
+  const villager = actor(g, { faction: 'villager', x: 100, y: 112, maxHp: 30 });
+  const cat = actor(g, { faction: 'wildlife', x: 88, y: 100, maxHp: 10 });
+  cat.species = 'cat';
+  assert.equal(g.combat.damage(lyra, p, 10), 0, 'she cannot hurt the player unprovoked');
+  assert.equal(g.combat.canHarm(lyra, villager, true), false, 'nor a villager, even on purpose');
+  assert.equal(g.combat.canHarm(lyra, cat, true), false, 'nor the cat');
+  // The player hits her: self-defense makes the player a valid chosen target (§16.5)...
+  assert.ok(g.combat.damage(p, lyra, 5) > 0);
+  assert.equal(g.combat.canHarm(lyra, p, false), false, 'never by accident');
+  assert.equal(g.combat.canHarm(lyra, p, true), true);
+  assert.ok(g.combat.damage(lyra, p, 6) > 0);
+  // ...for a while.
+  g.clock.t += 61;
+  p.invuln = 0;
+  assert.equal(g.combat.damage(lyra, p, 6), 0, 'the window closes');
 });
 
 test('other attackers hit enemies, or the target they chose, never allies', () => {
@@ -303,14 +352,124 @@ test('kill drops loot, gives xp to the killer, fades and is removed', () => {
   assert.equal(g.entities.get(slime.id), null, 'removed after the fade');
 });
 
-test('villagers stagger at 1 HP instead of dying', () => {
+test('villagers and guards are knocked out at 0 HP, never killed', () => {
   const g = makeGame();
+  const ev = log(g);
   const bandit = actor(g, { faction: 'bandit', x: 80 });
-  const elda = actor(g, { faction: 'villager', maxHp: 20 });
+  const elda = actor(g, { name: 'Elda Thornbury', faction: 'villager', maxHp: 20 });
   elda.profile = { id: 'elda' };
+  const rowan = actor(g, { name: 'Captain Rowan Vale', faction: 'guard', x: 140, maxHp: 20 });
   g.combat.damage(bandit, elda, 100);
-  assert.equal(elda.hp, 1);
   assert.equal(elda.dead, false);
+  assert.equal(elda.downed, true);
+  assert.equal(elda.hp, 0);
+  assert.equal(elda.state, 'downed');
+  assert.deepEqual(of(ev, 'downed')[0], { entity: elda, by: bandit });
+  assert.equal(g.combat.kill(rowan, bandit), false, 'kill() knocks guards out too');
+  assert.equal(rowan.downed, true);
+  assert.equal(of(ev, 'death').length, 0);
+  assert.equal(of(ev, 'crime').length, 0, 'only the player commits crimes');
+  // Their own logic helps them up after 30 s; combat only catches a forgotten one.
+  step(g, 30);
+  assert.equal(g.combat.revive(elda, elda, 0.5), true);
+  assert.equal(elda.hp, 10);
+  step(g, 12);
+  assert.equal(rowan.downed, false, 'safety net');
+});
+
+test('hurting a villager is a crime: one event per victim, knockout escalates', () => {
+  const g = makeGame();
+  const ev = log(g);
+  const p = addPlayer(g);
+  const elda = actor(g, { name: 'Elda Thornbury', faction: 'villager', x: 116, maxHp: 40 });
+  elda.profile = { id: 'elda' };
+  g.clock.t = 100;
+  for (let i = 0; i < 3; i++) {
+    elda.invuln = 0;
+    g.combat.damage(p, elda, 5);
+  }
+  assert.ok(elda.hp > 0);
+  let crimes = of(ev, 'crime');
+  assert.equal(crimes.length, 1, 'three hits, one crime');
+  assert.deepEqual(crimes[0], { actor: p, victim: elda, kind: 'assault' });
+  assert.equal(p.crime.kind, 'assault');
+  assert.equal(p.crime.level, 1);
+  assert.equal(p.crime.until, 100 + ASSAULT_SECONDS);
+  assert.ok(g.toasts.some((t) => t.kind === 'warn' && t.text.includes('Elda')));
+  // After the quiet window, another blow is reported again.
+  g.clock.t += CRIME_EVENT_GAP + 1;
+  elda.invuln = 0;
+  g.combat.damage(p, elda, 5);
+  assert.equal(of(ev, 'crime').length, 2);
+  // Knocking her out: downed, not dead; a knockout lasts the rest of the day.
+  elda.invuln = 0;
+  g.combat.damage(p, elda, 999);
+  assert.equal(elda.downed, true);
+  assert.equal(elda.dead, false);
+  crimes = of(ev, 'crime');
+  assert.equal(crimes.length, 3);
+  assert.equal(crimes[2].kind, 'knockout');
+  assert.equal(p.crime.kind, 'knockout');
+  assert.equal(p.crime.level, 2);
+  assert.equal(p.crime.until, DAY_SECONDS, 'until midnight of day 1');
+  assert.equal(of(ev, 'downed').at(-1).by, p);
+  // Hurting Lyra or a creature is not a crime.
+  const lyra = addLyra(g, { x: 90 });
+  const wolf = actor(g, { faction: 'monster', x: 120, y: 120 });
+  g.combat.damage(p, lyra, 3);
+  g.combat.damage(p, wolf, 3);
+  assert.equal(of(ev, 'crime').length, 3);
+});
+
+test('guards are hostile to the player only while a crime is active', () => {
+  const g = makeGame();
+  const ev = log(g);
+  const p = addPlayer(g);
+  const rowan = actor(g, { name: 'Captain Rowan Vale', faction: 'guard', x: 116, maxHp: 60 });
+  const bram = actor(g, { name: 'Bram Ironhand', faction: 'villager', x: 140, maxHp: 40 });
+  const lyra = addLyra(g, { x: 90 });
+  assert.equal(g.combat.isHostile(rowan, p), false);
+  assert.equal(g.combat.canHarm(rowan, p, true), false, 'a calm guard never hurts the player');
+  g.clock.t = 500;
+  g.combat.damage(p, bram, 4);
+  assert.equal(g.combat.hasCrime(p), true);
+  assert.equal(g.combat.isHostile(rowan, p), true);
+  assert.equal(g.combat.isHostile(p, rowan), true);
+  assert.equal(g.combat.isHostile(rowan, lyra), false, 'Lyra is not wanted');
+  assert.equal(g.combat.isHostile(bram, p), false, 'villagers flee, they do not fight');
+  assert.ok(g.combat.damage(rowan, p, 5) > 0, 'the guard may strike the wanted player');
+  step(g, ASSAULT_SECONDS + 0.5);
+  assert.equal(g.combat.hasCrime(p), false);
+  assert.equal(p.crime, null, 'cleared once it runs out');
+  assert.equal(g.combat.isHostile(rowan, p), false, 'guards calm down');
+  assert.ok(g.toasts.some((t) => t.text.includes('stopped looking')));
+  assert.equal(of(ev, 'crime').length, 1);
+});
+
+test('a crime survives a save, and being beaten by the guard settles it', async () => {
+  const g = makeGame();
+  g.objects = { get: (id) => (id === 'home_bed' ? { x: 400, y: 300 } : null), inRadius: () => [] };
+  const p = addPlayer(g);
+  const rowan = actor(g, { name: 'Captain Rowan Vale', faction: 'guard', x: 116, maxHp: 60 });
+  const mira = actor(g, { name: 'Mira Fennick', faction: 'villager', x: 84, maxHp: 30 });
+  g.clock.t = 100;
+  g.combat.damage(p, mira, 4);
+  const saved = JSON.parse(JSON.stringify(p.serialize()));
+  assert.equal(saved.crime.kind, 'assault');
+  const g2 = makeGame();
+  const p2 = addPlayer(g2);
+  g2.clock.t = 120;
+  p2.deserialize(saved);
+  assert.equal(g2.combat.hasCrime(p2), true);
+
+  g.combat.damage(rowan, p, 999);
+  assert.equal(p.downed, true);
+  assert.equal(p.crime, null, 'the matter is settled where you fell');
+  assert.equal(g.combat.isHostile(rowan, p), false);
+  step(g, 1.5);
+  await flushPromises();
+  assert.equal(p.downed, false);
+  assert.ok(g.toasts.some((t) => t.text.includes('Captain Rowan Vale hauled you home')));
 });
 
 test('when Lyra lands the killing blow the player gets the xp too', () => {
@@ -599,6 +758,66 @@ test('the dodge roll moves, grants i-frames and has a cooldown', () => {
   step(g, 0.5);
   press(g, 'dodge');
   assert.equal(p.rolling, true);
+});
+
+test('a rooted player cannot move or dodge, but can still turn and swing', () => {
+  const g = makeGame();
+  const ev = log(g);
+  const p = addPlayer(g);
+  p.rootTime = 3; // Lyra's Binding Light
+  g.input.move = { x: 1, y: 0 };
+  press(g, 'dodge');
+  assert.equal(p.rolling, false, 'no rolling out of Binding Light');
+  step(g, 0.5);
+  assert.equal(p.x, 100, 'held in place');
+  assert.equal(p.dir, 'right', 'but free to turn');
+  const slime = actor(g, { faction: 'monster', x: 114, y: 100, maxHp: 40 });
+  press(g, 'attack');
+  assert.ok(slime.hp < 40, 'and to fight');
+  assert.ok(of(ev, 'attack').some((a) => a.attacker === p));
+  assert.equal(p.x, 100, 'the swing does not lunge');
+  // Rooted mid-roll: the roll stops where it is.
+  step(g, 3);
+  assert.equal(p.rootTime, 0);
+  press(g, 'dodge');
+  assert.equal(p.rolling, true);
+  p.rootTime = 1;
+  step(g, 1 / 60);
+  assert.equal(p.rolling, false);
+  const x = p.x;
+  step(g, 0.5);
+  assert.equal(p.x, x);
+  step(g, 1);
+  g.input.move = { x: 1, y: 0 };
+  step(g, 0.3);
+  assert.ok(p.x > x, 'moves again once the light fades');
+});
+
+test('Lyra\'s bolts fly past the player on their way to the enemy', () => {
+  const g = makeGame();
+  const p = addPlayer(g, { x: 130, y: 100 });
+  const lyra = addLyra(g, { x: 100, y: 100 });
+  const wolf = actor(g, { faction: 'monster', x: 190, y: 100, maxHp: 40 });
+  g.combat.damage(p, lyra, 2); // even right after the player hurt her
+  g.combat.shoot(lyra, wolf.x, wolf.y, 'bolt', { target: wolf });
+  step(g, 1);
+  assert.equal(p.hp, p.maxHp);
+  assert.ok(wolf.hp < 40);
+});
+
+test('if Lyra has left you, a villager carries you home instead', async () => {
+  const g = makeGame();
+  g.objects = { get: (id) => (id === 'home_bed' ? { x: 400, y: 300 } : null), inRadius: () => [] };
+  const p = addPlayer(g);
+  const lyra = addLyra(g, { x: 130 });
+  lyra.mind = { companionship: 'left' };
+  const wolf = actor(g, { faction: 'monster', x: 120 });
+  g.combat.damage(wolf, p, 999);
+  step(g, 1.5);
+  await flushPromises();
+  assert.equal(p.downed, false);
+  assert.equal(lyra.x, 130, 'she stays where she was');
+  assert.ok(g.toasts.some((t) => t.text.includes('Someone from the village found you')));
 });
 
 test('movement accelerates and decelerates instead of snapping', () => {

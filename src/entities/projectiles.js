@@ -3,8 +3,9 @@ import { TILE } from '../core/constants.js';
 
 // Arrows and arcane bolts. Added to game.entities by Combat.shoot(); they fly at chest
 // height (z) above a ground track (x, y) so depth sorting and shadows stay correct.
-// They stop at walls (map.blocksProjectile and closed doors) and hit the first actor
-// that is not the owner or one of the owner's allies.
+// They stop at walls (map.blocksProjectile and closed doors) and hit the first actor the
+// owner may harm (combat.canHarm): never the owner, never the owner's allies unless the
+// owner is the player.
 
 const BOLT_COLOR = '#a995ff';
 const BOLT_TRAIL = ['#ddd2ff', '#a995ff', '#7a64e0'];
@@ -145,9 +146,11 @@ export class Projectile extends Entity {
       const dx = e.x - this.x;
       const dy = e.y - this.y;
       if (dx > r || dx < -r || dy > r || dy < -r || dx * dx + dy * dy > r * r) continue;
+      // Only the chosen target counts as chosen: a bolt meant for a wolf flies past
+      // friends in the way (the player's own shots spare no one, like the sword).
       if (owner) {
         if (combat?.canHarm) {
-          if (!combat.canHarm(owner, e, true)) continue;
+          if (!combat.canHarm(owner, e, e === this.target)) continue;
         } else if (factionRelation(owner.faction, e.faction) === 'ally') continue;
       }
       return e;
