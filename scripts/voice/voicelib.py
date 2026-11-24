@@ -77,6 +77,8 @@ def write_json(path: Path, data, indent=None) -> None:
 
 ONES = "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen".split()
 TENS = "_ _ twenty thirty forty fifty sixty seventy eighty ninety".split()
+SPELLING = {"gray": "grey", "color": "colour", "colors": "colours", "neighbor": "neighbour", "neighbors": "neighbours", "favor": "favour",
+            "honor": "honour", "toward": "towards", "okay": "ok", "alright": "all right", "whiskey": "whisky", "theater": "theatre"}
 FILLERS = {"hm": "hm", "hmm": "hm", "hmmm": "hm", "mm": "hm", "mmm": "hm", "mhm": "hm", "mmhm": "hm", "hmhm": "hm", "hmhmm": "hm", "um": "hm", "uh": "hm", "ah": "ah", "oh": "oh"}
 
 
@@ -110,7 +112,8 @@ def norm_tokens(text: str) -> list[str]:
         if m:
             out += number_words(int(m.group(1)))
             continue
-        out.append(FILLERS.get(w, w))
+        w = SPELLING.get(w, w)  # Whisper spells American; the story spells British
+        out += w.split() if " " in w else [FILLERS.get(w, w)]
     # "a hundred" is "one hundred"
     return ["one" if w == "a" and i + 1 < len(out) and out[i + 1] in ("hundred", "thousand") else w for i, w in enumerate(out)]
 

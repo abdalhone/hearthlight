@@ -104,6 +104,8 @@ def take_for(job: dict, t: dict) -> dict:
     wav, meta = d / f"{t['fp']}.wav", d / f"{t['fp']}.json"
     info = vl.load_json(meta)
     if info and wav.exists() and info.get("ears") == EARS:
+        # What was heard is kept; how it is compared with the script may have improved.
+        info["errors"], info["n"] = vl.word_errors(job["text"], info["heard"].split(), _W.get("names"))
         return info
     t0 = time.time()
     if wav.exists():
