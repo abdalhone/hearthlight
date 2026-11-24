@@ -900,3 +900,151 @@ test('actions through the registry: player requests pass the consent gate; her o
   assert.equal(b.directive.type, 'keep_away');
   assert.equal(b.directive.tiles, 6);
 });
+
+// ---------------------------------------------------------------- round 2: her mind's plans, robustness
+
+test('plan blocks from her mind: work for someone, travel, free time, visits; company words are never people', () => {
+  const work = classifyActivity({ from: 7, to: 10, activity: 'work', at: 'whisperwood', job: 'gather_herbs', npc: 'mira', with: 'invite', amount: 5 });
+  assert.deepEqual([work.mode, work.job, work.buyer], ['job', 'gather_herbs', 'mira']);
+  assert.equal(classifyActivity({ from: 10, to: 13, activity: 'travel', at: null, with: 'player' }).mode, 'with_player');
+  assert.equal(classifyActivity({ activity: 'free', kind: 'stars', at: 'south_meadow' }).mode, 'stargaze');
+  assert.equal(classifyActivity({ activity: 'free', kind: 'rain', at: 'ember_kettle' }).mode, 'rest');
+  const petals = classifyActivity({ activity: 'free', kind: 'moonpetals', at: 'whisperwood', with: 'invite' });
+  assert.deepEqual([petals.mode, petals.job, petals.buyer], ['job', 'gather_herbs', null]);
+  const visit = classifyActivity({ activity: 'visit', at: 'smithy', npc: 'bram', with: 'alone' });
+  assert.deepEqual([visit.mode, visit.person], ['visit', 'bram']);
+  assert.equal(classifyActivity({ activity: 'eat', at: 'ember_kettle', with: 'alone' }).person, null);
+  assert.equal(classifyActivity({ activity: 'lead', at: 'chapel', npc: 'aveline', with: 'invite' }).person, 'aveline');
+  // Her mind's sleep block runs past midnight to 7 AM (to: 31).
+  const night = [{ from: 22, to: 31, activity: 'sleep', at: 'ember_kettle', bed: 'lyra_inn_bed' }];
+  assert.equal(activeEntry(night, 3).activity, 'sleep');
+  assert.equal(classifyActivity(night[0]).mode, 'sleep');
+});
+
+test('a revised plan does not interrupt her work: the same day carries on', () => {
+  const game = makeGame({ hour: 9 });
+  const { b } = addLyra(game);
+  villager(game, 'mira', 'Mira Fennick', T(24), T(22));
+  for (const [tx, ty] of [
+    [6, 5],
+    [8, 6],
+    [10, 4],
+    [12, 7],
+  ])
+    game.objects.add(workObject('herb', tx, ty, 'herb', { solid: false }));
+  const plan = () => [{ from: 8, to: 12, activity: 'work', job: 'gather_herbs', npc: 'mira', at: 'whisperwood', with: 'alone', amount: 3 }];
+  const failed = collect(game, 'job_failed');
+  const done = collect(game, 'job_done');
+  b.setDirective({ type: 'independent', plan: plan() });
+  run(game, 30, () => b.jobs.count >= 1);
+  assert.equal(b.jobs.active, true);
+  // Her mind re-plans (as it does after being paid, or every hour): same block.
+  b.setDirective({ type: 'independent', plan: plan(), block: plan()[0] });
+  assert.equal(b.jobs.active, true, 'still working');
+  run(game, 60, () => done.length > 0);
+  assert.equal(failed.length, 0);
+  assert.equal(done[0].result.buyer, 'mira');
+  assert.match(b.status(), /for Mira|Mira/);
+});
+
+test('keep_away with her own plan: she lives her day, and steps away when the player comes close', () => {
+  const game = makeGame({ hour: 10 });
+  const { b, lyra, player, mind } = addLyra(game);
+  mind.companionship = 'left';
+  game.objects.add({ id: 'inn_hearth', objType: 'hearth', tx: 32, ty: 19, x: T(32), y: 19 * TILE + 15, solid: true, blocksTile: (x, y) => x === 32 && y === 19 });
+  player.x = T(10);
+  player.y = T(30);
+  const r = b.setDirective({ type: 'keep_away', from: 'player', tiles: 4, plan: [{ from: 9, to: 12, activity: 'rest', at: 'ember_kettle', with: 'alone' }] });
+  assert.equal(r.ok, true);
+  assert.equal(b.directive.follow, false);
+  const kettle = game.locations.get('ember_kettle').bounds;
+  const there = run(game, 25, () => lyra.x / TILE >= kettle.x - 1 && lyra.x / TILE <= kettle.x + kettle.w + 1 && lyra.y / TILE >= kettle.y - 1 && lyra.y / TILE <= kettle.y + kettle.h + 1);
+  assert.ok(there, 'she went about her day');
+  player.x = lyra.x + 20;
+  player.y = lyra.y;
+  run(game, 3);
+  assert.ok(Math.hypot(lyra.x - player.x, lyra.y - player.y) >= 4 * TILE - 4, 'and stepped away from the player');
+  assert.match(b.status(), /keeping her distance/);
+});
+
+test('she will not raise a hand against someone the combat rules protect', () => {
+  const game = makeGame();
+  const { b, lyra, player, mind } = addLyra(game);
+  game.combat.canHarm = (att, t) => t.faction !== 'villager';
+  const tobias = villager(game, 'tobias', 'Tobias Reed', lyra.x + 40, lyra.y);
+  mind.relationships.set('tobias', { tags: ['enemy'] });
+  const r = b.focus('tobias');
+  assert.equal(r.ok, false);
+  assert.match(r.message, /Tobias/);
+  const t = selectTarget({ game, self: lyra, stance: 'attack', player, now: 10, memory: new Map(), center: lyra, radius: 150 });
+  assert.equal(t, null);
+});
+
+test('she reads the player\'s swing zone and steps out of it', () => {
+  const game = makeGame();
+  const { b, lyra, player } = addLyra(game);
+  b.setDirective({ type: 'stay' });
+  player.x = lyra.x - 18;
+  player.y = lyra.y;
+  const zone = { x: 0, y: 0, fx: 1, fy: 0, range: 22, arc: 2.1, active: true };
+  player.swingZone = () => {
+    zone.x = player.x;
+    zone.y = player.y;
+    return zone;
+  };
+  run(game, 1);
+  const dx = lyra.x - player.x;
+  const dy = lyra.y - player.y;
+  const d = Math.hypot(dx, dy);
+  assert.ok(d > 32 || dx / d < Math.cos(2.1 / 2 + 0.25), 'out of the swing');
+  // Once the swing stops she goes back to her post.
+  zone.active = false;
+  run(game, 3);
+  assert.ok(Math.hypot(lyra.x - b.directive.x, lyra.y - b.directive.y) < 12);
+});
+
+test('status leads with the standing order; an idle flourish trails it', () => {
+  const game = makeGame();
+  const { b } = addLyra(game);
+  b.setDirective({ type: 'stay' });
+  b.idle.act = b.idle.begin({ kind: 'hum' }, 'stay');
+  assert.equal(b.status(), 'holding position, humming');
+  b.setDirective({ type: 'follow', target: 'player', distance: 'normal' });
+  assert.equal(b.status(), 'following you');
+});
+
+test('fishing at the dock goes through the fishing spot\'s work API', () => {
+  const game = makeGame();
+  const { b, lyra } = addLyra(game, { tx: 34, ty: 24 });
+  const water = (tx, ty) => ty >= 30 && tx >= 28 && tx <= 42;
+  game.map.isWater = water;
+  const solid = game.map.isSolidTile.bind(game.map);
+  game.map.isSolidTile = (tx, ty) => solid(tx, ty) || water(tx, ty);
+  let works = 0;
+  const spot = game.objects.add({
+    id: 'fishing_spot',
+    objType: 'fishing_spot',
+    tx: 35,
+    ty: 29,
+    x: T(35),
+    y: 29 * TILE + 15,
+    solid: false,
+    t: 0,
+    canWork: () => true,
+    work(actor, dt) {
+      works++;
+      this.t += dt;
+      if (this.t < 1) return { done: false, progress: this.t };
+      this.t = 0;
+      return { done: true, progress: 1, items: [{ id: 'raw_fish', qty: 1 }] };
+    },
+  });
+  const done = collect(game, 'job_done');
+  const r = b.setDirective({ type: 'job', job: 'fish', amount: 2, deliverTo: 'keep' });
+  assert.equal(r.ok, true);
+  run(game, 30, () => done.length > 0);
+  assert.equal(done.length, 1);
+  assert.ok(works > 0, 'the spot was worked');
+  assert.equal(lyra.inventory.count('raw_fish'), 2);
+  assert.ok(Math.hypot(lyra.x - spot.x, lyra.y - spot.y) < 24, 'on the dock');
+});
