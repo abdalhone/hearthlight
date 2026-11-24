@@ -576,20 +576,31 @@ export class Village {
       }
     }
     if (!cands.length) return null;
-    let sum = 0;
-    for (const c of cands) sum += c[2];
-    let r = rnd(this.rng()) * sum;
-    let pick = cands[cands.length - 1];
-    for (const c of cands) {
-      r -= c[2];
-      if (r <= 0) {
-        pick = c;
-        break;
+    // Weighted order; a pair the player can see waits for a quiet moment, and someone
+    // else in the village talks instead.
+    const order = [];
+    const pool = cands.slice();
+    while (pool.length) {
+      let sum = 0;
+      for (const c of pool) sum += c[2];
+      let r = rnd(this.rng()) * sum;
+      let k = pool.length - 1;
+      for (let i = 0; i < pool.length; i++) {
+        r -= pool[i][2];
+        if (r <= 0) {
+          k = i;
+          break;
+        }
       }
+      order.push(pool.splice(k, 1)[0]);
     }
-    let [a, b] = pick;
-    if (rnd(this.rng()) < 0.5) [a, b] = [b, a];
-    return this.talkPair(a, b);
+    for (let [a, b] of order) {
+      if (rnd(this.rng()) < 0.5) [a, b] = [b, a];
+      const c = this.talkPair(a, b);
+      if (c) return c;
+    }
+    this.nextAt = Math.min(this.nextAt, t + 2);
+    return null;
   }
 
   // Start a talk between two people standing together; on screen it plays as bubbles.
@@ -910,13 +921,14 @@ export class Village {
         const lyra = g?.companion;
         const near = lyra ? this.witnessesNear(lyra.x, lyra.y, 200) : [];
         const was = p.previous;
+        // 'apart' is her own plans for the day, nobody's news; leaving is.
         if (p.state === 'gone') this.addRumor('lyra_gone', { witnesses: ['lyra', ...near], source: 'lyra', about: 'lyra' });
-        else if ((p.state === 'left' || p.state === 'apart') && (was === 'together' || was === 'wary')) this.addRumor('lyra_left', { witnesses: ['lyra', ...near], source: 'lyra', about: 'lyra' });
-        else if (p.state === 'together' && (was === 'apart' || was === 'left' || was === 'gone')) this.addRumor('lyra_back', { witnesses: ['lyra', ...near], source: 'lyra', about: 'lyra' });
+        else if (p.state === 'left' && was !== 'gone') this.addRumor('lyra_left', { witnesses: ['lyra', ...near], source: 'lyra', about: 'lyra' });
+        else if ((p.state === 'together' || p.state === 'wary') && (was === 'left' || was === 'gone')) this.addRumor('lyra_back', { witnesses: ['lyra', ...near], source: 'lyra', about: 'lyra' });
         return;
       }
       case 'room_rented':
-        if (p.actor === g?.companion) this.addRumor('lyra_kettle', { witnesses: ['lyra', 'elda'], source: 'elda', about: 'lyra' });
+        if (p.actor === g?.companion && ['left', 'gone'].includes(this.mind?.companionship)) this.addRumor('lyra_kettle', { witnesses: ['lyra', 'elda'], source: 'elda', about: 'lyra' });
         return;
       case 'quest': {
         if (p.stage === 2 || p.stage === 'asked') this.addRumor('maren_asking', { witnesses: ['aveline'] });

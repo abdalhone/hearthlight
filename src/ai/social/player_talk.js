@@ -172,12 +172,13 @@ export function localReply(v, npc, text) {
     intent = 'howare';
     delta = 1;
     mood = st.opinion >= 45 ? 'warm' : 'neutral';
+    const how = P(v.howAreYou(id)) || P(voice.short) || 'Well enough.';
     if (u.intents.has('greet') && rnd(rng) < 0.75) {
       const hello = P(voice.helloTo?.player || voice.hello, {}) || null;
-      if (hello && !/\bhow (?:are|is)\b|\byou\?/i.test(hello)) lines.push(hello);
+      // A hello that asks back, or says the same thing as the answer, is left out.
+      if (hello && !/\bhow (?:are|is)\b|\byou\?/i.test(hello) && !overlaps(hello, how)) lines.push(hello);
     }
-    const how = v.howAreYou(id);
-    lines.push(P(how) || P(voice.short) || 'Well enough.');
+    lines.push(how);
   } else if (u.intents.has('aboutme')) {
     intent = 'aboutme';
     lines.push(opinionOfYou(v, npc, P, voice, toYou, st));
@@ -253,6 +254,17 @@ export function localReply(v, npc, text) {
   const out = lines.filter((l) => typeof l === 'string' && l.trim() && speakable(l));
   if (!out.length) out.push(fill(pickProfile(voice.short, rng) || 'Hm.', {}) || 'Hm.');
   return { lines: out, mood, delta, intent, told, mentioned };
+}
+
+// Do two lines share three words in a row?
+function overlaps(a, b) {
+  const words = (s) => String(s).toLowerCase().replace(/[^a-z' ]/g, ' ').split(/\s+/).filter(Boolean);
+  const wa = words(a);
+  const tri = new Set();
+  for (let i = 0; i + 2 < wa.length; i++) tri.add(`${wa[i]} ${wa[i + 1]} ${wa[i + 2]}`);
+  const wb = words(b);
+  for (let i = 0; i + 2 < wb.length; i++) if (tri.has(`${wb[i]} ${wb[i + 1]} ${wb[i + 2]}`)) return true;
+  return false;
 }
 
 function pickProfile(list, rng) {
