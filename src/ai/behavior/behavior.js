@@ -677,7 +677,7 @@ export class Behavior {
     if (this.task?.tend) return false;
     if (need(g, 'energy') < 0.1 && this.t - this.restAt > 90 && !this.anyThreatClose() && this.task?.kind !== 'sleep') {
       this.restAt = this.t;
-      this.startSit(null, 25);
+      this.startSit(null, 90);
       if (this.task) this.task.tend = true;
       this.say(say.exhausted(), { force: true });
       return true;

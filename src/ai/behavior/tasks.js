@@ -1,6 +1,7 @@
 import { TILE } from '../../core/constants.js';
 import { ITEMS } from '../../entities/items.js';
 import { say } from './lines.js';
+import { need } from './safety.js';
 import { rand, dist, tileOf, tileCenter, walkable, standSpotFor, isActorAlive, nameOf, objectName, itemsPhrase, safe } from './util.js';
 
 // Short things Lyra does on top of her standing order: walk to an object and use
@@ -10,7 +11,7 @@ import { rand, dist, tileOf, tileCenter, walkable, standSpotFor, isActorAlive, n
 export const EMOTES = {
   wave: { dur: 1.0, anim: 'cast', lock: true, face: 'player', line: ['Hello there!', 'Hi!', 'Over here!'] },
   laugh: { dur: 1.4, hop: [2, 7], icon: 'note', line: ["Hah! You're terrible.", 'Hahaha!', 'Oh, that got me.'] },
-  bow: { dur: 1.2, anim: 'work', face: 'player', line: ['At your service.', 'Milady. Milord. Whichever.'] },
+  bow: { dur: 1.2, anim: 'work', face: 'player', line: ["A proper Glasswater bow. Don't get used to it.", 'Milady. Milord. Whichever.'] },
   dance: { dur: 2.8, hop: [3, 5], spin: 0.28, icon: 'note', particle: 'note', line: ["Don't laugh. ...Fine, you can laugh.", 'Glasswater Isles reel! Keep up!'] },
   hug: { dur: 1.8, approach: true, icon: 'heart', particle: 'heart', feel: ['affection', 0.12], line: ['Come here, you.', 'Mm. Thank you for that.'] },
   think: { dur: 1.9, icon: '...', line: ['Hmm... let me think.', 'Thinking. Give me a moment.'] },
@@ -400,7 +401,9 @@ function runSit(b, task, dt) {
   else if (task.lookUp && a.dir !== 'up') a.faceDir?.('up');
   if (a.state !== 'sit') a.setState('sit');
   task.t = (task.t || 0) + dt;
-  if (task.maxTime && task.t > task.maxTime) {
+  // Sitting down because she was exhausted: up again once she has her legs back.
+  const rested = task.tend && task.t > 12 && need(g, 'energy') >= 0.4;
+  if (rested || (task.maxTime && task.t > task.maxTime)) {
     endTask(b, task);
     return 'done';
   }
