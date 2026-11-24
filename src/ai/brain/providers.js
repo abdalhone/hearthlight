@@ -57,33 +57,76 @@ export class ClaudeAiProvider {
     this.id = 'claude.ai';
     this.label = PROVIDER_LABELS['claude.ai'];
     this.disabled = false;
+    this.toolsOff = false; // the view rejected page tools once: plain calls from now on
+    this._limits = undefined; // sample.limits() result, resolved once per view
+    this._limitsFor = null;
   }
 
   available() {
     return !this.disabled && !!this.runtime?.sample;
   }
 
+  // Can this view run page tools (DESIGN §17.3)? Cheap and local; asks the viewer nothing.
+  async toolLimit() {
+    const sample = this.runtime?.sample;
+    if (!sample || this.toolsOff || typeof sample.limits !== 'function') return 0;
+    if (this._limitsFor !== sample) {
+      this._limitsFor = sample;
+      this._limits = undefined;
+    }
+    if (this._limits === undefined) {
+      try {
+        this._limits = (await sample.limits()) || null;
+      } catch {
+        this._limits = null;
+      }
+    }
+    const t = this._limits?.tools;
+    if (!t) return 0;
+    return Number.isFinite(t.maxCount) ? Math.max(0, t.maxCount) : 3;
+  }
+
   // No system prompt on claude.ai: the stable rules go first in the one prompt string.
-  async complete({ rules, task, tier = 'quick', signal } = {}) {
+  // tools: SampleTool[] (read-only page functions) or null.
+  async complete({ rules, task, tier = 'quick', signal, tools = null } = {}) {
     const sample = this.runtime?.sample;
     if (!sample) throw new BrainError('not_available', 'sample capability is not available');
     const prompt = `${rules}\n\n${task}`;
     const options = { modelTier: tier === 'default' || tier === 'complex' ? tier : 'quick', cache: false };
     if (signal) options.signal = signal;
+    const withTools = Array.isArray(tools) && tools.length && !this.toolsOff;
+    if (withTools) options.tools = tools;
     try {
-      if (typeof sample.json === 'function') return await sample.json(prompt, options);
-      const res = await sample(prompt, options);
-      const data = extractJson(res?.text);
-      if (data == null) throw new BrainError('invalid_json', 'reply was not JSON', { text: res?.text ?? '' });
-      return data;
+      return await this._call(sample, prompt, options);
     } catch (e) {
       const err = toBrainError(e);
+      if (err.code === 'tools_unavailable' && withTools) {
+        // Hide the tools for this view and answer this one message without them (once).
+        this.toolsOff = true;
+        delete options.tools;
+        try {
+          return await this._call(sample, prompt, options);
+        } catch (e2) {
+          const err2 = toBrainError(e2);
+          if (err2.permanent) this.disable();
+          throw err2;
+        }
+      }
       if (err.permanent) this.disable();
       throw err;
     }
   }
 
+  async _call(sample, prompt, options) {
+    if (typeof sample.json === 'function') return await sample.json(prompt, options);
+    const res = await sample(prompt, options);
+    const data = extractJson(res?.text);
+    if (data == null) throw new BrainError('invalid_json', 'reply was not JSON', { text: res?.text ?? '' });
+    return data;
+  }
+
   disable() {
+    if (this.disabled) return;
     this.disabled = true;
     try {
       this.runtime?.disable?.('sample');
@@ -146,6 +189,11 @@ export class ApiKeyProvider {
     // A claude.ai-hosted page has no outbound network.
     if (this.game?.runtime?.hostPresent) return false;
     return true;
+  }
+
+  // Page tools are a claude.ai capability; this path sends the pre-selected context only.
+  async toolLimit() {
+    return 0;
   }
 
   model() {

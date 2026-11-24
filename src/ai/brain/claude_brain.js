@@ -8,6 +8,7 @@
 import { EMOTION_NAMES, REL_TAGS } from './effects.js';
 
 export const MAX_ACTIONS = 6;
+const KNOWLEDGE_KINDS = ['fact', 'lore', 'theory', 'rumor'];
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -241,6 +242,44 @@ export function coerceRelationships(raw, max = 4) {
   return out;
 }
 
+// Memory ids Claude says it drew on: strings, numbers or {id} objects; deduped, capped.
+export function coerceIds(raw, max = 8) {
+  let list = raw;
+  if (list == null) return [];
+  if (!Array.isArray(list)) list = typeof list === 'string' ? list.split(/[\s,]+/) : [list];
+  const out = [];
+  for (const x of list) {
+    const v = x && typeof x === 'object' ? x.id : x;
+    if (v == null || typeof v === 'object') continue;
+    const id = String(v).trim().replace(/^\[|\]$/g, '');
+    if (!id || id.length > 80 || out.includes(id)) continue;
+    out.push(id);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+const KIND_SYNONYMS = { belief: 'theory', guess: 'theory', hypothesis: 'theory', suspicion: 'theory', gossip: 'rumor', hearsay: 'rumor', history: 'lore', legend: 'lore', myth: 'lore', truth: 'fact', known: 'fact' };
+
+// Things she learned or now believes. Unknown kinds become theories: never a fact by accident.
+export function coerceKnowledge(raw, max = 3) {
+  let list = raw;
+  if (list && !Array.isArray(list) && typeof list === 'object') list = list.subject || list.text ? [list] : Object.entries(list).map(([subject, text]) => ({ subject, text }));
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const k of list) {
+    if (out.length >= max) break;
+    if (!k || typeof k !== 'object') continue;
+    const subject = str(k.subject ?? k.about ?? k.topic, 60);
+    const text = str(k.text ?? k.fact ?? k.content, 240);
+    if (!subject || !text) continue;
+    const kr = String(k.kind ?? '').toLowerCase().trim();
+    const kind = KNOWLEDGE_KINDS.includes(kr) ? kr : KIND_SYNONYMS[kr] || 'theory';
+    out.push({ subject, text, kind });
+  }
+  return out;
+}
+
 // Coerce a chat reply. actionNames: the registry's names (unknown ones are dropped).
 export function coerceResponse(raw, { actionNames = null, maxActions = MAX_ACTIONS } = {}) {
   let data = raw;
@@ -249,7 +288,7 @@ export function coerceResponse(raw, { actionNames = null, maxActions = MAX_ACTIO
     if (data == null || typeof data !== 'object') {
       const said = extractSayField(raw);
       const say = said != null ? cleanSpeech(said) : looksLikeSpeech(raw) ? cleanSpeech(raw) : '';
-      return { say, thought: null, emotion: null, actions: [], memories: [], relationships: [], goal: null, rejected: [], salvaged: true };
+      return { say, thought: null, emotion: null, actions: [], memories: [], relationships: [], goal: null, used_memories: [], knowledge: [], rejected: [], salvaged: true };
     }
   }
   if (Array.isArray(data)) data = data.find((x) => x && typeof x === 'object' && !Array.isArray(x)) || {};
@@ -268,14 +307,17 @@ export function coerceResponse(raw, { actionNames = null, maxActions = MAX_ACTIO
     memories: coerceMemories(data.memories ?? data.memory ?? []),
     relationships: coerceRelationships(data.relationships ?? data.relationship ?? []),
     goal: str(goalRaw, 140),
+    used_memories: coerceIds(data.used_memories ?? data.usedMemories ?? data.memories_used ?? []),
+    knowledge: coerceKnowledge(data.knowledge ?? data.learned ?? []),
     rejected,
   };
 }
 
-// Remove actions that duplicate ones the offline pre-pass already ran.
+// Remove actions that duplicate ones the offline pre-pass already ran. Requests she refused
+// at first are not duplicates: Claude may change her mind and do them after all.
 export function dedupeActions(actions, executed = []) {
   const key = (a) => `${a.name}|${a.args?.target ?? ''}|${a.args?.value ?? ''}|${a.args?.amount ?? ''}`;
-  const ran = new Set(executed.map((e) => key({ name: e.name, args: e.args })));
+  const ran = new Set(executed.filter((e) => e.ok).map((e) => key({ name: e.name, args: e.args })));
   const ranNames = new Set(executed.filter((e) => e.ok).map((e) => e.name));
   // Standing-order actions with the same name are redundant even with slightly different args.
   const ORDERS = new Set(['follow', 'stay', 'set_combat_mode', 'come_here', 'retreat', 'free_will', 'start_job', 'stop_job']);

@@ -8,6 +8,7 @@ import { resolvePerson } from './effects.js';
 import { soulOf, VILLAGERS } from './soul_fallback.js';
 import { ITEMS, itemName, resolveItemId } from '../../entities/items.js';
 import { matchBuiltinClause } from './nlu.js';
+import { companionshipOf, playerRel, ledgerOf, agendaOf, isRefusal, reasonText, ACCEPTED } from './her_state.js';
 
 export const JOB_LABELS = {
   chop_wood: 'chopping wood',
@@ -20,6 +21,20 @@ export const JOB_LABELS = {
   collect_loot: 'collecting the loot',
   patrol: 'patrolling',
   guard: 'standing guard',
+};
+
+// Verb phrases for "I'll {counter}" and for her plans.
+const JOB_VERBS = {
+  chop_wood: 'chop some wood',
+  gather_herbs: 'gather herbs',
+  forage: 'forage for berries',
+  mine_ore: 'mine some ore',
+  fish: 'fish',
+  farm: 'help Tobias on the farm',
+  cook: 'cook something',
+  collect_loot: 'collect the loot',
+  patrol: 'walk the rounds',
+  guard: 'stand guard',
 };
 
 const JOB_NOUNS = { chop_wood: 'wood', gather_herbs: 'herbs', forage: 'forage', mine_ore: 'ore', fish: 'fish', farm: 'crops', cook: 'meals', collect_loot: 'loot' };
@@ -130,24 +145,35 @@ export class LocalBrain {
 
   // parsed: from nlu.parseMessage, with clause.results filled for actions already run.
   compose(parsed, env = null) {
-    const reply = { say: '', thought: null, emotion: null, memories: [], relationships: [], goal: null, actions: [] };
+    const reply = { say: '', thought: null, emotion: null, memories: [], relationships: [], goal: null, actions: [], apology: null };
+    const state = env?.companionship || companionshipOf(this.game);
     const parts = [];
     for (const clause of parsed.clauses) {
       let text = null;
       try {
-        text = this.answer(clause, reply, env);
+        text = this.answer(clause, reply, env, state);
       } catch (err) {
         console.error('[brain] offline answer failed', err);
       }
       if (text && !parts.includes(text)) parts.push(text);
     }
-    reply.say = joinParts(parts) || this.line('unknown_statement') || 'Hm.';
+    if (!parsed.clauses.length && parsed.offer) parts.push(this.line('offer_nothing'));
+    reply.say = joinParts(parts) || this.line(state === 'left' ? 'left_reply' : state === 'wary' ? 'wary_reply' : 'unknown_statement') || 'Hm.';
     return reply;
   }
 
-  answer(clause, reply, env) {
+  answer(clause, reply, env, state = 'together') {
     const it = clause.intent;
-    if (!it) return this.unknown(clause, reply);
+    // Gone or broken off: she does not chat like a companion. Requests still get her refusal,
+    // and a few things (an apology, "why did you leave?") still reach her.
+    if (state === 'left' && !(it && (it.actions?.length || LEFT_HEARS.has(it.id)))) {
+      if (reply._coldSaid) return null;
+      reply._coldSaid = true;
+      return this.line('left_reply');
+    }
+    if (!it) return this.unknown(clause, reply, state);
+    if (it.id === 'counter.take') return `${this.line('counter_taken')} ${this.ack(clause, reply)}`.trim();
+    if (it.id === 'counter.decline') return this.line('counter_declined');
     if (it.source === 'plugin') {
       if (it.answer) {
         let text = null;
@@ -156,17 +182,18 @@ export class LocalBrain {
         } catch (err) {
           console.error(`[brain] intent ${it.id} answer failed`, err);
         }
-        if (typeof text === 'string' && text.trim()) return text.trim();
+        // A plugin answer that ignores a refusal would read as obedience: her refusal wins.
+        if (typeof text === 'string' && text.trim() && !(clause.results || []).some(isRefusal)) return text.trim();
       }
       if (it.actions.length) return this.ack(clause, reply);
       // A plugin question without an answer: let the built-ins try the same words.
       const builtin = env ? matchBuiltinClause(clause, env) : null;
-      if (builtin && builtin.kind !== 'command' && HANDLERS[builtin.id]) return HANDLERS[builtin.id].call(this, builtin.slots || {}, clause, reply);
-      return this.unknown(clause, reply);
+      if (builtin && builtin.kind !== 'command' && HANDLERS[builtin.id]) return HANDLERS[builtin.id].call(this, builtin.slots || {}, clause, reply, state);
+      return this.unknown(clause, reply, state);
     }
     if (it.kind === 'command') return this.ack(clause, reply);
     const h = HANDLERS[it.id];
-    return h ? h.call(this, it.slots || {}, clause, reply) : this.unknown(clause, reply);
+    return h ? h.call(this, it.slots || {}, clause, reply, state) : this.unknown(clause, reply, state);
   }
 
   // ---------------------------------------------------------- acknowledgements
@@ -175,22 +202,105 @@ export class LocalBrain {
     const it = clause.intent;
     const results = clause.results || [];
     const out = [];
+    let refused = false;
     for (let i = 0; i < it.actions.length; i++) {
-      const t = this.ackAction(it.actions[i], results[i]);
+      const res = results[i];
+      if (isRefusal(res)) refused = true;
+      const t = this.ackAction(it.actions[i], res, { offer: clause.offer || null });
       if (t && !out.includes(t)) out.push(t);
     }
-    if (!reply.thought && Math.random() < 0.5) reply.thought = this.line('thought_order');
+    if (!reply.thought) reply.thought = refused ? this.line('thought_refusal') : Math.random() < 0.5 ? this.line('thought_order') : null;
     return out.join(' ');
   }
 
-  // A short line for one action and its result. Refusals use the action's own words.
-  ackAction(a, res) {
+  // A short line for one action and its result: her refusal, condition or counter-offer
+  // when the consent gate said so (DESIGN §16.4), otherwise an acknowledgement.
+  ackAction(a, res, { offer = null } = {}) {
+    if (isRefusal(res)) return this.refusalLine(res, a, { offer });
     if (res && !res.ok) {
       const reason = String(res.message || '').trim();
       return reason ? this.line('refused_order', { reason }) || reason : this.line('ack_refused', { reason: "I can't do that right now." });
     }
+    const base = this.ackPlain(a, res);
+    const v = res?.verdict;
+    let extra = '';
+    if (v?.decision === 'accept_conditional') {
+      const cond = sentenceBody(v.condition);
+      if (v.message) return String(v.message).trim();
+      extra = cond ? this.line('accept_condition', { condition: cond }) : '';
+    } else if (v?.decision === 'accept' && v.message && String(v.message).trim().length > 3) {
+      // Her own words for agreeing beat a generic acknowledgement.
+      return String(v.message).trim();
+    }
+    if (offer?.coins && (!res || res.ok)) extra = `${extra} ${this.line('accept_paid', { coins: offer.coins })}`.trim();
+    else if (offer?.share && (!res || res.ok)) extra = `${extra} ${this.line('accept_share')}`.trim();
+    return `${base || ''} ${extra}`.replace(/\s+/g, ' ').trim();
+  }
+
+  // Her refusal / counter-offer for a refused request, in her voice.
+  refusalLine(res, a = {}, { offer = null } = {}) {
+    const v = res?.verdict || { decision: res?.decision || 'refuse', reasons: [], message: res?.message || '' };
+    const message = String(v.message || res?.message || '').trim();
+    if (v.decision === 'counter' && v.counter?.name) {
+      if (message) return message;
+      return this.line('counter_offer', { counter: this.describeAction(v.counter.name, v.counter.args || {}) });
+    }
+    if (message) return message;
+    const reason = capitalize(firstPersonReason(reasonText(v.reasons)));
+    const situation = refusalSituation(v, companionshipOf(this.game), offer);
+    if (situation === 'refuse_left' || situation === 'refuse_and_act') return this.line(situation, { reason });
+    if (!reason) return this.line('refuse_noreason');
+    return this.line(situation, { reason }) || this.line('refuse_generic', { reason });
+  }
+
+  // "I'll {phrase}" for an action: what she offers to do instead.
+  describeAction(name, args = {}) {
+    const who = args.target && args.target !== 'player' ? this.displayName(args.target) : null;
+    switch (name) {
+      case 'follow':
+        return args.value === 'far' ? 'follow you from a distance' : 'come with you';
+      case 'stay':
+        return args.target ? `wait at ${this.displayName(args.target)}` : 'wait here';
+      case 'wait':
+        return 'wait a little';
+      case 'come_here':
+        return 'come to you';
+      case 'goto':
+        return `go to ${this.displayName(args.target) || 'the village'}`;
+      case 'set_combat_mode':
+        return args.value === 'attack' ? 'fight' : args.value === 'passive' ? 'stay out of the fighting' : 'only defend us';
+      case 'attack':
+        return `deal with ${who || 'it'} if it comes at us`;
+      case 'retreat':
+        return 'fall back with you';
+      case 'guard':
+        return who ? `keep an eye on ${who}` : 'keep watch here';
+      case 'explore':
+        return `scout ${this.displayName(args.target) || 'around here'}`;
+      case 'start_job':
+        return args.amount && JOB_NOUNS[args.value] ? jobLabel(args.value, args.amount).replace(/^chopping/, 'chop').replace(/^catching/, 'catch').replace(/^gathering/, 'gather').replace(/^mining/, 'mine') : JOB_VERBS[args.value] || 'do something useful';
+      case 'wait_outside':
+        return `wait outside ${this.displayName(args.target) || 'there'}`;
+      case 'keep_distance':
+        return 'keep my distance';
+      case 'sleep':
+        return 'get some sleep first';
+      case 'use_item':
+        return 'eat something first';
+      case 'sit':
+        return 'rest a moment first';
+      case 'talk_to':
+        return `talk to ${who || 'them'}`;
+      case 'set_plan':
+        return args.value ? `stick to my own plan: ${String(args.value).toLowerCase()}` : 'stick to my own plan';
+      default:
+        return String(name || 'something else').replace(/_/g, ' ');
+    }
+  }
+
+  // Acknowledgement for an action she agreed to.
+  ackPlain(a, res) {
     const args = a.args || {};
-    const g = this.game;
     switch (a.name) {
       case 'follow':
         if (args.target && args.target !== 'player') return `Following ${this.displayName(args.target)}.`;
@@ -259,6 +369,20 @@ export class LocalBrain {
         return null;
       case 'read_journal':
         return res?.message || 'Let me read it...';
+      case 'rejoin':
+        return (res?.message && String(res.message).trim()) || this.line('ack_rejoin');
+      case 'leave_player':
+        return (res?.message && String(res.message).trim()) || this.line(args.value === 'apart' || !args.value ? 'ack_part_ways' : 'leaving');
+      case 'promise':
+        return this.line('ack_promise');
+      case 'flee':
+        return this.line('ack_flee');
+      case 'keep_distance':
+        return this.line('ack_keep_distance');
+      case 'warn':
+        return this.line('ack_warn');
+      case 'wait_outside':
+        return this.line('ack_wait_outside');
       default:
         return (res?.message && String(res.message).trim()) || this.line('ack_generic');
     }
@@ -288,8 +412,9 @@ export class LocalBrain {
 
   // --------------------------------------------------------------- unknowns
 
-  unknown(clause, reply) {
+  unknown(clause, reply, state = 'together') {
     const text = clause.norm || '';
+    if (state === 'wary' && Math.random() < 0.5) return this.line('wary_reply');
     const mention = this.findMention(text);
     if (clause.question) {
       if (mention?.kind === 'person') return this.opinionOf(mention.ref, null, reply);
@@ -398,8 +523,10 @@ export class LocalBrain {
       rel = null;
     }
     const bond = bondLevel(this.mind);
+    const state = companionshipOf(this.game);
     let text;
-    if (rel && rel.affinity < -10) text = this.line('opinion_player_cold');
+    if ((rel && rel.affinity < -10) || state === 'left') text = this.line('opinion_player_cold');
+    else if (state === 'wary') text = this.line('opinion_player_wary');
     else text = this.line(bond >= 4 ? 'opinion_player_high' : bond >= 2 ? 'opinion_player_mid' : 'opinion_player_low');
     if (rel?.opinion && !text.includes(rel.opinion)) text += ` ${rel.opinion}`;
     reply.emotion = reply.emotion || { name: 'affection', intensity: 0.15 };
@@ -452,6 +579,49 @@ export class LocalBrain {
     this.lastCareAt = this.now();
     reply.relationships.push({ person: 'player', affinity: amount, trust: 0, respect: 0, note: null, tag: null, opinion: null });
   }
+}
+
+// What still reaches her when she has left the player.
+const LEFT_HEARS = new Set(['social.apology', 'social.greet', 'social.farewell', 'social.insult', 'ask.why_left', 'ask.trust_me', 'ask.fear_me', 'ask.why_refused', 'counter.take', 'counter.decline']);
+
+// Which refusal bank fits the gate's reasons (they are free text from the mind).
+export function refusalSituation(verdict, state = 'together', offer = null) {
+  if (verdict?.decision === 'refuse_and_act') return 'refuse_and_act';
+  if (state === 'left' || state === 'gone') return 'refuse_left';
+  const r = `${(verdict?.reasons || []).join(' ')} ${verdict?.message || ''}`.toLowerCase();
+  if (/\b(?:again|already (?:said|told)|push|keep asking|asked (?:me )?(?:twice|before))\b/.test(r)) return 'refuse_pushed';
+  if (/exhaust|tired|energy|sleep|barely stand|rest\b|worn out/.test(r)) return 'refuse_tired';
+  if (/hungry|hunger|starv|\beat\b|food/.test(r)) return 'refuse_hungry';
+  if (/\bhurt\b|wounded|bleed|\bhp\b|injur|health/.test(r)) return 'refuse_hurt';
+  if (/innocent|villager|friend|\bpets?\b|harm|steal|cruel|value|wrong|murder|harmless/.test(r)) return 'refuse_values';
+  if (/afraid|fear|scared|frighten/.test(r)) return 'refuse_fear';
+  if (/trust/.test(r)) return 'refuse_trust';
+  if (/danger|risk|\bdie\b|death|deadly|night|dark|wolves|bandit|too many|outnumber|threat|crossbow|skeleton/.test(r)) return 'refuse_danger';
+  if (offer?.coins || offer?.share) return 'refuse_offer';
+  return 'refuse_generic';
+}
+
+// Reasons may be written about her ("Lyra is exhausted"); she says them as herself.
+export function firstPersonReason(text) {
+  const t = String(text || '').trim();
+  if (!t) return '';
+  if (!/\b(?:lyra|she|her|herself)\b/i.test(t)) return t;
+  return t
+    .replace(/\b(?:Lyra|She|she) is\b/g, "I'm")
+    .replace(/\b(?:Lyra|She|she) has\b/g, 'I have')
+    .replace(/\b(?:Lyra|She|she) does(?:n't| not)\b/g, "I don't")
+    .replace(/\b(?:Lyra|She|she) (?:wo(?:n't|uld not)|will not)\b/g, "I won't")
+    .replace(/\bLyra's\b/g, 'my')
+    .replace(/\bherself\b/g, 'myself')
+    .replace(/\bher\b/g, 'my')
+    .replace(/\b(?:Lyra|She|she)\b/g, 'I');
+}
+
+// A condition as a clause: "Half the wood is mine." -> "half the wood is mine".
+function sentenceBody(text) {
+  const t = bare(String(text || '').replace(/\s+/g, ' '));
+  if (!t) return '';
+  return /^(?:I\b|I'|[A-Z][a-z]+ [A-Z])/.test(t) ? t : t[0].toLowerCase() + t.slice(1);
 }
 
 function joinParts(parts) {
@@ -760,11 +930,58 @@ const HANDLERS = {
     return this.line('ai_deflect');
   },
 
+  'ask.plan'(s, clause, reply) {
+    const agenda = agendaOf(this.game);
+    const today = Array.isArray(agenda.today) ? agenda.today.filter((p) => p && p.activity) : [];
+    const h = this.game.clock?.hour ?? 12;
+    const ahead = today.filter((p) => !Number.isFinite(p.to) || p.to > h).slice(0, 3);
+    if (!ahead.length) return this.line('plan_none');
+    const parts = ahead.map((p) => {
+      const when = Number.isFinite(p.from) && p.from <= h ? 'right now' : timeOfDay(p.from);
+      const where = p.at ? ` at ${this.displayName(p.at)}` : '';
+      const why = p.why ? ` — ${lowerFirst(bare(p.why))}` : '';
+      return `${capitalize(when)}, ${activityPhrase(p.activity)}${where}${why}.`;
+    });
+    return this.line('plan_report', { plan: parts.join(' ') });
+  },
+
+  'ask.trust_me'(s, clause, reply, state) {
+    const rel = playerRel(this.game);
+    if (state === 'left' || rel.trust < 35) return this.line('trust_player_low');
+    return this.line(rel.trust >= 65 && state !== 'wary' ? 'trust_player_high' : 'trust_player_mid');
+  },
+
+  'ask.fear_me'(s, clause, reply) {
+    const f = playerRel(this.game).fear;
+    if (f >= 45) {
+      reply.emotion = { name: 'fear', intensity: 0.2 };
+      return this.line('fear_player_high');
+    }
+    return this.line(f >= 15 ? 'fear_player_some' : 'fear_player_none');
+  },
+
+  'ask.why_left'(s, clause, reply, state) {
+    if (state === 'together') return this.line('not_avoiding');
+    const why = String(this.game.brain?.lastCompanionshipReason || '').trim();
+    return why ? this.line('why_left', { reason: capitalize(/[.!?]$/.test(why) ? why : `${why}.`) }) : this.line('why_left_none');
+  },
+
+  'ask.why_refused'() {
+    const r = this.game.brain?.recentRefusal?.();
+    const why = r ? firstPersonReason(reasonText(r.verdict?.reasons)) : '';
+    if (why) return this.line('why_refused', { reasons: why[0].toLowerCase() === why[0] ? why : lowerFirst(why) });
+    if (r?.message) return this.line('why_refused', { reasons: lowerFirst(bare(r.message)) });
+    return this.line('why_refused_none');
+  },
+
   // ---------------------------------------------------------------- social
-  'social.greet'(s, clause, reply) {
+  'social.greet'(s, clause, reply, state) {
     const t = this.now();
     const again = t - this.lastGreetAt < 120;
     this.lastGreetAt = t;
+    if (state === 'left') return this.line('left_greet');
+    if (state === 'wary') return this.line('wary_greet');
+    if (state === 'apart' && !again) return this.line('apart_greet');
     if (again) return this.line('greet_again');
     const h = this.game.clock?.hour ?? 12;
     reply.emotion = { name: 'joy', intensity: 0.08 };
@@ -790,15 +1007,20 @@ const HANDLERS = {
     reply.relationships.push({ person: 'player', affinity: 1, trust: 1, respect: 0, note: null, tag: null, opinion: null });
     return this.line('praise_reply');
   },
-  'social.compliment'(s, clause, reply) {
+  'social.compliment'(s, clause, reply, state) {
+    if (state === 'wary' || state === 'left') return this.line('compliment_wary');
     reply.emotion = { name: 'joy', intensity: 0.22 };
     reply.relationships.push({ person: 'player', affinity: 2, trust: 0, respect: 0, note: null, tag: null, opinion: null });
     reply.thought = this.line('thought_compliment');
     return this.line('compliment_reply');
   },
-  'social.flirt'(s, clause, reply) {
+  'social.flirt'(s, clause, reply, state) {
     const bond = bondLevel(this.mind);
     const pname = this.game.settings?.playerName || 'the traveler';
+    if (state === 'wary' || state === 'left' || playerRel(this.game).fear > 35) {
+      reply.emotion = { name: 'anger', intensity: 0.15 };
+      return this.line('flirt_wary');
+    }
     reply.thought = this.line('thought_flirt');
     if (bond >= 4) {
       reply.emotion = { name: 'affection', intensity: 0.5 };
@@ -842,24 +1064,51 @@ const HANDLERS = {
     reply.relationships.push({ person: 'player', affinity: -Math.round(4 * weight), trust: -Math.round(2 * weight), respect: 0, note: null, tag: null, opinion: null });
     return this.line('insult_1');
   },
-  'social.apology'(s, clause, reply) {
-    let rel = null;
-    try {
-      rel = this.mind?.relationships?.get?.('player') || null;
-    } catch {
-      rel = null;
-    }
-    const hurt = this.insults > 0 || (rel && rel.affinity < 0);
+  'social.apology'(s, clause, reply, state) {
+    const g = this.game;
+    const rel = playerRel(g);
+    const now = this.now();
+    const day = g.clock?.day ?? 1;
+    const deeds = ledgerOf(g, 8).filter((d) => d && Number.isFinite(d.severity) && d.severity < 0 && (d.day == null || day - d.day <= 1));
+    const hurt = this.insults > 0 || rel.affinity < 0 || deeds.length > 0 || state === 'wary' || state === 'left';
     if (!hurt) return this.line('apology_nothing');
-    reply.thought = this.line('thought_apology');
-    this.insults = Math.max(0, this.insults - 1.5);
-    if (rel && Number.isFinite(rel.trust) && rel.trust < 20) {
-      reply.relationships.push({ person: 'player', affinity: 2, trust: 0, respect: 0, note: null, tag: null, opinion: null });
-      return this.line('apology_cold');
+    this.apologies = (this.apologies || []).filter((t) => now - t < 600);
+    this.apologies.push(now);
+    const pname = g.settings?.playerName || 'the traveler';
+    const worst = deeds.reduce((m, d) => Math.min(m, d.severity), 0);
+    let believed;
+    let situation;
+    if (this.apologies.length >= 3) {
+      believed = false;
+      situation = 'apology_repeat';
+    } else if (state === 'left') {
+      believed = rel.trust >= 35 && rel.fear <= 30;
+      situation = believed ? 'apology_believed_left' : 'apology_reject';
+    } else if (state === 'wary') {
+      believed = rel.trust >= 20 && rel.fear <= 45;
+      situation = believed ? 'apology_wary' : 'apology_reject';
+    } else {
+      // An accident she can forgive easily; a real hurt needs trust behind the words.
+      believed = s.accident ? worst > -3 || rel.trust >= 25 : rel.trust >= 15 || worst > -2;
+      situation = believed ? 'apology_accept' : 'apology_cold';
     }
-    reply.emotion = { name: 'trust', intensity: 0.2 };
-    reply.relationships.push({ person: 'player', affinity: 4, trust: 2, respect: 0, note: null, tag: null, opinion: null });
-    return this.line('apology_accept');
+    reply.apology = { believed, accident: !!s.accident, state };
+    reply.thought = this.line(believed ? 'thought_apology' : 'thought_doubt');
+    this.insults = Math.max(0, this.insults - (believed ? 1.5 : 0.5));
+    if (believed) {
+      reply.emotion = { name: 'trust', intensity: 0.2 };
+      reply.relationships.push({ person: 'player', affinity: 3, trust: state === 'left' || state === 'wary' ? 3 : 2, respect: 0, fear: state === 'together' ? 0 : -2, note: null, tag: null, opinion: null });
+    } else {
+      reply.emotion = { name: 'sadness', intensity: 0.15 };
+      reply.relationships.push({ person: 'player', affinity: 1, trust: 0, respect: 0, note: null, tag: null, opinion: null });
+    }
+    reply.memories.push({
+      text: `${pname} apologized${s.accident ? ' and said it was an accident' : ''}. I ${believed ? 'believed them' : "didn't believe them"}.`,
+      importance: state === 'left' || worst <= -3 ? 6 : 4,
+      about: ['player'],
+      tags: ['apology', believed ? 'believed' : 'doubted'],
+    });
+    return this.line(situation);
   },
   'social.joke'(s, clause, reply) {
     reply.emotion = { name: 'joy', intensity: 0.12 };
@@ -939,6 +1188,30 @@ function favoriteAnswer(fav, soul) {
   if (/star|constellation/.test(f)) return 'The Heron. Maren taught me to find it. I still need her to.';
   if (/person|friend|villager/.test(f)) return bondLevel(this.mind) >= 3 ? "You. Obviously. Don't make me say it twice." : 'Pip, probably. Though you might be catching up.';
   return likes.length ? `Hm. ${capitalize(this.speech.pick(likes))}, probably.` : "I'd have to think about that.";
+}
+
+function timeOfDay(h) {
+  if (!Number.isFinite(h)) return 'later';
+  if (h < 12) return 'this morning';
+  if (h < 17) return 'this afternoon';
+  if (h < 21) return 'this evening';
+  return 'tonight';
+}
+
+const ACTIVITY_PHRASES = {
+  work: 'working for coin', job: 'working for coin', eat: 'supper', supper: 'supper', meal: 'a proper meal', sleep: 'sleep',
+  rest: 'resting', free: 'my own time', wander: 'wandering', socialize: 'catching up with people', visit: 'visiting friends',
+  study: 'studying', read: 'reading', train: 'practicing my bolts', lead: 'following a lead about Maren',
+  follow_lead: 'following a lead about Maren', maren: 'looking for Maren', search: 'looking for Maren', pray: 'sitting in the chapel',
+  shop: 'buying supplies', stargaze: 'watching the stars',
+};
+
+function activityPhrase(activity) {
+  const a = String(activity || '').trim();
+  const key = a.toLowerCase();
+  if (JOB_LABELS[key]) return JOB_LABELS[key];
+  if (ACTIVITY_PHRASES[key]) return ACTIVITY_PHRASES[key];
+  return lowerFirst(a.replace(/_/g, ' '));
 }
 
 function hpText(r) {

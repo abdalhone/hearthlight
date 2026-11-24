@@ -1,29 +1,39 @@
-// game.brain: Lyra's conversational mind (DESIGN §13).
+// game.brain: Lyra's conversational mind (DESIGN §13, §16, §17).
 //
 // A player message flows like this: echo it in the chat, emit player_message, face the
-// player with a "..." icon, run the offline NLU. Clear commands run at once (the game
-// never waits on the network) with a quick acknowledgement bubble. Then Claude (through
-// claude.ai or the player's API key) writes the real reply and any further actions; if
-// Claude is unavailable or fails, the offline mind answers instead. Every reply lands in
-// the chat, a speech bubble, the `speech` event, the mind's conversation log, and her
-// emotions, memories, relationships, goals and thoughts.
+// player with a "..." icon, run the offline NLU. Everything the player asks of her is a
+// request: clear commands go through her consent gate at once (source 'player'), so the
+// game never waits on the network, and she answers with an acknowledgement, a condition,
+// a counter-offer or her refusal. Then Claude (through claude.ai or the player's API key)
+// writes the real reply, told what her gut said about each request, and may act on its
+// own decision (source 'claude'); if Claude is unavailable or fails, the offline mind
+// answers instead. Every reply lands in the chat (with "remembered" chips), a speech
+// bubble, the `speech` event, the mind's conversation log, and her emotions, memories,
+// knowledge, relationships, goals and thoughts.
 
 import { SpeechGen, speechContext } from './speech_gen.js';
-import { parseMessage, nluEnv } from './nlu.js';
+import { parseMessage, nluEnv, AMOUNT_FREE, COMMAND_THRESHOLD } from './nlu.js';
 import { LocalBrain } from './local_brain.js';
 import { ProviderSet, BrainError, toBrainError, PROVIDER_LABELS } from './providers.js';
-import { buildChatPrompt, buildRules, buildReflectionTask, buildConversationTask, RESPONSE_SCHEMA, REFLECTION_SCHEMA, CONVERSATION_SCHEMA } from './prompt.js';
+import { buildChatPrompt, buildRules, buildReflectionTask, buildConversationTask, RESPONSE_SCHEMA, REFLECTION_SCHEMA, CONVERSATION_SCHEMA, clip } from './prompt.js';
 import { coerceResponse, coerceReflection, coerceConversation, dedupeActions, MAX_ACTIONS } from './claude_brain.js';
 import { applyEffects, logConversation, resolvePerson } from './effects.js';
 import { Voice } from './voice.js';
 import { Barker } from './barks.js';
 import { composeDiary } from './diary.js';
+import { companionshipOf, distanceTiles, previewVerdict, isRefusal } from './her_state.js';
 import { DAY_SECONDS } from '../../core/constants.js';
 
 const REFLECT_WAIT = 20; // seconds the wake-up waits for Claude's diary before using her own
 const ICON_EVERY = 2.2;
 const NOTICE_REPEAT = 180; // seconds before the same transient notice repeats
 const TALK_ORDER_WINDOW = 300; // a conversation may call Claude this long after a "talk to" order
+const REFUSAL_MEMORY = 120; // "why not?" refers to a refusal this recent
+const OFFER_WINDOW = 60; // a bare coin offer sweetens a refusal this recent
+const COUNTER_WINDOW = 90; // "deal" accepts a counter-offer this recent
+const EARSHOT = { left: 18, apart: 30 }; // tiles: beyond this she cannot hear the chat
+const KNOWLEDGE_SOURCE = { fact: 'player', rumor: 'told', lore: 'lore', theory: 'inferred' };
+const KNOWLEDGE_CONFIDENCE = { fact: 0.8, rumor: 0.4, lore: 0.7, theory: 0.5 };
 
 const browser = () => typeof window !== 'undefined' && typeof document !== 'undefined';
 const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -46,6 +56,11 @@ export class Brain {
     this.visitNotices = new Map(); // shown once per visit or throttled
     this.lastReflectT = null;
     this.localDelay = browser(); // a beat of "typing" for offline replies, in the browser only
+    this.lastRefusal = null; // { name, args, verdict, message, t } of the last request she refused
+    this.pendingCounter = null; // { counter: {name, args}, t } she offered instead
+    this.currentOffer = null; // the coin offer riding on the request being evaluated right now
+    this.lastCompanionshipReason = '';
+    this._chatRun = false; // true while a chat request runs (the HUD ack stays quiet)
     this._iconTimer = 0;
     this._providerId = null;
     this._convBusy = false;
@@ -78,6 +93,10 @@ export class Brain {
       if (p.source === 'player') this.lastPlayerActionAt = this.now();
       if (p.name === 'talk_to' && p.source !== 'self') this.lastTalkOrderAt = this.now();
     });
+    g.bus?.on('companionship_changed', (p) => {
+      if (p?.reason) this.lastCompanionshipReason = String(p.reason).slice(0, 200);
+      if (p?.state === 'together' || p?.state === 'apart') this.pendingCounter = null;
+    });
     g.bus?.on('ui_open', (p) => {
       if (p?.panel === 'chat') this._chatTip();
     });
@@ -94,6 +113,21 @@ export class Brain {
   status() {
     const id = this.providers.currentId();
     return { provider: id, label: PROVIDER_LABELS[id], busy: this.busy, lastError: this.lastError };
+  }
+
+  // One line in her voice for a situation of the line banks (for other modules).
+  line(situation, vars = {}) {
+    try {
+      return this.speech.line(situation, vars, speechContext(this.game));
+    } catch {
+      return null;
+    }
+  }
+
+  // The last request she refused, if it was recent enough to talk about.
+  recentRefusal() {
+    const r = this.lastRefusal;
+    return r && this.now() - r.t < REFUSAL_MEMORY ? r : null;
   }
 
   _providerChanged(announce) {
@@ -146,6 +180,8 @@ export class Brain {
     g.bus?.emit('player_message', { text: clean });
     logConversation(g, 'player', clean);
     this.voice.stop();
+    const away = this._unreachable();
+    if (away) return away;
     this._faceThePlayer();
 
     let parsed;
@@ -153,8 +189,9 @@ export class Brain {
       parsed = parseMessage(clean, nluEnv(g));
     } catch (err) {
       console.error('[brain] understanding failed', err);
-      parsed = { text: clean, clauses: [], commands: [] };
+      parsed = { text: clean, clauses: [], commands: [], offer: null };
     }
+    this._followUps(parsed);
     const executed = this._runClauses(parsed.commands);
     const provider = this.providers.current();
     if (provider) {
@@ -164,6 +201,68 @@ export class Brain {
       return this._claudeTurn(turn);
     }
     return this._localTurn({ text: clean, parsed, executed });
+  }
+
+  // When she cannot answer at all: gone for good, knocked out, or out of earshot.
+  _unreachable() {
+    const g = this.game;
+    const lyra = g.companion;
+    const state = companionshipOf(g);
+    const name = lyra?.name || g.settings?.companionName || 'Lyra';
+    const out = (text, why) => {
+      this._system(text);
+      return { say: '', thought: null, actions: [], provider: 'local', unreachable: why };
+    };
+    if (state === 'gone' || !lyra || lyra.removed) {
+      const gone = g.flags?.lyra_gone;
+      const when = gone?.day ? ` on day ${gone.day}` : '';
+      return out(`${name} is gone. She left Hearthvale along the King's Road${when}, and she is not coming back.`, 'gone');
+    }
+    if (lyra.downed || lyra.state === 'downed') return out(`${name} is knocked out and can't hear you. Go to her and help her up.`, 'downed');
+    const far = EARSHOT[state];
+    if (far && distanceTiles(g) > far) {
+      let where = '';
+      try {
+        const loc = g.locations?.at?.(lyra.x, lyra.y);
+        if (loc?.name) where = ` She is somewhere around ${loc.name}.`;
+      } catch {
+        /* no locations yet */
+      }
+      if (state === 'left') return out(`${name} isn't traveling with you anymore, and she is too far away to hear you.${where}`, 'far');
+      return out(`${name} is off living her own day, too far away to hear you.${where} Find her if you want to talk.`, 'far');
+    }
+    return null;
+  }
+
+  // Answers to her last words: "deal" takes a counter-offer, a bare coin offer sweetens the
+  // request she just refused. Also attaches the message's offer to every request in it.
+  _followUps(parsed) {
+    const now = this.now();
+    const clauses = parsed.clauses || (parsed.clauses = []);
+    const first = clauses[0];
+    const pc = this.pendingCounter && now - this.pendingCounter.t < COUNTER_WINDOW ? this.pendingCounter : null;
+    if (pc && clauses.length === 1 && (first?.intent?.id === 'social.yes' || first?.intent?.id === 'social.no')) {
+      this.pendingCounter = null;
+      if (first.intent.id === 'social.yes') {
+        const args = { target: pc.counter.args?.target ?? null, value: pc.counter.args?.value ?? null, amount: pc.counter.args?.amount ?? null };
+        first.intent = { id: 'counter.take', source: 'builtin', kind: 'command', command: true, confidence: 0.95, match: null, slots: {}, actions: [{ name: pc.counter.name, args }], answer: null };
+        // Her own proposal, which the player accepted: not a request of her.
+        first.runAs = 'self';
+      } else {
+        first.intent = { id: 'counter.decline', source: 'builtin', kind: 'social', command: false, confidence: 0.9, match: null, slots: {}, actions: [], answer: null };
+      }
+    }
+    const offer = parsed.offer || null;
+    if (offer && !clauses.some((c) => c.intent?.actions?.length)) {
+      const lr = this.lastRefusal && now - this.lastRefusal.t < OFFER_WINDOW ? this.lastRefusal : null;
+      if (lr) {
+        const args = { ...lr.args };
+        if (offer.coins && AMOUNT_FREE.has(lr.name)) args.amount = offer.coins;
+        clauses.push({ text: parsed.text, norm: parsed.text, core: parsed.text, question: false, forMe: false, intent: { id: 'offer.reroute', source: 'builtin', kind: 'command', command: true, confidence: 0.9, match: null, slots: {}, actions: [{ name: lr.name, args }], answer: null } });
+      }
+    }
+    if (offer) for (const c of clauses) if (c.intent?.actions?.length) c.offer = offer;
+    parsed.commands = clauses.filter((c) => c.intent && c.intent.command && c.intent.confidence >= COMMAND_THRESHOLD && c.intent.actions.length);
   }
 
   _enqueue(turn) {
@@ -182,20 +281,62 @@ export class Brain {
     run.then(q.resolve, () => q.resolve({ say: '', thought: null, actions: q.executed, provider: 'local' }));
   }
 
-  // Run the actions of the given clauses (in order, at most MAX_ACTIONS in total).
-  _runClauses(clauses, source = 'local') {
+  // Run the requests in the given clauses, in order, at most MAX_ACTIONS in total.
+  _runClauses(clauses) {
     const executed = [];
     for (const clause of clauses || []) {
       if (!clause?.intent || clause.results) continue;
       clause.results = [];
+      const source = clause.runAs || 'player';
       for (const a of clause.intent.actions) {
         if (executed.length >= MAX_ACTIONS) break;
-        const res = this._run(a.name, a.args, source);
+        const res = this._request(a.name, a.args, source, clause.offer || null);
         clause.results.push(res);
-        executed.push({ name: a.name, args: a.args, ok: !!res.ok, message: res.message || '' });
+        executed.push({ name: a.name, args: a.args, ok: !!res.ok, message: res.message || '', refused: isRefusal(res), verdict: res.verdict || null, source });
       }
     }
     return executed;
+  }
+
+  // One request from the player (or a counter-offer of hers the player took).
+  _request(name, args, source, offer = null) {
+    const g = this.game;
+    if (!g.actions?.has?.(name)) return { ok: false, message: `I don't know how to "${name}".` };
+    const state = companionshipOf(g);
+    // Without a consent gate installed, a Lyra who broke off still says no (DESIGN §16.4).
+    if (source === 'player' && (state === 'left' || state === 'gone') && !g.actions.consentGate && !g.actions.get?.(name)?.ungated) {
+      const message = this.line('refuse_left') || 'No.';
+      return { ok: false, refused: true, verdict: { decision: 'refuse', reasons: [], message }, message };
+    }
+    this._chatRun = true;
+    this.currentOffer = offer;
+    let res;
+    try {
+      res = this._run(name, args, source);
+    } finally {
+      this._chatRun = false;
+      this.currentOffer = null;
+    }
+    if (source !== 'player') return res;
+    const now = this.now();
+    if (isRefusal(res)) {
+      this.lastRefusal = { name, args: { ...(args || {}) }, verdict: res.verdict || null, message: res.message || '', t: now };
+      const counter = res.verdict?.decision === 'counter' ? res.verdict.counter : null;
+      this.pendingCounter = counter?.name && g.actions.has(counter.name) ? { counter, t: now } : null;
+    } else if (res.ok) {
+      if (this.lastRefusal?.name === name) this.lastRefusal = null;
+      if (offer?.coins && !offer.paid) this._promisePay(name, args, offer.coins);
+    }
+    return res;
+  }
+
+  // An accepted paid request: the player now owes her (tracked as their promise, §16.8).
+  _promisePay(name, args, coins) {
+    const g = this.game;
+    if (!g.actions?.has?.('promise')) return;
+    const me = g.companion?.name || 'Lyra';
+    const what = this.local.describeAction(name, args || {});
+    this._run('promise', { target: 'player', value: `Pay ${me} ${coins} coins for agreeing to ${what}.`, amount: coins }, 'local');
   }
 
   _run(name, args, source) {
@@ -212,21 +353,22 @@ export class Brain {
 
   async _localTurn({ parsed, executed = [] }) {
     const g = this.game;
-    // Offline, nobody else will act on lower-confidence intents: run them now.
+    // Offline, nobody else will weigh lower-confidence requests: put them to her now.
     const more = this._runClauses(parsed.clauses.filter((c) => c.intent && c.intent.actions.length && !c.results));
     const all = executed.concat(more);
+    const env = nluEnv(g);
     let reply;
     try {
-      reply = this.local.compose(parsed, nluEnv(g));
+      reply = this.local.compose(parsed, env);
     } catch (err) {
       console.error('[brain] offline reply failed', err);
-      reply = { say: this.speech.line('unknown_statement', {}, speechContext(g)) || 'Hm.', thought: null, emotion: null, memories: [], relationships: [], goal: null, actions: [] };
+      reply = { say: this.line('unknown_statement') || 'Hm.', thought: null, emotion: null, memories: [], relationships: [], goal: null, actions: [] };
     }
     for (const a of reply.actions || []) {
       if (all.length >= MAX_ACTIONS + 2) break;
       if (!g.actions?.has?.(a.name)) continue;
       const res = this._run(a.name, a.args, 'local');
-      all.push({ name: a.name, args: a.args, ok: !!res.ok, message: res.message || '' });
+      all.push({ name: a.name, args: a.args, ok: !!res.ok, message: res.message || '', source: 'local' });
     }
     if (this.localDelay) {
       this._thinking(true);
@@ -234,7 +376,20 @@ export class Brain {
       this._thinking(false);
     }
     this._deliver(reply, 'local');
+    this._apologyEvent(parsed, reply.apology);
     return { say: reply.say, thought: reply.thought || null, actions: all, provider: 'local' };
+  }
+
+  // What her gut says about requests in the message that did not run at once (§16.10).
+  _previewRequests(parsed) {
+    const out = [];
+    for (const c of parsed.clauses || []) {
+      if (out.length >= 4) break;
+      if (!c.intent?.actions?.length || c.results) continue;
+      const a = c.intent.actions[0];
+      out.push({ text: c.text, name: a.name, args: a.args, verdict: previewVerdict(this.game, a.name, a.args, c.offer || null) });
+    }
+    return out;
   }
 
   async _claudeTurn(turn) {
@@ -246,9 +401,18 @@ export class Brain {
     this._iconTimer = ICON_EVERY;
     let result;
     try {
-      const { rules, context } = buildChatPrompt(g, turn.text, turn.executed);
-      const raw = await provider.complete({ rules, task: context, schema: RESPONSE_SCHEMA, tier: g.settings?.modelTier || 'quick' });
-      result = this._applyClaude(coerceResponse(raw, { actionNames: g.actions?.names?.() || null, maxActions: MAX_ACTIONS }), turn, provider.id);
+      const requests = this._previewRequests(turn.parsed);
+      const { rules, context, recall } = buildChatPrompt(g, turn.text, turn.executed, { requests, offer: turn.parsed.offer || null });
+      const call = { items: new Map((recall?.items || []).map((x) => [x.id, x.label])) };
+      let toolMax = 0;
+      try {
+        toolMax = (await provider.toolLimit?.()) || 0;
+      } catch {
+        toolMax = 0;
+      }
+      const tools = toolMax > 0 ? this._tools(call).slice(0, toolMax) : null;
+      const raw = await provider.complete({ rules, task: context, schema: RESPONSE_SCHEMA, tier: g.settings?.modelTier || 'quick', tools: tools && tools.length ? tools : null });
+      result = this._applyClaude(coerceResponse(raw, { actionNames: g.actions?.names?.() || null, maxActions: MAX_ACTIONS }), turn, provider.id, call);
       this.lastError = null;
     } catch (e) {
       this.busy = false;
@@ -261,13 +425,75 @@ export class Brain {
     return result;
   }
 
-  _applyClaude(resp, turn, providerId) {
+  // Read-only page tools Claude may call when the view supports them (DESIGN §17.3).
+  // Results stay small; every memory a tool returns can be cited as a chip.
+  _tools(call) {
+    const mind = this.game.companion?.mind;
+    if (!mind) return [];
+    const remember = (id, label) => {
+      if (id != null && label) call.items.set(String(id), clip(label, 60));
+    };
+    const tools = [];
+    if (typeof mind.recall === 'function') {
+      tools.push({
+        name: 'recall',
+        description: 'Search your own memories (what happened, your past, what you know) for a few words. Returns up to 5 short items with ids you may list in used_memories.',
+        inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'what to remember, in a few words' } }, required: ['query'] },
+        execute: (input) => {
+          const q = String(input?.query ?? '').slice(0, 120);
+          if (!q.trim()) throw new Error('query is empty');
+          const list = mind.recall(q, { limit: 5 }) || [];
+          return list
+            .filter((m) => m && (m.text || m.label))
+            .slice(0, 5)
+            .map((m) => {
+              const text = clip(m.text || m.label, 220);
+              remember(m.id, m.label || m.text);
+              return { id: m.id != null ? String(m.id) : null, text, day: m.day ?? null, kind: m.store || m.type || null };
+            });
+        },
+      });
+    }
+    if (typeof mind.dossier === 'function') {
+      tools.push({
+        name: 'about_person',
+        description: 'Everything you know about one person: how you feel about them, notes, and memories of them. Give a name or id.',
+        inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'their name or id' } }, required: ['name'] },
+        execute: (input) => {
+          const who = String(input?.name ?? '').slice(0, 60);
+          if (!who.trim()) throw new Error('name is empty');
+          const d = mind.dossier(resolvePerson(this.game, who) || who);
+          if (!d) return `You don't know anyone called ${who}.`;
+          for (const m of (d && typeof d === 'object' && (d.memories || d.items)) || []) remember(m?.id, m?.label || m?.text);
+          return smallResult(d, 1600);
+        },
+      });
+    }
+    if (typeof mind.loreLookup === 'function') {
+      tools.push({
+        name: 'lore',
+        description: "What you know of the world's lore on a topic: places, history, legends. Only what you have learned.",
+        inputSchema: { type: 'object', properties: { topic: { type: 'string', description: 'a place, person, thing or event' } }, required: ['topic'] },
+        execute: (input) => {
+          const topic = String(input?.topic ?? '').slice(0, 80);
+          if (!topic.trim()) throw new Error('topic is empty');
+          const r = mind.loreLookup(topic);
+          if (!r || (Array.isArray(r) && !r.length)) return `You don't know anything about ${topic}.`;
+          return smallResult(r, 1600);
+        },
+      });
+    }
+    return tools;
+  }
+
+  _applyClaude(resp, turn, providerId, call = null) {
     const g = this.game;
     const extra = dedupeActions(resp.actions, turn.executed).slice(0, MAX_ACTIONS);
     const ran = [];
     for (const a of extra) {
       const res = this._run(a.name, a.args, 'claude');
-      ran.push({ name: a.name, args: a.args, ok: !!res.ok, message: res.message || '' });
+      ran.push({ name: a.name, args: a.args, ok: !!res.ok, message: res.message || '', source: 'claude' });
+      if (res.ok && this.lastRefusal?.name === a.name) this.lastRefusal = null;
     }
     if (resp.rejected?.length) console.warn('[brain] ignored unknown actions:', resp.rejected.join(', '));
     if (!resp.say) {
@@ -275,8 +501,39 @@ export class Brain {
       const ack = turn.executed.length || ran.length ? this._ackText(turn.parsed, ran) : '';
       resp.say = ack || this.local.compose(turn.parsed, nluEnv(g)).say;
     }
+    const items = call?.items || new Map();
+    resp.chips = (resp.used_memories || []).filter((id) => items.has(id)).slice(0, 4).map((id) => ({ id, label: items.get(id) }));
+    this._learn(resp.knowledge);
     this._deliver(resp, providerId);
-    return { say: resp.say, thought: resp.thought, actions: turn.executed.concat(ran), provider: providerId };
+    this._apologyEvent(turn.parsed, null, resp);
+    return { say: resp.say, thought: resp.thought, actions: turn.executed.concat(ran), provider: providerId, memories: resp.chips };
+  }
+
+  // Knowledge from a reply: theories stay beliefs, never facts (DESIGN §17.2).
+  _learn(list) {
+    const mind = this.game.companion?.mind;
+    if (!mind?.learn || !Array.isArray(list)) return;
+    for (const k of list.slice(0, 3)) {
+      if (!k?.subject || !k?.text) continue;
+      try {
+        mind.learn(k.subject, k.text, { kind: k.kind, source: KNOWLEDGE_SOURCE[k.kind] || 'inferred', confidence: KNOWLEDGE_CONFIDENCE[k.kind] ?? 0.5 });
+      } catch (err) {
+        console.error('[brain] learn failed', err);
+      }
+    }
+  }
+
+  // Let her own will hear about an apology and whether she believed it (contract addition).
+  _apologyEvent(parsed, local = null, resp = null) {
+    const said = (parsed?.clauses || []).some((c) => c.intent?.id === 'social.apology');
+    if (!said) return;
+    let believed = local?.believed;
+    if (believed == null && resp) {
+      const r = (resp.relationships || []).find((x) => resolvePerson(this.game, x.person) === 'player');
+      const warm = resp.emotion && ['trust', 'affection', 'joy', 'calm'].includes(resp.emotion.name);
+      believed = r ? r.trust > 0 || (r.trust === 0 && r.affinity > 0) : !!warm;
+    }
+    this.game.bus?.emit('apology', { text: parsed.text, believed: !!believed, accident: !!local?.accident, state: companionshipOf(this.game) });
   }
 
   _ackText(parsed, ran = []) {
@@ -312,7 +569,7 @@ export class Brain {
         this._noticeThrottled('rate_limited', 'Claude is busy right now (too many requests). Lyra answered on her own; try again in a little while.');
         break;
       case 'refused': {
-        const reply = { say: this.speech.line('deflect', {}, speechContext(g)) || "Let's not go down that road.", thought: null, emotion: { name: 'embarrassment', intensity: 0.15 }, memories: [], relationships: [], goal: null };
+        const reply = { say: this.line('deflect') || "Let's not go down that road.", thought: null, emotion: { name: 'embarrassment', intensity: 0.15 }, memories: [], relationships: [], goal: null };
         this._deliver(reply, provider.id);
         return { say: reply.say, thought: null, actions: turn.executed, provider: provider.id };
       }
@@ -341,14 +598,16 @@ export class Brain {
     return this._localTurn(turn);
   }
 
-  // Show and record a reply. reply: { say, thought, emotion, memories, relationships, goal }
+  // Show and record a reply. reply: { say, thought, emotion, memories, relationships, goal, chips }
   _deliver(reply, providerId) {
     const g = this.game;
     const lyra = g.companion;
     const say = String(reply.say || '').trim();
     if (say) {
       try {
-        g.ui?.chat?.addMessage?.({ from: 'lyra', text: say, name: lyra?.name || g.settings?.companionName || 'Lyra' });
+        const msg = { from: 'lyra', text: say, name: lyra?.name || g.settings?.companionName || 'Lyra' };
+        if (reply.chips?.length) msg.memories = reply.chips;
+        g.ui?.chat?.addMessage?.(msg);
       } catch (err) {
         console.error('[brain] chat failed', err);
       }
@@ -434,11 +693,10 @@ export class Brain {
   _chatTip() {
     if (this.notices.has('chat_tip')) return;
     this.notices.add('chat_tip');
-    this._system('Talk to Lyra in your own words: "follow me and attack anything hostile", "chop 5 wood and bring it to me", "what do you think of Bram?", "how are you feeling?"');
+    this._system('Talk to Lyra in your own words. She decides for herself: "come with me to the forest?", "I\'ll pay you 10 coins to chop wood", "what do you think of Bram?", "how are you feeling?"');
   }
 
   // ------------------------------------------------------------- reflection
-
   _dayMemories() {
     const g = this.game;
     const mind = g.companion?.mind;
@@ -474,7 +732,8 @@ export class Brain {
   async reflect(reason = 'sleep') {
     const g = this.game;
     const mind = g.companion?.mind;
-    if (!mind) return null;
+    // Gone for good: her last diary entry was written when she left.
+    if (!mind || companionshipOf(g) === 'gone') return null;
     const day = this._sleepT != null ? Math.floor(this._sleepT / DAY_SECONDS) + 1 : g.clock?.day ?? 1;
     const memories = this._dayMemories();
     const offline = composeDiary(g, memories, { day });
@@ -578,6 +837,7 @@ export class Brain {
     // Claude is only asked in answer to the player: a "talk to" order or a recent message.
     const now = this.now();
     if (now - this.lastTalkOrderAt > TALK_ORDER_WINDOW && now - this.lastPlayerActionAt > 60) return null;
+    if (companionshipOf(g) === 'gone') return null;
     if (this._convBusy) return null;
     this._convBusy = true;
     try {
@@ -593,17 +853,18 @@ export class Brain {
 
   // An acknowledgement bubble for an order given outside the chat (HUD, hotkeys).
   ack(name, result = { ok: true, message: '' }, args = {}) {
-    this.barks.ack({ name, args, ok: result?.ok !== false, message: result?.message || '' });
+    this.barks.ack({ name, args, ok: result?.ok !== false, message: result?.message || '', refused: !!result?.refused, decision: result?.verdict?.decision || null, verdict: result?.verdict || null });
   }
 
   // ------------------------------------------------------------ persistence
 
   serialize() {
     return {
-      v: 1,
+      v: 2,
       notices: [...this.notices].slice(0, 20),
       lastReflectT: this.lastReflectT,
       insults: Math.round((this.local.insults || 0) * 10) / 10,
+      why: this.lastCompanionshipReason ? this.lastCompanionshipReason.slice(0, 160) : undefined,
       barks: this.barks.serialize(),
     };
   }
@@ -613,6 +874,19 @@ export class Brain {
     if (Array.isArray(d.notices)) for (const n of d.notices) if (typeof n === 'string') this.notices.add(n);
     if (Number.isFinite(d.lastReflectT)) this.lastReflectT = d.lastReflectT;
     if (Number.isFinite(d.insults)) this.local.insults = Math.max(0, Math.min(10, d.insults));
+    if (typeof d.why === 'string') this.lastCompanionshipReason = d.why.slice(0, 200);
     this.barks.deserialize(d.barks);
   }
+}
+
+// A tool result small enough to send back: plain data when it fits, else clipped JSON text.
+function smallResult(v, max) {
+  if (typeof v === 'string') return clip(v, max);
+  let s = '';
+  try {
+    s = JSON.stringify(v);
+  } catch {
+    return '';
+  }
+  return s.length <= max ? v : clip(s, max);
 }

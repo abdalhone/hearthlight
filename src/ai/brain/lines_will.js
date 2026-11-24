@@ -215,6 +215,25 @@ export const WILL_LINES = {
     "Hi. I've been keeping busy. You?",
   ],
 
+  flirt_wary: [
+    'Not now. Not after that.',
+    "Don't. You don't get to sweet-talk your way past what happened.",
+    { t: 'Save the charm. I want to see how you act.', trait: 'steady' },
+    "...No. I'm not in the mood for that from you.",
+  ],
+  compliment_wary: [
+    "Nice words. I'm watching what you do, though.",
+    'Thank you. That doesn\'t fix anything.',
+    { t: 'Kind of you. Ask me again in a few days.', trait: 'warm' },
+  ],
+  opinion_player_wary: [
+    "Honestly? I don't know anymore. You scared me.",
+    "I'm still deciding. You'll have to show me who you are.",
+    { t: "I liked who I thought you were. I'm waiting to see if that's who you are.", trait: 'bookish' },
+  ],
+  not_avoiding: ["Avoiding you? I'm right here.", "I'm not. ...Am I? I didn't mean to be.", { t: "You're imagining things. Mostly.", trait: 'playful' }],
+  plan_now: ['Right now, {plan}.', '{plan}, at the moment.'],
+
   // --------------------------------------------------------- apologies
   apology_reject: [
     "Sorry doesn't unbreak it.",
@@ -349,6 +368,18 @@ export const WILL_LINES = {
     'Keep your blade sheathed near me.',
     "I haven't forgotten.",
     { t: 'Still deciding about you.', trait: 'steady' },
+  ],
+
+  thought_doubt: [
+    "Sorry. They always have a sorry ready.",
+    "I want to believe it. That's the dangerous part.",
+    'Words cost nothing. We\'ll see.',
+  ],
+  thought_refusal: [
+    "No. I don't have to explain myself to anyone.",
+    'They can be annoyed. I can live with annoyed.',
+    'My life, my call.',
+    { t: 'I hope they understand. If not — that is theirs to carry.', trait: 'warm' },
   ],
 
   // -------------------------------------------------- acks for her own will
