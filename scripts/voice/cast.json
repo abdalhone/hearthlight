@@ -1,0 +1,362 @@
+{
+  "version": 1,
+  "test": "Well now, the lamps are lit and the road home is long. Mind your step on the bridge tonight, will you?",
+  "test2": "I told you twice already! Nobody goes past the hem after dark. Not you, not me, not anybody.",
+  "groups": {
+    "narrator": "narrator",
+    "lyra": "lyra"
+  },
+  "voices": {
+    "narrator": {
+      "name": "The narrator",
+      "group": "narrator",
+      "voice": {
+        "bm_george": 0.65,
+        "bm_fable": 0.35
+      },
+      "lang": "en-gb",
+      "speed": 0.88,
+      "sentencePause": 0.45,
+      "clausePause": 0.18,
+      "fx": {
+        "pitch": -1.0,
+        "bass": 2.0,
+        "highpass": 60,
+        "room": 0.1,
+        "roomSize": 0.5
+      }
+    },
+    "lyra": {
+      "name": "Lyra",
+      "group": "lyra",
+      "voice": {
+        "af_heart": 0.75,
+        "af_bella": 0.25
+      },
+      "lang": "en-us",
+      "speed": 1.07,
+      "fx": {
+        "highpass": 80,
+        "eq": [
+          [
+            3000,
+            1.5,
+            1.2
+          ]
+        ],
+        "room": 0.05
+      }
+    },
+    "hobb": {
+      "name": "Hobb Ambrel",
+      "voice": {
+        "bm_fable": 0.6,
+        "bm_lewis": 0.4
+      },
+      "lang": "en-gb",
+      "speed": 0.78,
+      "fx": {
+        "pitch": 0.5,
+        "size": 0.3,
+        "tremor": 12,
+        "lowpass": 7000,
+        "highpass": 80
+      }
+    },
+    "wenna": {
+      "name": "Wenna Ambrel",
+      "voice": {
+        "bf_isabella": 0.7,
+        "bf_alice": 0.3
+      },
+      "lang": "en-gb",
+      "speed": 1.0,
+      "fx": {
+        "pitch": -2.0,
+        "size": -0.4,
+        "tremor": 12,
+        "lowpass": 7500,
+        "highpass": 90
+      }
+    },
+    "elda": {
+      "name": "Elda Thornbury",
+      "voice": {
+        "bf_emma": 0.8,
+        "af_kore": 0.2
+      },
+      "lang": "en-gb",
+      "speed": 0.96,
+      "fx": {
+        "pitch": -1.5,
+        "bass": 1.0,
+        "highpass": 80
+      }
+    },
+    "bram": {
+      "name": "Bram Ironhand",
+      "voice": {
+        "am_fenrir": 0.5,
+        "am_onyx": 0.5
+      },
+      "lang": "en-us",
+      "speed": 0.9,
+      "fx": {
+        "pitch": -1.0,
+        "size": -0.4,
+        "bass": 2.0,
+        "highpass": 55
+      }
+    },
+    "pip": {
+      "name": "Pip",
+      "voice": {
+        "af_sky": 0.6,
+        "af_nova": 0.4
+      },
+      "lang": "en-us",
+      "speed": 1.1,
+      "fx": {
+        "pitch": 6.0,
+        "size": 2.0,
+        "highpass": 130
+      }
+    },
+    "rowan": {
+      "name": "Captain Rowan Vale",
+      "voice": {
+        "bm_daniel": 0.6,
+        "am_michael": 0.4
+      },
+      "lang": "en-gb",
+      "speed": 1.04,
+      "fx": {
+        "highpass": 70,
+        "eq": [
+          [
+            1800,
+            1.5,
+            1.0
+          ]
+        ]
+      }
+    },
+    "mira": {
+      "name": "Mira Fennick",
+      "voice": {
+        "af_sarah": 0.65,
+        "af_nicole": 0.35
+      },
+      "lang": "en-us",
+      "speed": 0.94,
+      "fx": {
+        "highpass": 100,
+        "treble": -1.0
+      }
+    },
+    "tobias": {
+      "name": "Tobias Reed",
+      "voice": {
+        "am_puck": 0.7,
+        "am_echo": 0.3
+      },
+      "lang": "en-us",
+      "speed": 1.0,
+      "fx": {
+        "highpass": 70
+      }
+    },
+    "aveline": {
+      "name": "Sister Aveline",
+      "voice": {
+        "af_kore": 0.6,
+        "bf_emma": 0.4
+      },
+      "lang": "en-gb",
+      "speed": 0.86,
+      "sentencePause": 0.5,
+      "clausePause": 0.2,
+      "fx": {
+        "pitch": -1.0,
+        "highpass": 80,
+        "room": 0.12,
+        "roomSize": 0.7
+      }
+    },
+    "garrick": {
+      "name": "Garrick Hale",
+      "voice": {
+        "am_eric": 0.5,
+        "am_santa": 0.5
+      },
+      "lang": "en-us",
+      "speed": 1.08,
+      "fx": {
+        "pitch": -0.5,
+        "highpass": 70,
+        "eq": [
+          [
+            2200,
+            1.5,
+            1.0
+          ]
+        ]
+      }
+    },
+    "hess": {
+      "name": "Hess Morrow",
+      "voice": {
+        "af_alloy": 0.8,
+        "af_nova": 0.2
+      },
+      "lang": "en-us",
+      "speed": 0.98,
+      "fx": {
+        "pitch": -0.8,
+        "highpass": 90,
+        "treble": -1.0
+      }
+    },
+    "sabeth": {
+      "name": "Sabeth Coll",
+      "voice": {
+        "af_aoede": 0.6,
+        "bf_isabella": 0.4
+      },
+      "lang": "en-gb",
+      "speed": 0.98,
+      "fx": {
+        "pitch": -0.5,
+        "highpass": 90
+      }
+    },
+    "alder": {
+      "name": "Alder Ashby",
+      "voice": {
+        "bm_lewis": 0.6,
+        "am_puck": 0.4
+      },
+      "lang": "en-gb",
+      "speed": 0.92,
+      "fx": {
+        "pitch": 0.5,
+        "size": -0.2,
+        "highpass": 65
+      }
+    },
+    "petra": {
+      "name": "Petra Ashby",
+      "voice": {
+        "bf_lily": 0.6,
+        "af_jessica": 0.4
+      },
+      "lang": "en-gb",
+      "speed": 0.95,
+      "fx": {
+        "pitch": -1.0,
+        "size": 0.4,
+        "tremor": 18,
+        "highpass": 120,
+        "eq": [
+          [
+            1800,
+            3.0,
+            1.2
+          ]
+        ],
+        "lowpass": 7000
+      }
+    },
+    "tilly": {
+      "name": "Tilly Ashby",
+      "voice": {
+        "af_nova": 0.6,
+        "af_aoede": 0.4
+      },
+      "lang": "en-us",
+      "speed": 1.1,
+      "fx": {
+        "pitch": 0.5,
+        "highpass": 100
+      }
+    },
+    "tansy": {
+      "name": "Tansy Reed",
+      "voice": {
+        "af_river": 0.6,
+        "af_sky": 0.4
+      },
+      "lang": "en-us",
+      "speed": 1.0,
+      "fx": {
+        "size": 0.7,
+        "pitch": 1.0,
+        "highpass": 110
+      }
+    },
+    "corran": {
+      "name": "Corran Dell",
+      "voice": {
+        "am_santa": 0.6,
+        "bm_lewis": 0.4
+      },
+      "lang": "en-gb",
+      "speed": 0.84,
+      "fx": {
+        "pitch": -0.5,
+        "tremor": 12,
+        "lowpass": 7000,
+        "highpass": 60
+      }
+    },
+    "wys": {
+      "name": "Wys Pike",
+      "voice": {
+        "am_liam": 0.7,
+        "am_eric": 0.3
+      },
+      "lang": "en-us",
+      "speed": 1.08,
+      "fx": {
+        "pitch": 1.0,
+        "size": 0.3,
+        "highpass": 90
+      }
+    },
+    "maren": {
+      "name": "Maren Ashgrove (in memory)",
+      "voice": {
+        "bf_alice": 0.5,
+        "af_kore": 0.5
+      },
+      "lang": "en-gb",
+      "speed": 0.95,
+      "fx": {
+        "pitch": -1.0,
+        "highpass": 90,
+        "room": 0.15,
+        "roomSize": 0.6
+      }
+    },
+    "bandit": {
+      "name": "A bandit",
+      "voice": {
+        "am_adam": 0.7,
+        "am_liam": 0.3
+      },
+      "lang": "en-us",
+      "speed": 1.05,
+      "fx": {
+        "pitch": -1.0,
+        "highpass": 90,
+        "eq": [
+          [
+            2500,
+            2.0,
+            1.0
+          ]
+        ]
+      }
+    }
+  }
+}
