@@ -3813,6 +3813,9 @@ input[type='range']::-moz-range-thumb {
   :root {
     --edge: 8px;
   }
+  .farewell {
+    -webkit-line-clamp: 3;
+  }
   /* Panels fill the screen: keep notices clear of the close button at top right. */
   .modal-open .toasts {
     left: 12px;
@@ -4141,12 +4144,21 @@ input[type='range']::-moz-range-thumb {
     height: 100%;
   }
   .mind-hero {
-    padding: 6px 12px 4px;
+    padding: 4px 12px 2px;
     gap: 10px;
   }
   .portrait-lg {
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
+  }
+  /* One line: name and mood side by side, so the tabs get the height. */
+  .hero-text {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 14px;
+  }
+  .hero-full {
+    display: none;
   }
   .hero-name {
     font-size: var(--fs-l);

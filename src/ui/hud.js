@@ -278,13 +278,17 @@ export class Hud {
     this.lMood.hidden = gone;
     toggleClass(this.lyraCard, 'gone', gone);
     if (gone) {
-      const words = farewellText(mind, g.flags) || this.farewell;
+      // Her last words, as many whole sentences as the card holds on this screen.
+      const narrow = (this.ui.root.clientWidth || 1280) < 640;
+      const words = farewellText(mind, g.flags, narrow ? 100 : 180) || this.farewell;
       if (words) this.farewell = words;
       setText(this.farewellEl, this.farewell ? `“${this.farewell}”` : `${name} walked away down the King's Road.`);
+      setAttr(this.lyraCard, 'title', this.farewell ? `${name}'s last words: “${this.farewell}”` : `${name} is gone`);
       if (this.farewellEl.hidden) this.farewellEl.hidden = false;
       return;
     }
     if (!this.farewellEl.hidden) this.farewellEl.hidden = true;
+    setAttr(this.lyraCard, 'title', `Open ${name}'s mind (Tab)`);
     const rel = playerRelation(mind);
     this.relRow.classList.toggle('no-rel', !rel);
     if (rel) {
