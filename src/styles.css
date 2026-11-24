@@ -8888,3 +8888,40 @@ input[type='range']::-moz-range-thumb {
     align-self: flex-end;
   }
 }
+
+/* Fallen on an upright phone: the heartbeat and Call for help sit above the move stick
+   (which stays free for crawling). */
+@media (max-width: 640px) and (min-height: 521px) {
+  .ui .sv-fallen {
+    top: auto;
+    bottom: calc(var(--sa-b) + 190px);
+  }
+}
+
+/* ---------- cutscenes on a phone: a big Skip, and a word on how to go on ---------- */
+
+.cs-skip {
+  min-width: 84px;
+  min-height: 46px;
+}
+.ui.is-touch .cs-hint {
+  display: block;
+  position: absolute;
+  top: calc(var(--sa-t) + 62px);
+  right: calc(var(--sa-r) + 12px);
+  z-index: 2;
+  font-family: var(--font-display);
+  font-size: 11px;
+  color: var(--parch-dim);
+  text-shadow: 0 1px 0 #000;
+  pointer-events: none;
+  animation: cs-hint-out 1s ease 7s forwards;
+}
+.ui.is-touch .cs-hint:empty::before {
+  content: 'Tap for the next line';
+}
+@keyframes cs-hint-out {
+  to {
+    opacity: 0;
+  }
+}

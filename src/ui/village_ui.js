@@ -84,13 +84,35 @@ export class VillageUI {
       } else if (!this.queue.length) {
         const v = villageOf(g);
         const conv = typeof v?.canListen === 'function' && typeof v.listenIn === 'function' ? safe(() => v.canListen(), null) : null;
-        if (conv && typeof conv === 'object' && !this.recentlyHeard(conv)) {
+        // Only a talk you can see: both of them on screen (a phone held upright shows
+        // little to either side).
+        if (conv && typeof conv === 'object' && !this.recentlyHeard(conv) && this.onScreen(conversationSpeakers(conv, g))) {
           this.conv = conv;
           label = listenLabel(conv, g, this.lyraName);
         }
       }
     }
     this.ui.hud?.setListen(label, busy);
+  }
+
+  // Are all of these people inside the visible play area?
+  onScreen(list) {
+    const g = this.game;
+    const r = g.renderer;
+    const root = this.ui.root;
+    if (!list?.length || typeof r?.worldToCss !== 'function' || !root) return true;
+    const W = root.clientWidth || 0;
+    const H = root.clientHeight || 0;
+    for (const e of list) {
+      let p = null;
+      try {
+        p = r.worldToCss(e.x, e.y - 8);
+      } catch {
+        return true;
+      }
+      if (!p || p.x < 16 || p.x > W - 16 || p.y < 24 || p.y > H - 24) return false;
+    }
+    return true;
   }
 
   // L (or a tap on the prompt): ask the village for the next exchange between them.
