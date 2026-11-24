@@ -795,8 +795,10 @@ key into a save.
 | **ui** | `src/ui/*`, `src/core/input.js`, `src/core/audio.js`, `src/core/save.js`, `src/styles.css`, `tests/ui.test.mjs` |
 | **lead (integration)** | everything else: `src/core/game.js`, `events.js`, `entity.js`, `manager.js`, `interact.js`, `registry.js`, `actions.js`, `resolve.js`, `locations.js`, `atlas.js`, `pixel.js`, `palette.js` (append-only for others), build/test scripts, docs |
 
-Round-2 additions (§16–§18): **mind** also owns `src/lore/*` and
-`src/ai/plugins/autonomy_plugin.js`; **behavior** owns the new directives and the actions
+Round-2 additions (§16–§18): **autonomy** (a new agent) owns `src/ai/mind/autonomy.js` (and
+any `src/ai/mind/autonomy_*.js`), `src/ai/plugins/autonomy_plugin.js`, `tests/autonomy.test.mjs`;
+**mind** also owns `src/lore/*` and wires `mind.autonomy = new Autonomy(mind, game)` plus its
+delegates into the Mind facade; **behavior** owns the new directives and the actions
 `flee`, `keep_distance`, `bind`, `warn`, `wait_outside` (in `core_commands.js`); **combat**
 owns friendly fire and crimes; **characters** owns villager reactions to crimes;
 **brain** owns the consent-aware message flow, the memory-aware prompt and Claude tools;
