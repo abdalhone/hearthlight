@@ -282,13 +282,36 @@ export class CutscenePlayer {
   // ------------------------------------------------------------------ steps
 
   showPanel(id, st = {}) {
-    const inst = this.makePanel(id, { pan: st.pan, panSeconds: st.panSeconds });
+    // A panel painted ahead of time (see prepaintNext) is used if the screen is unchanged.
+    let inst = this.ahead?.id === id && this.ahead.w === this.devW && this.ahead.h === this.devH ? this.ahead.inst : null;
+    this.ahead = null;
+    if (inst) {
+      inst.pan = st.pan || inst.def.pan || 'right';
+      if (st.panSeconds) inst.panSeconds = st.panSeconds;
+    } else inst = this.makePanel(id, { pan: st.pan, panSeconds: st.panSeconds });
     if (!inst) return;
     this.prevPanel = this.panel;
     this.panel = inst;
     this.xfade = this.prevPanel ? 0 : 1;
     if (!this.prevPanel) this.fade('in', 900);
     this.root.classList.remove('cs-world');
+    this.prepaintNext(id);
+  }
+
+  // Paint the script's next panel while this one is on screen, so the crossfade never
+  // waits for a brush.
+  prepaintNext(currentId) {
+    const steps = this.script?.steps || [];
+    const at = steps.findIndex((st) => st.panel === currentId);
+    const next = steps.slice(at + 1).find((st) => st.panel && !st.world);
+    if (!next) return;
+    const w = this.devW;
+    const h = this.devH;
+    setTimeout(() => {
+      if (!this.active || this.devW !== w || this.devH !== h) return;
+      const inst = this.makePanel(next.panel, { pan: next.pan });
+      if (inst) this.ahead = { id: next.panel, w, h, inst };
+    }, 1200);
   }
 
   showTitle(st) {

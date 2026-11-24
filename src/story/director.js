@@ -124,6 +124,8 @@ export class StoryDirector {
       try {
         g.ui?.chat?.close?.();
         g.ui?.closeAll?.();
+        // Words still hanging over heads from a moment ago would talk over the scene.
+        for (const e of g.entities?.all?.() || []) if (e?.type === 'actor') g.bubbles?.clear?.(e);
       } catch {
         /* the UI may not be up yet */
       }
