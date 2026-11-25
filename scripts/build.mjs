@@ -14,6 +14,18 @@ const TITLE = 'Hearthlight';
 
 const minify = !process.argv.includes('--no-minify');
 
+// Third-party notices travel with the code: MIT asks for the copyright and permission notice
+// in every copy, and the built page is one. pixelfx's LICENSE and NOTICE (THIRD_PARTY.md)
+// open the script as a comment (minifying strips the files' own headers).
+const notice = async (p) => (await readFile(path.join(root, p), 'utf8')).trim().replace(/\*\//g, '* /');
+const banner = `/*! Hearthlight includes third-party code (see THIRD_PARTY.md).
+
+pixelfx (src/vendor/pixelfx, changed for a top-down view)
+${await notice('src/vendor/pixelfx/LICENSE')}
+
+${await notice('src/vendor/pixelfx/NOTICE.md')}
+*/`;
+
 const result = await build({
   entryPoints: [path.join(root, 'src/main.js')],
   bundle: true,
@@ -22,6 +34,7 @@ const result = await build({
   minify,
   write: false,
   legalComments: 'none',
+  banner: { js: banner },
   logLevel: 'warning',
   charset: 'utf8',
 });

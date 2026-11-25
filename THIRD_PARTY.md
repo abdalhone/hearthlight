@@ -7,6 +7,8 @@
   (`fx/impacts`, `fx/status`, `fx/spawn`, `fx/holy`, `fx/pickups`, `fx/shadow`, each with its `_lib.js`),
   in the original layout so their imports resolve.
 - **License:** `src/vendor/pixelfx/LICENSE` (MIT, Copyright (c) 2026 Patch, Copyright (c) 2026 Hugo Duprez).
+  The built page carries it too: `scripts/build.mjs` opens the bundled script with the LICENSE and
+  NOTICE as a comment, since minifying drops the files' own headers.
 - **Notices:** `src/vendor/pixelfx/NOTICE.md`, kept as shipped:
   - Hugo Duprez's Sprite Fusion pixel art VFX (MIT): `core/sim.js` and the effects that say so at the top of
     their file.

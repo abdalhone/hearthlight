@@ -3,7 +3,7 @@ import { PLAYER_ID, COMPANION_ID, DAY_SECONDS } from '../core/constants.js';
 import { itemDef, itemName } from './items.js';
 import { Projectile } from './projectiles.js';
 import { dropItem, updatePickupToasts } from './pickups.js';
-import { playHit, playPoof, playHeal } from '../render/pixel_fx_play.js';
+import { playHit, playPoof, playHeal, playLevelUp } from '../render/pixel_fx_play.js';
 
 // Combat rules for every actor: melee arcs, projectiles, damage, healing, death,
 // knock-outs, crimes, items that heal, experience. Contract in DESIGN.md ("Combat", §16.7).
@@ -817,8 +817,11 @@ export class Combat {
     if (by && by !== target) {
       // Helped up by someone: a warm glow worth noticing.
       this._sound('revive', target.x, target.y);
-      this._particles('heal', target.x, target.y - 8, { count: 14, color: '#9ff0b8', speed: 30, life: 0.8 });
-      this._particles('sparkle', target.x, target.y - 14, { count: 6, color: '#ffe08a', speed: 20, life: 0.7 });
+      // Life climbs back up the body in gold (pixelfx, DESIGN §30); the old shimmer only without it.
+      if (!playHeal(g, target, 'gold')) {
+        this._particles('heal', target.x, target.y - 8, { count: 14, color: '#9ff0b8', speed: 30, life: 0.8 });
+        this._particles('sparkle', target.x, target.y - 14, { count: 6, color: '#ffe08a', speed: 20, life: 0.7 });
+      }
       this._flash({ x: target.x, y: target.y - 10, r: 56, color: '#ffe08a', intensity: 0.7, duration: 0.5 });
     } else {
       // Getting up alone: dust off, no fanfare.
@@ -930,7 +933,8 @@ export class Combat {
   _levelUpFx(actor) {
     const g = this.game;
     this._sound('levelup', actor.x, actor.y);
-    this._particles('levelup', actor.x, actor.y - 10, { count: 24, color: '#ffe27a', speed: 40, life: 1.1 });
+    // The pixelfx burst (DESIGN §30) for the party; the old gold spray only when it could not play.
+    if (!((actor === g.player || actor === g.companion) && playLevelUp(g, actor))) this._particles('levelup', actor.x, actor.y - 10, { count: 24, color: '#ffe27a', speed: 40, life: 1.1 });
     this._flash({ x: actor.x, y: actor.y - 10, r: 90, color: '#ffe08a', intensity: 0.9, duration: 0.8 });
     // The HUD announces level_up in words; here it is felt: light, sound, a rising banner.
     if (actor === g.player || actor === g.companion) this._number(actor.x, actor.y - 34, 'LEVEL UP!', COLORS.level, { crit: true });

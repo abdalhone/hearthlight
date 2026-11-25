@@ -58,6 +58,13 @@ export function playHeal(game, e, kind = 'spell') {
   return P.play('heal', { follow: e, palette: ramp, tag: `heal:${e.uid ?? e.id}`, seed: (Math.random() * 1e6) | 0 });
 }
 
+// A level gained: a burst of gold at the chest of whoever rose (combat plays it, in place
+// of its old gold spray).
+export function playLevelUp(game, e) {
+  if (!e) return null;
+  return playCollect(game, e.x, e.y, { gold: true, size: 1.2, height: Math.round(bodySize(game, e).h * 0.55) });
+}
+
 // Something picked up, a chest's haul, a level-up.
 export function playCollect(game, x, y, { gold = true, pal = null, size = 1, height = 6 } = {}) {
   const P = px(game);
@@ -126,11 +133,7 @@ export class PixelFxDirector {
         /* no bus in some tests */
       }
     };
-    // A level gained: a burst of gold at the chest of whoever rose.
-    on('level_up', (p) => {
-      const e = p.entity;
-      if (e && (e === g.player || e === g.companion)) playCollect(g, e.x, e.y, { gold: true, size: 1.2, height: Math.round(bodySize(g, e).h * 0.55) });
-    });
+    // (A level gained is played by combat itself, playLevelUp, so its old spray can step aside.)
     // Stat points spent on the character sheet: a small burst at the player's chest, seen as
     // the sheet closes (the world is paused under it). One burst however many were spent.
     let unspent = null;
@@ -144,10 +147,13 @@ export class PixelFxDirector {
       this.host.stop('points');
       this.host.play('collect', { x: pl.x, y: pl.y, height: Math.round(bodySize(g, pl).h * 0.55), size: 0.8, palette: RAMP.points, tag: 'points', seed: n + 3 });
     });
-    // Back on their feet (a potion, a hand up, the sickroom, the kept flame): life climbs
-    // back up the body in gold.
+    // Back on their feet with help (a potion, a hand up, carried home): life climbs back up
+    // the body in gold. combat.revive plays it itself (its old shimmer steps aside); this
+    // covers the other ways back. Getting up alone is no fanfare (combat.revive says so).
     on('revived', (p) => {
-      if (p.entity) playHeal(g, p.entity, 'gold');
+      const e = p.entity;
+      if (!e || !p.by || p.by === e || this.host.playing(`heal:${e.uid ?? e.id}`)) return;
+      playHeal(g, e, 'gold');
     });
     // Laid in a cot at Mira's: her care starts with a heal.
     on('delivered', (p) => {
@@ -167,16 +173,24 @@ export class PixelFxDirector {
       const b = p.boss;
       if (!b || b.removed) return;
       if (p.yielded) playCollect(g, b.x, b.y, { gold: true, size: 1.3, height: Math.round(bodySize(g, b).h * 0.5) });
-      else this.host.play('soul-rise', { follow: b, height: Math.max(30, bodySize(g, b).h * 1.6), seed: 7 });
+      else {
+        // room for the whole body to lift out of itself (a boss is far bigger than a villager)
+        const { h, w } = bodySize(g, b);
+        const rise = Math.max(30, Math.round(h * 1.6));
+        const half = Math.max(40, Math.ceil(w / 2) + 26);
+        this.host.play('soul-rise', { follow: b, height: rise, seed: 7, bounds: [-half, -(h + rise + 24), half, 24] });
+      }
     });
   }
 
   // Does pixelfx show this status on this body right now (so the old look steps aside)?
+  // Only when it can really be drawn: a body pixelfx cannot read (no sprite frame to wrap)
+  // keeps the old look rather than showing nothing.
   owns(actor, statusId) {
     const id = STATUS_FX[statusId];
     if (!id) return false;
     const rec = this.live.get(actor)?.get(id);
-    return !!(rec && rec.handle && this.host.playing(rec.handle));
+    return !!(rec && rec.handle && this.host.playing(rec.handle) && this.host.actorOf?.(actor));
   }
 
   update(dt) {

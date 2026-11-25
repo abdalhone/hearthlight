@@ -331,11 +331,13 @@ const SCENES = {
       const S = window.__px;
       const c = S.spot;
       const p = g.player;
-      g.bus.emit('level_up', { entity: p, level: 3 });
+      // a level gained the game's own way (combat.giveXp plays the burst, its old spray steps aside)
+      const up = (e) => g.combat.giveXp(e, g.combat.xpToNext(e.level || 1) - (e.xp || 0) + 1);
+      up(p);
       if (g.companion) {
         g.companion.x = c.x - 70;
         g.companion.y = c.y;
-        g.bus.emit('level_up', { entity: g.companion, level: 3 });
+        up(g.companion);
       }
       // a coin picked up (as Pickup.collect plays it) and a chest's haul (as Chest.open does)
       g.pixelFx.play('collect', { x: c.x + 60, y: c.y, height: 5, size: 0.55, palette: undefined });

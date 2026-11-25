@@ -1421,20 +1421,42 @@ function spriteName(atlas, id, anim, variant) {
   return n;
 }
 
+// Which frame of a boss's sprite shows at anim time t: { name, s, i, flip } or null.
+function bossFrameIndex(atlas, id, anim, t, variant, flipWanted) {
+  const name = spriteName(atlas, id, anim, variant);
+  const s = atlas.get(name);
+  if (!s || !s.frames?.length) return null;
+  const info = bossAnimInfo(atlas, id, anim) || bossAnimInfo(atlas, id, 'idle');
+  const n = s.frames.length;
+  let i = Math.floor((t || 0) * (info?.fps || 4));
+  i = info && !info.loop ? Math.min(i, n - 1) : ((i % n) + n) % n;
+  return { name, s, i, flip: !!flipWanted && !BOSS_ART[id]?.noFlip };
+}
+
 export function drawBossSprite(ctx, atlas, id, anim, t, x, y, opts = {}) {
   if (!atlas || !ctx) return false;
   try {
-    const name = spriteName(atlas, id, anim, opts.variant);
-    const s = atlas.get(name);
-    if (!s) return false;
-    const info = bossAnimInfo(atlas, id, anim) || bossAnimInfo(atlas, id, 'idle');
-    const n = s.frames.length;
-    let i = Math.floor((t || 0) * (info?.fps || 4));
-    i = info && !info.loop ? Math.min(i, n - 1) : ((i % n) + n) % n;
-    const flip = !!opts.flip && !BOSS_ART[id]?.noFlip;
-    return atlas.draw(ctx, name, i, x, y, { flip, flash: opts.flash || 0, alpha: opts.alpha ?? 1 });
+    const f = bossFrameIndex(atlas, id, anim, t, opts.variant, opts.flip);
+    if (!f) return false;
+    return atlas.draw(ctx, f.name, f.i, x, y, { flip: f.flip, flash: opts.flash || 0, alpha: opts.alpha ?? 1 });
   } catch {
     return false;
+  }
+}
+
+// The frame image drawBossSprite draws for these arguments, and its anchor in that image
+// (the boss's feet): { img, ax, ay } or null. For effects that wrap the boss's own body
+// (pixelfx statuses, its soul lifting out, src/render/pixel_fx_bodies.js).
+export function bossFrame(atlas, id, anim, t, opts = {}) {
+  if (!atlas) return null;
+  try {
+    const f = bossFrameIndex(atlas, id, anim, t, opts.variant, opts.flip);
+    if (!f) return null;
+    const img = f.flip && typeof atlas._flipped === 'function' ? atlas._flipped(f.name, f.i, f.s.frames[f.i]) : f.s.frames[f.i];
+    if (!img) return null;
+    return { img, ax: f.flip ? f.s.w - f.s.ox : f.s.ox, ay: f.s.oy };
+  } catch {
+    return null;
   }
 }
 

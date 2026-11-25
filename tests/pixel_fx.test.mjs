@@ -265,3 +265,29 @@ test('pixel fx: the real effects play and draw headless at the game scale (smoke
   assert.equal(host._warned.size, 0, `no effect failed: ${[...host._warned].join(', ')}`);
   assert.ok(host.stats.drawn > 0);
 });
+
+test('pixel fx: effects that wrap a body are made round OUR body, never pixelfx stand-in', async () => {
+  const { stockActor } = await import('../src/vendor/pixelfx/core/actor.js');
+  const { PixelFxDirector } = await import('../src/render/pixel_fx_play.js');
+  const game = makeGame();
+  const host = new PixelFx(game, PIXEL_FX);
+  const mask = { w: 10, h: 20, data: new Uint8Array(200).fill(1) };
+  const ours = { mask, pixels: new Uint32Array(200).fill(0xff406080), x: -5, y: -20, w: 10, h: 20, k: 1, head: [0, -20], chest: [0, -11] };
+  const readable = { x: 100, y: 120 };
+  const unreadable = { x: 140, y: 120 }; // a body pixelfx cannot read (no sprite frame)
+  host.actorOf = (e) => (e === readable ? ours : null);
+  const stock = stockActor(2);
+  for (const id of ['heal', 'soul-rise', 'st-burning']) {
+    const h = host.play(id, { follow: readable });
+    assert.ok(h, `${id} played on a readable body`);
+    const inst = host.live.find((i) => i.handle === h);
+    assert.equal(inst.fx.options.actor, ours, `${id}: made round our body`);
+    assert.notEqual(inst.fx.options.actor.mask, stock.mask, `${id}: not the stand-in`);
+    assert.equal(host.play(id, { follow: unreadable }), null, `${id}: not started on a body it cannot read`);
+  }
+  // a status pixelfx cannot draw is not "owned": the old look keeps showing it
+  const dir = new PixelFxDirector(game, host);
+  dir.live.set(unreadable, new Map([['st-burning', { handle: { uid: -1 }, retry: 0 }]]));
+  host.playing = () => true;
+  assert.equal(dir.owns(unreadable, 'burning'), false);
+});

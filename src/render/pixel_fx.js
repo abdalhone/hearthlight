@@ -208,6 +208,19 @@ export class PixelFx {
     delete opts.life;
     delete opts.dx;
     delete opts.dy;
+    // An effect that wraps a body is made round OUR body from the start: pixelfx would
+    // otherwise build it round its 24x38 side-on stand-in (resolveOptions), and effects
+    // that read the body once when made (heal's size and rows, soul-rise's copy of the
+    // body) would draw that stand-in over ours. No readable body: not started (the
+    // caller keeps its old look).
+    if (spec.actor) {
+      const a = o.actor || (o.follow && this.actorOf ? this.actorOf(o.follow) : null);
+      if (!a) {
+        this.stats.refused++;
+        return null;
+      }
+      opts.actor = a;
+    }
     if (typeof spec.prepare === 'function') {
       try {
         spec.prepare(opts, o, this);

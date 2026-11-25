@@ -1,7 +1,9 @@
 //
 // Hearthlight top-down variant (changed from pixelfx 5294518, MIT): Hearthlight is seen from above in 3/4,
 // with 12x20 px characters, so the lotus ring on the floor and the rising hoop are seen from above (0.6 as tall as wide, not a
-// 0.3 sliver), and the flower is sized from the body being healed (our sprites are about half the stand-in).
+// 0.3 sliver), and the flower is sized from the body being healed (our sprites are about half the stand-in);
+// the drain and restore recolor the body as the game draws it this instant (o.actor, set by the host each
+// frame), not the frame it had when the heal began, so a body that walks or turns mid-heal is not ghosted.
 import { Particles, Lights, P, Rng, fit, sparkle, clamp, smooth, seg, lerp, ease, TAU, WHITE, mix, luma, rgb, READY } from "../../core/index.js";
 import { shapeOf, recolor, oval } from "./_lib.js";
 
@@ -140,7 +142,7 @@ export function create(o) {
       const drain = smooth(0, 0.08, t);
       if (t < LIFT1 + 0.35) {
         const Y = t < LIFT0 ? 1 : hoopY(t), done = t >= LIFT1;
-        recolor(p, A, (c, x, y) => {
+        recolor(p, o.actor || A, (c, x, y) => {
           const d = y - Y;
           if (!done && d < -0.5) {
             const l = luma(c) * 0.88;

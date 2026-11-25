@@ -1,4 +1,5 @@
 import { spriteOf } from '../magic/fx_status.js';
+import { bossFrame } from '../art/bosses_art.js';
 
 // Our own characters as pixelfx sees a body (DESIGN §30). pixelfx's status effects wrap a
 // body given as { mask, pixels, x, y, w, h, head, chest } in local space with the feet at
@@ -56,12 +57,25 @@ function readActor(img, ax, ay) {
   };
 }
 
+// A boss is drawn from its own sheet (drawBossSprite), not a character's: the frame it
+// shows this instant, mirrored as it faces. Null while it is out of sight.
+const BOSS_SPR = { img: null, ax: 0, ay: 0 };
+function bossSprite(game, e) {
+  if (e.veiled || !(e.alpha > 0.01)) return null;
+  const f = bossFrame(game.atlas, e.bossId, e.anim, e.animT, { variant: e.variant || null, flip: e.faceX < 0 });
+  if (!f) return null;
+  BOSS_SPR.img = f.img;
+  BOSS_SPR.ax = f.ax;
+  BOSS_SPR.ay = f.ay;
+  return BOSS_SPR;
+}
+
 // The pixelfx body of an entity as drawn right now, or null (no sprite, no canvas).
 export function actorOf(game, e) {
   if (!game || !e) return null;
   let S;
   try {
-    S = spriteOf(game.atlas, e);
+    S = e.bossId && typeof e.spriteKey === 'string' && e.spriteKey.startsWith('boss:') ? bossSprite(game, e) : spriteOf(game.atlas, e);
   } catch {
     return null;
   }
