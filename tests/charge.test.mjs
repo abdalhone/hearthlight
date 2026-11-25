@@ -511,3 +511,81 @@ test('Try all magic: a weave of borrowed parts counts for no mission objective a
   assert.equal(earnedPart(g, 'essence', 'fire'), true);
   m.endTrial();
 });
+
+// ---------------------------------------------------------------- Free stat points (r13)
+
+test('Free stat points: every stat raises as far as you like; off puts back exactly the points really spent', () => {
+  const g = world();
+  const P = g.player;
+  const pr = g.progression;
+  P.level = 3;
+  pr.spend('vitality', 2);
+  pr.spend('might', 1);
+  const real = { ...pr.points };
+  const hp0 = P.maxHp;
+  const ev = [];
+  g.bus.on('points_changed', (p) => ev.push(p));
+  assert.equal(pr.lower('vitality').ok, false, 'no taking back outside free mode');
+  assert.equal(pr.startFree(), true);
+  assert.equal(pr.startFree(), false, 'once');
+  assert.equal(pr.unspent(), 3, 'the real points still to spend are counted, the free ones never');
+  for (let i = 0; i < 40; i++) assert.ok(pr.spend('vitality').ok);
+  assert.ok(pr.spend('weave', 25).ok, 'ten, twenty-five: anything');
+  assert.equal(pr.points.vitality, 42);
+  assert.equal(pr.points.weave, 25);
+  assert.ok(P.maxHp > hp0 + 200, `health grew with the free points (${hp0} → ${P.maxHp})`);
+  assert.ok(ev.some((p) => p.free && p.raised > 0), 'the fx hears a free point raised');
+  assert.ok(pr.lower('weave').ok);
+  assert.equal(pr.points.weave, 24);
+  assert.equal(pr.respec().ok, false, 'the chapel waits until it is off');
+  // A level gained meanwhile keeps its points for later.
+  P.level = 4;
+  assert.equal(pr.unspent(), 6);
+  assert.equal(pr.endFree(), true);
+  assert.equal(pr.free, false);
+  assert.deepEqual(pr.points, real, 'the real points come back exactly');
+  assert.equal(pr.unspent(), 6, 'and the level gained meanwhile left its points to spend');
+  assert.ok(Math.abs(P.maxHp - hp0 - 5) < 1e-6, `health back to the real points, plus the new level (${P.maxHp})`);
+  assert.ok(P.hp <= P.maxHp);
+  assert.equal(pr.spend('focus', 7).ok, false, 'back to the real limit');
+});
+
+test('Free stat points is saved: a reload keeps it on, the free points up and the real ones aside', () => {
+  const g = world();
+  const pr = g.progression;
+  g.player.level = 2;
+  pr.spend('grace', 2);
+  pr.startFree();
+  pr.spend('grace', 30);
+  pr.spend('resolve', 5);
+  const prog = JSON.parse(JSON.stringify(saveProgression(g)));
+  const g2 = world();
+  g2.player.level = 2;
+  loadProgression(g2, prog);
+  const p2 = g2.progression;
+  assert.equal(p2.free, true);
+  assert.equal(p2.points.grace, 32, 'free points are not clamped to the levels');
+  assert.equal(p2.points.resolve, 5);
+  p2.endFree();
+  assert.equal(p2.points.grace, 2);
+  assert.equal(p2.points.resolve, 0);
+  // An old save (no free field) still clamps to what the levels gave.
+  const g3 = world();
+  loadProgression(g3, { progression: { points: { might: 9 } } });
+  assert.equal(g3.progression.points.might, 0, 'level 1 gave nothing to spend');
+  assert.equal(g3.progression.free, false);
+});
+
+test('Reset stat points while free: the free points come off, the real ones still wait', () => {
+  const g = world();
+  const pr = g.progression;
+  g.player.level = 2;
+  pr.spend('focus', 3);
+  pr.startFree();
+  pr.spend('focus', 10);
+  const r = pr.resetPoints();
+  assert.ok(r.ok);
+  assert.equal(pr.spent(), 0);
+  pr.endFree();
+  assert.equal(pr.points.focus, 3);
+});

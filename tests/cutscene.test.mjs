@@ -344,3 +344,38 @@ test('scene sound is silent and harmless until the audio may play (before the fi
   assert.equal(s.bedName, 'wind');
   s.heart(0);
 });
+
+// ------------------------------------------------------------------ never a bare caption over black (r13)
+
+// Every moment a line is on screen, what the fade covers it with ('1' = black).
+async function linesOver(cp, run) {
+  const seen = [];
+  let over = false;
+  const done = run().then(() => (over = true));
+  for (let k = 0; k < 800 && !over; k++) {
+    await sleep(10);
+    if (cp.box.classList.contains('cs-show')) seen.push(cp.fadeEl.style.opacity);
+  }
+  await done;
+  return seen;
+}
+
+test("a replay of a scene that ends in the world keeps the block's fades: the last lines are not spoken over black", async () => {
+  // The prologue's end: a fade out, then lines on the live map (a replay shows the stand-in
+  // panel). Before r13 the replay skipped the block's fade in and left the screen black.
+  const cp = makePlayer(fakeVoice('silent'), 150);
+  const script = {
+    id: 'w',
+    steps: [{ narrate: 'Two days ago, wolves came at dusk.', key: 'w.0' }, { fade: 'out', ms: 30 }, { world: 'begin' }, { call: 'wake' }, { camera: { to: 'home_bed' } }, { fade: 'in', ms: 30 }, { say: 'lyra', text: 'Morning. Still breathing?', key: 'w.1' }, { say: 'lyra', text: 'This is the Wayhouse.', key: 'w.2' }, { world: 'end' }],
+  };
+  const seen = await linesOver(cp, () => cp.play(script, { world: false }));
+  assert.ok(seen.length > 10, 'her lines were on screen');
+  assert.ok(seen.every((o) => o !== '1'), `never over black: ${[...new Set(seen)]}`);
+});
+
+test('a line spoken while a fade-out still covers the screen brings the picture back', async () => {
+  const cp = makePlayer(fakeVoice('silent'), 150);
+  const seen = await linesOver(cp, () => cp.play({ id: 'b', steps: [{ narrate: 'First.', key: 'b.0' }, { fade: 'out', ms: 20 }, { narrate: 'Then this, never over black.', key: 'b.1' }] }));
+  assert.ok(seen.length > 10);
+  assert.ok(seen.every((o) => o !== '1'), `never over black: ${[...new Set(seen)]}`);
+});

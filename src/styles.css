@@ -6265,6 +6265,15 @@ input[type='range']::-moz-range-thumb {
   transition: opacity 0.35s ease-out;
 }
 
+/* ---------- Interface size with a mouse (src/ui/ui_scale.js; Settings → Display) ----------
+   The HUD, the chat and the panels are drawn at --uiz (1 with touch). Each layer fills the
+   screen, so a zoomed layer still fills it: what is pinned to an edge stays there. */
+.ui-zoomed > .layer-hud,
+.ui-zoomed > .layer-chat,
+.ui-zoomed > .layer-modal {
+  zoom: var(--uiz, 1);
+}
+
 /* ---------- the desktop hotbar ---------- */
 
 .hotbar {
@@ -6363,10 +6372,34 @@ input[type='range']::-moz-range-thumb {
   width: 33px;
   height: 33px;
 }
-.hslot.selected {
-  --bc: var(--ember);
-  transform: translateY(-3px);
-  background-color: rgba(44, 34, 70, 0.9);
+/* r13: a click casts the slot and selects nothing; the weave the right mouse button
+   casts wears a small mouse in its top-right corner instead of a raised, lit slot. */
+.hslot > .hb-rmb {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 10px;
+  grid-area: auto;
+  border-radius: 3px 3px 4px 4px;
+  background: linear-gradient(90deg, transparent 0 50%, var(--ember) 50% 100%) top / 100% 45% no-repeat, rgba(16, 14, 40, 0.6);
+  box-shadow: 0 0 0 1px var(--parch-dim);
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 1;
+}
+.hslot > .hb-rmb[hidden] {
+  display: none;
+}
+.hslot:active {
+  transform: translateY(1px);
+}
+.hslot:focus {
+  outline: none;
+}
+.hslot:focus-visible {
+  outline: 2px solid var(--wk);
+  outline-offset: 1px;
 }
 .hslot:hover {
   --bc: var(--wk);
@@ -8756,6 +8789,19 @@ input[type='range']::-moz-range-thumb {
     font-size: var(--fs-xs);
   }
 }
+/* Upright (r13): the preview stays pinned at the top while the steps scroll under it,
+   so a twist tapped far down the book is seen changing the weave. */
+@media (max-width: 640px) and (min-height: 521px) {
+  .panel-spellbook .sb-preview-col {
+    display: contents;
+  }
+  .panel-spellbook .sb-stage {
+    position: sticky;
+    top: -8px;
+    z-index: 3;
+    background: var(--panel-bg);
+  }
+}
 /* Sideways: the preview card stays in view on the left while the steps scroll on the
    right, under the row of your weaves. */
 @media (max-height: 520px) and (min-width: 600px) {
@@ -9297,7 +9343,7 @@ input[type='range']::-moz-range-thumb {
     width: min(720px, 100%);
   }
   .panel-pause .menu-go {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
   }
   .panel-pause .menu-go > .menu-row {
     display: contents;
@@ -9309,6 +9355,16 @@ input[type='range']::-moz-range-thumb {
   .panel-pause .menu-label {
     white-space: normal;
     line-height: 1.1;
+  }
+  /* Five places to a row (r13: Home joined them): tighter cells so the words fit. */
+  .panel-pause .menu-go-5 .menu-go-item,
+  .panel-pause .menu-go-5 .menu-sub {
+    gap: 5px;
+    padding: 5px 6px;
+    font-size: var(--fs-xs);
+  }
+  .panel-pause .menu-go-5 .menu-ico {
+    --isc: 2;
   }
   .panel-pause .panel-body {
     padding-top: 8px;

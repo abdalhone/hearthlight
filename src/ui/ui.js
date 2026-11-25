@@ -24,6 +24,8 @@ import { itemName } from '../entities/items.js';
 import { normalizeArgs } from '../ai/brain/actions.js';
 import { gainText, frac, truncate } from './format.js';
 import { companionshipOf, companionshipLabel, companionshipReason, deedLabel, requestAnswer } from './lyra_view.js';
+import { applyUiZoom } from './ui_scale.js';
+import { HomePointer } from './home_pointer.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -97,6 +99,8 @@ export class UI {
     this.inventory = new InventoryPanel(this);
     this.chest = new ChestPanel(this);
     this.settings = new SettingsPanel(this);
+    // The way to the player's bed (Menu → Home; asking anyone where it is): home_pointer.js.
+    this.homePointer = new HomePointer(g, this);
     this.title = new TitleScreen(this);
     this.touch = new TouchControls(this);
     this.village = new VillageUI(this);
@@ -139,6 +143,9 @@ export class UI {
 
     this.applyMotion();
     this.setTouch(isTouchDevice());
+    // Interface size with a mouse (ui_scale.js): again when the window or the setting changes.
+    applyUiZoom(this);
+    window.addEventListener('resize', () => applyUiZoom(this));
     this.bindDom();
     this.bindBus();
     this.village.bind();
@@ -514,6 +521,7 @@ export class UI {
     for (const ev of ['village_talk', 'rumor', 'bond_changed']) bus.on(ev, () => this.mind?.markDirty('people'));
     bus.on('settings_changed', ({ key }) => {
       if (key === 'reduceMotion') this.applyMotion();
+      if (key === 'uiSize') applyUiZoom(this);
       if (key === 'companionName' || key === 'brain') {
         this.chat.refreshHeader();
         this.title?.refreshMindLine();
@@ -552,6 +560,7 @@ export class UI {
     if (this.isTouch === !!on) return;
     this.isTouch = !!on;
     this.root.classList.toggle('is-touch', this.isTouch);
+    applyUiZoom(this);
   }
 
   applyMotion() {
@@ -722,6 +731,11 @@ export class UI {
   openSettings(tab) {
     if (!this.inited) return;
     this.settings.open(tab);
+  }
+
+  // Mark the way to the player's bed (reason: 'menu', 'lyra', a villager's id). -> bool
+  showHome(reason = 'asked') {
+    return !!this.homePointer?.show(reason);
   }
 
   openPause() {
@@ -988,6 +1002,7 @@ export class UI {
       this.closeTop();
     }
     this.hud.update(dt);
+    this.homePointer?.update();
     this.chat.update(dt);
     this.village.update(dt);
     this.lifeView?.update(dt);

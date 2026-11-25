@@ -153,7 +153,7 @@ export class PixelFxDirector {
       const was = unspent;
       unspent = n;
       const pl = g.player;
-      if (was == null || n >= was || !pl) return;
+      if (!pl || !(p.raised > 0 || (was != null && n < was))) return; // a point spent (or a free one raised)
       this.host.stop('points');
       this.host.play('collect', { x: pl.x, y: pl.y, height: Math.round(bodySize(g, pl).h * 0.55), size: 0.8, palette: RAMP.points, tag: 'points', seed: n + 3 });
     });

@@ -8,6 +8,7 @@ import { dropItem } from './pickups.js';
 import { xpToNext, LEVEL_ATK } from './combat.js';
 import { propsInCircle } from '../world/breakables.js';
 import { slashSprite, SLASH_FRAMES } from './combat_fx.js';
+import { keepSeated } from '../world/rest.js';
 
 // The player: 8-way movement with a touch of momentum, a three-hit sword combo,
 // a dodge roll, interaction, harvesting with the sword, and waking up at home
@@ -275,6 +276,13 @@ export class Player extends Actor {
     const dodgePress = !!input?.pressed('dodge') || (dodgeHeld && !this._heldDodge);
     this._heldAttack = atkHeld;
     this._heldDodge = dodgeHeld;
+    // Sitting (r13, src/world/rest.js): moving stands up and walks on; a swing, a roll or
+    // the use button stands up and is spent doing it.
+    if (this.seat && keepSeated(g, this, canAct ? { move: input.moveVector(), attack: atkPress, dodge: dodgePress, interact: !!input.pressed('interact') } : {})) {
+      this.attackBuffer = 0;
+      this._inX = this._inY = 0;
+      return;
+    }
     // Someone on your shoulders (§27): no sword, no roll; interact lays them down.
     const carrying = !!this.carrying;
     // Binding Light holds the body in place mid-roll; the sword arm stays free.
@@ -1169,6 +1177,11 @@ export class Player extends Actor {
 
   serialize() {
     const out = super.serialize();
+    // Seated: saved standing where they sat down from (a seat is solid ground to walk).
+    if (this.seat?.from) {
+      out.x = this.seat.from.x;
+      out.y = this.seat.from.y;
+    }
     const c = this.crime;
     if (c) out.crime = { level: c.level, kind: c.kind, until: c.until, victimId: c.victimId ?? null, since: c.since ?? c.t ?? 0 };
     return out;

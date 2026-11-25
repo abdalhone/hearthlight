@@ -1428,6 +1428,8 @@ export class Village {
     // Their real day (DESIGN §28): an errand gone wrong, someone missing.
     const life = safe(() => g?.villageLife?.situation?.(id), null);
     if (life) standing += ` Right now, in your own words: "${life}" (This is what is wrong today; say so if asked, and do not invent more.)`;
+    // "Where's my bed?" (r13): the way, so the answer is true (src/world/home.js).
+    if (local.intent === 'home' && local.homeFact) standing += ` They ask where their bed is. ${local.homeFact} Tell them the way in your own words.`;
     const lyra = g?.companion;
     const lyraState = safe(() => lyra?.mind?.companionship, null);
     const loc = safe(() => g?.locations?.at?.(e.x, e.y));

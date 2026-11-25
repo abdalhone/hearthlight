@@ -81,6 +81,7 @@ export const MENU_ICONS = Object.freeze({
   character: 'shield',
   inventory: 'bag',
   village: 'people',
+  home: 'home',
   save: 'feather',
   quit: 'moon',
 });
@@ -98,8 +99,8 @@ export const CONTROLS = [
   { id: 'move', what: 'Move', keys: 'WASD or the arrow keys', pad: 'Left stick or d-pad', touch: 'Put your left thumb down anywhere on the left side and slide' },
   { id: 'sword', what: 'Sword', keys: 'Left click (toward the mouse), J or Space', pad: 'A', touch: 'The sword button; drag it to aim the swing' },
   { id: 'dodge', what: 'Dodge roll', keys: 'K or Shift', pad: 'B', touch: 'The swirl button beside the sword' },
-  { id: 'weave', what: 'Cast a weave', keys: '1 – 6 toward the mouse: tap to cast, hold to charge it stronger and let go (a beam pours while held)', pad: 'RT, aimed with the right stick: tap, or hold to charge', touch: 'Tap a weave button to cast at the nearest foe; hold it to charge it stronger; drag from it to aim, let go to cast, drag back onto it to cancel' },
-  { id: 'choose', what: 'Choose a weave', keys: 'Mouse wheel, Q / R or a click on its slot; right click casts it', pad: 'LT / RB', touch: 'No choosing: every round button is one weave (its name on it, its mana on its corner)' },
+  { id: 'weave', what: 'Cast a weave', keys: '1 – 6 toward the mouse, or a click on its slot (at the nearest foe; hold and drag out to aim): tap to cast, hold to charge it stronger and let go (a beam pours while held)', pad: 'RT, aimed with the right stick: tap, or hold to charge', touch: 'Tap a weave button to cast at the nearest foe; hold it to charge it stronger; drag from it to aim, let go to cast, drag back onto it to cancel' },
+  { id: 'choose', what: 'Choose a weave', keys: 'Right click casts the weave with the small mouse on its slot; the mouse wheel or Q / R moves it (a number key moves it too)', pad: 'LT / RB', touch: 'No choosing: every round button is one weave (its name on it, its mana on its corner)' },
   { id: 'spellbook', what: 'Spellbook', keys: 'B', pad: 'Start, then Spellbook', touch: 'Menu → Spellbook, or the + New weave button' },
   { id: 'interact', what: 'Talk to someone, open, pick up', keys: 'E', pad: 'X', touch: 'The round button above the sword: it says what it does (Talk, Open…)' },
   { id: 'listen', what: 'Listen in', keys: 'L', pad: null, touch: 'Tap “Listen in” when two villagers talk nearby' },
@@ -174,7 +175,7 @@ export const HOW_TO_PLAY = [
     id: 'days',
     title: 'Days and nights',
     text:
-      'A day lasts about fifteen minutes. Wolves grow bolder at night and moonpetals only open after dark. Sleep in your bed after 6 PM to skip to morning; Lyra writes in her diary while you rest, and the game saves. She sleeps in the spare bed only while she trusts you; otherwise she keeps her old room at the Ember Kettle.',
+      'A day lasts about fifteen minutes. Wolves grow bolder at night and moonpetals only open after dark. Sleep in your bed (in the Wayhouse; Menu → Home shows the way) at any hour to wake the next morning healed, unless a fight is near; Lyra writes in her diary while you rest, and the game saves. Sit on any chair, stool or bench with the use button; move to stand up. She sleeps in the spare bed only while she trusts you; otherwise she keeps her old room at the Ember Kettle.',
   },
   {
     id: 'saving',

@@ -239,6 +239,7 @@ export class CutscenePlayer {
     const first = (script.steps || []).find((st) => st.panel || st.camera || st.actor || st.say != null || st.narrate != null || st.world);
     this.fadeEl.style.transition = 'none';
     this.fadeEl.style.opacity = first && !first.panel ? '0' : '1';
+    this.fadedOut = false; // (the opening black lifts with the first panel)
     this.game.input?.releaseAll?.();
     window.addEventListener('keydown', this.onKey, true);
     window.addEventListener('keyup', this.onKeyUp, true);
@@ -269,12 +270,13 @@ export class CutscenePlayer {
       const st = steps[i];
       if (st.world === 'begin' && !this.opts.world) {
         // No live map to play on (a replay, or the title screen): show the stand-in panel
-        // and keep only the lines.
+        // and keep only the lines, the sound and the fades (r13: the prologue's last lines
+        // played over the black its fade-out left, because the block's fade-in was skipped).
         if (st.panel) this.showPanel(st.panel, st);
         i++;
         while (i < steps.length && steps[i].world !== 'end') {
           const s2 = steps[i];
-          if (isSpoken(s2) || isSound(s2)) await this.exec(s2, i);
+          if (isSpoken(s2) || isSound(s2) || s2.fade) await this.exec(s2, i);
           i++;
         }
         i++;
@@ -324,7 +326,12 @@ export class CutscenePlayer {
       }
       return;
     }
-    if (isSpoken(st)) return this.line(st, index);
+    if (isSpoken(st)) {
+      // Never a bare caption over black (r13): a line spoken while a fade-out still covers
+      // the screen brings the picture back under it (not waited on: the line keeps its time).
+      if (this.fadedOut) this.fade('in', 600);
+      return this.line(st, index);
+    }
   }
 
   // A sound step: an effect, the bed, the heartbeat, the silence (a quiet pause a tap may
@@ -438,6 +445,7 @@ export class CutscenePlayer {
 
   fade(dir, ms = FADE_MS, color) {
     const target = dir === 'out' ? 1 : 0;
+    this.fadedOut = target === 1;
     const reduce = this.reduceMotion();
     const dur = reduce ? Math.min(200, ms) : ms;
     this.fadeEl.style.background = color || '#05040c';

@@ -2,6 +2,7 @@ import { TILE, WORLD_W, WORLD_H } from '../core/constants.js';
 import { Inventory, itemName } from '../entities/items.js';
 import { playCollect } from '../render/pixel_fx_play.js';
 import { drawDebris, drawFallingTree, mendTick, shakeX, swayOf, refreshAllFences, FALL_SECONDS } from './broken.js';
+import { seatFor, sitDown, SEAT_TYPES } from './rest.js';
 
 // Interactive world objects: doors, trees, ore, herbs, crops, chests, beds, fires,
 // lamps, signs, windows, the journal, and the furniture that makes a house a home.
@@ -1208,8 +1209,8 @@ export class Bed extends WorldObject {
     const player = isPlayer(this.game, actor);
     if (player && this.rented) return "Lyra's room";
     if (player && this.villagerBed) return this.name;
-    const h = this.game?.clock?.hour ?? 22;
-    if (player && h >= 6 && h < 18) return 'Rest (sleep from 6 PM)';
+    // Any hour (r13): a bed sleeps you to morning (game.sleep says when it cannot).
+    if (player && this.owner === 'player') return 'Sleep until morning';
     return this.owner === 'lyra' && player ? "Sleep in Lyra's bed" : 'Sleep';
   }
 
@@ -1682,8 +1683,39 @@ export class Decor extends WorldObject {
   }
 }
 
+// A chair, stool, bench or pew (r13; the author: "I can't sit anywhere"): the player sits
+// on it with the use button and stands by moving (src/world/rest.js); the villagers'
+// own sitting shares its seats. A bench with words still says them as you sit.
+export class Seat extends Decor {
+  canInteract(actor) {
+    if (!isPlayer(this.game, actor)) return false;
+    return actor.seat?.obj === this || !!seatFor(this, actor);
+  }
+
+  interactLabel(actor) {
+    return actor?.seat?.obj === this ? 'Stand up' : 'Sit';
+  }
+
+  interact(actor) {
+    if (!isPlayer(this.game, actor)) return;
+    const r = sitDown(this.game, actor, this);
+    if (!r.ok) {
+      this.game?.ui?.toast?.(r.reason, 'info');
+      return;
+    }
+    if (this.text) {
+      try {
+        this.game?.ui?.toast?.(this.text, 'info');
+      } catch {
+        /* words are a kindness */
+      }
+    }
+  }
+}
+
 // Build any object from a plain description (worldgen and tests use this).
 export function makeObject(game, d) {
+  if (SEAT_TYPES.has(d.objType)) return new Seat(game, d);
   switch (d.objType) {
     case 'door':
       return new Door(game, d);

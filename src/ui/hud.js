@@ -337,20 +337,48 @@ export class Hud {
       const plus = h('span', { class: 'wbtn-plus', 'aria-hidden': 'true', text: '+' });
       const key = h('kbd', { class: 'keycap hb-key', text: String(i + 1) });
       const cost = h('span', { class: 'hb-cost num' });
-      const b = h('button', { type: 'button', class: 'wbtn hslot tbtn', hidden: true }, chg, img, cd, secs, plus, key, cost);
-      const slot = { i, b, img, cd, secs, chg, plus, cost, key: '' };
-      // A click selects the slot (the right button casts the selected one); an empty
-      // slot opens the Spellbook on it.
-      b.addEventListener('click', () => {
+      // Which weave the right mouse button casts (the wheel and Q / R change it): a small
+      // mouse in the corner, never a slot that looks pressed or picked.
+      const rmb = h('span', { class: 'hb-rmb', 'aria-hidden': 'true', hidden: true });
+      const b = h('button', { type: 'button', class: 'wbtn hslot tbtn', hidden: true }, chg, img, cd, secs, plus, key, cost, rmb);
+      const slot = { i, b, img, cd, secs, chg, plus, cost, rmb, key: '' };
+      // A press casts the slot at once, like its number key: a quick click casts, a hold
+      // charges (drag out over the world to aim it), the release anywhere lets it go.
+      // Nothing is selected and no focus is left behind (a later Space swings the sword,
+      // it never presses this button again). An empty slot opens the Spellbook on it.
+      b.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        e.preventDefault();
+        if (!this.weaving.weaveAt(i)) {
+          this.openSpellbook(i);
+          return;
+        }
+        this.weaving.clickStart(i, e.pointerId);
+      });
+      // A keyboard or assistive click (no pointer behind it) is a quick tap.
+      b.addEventListener('click', (e) => {
+        if (e.detail !== 0) return;
         if (!this.weaving.weaveAt(i)) this.openSpellbook(i);
-        else this.weaving.select(i);
+        else {
+          this.weaving.clickStart(i, -1);
+          this.weaving.clickEnd(-1);
+        }
       });
       b.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         this.openSpellbook(i);
       });
+      b.addEventListener('pointerenter', () => (this.hbHover = i));
+      b.addEventListener('pointerleave', () => {
+        if (this.hbHover === i) this.hbHover = -1;
+      });
       this.hbSlots.push(slot);
       row.append(b);
+    }
+    this.hbHover = -1;
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pointerup', (e) => this.weaving.clickEnd(e.pointerId));
+      window.addEventListener('pointercancel', (e) => this.weaving.clickEnd(e.pointerId, true));
     }
     this.hbName = h('div', { class: 'hb-name' });
     return h('div', { class: 'hotbar', hidden: true }, this.hbName, mana, row);
@@ -417,16 +445,23 @@ export class Hud {
     const ver = w.version;
     const t = this.game.time || 0;
     const sel = w.slotInfo(w.selected);
+    // The slot the bar speaks of: the one under the mouse, else the one being cast, else
+    // the right button's weave (nothing a click leaves selected).
+    const casting = w.castingSlot?.() ?? -1;
+    const shown = this.hbHover >= 0 && this.hbHover < n ? this.hbHover : casting;
+    const focus = shown >= 0 ? shown : w.selected;
     if (mana && mana.max > 0) {
       setStyle(this.hbManaFill, 'width', `${((100 * Math.max(0, mana.cur)) / mana.max).toFixed(1)}%`);
-      // The selected weave's cost, as a brighter cap at the end of the bar (a charge
-      // being held costs x(1 + k): the cap grows with it).
-      const ch = w.chargeOf?.(w.selected);
-      const c = Math.min(mana.cur, (sel.cost || 0) * (1 + (ch?.k || 0)));
+      // That weave's cost, as a brighter cap at the end of the bar (a charge being held
+      // costs x(1 + k): the cap grows with it).
+      const ch = w.chargeOf?.(focus);
+      const c = Math.min(mana.cur, (w.slotInfo(focus).cost || 0) * (1 + (ch?.k || 0)));
       setStyle(this.hbManaCost, 'width', `${((100 * c) / mana.max).toFixed(1)}%`);
       setStyle(this.hbManaCost, 'left', `${((100 * Math.max(0, mana.cur - c)) / mana.max).toFixed(1)}%`);
       setText(this.hbManaText, `${Math.floor(mana.cur)} / ${Math.round(mana.max)}`);
     }
+    let filled = 0;
+    for (let i = 0; i < n; i++) if (w.weaveAt(i)) filled++;
     for (let i = 0; i < 6; i++) {
       const slot = this.hbSlots[i];
       const on = i < n;
@@ -437,10 +472,18 @@ export class Hud {
         slot.key = rec.key;
         paintSlot(slot, rec, i);
       }
-      toggleClass(slot.b, 'selected', i === w.selected);
+      const rmb = i === w.selected && filled > 1;
+      if (slot.rmb.hidden === rmb) slot.rmb.hidden = !rmb;
       paintSlotState(slot, rec, w, i, t);
     }
-    setText(this.hbName, sel.weave ? sel.name : '');
+    // The name over the bar: the slot under the mouse, else the one being cast, else the
+    // right button's weave for a moment after the wheel / Q / R changed it.
+    if (w.selected !== this.hbSel) {
+      if (this.hbSel !== undefined) this.hbSelT = t;
+      this.hbSel = w.selected;
+    }
+    const nameOf = shown >= 0 ? w.slotInfo(shown) : t - (this.hbSelT ?? -9) < 2.5 ? sel : null;
+    setText(this.hbName, nameOf?.weave ? nameOf.name : '');
     this.hbVersion = ver;
   }
 
@@ -546,9 +589,11 @@ export class Hud {
     const right = this.rightEl.getBoundingClientRect();
     if (!root.width || !right.width) return;
     const gap = 6;
-    const edgeL = cards.left - root.left;
-    const edgeR = right.right - root.left;
-    const top = Math.max(cards.bottom, right.bottom) - root.top + gap;
+    // Measured boxes are on-screen px; inside a zoomed HUD (ui_scale.js) a px is z of them.
+    const z = this.ui._uiz || 1;
+    const edgeL = (cards.left - root.left) / z;
+    const edgeR = (right.right - root.left) / z;
+    const top = (Math.max(cards.bottom, right.bottom) - root.top) / z + gap;
     st.top = `${Math.round(top)}px`;
     st.left = `${Math.round(edgeL)}px`;
     st.width = `${Math.round(edgeR - edgeL)}px`;
@@ -564,11 +609,12 @@ export class Hud {
     const right = this.rightEl.getBoundingClientRect();
     if (!root.width || !right.width || !cards.width) return;
     const gap = 10;
-    const left = cards.right - root.left + gap;
+    const z = this.ui._uiz || 1; // (see layoutTop)
+    const left = (cards.right - root.left) / z + gap;
     const st = this.center.style;
-    const width = right.left - root.left - gap - left;
+    const width = (right.left - root.left) / z - gap - left;
     st.left = `${Math.round(left)}px`;
-    st.top = `${Math.round(cards.top - root.top + Math.max(0, (Math.min(cards.height, 46) - 34) / 2))}px`;
+    st.top = `${Math.round((cards.top - root.top) / z + Math.max(0, (Math.min(cards.height / z, 46) - 34) / 2))}px`;
     st.width = `${Math.max(0, Math.round(width))}px`;
     st.transform = 'none';
     this.center.hidden = width < 70;

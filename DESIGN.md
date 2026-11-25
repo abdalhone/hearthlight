@@ -753,6 +753,16 @@ Safe areas: HUD offsets use `env(safe-area-inset-*)`. Never use `alert/confirm/p
   claude.ai speed (quick/deeper), API key field (stored only in this browser, with a clear
   warning) and model, voice on/off + voice, music/sfx volume, text speed, thought bubbles,
   zoom, names (player, companion), cloud save, reduce motion, FPS, controls list, quit to title.
+- **Interface size** (r13; the author: "on pc i feel that the hud is a little small"):
+  with a mouse the HUD (cards, mission line, prompt, the weave bar), the chat and every
+  panel are drawn at a zoom (`src/ui/ui_scale.js` `uiZoom`, CSS `zoom: var(--uiz)` on the
+  HUD, chat and panel layers): Settings → Display → Interface size Small / Normal / Large
+  = 1 / 1.2 / 1.45, times the window next to 1280×720 (0.8–1.35, so the HUD keeps its
+  share of a big monitor), never wider than about a third of the window for the left
+  column. Normal (the default) is larger than before; Small is the old size at 1280×720.
+  Touch keeps 1 (Controls → Button size is the phone's; the row is greyed with touch and
+  says so). Toasts and the coach stay at 1: they are placed by measured boxes, and the
+  HUD's own measured layout divides by the zoom.
 - Pause (`Esc`): resume, settings, save, quit to title. Sets `game.paused`.
 - `ui.toast(text, kind = 'info'|'good'|'warn'|'quest'|'lyra')`, `ui.setInteractPrompt(label)`,
   `ui.isModalOpen()`, `ui.fadeOut(s) / fadeIn(s)` (promises), `ui.showDiary(entry)`,
@@ -1344,6 +1354,28 @@ village. She should be able to ask help for other people. They can come and help
   lying on the floor.
 - **Sleeping looks right.** Anyone in a bed lies in it the way the bed is oriented (head on
   the pillow, blanket over the body), never sideways across it.
+- **Finding your bed** (r13; the author: "I'm not able to find my bed"; `src/world/home.js`,
+  `src/ui/home_pointer.js`, `src/ai/plugins/home_plugin.js`): the player's bed in the
+  Wayhouse is named "Your bed" and wears a "Your bed" tag whenever the player is inside
+  the cottage. **Menu → Home** marks the way: the tag over the bed when it is on screen,
+  an arrow with "Home" at the screen's edge when it is not, until the player reaches it,
+  sleeps, or turns it off there ("Home: marked"). Asking anyone where the bed is ("where
+  is my bed", "where do I sleep", "I can't find my house"…, `asksForHome`) gets the way in
+  words — the Wayhouse, which way and how far from the one asked, which bed — from Lyra
+  (a plugin question; Claude gets the facts in its prompt and a `show_home` action) and
+  from every villager (`player_talk.js` local reply; the Claude brief carries the same
+  fact), and the game marks the way whoever words the answer.
+- **Sleep and sit** (r13; the author: "I can't sit anywhere, and I can't sleep";
+  `src/world/rest.js`). Your bed says "Sleep until morning" at **any hour** (no more
+  "from 6 PM"): you wake at 7 the next morning (the same morning before 7), healed, and the
+  game saves, as before. Not while a fight is near (`sleepBlocked`: a hostile within 10
+  tiles, a blow taken in the last 8 s, lying fallen, carrying someone): a toast says why.
+  **Every chair, stool, bench and pew is a seat** (`Seat` in objects.js): the use button
+  says "Sit"; you sit in the villagers' own sitting pose (a chair at a table faces it,
+  the rest face out), sharing their seats (`obj._sitters`: a full bench says so). Moving
+  stands you up and walks on; a swing, a roll or the use button ("Stand up") stands you up
+  and is spent doing it; a blow knocks you out of the seat. A bench with words says them
+  as you sit. Saved seated, you load standing where you sat down from.
 - **Ground reads true.** Anything drawn as raised (a terrace, a rock band, a cliff face, a
   retaining wall, a steep bank) is solid along its face and climbable only by stairs, steps
   or a ramp drawn as such; anything walkable must look walkable. No walking up walls.
@@ -1370,6 +1402,15 @@ me some lore." The lore must reach the player in the game, not only in a file.
   `wanted`), and after three failures in a row the scene carries on silently.
   `scripts/cutscene_check.mjs` taps the New Game prologue through on a phone (390×640 and
   844×340) with voices working, blocked and slow: about 14 s of fast taps.
+- **Never a bare caption over black** (r13; the author: "in the end of the first cutscene, I
+  have seen that [Lyra] talks, but there is no pictures"). Cause: a replay (Prologue on the
+  title screen or in the menu) plays the `world` block as its stand-in panel and kept only
+  the lines and sounds, so the block's own fade-in was skipped and the fade-out before it
+  left Lyra's last lines on black. Now a replay keeps the block's fades too (the
+  "Wayhouse, morning" panel is seen), and the player never speaks a line while a
+  fade-out still covers the screen (`fadedOut`: the picture comes back under the line,
+  not waited on, so the voice timing is unchanged). New Game plays the same lines on the
+  live map, inside the Wayhouse, with her portrait beside each.
 - **The prologue** (plays on New Game, skippable, replayable from the title screen and the
   menu): Halcyre and the broken Song, the Drift, the warded villages, Hearthvale and its
   Wellstone, Lyra's birth under the Brightfall to old Hobb and Wenna, Maren going into the
@@ -1603,7 +1644,18 @@ glyph-shards with a short reveal ("You can weave fire").
   HUD is a thin top strip. Portrait keeps working. A one-time hint suggests turning the
   phone.
 - **Desktop**: move with WASD, aim with the mouse, sword on the left button, weaves on
-  1–4 (and the right button casts the selected weave), B opens the Spellbook.
+  1–4 (and the right button casts the weave marked with a small mouse on its slot; the
+  wheel, Q / R or a number key moves the mark), B opens the Spellbook.
+- **A click on a hotbar slot casts it** (r13; the author: "I click the button and the
+  skill gets unselected after I hit it"): it is that slot's number key (`Weaving.
+  clickStart` / `clickEnd`, source `click`): the press starts it, the release casts it, a
+  quick click casts at once, a hold charges (and may be dragged out over the world to aim
+  at the mouse); with the mouse still on the slot it aims the way a key does with the
+  mouse away: the nearest foe in range, else straight ahead. It selects nothing, leaves no
+  focus (a later Space swings the sword) and raises no slot; the name over the bar names
+  the slot under the mouse or the one being cast. A keyboard Enter on a focused slot is a
+  quick click; an empty slot opens the Spellbook on it; a right click on a slot opens it
+  too.
 - **Press, hold, release, on every device** (r12): a weave starts on the press and is
   cast on the release (`src/ui/weaving.js` `begin`/`finish`); a quick tap of a key, a
   click or a touch casts within the 0.18 s tap window (about 0.1 s later than an instant
@@ -1620,6 +1672,21 @@ glyph-shards with a short reveal ("You can weave fire").
   lesson teaches the hold (a real charged cast moves it on) and the cooldown.
 - **The Spellbook**: craft and edit weaves (pick a shape, essences, twists from what is
   unlocked; see cost, cooldown and damage; a live preview casts it at a training dummy),
+  **the preview is the real Weave** (r13; the author: "when I [add] twists on spells, it
+  does not change the preview"; `src/ui/weave_sandbox.js`): a sandbox with its own bus,
+  clock, entity manager, combat, `Magic` runtime and fx layer, in a small walled arena with
+  two straw dummies, casts the very plan the Spellbook compiled every 2.6 s (3.4 s for
+  the slow shapes), the way a press and release would (a beam pours 1.2 s, a charge
+  gathers 0.75 s), so every twist does what it does in the world — multishot fans,
+  split bursts, bounce rebounds, chain arcs to the second dummy, orbit circles, spiral
+  weaves, echo recasts, volley bursts, big and swift change the body, linger leaves its
+  patch, burst explodes, homing turns after the dummy as it steps aside, pierce passes
+  through, leech threads life back (green numbers), charge gathers first; a ward is shown
+  stopping two stones the dummy throws. It is silent, never touches the real world,
+  runs only while the Spellbook is open; if it cannot be built, the old imitation
+  (`spellbook_preview.js`) plays instead. On a phone held upright the preview stays
+  pinned at the top of the book while the steps scroll under it (sideways it already
+  stayed on the left), so a twist tapped far down is seen changing the weave,
   assign them to slots, name them. Works on a phone in both orientations. Its Cast tile
   says how a weave is cast ("Tap or hold", "Hold" for a beam, "Fast charge" with the
   charge twist). While "Try all magic" runs, its header says "Trying all magic"; weaves
@@ -1760,19 +1827,31 @@ away." Never an empty screen, a disabled field, "didn't catch that" or a failure
 ## 24. One clean menu (the author: "the settings [are] so multiplied… when I press the menu I see all the things that I see in the HUD")
 
 - The pause menu never repeats what the HUD already gives one tap away. One menu: Resume,
-  Spellbook, Missions, Lyra (her Mind panel), The Book of Halcyre, Settings, Save, Quit to
-  title. Settings are grouped into a few tabs (Game, Controls, Sound & voices, Minds
+  Spellbook, Missions, Lyra (her Mind panel), Home (r13: marks the way to your bed, §19.8),
+  The Book of Halcyre, Settings, Save, Quit to title. Settings are grouped into a few tabs (Game, Controls, Sound & voices, Minds
   (Claude), Display), each option exactly once, with short plain explanations; nothing
   duplicated between the settings, the menu and the HUD.
 - **Game → Practice** (r12; the author: "can you add in the settings a thing that will
-  reset states and a thing that gives me all the magic stuff to try it"): two action rows
+  reset states and a thing that gives me all the magic stuff to try it"): three action rows
   (a label, a note and a button; not settings, so never saved with them), each behind the
   in-game confirm (`ui.confirm`, danger), both greyed on the title screen and while the
   player lies fallen, the note saying why.
   - **Reset stat points**: every spent point back to spend again, free
     (`Progression.resetPoints()`; greyed with nothing spent). "All N points come back to
     spend again. Your level, gear and weaves stay." A toast then says to open the
-    Character sheet; its points badge shows them.
+    Character sheet; its points badge shows them. While Free stat points is on it takes
+    the free points off (the real ones still wait).
+  - **Free stat points: On/Off** (r13; the author: "give me a button to give me inf stats
+    points like the magic thing"; "infinite stats should work like magic"): a switch like
+    Try all magic (`Progression.startFree()` / `endFree()`, `progression.free`). On: the
+    points really spent are kept aside (`realPoints`) and every attribute can be raised as
+    far as you like (up to 999 each; the stat pipeline's caps still hold), free, on the
+    Character sheet, which then shows −, + and +10 on each row and a "Free points" badge
+    instead of a count (the HUD card's points badge hides). Off: exactly the points
+    really spent come back; levels gained meanwhile leave their points to spend. The
+    chapel's respec waits until it is off. Saved with the game (`free`, `realPoints`;
+    free points are not clamped to the levels on load, the real ones are); greyed on the
+    title screen and while fallen like the other rows.
   - **Try all magic: On/Off**: every shape, essence, twist and price, six weave slots,
     three essences and four twists to a weave, until it is turned off here
     (`Magic.startTrial()` / `endTrial()`). The mana is not refilled. The real unlocks,

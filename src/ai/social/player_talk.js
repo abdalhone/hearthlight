@@ -18,6 +18,7 @@ import { PEOPLE, VILLAGERS } from './bonds_data.js';
 import { TO_YOU, FALLBACK_TO_YOU } from './voices_player.js';
 import { WEEK_TOPICS } from './talk.js';
 import { speakable } from './hidden.js';
+import { asksForHome, wayHomeLine, homeFacts } from '../../world/home.js';
 
 export const CHAT_CAP = 40; // messages kept per villager
 const NOTE_CAP = 8;
@@ -536,6 +537,17 @@ export function localReply(v, npc, text) {
     const mumble = fresh(npc.profile?.sleepy);
     const l = rnd(rng) < 0.4 || !mumble.length ? pickProfile(fresh(SNORES).length ? fresh(SNORES) : SNORES, rng) : pickProfile(mumble, rng);
     return { lines: [l], mood: 'sleepy', delta: 0, intent: 'asleep' };
+  }
+
+  // "Where's my bed?" (r13): anyone in the village can say, and the way is marked.
+  const home = !/\b(?:kill|hurt|burn)\b/i.test(text) && asksForHome(text) ? wayHomeLine(g, npc, id, v.day?.() || 0) : null;
+  if (home) {
+    try {
+      g?.ui?.showHome?.(id);
+    } catch {
+      /* the mark is a kindness, not the answer */
+    }
+    return { lines: [home], mood, delta: 0, intent: 'home', homeFact: homeFacts(g, npc).line, told: [], mentioned: [] };
   }
 
   // Their day (DESIGN §28): "what's wrong?", "have you seen Garrick?", an answer to their
