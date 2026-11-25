@@ -90,6 +90,8 @@ survivors, new villagers.
 | Combat and AI | Fight back, flee, stun, finishers per body size | `src/entities/*`, `src/bosses/*` |
 | Footsteps and crawling | Others' steps near you; the downed crawl for anyone | `src/world/footsteps.js`, `src/survival/*` |
 | Missions | Givers, turn-ins, foes that scale with your level (`toughen`) | `src/missions/*` |
+| Age | Everyone grows a year older on their birthday (`game.calendar`); a child stays a child by build; a new character needs a base age | `src/world/calendar.js` |
+| Trade | Who buys and sells what (`shop.buys`, `shop.buysAll`) | `src/entities/npc_data*.js`, `src/ui/dialog.js` |
 | The map | Lyra's dot; future companions; bosses once heard of | `src/ui/world_map.js` |
 
 ## 5. States
