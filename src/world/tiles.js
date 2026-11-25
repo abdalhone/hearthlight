@@ -35,6 +35,12 @@ export const T = {
   RUBBLE: 20, // collapsed wall: an impassable heap of stones
   GRAVEL: 21,
   FLOWERBED: 22,
+  // The wider world (src/world/wilds.js).
+  SNOW: 23, // the Hollowcrown's snowfields: snow at midsummer
+  HEATH: 24, // the moor along the King's Road west: heather and gorse
+  DEAD_GRASS: 25, // grey, forgotten grass where the grey lingers (Brindlecombe)
+  SCREE: 26, // broken stone on the foothills
+  THICKET: 27, // wood too thick to walk: the wild's walls (deep Whisperwood, the road's margins)
 };
 
 const D = (name, o) => ({
@@ -76,6 +82,12 @@ DEFS[T.RUBBLE] = D('rubble', { solid: true, color: '#545266', low: true, raised:
 DEFS[T.GRAVEL] = D('gravel', { color: '#727085', cost: 1.1, blend: 'gravel', prio: 2 });
 // A raised planter with a stone rim: you walk round it, not through it.
 DEFS[T.FLOWERBED] = D('flower bed', { solid: true, low: true, color: '#b04a6e', cost: 1.6, raised: true });
+DEFS[T.SNOW] = D('snow', { color: '#dfe8f2', cost: 1.3, blend: 'snow', prio: 6 });
+DEFS[T.HEATH] = D('heath', { color: '#6e5a5e', cost: 1.25, blend: 'heath', prio: 5 });
+DEFS[T.DEAD_GRASS] = D('grey grass', { color: '#7d8270', cost: 1.15, blend: 'deadgrass', prio: 5 });
+DEFS[T.SCREE] = D('scree', { color: '#8a8794', cost: 1.2, blend: 'scree', prio: 2 });
+// A wall of trunks and crowns: blocks feet, arrows and sight like a cliff does.
+DEFS[T.THICKET] = D('thicket', { solid: true, wall: true, color: '#1c2f22', tall: true, raised: true, cost: 0 });
 
 for (let i = 0; i < DEFS.length; i++) if (DEFS[i]) DEFS[i].id = i;
 

@@ -1,4 +1,4 @@
-import { TILE, WORLD_W, WORLD_H } from '../core/constants.js';
+import { TILE, WORLD_W, WORLD_H, WORLD_X0, WORLD_Y0 } from '../core/constants.js';
 import { Inventory, itemName } from '../entities/items.js';
 import { playCollect } from '../render/pixel_fx_play.js';
 
@@ -1737,24 +1737,37 @@ const WORD_ALIASES = {
 };
 
 export class ObjectManager {
-  constructor(game, w = WORLD_W, h = WORLD_H) {
+  // (x0, y0): the first tile, as in TileMap: tileIndex shares the map's indexing.
+  constructor(game, w = WORLD_W, h = WORLD_H, x0 = WORLD_X0, y0 = WORLD_Y0) {
     this.game = game;
     this.w = w;
     this.h = h;
+    this.x0 = x0 | 0;
+    this.y0 = y0 | 0;
     this.list = [];
     this.byId = new Map();
-    this.tileIndex = new Array(w * h); // per tile: array of objects covering it
-    this.cw = Math.ceil(w / CELL);
-    this.ch = Math.ceil(h / CELL);
+    this.tileIndex = new Array(w * h); // per tile (map.idx order): array of objects covering it
+    this.cx0 = Math.floor(this.x0 / CELL); // first spatial cell column and row
+    this.cy0 = Math.floor(this.y0 / CELL);
+    this.cw = Math.floor((this.x0 + w - 1) / CELL) - this.cx0 + 1;
+    this.ch = Math.floor((this.y0 + h - 1) / CELL) - this.cy0 + 1;
     this.cells = Array.from({ length: this.cw * this.ch }, () => []);
     this.removedIds = new Set();
     this.version = 0; // bumps whenever walkability changes (doors, mined rocks)
   }
 
   _cellOf(o) {
-    const cx = Math.max(0, Math.min(this.cw - 1, Math.floor(o.x / TILE / CELL)));
-    const cy = Math.max(0, Math.min(this.ch - 1, Math.floor(o.y / TILE / CELL)));
+    const cx = Math.max(0, Math.min(this.cw - 1, Math.floor(o.x / TILE / CELL) - this.cx0));
+    const cy = Math.max(0, Math.min(this.ch - 1, Math.floor(o.y / TILE / CELL) - this.cy0));
     return cy * this.cw + cx;
+  }
+
+  _in(tx, ty) {
+    return tx >= this.x0 && ty >= this.y0 && tx < this.x0 + this.w && ty < this.y0 + this.h;
+  }
+
+  _idx(tx, ty) {
+    return (ty - this.y0) * this.w + (tx - this.x0);
   }
 
   add(o) {
@@ -1767,8 +1780,8 @@ export class ObjectManager {
     this.list.push(o);
     this.byId.set(o.id, o);
     for (const [tx, ty] of o.occupiedTiles()) {
-      if (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) continue;
-      const i = ty * this.w + tx;
+      if (!this._in(tx, ty)) continue;
+      const i = this._idx(tx, ty);
       (this.tileIndex[i] || (this.tileIndex[i] = [])).push(o);
     }
     o._cell = this._cellOf(o);
@@ -1783,7 +1796,7 @@ export class ObjectManager {
     this.list.splice(this.list.indexOf(o), 1);
     this.byId.delete(o.id);
     for (const [tx, ty] of o.occupiedTiles()) {
-      const l = this.tileIndex[ty * this.w + tx];
+      const l = this._in(tx, ty) ? this.tileIndex[this._idx(tx, ty)] : null;
       if (l) {
         const k = l.indexOf(o);
         if (k >= 0) l.splice(k, 1);
@@ -1833,13 +1846,13 @@ export class ObjectManager {
 
   // Objects covering a tile (or null). Shared array: do not modify.
   objectsAt(tx, ty) {
-    if (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) return null;
-    return this.tileIndex[ty * this.w + tx] || null;
+    if (!this._in(tx, ty)) return null;
+    return this.tileIndex[this._idx(tx, ty)] || null;
   }
 
   isBlockingTile(tx, ty, actor = null) {
-    if (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) return false;
-    const l = this.tileIndex[ty * this.w + tx];
+    if (!this._in(tx, ty)) return false;
+    const l = this.tileIndex[this._idx(tx, ty)];
     if (!l) return false;
     for (let i = 0; i < l.length; i++) if (l[i].blocksTile(tx, ty, actor)) return true;
     return false;
@@ -1855,10 +1868,10 @@ export class ObjectManager {
   // Visit objects in cells overlapping a pixel rectangle.
   _eachInRect(x0, y0, x1, y1, fn) {
     const span = TILE * CELL;
-    const cx0 = Math.max(0, Math.floor(x0 / span));
-    const cy0 = Math.max(0, Math.floor(y0 / span));
-    const cx1 = Math.min(this.cw - 1, Math.floor(x1 / span));
-    const cy1 = Math.min(this.ch - 1, Math.floor(y1 / span));
+    const cx0 = Math.max(0, Math.floor(x0 / span) - this.cx0);
+    const cy0 = Math.max(0, Math.floor(y0 / span) - this.cy0);
+    const cx1 = Math.min(this.cw - 1, Math.floor(x1 / span) - this.cx0);
+    const cy1 = Math.min(this.ch - 1, Math.floor(y1 / span) - this.cy0);
     for (let cy = cy0; cy <= cy1; cy++) {
       for (let cx = cx0; cx <= cx1; cx++) {
         const cell = this.cells[cy * this.cw + cx];

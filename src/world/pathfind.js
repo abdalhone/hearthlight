@@ -32,10 +32,14 @@ export class Pathfinder {
     return this.game.map;
   }
 
+  // Internally every tile is a local index (0..w-1, 0..h-1) into the map's arrays;
+  // (x0, y0) turn it back into world tiles (negative west and north of the vale).
   _alloc() {
     const m = this.game.map;
     this.w = m.w;
     this.h = m.h;
+    this.x0 = m.x0 || 0;
+    this.y0 = m.y0 || 0;
     const n = m.w * m.h;
     this.n = n;
     this.gScore = new Float32Array(n);
@@ -43,8 +47,9 @@ export class Pathfinder {
     this.seen = new Uint32Array(n); // generation stamp: g/parent valid
     this.closed = new Uint32Array(n);
     this.gen = 0;
-    // Binary heap with lazy deletion (duplicates allowed).
-    this.heapCap = n * 4;
+    // Binary heap with lazy deletion (duplicates allowed). It grows when a search needs
+    // more; searches are capped by maxNodes, so a quarter of a million is plenty.
+    this.heapCap = Math.min(n * 4, 1 << 18);
     this.heapNode = new Int32Array(this.heapCap);
     this.heapF = new Float32Array(this.heapCap);
     this.heapSize = 0;
@@ -57,7 +62,7 @@ export class Pathfinder {
 
   _syncTerrain() {
     const m = this.game.map;
-    if (m.w !== this.w || m.h !== this.h) this._alloc();
+    if (m.w !== this.w || m.h !== this.h || (m.x0 || 0) !== this.x0 || (m.y0 || 0) !== this.y0) this._alloc();
     if (this.mapVersion === m.version) return;
     const g = m.ground;
     for (let i = 0; i < this.n; i++) {
@@ -91,9 +96,11 @@ export class Pathfinder {
 
   // Is the tile walkable for this actor right now (closed unlocked doors count as walkable)?
   isWalkable(tx, ty, actor = null, allowDoors = true) {
-    if (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) return false;
     this._syncTerrain();
-    return this._enter(ty * this.w + tx, tx, ty, actor, !!actor?.flying, allowDoors) >= 0;
+    const lx = tx - this.x0;
+    const ly = ty - this.y0;
+    if (lx < 0 || ly < 0 || lx >= this.w || ly >= this.h) return false;
+    return this._enter(ly * this.w + lx, tx, ty, actor, !!actor?.flying, allowDoors) >= 0;
   }
 
   // Nearest walkable tile center to a pixel point (spiral search), or null.
@@ -178,16 +185,19 @@ export class Pathfinder {
     const flying = !!actor?.flying;
     const W = this.w;
     const H = this.h;
-    const stx = Math.max(0, Math.min(W - 1, Math.floor(sx / TILE)));
-    const sty = Math.max(0, Math.min(H - 1, Math.floor(sy / TILE)));
-    let gtx = Math.floor(gx / TILE);
-    let gty = Math.floor(gy / TILE);
+    const X0 = this.x0;
+    const Y0 = this.y0;
+    // Local tile coordinates from here on: world tile = local + (X0, Y0).
+    const stx = Math.max(0, Math.min(W - 1, Math.floor(sx / TILE) - X0));
+    const sty = Math.max(0, Math.min(H - 1, Math.floor(sy / TILE) - Y0));
+    let gtx = Math.floor(gx / TILE) - X0;
+    let gty = Math.floor(gy / TILE) - Y0;
     let exactGoal = true;
     if (gtx < 0 || gty < 0 || gtx >= W || gty >= H) return null;
 
     // Goal inside something solid (a tree to chop, a bed): settle for the nearest
     // walkable neighbour, preferring the side facing the start.
-    if (this._enter(gty * W + gtx, gtx, gty, actor, flying, allowDoors) < 0) {
+    if (this._enter(gty * W + gtx, gtx + X0, gty + Y0, actor, flying, allowDoors) < 0) {
       let best = -1;
       let bd = Infinity;
       for (let r = 1; r <= 2 && best < 0; r++) {
@@ -197,7 +207,7 @@ export class Pathfinder {
             const x = gtx + dx;
             const y = gty + dy;
             if (x < 0 || y < 0 || x >= W || y >= H) continue;
-            if (this._enter(y * W + x, x, y, actor, flying, allowDoors) < 0) continue;
+            if (this._enter(y * W + x, x + X0, y + Y0, actor, flying, allowDoors) < 0) continue;
             const d = Math.hypot(dx, dy) * 4 + Math.hypot(x - stx, y - sty) * 0.05;
             if (d < bd) (bd = d), (best = y * W + x);
           }
@@ -211,7 +221,7 @@ export class Pathfinder {
 
     const start = sty * W + stx;
     const goal = gty * W + gtx;
-    const goalPoint = exactGoal ? { x: gx, y: gy } : { x: gtx * TILE + TILE / 2, y: gty * TILE + TILE / 2 };
+    const goalPoint = exactGoal ? { x: gx, y: gy } : { x: (gtx + X0) * TILE + TILE / 2, y: (gty + Y0) * TILE + TILE / 2 };
     if (start === goal) return [goalPoint];
 
     const now = this.game.time ?? 0;
@@ -271,7 +281,7 @@ export class Pathfinder {
             continue;
           }
         }
-        const c = ni === goal ? Math.max(0.5, this._enter(ni, nx, ny, actor, flying, allowDoors)) : this._enter(ni, nx, ny, actor, flying, allowDoors);
+        const c = ni === goal ? Math.max(0.5, this._enter(ni, nx + X0, ny + Y0, actor, flying, allowDoors)) : this._enter(ni, nx + X0, ny + Y0, actor, flying, allowDoors);
         pass[d] = c;
         if (c < 0 || closed[ni] === this.gen) continue;
         const ng = gc + c * (d >= 4 ? SQRT2 : 1);
@@ -296,7 +306,7 @@ export class Pathfinder {
     const tiles = new Array(len);
     for (let k = 0; k < len; k++) tiles[k] = buf[len - 1 - k];
     const path = this._smooth(start, tiles, actor, flying, allowDoors);
-    const out = path.map((i) => ({ x: (i % W) * TILE + TILE / 2, y: ((i / W) | 0) * TILE + TILE / 2 }));
+    const out = path.map((i) => ({ x: ((i % W) + X0) * TILE + TILE / 2, y: (((i / W) | 0) + Y0) * TILE + TILE / 2 }));
     out[out.length - 1] = goalPoint;
     this._remember(key, now, out);
     return out.map((p) => ({ x: p.x, y: p.y }));
@@ -342,10 +352,12 @@ export class Pathfinder {
   // Can a walker's feet box travel straight between two tile centers?
   _lineWalkable(a, b, actor, flying, allowDoors) {
     const W = this.w;
-    const ax = (a % W) * TILE + 8;
-    const ay = ((a / W) | 0) * TILE + 8;
-    const bx = (b % W) * TILE + 8;
-    const by = ((b / W) | 0) * TILE + 8;
+    const X0 = this.x0;
+    const Y0 = this.y0;
+    const ax = ((a % W) + X0) * TILE + 8;
+    const ay = (((a / W) | 0) + Y0) * TILE + 8;
+    const bx = ((b % W) + X0) * TILE + 8;
+    const by = (((b / W) | 0) + Y0) * TILE + 8;
     const dist = Math.hypot(bx - ax, by - ay);
     const steps = Math.max(1, Math.ceil(dist / 4));
     const r = 6;
@@ -360,8 +372,10 @@ export class Pathfinder {
         const qy = py + (c & 2 ? r * 0.4 : -r * 0.6);
         const tx = Math.floor(qx / TILE);
         const ty = Math.floor(qy / TILE);
-        if (tx < 0 || ty < 0 || tx >= W || ty >= this.h) return false;
-        const i = ty * W + tx;
+        const lx = tx - X0;
+        const ly = ty - Y0;
+        if (lx < 0 || ly < 0 || lx >= W || ly >= this.h) return false;
+        const i = ly * W + lx;
         if (i === lastTile) continue;
         if (this._enter(i, tx, ty, actor, flying, allowDoors) < 0) return false;
         // Never cut across a door tile that is not an endpoint.
