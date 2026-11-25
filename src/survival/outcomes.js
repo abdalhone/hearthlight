@@ -2,8 +2,7 @@ import {
   TENDED_HOURS,
   TENDED_HP,
   MIRA_BILL,
-  FLAME_COIN_LOSS,
-  HOME_COIN_LOSS,
+  ARREST_FINE,
   HOME_WAKE_HP,
   FLAME_WAKE_HP,
   PATIENT_SECONDS,
@@ -30,6 +29,16 @@ function safe(fn, fallback = null) {
 
 function coins(n) {
   return `${n} ${n === 1 ? 'coin' : 'coins'}`;
+}
+
+// What death took (§27, round 14): the words for the ember-ring the coins now lie in, and
+// for an older one that has gone out.
+export function ringWords(ring) {
+  if (!ring) return '';
+  let text = '';
+  if (ring.lost > 0) text += ` The embers where you fell before have gone out: those ${coins(ring.lost)} are gone for good.`;
+  if (ring.coins > 0) text += ` Everything you carried, ${coins(ring.coins)}, lies where you fell${ring.where ? `, ${ring.where}` : ''}, in a ring of embers. Walk back and take it; die before you reach it and it is gone.`;
+  return text;
 }
 
 function standUp(sv, actor, spot, hpFrac) {
@@ -127,7 +136,7 @@ export function tendPlayer(sv, carrier, bed, { arrested = false } = {}) {
       safe(() => {
         if (!g.combat?.clearCrime?.(P, 'arrested')) P.crime = null;
       });
-      fine = Math.floor((P.inventory?.count?.('coin') ?? 0) * HOME_COIN_LOSS);
+      fine = Math.floor((P.inventory?.count?.('coin') ?? 0) * ARREST_FINE);
       if (fine > 0) P.inventory.remove('coin', fine);
       lyingIn = sv.freeBed(['sickbed_1', 'sickbed_2', 'infirmary_cot']) || bed;
     }
@@ -187,11 +196,9 @@ export function wakeHome(sv, rec) {
   const P = g.player;
   const prev = g.state;
   if (g.state === 'playing') g.state = 'sleeping';
-  g.bus?.emit?.('player_died', { mode: 'home' });
+  g.bus?.emit?.('player_died', { mode: 'home', ring: rec?.ring || null });
   const seq = async () => {
     await fade(sv, 'out', 1.2);
-    const lost = Math.floor((P.inventory?.count?.('coin') ?? 0) * HOME_COIN_LOSS);
-    if (lost > 0) P.inventory.remove('coin', lost);
     const bed = safe(() => g.objects?.get?.('home_bed'));
     const spot = bed ? bedSide(sv, bed, P) : g.spawns?.player || { x: P.x, y: P.y };
     standUp(sv, P, spot, HOME_WAKE_HP);
@@ -217,8 +224,8 @@ export function wakeHome(sv, rec) {
     requestSave(sv, 'auto');
     await fade(sv, 'in', 1.2);
     let text = carrier ? `${carrier.name || 'Lyra'} carried you home. You wake in your own bed, bruised but breathing.` : 'Someone from the village found you and carried you home. You wake in your own bed, bruised but breathing.';
-    if (lost > 0) text += ` ${coins(lost)} went missing on the way.`;
-    toast(sv, text, 'warn', { key: 'wake', title: 'Knocked out' });
+    text += ringWords(rec?.ring);
+    toast(sv, text, 'warn', { key: 'wake', title: 'You died' });
   };
   return (sv.pending = seq());
 }
@@ -229,14 +236,13 @@ export function flameReturn(sv, rec) {
   const g = sv.game;
   const P = g.player;
   if (g.state === 'playing') g.state = 'sleeping';
-  g.bus?.emit?.('player_died', { mode: 'flame' });
+  g.bus?.emit?.('player_died', { mode: 'flame', ring: rec?.ring || null });
   const seq = async () => {
     await fade(sv, 'out', 1.4);
     await sv.wait(3.8);
     spendKeptFlame(g);
     if (g.clock?.skipTo) g.clock.skipTo(6);
-    const lost = Math.floor((P.inventory?.count?.('coin') ?? 0) * FLAME_COIN_LOSS);
-    if (lost > 0) P.inventory.remove('coin', lost);
+    const lost = rec?.ring?.coins || 0; // in the embers where they fell
     const altar = safe(() => (g.objects?.all?.() || []).find((o) => o.objType === 'altar'));
     const chapel = safe(() => g.locations?.get?.('chapel'));
     const at = altar ? { x: altar.x, y: altar.y + 36 } : chapel?.center || { x: P.x, y: P.y };
@@ -262,7 +268,7 @@ export function flameReturn(sv, rec) {
     requestSave(sv, 'flame');
     g.bus?.emit?.('flame_returned', { lost });
     await fade(sv, 'in', 2.2);
-    toast(sv, `You died. The flame Sister Aveline kept in your name brought you back at dawn, and is spent.${lost > 0 ? ` ${coins(lost)} are gone.` : ''} Flame-thin: weaker for a day. The whole village knows.`, 'warn', { key: 'wake', title: 'The kept flame' });
+    toast(sv, `You died. The flame Sister Aveline kept in your name brought you back at dawn, and is spent.${ringWords(rec?.ring)} Flame-thin: weaker for a day. The whole village knows.`, 'warn', { key: 'wake', title: 'The kept flame' });
     if (ave && ave.distTo?.(P) < 48) speak(sv, ave, 'Welcome back, child. The flame is spent. Light another before you need it.');
   };
   return (sv.pending = seq());

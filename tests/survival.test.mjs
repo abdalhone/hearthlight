@@ -211,7 +211,7 @@ test('villagers carry the player to the sickroom when Mira is away; calling for 
   assert.ok(!rowan.carrying && !P.carriedBy);
 });
 
-test('nobody comes in time but a kept flame burns: back at the chapel at dawn, flame spent, coin lost, flame-thin', async () => {
+test('nobody comes in time but a kept flame burns: back at the chapel at dawn, flame spent, coins left where you fell, flame-thin', async () => {
   const g = makeGame({ hour: 14 });
   alone(g);
   const P = g.player;
@@ -236,7 +236,8 @@ test('nobody comes in time but a kept flame burns: back at the chapel at dawn, f
   assert.ok(!P.downed && P.hp > 0);
   assert.ok(!hasKeptFlame(g), 'the flame is spent');
   assert.equal(g.flags.flamesSpent, 1);
-  assert.ok(P.gold < coins, 'coin lost');
+  assert.equal(P.gold, 0, 'every coin stayed where they fell');
+  assert.equal(g.survival.ring?.coins, coins, 'in the ember-ring');
   assert.equal(g.locations.at(P.x, P.y)?.id, 'chapel', 'wakes at the chapel');
   assert.ok(g.clock.hour >= 6 && g.clock.hour < 6.5, 'at dawn');
   assert.ok(g.survival.activeConditions().some((c) => c.id === 'flame_thin'));
@@ -284,7 +285,7 @@ test('nobody comes and no flame burns: the story ends; the save closes for good 
   }
 });
 
-test('"wake at home" (the softer setting): the old way, a little poorer', async () => {
+test('"wake at home" (the softer setting): you wake in your own bed; your coins stay where you fell', async () => {
   const g = makeGame({ hour: 14, settings: { deathMode: 'home' } });
   alone(g);
   const P = g.player;
@@ -298,7 +299,9 @@ test('"wake at home" (the softer setting): the old way, a little poorer', async 
   await g.survival.pending;
   assert.equal(g.state, 'playing');
   assert.ok(!P.downed);
-  assert.equal(P.gold, coins - Math.floor(coins * 0.1));
+  assert.equal(P.gold, 0, 'every coin stayed behind (§27, round 14)');
+  assert.equal(g.survival.ring?.coins, coins, 'in the ember-ring where they fell');
+  assert.ok(Math.hypot(g.survival.ring.x - m.x, g.survival.ring.y - m.y) < 40);
   assert.equal(g.locations.at(P.x, P.y)?.id, 'player_home');
 });
 

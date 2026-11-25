@@ -73,6 +73,7 @@ const CSS = `
   color: var(--parch-2, #e0d4bd); opacity: 0; transform: translateY(6px); transition: opacity 1.6s ease, transform 1.6s ease; }
 .sv-words p.is-on { opacity: 1; transform: none; }
 .sv-words p.sv-gold { color: var(--ember-hot, #ffe08a); text-shadow: 0 0 18px rgba(255,176,71,.55); }
+.sv-words p.sv-ember { color: #ff9a5a; text-shadow: 0 0 16px rgba(238,127,45,.6); font-size: clamp(14px, 2vw, 18px); }
 .sv-words p.sv-big { font-family: var(--font-display, system-ui); font-size: clamp(22px, 4vw, 34px); color: var(--parch, #f4ead7); }
 .panel-memorial .panel-body { display: flex; flex-direction: column; gap: 14px; }
 .sv-mem-cause { margin: 0; color: var(--parch-2, #e0d4bd); font-size: var(--fs-m, 16px); }

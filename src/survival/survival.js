@@ -38,6 +38,7 @@ import { tendPlayer, wakeHome, flameReturn, finalDeath, admitPatient, releasePat
 import { hasKeptFlame } from './kept_flame.js';
 import { placeName, placePhrase } from './epitaph.js';
 import { BloodTrail } from './trail.js';
+import { EmberRing } from './ember_ring.js';
 import { ensureCrawl } from '../art/characters_art.js';
 import { CRAWL_STEP, CRAWL_ANIM } from '../art/characters_humanoid.js';
 
@@ -51,8 +52,11 @@ import { CRAWL_STEP, CRAWL_ANIM } from '../art/characters_humanoid.js';
 //   game.stats?.get(player, 'bleedout')   seconds of bleed-out window (default 75)
 //   game.stats?.get(actor, 'carrySpeed')  multiplier on carrying speed (Resolve)
 //   survival.isFallen(actor), .fallOf(actor), .modifiers(actor), .mul(actor, 'atk'|'speed')
+//   survival.ring                      the ember-ring the player's coins lie in (or null)
+//   survival.mapMarks()                [{ kind: 'ember_ring', x, y, label, color }] for maps
 //   events: fallen, fall_call, rescuer_coming, carried, set_down, delivered, patient,
-//           fall_resolved, player_tended, player_died {mode}, life_closed, flame_returned
+//           fall_resolved, player_tended, player_died {mode, ring}, life_closed, flame_returned,
+//           ember_ring {coins, lost}, ember_ring_taken {coins}, ember_ring_lost {coins, why}
 
 const PLAYER_ID = 'player';
 
@@ -91,6 +95,8 @@ export class Survival {
     this._quiet = false;
     this._drawables = [];
     this.trail = new BloodTrail(game); // blood where people fall and drag themselves (§27)
+    this.ring = null; // the ember-ring the player's coins lie in since they last died (§27)
+    this._ringN = 0;
     // What Lyra's mind is told while someone lies bleeding (her prompt, through a plugin).
     try {
       game.plugins?.register?.({ id: 'survival', name: 'Someone fell', description: 'Falls, rescues and the sickroom (DESIGN §27)', promptContext: () => this.promptContext() });
@@ -1082,9 +1088,76 @@ export class Survival {
     this.resolveFall(P, 'died');
     const mode = g.settings?.deathMode === 'home' ? 'home' : hasKeptFlame(g) ? 'flame' : 'final';
     rec.savedIds = [...this.saved];
+    // Coming back costs everything you carried: the coins stay here, in the embers.
+    if (mode !== 'final') rec.ring = this.dropRing(P, rec);
     if (mode === 'home') return wakeHome(this, rec);
     if (mode === 'flame') return flameReturn(this, rec);
     return finalDeath(this, rec);
+  }
+
+  // ---------------------------------------------------------------- the ember-ring
+
+  // Death takes everything you carry (§27, round 14): every coin stays where you fell, in a
+  // ring of embers you can walk back to; a ring you never went back for goes out, its
+  // coins with it. -> { coins, lost, where }
+  dropRing(P, rec = null) {
+    const g = this.game;
+    const lost = this.ring && !this.ring.taken ? this.ring.coins : 0;
+    if (this.ring) this.putOutRing('died again');
+    const coins = Math.max(0, Math.floor(P?.inventory?.count?.('coin') ?? 0));
+    if (coins <= 0) return { coins: 0, lost, where: '' };
+    P.inventory.remove('coin', coins);
+    const spot = this.freeSpotNear(P.x, P.y) || { x: P.x, y: P.y };
+    const where = rec?.where || placePhrase(g, spot.x, spot.y);
+    this.placeRing({ x: spot.x, y: spot.y, coins, day: g.clock?.day ?? 1, where, place: rec?.place || placeName(g, spot.x, spot.y) });
+    g.bus?.emit?.('ember_ring', { coins, lost, x: spot.x, y: spot.y, where });
+    return { coins, lost, where };
+  }
+
+  placeRing(o) {
+    const g = this.game;
+    const ring = new EmberRing(g, o);
+    ring.id = `ember_ring_${++this._ringN}`; // a fresh id: the last one may not be swept up yet
+    this.ring = g.entities?.add ? g.entities.add(ring) : ring;
+    return this.ring;
+  }
+
+  // The ring goes out: the coins in it are gone for good.
+  putOutRing(why = 'died again') {
+    const r = this.ring;
+    if (!r) return 0;
+    this.ring = null;
+    r.taken = true;
+    safe(() => this.game.entities?.remove?.(r));
+    this.game.bus?.emit?.('ember_ring_lost', { coins: r.coins, why });
+    return r.coins;
+  }
+
+  // The player walked back and took it (the ring's interact; E or the hand button).
+  takeRing(actor = this.game.player) {
+    const g = this.game;
+    const r = this.ring;
+    if (!r || r.taken || !actor || actor !== g.player || actor.downed || actor.dead) return false;
+    if (Math.hypot(actor.x - r.x, actor.y - r.y) > 48) return false;
+    r.taken = true;
+    this.ring = null;
+    actor.inventory?.add?.('coin', r.coins);
+    safe(() => g.entities?.remove?.(r));
+    safe(() => g.audio?.play?.('coin', { x: r.x, y: r.y, volume: 0.9 }));
+    safe(() => g.particles?.emit?.('levelup', r.x, r.y - 4, { count: 18, color: '#ffb047', speed: 40, life: 0.9 }));
+    safe(() => g.lighting?.flash?.({ x: r.x, y: r.y - 4, r: 70, color: '#ffb047', intensity: 0.9, duration: 0.6 }));
+    actor.setState?.('work', 0.35);
+    safe(() => g.ui?.toast?.(`You take back your ${r.coins} ${r.coins === 1 ? 'coin' : 'coins'} from the embers.`, 'info', { key: 'ring', title: 'Recovered' }));
+    g.bus?.emit?.('ember_ring_taken', { coins: r.coins, x: r.x, y: r.y });
+    if (g.save) g.save.pending = g.save.pending || 'auto';
+    return true;
+  }
+
+  // For a map or a compass: where the ring is.
+  mapMarks() {
+    const r = this.ring;
+    if (!r || r.taken) return [];
+    return [{ kind: 'ember_ring', x: r.x, y: r.y, label: `Your ${r.coins} ${r.coins === 1 ? 'coin' : 'coins'}`, color: '#ff8a3a', coins: r.coins, where: r.where }];
   }
 
   // ---------------------------------------------------------------- events
@@ -1119,6 +1192,7 @@ export class Survival {
     }
     const mine = L && this.patients.get(L);
     if (mine) out.push(`You are lying in a cot at Mira's, mending${mine.savedBy === PLAYER_ID ? `; ${name.toLowerCase() === 'the stranger' ? 'the stranger' : name} carried you here` : ''}.`);
+    if (this.ring && !this.ring.taken) out.push(`Everything ${name === 'The stranger' ? 'the stranger' : name} carried in coin (${this.ring.coins}) still lies where they died, ${this.ring.where}, in a ring of embers; they can walk back for it, but if they die first it is gone.`);
     const weak = this.activeConditions().map((c) => CONDITIONS[c.id].label.toLowerCase());
     if (weak.length && !rec) out.push(`${name} is ${weak.join(' and ')} after a bad fall.`);
     return out.join(' ');
@@ -1209,7 +1283,7 @@ export class Survival {
     }
     const patients = [];
     for (const [a, p] of this.patients) if (a?.id && p.bed?.id) patients.push({ id: a.id, bed: p.bed.id, until: Math.round(p.until), kind: p.kind, savedBy: p.savedBy || undefined });
-    return { falls, patients, conditions: this.conditions.map((c) => ({ id: c.id, until: Math.round(c.until) })), saved: this.saved.slice(-40) };
+    return { falls, patients, conditions: this.conditions.map((c) => ({ id: c.id, until: Math.round(c.until) })), saved: this.saved.slice(-40), ring: this.ring && !this.ring.taken ? this.ring.serialize() : undefined };
   }
 
   deserialize(d) {
@@ -1217,6 +1291,13 @@ export class Survival {
     const g = this.game;
     this.conditions = Array.isArray(d.conditions) ? d.conditions.filter((c) => CONDITIONS[c?.id] && Number.isFinite(c.until)).map((c) => ({ id: c.id, until: c.until })) : [];
     this.saved = Array.isArray(d.saved) ? d.saved.filter((x) => typeof x === 'string') : [];
+    if (this.ring) {
+      this.ring.taken = true;
+      safe(() => g.entities?.remove?.(this.ring));
+      this.ring = null;
+    }
+    const r = d.ring;
+    if (r && Number.isFinite(r.x) && Number.isFinite(r.y) && Number(r.coins) > 0) this.placeRing({ x: r.x, y: r.y, coins: Number(r.coins), day: r.day, where: String(r.where || ''), place: String(r.place || '') });
     for (const f of Array.isArray(d.falls) ? d.falls : []) {
       const a = g.entities?.get?.(f.id);
       if (!a || !a.downed) continue;

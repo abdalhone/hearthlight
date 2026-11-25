@@ -259,3 +259,121 @@ test('the countdown shows who is saving you and how far along: a salve kneeling,
   // never goes backwards by much (roads bend)
   for (let i = 1; i < carry.length; i++) assert.ok(carry[i].p >= carry[i - 1].p - 0.05, 'progress only grows');
 });
+
+// ---------------------------------------------------------------- D3: the ember-ring
+
+async function dieAt(g, x, y) {
+  const P = g.player;
+  placeAt(g, P, x, y);
+  P.invuln = 0;
+  assert.ok(fell(g), 'down');
+  step(g, g.survival.fallOf(P).window + 2, 0.1);
+  await g.survival.pending;
+}
+
+test('death costs everything you carry: the coins stay where you fell in an ember-ring; walk back and take them', async () => {
+  const g = makeGame({ hour: 14, settings: { deathMode: 'home' } });
+  alone(g);
+  banish(g);
+  const P = g.player;
+  const m = at(g, 'south_meadow');
+  lyraAway(g, m.x + 900, m.y);
+  P.inventory.add('coin', 57 - P.gold);
+  assert.equal(P.gold, 57);
+  await dieAt(g, m.x, m.y);
+  const died = g.events.filter((e) => e.type === 'player_died').at(-1).p;
+  assert.equal(died.mode, 'home');
+  assert.equal(died.ring.coins, 57);
+  assert.equal(P.gold, 0, 'nothing in your purse');
+  const ring = g.survival.ring;
+  assert.ok(ring && ring.coins === 57, 'an ember-ring holds them');
+  assert.ok(Math.hypot(ring.x - m.x, ring.y - m.y) < 30, 'where you fell');
+  assert.ok(g.entities.get(ring.id) === ring, 'in the world');
+  assert.ok(ring.getLight(1), 'it glows at night');
+  assert.ok(g.toasts.some((t) => /57 coins, lies where you fell/.test(t.text) && /ring of embers/.test(t.text)), 'the waking words say so');
+  assert.deepEqual(g.survival.mapMarks().map((k) => [k.kind, k.coins]), [['ember_ring', 57]], 'a mark for the map');
+  assert.match(g.survival.promptContext(), /57\) still lies where they died/, 'Lyra knows');
+  // Saved with the game and back on load.
+  const saved = g.survival.serialize();
+  assert.equal(saved.ring.coins, 57);
+  assert.ok(JSON.stringify(saved.ring).length < 160, 'small');
+  const g2 = makeGame({ hour: 14 });
+  g2.survival.deserialize(JSON.parse(JSON.stringify(saved)));
+  assert.equal(g2.survival.ring?.coins, 57);
+  assert.ok(g2.entities.get(g2.survival.ring.id));
+  // Not from home: too far to take.
+  assert.equal(g.survival.takeRing(P), false);
+  assert.ok(!g.interactions.best(P) || g.interactions.best(P).target !== ring);
+  // Walk back: the prompt offers it; E takes it.
+  placeAt(g, P, ring.x, ring.y + 10);
+  step(g, 0.2);
+  const best = g.interactions.best(P);
+  assert.equal(best?.target, ring);
+  assert.equal(best.label, 'Take back your 57 coins');
+  assert.ok(g.interactions.tryInteract(P));
+  assert.equal(P.gold, 57, 'all of it back');
+  assert.equal(g.survival.ring, null);
+  step(g, 0.1);
+  assert.ok(!g.entities.get(ring.id), 'the embers are gone');
+  assert.equal(g.events.filter((e) => e.type === 'ember_ring_taken').length, 1);
+  assert.equal(g.survival.serialize().ring, undefined);
+});
+
+test('die again before you reach the embers and those coins are gone for good; die with nothing and there is no ring; the end leaves none', async () => {
+  const g = makeGame({ hour: 14, settings: { deathMode: 'home' } });
+  alone(g);
+  banish(g);
+  const P = g.player;
+  const m = at(g, 'south_meadow');
+  lyraAway(g, m.x + 900, m.y);
+  P.inventory.add('coin', 40 - P.gold);
+  await dieAt(g, m.x, m.y);
+  const first = g.survival.ring;
+  assert.equal(first.coins, 40);
+  // Earn a little more and die somewhere else before going back.
+  P.inventory.add('coin', 9);
+  const sq = at(g, 'town_square');
+  await dieAt(g, sq.x + 200, sq.y + 60);
+  assert.ok(first.taken, 'the first ring went out');
+  assert.equal(g.events.filter((e) => e.type === 'ember_ring_lost').at(-1).p.coins, 40);
+  const second = g.survival.ring;
+  assert.ok(second && second !== first && second.coins === 9, 'a new ring holds only what you had this time');
+  assert.ok(g.toasts.some((t) => /before have gone out: those 40 coins are gone for good/.test(t.text)));
+  step(g, 0.1);
+  assert.ok(!g.entities.all().includes(first), 'the old embers are gone from the world');
+  // Die again with an empty purse: the ring goes out, and no new one.
+  await dieAt(g, m.x - 100, m.y);
+  assert.equal(P.gold, 0);
+  assert.equal(g.survival.ring, null, 'nothing carried, nothing left');
+  // The end of the story: no ring (there is nobody to come back for it).
+  const g3 = makeGame({ hour: 14 });
+  alone(g3);
+  banish(g3);
+  lyraAway(g3, m.x + 900, m.y);
+  g3.player.inventory.add('coin', 20);
+  placeAt(g3, g3.player, m.x, m.y);
+  fell(g3);
+  step(g3, g3.survival.fallOf(g3.player).window + 2, 0.1);
+  assert.equal(g3.state, 'dead');
+  assert.equal(g3.survival.ring, null);
+});
+
+test('a rescue is not a death: carried to the sickroom, your coins stay in your purse (less Mira\'s bill)', async () => {
+  const g = makeGame({ hour: 14 });
+  const P = g.player;
+  const sq = at(g, 'town_square');
+  lyraAway(g, 20 * TILE, 20 * TILE);
+  g.companion.mind.autonomy.companionship = 'gone';
+  placeAt(g, g.entities.get('mira'), 25 * TILE, 53 * TILE);
+  banish(g, ['rowan', 'mira']);
+  placeAt(g, g.entities.get('rowan'), sq.x + 100, sq.y);
+  placeAt(g, P, sq.x, sq.y);
+  step(g, 0.3);
+  const coins = P.gold;
+  fell(g);
+  for (let i = 0; i < 1600 && g.survival.isFallen(P); i++) step(g, 0.05);
+  await g.survival.pending;
+  assert.ok(!P.downed);
+  assert.equal(g.survival.ring, null, 'no embers: you did not die');
+  assert.ok(P.gold > 0 && P.gold >= coins - 15);
+});

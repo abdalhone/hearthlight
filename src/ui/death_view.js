@@ -11,6 +11,7 @@ import { h, button, setText } from './dom.js';
 import { openMemorial, ensureSurvivalStyles } from './memorial.js';
 import { hasKeptFlame } from '../survival/kept_flame.js';
 import { CRAWL_BUDGET } from '../survival/constants.js';
+import { installEmberRingView } from './ember_ring_view.js';
 
 // What the helper is doing, for the bar under the countdown.
 const HELP_WORDS = {
@@ -53,6 +54,7 @@ export class DeathView {
     this.helpShown = 0; // eased rescue progress for the inner ring
     this.lastFrame = 0;
     this.callUntil = 0;
+    installEmberRingView(game); // where your coins lie after a death, and the way back to them
     const bus = game.bus;
     bus.on('fallen', (p) => p?.entity === game.player && this.show());
     bus.on('fall_resolved', (p) => p?.entity === game.player && this.hide());
@@ -342,14 +344,14 @@ export class DeathView {
     if (!this.mounted) return;
     const g = this.game;
     if (p?.mode === 'flame') {
-      this.curtainWords(
-        [
-          ['Your heart stops.', ''],
-          ['On the chapel altar, a flame kept in your name flares —', 'sv-gold'],
-          ['— and holds.', 'sv-gold'],
-        ],
-        { dark: true, hold: 5.6 },
-      );
+      const lines = [
+        ['Your heart stops.', ''],
+        ['On the chapel altar, a flame kept in your name flares —', 'sv-gold'],
+        ['— and holds.', 'sv-gold'],
+      ];
+      // What you carried stays behind (§27, round 14).
+      if (p.ring?.coins > 0) lines.push([`What you carried stays where you fell, in the embers.`, 'sv-ember']);
+      this.curtainWords(lines, { dark: true, hold: lines.length > 3 ? 7 : 5.6 });
     } else if (p?.mode === 'final') {
       const name = g.player?.name && g.player.name !== 'Traveler' ? g.player.name : 'The stranger';
       this.curtainWords(
