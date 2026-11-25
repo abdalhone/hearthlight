@@ -2596,9 +2596,9 @@ class Painter {
       const x0 = geo.sx;
       const y0 = geo.sy + 1;
       const ex = x0 + k.ex * o;
-      const ey = y0 + k.ey;
+      const ey = Math.max(3, y0 + k.ey);
       const hx = x0 + k.hx * o;
-      const hy = y0 + k.hy;
+      const hy = Math.max(2, y0 + k.hy); // tall builds: the reaching hand stays in the frame
       sp.begin({ band: 0 });
       sp.limb(x0, y0, ex, ey, g.armW, sleeve);
       sp.limb(ex, ey, hx, hy + 1, g.armW, sleeve);
