@@ -9450,3 +9450,60 @@ body {
 .set-action.is-on .set-label {
   color: var(--arcane-pale);
 }
+
+/* ---------- The map (DESIGN §32.3, src/ui/world_map.js) ---------- */
+.panel-map .panel-body {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  display: flex;
+  flex-direction: column;
+}
+.panel-map .map-canvas {
+  flex: 1;
+  min-height: 120px;
+  width: 100%;
+  display: block;
+  cursor: grab;
+  touch-action: none;
+  image-rendering: pixelated;
+}
+.panel-map .map-caption {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  max-width: calc(100% - 20px);
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(12, 10, 26, 0.72);
+  color: var(--ink, #f3e7c9);
+  font-size: 13px;
+  pointer-events: none;
+}
+.panel-map .map-caption:empty {
+  display: none;
+}
+.panel-map .panel-foot {
+  display: none;
+}
+.panel-map .map-tools {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.panel-map .map-tools button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  background: rgba(16, 13, 34, 0.82);
+}
+.panel-map .map-zoom {
+  font-size: 22px;
+  line-height: 1;
+}

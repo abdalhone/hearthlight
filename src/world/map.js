@@ -1,5 +1,5 @@
 import { TILE } from '../core/constants.js';
-import { tileDef, SOLID, WATERY, WALLISH } from './tiles.js';
+import { tileDef, SOLID, WATERY, WALLISH, SPEED } from './tiles.js';
 import { paintChunk, bakeReflections, CHUNK } from '../art/tiles_art.js';
 import { paintRoof, roofGeometry } from '../art/world_buildings.js';
 
@@ -112,6 +112,13 @@ export class TileMap {
     const id = this.ground[this.idx(tx, ty)];
     if (WATERY[id] && actor?.flying) return false;
     return SOLID[id] === 1;
+  }
+
+  // Walking pace over the ground at a pixel point (tiles.js SPEED: snow, scree, fords).
+  speedAt(px, py) {
+    const tx = Math.floor(px / TILE);
+    const ty = Math.floor(py / TILE);
+    return this.inBounds(tx, ty) ? SPEED[this.ground[this.idx(tx, ty)]] : 1;
   }
 
   isWater(tx, ty) {

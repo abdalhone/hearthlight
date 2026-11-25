@@ -328,7 +328,7 @@ export class Player extends Actor {
   }
 
   _accelerate(dt, mx, my) {
-    const max = this.speed * (this.speedMul || 1) * (this.castMoveMul || 1) * (this.game.survival?.speedFactor?.(this) ?? 1);
+    const max = this.speed * (this.speedMul || 1) * (this.castMoveMul || 1) * (this.game.survival?.speedFactor?.(this) ?? 1) * (this.game.map?.speedAt?.(this.x, this.y) ?? 1);
     const v = this.vel;
     let tx = 0;
     let ty = 0;

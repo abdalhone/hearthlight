@@ -53,6 +53,7 @@ export class WorldObject {
     this.interactReach = o.interactReach ?? 0;
     this.shadow = o.shadow ?? null; // {dx, dy, rx, ry}: soft ground shadow baked into the map
     this.words = o.words ?? [];
+    this.trailBoss = o.trailBoss ?? null; // a sign of a boss: looking at it puts the boss on the map (boss_trails.js)
     this.hidden = !!o.hidden;
     this.dirty = false; // state differs from the generated world (saved)
     this.removed = false;
@@ -1468,6 +1469,7 @@ export class Sign extends WorldObject {
       console.error('[objects] sign failed', err);
     }
     this._sound('ui_open');
+    this.game?.bus?.emit?.('sign_read', { sign: this, actor: actor || null });
   }
 }
 
@@ -1614,6 +1616,7 @@ export class Decor extends WorldObject {
 
   interact(actor) {
     if (!this.text) return;
+    this.game?.bus?.emit?.('object_looked', { obj: this, actor: actor || null });
     const ui = this.game?.ui;
     if (this.heal > 0 && this.cooldown <= 0) {
       this.cooldown = 45;

@@ -7,6 +7,7 @@ import { LocationIndex } from './locations.js';
 import { LOCATION_INFO, NOTICE_BOARD, SIGNS, LOOKS, BED_TEXT } from './world_content.js';
 import { buildWilds } from './wilds.js';
 import { inSeam } from './wilds_layout.js';
+import { trailSigns } from './boss_trails.js';
 
 // Places of healing (DESIGN §27).
 const SICKBED_TEXT = "A sickroom cot: clean linen, a basin, a bundle of silverleaf hung to dry above it. Mira keeps two of these for whoever the village carries in.";
@@ -211,6 +212,7 @@ export class WorldBuilder {
     this.dyeCottage();
     this.forestLandmarks();
     this.bossArenas();
+    this.bossTrails();
     this.wennaHives();
     this.scatter();
     this.decorate();
@@ -1540,6 +1542,19 @@ export class WorldBuilder {
       }
       for (const dx of [4, 9]) this.decor('ruin_pillar', r.x + dx, r.y + 14, { name: 'Broken pillar', variant: 'broken', low: false });
       B.bone_warden = { home: at(r.x + 6.5, r.y + 12), center: at(r.x + 6.5, r.y + 15), r: 7 * TILE };
+    }
+  }
+
+  // Signs of the bosses along the ways to them (DESIGN §32.4, boss_trails.js): slime up
+  // the quarry trail, claw-scored trunks to the den, the toll board, the humming dock end,
+  // bones at the ruins gate. Looking at one puts its boss on the map.
+  bossTrails() {
+    for (const s of trailSigns()) {
+      const hum = s.objType === 'trail_hum';
+      const desc = { objType: s.objType, id: s.id, tx: s.tx, ty: s.ty, name: s.name, title: s.name, text: s.text, label: 'Look', trailBoss: s.boss, solid: s.objType === 'trail_claws' || s.objType === 'sign', low: true };
+      if (s.objType === 'sign') desc.variant = null;
+      if (hum) Object.assign(desc, { solid: false, sprite: 'prop:trail_hum', animated: true });
+      if (!(hum ? this.put(desc, { allowSolidGround: true }) : this.near(desc, s.tx, s.ty, 3))) this.problems.push(`no room for ${s.id}`);
     }
   }
 

@@ -241,6 +241,7 @@ export const NOTICE_BOARD = {
   text: [
     'WANTED: the bandit crew camped northeast of Mirror Lake. Among the goods they stole from the old ruins-keeper\'s lodge was a rusted iron key stamped with the crest of the Sunken Ruins. Bring it to the Guardhouse. — Capt. Rowan Vale',
     'The Sunken Ruins are no place to wander after dark. Things walk there that ought to stay buried. — Sister Aveline',
+    'KEEP OUT OF THE QUARRY POOLS. Something big lives in the deepest one, up the quarry trail past Reed Farm. It ate an ore-cart wheel. Not alone. Not you, Tilly. — B. Ironhand',
     'HELP WANTED: wild boars are tearing up my turnips again. Coin and a hot supper for anyone who drives them off. Reed Farm, west road. — Tobias Reed',
     'The Ember Kettle is hiring hands: dishes, firewood, and the occasional rowdy guest. Ask for Elda. Honey cakes for anyone who stays to the end of a shift!',
     'LOST: one grey cat, answers to nothing. (Pip says the cat is not lost, it is exploring.)',

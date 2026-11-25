@@ -427,7 +427,9 @@ function rockTexture(rng) {
 // ---- The wider world (src/world/wilds.js) ----------------------------------------
 
 const SNOW_LUT = lut(['#5d6f8c', '#7d91ad', '#9fb2c9', '#bfcfdf', '#d9e4ef', '#ecf2f8', '#fbfdff']);
-const HEATH_LUT = lut(['#2a2226', '#3d2f33', '#53403f', '#6b5149', '#7f6550', '#94795a', '#ad9469']);
+// Heather: dark olive tussocks under a purple haze of bloom, gorse yellow here and there.
+const HEATH_LUT = lut(['#1b2219', '#26301f', '#343b27', '#454530', '#57503b', '#6a5a4a', '#7d6a5c']);
+const HEATHER = lut(['#3a2338', '#52304d', '#6e4067', '#8c5383', '#a96aa0', '#c58cbc']);
 const DEAD_LUT = lut(['#2b2e2a', '#3d4139', '#53584b', '#6b705f', '#848874', '#9da08a', '#b8b9a3']);
 const SCREE_LUT = lut(['#2a2833', '#3c3a47', '#53515f', '#6c6a79', '#868494', '#a3a1b0', '#c0bfcb']);
 
@@ -456,15 +458,24 @@ function snowTexture(rng) {
 }
 
 // Heather and gorse: low dark tussocks with purple flower heads and yellow gorse.
-function heathTexture(rng) {
-  const buf = grassTexture(rng, { L: HEATH_LUT, base: 0.5, clumps: 64, blades: 220, bladeLen: [2, 4] });
-  const bloom = [rgb('#8e5a8a'), rgb('#a86fa0'), rgb('#6f4670'), rgb('#c9a640'), rgb('#e0c25a')];
-  for (let k = 0; k < 120; k++) {
+function heathTexture(rng, { bloom = 1 } = {}) {
+  const buf = grassTexture(rng, { L: HEATH_LUT, base: 0.5, clumps: 70, blades: 240, bladeLen: [2, 4] });
+  // Heather bloom in soft patches (clumps of 3-6 px lit from the upper left).
+  const n = tileNoise(TEX, 4, rng, 2);
+  for (let i = 0; i < TEX * TEX; i++) {
+    if (n[i] < 0.5 - bloom * 0.08) continue;
+    const x = i & M;
+    const y = i >> 6;
+    const h = ih(x, y, 151);
+    if (h > 0.34 * bloom + (n[i] - 0.5) * 0.5) continue;
+    buf.data[i] = toneAt(HEATHER, 0.35 + (n[i] - 0.5) * 0.5 + (ih(x >> 1, y >> 1, 152) - 0.5) * 0.3 - ((x + y) & 1) * 0.06, x, y, 0.06);
+  }
+  const gorse = [rgb('#c9a640'), rgb('#e0c25a'), rgb('#9c7f2c')];
+  for (let k = 0; k < 26; k++) {
     const x = Math.floor(rng.next() * TEX);
     const y = Math.floor(rng.next() * TEX);
-    const c = bloom[k % 7 === 0 ? 3 + (k & 1) : Math.floor(rng.next() * 3)];
-    buf.data[wrap(y) * TEX + wrap(x)] = c;
-    if (rng.next() < 0.5) buf.data[wrap(y + 1) * TEX + wrap(x)] = shade(c, 0.7);
+    buf.data[wrap(y) * TEX + wrap(x)] = gorse[k % 3];
+    buf.data[wrap(y + 1) * TEX + wrap(x)] = shade(gorse[k % 3], 0.6);
   }
   return buf;
 }
@@ -534,7 +545,7 @@ export function buildTextures(rng) {
     flagWarm: [flagTexture(rng.fork(112), { L: lut(['#30282a', '#463a3a', '#5f504c', '#78665e', '#917d72', '#ab9788']) })],
     rock: [rockTexture(rng.fork(131))],
     snow: [snowTexture(rng.fork(141)), snowTexture(rng.fork(142))],
-    heath: [heathTexture(rng.fork(151)), grassTexture(rng.fork(152), { L: HEATH_LUT, base: 0.46, clumps: 70, blades: 260 })],
+    heath: [heathTexture(rng.fork(151)), heathTexture(rng.fork(152), { bloom: 0.6 })],
     deadgrass: [grassTexture(rng.fork(161), { L: DEAD_LUT, base: 0.5, blades: 200, bladeLen: [2, 5] }), grassTexture(rng.fork(162), { L: DEAD_LUT, base: 0.45, clumps: 60, blades: 120 })],
     scree: [screeTexture(rng.fork(171))],
     shallows: [shallowsTexture(rng.fork(181))],

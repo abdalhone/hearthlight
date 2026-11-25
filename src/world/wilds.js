@@ -592,8 +592,8 @@ const WILDS_METHODS = {
         shadow: { dx: 2, dy: -1, rx: 7, ry: 3 },
       });
     }
-    this.ellipse(R.x, R.y, 3, 2.6, (x, y, r) => {
-      if (r < 1) this.set(x, y, r < 0.55 ? T.GRASS : T.TALL_GRASS);
+    this.ellipse(R.x + 0.5, R.y + 0.5, 2.2, 2, (x, y, r) => {
+      if (r < 1) this.set(x, y, T.GRASS);
     });
     this.must({
       objType: 'crown_mark',

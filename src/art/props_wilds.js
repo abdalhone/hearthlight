@@ -213,7 +213,68 @@ function coldCandleRack() {
   return b;
 }
 
+// Signs of the bosses (boss_trails.js), drawn flat or low so they read as marks, not props.
+function slimeTrail(v) {
+  const b = buf(20, 10);
+  const G = lut(['#1f3d1f', '#2f6a2a', '#4c9a3a', '#7fd05a', '#c4f59a']);
+  for (let k = 0; k < 5; k++) {
+    const cx = 3 + k * 3.4 + (ih(k, v, 801) - 0.5) * 2;
+    const cy = 5 + (ih(k, v, 802) - 0.5) * 3;
+    b.ellipse(cx, cy, 2.6 + ih(k, v, 803) * 1.6, 1.4 + ih(k, v, 804), (x, y, nx, ny) => tone(G, 0.5 - ny * 0.3 - nx * 0.1));
+  }
+  for (let k = 0; k < 6; k++) b.set(2 + Math.floor(ih(k, v, 805) * 16), 3 + Math.floor(ih(k, v, 806) * 4), tone(G, 1));
+  return b;
+}
+
+function clawTrunk() {
+  const b = buf(16, 30);
+  shaft(b, 8, 4, 27, 7, 9, PAL.bark, 811, { chip: 0.1 });
+  // A broken top, and four pale gouges slanting down the bark.
+  for (let x = 4; x < 13; x++) for (let y = 0; y < 4 + Math.floor(ih(x, 1, 812) * 4); y++) b.set(x, y, 0);
+  for (let k = 0; k < 4; k++) for (let j = 0; j < 7; j++) b.set(5 + k + (j >> 2), 10 + j + k, tone(PAL.woodLight, 0.85 - j * 0.04));
+  b.set(10, 14, rgb('#a9a6a0'));
+  b.set(11, 15, rgb('#8d8a84'));
+  finish(b);
+  groundShadow(b, 8.5, 28, 6, 1.2, 60);
+  return b;
+}
+
+function bonePile() {
+  const b = buf(18, 10);
+  for (let k = 0; k < 6; k++) {
+    const x0 = 2 + Math.floor(ih(k, 1, 821) * 12);
+    const y0 = 3 + Math.floor(ih(k, 2, 822) * 5);
+    const len = 3 + Math.floor(ih(k, 3, 823) * 3);
+    const dx = ih(k, 4, 824) > 0.5 ? 1 : 0;
+    for (let j = 0; j < len; j++) b.set(x0 + j, y0 - j * dx * 0.5, tone(PAL.bone, 0.8 - j * 0.04));
+    b.set(x0 - 1, y0, tone(PAL.bone, 0.95));
+    b.set(x0 + len, y0 - len * dx * 0.5, tone(PAL.bone, 0.95));
+  }
+  b.ellipse(13, 4, 2.4, 2, (x, y, nx, ny) => tone(PAL.bone, 0.8 - ny * 0.3));
+  b.set(12, 4, tone(PAL.bone, 0.2));
+  b.set(14, 4, tone(PAL.bone, 0.2));
+  finish(b);
+  return b;
+}
+
+function humRipples(f) {
+  const b = buf(32, 14);
+  for (let r = 0; r < 3; r++) {
+    const rr = ((f / 4 + r / 3) % 1) * 13 + 2;
+    const a = 1 - rr / 15;
+    for (let k = 0; k < 40; k++) {
+      const ang = (k / 40) * Math.PI * 2;
+      b.blend(Math.round(16 + Math.cos(ang) * rr), Math.round(7 + Math.sin(ang) * rr * 0.45), rgb('#d9f0ff'), 0.55 * a);
+    }
+  }
+  return b;
+}
+
 export function registerWilds(add) {
+  add('prop:trail_slime', [slimeTrail(0), slimeTrail(1)], { ox: 10, oy: 8 });
+  add('prop:trail_claws', [clawTrunk()], { ox: 8, oy: 28 });
+  add('prop:trail_bones', [bonePile()], { ox: 9, oy: 8 });
+  add('prop:trail_hum', [0, 1, 2, 3].map((f) => humRipples(f)), { ox: 16, oy: 10, fps: 3 });
   add('prop:waystone:dead', [waystone('dead', 0)], { ox: 8, oy: 47 });
   add('prop:waystone', [waystone('dead', 0)], { ox: 8, oy: 47 });
   add('prop:waystone:lit', [0, 1, 2].map((f) => waystone('lit', f)), { ox: 8, oy: 47, fps: 6 });
