@@ -158,6 +158,25 @@ async function layoutChecks(page, label, selector) {
   check(`${label}: controls on screen`, !r.offscreen.length, r.offscreen.join(', '));
 }
 
+// An overlay of a weave button (the charge ring, the cooldown sweep) against the button:
+// centred on it and at least as big (the ring sits a few px outside it).
+async function overlayFit(page, btnSel, partSel) {
+  return page.evaluate(
+    ([b, p]) => {
+      const btn = document.querySelector(b);
+      const part = btn?.querySelector(p);
+      if (!btn || !part) return { ok: false, why: 'missing' };
+      const r = btn.getBoundingClientRect();
+      const q = part.getBoundingClientRect();
+      const dx = Math.abs(r.left + r.width / 2 - (q.left + q.width / 2));
+      const dy = Math.abs(r.top + r.height / 2 - (q.top + q.height / 2));
+      const ok = dx <= 1.5 && dy <= 1.5 && q.width >= r.width - 1 && q.height >= r.height - 1 && Math.abs(q.width - q.height) <= 1.5 + Math.abs(r.width - r.height);
+      return { ok, btn: [Math.round(r.width), Math.round(r.height)], part: [Math.round(q.width), Math.round(q.height)], off: [Math.round(dx), Math.round(dy)] };
+    },
+    [btnSel, partSel],
+  );
+}
+
 async function center(page, selector) {
   return page.evaluate((sel) => {
     const el = document.querySelector(sel);
@@ -236,6 +255,8 @@ async function phone(label, w, h) {
   }
 
   // Hold a weave: its ring fills, pulses when full; letting go casts it fully charged.
+  // The ring sits round the whole button (not the glyph's grid cell: the r12 verify found
+  // it an off-centre oval, and the cooldown sweep a strip over the glyph).
   {
     await page.evaluate(() => window.__game.magic.resetCooldowns?.());
     const s = await center(page, '.tcluster .wbtn[data-slot="1"]');
@@ -247,6 +268,8 @@ async function phone(label, w, h) {
     });
     await page.screenshot({ path: `${OUT}/controls-${label}-charging.png` });
     check(`${label}: holding a weave fills its charge ring`, mid.charging && mid.k > 0.2 && mid.k < 1, JSON.stringify(mid));
+    const ring = await overlayFit(page, '.tcluster .wbtn[data-slot="1"]', '.wbtn-chg');
+    check(`${label}: the charge ring is round the whole button`, ring.ok, JSON.stringify(ring));
     await page.waitForTimeout(1100);
     const full = await page.evaluate(() => document.querySelector('.tcluster .wbtn[data-slot="1"]').classList.contains('charged'));
     await page.screenshot({ path: `${OUT}/controls-${label}-charged.png` });
@@ -273,6 +296,8 @@ async function phone(label, w, h) {
     });
     await page.screenshot({ path: `${OUT}/controls-${label}-cooldown.png` });
     check(`${label}: a cast nova cools with its seconds on the button`, cool.cooling && Number(cool.secs) >= 2, JSON.stringify(cool));
+    const sweep = await overlayFit(page, '.tcluster .wbtn[data-slot="3"]', '.wbtn-cd');
+    check(`${label}: the cooldown sweep covers the whole button`, sweep.ok, JSON.stringify(sweep));
     const n0 = await page.evaluate(() => window.__game.magic.fired.length);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: s.x, y: s.y, id: 7 }] });
     await page.waitForTimeout(60);
@@ -381,6 +406,8 @@ async function desktop() {
     return { charging: b.classList.contains('charging'), k: Number(getComputedStyle(b.querySelector('.wbtn-chg')).getPropertyValue('--charge')) };
   });
   await page.screenshot({ path: `${OUT}/controls-desktop-charging.png` });
+  const hring = await overlayFit(page, '.hslot', '.wbtn-chg');
+  check('desktop: the charge ring is round the whole hotbar slot', hring.ok, JSON.stringify(hring));
   await page.waitForTimeout(900);
   await page.keyboard.up('Digit1');
   await page.waitForTimeout(80);
