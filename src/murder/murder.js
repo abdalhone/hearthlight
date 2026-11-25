@@ -301,6 +301,14 @@ export class Murder {
     return s.ids.has(id);
   }
 
+  // The same, but null when no blow on `victim` was screened a moment ago (a crime told
+  // later by the one who took it is news, not something anyone saw).
+  sawBlow(id, victim) {
+    const s = this.lastScreen;
+    if (!s || s.victim !== (victim?.id ?? victim) || this.now() - s.t > 2) return null;
+    return s.ids.has(id);
+  }
+
   // Is anyone near enough to hear this victim's cry (npc.js HELP_HEAR, by severity)?
   heardBy(victim, severity = 1) {
     const reach = [0, 300, 440, 600][Math.max(1, Math.min(3, Math.round(Number(severity) || 1)))];

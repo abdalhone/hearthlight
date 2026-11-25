@@ -693,6 +693,18 @@ export class Autonomy {
     const k = String(kind || '').toLowerCase();
     // A killing is weighed by game.murder (src/murder/lyra.js): seen, told, or suspected.
     if (k === 'murder' || k === 'outside') return undefined;
+    // A crime someone else saw is not one she saw (DESIGN §29.2: her own eyes, the shared
+    // sight rule): a blow struck inside a house while she sits in another, or across the
+    // meadow, out of her sight, never reaches her ledger by this event. The witnesses tell
+    // what they saw by meeting people, as all news travels.
+    const murder = this.game?.murder;
+    if (victim && murder && (k === 'knockout' || k === 'assault')) {
+      const seen = typeof murder.sawBlow === 'function' ? murder.sawBlow('lyra', victim) : murder.saw('lyra', victim);
+      if (seen === false) return undefined;
+      // No blow on them was screened just now (a blow nobody saw, told later by the one who
+      // took it): only if she has them in her own sight this moment.
+      if (seen == null && !seesActor(this.game, this.lyra(), victim)) return undefined;
+    }
     if (k === 'knockout') return this._villagerDowned(victim);
     if (/^(theft|steal|stole|stealing)$/.test(k)) {
       this.recordDeed('stole', { victim });
