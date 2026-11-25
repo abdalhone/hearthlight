@@ -22,8 +22,7 @@ import { Lighting } from '../render/lighting.js';
 import { Particles } from '../render/particles.js';
 import { Bubbles } from '../render/bubbles.js';
 import { Weather } from '../render/weather.js';
-import { PixelFx } from '../render/pixel_fx.js';
-import { PIXEL_FX } from '../render/pixel_fx_catalog.js';
+import { installPixelFx } from '../render/pixel_fx_play.js';
 
 import { generateWorld } from '../world/worldgen.js';
 import { Pathfinder } from '../world/pathfind.js';
@@ -90,7 +89,7 @@ export class Game {
     this.bubbles = new Bubbles(this);
     this.weather = new Weather(this);
     // pixelfx effects in the world buffer (DESIGN §30): hits, statuses, deaths, pickups, critters.
-    this.pixelFx = new PixelFx(this, PIXEL_FX);
+    this.pixelFx = installPixelFx(this);
     this.renderer = new Renderer(this, this.canvas);
     this.input = new Input(this);
     this.audio = new Audio(this);
@@ -325,6 +324,7 @@ export class Game {
       this.lighting.update(wdt);
       this.particles.update(wdt);
       this.pixelFx.update(wdt);
+      this.pixelFx.director?.update(wdt);
       this.weather.update(wdt);
       this.bubbles.update(dt);
       this.camera.update(dt);

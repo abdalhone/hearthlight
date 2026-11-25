@@ -18,6 +18,14 @@
 
 import * as hitSpark from '../vendor/pixelfx/fx/impacts/hit-spark.js';
 import * as critHit from '../vendor/pixelfx/fx/impacts/crit-hit.js';
+import * as burning from '../vendor/pixelfx/fx/status/burning.js';
+import * as frozen from '../vendor/pixelfx/fx/status/frozen.js';
+import * as poisoned from '../vendor/pixelfx/fx/status/poisoned.js';
+import * as bleeding from '../vendor/pixelfx/fx/status/bleeding.js';
+import * as cursed from '../vendor/pixelfx/fx/status/cursed.js';
+import * as stunned from '../vendor/pixelfx/fx/status/stunned.js';
+import * as confused from '../vendor/pixelfx/fx/status/confused.js';
+import * as rage from '../vendor/pixelfx/fx/status/rage.js';
 
 // ------------------------------------------------------------------ colors
 
@@ -52,6 +60,9 @@ export function rampOf(pal) {
 
 // ------------------------------------------------------------------ the catalog
 
+// Room round a body for what wraps it (a 12x20 villager; bigger bodies pass their own).
+const STATUS_BOX = [-26, -46, 26, 16];
+
 export const PIXEL_FX = {
   // The everyday hit (a weave or a blade): a cross flare at the point of contact, a cone
   // of sparks and chips thrown along the blow over the floor. Recolored per essence.
@@ -73,4 +84,17 @@ export const PIXEL_FX = {
     opts: { size: 0.5, height: 10 },
     lightK: 0.8,
   },
+
+  // ---------------------------------------------------------------- statuses on a body
+  // Each wraps the afflicted body's own sprite frame (actor: true; pixel_fx_bodies.js),
+  // its back half behind the body and its front half over it; started and stopped by the
+  // status director in pixel_fx_play.js as the Weave's statuses come and go.
+  'st-burning': { mod: burning, layer: 'body', actor: true, priority: 2, bounds: STATUS_BOX, opts: { flash: false } },
+  'st-chill': { mod: frozen, layer: 'body', actor: true, priority: 2, bounds: STATUS_BOX, opts: { still: true, reach: 8 } },
+  'st-poison': { mod: poisoned, layer: 'body', actor: true, priority: 2, bounds: STATUS_BOX, opts: {} },
+  'st-cursed': { mod: cursed, layer: 'body', actor: true, priority: 2, bounds: STATUS_BOX, opts: { smoke: 0.6, skullUp: 8 } },
+  'st-stun': { mod: stunned, layer: 'body', actor: true, priority: 2, bounds: STATUS_BOX, opts: {} },
+  'st-dazed': { mod: confused, layer: 'body', actor: true, priority: 2, bounds: STATUS_BOX, opts: {} },
+  'st-bleed': { mod: bleeding, layer: 'body', actor: true, priority: 2, bounds: STATUS_BOX, opts: { pool: 5.5 } },
+  'st-rage': { mod: rage, layer: 'body', actor: true, priority: 2, bounds: STATUS_BOX, opts: { still: true } },
 };

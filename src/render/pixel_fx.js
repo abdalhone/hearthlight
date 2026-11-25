@@ -80,6 +80,8 @@ export class PixelFx {
     this.stats = { played: 0, refused: 0, evicted: 0, drawn: 0, culled: 0 };
     this._warned = new Set();
     this.lightK = 1;
+    this.actorOf = null; // (entity) -> pixelfx body, for effects that wrap one (spec.actor)
+    this.director = null; // keeps long-lived effects in step with the world (pixel_fx_play.js)
   }
 
   define(id, spec) {
@@ -169,7 +171,8 @@ export class PixelFx {
         return null;
       }
     }
-    const box = effectBox(spec, opts.angle || 0, scale);
+    const box = o.bounds ? o.bounds.map(Math.round) : effectBox(spec, opts.angle || 0, scale);
+    delete opts.bounds;
     x = Math.round(x);
     y = Math.round(y);
     let fx;
@@ -358,6 +361,12 @@ export class PixelFx {
     fr.light.fill(0, 0, n);
     inst.fx.options.x = inst.x;
     inst.fx.options.y = inst.y;
+    // Effects on a body wrap the sprite frame the game draws this instant.
+    if (inst.spec.actor && inst.follow) {
+      const a = this.actorOf ? this.actorOf(inst.follow) : null;
+      if (!a) return;
+      inst.fx.options.actor = a;
+    }
     try {
       inst.fx.draw(fr, part);
     } catch (err) {

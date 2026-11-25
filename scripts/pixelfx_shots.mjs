@@ -187,6 +187,32 @@ const SCENES = {
       });
     },
   },
+  // Every status pixelfx shows, on bandits (people-shaped) and a wolf: burning, chilled,
+  // poisoned, drained (cursed), stunned, dazzled (confused); a fallen bandit bleeding; the
+  // player under berserk's price (rage).
+  statuses: {
+    at: [0.6, 1.2],
+    run: () => {
+      const g = window.__game;
+      const S = window.__px;
+      const c = S.spot;
+      const st = ['burning', 'chilled', 'poisoned', 'drained', 'stunned', 'dazzled'];
+      st.forEach((id, i) => {
+        const d = S.dummy(c.x - 100 + (i % 3) * 50 + (i >= 3 ? 25 : 0), c.y - 40 + Math.floor(i / 3) * 56, i === 4 ? 'wolf' : 'bandit');
+        d.faction = 'neutral';
+        d.aggroRadius = 0;
+        g.magic.applyStatus(d, id, { src: g.player, potency: 1.2, power: 6, duration: 30, ignoreImmunity: true, chance: 99 });
+      });
+      const f = S.dummy(c.x + 90, c.y + 30, 'bandit');
+      f.downed = true;
+      f.setState?.('downed');
+      if (g.prices) g.prices.state.berserk = { t: 30 };
+    },
+    after: () => {
+      const g = window.__game;
+      if (g.prices) g.prices.state.berserk = null;
+    },
+  },
 };
 
 const wanted = Object.keys(SCENES).filter((k) => !only || only.includes(k));
@@ -224,6 +250,7 @@ for (const size of SIZES) {
         t = target;
         await page.screenshot({ path: `${out}/${size.name}-${tod}-${name}-${String(Math.round(at * 1000)).padStart(4, '0')}.png` });
       }
+      if (sc.after) await page.evaluate(sc.after);
       const after = await page.evaluate(() => window.__game.pixelFx?.stats?.played || 0);
       if (after <= before && !flag('--reduce')) failures.push(`${size.name} ${tod} ${name}: no pixelfx effect played`);
     }

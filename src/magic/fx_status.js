@@ -14,6 +14,10 @@ import { silhouetteOf, frameBounds, halo, ell, ring, zig, px, rect } from './fx_
 
 const DEFAULT_H = 20;
 
+// Statuses pixelfx shows on the body (src/render/pixel_fx_play.js): their tint, overlay and
+// particles step aside while it does; their light stays.
+const pixelOwns = (fx, a, id) => !!fx.game?.pixelFx?.director?.owns?.(a, id);
+
 // What an actor looks like this frame: its sprite frame image and where it is drawn.
 const FRAME = { img: null, dx: 0, dy: 0, top: 0, left: 0, right: 0, feet: 0, cx: 0, h: DEFAULT_H };
 
@@ -123,7 +127,7 @@ export class StatusFx {
         const s = l[k];
         const look = statusLook(s.def);
         if (look.freeze) frozen = true;
-        if (!onScreen || !look.parts) continue;
+        if (!onScreen || !look.parts || pixelOwns(this.fx, a, s.id)) continue;
         let accs = rec.acc[s.id];
         if (!accs) accs = rec.acc[s.id] = [0, 0, 0, 0];
         for (let j = 0; j < look.parts.length && j < 4; j++) {
@@ -193,7 +197,7 @@ export class StatusFx {
         const s = l[k];
         const look = statusLook(s.def);
         const color = look.tint || s.def.color;
-        if (!color || !F.img) continue;
+        if (!color || !F.img || pixelOwns(this.fx, a, s.id)) continue;
         const fade = clamp01(s.t / 0.25) * clamp01((s.dur - s.t) / 0.12 + 0.4);
         let k2 = (look.tintK ?? 0.2) * fade;
         switch (look.pulse) {
@@ -220,7 +224,7 @@ export class StatusFx {
         tints++;
       }
       c.globalAlpha = 1;
-      for (let k = 0; k < l.length; k++) this._overlay(R, a, l[k], F, t, k);
+      for (let k = 0; k < l.length; k++) if (!pixelOwns(this.fx, a, l[k].id)) this._overlay(R, a, l[k], F, t, k);
     }
     c.globalAlpha = 1;
     if (R.g) R.g.globalAlpha = 1;
