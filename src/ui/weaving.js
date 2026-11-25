@@ -564,8 +564,9 @@ export class Weaving {
       return;
     }
     this.lastActT = this.game.time || 0;
-    // One charge at a time: whatever is being held is let go (cast) first.
-    for (const [osrc, o] of this.casts) if (o.started) this.finish(osrc, false);
+    // One charge at a time: whatever is being held is let go (cast) first — unless its
+    // finger was dragged back onto its button (then it was being cancelled).
+    for (const [osrc, o] of this.casts) if (o.started) this.finish(osrc, !!o.touch?.cancel);
     const c = { slot, source, mode: rec.mode, started: false, held: 0, k: 0, live: false, capped: false, aim: null, touch: source === 'touch' ? this.touches.get(Number(src.slice(1))) : null };
     this.casts.set(src, c);
     const aim = this.aimFor(c);

@@ -419,8 +419,10 @@ export class Hud {
     const sel = w.slotInfo(w.selected);
     if (mana && mana.max > 0) {
       setStyle(this.hbManaFill, 'width', `${((100 * Math.max(0, mana.cur)) / mana.max).toFixed(1)}%`);
-      // The selected weave's cost, as a brighter cap at the end of the bar.
-      const c = Math.min(mana.cur, sel.cost || 0);
+      // The selected weave's cost, as a brighter cap at the end of the bar (a charge
+      // being held costs x(1 + k): the cap grows with it).
+      const ch = w.chargeOf?.(w.selected);
+      const c = Math.min(mana.cur, (sel.cost || 0) * (1 + (ch?.k || 0)));
       setStyle(this.hbManaCost, 'width', `${((100 * c) / mana.max).toFixed(1)}%`);
       setStyle(this.hbManaCost, 'left', `${((100 * Math.max(0, mana.cur - c)) / mana.max).toFixed(1)}%`);
       setText(this.hbManaText, `${Math.floor(mana.cur)} / ${Math.round(mana.max)}`);
