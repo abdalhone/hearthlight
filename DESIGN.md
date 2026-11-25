@@ -764,6 +764,10 @@ Safe areas: HUD offsets use `env(safe-area-inset-*)`. Never use `alert/confirm/p
   says so). Toasts and the coach stay at 1: they are placed by measured boxes, and the
   HUD's own measured layout divides by the zoom.
 - Pause (`Esc`): resume, settings, save, quit to title. Sets `game.paused`.
+- Notices (`src/ui/toast.js`) keep clear of the HUD, the speakers' bubbles, the player and
+  Lyra, re-placed ten times a second; one at a time on a phone; a tap puts one away. A press
+  on the stack holds it where it is until the press and its click are over (`Toasts.held`),
+  so a notice never slides out from under the finger that is putting it away.
 - `ui.toast(text, kind = 'info'|'good'|'warn'|'quest'|'lyra')`, `ui.setInteractPrompt(label)`,
   `ui.isModalOpen()`, `ui.fadeOut(s) / fadeIn(s)` (promises), `ui.showDiary(entry)`,
   `ui.update(dt)`, `ui.showTitle()`, `ui.init()`.

@@ -725,10 +725,14 @@ async function run([W, H]) {
   check(shown === 1, `${tag}: one notice at a time on a phone (${shown})`);
   const t1 = await box('.toast:not(.queued):not(.leaving)');
   if (t1) {
+    const before = await page.evaluate(([x, y]) => {
+      const at = document.elementFromPoint(x, y);
+      return { shown: [...document.querySelectorAll('.toast:not(.queued):not(.leaving)')].map((t) => t.textContent.slice(0, 40)), at: at ? `${at.tagName}.${String(at.className).slice(0, 40)}` : null };
+    }, [t1.cx, t1.cy]);
     await tap(t1.cx, t1.cy);
     await wait(500);
     const left = await page.evaluate(() => [...document.querySelectorAll('.toast:not(.leaving)')].map((t) => t.textContent));
-    check(!left.some((t) => /First notice/.test(t)), `${tag}: a tap puts a notice away`);
+    check(!left.some((t) => /First notice/.test(t)), `${tag}: a tap puts a notice away (${JSON.stringify({ ...before, left: left.map((t) => t.slice(0, 40)) })})`);
   }
 
   // ---------- the weave buttons: every name and mana can be read ----------

@@ -18,6 +18,7 @@ const LIFE = { info: 3.6, good: 3.6, warn: 5, quest: 6, lyra: 4.5, item: 2.6 };
 const MAX_VISIBLE = 4;
 const MAX_VISIBLE_SMALL = 1; // phones: one at a time, the others wait their turn
 const PLACE_EVERY = 0.1;
+const HOLD_AFTER_PRESS = 250; // ms the stack stays put after a press on it ends (its click lands)
 const ANSWER_WINDOW = 2500; // ms after a tap in a panel: a notice then is its answer
 
 // HUD pieces the stack must never cover (the chat is handled on its own).
@@ -57,6 +58,23 @@ export class Toasts {
       const t = el && this.items.find((x) => x.el === el);
       if (t) this._leave(t);
     });
+    // A finger (or the mouse) pressed on a notice holds the stack where it is until the
+    // press is over: it never slides out from under the tap that would put it away (the
+    // stack is re-placed ten times a second to keep clear of moving bubbles and people).
+    this.pressed = false;
+    this.releasedAt = -Infinity;
+    this.el.addEventListener('pointerdown', () => {
+      this.pressed = true;
+    });
+    if (typeof document !== 'undefined') {
+      const up = () => {
+        if (!this.pressed) return;
+        this.pressed = false;
+        this.releasedAt = now();
+      };
+      document.addEventListener('pointerup', up, true);
+      document.addEventListener('pointercancel', up, true);
+    }
     this.items = [];
     this.placeT = 0;
     this.placed = false; // inline position in use (else the stylesheet places the stack)
@@ -169,12 +187,17 @@ export class Toasts {
     for (const t of [...this.items]) this._leave(t);
   }
 
+  // Is a press on the stack under way (or just over, its click still to come)?
+  held() {
+    return this.pressed || now() - this.releasedAt < HOLD_AFTER_PRESS;
+  }
+
   update(dt) {
     // A notice from inside a panel goes back to waiting like any other once it closes.
     if (!this.ui.stack?.length) for (const t of this.items) t.inPanel = false;
     this.queue();
     this.placeT -= dt;
-    if (this.placeT <= 0) {
+    if (this.placeT <= 0 && !this.held()) {
       this.placeT = PLACE_EVERY;
       this.place();
     }

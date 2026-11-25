@@ -268,3 +268,59 @@ test('"wait here at the Kettle for me" asks her to stay at the Kettle', async ()
     assert.equal(c.intent?.id, 'cmd.stay_place', t);
   }
 });
+
+// phone_check failed now and then at 844x340: "a tap puts a notice away". The stack is
+// re-placed ten times a second to keep clear of moving bubbles and people, so a notice could
+// slide out from under the finger between touch and release, and the tap missed it. A press
+// on the stack now holds it still until the press (and its click) is over.
+test('a notice under a finger stays put until the tap is over', async () => {
+  const listeners = { doc: {} };
+  class El {
+    constructor(tag) {
+      this.tagName = tag;
+      this.style = {};
+      this.dataset = {};
+      this.children = [];
+      this.classList = { add() {}, remove() {}, toggle() {}, contains: () => false };
+      this.on = {};
+    }
+    setAttribute() {}
+    append(...c) {
+      this.children.push(...c);
+    }
+    addEventListener(t, f) {
+      (this.on[t] ||= []).push(f);
+    }
+    fire(t) {
+      for (const f of this.on[t] || []) f({ target: this });
+    }
+  }
+  const saved = { document: globalThis.document, Node: globalThis.Node };
+  globalThis.Node = El;
+  globalThis.document = {
+    createElement: (t) => new El(t),
+    addEventListener: (t, f) => ((listeners.doc[t] ||= []).push(f)),
+  };
+  try {
+    const { Toasts } = await import('../src/ui/toast.js');
+    const ui = { stack: [], root: null, game: { state: 'playing' } };
+    const t = new Toasts(ui);
+    let placed = 0;
+    t.place = () => placed++;
+    t.queue = () => {};
+    t.update(0.2);
+    assert.equal(placed, 1, 'placed as usual');
+    t.el.fire('pointerdown');
+    for (let i = 0; i < 5; i++) t.update(0.2);
+    assert.equal(placed, 1, 'held while the finger is down');
+    for (const f of listeners.doc.pointerup || []) f({});
+    t.update(0.2);
+    assert.equal(placed, 1, 'and a moment after, while its click lands');
+    t.releasedAt = -Infinity;
+    t.update(0.2);
+    assert.equal(placed, 2, 'then free to keep clear again');
+  } finally {
+    globalThis.document = saved.document;
+    globalThis.Node = saved.Node;
+  }
+});
