@@ -4,6 +4,13 @@
 // Owlsend) and §10 (what is on the map).
 
 export const WILDS_INFO = {
+  wider_world: {
+    name: 'The wilds beyond the vale',
+    kind: 'field',
+    danger: 2,
+    aliases: ['beyond the vale', 'the wider world', 'out there', 'outside the vale'],
+    description: 'The Lowmarch past the hem of the ward: heath, deep wood and mountain, with the roads running through it and the Drift moving over it like weather.',
+  },
   western_heath: {
     name: 'The Western Heath',
     kind: 'field',

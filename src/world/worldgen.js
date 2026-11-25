@@ -1828,8 +1828,9 @@ export class WorldBuilder {
     this.loc('south_meadow', { x: 48, y: 88, w: 78, h: 31 }, [86, 100]);
     // One row of verge on each side: the painted road wanders a little past its tiles.
     this.loc('kings_road', { x: 0, y: KINGS_ROAD_Y - 1, w: W, h: 5 }, [70, KINGS_ROAD_Y + 1]);
-    // The open land of the vale; the wider world's own places (wilds.js) sit around it.
-    this.loc('wilds', { x: WORLD_X0, y: WORLD_Y0, w: WORLD_W, h: WORLD_H }, [140, 100]);
+    // The open land of the vale (where people wander when they go "out"); the wider
+    // world beyond it is wilds.js's own places, under 'wider_world'.
+    this.loc('wilds', { x: 0, y: 0, w: W, h: H }, [140, 100]);
   }
 
   // The nearest open tile to (x, y): organic scatter may have put a tree on the exact spot.

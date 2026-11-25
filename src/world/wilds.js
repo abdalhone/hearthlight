@@ -871,6 +871,8 @@ const WILDS_METHODS = {
 
   makeWildsLocations() {
     const C = (p) => [p.x, p.y];
+    // Everything beyond the vale, so no step out there is nowhere (the smallest place wins).
+    this.loc('wider_world', { x: WORLD_X0, y: WORLD_Y0, w: WORLD_W, h: WORLD_H }, [-30, 84]);
     this.loc('western_heath', { x: -240, y: 60, w: 240, h: 46 }, [-90, 84]);
     this.loc('kings_road_west', { x: -230, y: 80, w: 230, h: 9 }, [-90, 84]);
     this.loc('dead_waystone', { x: -40, y: 72, w: 20, h: 14 }, [P.deadWaystone.x + 1, P.deadWaystone.y + 3]);

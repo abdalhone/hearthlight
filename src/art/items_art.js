@@ -665,6 +665,64 @@ const ICONS = {
     p.set(8, 8, '#9aa0ad');
   },
 
+  // Keys and the flame-book of round 14 (src/world/containers.js, the Count).
+  guard_key(p) {
+    const iron = ['#2b2e37', '#474b57', '#6b707e', '#aab0bc'];
+    const ring = (x, y) => {
+      const d = Math.hypot(x - 4.6, y - 4.6);
+      return d <= 3.3 && d >= 1.6;
+    };
+    p.shape(union(ring, capsule(6.6, 6.6, 12.4, 12.4, 0.95), capsule(10.4, 10.4, 8.6, 12.2, 0.75), capsule(12.2, 12.2, 10.4, 14, 0.75)), iron, { k: 1.7 });
+    p.set(3, 2, '#e6e9ee');
+    p.set(8, 8, '#cfd4dc');
+  },
+
+  lyra_trunk_key(p) {
+    const ring = (x, y) => {
+      const d = Math.hypot(x - 5, y - 5);
+      return d <= 2.8 && d >= 1.3;
+    };
+    p.shape(union(ring, capsule(6.8, 6.8, 11.8, 11.8, 0.85), capsule(10.2, 10.2, 8.8, 11.6, 0.7)), [GOLD[1], GOLD[2], GOLD[3], GOLD[4]], { k: 1.7 });
+    // A violet thread through the bow.
+    for (const [x, y] of [
+      [2, 6],
+      [1, 7],
+      [1, 8],
+      [2, 9],
+    ])
+      p.set(x, y, ARC[3]);
+    p.set(4, 3, '#fff3c2');
+  },
+
+  flame_book(p) {
+    p.rect(4, 3, 10, 11, '#d8c9a8');
+    for (let y = 4; y <= 13; y += 2) p.set(13, y, '#a89676');
+    for (let y = 2; y <= 12; y++) {
+      for (let x = 3; x <= 12; x++) {
+        let c = '#5a3b27';
+        if (y === 2 || x === 5) c = '#704b32';
+        if (y === 12 || x === 12) c = '#3a2418';
+        if (x <= 4) c = x === 3 ? '#2a1a12' : '#3a2418';
+        p.set(x, y, c);
+      }
+    }
+    // A candle-flame tooled into the cover, the gilt worn grey.
+    for (const [x, y, c] of [
+      [8, 4, '#c9b27a'],
+      [8, 5, '#d9c48a'],
+      [7, 6, '#c9b27a'],
+      [8, 6, '#efe0a8'],
+      [9, 6, '#c9b27a'],
+      [7, 7, '#b39c66'],
+      [8, 7, '#d9c48a'],
+      [9, 7, '#b39c66'],
+      [8, 8, '#8f7c52'],
+      [8, 9, '#8f7c52'],
+      [8, 10, '#8f7c52'],
+    ])
+      p.set(x, y, c);
+  },
+
   maren_journal(p) {
     // Page block peeking out on the right and bottom.
     p.rect(4, 3, 10, 11, '#e2d2b0');
