@@ -391,7 +391,7 @@ export const MISSIONS = [
       { type: 'defeat', target: 'wolf', count: 4, when: 'evening', spawn: { species: 'wolf', count: 4 }, label: 'The pack comes in behind them: drive off four wolves' },
     ],
     turnin: [
-      'Report. Three. Good. Nobody hurt? Good.',
+      'Report. The road held, and the pack behind it. Good. Nobody hurt? Good.',
       'A line holds because it goes through, not around. Put your light through them, not at them.',
       'And a line is a wall when it needs to be. Here, and not past here. Drill it.',
       "Here. The watch's footlocker key. Anyone who holds the line with me can take what they need from it.",
