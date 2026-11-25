@@ -2086,6 +2086,11 @@ notices and has opinions (berserk frightens her).
   backs away, shaking."; §23.3), and round again. Every line is kept in their talk, and
   they remember that the player came talking at them after what they saw.
 - After two killings seen, they are never calm with the stranger again (`e.dread`, saved).
+- Nor do they go back to the stranger's feet: a terrified (or dreading) witness never takes a
+  helper's part beside them (`helpRole` gives `flee`: no tending, shielding or fetching by the
+  body), and when their flight ends they do not return to the victim they had come to tend
+  (`npc.endFlee`). Replayed: Elda, a tender by trade, knelt again by the next body at the
+  killer's feet after a second cry.
 - A villager who **has gone on their way** cannot answer after: a reply that comes late is
   not delivered (the author saw Elda answer after "Elda has gone on her way", twice).
 

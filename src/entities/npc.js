@@ -65,6 +65,15 @@ const WORK_OBJECTS = {
   tilly: ['anvil', 'forge', 'table'], // Tilly works the smithy alongside Bram
 };
 
+// Has this villager watched the stranger kill (terror now, or dread of them for good)?
+function fearsStranger(game, npc) {
+  try {
+    return !!game?.murder?.fearOf?.(npc);
+  } catch {
+    return false;
+  }
+}
+
 // Is the actor (the player by default) wanted for a crime right now?
 export function crimeActive(game, actor = game?.player) {
   if (!actor) return false;
@@ -1176,9 +1185,12 @@ export class NPC extends Actor {
     this.speedMul = 1;
     this.walker.stop();
     this.r.key = null; // replan from wherever we ran to
-    // Back to the person they were going to help, if that still needs doing.
+    // Back to the person they were going to help, if that still needs doing; never back to
+    // the feet of a stranger they watched kill (DESIGN §29.3).
     const h = this.help;
-    if (h && h.role !== 'shout' && now(this.game) < h.until && h.victim && !h.victim.removed) {
+    const g = this.game;
+    const afraid = !!h?.attacker && (h.attacker === g?.player || h.attacker.id === 'player') && fearsStranger(g, this);
+    if (h && !afraid && h.role !== 'shout' && now(g) < h.until && h.victim && !h.victim.removed) {
       this.mode = 'help';
       h.phase = h.phase === 'care' ? 'go' : h.phase;
     } else this.help = null;
@@ -2372,6 +2384,9 @@ export function helpRole(npc, ctx) {
   }
   if (fighter && !attacker) return victim?.downed || sev >= 2 ? 'tend' : 'shout';
   if (isChild(npc)) return 'flee';
+  // A witness in terror of the stranger (a killing seen, DESIGN §29.3) keeps clear of them:
+  // never kneels to tend, shields or fetches at their feet.
+  if (playerDid && fearsStranger(g, npc)) return 'flee';
   const kin = npc.isKinOf?.(victim?.id);
   if ((TENDERS.has(id) || kin) && (sev >= 2 || d < 260 || kin || victim?.downed)) return 'tend';
   if (attacker && incident) {

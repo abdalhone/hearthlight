@@ -172,3 +172,38 @@ test('a heavy weave breaks a barrel you can look at; it reads again once mended;
   assert.equal(looks.state.broken, false, 'mended');
   assert.ok(looks.canInteract?.(g.player), 'and its words are back');
 });
+
+// Replayed: three killings in front of Elda. After she saw one, the next victim's cry for
+// help turned her (a tender by trade) back to kneel by the body at the killer's feet. A
+// terrified witness keeps clear of the stranger: never tends, shields or fetches beside them.
+test('a witness in terror of the stranger never turns back to tend a new victim at their feet', () => {
+  const back = quietConsole();
+  const g = makeGame({ hour: 12 });
+  quiet(g, ['tobias', 'corran', 'elda']);
+  const [tobias, corran, elda] = ['tobias', 'corran', 'elda'].map((id) => g.entities.get(id));
+  hold(tobias);
+  hold(corran);
+  const WOODS = { tx: 62, ty: 14 };
+  put(g.player, px(WOODS.tx), px(WOODS.ty));
+  put(tobias, px(WOODS.tx + 1), px(WOODS.ty));
+  put(corran, px(WOODS.tx), px(WOODS.ty + 1));
+  put(elda, px(WOODS.tx + 4), px(WOODS.ty));
+  // Tobias is struck down: Elda, a tender by trade, comes to tend him.
+  downBy(g, tobias);
+  elda.startHelp(tobias, g.player, 3, tobias.x, tobias.y, 50);
+  assert.equal(elda.help?.role, 'tend');
+  // Then she watches the stranger kill him, and runs for the watch.
+  put(elda, px(WOODS.tx + 3), px(WOODS.ty));
+  g.murder.kill(tobias, g.player);
+  assert.equal(g.murder.fearOf(elda), 'terror', 'she saw it');
+  assert.equal(elda.mode, 'flee');
+  // Her flight ends (she has told the watch, or run her course): not back to the body.
+  elda.endFlee();
+  assert.notEqual(elda.mode, 'help', 'not back to kneel at the killer\'s feet');
+  // The stranger strikes Corran, who cries out: she keeps clear.
+  downBy(g, corran);
+  g.bus.emit('call_for_help', { victim: 'corran', victimEntity: corran, attacker: 'player', attackerEntity: g.player, x: corran.x, y: corran.y, severity: 3 });
+  step(g, 0.5, 1 / 10);
+  assert.notEqual(elda.mode, 'help', `she keeps clear (${elda.mode} ${elda.help?.role || ''})`);
+  back();
+});
