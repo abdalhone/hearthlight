@@ -4,6 +4,7 @@ import { itemDef, itemName } from './items.js';
 import { Projectile } from './projectiles.js';
 import { dropItem, updatePickupToasts } from './pickups.js';
 import { playHit, playPoof, playHeal, playLevelUp } from '../render/pixel_fx_play.js';
+import { canReach } from '../world/walls.js';
 
 // Combat rules for every actor: melee arcs, projectiles, damage, healing, death,
 // knock-outs, crimes, items that heal, experience. Contract in DESIGN.md ("Combat", §16.7).
@@ -338,6 +339,8 @@ export class Combat {
       if (d > range + (e.radius ?? 5)) continue;
       if (d > 6 && (dx * fx + dy * fy) / d < minCos) continue;
       if (!this.canHarm(attacker, e, e === target)) continue;
+      // Walls and closed doors stop the blade (DESIGN §31.1): nobody is hit through a house.
+      if (!canReach(g, attacker, e)) continue;
       const inv = d > 0.001 ? 1 / d : 0;
       const dealt = this.damage(attacker, e, power, {
         kind,

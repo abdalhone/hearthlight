@@ -1858,3 +1858,19 @@ palette, tag, life, ...opts })` → handle, `stop(handle | tag)`, `playing()`, `
 
 Tests: `tests/pixel_fx.test.mjs`. Shots: `scripts/pixelfx_shots.mjs` (in the game, three screen sizes,
 day and night), `scripts/pixelfx_preview.mjs` (contact sheets from above, aimed several ways).
+
+## 31. Combat in a world with walls (round 13, the author: "Why am I able to hit through walls?"; "The spells do not have a stun"; "Skill magic like strike isn't able to destroy a tree"; "the dummies, I'm unable to hit them with the sword … no damage is shown … they do not gain XP"; "the church, the lights inside of it shows from the roof")
+
+### 31.1 Walls stop blows (`src/world/walls.js`)
+One rule for every attack, the tiles projectiles already stopped at: `map.blocksProjectile`
+(walls, rock, palisades, ruin walls, the edge) and closed doors.
+- `wallTile(game, tx, ty)`, `wallAt(game, x, y)`, `wallBetween(game, x0, y0, x1, y1)` (a grid
+  walk of every tile the segment crosses; the two end tiles do not count, so a body hugging a
+  wall stays in reach) and `canReach(game, a, b)` (feet lifted 3 px, where actors collide).
+- The sword and every creature's bite (`combat.melee`) skip anyone `canReach` says no to.
+- Weaves (`bodies.js` `reaches(rt, x, y, a)`, `magic.blocked(...)`): rings, bursts, cones, the
+  strike's fist (thrown into a wall it lands on the wall's face) and wave, beams (from the point
+  of the ray nearest the target), weave walls, trails, rune triggers, reactions' spread, and
+  every `nearestFoe` (aim assist, homing, chain, ricochet, familiars) need a clear line. A
+  missile that meets a wall ends at the wall's face (its burst stays this side); a lobbed bomb
+  meets a wall and bursts there; rain never falls past a wall from where it was called.

@@ -12,6 +12,7 @@ import { RNG } from '../core/rng.js';
 import { TILE } from '../core/constants.js';
 import { factionRelation } from '../entities/entity.js';
 import { T as TILE_IDS } from '../world/tiles.js';
+import { wallAt as wallAtPoint, wallBetween } from '../world/walls.js';
 
 // The Weave runtime: game.magic (DESIGN §22.2).
 //
@@ -457,24 +458,23 @@ export class Magic {
       if (exclude && exclude.includes(a)) continue;
       if (skipHitsOf && skipHitsOf.hits.has(a)) continue;
       if (!isAlive(a) || !this.isFoe(b.cast, a)) continue;
+      // Never seek, chain to or ricochet toward someone behind a wall (DESIGN §31.1).
+      if (this.blocked(x, y - 3, a.x, a.y - 3)) continue;
       best = a;
       bd = d2;
     }
     return best;
   }
 
+  // Walls (DESIGN §31.1): the tiles projectiles stop at, and closed doors.
   wallAt(x, y) {
-    const g = this.game;
-    const tx = Math.floor(x / TILE);
-    const ty = Math.floor(y / TILE);
-    try {
-      if (g.map?.blocksProjectile?.(tx, ty)) return true;
-      const door = g.objects?.doorAt?.(tx, ty);
-      if (door && !door.isOpen && !door.state?.open) return true;
-    } catch {
-      return false;
-    }
-    return false;
+    return wallAtPoint(this.game, x, y);
+  }
+
+  // Is a wall between two points? Every body's blow asks this before it lands, so a
+  // nova, a strike's wave or a blast never reaches through a wall or a closed door.
+  blocked(x0, y0, x1, y1) {
+    return wallBetween(this.game, x0, y0, x1, y1);
   }
 
   groundAt(x, y) {
@@ -942,6 +942,7 @@ export class Magic {
       const dy = a.y - y;
       if (dx * dx + dy * dy > rr * rr) continue;
       if (!this._harmableBy(src, a)) continue;
+      if (a !== opts.link && this.blocked(x, y - 3, a.x, a.y - 3)) continue; // walls stop a reaction's spread too
       n++;
       if (amount > 0) {
         const l = Math.hypot(dx, dy) || 1;
