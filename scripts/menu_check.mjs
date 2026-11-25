@@ -11,9 +11,11 @@
 //     the menu and Esc (or a tap on ‹ Menu) comes back to it; touch taps; arrow keys walk the
 //     grid by where the buttons are; Enter on Resume resumes and does nothing else;
 //   - How to play reachable in game (Settings → Controls);
-//   - Settings → Game → Practice: "Reset stat points" and "Try all magic" — greyed on the
-//     title (the note says why), in game each asks first (the in-game confirm) and does
-//     what it says: the points come back; the trial turns on ("On"), then off again.
+//   - Settings → Game → Practice: "Reset stat points", "Free stat points" and "Try all
+//     magic" — greyed on the title (the note says why), in game each asks first (the
+//     in-game confirm) and does what it says: the points come back; free points raise a
+//     stat past what the levels gave on the Character sheet (+, +10, −) and turning it off
+//     puts the real points back; the trial turns on ("On"), then off again.
 // Screenshots of every screen go to --out. Fails on page errors or a failed check.
 //   node scripts/menu_check.mjs [--dist] [--out DIR] [--only land,port,desk]
 import { createRequire } from 'node:module';
@@ -172,7 +174,7 @@ async function practice(page, v, where) {
       })),
     );
   let r = await rows();
-  check(`[${L}] ${where} Settings → Game → Practice: Reset stat points and Try all magic`, r.map((x) => x.id).join() === 'resetPoints,trialMagic', JSON.stringify(r.map((x) => x.id)));
+  check(`[${L}] ${where} Settings → Game → Practice: Reset stat points, Free stat points and Try all magic`, r.map((x) => x.id).join() === 'resetPoints,freePoints,trialMagic', JSON.stringify(r.map((x) => x.id)));
   if (where === 'title') {
     check(`[${L}] title Practice rows: greyed, and the note says why`, r.every((x) => x.disabled && /journey/.test(x.note)), JSON.stringify(r.map((x) => [x.disabled, x.note])));
     await page.evaluate(() => document.querySelector('#set-pane-game .set-group-practice')?.scrollIntoView({ block: 'center' }));
@@ -219,6 +221,40 @@ async function practice(page, v, where) {
   await wait(page, 250);
   const off = await page.evaluate(() => ({ trial: !!window.__game.magic.trial, label: document.querySelector('[data-action="trialMagic"] .set-label').textContent, slots: window.__game.magic.slotCount, w0: window.__game.magic.slots[0]?.shape }));
   check(`[${L}] Try all magic: Off again, the real weaves back`, !off.trial && /Off$/.test(off.label) && off.slots === 4 && off.w0 === 'bolt', JSON.stringify(off));
+  // Free stat points (r13): on through the confirm, raise a stat far past the levels on
+  // the Character sheet, then off: the real points come back.
+  await page.evaluate(() => {
+    window.__game.progression.spend('might', 1);
+    window.__game.ui.settings.refreshActions();
+  });
+  await tap(page, v, '[data-action="freePoints"] button');
+  await wait(page, 250);
+  const ask3 = await page.evaluate(() => document.querySelector('.panel-confirm .confirm-text')?.textContent || '');
+  check(`[${L}] Free stat points asks first and says off puts the real points back`, /really spent/.test(ask3), ask3.slice(0, 90));
+  await tap(page, v, '.panel-confirm .panel-foot button:last-child');
+  await wait(page, 250);
+  const fon = await page.evaluate(() => ({ free: window.__game.progression.free, label: document.querySelector('[data-action="freePoints"] .set-label').textContent }));
+  check(`[${L}] Free stat points: On`, fon.free && /On$/.test(fon.label), JSON.stringify(fon));
+  await page.evaluate(() => window.__game.ui.openCharacter());
+  await wait(page, 300);
+  const ten = '.chs-attr:nth-child(1) .chs-ten';
+  for (let i = 0; i < 3; i++) await tap(page, v, ten);
+  await tap(page, v, '.chs-attr:nth-child(1) .chs-plus:not(.chs-minus):not(.chs-ten)');
+  await tap(page, v, '.chs-attr:nth-child(1) .chs-minus');
+  await wait(page, 150);
+  const sheet = await page.evaluate(() => ({ vit: window.__game.progression.points.vitality, shown: document.querySelector('.chs-attr:nth-child(1) .chs-attr-n')?.textContent, badge: document.querySelector('.chs-points')?.textContent, hp: window.__game.player.maxHp }));
+  check(`[${L}] Free stat points: the sheet raises Vitality to 30 (+10 ×3, +, −)`, sheet.vit === 30 && sheet.shown === '30' && /Free points/.test(sheet.badge), JSON.stringify(sheet));
+  await shot(page, v, 'practice-free-sheet');
+  await page.evaluate(() => window.__game.ui.closeModal(window.__game.ui.top(), true));
+  await wait(page, 200);
+  if (!(await page.evaluate(() => !!document.querySelector('[data-action="freePoints"] button')))) await page.evaluate(() => window.__game.ui.openSettings('game'));
+  await wait(page, 200);
+  await tap(page, v, '[data-action="freePoints"] button');
+  await wait(page, 250);
+  await tap(page, v, '.panel-confirm .panel-foot button:last-child');
+  await wait(page, 250);
+  const foff = await page.evaluate(() => ({ free: window.__game.progression.free, pts: { ...window.__game.progression.points }, label: document.querySelector('[data-action="freePoints"] .set-label')?.textContent }));
+  check(`[${L}] Free stat points: Off, the point really spent is back (Might 1, nothing else)`, !foff.free && foff.pts.might === 1 && foff.pts.vitality === 0 && /Off$/.test(foff.label || ''), JSON.stringify(foff));
 }
 
 async function run(v) {

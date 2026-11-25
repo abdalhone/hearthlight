@@ -1,7 +1,8 @@
 // Settings (DESIGN.md §14, §24): five tabs (Game, Controls, Sound & voices, Minds
 // (Claude), Display), every option exactly once, each with a short plain label and a
 // one-line note. A group may also hold action rows (a button, not a setting): Game →
-// Practice has "Reset stat points" and "Try all magic" (each asks first, ui.confirm). Every field goes through game.setSetting so other modules hear
+// Practice has "Reset stat points", "Free stat points" and "Try all magic" (each asks
+// first, ui.confirm). Every field goes through game.setSetting so other modules hear
 // `settings_changed`. The API key is stored only in this browser. Save and Quit live in
 // the menu, the list of keys and buttons in How to play (Controls links there).
 
@@ -22,7 +23,7 @@ export const SETTINGS_LAYOUT = {
   game: [
     { id: 'names', title: 'Names', keys: ['playerName', 'companionName'] },
     { id: 'journey', title: 'Your journey', keys: ['deathMode', 'cloudSave'] },
-    { id: 'practice', title: 'Practice', keys: [], actions: ['resetPoints', 'trialMagic'] },
+    { id: 'practice', title: 'Practice', keys: [], actions: ['resetPoints', 'freePoints', 'trialMagic'] },
   ],
   controls: [
     { id: 'touch', title: 'Touch', keys: ['touchScale', 'leftHanded', 'touchBuzz'] },
@@ -47,6 +48,7 @@ export const SETTINGS_LAYOUT = {
 // so not saved with them (each one acts on the journey in play).
 export const ACTION_ROWS = {
   resetPoints: { label: 'Reset stat points', note: 'Every point you spent comes back to spend again, free. Level, gear and weaves stay.', button: 'Reset' },
+  freePoints: { label: 'Free stat points', note: 'Raise every stat as far as you like, free. Off: back to the points you really spent.', button: 'Turn on' },
   trialMagic: { label: 'Try all magic', note: 'Every shape, essence, twist and price, to try. Off: back to what you earned (rewards earned meanwhile stay).', button: 'Turn on' },
 };
 
@@ -406,6 +408,7 @@ export class SettingsPanel {
       if (!(g.progression.spent?.() > 0)) return 'You have not spent any points yet.';
     }
     if (id === 'trialMagic' && typeof g.magic?.startTrial !== 'function') return 'Not in this build.';
+    if (id === 'freePoints' && typeof g.progression?.startFree !== 'function') return 'Not in this build.';
     return null;
   }
 
@@ -425,8 +428,8 @@ export class SettingsPanel {
     const def = ACTION_ROWS[id];
     const { label, note, b } = row._parts;
     const why = this.actionBlocked(id);
-    const on = !!this.game.magic?.trial;
-    if (id === 'trialMagic') {
+    const on = id === 'freePoints' ? !!this.game.progression?.free : !!this.game.magic?.trial;
+    if (id === 'trialMagic' || id === 'freePoints') {
       setText(label, `${def.label}: ${on ? 'On' : 'Off'}`);
       setText(b, on ? 'Turn off' : 'Turn on');
       row.classList.toggle('is-on', on);
@@ -451,11 +454,43 @@ export class SettingsPanel {
     if (this.actionBlocked(id)) return this.refreshActions();
     if (id === 'resetPoints') {
       const n = g.progression.spent();
-      const ok = await ui.confirm({ title: 'Reset stat points?', text: `All ${n} point${n === 1 ? '' : 's'} come back to spend again. Your level, gear and weaves stay.`, yes: 'Reset them', danger: true });
+      const free = !!g.progression.free;
+      const text = free ? `All ${n} free point${n === 1 ? '' : 's'} come off. The points you really spent come back when Free stat points is turned off.` : `All ${n} point${n === 1 ? '' : 's'} come back to spend again. Your level, gear and weaves stay.`;
+      const ok = await ui.confirm({ title: 'Reset stat points?', text, yes: 'Reset them', danger: true });
       if (!ok) return this.refreshActions();
       const r = g.progression.resetPoints();
-      if (r.ok) ui.toast(`${r.points} point${r.points === 1 ? '' : 's'} back to spend. Open your Character sheet to spend them.`, 'good', { title: 'Stat points reset' });
+      if (r.ok && free) ui.toast('Every stat is back to where it started. Raise them again on your Character sheet.', 'good', { title: 'Stat points reset' });
+      else if (r.ok) ui.toast(`${r.points} point${r.points === 1 ? '' : 's'} back to spend. Open your Character sheet to spend them.`, 'good', { title: 'Stat points reset' });
       else ui.toast(r.reason, 'warn');
+    } else if (id === 'freePoints') {
+      const pr = g.progression;
+      if (!pr.free) {
+        const ok = await ui.confirm({
+          title: 'Free stat points?',
+          text: 'Every stat can be raised as far as you like, free, until you turn it off here. Off puts back exactly the points you really spent; levels you gain meanwhile keep their points for you.',
+          yes: 'Turn it on',
+          danger: true,
+        });
+        if (!ok) return this.refreshActions();
+        if (pr.startFree()) ui.toast(`Raise anything you like on your Character sheet (${ui.isTouch ? 'tap your health bars, top left' : 'C, or click your card'}). Settings → Game turns it off.`, 'good', { title: 'Free stat points' });
+      } else {
+        const ok = await ui.confirm({
+          title: 'Stop free stat points?',
+          text: 'Your stats go back to the points you really spent. Points your levels gave and you have not spent wait on your Character sheet.',
+          yes: 'Turn it off',
+          danger: true,
+        });
+        if (!ok) return this.refreshActions();
+        if (pr.endFree()) {
+          const n = pr.unspent();
+          ui.toast(n > 0 ? `Back to the points you spent. ${n} point${n === 1 ? '' : 's'} wait on your Character sheet.` : 'Back to the points you spent.', 'info', { title: 'Free stat points off' });
+        }
+      }
+      try {
+        g.save?.save?.('auto');
+      } catch {
+        /* saving is best-effort here */
+      }
     } else if (id === 'trialMagic') {
       const m = g.magic;
       if (!m.trial) {

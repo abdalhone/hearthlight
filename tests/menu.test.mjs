@@ -36,9 +36,9 @@ test('settings: five tabs (Game, Controls, Sound & voices, Minds (Claude), Displ
   }
 });
 
-test('settings: Game → Practice holds the two action rows, each once, none of them a setting', () => {
+test('settings: Game → Practice holds the three action rows, each once, none of them a setting', () => {
   const all = Object.values(SETTINGS_LAYOUT).flat().flatMap((g) => g.actions || []);
-  assert.deepEqual(all, ['resetPoints', 'trialMagic'], 'exactly these, once');
+  assert.deepEqual(all, ['resetPoints', 'freePoints', 'trialMagic'], 'exactly these, once');
   const practice = SETTINGS_LAYOUT.game.find((g) => g.id === 'practice');
   assert.equal(practice.title, 'Practice');
   assert.deepEqual(practice.keys, []);
@@ -51,6 +51,7 @@ test('settings: Game → Practice holds the two action rows, each once, none of 
   }
   assert.equal(ACTION_ROWS.resetPoints.label, 'Reset stat points');
   assert.equal(ACTION_ROWS.trialMagic.label, 'Try all magic');
+  assert.equal(ACTION_ROWS.freePoints.label, 'Free stat points');
 });
 
 test('settings: each plain row has a short label and a one-line note', () => {

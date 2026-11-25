@@ -1615,14 +1615,26 @@ Stop* (trust 72; its lesson waits while she is unsure: a talk step's `trust`) an
   (Claude), Display), each option exactly once, with short plain explanations; nothing
   duplicated between the settings, the menu and the HUD.
 - **Game → Practice** (r12; the author: "can you add in the settings a thing that will
-  reset states and a thing that gives me all the magic stuff to try it"): two action rows
+  reset states and a thing that gives me all the magic stuff to try it"): three action rows
   (a label, a note and a button; not settings, so never saved with them), each behind the
   in-game confirm (`ui.confirm`, danger), both greyed on the title screen and while the
   player lies fallen, the note saying why.
   - **Reset stat points**: every spent point back to spend again, free
     (`Progression.resetPoints()`; greyed with nothing spent). "All N points come back to
     spend again. Your level, gear and weaves stay." A toast then says to open the
-    Character sheet; its points badge shows them.
+    Character sheet; its points badge shows them. While Free stat points is on it takes
+    the free points off (the real ones still wait).
+  - **Free stat points: On/Off** (r13; the author: "give me a button to give me inf stats
+    points like the magic thing"; "infinite stats should work like magic"): a switch like
+    Try all magic (`Progression.startFree()` / `endFree()`, `progression.free`). On: the
+    points really spent are kept aside (`realPoints`) and every attribute can be raised as
+    far as you like (up to 999 each; the stat pipeline's caps still hold), free, on the
+    Character sheet, which then shows −, + and +10 on each row and a "Free points" badge
+    instead of a count (the HUD card's points badge hides). Off: exactly the points
+    really spent come back; levels gained meanwhile leave their points to spend. The
+    chapel's respec waits until it is off. Saved with the game (`free`, `realPoints`;
+    free points are not clamped to the levels on load, the real ones are); greyed on the
+    title screen and while fallen like the other rows.
   - **Try all magic: On/Off**: every shape, essence, twist and price, six weave slots,
     three essences and four twists to a weave, until it is turned off here
     (`Magic.startTrial()` / `endTrial()`). The mana is not refilled. The real unlocks,

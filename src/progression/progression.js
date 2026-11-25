@@ -5,6 +5,9 @@ import { ATTRS, ATTR_IDS, POINTS_PER_LEVEL, LEVEL_GROWTH, XP_FOR, THREAT, respec
 //   earned() -> points the levels have given      unspent() -> points still to spend
 //   spend(attr, n = 1) -> { ok, reason? }          canSpend(attr)
 //   respec(by = 'aveline') -> { ok, reason?, cost }   (the chapel, for coin)
+//   startFree() / endFree() -> bool, free           (Settings → Game → Practice: Free stat
+//                                                   points; raise anything, then the real
+//                                                   points come back)
 //   points (the spent ones, by attribute)           xpFor(kind) (fights are combat's)
 //   serialize() / deserialize(d)
 //
@@ -13,6 +16,10 @@ import { ATTRS, ATTR_IDS, POINTS_PER_LEVEL, LEVEL_GROWTH, XP_FOR, THREAT, respec
 // respec {cost}.
 
 const own = Object.prototype.hasOwnProperty;
+
+// While Free stat points is on, one attribute can hold at most this many (the stat
+// pipeline caps what they add up to anyway).
+export const FREE_MAX = 999;
 
 function emptyPoints() {
   const o = {};
@@ -26,6 +33,11 @@ export class Progression {
     this.points = emptyPoints();
     this.bonus = 0; // points from elsewhere than levels (a mission's gift)
     this.respecs = 0;
+    // Free stat points (r13; the author: "give me a button to give me inf stats points
+    // like the magic thing"): while on, points cost nothing and the ones really spent wait
+    // in `realPoints`, to come back when it is turned off.
+    this.free = false;
+    this.realPoints = null;
     const S = game.stats;
     if (S) {
       S.addSource('level', 'Level', (a) => this.levelContribution(a), 10);
@@ -137,27 +149,83 @@ export class Progression {
     return n;
   }
 
+  // Points still to spend. While Free stat points is on, the real ones (what the levels
+  // gave less what was really spent) — the free ones are never counted.
   unspent() {
+    if (this.free) return Math.max(0, this.earned() - this.sumOf(this.realPoints));
     return Math.max(0, this.earned() - this.spent());
   }
 
+  sumOf(pts) {
+    let n = 0;
+    for (const id of ATTR_IDS) n += pts?.[id] || 0;
+    return n;
+  }
+
   canSpend(attr) {
-    return own.call(ATTRS, attr) && this.unspent() > 0;
+    if (!own.call(ATTRS, attr)) return false;
+    if (this.free) return (this.points[attr] || 0) < FREE_MAX;
+    return this.unspent() > 0;
   }
 
   spend(attr, n = 1) {
     if (!own.call(ATTRS, attr)) return { ok: false, reason: 'There is no such attribute.' };
-    const k = Math.max(1, Math.floor(n || 1));
+    let k = Math.max(1, Math.floor(n || 1));
+    if (this.free) {
+      k = Math.min(k, FREE_MAX - (this.points[attr] || 0));
+      if (k <= 0) return { ok: false, reason: `${ATTRS[attr].name} is as high as it goes.` };
+      this.points[attr] += k;
+      this.changed({ free: true, raised: k });
+      return { ok: true, attr, points: this.points[attr], free: true };
+    }
     if (this.unspent() < k) return { ok: false, reason: 'No points left to spend. Each level gives three.' };
     this.points[attr] += k;
     this.changed();
     return { ok: true, attr, points: this.points[attr] };
   }
 
+  // Free stat points only: take points back off an attribute (nothing to lose).
+  lower(attr, n = 1) {
+    if (!own.call(ATTRS, attr)) return { ok: false, reason: 'There is no such attribute.' };
+    if (!this.free) return { ok: false, reason: 'Points only come back all at once (Reset stat points, or the chapel).' };
+    const k = Math.min(Math.max(1, Math.floor(n || 1)), this.points[attr] || 0);
+    if (k <= 0) return { ok: false, reason: `No points in ${ATTRS[attr].name}.` };
+    this.points[attr] -= k;
+    this.changed({ free: true });
+    return { ok: true, attr, points: this.points[attr], free: true };
+  }
+
+  // Free stat points on: the points really spent are kept aside, and from now on any
+  // attribute can be raised as far as you like (FREE_MAX), free. Saved with the game.
+  startFree() {
+    if (this.free || !this.game.player) return false;
+    this.realPoints = { ...this.points };
+    this.free = true;
+    this.changed({ free: true });
+    this.game.bus?.emit?.('free_points', { on: true });
+    return true;
+  }
+
+  // Off: the points really spent come back exactly; levels gained meanwhile have left
+  // their points to spend (the badge shows them).
+  endFree() {
+    if (!this.free) return false;
+    const real = this.realPoints || emptyPoints();
+    this.points = emptyPoints();
+    for (const id of ATTR_IDS) this.points[id] = Math.max(0, Math.floor(real[id] || 0));
+    this.realPoints = null;
+    this.free = false;
+    this.clampToEarned();
+    this.changed();
+    this.game.bus?.emit?.('free_points', { on: false });
+    return true;
+  }
+
   // Give back the points: the chapel's quiet hour, for a price in coin.
   respec() {
     const P = this.game.player;
     if (!P) return { ok: false, reason: 'Nobody to unmake.' };
+    if (this.free) return { ok: false, reason: 'Free stat points is on: turn it off in Settings → Game first.' };
     if (!this.spent()) return { ok: false, reason: 'You have not spent any points yet.' };
     const cost = respecCost(this.level());
     const coin = P.inventory?.count?.('coin') ?? 0;
@@ -196,10 +264,10 @@ export class Progression {
     return { ok: true, points: n };
   }
 
-  changed() {
+  changed(extra = null) {
     const g = this.game;
     g.stats?.refresh(g.player);
-    g.bus?.emit?.('points_changed', { unspent: this.unspent(), points: { ...this.points } });
+    g.bus?.emit?.('points_changed', { unspent: this.unspent(), points: { ...this.points }, free: this.free, ...(extra || {}) });
   }
 
   toast(text, kind = 'info') {
@@ -213,27 +281,50 @@ export class Progression {
   // ---------------------------------------------------------------- saving
 
   serialize() {
-    return { points: { ...this.points }, bonus: this.bonus, respecs: this.respecs };
+    const d = { points: { ...this.points }, bonus: this.bonus, respecs: this.respecs };
+    if (this.free) {
+      d.free = true;
+      d.realPoints = { ...(this.realPoints || emptyPoints()) };
+    }
+    return d;
   }
 
   deserialize(d) {
     this.points = emptyPoints();
-    if (d && typeof d === 'object') {
+    this.free = false;
+    this.realPoints = null;
+    const read = (src, max) => {
+      const o = emptyPoints();
       for (const id of ATTR_IDS) {
-        const v = Number(d.points?.[id]);
-        if (Number.isFinite(v) && v > 0) this.points[id] = Math.floor(v);
+        const v = Number(src?.[id]);
+        if (Number.isFinite(v) && v > 0) o[id] = Math.min(max, Math.floor(v));
       }
+      return o;
+    };
+    if (d && typeof d === 'object') {
       this.bonus = Number.isFinite(d.bonus) ? Math.max(0, Math.floor(d.bonus)) : 0;
       this.respecs = Number.isFinite(d.respecs) ? d.respecs : 0;
+      if (d.free) {
+        // Free stat points was on: the free points as they were, the real ones aside.
+        this.free = true;
+        this.points = read(d.points, FREE_MAX);
+        this.realPoints = read(d.realPoints, FREE_MAX);
+      } else this.points = read(d.points, Infinity);
     }
-    // A save can never hold more spent points than its levels gave.
-    let over = this.spent() - this.earned();
+    this.clampToEarned();
+    this.game.stats?.refresh(this.game.player);
+  }
+
+  // A save can never hold more really spent points than its levels gave.
+  clampToEarned() {
+    const pts = this.free ? this.realPoints : this.points;
+    if (!pts) return;
+    let over = this.sumOf(pts) - this.earned();
     for (const id of [...ATTR_IDS].reverse()) {
       if (over <= 0) break;
-      const take = Math.min(over, this.points[id]);
-      this.points[id] -= take;
+      const take = Math.min(over, pts[id]);
+      pts[id] -= take;
       over -= take;
     }
-    this.game.stats?.refresh(this.game.player);
   }
 }

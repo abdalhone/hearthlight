@@ -97,9 +97,15 @@ export class CharacterView {
       const a = ATTRS[id];
       const n = h('span', { class: 'chs-attr-n num' });
       const plus = button('+', { cls: 'btn-ember chs-plus', title: `Spend a point on ${a.name}`, onClick: () => this.spend(id) });
-      const row = h('div', { class: 'chs-attr' }, h('span', { class: 'chs-attr-bar' }), h('div', null, h('div', { class: 'chs-attr-name', text: a.name }), h('div', { class: 'chs-attr-line', text: a.line })), n, plus);
+      // Free stat points (Settings → Game → Practice): take one back, or raise ten at once.
+      const minus = button('−', { cls: 'btn-ghost chs-plus chs-minus', title: `Take a point off ${a.name}`, onClick: () => this.lower(id) });
+      const ten = button('+10', { cls: 'btn-ember chs-plus chs-ten', title: `Ten points on ${a.name}`, onClick: () => this.spend(id, 10) });
+      minus.hidden = true;
+      ten.hidden = true;
+      const ctl = h('span', { class: 'chs-ctl' }, minus, plus, ten);
+      const row = h('div', { class: 'chs-attr' }, h('span', { class: 'chs-attr-bar' }), h('div', null, h('div', { class: 'chs-attr-name', text: a.name }), h('div', { class: 'chs-attr-line', text: a.line })), n, ctl);
       row.style.setProperty('--ac', a.color);
-      this.attrRows[id] = { row, n, plus };
+      this.attrRows[id] = { row, n, plus, minus, ten };
       this.attrsEl.append(row);
     }
     this.respecEl = h('p', { class: 'chs-respec' });
@@ -152,15 +158,24 @@ export class CharacterView {
     this.xpFill.style.width = `${Math.round(frac(P.xp || 0, need || 1) * 100)}%`;
     setText(this.xpText, need ? `${fmtInt(P.xp || 0)} / ${fmtInt(need)} xp to level ${lv + 1}` : `${fmtInt(P.xp || 0)} xp`);
     const un = pr.unspent();
-    this.pointsEl.hidden = un <= 0;
-    setText(this.pointsEl, `${un} point${un === 1 ? '' : 's'} to spend`);
-    this.panel.setTitle('Character', un > 0 ? `Level ${lv} · ${un} point${un === 1 ? '' : 's'} to spend` : `Level ${lv} · each level gives three points`);
+    const free = !!pr.free;
+    this.pointsEl.hidden = !free && un <= 0;
+    toggleClass(this.pointsEl, 'free', free);
+    setText(this.pointsEl, free ? 'Free points: raise anything' : `${un} point${un === 1 ? '' : 's'} to spend`);
+    this.panel.setTitle('Character', free ? `Level ${lv} · free stat points` : un > 0 ? `Level ${lv} · ${un} point${un === 1 ? '' : 's'} to spend` : `Level ${lv} · each level gives three points`);
+    toggleClass(this.attrsEl, 'free', free);
     for (const id of ATTR_IDS) {
       const r = this.attrRows[id];
-      setText(r.n, String(pr.points[id] || 0));
-      r.plus.disabled = un <= 0;
+      const v = pr.points[id] || 0;
+      setText(r.n, String(v));
+      r.plus.disabled = free ? !pr.canSpend(id) : un <= 0;
+      if (r.minus.hidden === free) r.minus.hidden = !free;
+      if (r.ten.hidden === free) r.ten.hidden = !free;
+      r.minus.disabled = !free || v <= 0;
+      r.ten.disabled = !free || !pr.canSpend(id);
     }
-    setText(this.respecEl, pr.spent() ? `Want them back? Settings → Game → Reset stat points gives them all back, free. Or Sister Aveline can give you a quiet hour in the chapel to start over (${pr.respecCost()} coins).` : 'Spend points as you level. Settings (Reset stat points) can give them back for free; Sister Aveline at the chapel, for a price.');
+    if (free) setText(this.respecEl, 'Free stat points is on: every stat goes as high as you like. Turning it off in Settings → Game → Practice puts back the points you really spent.');
+    else setText(this.respecEl, pr.spent() ? `Want them back? Settings → Game → Reset stat points gives them all back, free. Or Sister Aveline can give you a quiet hour in the chapel to start over (${pr.respecCost()} coins).` : 'Spend points as you level. Settings (Reset stat points) can give them back for free; Sister Aveline at the chapel, for a price.');
     this.renderSlots();
     this.renderPick();
     this.renderStats();
@@ -260,12 +275,21 @@ export class CharacterView {
 
   // ---------------------------------------------------------------- actions
 
-  spend(attr) {
-    const r = this.game.progression.spend(attr);
+  spend(attr, n = 1) {
+    const r = this.game.progression.spend(attr, n);
     if (!r.ok) {
       this.game.audio?.play?.('error', { volume: 0.5 });
       this.ui.toast(r.reason, 'info');
     } else this.game.audio?.play?.('ui_click', { pitch: 1.2 });
+    this.render();
+  }
+
+  lower(attr) {
+    const r = this.game.progression.lower?.(attr) || { ok: false, reason: 'Not in this build.' };
+    if (!r.ok) {
+      this.game.audio?.play?.('error', { volume: 0.5 });
+      this.ui.toast(r.reason, 'info');
+    } else this.game.audio?.play?.('ui_click', { pitch: 0.9 });
     this.render();
   }
 
@@ -376,7 +400,8 @@ export function syncBadge(ui) {
     if (lvl) lvl.after(badge);
     else card.append(badge);
   }
-  const n = safe(() => g.progression?.unspent?.(), 0) || 0;
+  // (While Free stat points is on there is nothing to save up: no count.)
+  const n = g.progression?.free ? 0 : safe(() => g.progression?.unspent?.(), 0) || 0;
   badge.hidden = n <= 0;
   setText(badge, n > 0 ? `+${n}` : '');
   toggleClass(card, 'has-points', n > 0);

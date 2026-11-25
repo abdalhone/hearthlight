@@ -25,7 +25,12 @@ const CSS = `
 .chs-points { margin-top: 6px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 14px; font-weight: 700; color: #1a1206; background: linear-gradient(180deg, var(--ember-hot), var(--ember)); box-shadow: 0 0 10px rgba(255, 176, 71, .45); }
 .chs-points[hidden] { display: none; }
 .chs-attrs { display: grid; gap: 6px; margin-top: 10px; }
-.chs-attr { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto 44px; align-items: center; gap: 10px; padding: 4px 0; }
+.chs-attr { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 4px 0; }
+.chs-ctl { display: flex; gap: 4px; }
+.chs-ctl > [hidden] { display: none; }
+.chs-attrs.free .chs-plus { width: 40px; height: 40px; font-size: 20px; }
+.chs-attrs.free .chs-ten { font-size: 14px; }
+.chs-points.free { background: linear-gradient(180deg, #c9b5ff, #8c6cff); box-shadow: 0 0 10px rgba(156, 124, 255, .5); }
 .chs-attr-bar { align-self: stretch; border-radius: 3px; background: var(--ac, #888); }
 .chs-attr-name { font-family: var(--font-display); font-size: 16px; color: var(--parch); }
 .chs-attr-line { font-size: 13px; color: var(--parch-faint); line-height: 1.2; }
@@ -107,7 +112,8 @@ const CSS = `
   .buff { height: 18px; font-size: 10px; padding: 0 4px 0 2px; }
   .buff-dot { width: 13px; height: 13px; line-height: 13px; font-size: 8px; }
   .panel-character .panel-foot, .panel-forge .panel-foot .sb-foot-note { display: none; }
-  .chs-attr { padding: 1px 0; }
+  .chs-attr { padding: 1px 0; gap: 8px; }
+  .chs-attrs.free .chs-plus { width: 36px; height: 36px; }
   .chs-lv { width: 50px; height: 50px; }
 }
 @media (max-height: 520px) {
