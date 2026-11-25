@@ -20,6 +20,7 @@ const KEY = 'hearthlight.coach.';
 const LESSONS = ['cast', 'book', 'found'];
 const CAST_AFTER = 25; // seconds in the world before the casting lesson starts anyway
 const FOE_RANGE = 150; // world px: a foe this close is "in sight" for the lesson
+const HURT_QUIET = 8; // s after a person strikes the player before a lesson shows
 
 function readDone(id) {
   try {
@@ -268,7 +269,23 @@ export class Coach {
       /* no story */
     }
     if (ui.root?.classList.contains('cs-active')) return false;
+    if (this.hurtByPerson()) return false;
     return true;
+  }
+
+  // A person (Lyra, a guard, a villager; not a creature) struck the player just now: a
+  // fight like that is no time for a lesson. Its card would cover the fight, and "cast at
+  // the nearest foe" would teach the wrong thing. A creature's attack is the lesson's
+  // moment (a foe in sight), so that one does not count.
+  hurtByPerson() {
+    const g = this.game;
+    const p = g.player;
+    const who = p?.lastAttacker;
+    const at = p?.lastAttackedAt;
+    if (!who || who === p || who.species || !Number.isFinite(at)) return false;
+    // Stamped with the game clock (or, in older paths, the real-time clock): accept either.
+    const near = (now) => Number.isFinite(now) && now - at >= 0 && now - at < HURT_QUIET;
+    return near(g.clock?.t) || near(g.time);
   }
 
   foeInSight() {

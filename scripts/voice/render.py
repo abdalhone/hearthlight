@@ -168,10 +168,12 @@ def finish_line(job: dict, best: dict, k: float = 1.0) -> tuple[np.ndarray, list
     return vl.finish(x), best["words"]
 
 
-def caption_words(text: str, heard: list, fallback: list, offset: float = 0.0) -> list:
+def caption_words(text: str, heard: list, fallback: list, offset: float = 0.0, runs: list | None = None) -> list:
     """Each word of the line as the caption shows it, with when it is spoken: Whisper's
     words on the finished clip aligned to the script's words; a word it missed sits between
-    its neighbours."""
+    its neighbours. With `runs` (where speech really is, from the clip's loudness), a word
+    that starts a phrase starts when the phrase does: Whisper often puts a word after a
+    pause too early ('Loosely.' shown in the silence before it) or a little late."""
     disp = vl.display_tokens(text)
     owner: list[int] = []  # norm token -> display token
     ref: list[str] = []
@@ -206,6 +208,8 @@ def caption_words(text: str, heard: list, fallback: list, offset: float = 0.0) -
             nxt = next((span[j][0] for j in range(i + 1, len(disp)) if span[j]), prev)
             span[i] = [prev, max(prev, nxt)]
         out.append([tok, round(max(0.0, span[i][0]), 3), round(max(0.0, span[i][1]), 3)])
+    if runs:
+        snap_to_runs(out, runs)
     for i in range(1, len(out)):  # starts never go backwards
         if out[i][1] < out[i - 1][1]:
             out[i][1] = out[i - 1][1]
@@ -214,11 +218,32 @@ def caption_words(text: str, heard: list, fallback: list, offset: float = 0.0) -
     return out
 
 
-def finish_take(job: dict, info: dict, out: Path) -> dict:
+SNAP_S = 0.08  # a phrase start this far from a word's start moves the word onto it
+
+
+def snap_to_runs(out: list, runs: list) -> None:
+    """Words that open a phrase start where the phrase does (in place). A word whose start
+    falls in a silence moves to the next phrase; a word that starts a phrase late (the
+    phrase began after the previous word ended) moves back to the phrase's start."""
+    for i, w in enumerate(out):
+        s = w[1]
+        prev_end = out[i - 1][2] if i else 0.0
+        inside = next((r for r in runs if r[0] <= s < r[1]), None)
+        if inside is None:
+            nxt = next((r for r in runs if r[0] > s), None)
+            if nxt and nxt[0] - s <= 1.0 and nxt[0] <= max(w[2], s) + 0.5:
+                w[1] = round(nxt[0], 3)
+        elif inside[0] >= prev_end - 0.02 and s - inside[0] > SNAP_S:
+            w[1] = round(max(prev_end, inside[0]), 3)
+        if w[2] < w[1]:
+            w[2] = w[1]
+
+
+def finish_take(job: dict, info: dict, out: Path, levels: list | None = None) -> dict:
     """Finish one take and hear it again: the effects at full strength, lightened while
     they hide a word (the author's check). Returns the best hearing of it."""
     tried = []
-    for k in LIGHTER:
+    for k in levels or LIGHTER:
         audio, _ = finish_line(job, info, k)
         dec, tp = vl.encode_checked(audio, out)
         heard = _W["ears"].words(dec)
@@ -243,27 +268,37 @@ def render_job(job: dict) -> dict:
         while retry and min(i["errors"] for i in infos) > 0:
             infos.append(take_for(job, retry.pop(0)))
         # Finish the best take; if the finished clip still loses a word, the next best
-        # take, then more takes, until one is heard right or none are left.
-        done: set = set()
-        result = None
-        while True:
-            cand = [i for i in sorted(infos, key=score) if i["fp"] not in done]
-            if not cand:
-                if not retry:
+        # take, then more takes, until one is heard right or none are left. First with the
+        # effects at full or 60% strength on every take (the Void should sound like the
+        # Void); only if no take survives them are the effects lightened further.
+        def best_over(levels: list) -> dict | None:
+            done: set = set()
+            result = None
+            while True:
+                cand = [i for i in sorted(infos, key=score) if i["fp"] not in done]
+                if not cand:
+                    if not retry:
+                        break
+                    infos.append(take_for(job, retry.pop(0)))
+                    continue
+                info = cand[0]
+                done.add(info["fp"])
+                r = finish_take(job, info, out, levels)
+                if result is None or (r["final_errors"], r["drift"], score(r["info"])) < (result["final_errors"], result["drift"], score(result["info"])):
+                    result = r
+                if (result["final_errors"] == 0 and result["drift"] == 0) or len(done) >= 6:
                     break
-                infos.append(take_for(job, retry.pop(0)))
-                continue
-            info = cand[0]
-            done.add(info["fp"])
-            r = finish_take(job, info, out)
-            if result is None or (r["final_errors"], r["drift"], score(r["info"])) < (result["final_errors"], result["drift"], score(result["info"])):
-                result = r
-            if result["final_errors"] == 0 or len(done) >= 6:
-                break
+            return result
+
+        result = best_over(LIGHTER[:2])
+        if result["final_errors"] > 0 or result["drift"] > 0:
+            light = best_over(LIGHTER)
+            if light and (light["final_errors"], light["drift"]) < (result["final_errors"], result["drift"]):
+                result = light
         # The file on disk is the last one tried: write the chosen one.
         result["dec"], result["tp"] = vl.encode_checked(result["audio"], out)
         best, heard, dec = result["info"], result["heard"], result["dec"]
-        words = caption_words(job["text"], heard, best["words"])
+        words = caption_words(job["text"], heard, best["words"], runs=vl.speech_runs(dec, bridge=0.08))
         return {
             "key": job["key"], "ok": True, "fp": job["fp"], "seed": best["seed"], "takes": [{k: i[k] for k in ("seed", "errors", "sim", "gap", "prob", "dur")} for i in infos],
             "errors": best["errors"], "n": result["n"], "final_errors": result["final_errors"], "heard": " ".join(w[0] for w in heard),

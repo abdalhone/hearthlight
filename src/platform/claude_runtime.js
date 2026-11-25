@@ -3,7 +3,6 @@
 // When the game is published as a claude.ai Artifact, `window.claude.use(name)`
 // resolves capability namespaces:
 //   sample    - ask Claude (Lyra's mind)            -> Claude.sample(input, options)
-//   tts       - speak text in a Claude voice         -> speak(text, {voice})
 //   dictation - the player's speech as text          -> start(), stop(), onPartial, onFinal, onState
 //   db        - cloud save under data/users/<id>/    -> doc(path).get()/set()
 //   user      - who is playing (an opaque id)        -> id()
@@ -11,7 +10,7 @@
 // Anywhere else (a self-hosted copy, a local file) there is no window.claude and
 // every capability is null: the game must work without them.
 
-const NAMES = ['sample', 'tts', 'dictation', 'db', 'user', 'downloads'];
+const NAMES = ['sample', 'dictation', 'db', 'user', 'downloads'];
 
 export class ClaudeRuntime {
   constructor() {
@@ -65,9 +64,6 @@ export class ClaudeRuntime {
 
   get sample() {
     return this.caps.sample;
-  }
-  get tts() {
-    return this.caps.tts;
   }
   get dictation() {
     return this.caps.dictation;

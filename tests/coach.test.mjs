@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { placeCard } from '../src/ui/coach.js';
+import { placeCard, Coach } from '../src/ui/coach.js';
 
 const inside = (at, card, view, pad = 10) => at.x >= pad - 0.5 && at.y >= pad - 0.5 && at.x + at.w <= view.w - pad + 0.5 && at.y + card.h <= view.h - pad + 0.5;
 const overlaps = (at, card, t) => at.x < t.x + t.w && at.x + at.w > t.x && at.y < t.y + t.h && at.y + card.h > t.y;
@@ -45,4 +45,23 @@ test('coach: with no target the card is centred', () => {
   assert.equal(at.side, 'center');
   assert.equal(at.x, 30);
   assert.equal(at.y, 270);
+});
+
+// A lesson never starts (and a running one steps out of sight) while a person is
+// hurting the player: in a fight with Lyra or a guard its card covered the fight.
+test('coach: no lesson while a person strikes the player; a creature is the lesson\'s moment', () => {
+  const clock = { t: 100 };
+  const player = { lastAttacker: null, lastAttackedAt: -Infinity };
+  const game = { state: 'playing', player, clock, time: 5 };
+  const coach = new Coach({ game, stack: [], chat: { isOpen: () => false }, hud: { el: {} } });
+  assert.equal(coach.calm(), true, 'calm with nobody fighting');
+  player.lastAttacker = { id: 'lyra' };
+  player.lastAttackedAt = 97;
+  assert.equal(coach.hurtByPerson(), true, 'Lyra struck 3 s ago');
+  assert.equal(coach.calm(), false, 'not calm while she fights');
+  clock.t = 110;
+  assert.equal(coach.calm(), true, 'calm again 13 s later');
+  player.lastAttacker = { id: 'slime_1', species: 'slime' };
+  player.lastAttackedAt = 109;
+  assert.equal(coach.calm(), true, 'a slime biting is the casting lesson\'s moment');
 });

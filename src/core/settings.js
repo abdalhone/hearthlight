@@ -38,7 +38,23 @@ export function loadSettings() {
   } catch {
     stored = {};
   }
-  return { ...DEFAULT_SETTINGS, ...stored };
+  return { ...DEFAULT_SETTINGS, ...migrateSettings(stored) };
+}
+
+// Settings saved before voices became cutscene-only (DESIGN §21): there, "Spoken lines" and
+// the voice volume also governed villagers' and Lyra's voices, so a player who turned
+// those off would now get silent cutscenes. Their old choice no longer means the same
+// thing: voices come back on once, and the old keys go. A choice made after this stays.
+const LEGACY_VOICE_KEYS = ['voiceLyra', 'voiceVillagers', 'voiceNarrator', 'kokoroLive', 'browserVoice', 'voiceName', 'voice'];
+export function migrateSettings(stored) {
+  if (!stored || typeof stored !== 'object') return {};
+  if (!LEGACY_VOICE_KEYS.some((k) => k in stored)) return stored;
+  const out = { ...stored };
+  for (const k of LEGACY_VOICE_KEYS) delete out[k];
+  out.voices = true;
+  out.voiceVol = Number(stored.voiceVol) > 0.05 ? Number(stored.voiceVol) : DEFAULT_SETTINGS.voiceVol;
+  saveSettings(out);
+  return out;
 }
 
 export function saveSettings(settings) {

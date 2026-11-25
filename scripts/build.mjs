@@ -62,7 +62,8 @@ if (!process.argv.includes('--no-voices')) {
     out: path.join(root, 'dist/voice'),
     loose: process.argv.includes('--loose-voices'),
   });
-  if (packed?.clips) voices = { manifest: 'voice/manifest.json' };
+  // ?v= the manifest's hash: a browser that cached an older manifest (an earlier build's) never reads it.
+  if (packed?.clips) voices = { manifest: `voice/manifest.json${packed.hash ? `?v=${packed.hash}` : ''}` };
 }
 const voiceTag = voices ? `<script>window.__HEARTHLIGHT_VOICES__=${JSON.stringify(voices)}</script>\n` : '';
 

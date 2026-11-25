@@ -76,6 +76,13 @@ export class Audio {
     }
     const AC = typeof window !== 'undefined' ? window.AudioContext || window.webkitAudioContext : null;
     if (!AC) return;
+    // iPhone: ask for playback before the context exists, or the ring/silent switch can
+    // keep the first sounds (and the cutscene voices) muted (Safari 16.4+).
+    try {
+      if (typeof navigator !== 'undefined' && navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback';
+    } catch {
+      /* not offered here */
+    }
     try {
       this.ctx = new AC({ latencyHint: 'interactive' });
     } catch {

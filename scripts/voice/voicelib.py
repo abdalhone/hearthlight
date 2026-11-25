@@ -37,7 +37,7 @@ SPEECH_DB = -42.0  # louder than this is speech
 BRIDGE_S = 0.12  # quieter gaps shorter than this do not split speech
 FADE_S = 0.010
 KBPS = 64  # mono MP3, MPEG-2 Layer III at 24 kHz: decodes everywhere, iPhones included
-PIPELINE = "r9.3"  # bump to re-finish every clip (takes are kept)
+PIPELINE = "r9.4"  # bump to re-finish every clip (takes are kept)
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent

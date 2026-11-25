@@ -10,6 +10,7 @@
 //   { format, packs: [file], clips: { key: [pack, offset, length, seconds, words] } }
 //   words: [[word, start, end], …] (seconds into the clip) — the captions follow them.
 
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
@@ -61,7 +62,6 @@ export async function packVoices({ src, out, target = 200 * 1024, loose = false,
   const plan = planPacks(entries, target);
   const res = { format: PACK_FORMAT, packs: [], clips: {} };
   plan.forEach((p, i) => {
-    const name = `${p.script}-${p.n}.mp3`;
     const parts = [];
     let off = 0;
     for (const key of p.keys) {
@@ -71,11 +71,17 @@ export async function packVoices({ src, out, target = 200 * 1024, loose = false,
       parts.push(buf);
       off += buf.length;
     }
-    writeFileSync(path.join(out, name), Buffer.concat(parts));
+    const data = Buffer.concat(parts);
+    // The content's hash is in the name, so a new manifest is never paired with an old,
+    // cached pack at the wrong byte offsets.
+    const name = `${p.script}-${p.n}-${createHash('sha256').update(data).digest('hex').slice(0, 8)}.mp3`;
+    writeFileSync(path.join(out, name), data);
     res.packs.push(name);
     bytes += off;
   });
-  writeFileSync(path.join(out, 'manifest.json'), JSON.stringify(res));
+  const json = JSON.stringify(res);
+  writeFileSync(path.join(out, 'manifest.json'), json);
+  const hash = createHash('sha256').update(json).digest('hex').slice(0, 10);
   log?.(`voices: ${entries.length} cutscene clips in ${plan.length} packs -> ${out} (${(bytes / 1e6).toFixed(1)} MB, ${plan.length + 1} files)`);
-  return { clips: entries.length, files: plan.length + 1, bytes };
+  return { clips: entries.length, files: plan.length + 1, bytes, hash };
 }

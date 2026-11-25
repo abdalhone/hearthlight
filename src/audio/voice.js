@@ -27,7 +27,8 @@ export const VOICE_SETTINGS = Object.freeze({
 });
 
 const SCENE_LATENCY = 10; // s a line waits for its clip unless the caller says less
-const CACHE_CLIPS = 48; // decoded clips kept
+const CACHE_CLIPS = 8; // decoded clips kept (a decoded clip is ~0.5 MB a second of Float32 audio)
+export const VOICE_FORMAT = 'hearthlight-cutscene-voice/1'; // scripts/voice/pack.mjs PACK_FORMAT
 
 // Voices on and audible?
 export function voicesOn(settings) {
@@ -56,6 +57,9 @@ export function readManifest(json) {
   const map = new Map();
   const clips = json && typeof json === 'object' ? json.clips : null;
   if (!clips || typeof clips !== 'object') return map;
+  // Only this build's cutscene voices: an older manifest (the deleted Kokoro bank used
+  // the same keys) must never be played.
+  if (json.format !== VOICE_FORMAT) return map;
   const packs = Array.isArray(json.packs) ? json.packs : null;
   for (const [key, v] of Object.entries(clips)) {
     if (packs && Array.isArray(v)) {
@@ -193,7 +197,9 @@ export class VoicePlayer {
     const c = this.current;
     const ctx = this.ctx();
     if (!c?.source || !ctx || !Number.isFinite(c.startedAt)) return -1;
-    return Math.max(0, ctx.currentTime - c.startedAt);
+    // What is heard lags the clock by the output delay (Bluetooth: 0.1-0.25 s).
+    const lag = Number(ctx.outputLatency) || Number(ctx.baseLatency) || 0;
+    return Math.max(0, ctx.currentTime - c.startedAt - lag);
   }
 
   // ------------------------------------------------------------------ playing

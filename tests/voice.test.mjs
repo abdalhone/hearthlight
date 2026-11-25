@@ -227,3 +227,32 @@ test('a clip the browser may not play yet (an iPhone before a tap) is skipped, n
   assert.deepEqual(await vp.play({ speaker: 'hess', text: LINE }), { ok: false, reason: 'suspended' });
   assert.equal(ctx.started.length, 0);
 });
+
+test('an older voice manifest (the deleted Kokoro bank used the same keys) is never read', () => {
+  const old = { format: 'hearthlight-voice/1', packs: ['lyra-0.mp3'], clips: { 'lyra-abc': [0, 0, 100, 1.2, 'lyra'] } };
+  assert.equal(readManifest(old).size, 0);
+  assert.equal(readManifest({ packs: ['a.mp3'], clips: { k: [0, 0, 10, 1, []] } }).size, 0, 'no format: not ours');
+  const ours = { format: 'hearthlight-cutscene-voice/1', packs: ['prologue-0-abcd1234.mp3'], clips: { k: [0, 0, 10, 1, [['Hi', 0, 0.2]]] } };
+  assert.equal(readManifest(ours).size, 1);
+});
+
+test('settings saved before voices were cutscene-only turn the cutscene voices back on once', async () => {
+  const store = new Map();
+  globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
+  const { loadSettings, saveSettings, migrateSettings } = await import('../src/core/settings.js');
+  const { SETTINGS_KEY } = await import('../src/core/constants.js');
+  store.set(SETTINGS_KEY, JSON.stringify({ voices: false, voiceVol: 0, voiceVillagers: true, voiceLyra: false, kokoroLive: false, voice: false, musicVol: 0.3 }));
+  const s = loadSettings();
+  assert.equal(s.voices, true);
+  assert.equal(s.voiceVol, 0.85);
+  assert.equal(s.musicVol, 0.3, 'other choices are kept');
+  for (const k of ['voiceVillagers', 'voiceLyra', 'kokoroLive', 'voice']) assert.ok(!(k in s), `${k} is gone`);
+  const saved = JSON.parse(store.get(SETTINGS_KEY));
+  assert.ok(!('voiceVillagers' in saved), 'the migration is saved');
+  // A choice made after the migration stays.
+  saveSettings({ ...s, voices: false });
+  assert.equal(loadSettings().voices, false);
+  // A kept volume survives the migration.
+  assert.equal(migrateSettings({ voiceVol: 0.4, voiceLyra: true }).voiceVol, 0.4);
+  delete globalThis.localStorage;
+});
