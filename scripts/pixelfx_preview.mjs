@@ -217,7 +217,7 @@ function sheet({ id, spec }) {
     const opts = { ...(spec.opts || {}), ...extra, seed: (spec.opts?.seed ?? 1) + r };
     if (spec.aims !== false) {
       if (spec.rotates) opts.angle = aim;
-      else opts.aim = aim;
+      else (opts.aim = aim), (opts.heading = aim);
     }
     if (spec.mod.meta?.actor) opts.actor = ACTOR;
     if (typeof spec.prepare === 'function') spec.prepare(opts, { ...opts, x: AX, y: AY }, null);

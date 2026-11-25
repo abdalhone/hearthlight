@@ -4,6 +4,10 @@
 //
 // Shared bits for the shadow effects (files starting with _ are helpers, not effects): the void palette,
 // light that black shapes cut, smoke lit from one side, violet flame, obsidian slivers, ink drops.
+//
+// Hearthlight top-down variant (changed from pixelfx 5294518, MIT): Hearthlight is seen from above in 3/4,
+// with 12x20 px characters, so Drops may carry their own floor (`fy`) and floorPool takes the pool's squash `sy` (0.6 for a pool seen
+// from above; pixelfx's side view used 0.17).
 
 import { hex, mix, ramp, clamp, noise, WHITE, GRAVITY } from "../../core/index.js";
 
@@ -295,8 +299,9 @@ export class Drops {
     this.onLand = o.onLand ?? null;
     this.g = o.g ?? 0.8;
   }
-  add(x, y, vx, vy, size = 1) {
-    this.list.push({ x, y, vx, vy, size });
+  add(x, y, vx, vy, size = 1, fy = 0) {
+    // (Hearthlight) fy: the drop's own floor, for a pool seen from above
+    this.list.push({ x, y, vx, vy, size, fy });
   }
   update(dt) {
     for (let i = this.list.length - 1; i >= 0; i--) {
@@ -305,7 +310,7 @@ export class Drops {
       d.vx -= d.vx * 0.4 * dt;
       d.x += d.vx * dt;
       d.y += d.vy * dt;
-      const f = this.floor(d.x);
+      const f = this.floor(d.x) + (d.fy || 0);
       if (d.vy > 0 && d.y >= f) {
         this.onLand?.(d.x, f, d.vy, d.size);
         this.list.splice(i, 1);
@@ -326,9 +331,9 @@ export class Drops {
  * A dark pool opened in the floor, seen at a slant (radius rx, centred on the floor at x = 0): the far lip lit,
  * the near lip dark, ripples ({ x, t0, life, w }) running out across it, a sheen along the far side, a wet fringe.
  */
-export function floorPool(p, C, rx, t, ripples) {
+export function floorPool(p, C, rx, t, ripples, sy = 0.17) {
   if (rx < 1) return;
-  const ry = rx * 0.17 + 0.6;
+  const ry = rx * sy + 0.6;
   p.shade(-rx - 3, -ry - 2, rx + 3, ry + 2, (x, y) => {
     const dx = x / rx, dy = (y - 0.5) / ry, d = Math.sqrt(dx * dx + dy * dy);
     if (d > 1.18) return;
@@ -339,8 +344,8 @@ export function floorPool(p, C, rx, t, ripples) {
     }
     // ripples: ellipses on the slanted surface, kept about a pixel thick all the way round
     for (const r of ripples) {
-      const age = t - r.t0, rr = age * 46 * r.w + 1, ex = x - r.x, ey = (y - 0.5) / 0.17, e = Math.sqrt(ex * ex + ey * ey) || 1;
-      const g = Math.sqrt(ex * ex + (ey / 0.17) ** 2) / e;
+      const age = t - r.t0, rr = age * 46 * r.w * (ry / (rx * 0.17 + 0.6) > 2 ? 0.5 : 1) + 1, ex = x - r.x, ey = (y - 0.5 - (r.y || 0)) / sy, e = Math.sqrt(ex * ex + ey * ey) || 1;
+      const g = Math.sqrt(ex * ex + (ey / sy) ** 2) / e;
       if (Math.abs(e - rr) < 0.55 * g && age < r.life) return age < r.life * 0.5 ? C[4] : C[3];
     }
     if (dy < -0.55 && dy > -0.85 && noise(x * 0.25 + t * 1.3, 4) > 0.2) return noise(x * 0.6 - t * 2, 6) > 0.55 ? C[5] : C[2];

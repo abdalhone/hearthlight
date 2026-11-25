@@ -2,7 +2,7 @@ import { planLook, essenceLook, reactionLook, statusLook } from './fx_styles.js'
 import { FX } from './fx_effects.js';
 import { silhouetteOf } from './fx_draw.js';
 import { TAU } from './fx_util.js';
-import { playPunch } from '../render/pixel_fx_play.js';
+import { playPunch, playBind, playWardHit } from '../render/pixel_fx_play.js';
 
 // What happens on screen (and in the ears) when the runtime reports something (the
 // runtime calls game.magicFx.onEvent(type, payload, magic); types are listed in the
@@ -78,7 +78,8 @@ function markHit(fx, b, x, y) {
   fs.hx = x;
   fs.hy = y;
   const L = planLook(b.plan);
-  burstStyles(fx, L.debris, x, y + 9, 9, 4, 0.9);
+  // A spark glancing off the shell (pixelfx), thrown outward from the ward's middle.
+  if (!playWardHit(fx.game, x, y, Math.atan2(y - (b.y - 9), x - b.x), L.pal)) burstStyles(fx, L.debris, x, y + 9, 9, 4, 0.9);
   fx.flash(x, y, 30, L.lightColor, 0.55, 0.12);
 }
 
@@ -722,8 +723,12 @@ const H = {
     const r = Math.max(8, p.body?.r || 10);
     ring(fx, t.x, t.y, r * 2.8, r, P.core, P.glow, 0.22, 2, 0, 0.42);
     star(fx, t.x, t.y - 2, p.resisted ? 6 : 9, '#ffffff', L.halo, 0.2, 2);
-    burstStyles(fx, L.debris, t.x, t.y, 2, p.resisted ? 4 : 8, 0.8);
-    fx.parts.burst('twinkle', P, t.x, t.y, 4, 5, 1);
+    // Hands come up round them and hold on (pixelfx); the old spray when they cannot.
+    const tag = p.body ? `bind:${p.body.uid ?? ''}` : null;
+    if (p.resisted || !playBind(fx.game, t, P, tag)) {
+      burstStyles(fx, L.debris, t.x, t.y, 2, p.resisted ? 4 : 8, 0.8);
+      fx.parts.burst('twinkle', P, t.x, t.y, 4, 5, 1);
+    }
     fx.flash(t.x, t.y - 6, 46, L.lightColor, p.resisted ? 0.55 : 0.85, 0.22);
     if (!p.resisted) fx.shake(0.8, 0.08);
     fx.sound.cue('bind', t.x, t.y, p.plan);
@@ -735,6 +740,7 @@ const H = {
     const t = p.target;
     if (!b?.plan || !t) return;
     const L = planLook(b.plan);
+    fx.game.pixelFx?.stop?.(`bind:${b.uid ?? ''}`);
     ring(fx, t.x, t.y, b.r, b.r * 1.8, L.pal.spark, L.pal.glow, 0.25, 1, 0, 0.42);
     burstStyles(fx, L.trail, t.x, t.y, 2, 5, 0.6);
     fx.sound.cue('unbind', t.x, t.y, b.plan);

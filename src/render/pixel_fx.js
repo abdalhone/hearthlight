@@ -283,6 +283,7 @@ export class PixelFx {
         } else {
           inst.x = Math.round(f.x + inst.dx);
           inst.y = Math.round(f.y + inst.dy);
+          if (inst.spec.sync) inst.spec.sync(inst.fx.options, f);
         }
       }
       inst.t += step;

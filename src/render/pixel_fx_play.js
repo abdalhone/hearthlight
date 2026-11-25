@@ -1,6 +1,7 @@
 import { PixelFx } from './pixel_fx.js';
 import { PIXEL_FX, RAMP, rampOf } from './pixel_fx_catalog.js';
 import { actorOf, bodySize } from './pixel_fx_bodies.js';
+import { wanderer } from './pixel_fx_critters.js';
 
 // Where the game plays its pixelfx effects (DESIGN §30): one small function per moment, so
 // call sites stay one line and fall back to their old look when nothing was played (no
@@ -64,6 +65,21 @@ export function playCollect(game, x, y, { gold = true, pal = null, size = 1, hei
   return P.play('collect', { x, y, height, palette: pal ? rampOf(pal) : gold ? RAMP.gold : RAMP.item, size, seed: (Math.random() * 1e6) | 0 });
 }
 
+// A blow on a ward's shell: a small spark glancing off it, outward, in the ward's colors.
+export function playWardHit(game, x, y, angle, pal) {
+  const P = px(game);
+  if (!P) return null;
+  return P.play('hit', { x, y: y + 6, height: 6, angle, palette: rampOf(pal), size: 0.42, sparks: 6, seed: (Math.random() * 1e6) | 0 });
+}
+
+// A bind takes hold: hands come up round the bound one, in the weave's colors.
+export function playBind(game, target, pal, tag) {
+  const P = px(game);
+  if (!P || !target) return null;
+  const { w } = bodySize(game, target);
+  return P.play('bind', { x: target.x, y: target.y, palette: rampOf(pal), radius: Math.max(13, w + 4), tag, seed: (Math.random() * 1e6) | 0 });
+}
+
 // ------------------------------------------------------------------ the director
 
 // Weave statuses that pixelfx shows on the body (the old tint and overlay step aside).
@@ -89,6 +105,8 @@ export class PixelFxDirector {
     this.live = new Map(); // body -> Map(fxId -> { handle, retry })
     this._want = new Map();
     this._t = 0;
+    this.critters = []; // { kind, mover, handle }
+    this._ambT = 0;
     this._listen();
   }
 
@@ -189,6 +207,64 @@ export class PixelFxDirector {
     const p = g.player;
     if (p && !p.removed && g.prices?.state?.berserk && !p.downed) add(p, 'st-rage');
     this._sync(want);
+    this._ambience(dt);
+  }
+
+  // Sparse life in the air (fireflies and falling leaves are weather.js's): butterflies over
+  // the grass by day, bats at dusk. A few at a time, near the view, never indoors, in rain
+  // or under reduced motion.
+  _ambience(dt) {
+    const g = this.game;
+    const host = this.host;
+    const cam = g.camera;
+    const list = this.critters;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const c = list[i];
+      c.mover.step(dt, c.home);
+      const m = c.mover;
+      const far = !cam || m.x < cam.x - 160 || m.x > cam.x + cam.vw + 160 || m.y < cam.y - 160 || m.y > cam.y + cam.vh + 160;
+      if (m.removed || far || !host.playing(c.handle)) {
+        host.stop(c.handle);
+        list.splice(i, 1);
+      }
+    }
+    this._ambT -= dt;
+    if (this._ambT > 0 || !cam || !g.map || host.reduceMotion) return;
+    this._ambT = 1.2;
+    const hour = g.clock?.hour ?? 12;
+    const w = g.weather;
+    if (w?.indoors || (w?.rain ?? 0) > 0.2 || (w?.snow ?? 0) > 0.3) return;
+    const max = host.phone ? 2 : 3;
+    const count = (k) => list.reduce((n, c) => n + (c.kind === k), 0);
+    const rnd = Math.random;
+    if (hour >= 8 && hour < 17.5 && count('butterfly') < max && rnd() < 0.5) {
+      const x = cam.x + 20 + rnd() * (cam.vw - 40);
+      const y = cam.y + 20 + rnd() * (cam.vh - 40);
+      const tile = g.map.tileAt?.(Math.floor(x / 16), Math.floor(y / 16));
+      if (tile === 1 || tile === 7) {
+        const mover = wanderer(x, y, { speed: 10 + rnd() * 6, turn: 2.2, life: 25 + rnd() * 20, seed: rnd() });
+        const hues = [
+          ['#1a1030', '#3a2a6a', '#5a4ab0', '#7f9cff', '#bcd4ff', '#ffffff'],
+          ['#2a1205', '#5c2c08', '#b0600e', '#f5a52c', '#ffe08a', '#ffffff'],
+          ['#1a0516', '#4a1240', '#a0307a', '#f070b0', '#ffc0e0', '#ffffff'],
+          ['#101a10', '#2a4a20', '#5a9a40', '#c0e070', '#f0ffc0', '#ffffff'],
+        ];
+        const handle = host.play('butterfly', { follow: mover, palette: hues[Math.floor(rnd() * hues.length)], seed: Math.floor(rnd() * 97) });
+        if (handle) list.push({ kind: 'butterfly', mover, handle, home: { x, y } });
+      }
+    }
+    if (hour >= 18.6 && hour < 20.8 && count('bat') < max && rnd() < 0.45) {
+      // in from an edge, across the view in jinks, and away
+      const side = Math.floor(rnd() * 4);
+      const x = side === 0 ? cam.x - 20 : side === 1 ? cam.x + cam.vw + 20 : cam.x + rnd() * cam.vw;
+      const y = side === 2 ? cam.y - 20 : side === 3 ? cam.y + cam.vh + 20 : cam.y + rnd() * cam.vh;
+      const mover = wanderer(x, y, { speed: 34 + rnd() * 16, turn: 4, life: 9 + rnd() * 5, seed: rnd() });
+      const tx = cam.x + cam.vw * (0.2 + rnd() * 0.6);
+      const ty = cam.y + cam.vh * (0.2 + rnd() * 0.6);
+      mover.heading = Math.atan2(ty - y, tx - x);
+      const handle = host.play('bat', { follow: mover, seed: Math.floor(rnd() * 97) });
+      if (handle) list.push({ kind: 'bat', mover, handle, home: null });
+    }
   }
 
   _sync(want) {

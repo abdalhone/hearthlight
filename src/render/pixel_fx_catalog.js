@@ -31,6 +31,8 @@ import * as poof from '../vendor/pixelfx/fx/spawn/poof.js';
 import * as soulRise from '../vendor/pixelfx/fx/spawn/soul-rise.js';
 import * as heal from '../vendor/pixelfx/fx/holy/heal.js';
 import * as collectBurst from '../vendor/pixelfx/fx/pickups/collect-burst.js';
+import * as graspingHands from '../vendor/pixelfx/fx/shadow/grasping-hands.js';
+import { butterfly, bat } from './pixel_fx_critters.js';
 
 // ------------------------------------------------------------------ colors
 
@@ -123,6 +125,17 @@ export const PIXEL_FX = {
   // A pickup, a chest's haul, a level-up: a flash and a cross of light, rings snapping out,
   // twinkles flung on curving paths.
   collect: { mod: collectBurst, layer: 'top', priority: 1, bounds: [-44, -60, 44, 24], opts: { height: 6 } },
+
+  // ---------------------------------------------------------------- bind
+  // A bind closing on someone: a pool opens round their feet and hands come up all round
+  // them, clench over them, strain, and are dragged back under. In the weave's colors.
+  bind: { mod: graspingHands, layer: 'body', priority: 2, bounds: [-34, -50, 34, 22], opts: { radius: 15, size: 0.42 }, reduce: { opts: { size: 0.38 } } },
+
+  // ---------------------------------------------------------------- ambience (critters)
+  // Tiny, seen from above, flying over their shadows; moved by the director's wanderers
+  // (sync turns them to their heading). None under reduced motion.
+  butterfly: { mod: butterfly, layer: 'body', priority: 0, bounds: [-12, -22, 12, 6], opts: {}, reduce: false, sync: (o, m) => (o.heading = m.heading) },
+  bat: { mod: bat, layer: 'top', priority: 0, bounds: [-12, -30, 12, 6], opts: {}, reduce: false, sync: (o, m) => (o.heading = m.heading) },
 
   // ---------------------------------------------------------------- statuses on a body
   // Each wraps the afflicted body's own sprite frame (actor: true; pixel_fx_bodies.js),

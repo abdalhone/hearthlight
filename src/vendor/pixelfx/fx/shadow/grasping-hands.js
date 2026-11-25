@@ -1,3 +1,8 @@
+//
+// Hearthlight top-down variant (changed from pixelfx 5294518, MIT): Hearthlight is seen from above in 3/4,
+// with 12x20 px characters, so the pool opens round on the floor seen from above (`radius`, squash `sy` 0.6, not a 0.17 sliver), the four
+// arms come up all round it (the far two behind the one bound, the near two in front), drops land on their own
+// patch of floor, and `size` scales the arms, hands and smoke to the game's 12x20 px bodies.
 import { Particles, P, Rng, fit, clamp, smooth, ease, TAU, WHITE, mix } from "../../core/index.js";
 import { VOID, Puffs, PK, Drops, floorPool, ringFast } from "./_lib.js";
 
@@ -14,7 +19,7 @@ export const meta = {
   options: { palette: VOID, seed: 5 },
 };
 
-const RX = 42, OPEN = 0.32, SHUT = 2.35, LX = -0.6, LY = -0.8;
+const OPEN = 0.32, SHUT = 2.35, LX = -0.6, LY = -0.8;
 
 // an arm at t: it rises out of the pool along its own shape, bent at the elbow, swaying; returns its spine
 function arm(A, t) {
@@ -93,23 +98,26 @@ function drawHand(p, A, pts, C, t) {
 
 export function create(o) {
   const C = fit(o.palette, 8), DIM = [C[0], C[0], C[1], C[1], C[3], C[4], C[5], C[6]], R = new Rng(o.seed), floor = () => 0;
+  // (top-down) the pool is round from above (SY), sized by `radius`; the arms come up all round whoever stands
+  // in it, the far ones behind them, and are scaled (K) to the game's small bodies
+  const RX = o.radius ?? 42, SY = o.sy ?? 0.6, K = o.size ?? 1;
   const ps = new Particles({ rng: R, ground: floor, sparks: [C[7], C[6], C[5], C[4]], haze: C[4] });
   const puffs = new Puffs({ rng: R, flame: [C[7], C[6], C[5], C[4], C[3], C[2], C[1], C[1], C[0]], soot: [mix(C[3], C[2], 0.55), mix(C[2], C[1], 0.5)], cap: mix(C[4], C[2], 0.5), rim: [C[6], C[5], C[4]], floor });
   const ripples = [], splats = [], lights = [];
   let t = 0, acc = 0;
   const rx = (tt) => RX * ease.outCubic(clamp(tt / OPEN)) * (1 - ease.inCubic(clamp((tt - SHUT) / 0.45)));
-  const drops = new Drops({ onLand: (x, y, v, s) => (Math.abs(x) < rx(t) * 0.95 ? ripples.push({ x, t0: t, life: 0.5, w: 0.6 }) : splats.push({ x, t0: t, s })) });
-  // four arms: two at the back, taller and dimmer, two in front; elbows bending toward the middle
-  const LAY = [[-20, -2.5, 1], [17, -2.5, -1], [-30, 2.5, 1], [28, 2.5, -1]];
+  const drops = new Drops({ onLand: (x, y, v, s) => (Math.hypot(x / (rx(t) * 0.95), y / (rx(t) * SY * 0.95 + 0.6)) < 1 ? ripples.push({ x, y, t0: t, life: 0.5, w: 0.6 }) : splats.push({ x, y, t0: t, s })) });
+  // four arms round the pool: two at the back, taller and dimmer, two in front; elbows bending toward the middle
+  const LAY = [[-0.55, -0.62, 1], [0.5, -0.6, -1], [-0.78, 0.45, 1], [0.74, 0.5, -1]].map(([x, y, toward]) => [x * RX, y * RX * SY, toward]);
   const arms = LAY.map(([x, y, toward], i) => ({
-    x: x + R.range(-3, 3), y, back: y < 0, L: y < 0 ? R.range(44, 52) : R.range(36, 44), W: y < 0 ? R.range(3.2, 3.8) : R.range(3.6, 4.2),
+    x: x + R.range(-3, 3) * K, y, back: y < 0, L: (y < 0 ? R.range(44, 52) : R.range(36, 44)) * K, W: (y < 0 ? R.range(3.2, 3.8) : R.range(3.6, 4.2)) * Math.max(0.55, K),
     lean: -toward * R.range(0.16, 0.3), bend: toward * R.range(0.35, 0.6), curve: toward * R.range(0.05, 0.15), curl: toward,
     t0: 0.3 + [1, 3, 0, 2][i] * 0.06 + R.range(0, 0.03), td: 1.45 + [2, 0, 3, 1][i] * 0.09 + R.range(0, 0.05), ph: R.range(0, TAU), up: false, shut: false, down: false,
   }));
   function splash(x, y, n, k) {
-    for (let i = 0; i < n; i++) drops.add(x + R.range(-2, 2), y - 1, R.range(-70, 70) * k, -R.range(90, 220) * k, R.chance(0.4) ? 2 : 1);
-    ripples.push({ x, t0: t, life: 0.7, w: 1 });
-    lights.push({ x, y: y - 7, r: 30, k: 0.55 * k, life: 0.25, max: 0.25 });
+    for (let i = 0; i < Math.round(n * K); i++) drops.add(x + R.range(-2, 2), y - 1, R.range(-70, 70) * k * K, -R.range(90, 220) * k * K, R.chance(0.4) ? 2 : 1, y + R.range(-3, 3) * K);
+    ripples.push({ x, y, t0: t, life: 0.7, w: 1 });
+    lights.push({ x, y: y - 7 * K, r: 30 * K, k: 0.55 * k, life: 0.25, max: 0.25 });
   }
   return {
     update(dt) {
@@ -125,20 +133,21 @@ export function create(o) {
             lights.push({ x: q.x, y: q.y, r: 22, k: 0.7, life: 0.2, max: 0.2 });
             A.snap = { x: q.x + Math.cos(q.th) * 4, y: q.y + Math.sin(q.th) * 4, t0: t };
             for (let i = 0; i < 6; i++) {
-              const a = R.range(0, TAU), sp = R.range(60, 130);
+              const a = R.range(0, TAU), sp = R.range(60, 130) * K;
               ps.spawn(P.SPARK, A.snap.x, A.snap.y, Math.cos(a) * sp, Math.sin(a) * sp - 20, R.range(0.12, 0.3));
             }
-            puffs.spawn(PK.SOOT, A.snap.x, A.snap.y, 0, -12, 0.6, 3.5);
+            puffs.spawn(PK.SOOT, A.snap.x, A.snap.y, 0, -12, 0.6, 3.5 * K);
           }
         }
         if (!A.down && t >= A.td + 0.28) (A.down = true), splash(A.x, A.y, 8, 0.7);
       }
       const r = rx(t);
       if (r > 8 && t < SHUT - 0.4) {
-        for (acc += dt * 8; acc > 1; acc--) puffs.spawn(PK.SOOT, R.range(-0.8, 0.8) * r, -R.range(1, 4), R.range(-8, 8), -R.range(14, 28), R.range(0.6, 0.85), R.range(3, 6));
-        if (R.chance(dt * 12)) ps.spawn(P.MOTE, R.range(-0.8, 0.8) * r, -2, R.range(-8, 8), -R.range(30, 70), R.range(0.5, 0.9), R.pick([C[7], C[6], C[5]]), R.range(0.6, 1));
-        if (R.chance(dt * 6)) ps.spawn(P.VAPOUR, R.range(-0.7, 0.7) * r, -R.range(2, 8), R.range(-6, 6), -R.range(10, 22), R.range(0.6, 0.9), R.chance(0.5) ? C[3] : C[4], R.range(3, 6));
-        if (R.chance(dt * 3)) ripples.push({ x: R.range(-0.7, 0.7) * r, t0: t, life: 0.6, w: 0.5 });
+        const fy = () => R.range(-0.7, 0.7) * r * SY;
+        for (acc += dt * 8 * K; acc > 1; acc--) puffs.spawn(PK.SOOT, R.range(-0.8, 0.8) * r, fy() - R.range(1, 4), R.range(-8, 8), -R.range(14, 28) * K, R.range(0.6, 0.85), R.range(3, 6) * K);
+        if (R.chance(dt * 12)) ps.spawn(P.MOTE, R.range(-0.8, 0.8) * r, fy() - 2, R.range(-8, 8), -R.range(30, 70) * K, R.range(0.5, 0.9), R.pick([C[7], C[6], C[5]]), R.range(0.6, 1));
+        if (R.chance(dt * 6)) ps.spawn(P.VAPOUR, R.range(-0.7, 0.7) * r, fy() - R.range(2, 8), R.range(-6, 6), -R.range(10, 22) * K, R.range(0.6, 0.9), R.chance(0.5) ? C[3] : C[4], R.range(3, 6) * K);
+        if (R.chance(dt * 3)) ripples.push({ x: R.range(-0.7, 0.7) * r, y: fy() * 0.8, t0: t, life: 0.6, w: 0.5 });
       }
       for (const a of [ripples, splats]) for (let i = a.length - 1; i >= 0; i--) if (t - a[i].t0 > (a[i].life ?? 0.6)) a.splice(i, 1);
       for (let i = lights.length - 1; i >= 0; i--) if ((lights[i].life -= dt) <= 0) lights.splice(i, 1);
@@ -148,13 +157,13 @@ export function create(o) {
     },
     drawBack(p) {
       const r = rx(t), k = r / RX;
-      floorPool(p, C, r, t, ripples);
+      floorPool(p, C, r, t, ripples, SY);
       if (k > 0) {
-        p.glow(0, -16, 80, C[4], 0.2 * k);
-        p.glow(0, -8, r * 1.7 + 12, C[4], 0.3 * k);
+        p.glow(0, -16 * K, 80 * K, C[4], 0.2 * k);
+        p.glow(0, -8 * K, r * 1.7 + 12 * K, C[4], 0.3 * k);
         p.glow(0, 0, r * 1.15, C[5], 0.16 * k);
       }
-      puffs.draw(p, PK.SOOT, { x: 0, y: 6, k, reach: 70 });
+      puffs.draw(p, PK.SOOT, { x: 0, y: 6 * K, k, reach: 70 * K });
       ps.draw(p, "back");
       for (const A of arms) if (A.back) {
         const pts = arm(A, t);
@@ -168,14 +177,14 @@ export function create(o) {
       }
       for (const A of arms) if (A.snap && t - A.snap.t0 < 0.22) {
         const u = (t - A.snap.t0) / 0.22;
-        ringFast(p, A.snap.x, A.snap.y, 2 + 5 * ease.outCubic(u), 1, u < 0.4 ? C[6] : u < 0.7 ? C[5] : C[3]);
+        ringFast(p, A.snap.x, A.snap.y, (2 + 5 * ease.outCubic(u)) * Math.max(0.6, K), 1, u < 0.4 ? C[6] : u < 0.7 ? C[5] : C[3]);
       }
       drops.draw(p, C[1], C[5]);
       for (const s of splats) {
         const a = 1 - (t - s.t0) / 0.6;
-        p.dot(s.x, -0.5, C[1], a * 1.5);
-        p.dot(s.x + 1, -0.5, C[2], a);
-        p.dot(s.x, -1.5, C[5], a);
+        p.dot(s.x, (s.y || 0) - 0.5, C[1], a * 1.5);
+        p.dot(s.x + 1, (s.y || 0) - 0.5, C[2], a);
+        p.dot(s.x, (s.y || 0) - 1.5, C[5], a);
       }
       ps.draw(p, "front");
       for (const l of lights) {
