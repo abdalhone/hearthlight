@@ -429,13 +429,35 @@ async function play(size) {
   log.push({ tag, scene: 'hate', reversals, standing, minD: Math.round(minD), dirs: [...dirs] });
   // She has left the player, and they talk to her anyway: she hears every word, answers
   // coldly, and when pressed at once, says nothing — shown as what she does (DESIGN §23.3).
-  // She keeps moving off: the player taps her where she walks (a finger trailing her still
-  // finds her), and the chat opens to her.
-  await tapPerson('lyra');
+  // She keeps moving off: on screen, the player taps her where she walks (a finger trailing
+  // her still finds her); off screen, the Talk button (with nobody near it opens the chat).
+  const where = await screenOf('lyra');
+  const vp = size.viewport;
+  const onScreen = !!where && where.x > 24 && where.x < vp.width - 24 && where.y > 24 && where.y < vp.height - 24;
+  if (onScreen) await tapPerson('lyra');
+  else {
+    const btn = await page.evaluate(() => {
+      const e = [...document.querySelectorAll('.tbtn-interact, .hud-chat')].find((x) => x.getBoundingClientRect().width > 0);
+      const r = e?.getBoundingClientRect();
+      return r ? [r.left + r.width / 2, r.top + r.height / 2] : null;
+    });
+    if (btn) await tap(...btn);
+    await wait(400);
+  }
   await page.waitForFunction(() => window.__game.ui.chat.isOpen(), null, { timeout: 3000 }).catch(() => null);
+  if ((await page.evaluate(() => window.__game.ui.chat.target)) !== 'lyra') {
+    const chip = await page.evaluate(() => {
+      const el = [...document.querySelectorAll('.chat [data-id], .chat [data-target]')].find((x) => (x.dataset.id || x.dataset.target) === 'lyra');
+      const r = el?.getBoundingClientRect();
+      return r && r.width ? [r.left + r.width / 2, r.top + r.height / 2] : null;
+    });
+    if (chip) await tap(...chip);
+    await wait(300);
+  }
+  // Within earshot of her (she may have kept well away): the player walks after her.
+  await walkAfter('lyra', 4, { gap: 60, until: 'Math.hypot(g.companion.x - g.player.x, g.companion.y - g.player.y) < 170' });
   const tapped = await page.evaluate(() => ({ open: window.__game.ui.chat.isOpen(), target: window.__game.ui.chat.target }));
-  check(tapped.open && tapped.target === 'lyra', `${tag}: a tap on Lyra as she keeps away opens the chat to her (${JSON.stringify(tapped)})`);
-  if (!tapped.open) await tapPerson('lyra');
+  check(tapped.open && tapped.target === 'lyra', `${tag}: ${onScreen ? 'a tap on Lyra as she keeps away' : 'the Talk button, with her off screen,'} opens the chat to her (${JSON.stringify(tapped)})`);
   await say('Lyra, please talk to me');
   await wait(600);
   await say('Lyra? Please.');

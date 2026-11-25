@@ -615,6 +615,39 @@ test('browser: the chat talks to anyone within earshot (and screenshots)', { tim
       await page.waitForFunction(() => window.__game.village.you.chats.elda.at(-1)?.from === 'npc' || (window.__game.village.talks.elda || []).some((t) => /please, wait/.test(t.you)), null, { timeout: 15000 });
       const answer = await page.evaluate(() => (window.__game.village.talks.elda || []).filter((t) => /please, wait/.test(t.you)).map((t) => t.they.join(' '))[0] || '');
       assert.match(answer, /Stay away|Don't|Go away|telling|Help|Get away|No/i, `${view.label}: her words reached her, and she answered in terror: ${answer}`);
+      // Pressed on, she begs, screams for help, then chooses silence: the words reach her and
+      // the chat shows what she does (the author: "they have to get my msg so they get it and
+      // decide to not answer").
+      for (const t of ['I will not hurt you', 'Just listen to me', 'Elda!']) {
+        // She keeps backing off; the player keeps beside her.
+        await page.evaluate(() => {
+          const g = window.__game;
+          const e = g.entities.get('elda');
+          const roofAt = (x, y) => g.map.buildingAt(Math.floor(x / 16), Math.floor(y / 16))?.id || null;
+          const mine = roofAt(g.player.x, g.player.y);
+          const spot = [[-20, 0], [20, 0], [0, -20], [0, 20], [-10, 6]].find(([dx, dy]) => roofAt(g.player.x + dx, g.player.y + dy) === mine) || [0, 0];
+          e.x = g.player.x + spot[0];
+          e.y = g.player.y + spot[1];
+          g.ui.chat.checkTarget();
+        });
+        const ready = await page
+          .waitForFunction(() => !window.__game.ui.chat.waiting.has('elda') && !window.__game.ui.chat.field.disabled, null, { timeout: 15000 })
+          .then(() => null)
+          .catch(() => page.evaluate(() => ({ waiting: [...window.__game.ui.chat.waiting], away: window.__game.ui.chat.away, disabled: window.__game.ui.chat.field.disabled, target: window.__game.ui.chat.target })));
+        assert.equal(ready, null, `${view.label}: the field is open to her: ${JSON.stringify(ready)}`);
+        await page.fill('.chat-field', t);
+        await page.press('.chat-field', 'Enter');
+        const got = await page
+          .waitForFunction((t) => (window.__game.village.talks.elda || []).some((x) => x.you === t), t, { timeout: 15000 })
+          .then(() => null)
+          .catch(() => page.evaluate(() => ({ away: window.__game.ui.chat.away, target: window.__game.ui.chat.target, log: (document.querySelector('.chat-log')?.textContent || '').slice(-300) })));
+        assert.equal(got, null, `${view.label}: "${t}" reached her: ${JSON.stringify(got)}`);
+      }
+      await page.waitForTimeout(200);
+      const hush = await page.evaluate(() => ({ last: (window.__game.village.talks.elda || []).at(-1), rows: [...document.querySelectorAll('.chat-log .msg-system')].map((r) => r.textContent.trim()) }));
+      assert.equal(hush.last.you, 'Elda!');
+      assert.equal(hush.last.silent, true, `${view.label}: her silence, after hearing it`);
+      assert.ok(hush.rows.some((r) => /^Elda (hears you|stares at you)/.test(r)), `${view.label}: a silence row is shown: ${hush.rows.slice(-2).join(' | ')}`);
       // Her fright over (for the rest of this test), and her well away again.
       await page.evaluate(() => {
         const g = window.__game;
