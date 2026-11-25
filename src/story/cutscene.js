@@ -230,6 +230,8 @@ export class CutscenePlayer {
     this.inWorld = false;
     this.voiceFails = 0;
     this.voiceOff = false;
+    // The opening lines' clips start loading now, so the first one is ready when it speaks.
+    this.preloadAhead(-1);
     this.box.classList.remove('cs-show');
     this.titleEl.classList.remove('cs-show');
     // A scene that opens on a painted panel rises out of black; one that opens in the
