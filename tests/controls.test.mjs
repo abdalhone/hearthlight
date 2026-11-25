@@ -563,3 +563,63 @@ test('a stub Spellbook round trip: compile, save, rename, clear through the cont
   assert.equal(w.weaveAt(1), null);
   assert.equal(w.slotInfo(1).weave, null);
 });
+
+// ---------- r13: a click on a hotbar slot is that slot's key ----------
+
+test('a click on a hotbar slot casts it at once and selects nothing (the author: "the skill gets unselected after I hit it")', () => {
+  const g = world();
+  const w = new Weaving(g);
+  const foe = g.addFoe(160, 100);
+  w.selected = 0;
+  w.clickStart(1, 1);
+  step(g, w);
+  const s = g.magic.calls.find((x) => x.fn === 'castStart');
+  assert.ok(s, 'started on the press');
+  assert.equal(s.slot, 1);
+  assert.equal(w.castingSlot(), 1, 'the bar can name the slot being cast');
+  w.clickEnd(1);
+  step(g, w);
+  assert.equal(g.magic.released.length, 1, 'cast on the release');
+  assert.equal(g.magic.released[0].slot, 1);
+  assert.equal(g.magic.released[0].k, 0, 'a quick click is not charged');
+  assert.equal(g.magic.released[0].aim.target, foe, 'with the mouse on the slot it aims like a key: the nearest foe');
+  assert.equal(w.selected, 0, 'the right button keeps its weave: nothing is selected by a click');
+  assert.equal(w.castingSlot(), -1, 'nothing left held');
+  assert.equal(w.clicks.size, 0);
+});
+
+test('a held click on a slot charges it, and dragging out over the world aims at the mouse', () => {
+  const g = world();
+  const w = new Weaving(g);
+  g.renderer = { cssToWorld: (x, y) => ({ x, y }) };
+  g.canvas = { getBoundingClientRect: () => ({ left: 0, top: 0 }) };
+  w.clickStart(0, 1);
+  step(g, w, 60);
+  // The button is held and the mouse is dragged out over the game, up-left of the player.
+  g.input._onPointerMove({ pointerType: 'mouse', clientX: 40, clientY: 30, target: g.canvas });
+  step(g, w, 60);
+  assert.equal(w.aims.length, 1, 'the charge shows its aim');
+  assert.ok(w.aims[0].charge > 0.5, `charging ${w.aims[0].charge}`);
+  w.clickEnd(1);
+  step(g, w);
+  const r = g.magic.released[0];
+  assert.ok(r.k > 0.5, 'released charged');
+  assert.ok(r.aim.x < 100 && r.aim.y < 100, `cast toward the mouse (${r.aim.x}, ${r.aim.y})`);
+});
+
+test('a click on a slot while a panel is open casts nothing, and a cancelled press is let go', () => {
+  const g = world();
+  const w = new Weaving(g);
+  g.ui.isModalOpen = () => true;
+  w.clickStart(0, 1);
+  step(g, w);
+  w.clickEnd(1);
+  step(g, w);
+  assert.equal(g.magic.calls.filter((c) => c.fn === 'castStart').length, 0);
+  g.ui.isModalOpen = () => false;
+  w.clickStart(1, 2);
+  step(g, w, 30);
+  w.clickEnd(2, true);
+  step(g, w);
+  assert.equal(g.magic.released.filter((r) => !r.cancelled).length, 0, 'a pointercancel casts nothing');
+});

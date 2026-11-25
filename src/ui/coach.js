@@ -208,7 +208,7 @@ export class Coach {
         {
           target: () => (touch ? document.querySelector('.tcluster .wslots') : document.querySelector('.hotbar .hb-row')),
           box: touch ? () => this.clusterBox() : null,
-          text: touch ? 'Each round button is one weave, with its name on it. No switching: tap the one you want.' : 'Keys 1–4 cast your weaves; the lit one is what the right mouse button casts.',
+          text: touch ? 'Each round button is one weave, with its name on it. No switching: tap the one you want.' : 'Keys 1–4 (or a click on a slot) cast your weaves; the one with the small mouse is what the right mouse button casts.',
         },
         {
           target: () => (touch ? document.querySelector('.tcluster .wbtn.empty:not([hidden])') || document.querySelector('.hud-menu') : document.querySelector('.hotbar .hslot.empty:not([hidden])') || document.querySelector('.hud-menu')),

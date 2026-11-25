@@ -445,12 +445,17 @@ export class Hud {
     const ver = w.version;
     const t = this.game.time || 0;
     const sel = w.slotInfo(w.selected);
+    // The slot the bar speaks of: the one under the mouse, else the one being cast, else
+    // the right button's weave (nothing a click leaves selected).
+    const casting = w.castingSlot?.() ?? -1;
+    const shown = this.hbHover >= 0 && this.hbHover < n ? this.hbHover : casting;
+    const focus = shown >= 0 ? shown : w.selected;
     if (mana && mana.max > 0) {
       setStyle(this.hbManaFill, 'width', `${((100 * Math.max(0, mana.cur)) / mana.max).toFixed(1)}%`);
-      // The selected weave's cost, as a brighter cap at the end of the bar (a charge
-      // being held costs x(1 + k): the cap grows with it).
-      const ch = w.chargeOf?.(w.selected);
-      const c = Math.min(mana.cur, (sel.cost || 0) * (1 + (ch?.k || 0)));
+      // That weave's cost, as a brighter cap at the end of the bar (a charge being held
+      // costs x(1 + k): the cap grows with it).
+      const ch = w.chargeOf?.(focus);
+      const c = Math.min(mana.cur, (w.slotInfo(focus).cost || 0) * (1 + (ch?.k || 0)));
       setStyle(this.hbManaCost, 'width', `${((100 * c) / mana.max).toFixed(1)}%`);
       setStyle(this.hbManaCost, 'left', `${((100 * Math.max(0, mana.cur - c)) / mana.max).toFixed(1)}%`);
       setText(this.hbManaText, `${Math.floor(mana.cur)} / ${Math.round(mana.max)}`);
@@ -471,8 +476,6 @@ export class Hud {
     }
     // The name over the bar: the slot under the mouse, else the one being cast, else the
     // right button's weave for a moment after the wheel / Q / R changed it.
-    const casting = w.castingSlot?.() ?? -1;
-    const shown = this.hbHover >= 0 && this.hbHover < n ? this.hbHover : casting;
     if (w.selected !== this.hbSel) {
       if (this.hbSel !== undefined) this.hbSelT = t;
       this.hbSel = w.selected;

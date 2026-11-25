@@ -6363,10 +6363,34 @@ input[type='range']::-moz-range-thumb {
   width: 33px;
   height: 33px;
 }
-.hslot.selected {
-  --bc: var(--ember);
-  transform: translateY(-3px);
-  background-color: rgba(44, 34, 70, 0.9);
+/* r13: a click casts the slot and selects nothing; the weave the right mouse button
+   casts wears a small mouse in its top-right corner instead of a raised, lit slot. */
+.hslot > .hb-rmb {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 10px;
+  grid-area: auto;
+  border-radius: 3px 3px 4px 4px;
+  background: linear-gradient(90deg, transparent 0 50%, var(--ember) 50% 100%) top / 100% 45% no-repeat, rgba(16, 14, 40, 0.6);
+  box-shadow: 0 0 0 1px var(--parch-dim);
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 1;
+}
+.hslot > .hb-rmb[hidden] {
+  display: none;
+}
+.hslot:active {
+  transform: translateY(1px);
+}
+.hslot:focus {
+  outline: none;
+}
+.hslot:focus-visible {
+  outline: 2px solid var(--wk);
+  outline-offset: 1px;
 }
 .hslot:hover {
   --bc: var(--wk);

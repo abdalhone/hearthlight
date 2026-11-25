@@ -1525,7 +1525,18 @@ glyph-shards with a short reveal ("You can weave fire").
   HUD is a thin top strip. Portrait keeps working. A one-time hint suggests turning the
   phone.
 - **Desktop**: move with WASD, aim with the mouse, sword on the left button, weaves on
-  1–4 (and the right button casts the selected weave), B opens the Spellbook.
+  1–4 (and the right button casts the weave marked with a small mouse on its slot; the
+  wheel, Q / R or a number key moves the mark), B opens the Spellbook.
+- **A click on a hotbar slot casts it** (r13; the author: "I click the button and the
+  skill gets unselected after I hit it"): it is that slot's number key (`Weaving.
+  clickStart` / `clickEnd`, source `click`): the press starts it, the release casts it, a
+  quick click casts at once, a hold charges (and may be dragged out over the world to aim
+  at the mouse); with the mouse still on the slot it aims the way a key does with the
+  mouse away: the nearest foe in range, else straight ahead. It selects nothing, leaves no
+  focus (a later Space swings the sword) and raises no slot; the name over the bar names
+  the slot under the mouse or the one being cast. A keyboard Enter on a focused slot is a
+  quick click; an empty slot opens the Spellbook on it; a right click on a slot opens it
+  too.
 - **Press, hold, release, on every device** (r12): a weave starts on the press and is
   cast on the release (`src/ui/weaving.js` `begin`/`finish`); a quick tap of a key, a
   click or a touch casts within the 0.18 s tap window (about 0.1 s later than an instant
