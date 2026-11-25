@@ -1,4 +1,5 @@
 import { ambientAt, flickerWave, lighten } from './text_layout.js';
+import { TILE } from '../core/constants.js';
 
 // Lighting.
 //  - Light sources are COLLECTED by the renderer every frame: any entity or world object
@@ -6,6 +7,9 @@ import { ambientAt, flickerWave, lighten } from './text_layout.js';
 //    light = { x, y, r, color: '#rrggbb', intensity: 0..1, flicker: 0..1, glow?: 0..2 } (world px)
 //  - flash(light & { duration }) adds a short-lived light (hits, spells, lightning).
 //  - update(dt) ages flashes.
+//  - A light under a roof (inside a building, above its front wall) shows only as much as
+//    the roof lets through (DESIGN §31.5): none from outside, all of it once you step in
+//    and the roof fades. Its windows are what glow to the street at night.
 //
 // How it looks: the scene is multiplied by an ambient color (golden mornings, blue
 // nights) held in a small light map; point lights are added into that map so they
@@ -35,6 +39,7 @@ export class Lighting {
     this._poolUsed = 0;
     this._fk = new Float32Array(MAX_LIGHTS); // per-light intensity after flicker
     this._fr = new Float32Array(MAX_LIGHTS); // per-light radius after flicker
+    this._seen = new Float32Array(MAX_LIGHTS); // per-light share the roofs let through
 
     this.ambient = { r: 255, g: 255, b: 255, darkness: 0 };
     this.indoor = 0; // eased 0..1 so walking through a door does not pop
@@ -136,7 +141,30 @@ export class Lighting {
     if (this.count >= MAX_LIGHTS || !light) return;
     const r = light.r;
     if (!(r > 0) || !Number.isFinite(light.x) || !Number.isFinite(light.y)) return;
+    const seen = this.roofSeen(light.x, light.y);
+    if (seen <= 0.01) return;
+    this._seen[this.count] = seen;
     this.lights[this.count++] = light;
+  }
+
+  // How much of a light at (x, y) the roofs let through: 1 in the open (and on a front wall,
+  // where windows, lamps and signs hang), 1 - the roof's opacity under a roof. The renderer
+  // draws the roofs (map.drawRoofs eases each one's _alpha) before it lights the scene, so
+  // this follows the roof as it fades when you walk in.
+  roofSeen(x, y) {
+    const map = this.game?.map;
+    if (!map?.buildingAt) return 1;
+    const tx = Math.floor(x / TILE);
+    const ty = Math.floor(y / TILE);
+    let b = null;
+    try {
+      b = map.buildingAt(tx, ty);
+    } catch {
+      return 1;
+    }
+    if (!b || ty > b.y + b.h - 3) return 1;
+    const a = Number.isFinite(b._alpha) ? b._alpha : 1;
+    return a >= 1 ? 0 : a <= 0 ? 1 : 1 - a;
   }
 
   // Accepts what getLight() returns: a light, an array of lights, or null.
@@ -302,7 +330,7 @@ export class Lighting {
         k = 1 - fl * (0.08 - 0.16 * w);
         rk = 1 + fl * 0.06 * w;
       }
-      fk[i] = Math.max(0, Math.min(1.5, (l.intensity ?? 1) * k));
+      fk[i] = Math.max(0, Math.min(1.5, (l.intensity ?? 1) * k * this._seen[i]));
       fr[i] = l.r * rk;
     }
 

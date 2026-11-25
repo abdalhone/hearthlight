@@ -1926,3 +1926,12 @@ Each blow that lands teaches `TRAIN_XP` (1; a tick a quarter), shown as a rising
 `TRAIN_DAY` (40) a day per dummy; then it says it has taught all it can today. It never breaks.
 With nothing alive to fight, the sword turns toward a dummy or prop just in front
 (`Player._findProp`). Bus: `dummy_hit {object, by, amount, crit}`.
+
+### 31.5 Interior lights stay inside (`src/render/lighting.js` `roofSeen`)
+A light whose source stands under a roof (a building's tiles above its two front-wall rows)
+shows only as much as that roof lets through: `1 - roof._alpha`. Outside, the roof is opaque
+and the altar, candles, hearths and forges inside light nothing, so they never glow on the
+roof; walk in, the roof fades (`map.drawRoofs`) and they shine. Windows, lamps and signs on
+the front wall are outside the roof and glow to the street at night. It applies to every light
+the renderer collects (objects, actors, flashes), in all three passes (the light map, the
+night lift and the glow).
