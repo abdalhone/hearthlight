@@ -1050,7 +1050,9 @@ hysteresis:
 - **left / gone**: she steps clear until 3 tiles past the distance she keeps (her own day
   avoids them by 8 tiles left, 10 gone), to a spot she keeps until they close on it; never walks toward them inside 7 tiles; does
   her day from a spot clear of them or waits it out where she stands. If they walk at her,
-  she keeps stepping away; she never turns back toward them.
+  she keeps stepping away; she never turns back toward them. While she holds off, the spot
+  she holds off at must stay clear of them and the way there must not lead toward them;
+  once her stepping clear has put them between her and it, she waits where she stands.
 - **flee** commits to its break-away and finds another safety (or just away) when the way
   runs past the player.
 - **wary** and afraid (fear ≥ 25 or affinity ≤ −30): she trails at a steady distance
@@ -1922,7 +1924,9 @@ notices and has opinions (berserk frightens her).
   roof, both awake). A killing seen is known by those who saw it and those near enough to
   make out the scream (96 px); nobody else. The watch learns only when someone who knows
   reaches them (`tickNews` → `raiseAlarm`): then wanted, the bell, the body found, the case
-  certain, the village turns, Lyra hears the bell. A watchman who saw it raises it at once.
+  certain, the village turns, Lyra hears the bell. A watchman who saw it raises it at once;
+  a witness who has run to one of the watch tells them within 64 px, roof or no roof (she
+  shouts it in at the door).
 - **Until then, nobody knows who did it.** A witness's account counts in the watch's case
   only once the watch has heard it; a body found first by someone else is a mystery at a
   mystery's pace (weighed again, and hastened, when the witness arrives). A witness does not
