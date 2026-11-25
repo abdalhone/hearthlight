@@ -408,6 +408,42 @@ test('A3: having stepped clear past them, she waits where she stands; she never 
   assert.ok(reversals <= 1, `${reversals} turns back on herself`);
 });
 
+test('A3: when the way to her day bends back toward them, she stops and waits where she stands', () => {
+  // Played: her day lay past the player, round a house; the straight line looked clear,
+  // the path bent toward them, and she walked in, stepped clear, walked in again.
+  const g = makeGame({ hour: 12 });
+  const L = g.companion;
+  const P = g.player;
+  const a = L.mind.autonomy;
+  step(g, 1);
+  a.adjustPlayer({ trust: -40, fear: 70, affinity: -60 }, 'test');
+  a.setCompanionship('left', 'You frighten me.', { cause: 'fear_left' });
+  step(g, 1);
+  const sq = g.locations.get('town_square').center;
+  placeAt(g, P, sq.x, sq.y);
+  placeAt(g, L, sq.x, sq.y + 200);
+  step(g, 0.2);
+  const own = L.behavior.own;
+  const day = own.day;
+  assert.ok(day, 'her day is running');
+  // Off to her day, which lies away from them, but this step of the way heads toward them.
+  day.heldOff = false;
+  day.person = null; // her day is a place, not someone to find
+  own.st.clearT = 0;
+  own.st.avoiding = null;
+  day.spot = { x: sq.x + 300, y: sq.y + 260 };
+  L.moveIntent = { x: 0, y: -1 };
+  const held = own.keepDayClear(0.05, day, P, 10 * 16);
+  assert.equal(held, true, 'she holds off');
+  assert.ok(Math.hypot(day.spot.x - L.x, day.spot.y - L.y) < 2, 'and waits where she stands');
+  // Heading away from them, she goes on with her day as before.
+  day.heldOff = false;
+  own.st.clearT = 0;
+  day.spot = { x: sq.x + 300, y: sq.y + 260 };
+  L.moveIntent = { x: 0.6, y: 0.8 };
+  assert.equal(own.keepDayClear(0.05, day, P, 10 * 16), false, 'away from them: on she goes');
+});
+
 // ------------------------------------------------------------------ A4: one memory of what they said
 
 import { makeGame as makeVillage, step as stepVillage, clearScene } from './murder_world.mjs';

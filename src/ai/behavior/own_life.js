@@ -807,6 +807,14 @@ export class OwnLife {
     };
     const ok = (sp) => !!sp && dist(sp.x, sp.y, who.x, who.y) >= minD + AVOID_CLEAR * TILE && !toward(sp);
     st.clearT = (st.clearT || 0) - dt;
+    // Her actual steps, not only where she means to go: a way there that bends back toward
+    // them (round a house, along the shore) is toward them too. Inside COMFORT tiles she
+    // stops and waits it out where she stands (else: walk in, step clear, walk in again).
+    const mi = a.moveIntent;
+    const ml = mi ? Math.hypot(mi.x, mi.y) : 0;
+    if (ml > 0.1 && !st.avoiding && dHer < minD + COMFORT * TILE && (mi.x * (who.x - a.x) + mi.y * (who.y - a.y)) / (ml * Math.max(1, dHer)) > 0.3) {
+      return this.holdOff(day, who, minD, dHer);
+    }
     if (day.heldOff && st.clearT > 0) {
       // Where she waits it out stays clear of them too, and so does the way there: if they
       // came on, or her stepping clear has put them between her and it, she waits where she

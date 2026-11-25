@@ -376,6 +376,7 @@ async function play(size) {
   let prev = null;
   let lastV = null;
   let reversals = 0;
+  let standing = 0; // turns once they have stopped walking at her: "moving in place"
   let minD = Infinity;
   let followed = false;
   const dirs = new Set();
@@ -400,7 +401,10 @@ async function play(size) {
       const vy = s.y - prev.y;
       const sp = Math.hypot(vx, vy);
       if (sp > 2) {
-        if (lastV && vx * lastV.x + vy * lastV.y < -0.5 * sp * Math.hypot(lastV.x, lastV.y)) reversals++;
+        if (lastV && vx * lastV.x + vy * lastV.y < -0.5 * sp * Math.hypot(lastV.x, lastV.y)) {
+          reversals++;
+          if (i >= 40) standing++;
+        }
         lastV = { x: vx, y: vy };
       }
     }
@@ -413,8 +417,10 @@ async function play(size) {
     if (i === 70) await shot('10-hate-her-day');
     await wait(250);
   }
-  check(reversals <= 3 && !followed, `${tag}: afraid of you, she keeps away without moving in place (${reversals} reversals, closest ${Math.round(minD)} px, ${hate.state}, ${[...dirs].join('/')})`);
-  log.push({ tag, scene: 'hate', reversals, minD: Math.round(minD), dirs: [...dirs] });
+  // Chased into a corner (the lake shore) she may turn to slip past; once they stand, she
+  // keeps her distance and goes about her day, or waits: no back and forth.
+  check(standing <= 2 && reversals <= 6 && !followed, `${tag}: afraid of you, she keeps away without moving in place (${standing} turns once they stood, ${reversals} in all, closest ${Math.round(minD)} px, ${hate.state}, ${[...dirs].join('/')})`);
+  log.push({ tag, scene: 'hate', reversals, standing, minD: Math.round(minD), dirs: [...dirs] });
 
   // ------------------------------------------------------------------ a killing behind a house
   // Elda in the Ember Kettle; Corran killed outside, the far side of its wall. Nobody sees.

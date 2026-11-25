@@ -1052,14 +1052,18 @@ hysteresis:
   her day from a spot clear of them or waits it out where she stands. If they walk at her,
   she keeps stepping away; she never turns back toward them. While she holds off, the spot
   she holds off at must stay clear of them and the way there must not lead toward them;
-  once her stepping clear has put them between her and it, she waits where she stands.
+  once her stepping clear has put them between her and it, she waits where she stands. Her
+  actual steps count, not only where she means to go: a way that bends back toward them
+  (round a house, along the shore) inside 7 tiles stops her, and she waits it out there.
 - **flee** commits to its break-away and finds another safety (or just away) when the way
   runs past the player.
 - **wary** and afraid (fear ≥ 25 or affinity ≤ −30): she trails at a steady distance
   (`keep_away` that follows, 4–8 tiles by fear) instead of `follow far`; she returns to
   `follow far` only below fear 15 and above affinity −20.
 
-Reversals in the same scenes: 0–4 (played: 0–3 in 18 s of the player walking at her).
+Reversals in the same scenes: 0–4. Played in Chromium (20 chase-then-stand trials on both
+phone sizes): 0–2 turns once the player stands (13 before the last two rules), a few more
+while she is chased into a corner such as the lake shore.
 
 ## 17. Memory and lore
 
