@@ -40,10 +40,10 @@ export const CRAWL_STEP = 2.5;
 // reaching past the head, hauling the body up to it, the elbow out at the end of the
 // pull, and sliding forward again.
 const CRAWL_ARM = {
-  reach: { ex: 1, ey: -7, hx: -1, hy: -14 },
-  pull: { ex: 3, ey: -5, hx: 1, hy: -10 },
-  end: { ex: 4, ey: -1, hx: 3, hy: -5 },
-  slide: { ex: 2, ey: -4, hx: 1, hy: -8 },
+  reach: { ex: 3, ey: -6, hx: 3, hy: -14 },
+  pull: { ex: 5, ey: -4, hx: 4, hy: -10 },
+  end: { ex: 6, ey: 0, hx: 5, hy: -5 },
+  slide: { ex: 4, ey: -6, hx: 4, hy: -11 },
 };
 // Knee and foot per leg phase (from the hip; fy = rows above the usual foot line).
 const CRAWL_LEG = {
@@ -668,9 +668,10 @@ class Painter {
       if (back) this.cloakBackView(uy, by, crawl ? g.hipY + 2 : null);
       else this.cloakMantleFront(uy);
     }
+    // (the arms reach out over the cloak, beside the head: under the hair where they meet)
+    if (crawl) this.crawlArms(uy);
     if (back) this.hairBackView(T, uy);
     this.headwear(T, back);
-    if (crawl) this.crawlArms(uy);
     if (this.lateItem) {
       const { hx, hy, out } = this.lateItem;
       this.drawItem(hx, hy, out, back, false);
@@ -2665,7 +2666,7 @@ class Painter {
       return dst;
     }
     // Up and down: flattened toward the feet line (rows sampled, so nothing smears).
-    const K = 0.8;
+    const K = 0.7;
     const base = ANCHOR_Y;
     for (let ny = 0; ny < FRAME; ny++) {
       const r = Math.round(base - (base - ny) / K);
