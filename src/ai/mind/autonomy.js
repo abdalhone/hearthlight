@@ -122,6 +122,7 @@ export class Autonomy {
     this.ledger = [];
     this.promises = [];
     this.lines = new LinePicker();
+    this.lines.repeats = (t) => !!this.game?.saidToday?.repeats?.('lyra', t);
     this._nextAsk = null;
     this._shadow = { id: PLAYER_ID, trust: T.startTrust, affinity: 25, respect: 25, familiarity: 15, fear: 0, tags: [] };
     this._init();

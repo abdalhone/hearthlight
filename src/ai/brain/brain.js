@@ -24,6 +24,7 @@ import { Barker } from './barks.js';
 import { composeDiary } from './diary.js';
 import { companionshipOf, distanceTiles, previewVerdict, isRefusal } from './her_state.js';
 import { DAY_SECONDS } from '../../core/constants.js';
+import { saidToday } from '../said_today.js';
 
 const REFLECT_WAIT = 20; // seconds the wake-up waits for Claude's diary before using her own
 const ICON_EVERY = 2.2;
@@ -78,6 +79,9 @@ export class Brain {
     if (this._inited) return;
     this._inited = true;
     const g = this.game;
+    // One memory of everything everyone says today (DESIGN §23.1); her own lines dodge it.
+    const said = saidToday(g);
+    this.speech.repeats = (t) => !!said?.repeats('lyra', t);
     this.barks.install();
     this._providerId = this.providers.currentId();
     g.bus?.on('settings_changed', (p) => {
@@ -732,7 +736,9 @@ export class Brain {
   _deliver(reply, providerId) {
     const g = this.game;
     const lyra = g.companion;
-    const say = String(reply.say || '').trim();
+    let say = String(reply.say || '').trim();
+    // What she already said today is not said again (DESIGN §23.1).
+    if (say && providerId !== 'local') say = g.saidToday?.dropRepeats?.('lyra', say) || say;
     if (say) {
       try {
         const msg = { from: 'lyra', text: say, name: lyra?.name || g.settings?.companionName || 'Lyra' };
@@ -997,6 +1003,7 @@ export class Brain {
       insults: Math.round((this.local.insults || 0) * 10) / 10,
       why: this.lastCompanionshipReason ? this.lastCompanionshipReason.slice(0, 160) : undefined,
       barks: this.barks.serialize(),
+      said: this.game?.saidToday?.serialize?.() || undefined,
     };
   }
 
@@ -1007,6 +1014,7 @@ export class Brain {
     if (Number.isFinite(d.insults)) this.local.insults = Math.max(0, Math.min(10, d.insults));
     if (typeof d.why === 'string') this.lastCompanionshipReason = d.why.slice(0, 200);
     this.barks.deserialize(d.barks);
+    if (d.said) saidToday(this.game)?.deserialize?.(d.said);
   }
 }
 

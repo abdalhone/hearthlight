@@ -1044,6 +1044,17 @@ export class LinePicker {
       i += 1;
       text = fill(list[i % list.length], vars);
     }
+    // Something she already said today (DESIGN §23.1): another line of the bank, if any.
+    if (typeof this.repeats === 'function' && list.length > 1 && this.repeats(text)) {
+      for (let k = 1; k < list.length; k++) {
+        const alt = fill(list[(i + k) % list.length], vars);
+        if (!this.repeats(alt)) {
+          i += k;
+          text = alt;
+          break;
+        }
+      }
+    }
     this.cursor.set(ck, (i + 1) % list.length);
     // A one-line bank said twice running: borrow the same thought in another register.
     if (text === this.last) {

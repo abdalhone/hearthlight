@@ -327,3 +327,62 @@ test('A3: wary and afraid, she trails at a steady distance (hysteresis), not "fo
   assert.equal(L.behavior.directive.type, 'follow', 'eased: she trails close again');
   assert.equal(L.behavior.directive.distance, 'far');
 });
+
+// ------------------------------------------------------------------ A4: one memory of what they said
+
+import { makeGame as makeVillage, step as stepVillage, clearScene } from './murder_world.mjs';
+
+test('A4: everything a character says today is in one log: bubbles, barks, chat, her own-will lines, talks out of earshot', async () => {
+  const g = makeVillage({ hour: 11 });
+  const said = g.saidToday;
+  assert.ok(said, 'game.saidToday exists');
+  const elda = g.entities.get('elda');
+  const L = g.companion;
+  elda.say('Have you eaten? You look peaky.', { kind: 'say' }); // over her head
+  g.bubbles.say(elda, 'Pip! Pip, where’s that boy got to?', { kind: 'shout' }); // a bubble with no event
+  L.mind.autonomy.say('I’m going to the Kettle. Come, if you want.', { force: true }); // her own will
+  g.village.converse('elda', 'bram', { lines: [{ speaker: 'elda', text: 'Bram, you look half-starved again.' }, { speaker: 'bram', text: 'Hmph.' }], onScreen: false });
+  const eldas = said.today('elda').map((l) => l.text);
+  assert.ok(eldas.includes('Have you eaten? You look peaky.'));
+  assert.ok(eldas.some((t) => /where’s that boy/.test(t)));
+  assert.ok(eldas.includes('Bram, you look half-starved again.'), 'what she said to Bram, out of the player’s earshot');
+  assert.ok(said.today('lyra').some((l) => /Kettle/.test(l.text)));
+  const { buildContext } = await import('../src/ai/brain/prompt.js');
+  const ctx = buildContext(g, { message: 'where are you going?' });
+  assert.match(ctx, /already said today[\s\S]*Kettle/, 'her Claude prompt carries what she said over her head');
+  // The same line by two routes is one line.
+  elda.say('Have you eaten? You look peaky.', { kind: 'say' });
+  assert.equal(said.today('elda').filter((l) => /Have you eaten/.test(l.text)).length, 1);
+  // A repeat is recognised even worded differently.
+  assert.ok(said.repeats('elda', 'Have you eaten today? I can tell by your face you haven’t.'));
+  assert.ok(!said.repeats('elda', 'The kettle’s on, love.'));
+  // A new day, a clean slate.
+  g.clock.t += 900;
+  assert.equal(said.today('elda').length, 0);
+});
+
+test('A4: Elda does not ask "have you eaten?" twice in a day — offline, and the prompt tells Claude what she already said', async () => {
+  const g = makeVillage({ hour: 11 });
+  clearScene(g, ['elda']);
+  const elda = g.entities.get('elda');
+  const P = g.player;
+  P.x = elda.x + 20;
+  P.y = elda.y;
+  elda.say('Have you eaten? You look peaky.', { kind: 'say' });
+  // Ten things the player says; none of her answers asks it again.
+  const asks = [];
+  for (const t of ['hello!', 'how are you?', 'ok', 'thanks', 'hi again', 'how are you doing', 'sure', 'what do you do?', 'nice', 'bye']) {
+    const r = await g.village.playerSays(elda, t);
+    for (const l of r.lines) {
+      elda.say(l, { kind: 'say', target: P });
+      if (/have you eaten/i.test(l)) asks.push(l);
+    }
+  }
+  assert.deepEqual(asks, [], 'she never asked again');
+  const brief = g.village.sayBrief(elda, 'hello', { lines: ['Hm.'] });
+  assert.ok(brief.saidToday.some((l) => /Have you eaten/.test(l)), 'Claude is told what she already said today');
+  const { buildSayTask } = await import('../src/ai/social/village_prompt.js');
+  assert.match(buildSayTask(brief), /already said today/);
+  // And a Claude reply that repeats it anyway loses that sentence.
+  assert.equal(g.saidToday.dropRepeats('elda', 'Have you eaten today? Mind the frost on the step going out.'), 'Mind the frost on the step going out.');
+});

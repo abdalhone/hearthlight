@@ -56,6 +56,8 @@ export function lineBeat(text, speed = 1) {
   return clamp(1.3 + n / (16 * s) + 0.5, 2, 7.5);
 }
 
+const g0 = (v) => v?.game || null;
+
 export class Village {
   constructor(game) {
     this.game = game;
@@ -293,6 +295,9 @@ export class Village {
     const lines = ex.lines.filter((l) => l && l.text && speakable(l.text));
     if (!lines.length) return null;
     for (const l of lines) this.remember(l.text);
+    // Said, whether or not the player was there to hear it (DESIGN §23.1).
+    const said = this.game?.saidToday;
+    if (said) for (const l of lines) if (l.speaker) said.note(l.speaker, l.text, { kind: 'say', to: l.speaker === a ? b : a, via: 'talk' });
     if (ex.scene) {
       const si = SCENES.indexOf(ex.scene);
       if (si >= 0) this.sceneDay[si] = this.day();
@@ -1097,9 +1102,15 @@ export class Village {
 
   // ------------------------------------------------------------------ the player talking
 
+  // What they have said lately: to the player, and (DESIGN §23.1) to anyone today, aloud
+  // or over their head. A Set's has(): exact lines, or a near repeat of something today.
   recentPlayerLines(npcId) {
     const s = new Set();
     for (const x of this.talks[npcId] || []) for (const l of x.they || []) s.add(l);
+    const said = this.game?.saidToday;
+    if (!said) return s;
+    const has = s.has.bind(s);
+    s.has = (t) => has(t) || said.repeats(npcId, t);
     return s;
   }
 
@@ -1158,7 +1169,7 @@ export class Village {
         // Threats and insults weigh what they weigh, whoever words the answer.
         // (An apology mends through amend(), slowly, whatever Claude makes of it.)
         const delta = local.intent === 'threat' || local.intent === 'insult' ? Math.min(local.delta, c.opinionDelta) : local.intent === 'apology' ? 0 : c.opinionDelta;
-        reply = { lines: [c.say], mood: c.mood || local.mood, delta, told: c.learned.filter((id) => (e.profile.facts || []).some((f) => f.id === id)), mentioned: c.rumorTold && this.rumors.get(c.rumorTold) ? [c.rumorTold] : [], source: 'claude', rumor: c.rumor, name: c.name || local.name, memory: c.memory, asked: c.asked };
+        reply = { lines: [g0(this)?.saidToday?.dropRepeats?.(e.id, c.say) || c.say], mood: c.mood || local.mood, delta, told: c.learned.filter((id) => (e.profile.facts || []).some((f) => f.id === id)), mentioned: c.rumorTold && this.rumors.get(c.rumorTold) ? [c.rumorTold] : [], source: 'claude', rumor: c.rumor, name: c.name || local.name, memory: c.memory, asked: c.asked };
       }
     }
     this.afterPlayerSays(e, said, local, reply);
@@ -1290,6 +1301,7 @@ export class Village {
       week,
       lyra: lyraState ? `travelling with the player: ${lyraState === 'together' ? 'yes' : 'no'} (${lyraState}).` : '',
       standing,
+      saidToday: safe(() => g?.saidToday?.promptLines?.(id, { limit: 10, max: 650 }), []) || [],
       text: said,
       local: local.lines?.[0] || '',
     };

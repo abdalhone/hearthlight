@@ -551,6 +551,9 @@ export function buildContext(game, { message = '', executed = [], requests = [],
   if (rc.text) sections.push({ title: 'What comes back to you', text: rc.text, priority: 6, recall: true });
   const nearby = nearbyLines(g);
   if (nearby.length) sections.push({ title: 'Nearby', text: nearby.join('\n'), priority: 4 });
+  // Everything she said today, aloud or over her head (DESIGN §23.1): the player saw it all.
+  const said = safeCall(() => g.saidToday?.promptLines?.('lyra', { limit: 12, max: 800 }), []) || [];
+  if (said.length) sections.push({ title: 'What you have already said today (aloud, in the chat, or over your head; oldest first). The player saw every one: keep to it, build on it, never say the same thing or ask the same question twice', text: said.join('\n'), priority: 5.5 });
   const hasRecall = typeof mind?.recallContext === 'function';
   for (const s of safeCall(() => g.plugins?.promptSections?.(message), []) || []) {
     // The recall context replaces the memory plugin's raw memory dump.

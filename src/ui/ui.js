@@ -933,6 +933,7 @@ export class UI {
     const line = String(text || '').trim();
     if (!line) return;
     if (bubble && c && !c.removed) safe(() => g.bubbles?.say?.(c, line, { kind: 'say' }));
+    else safe(() => g.saidToday?.quote?.('lyra', line, 'chat')); // said all the same (DESIGN §23.1)
     this.chat.addMessage({ from: 'lyra', text: line, kind, offer, memories });
     // A panel covers the world (and her bubble); off-screen she cannot be seen either.
     if (this.stack.length || (!this.chat.isOpen() && !this.lyraInView())) this.toast(line, 'lyra', { title: g.settings?.companionName || c?.name || 'Lyra' });

@@ -141,6 +141,9 @@ export function buildSayTask(b) {
     const rows = b.history.slice(-5).map((h) => `- ${h.day && b.today && h.day < b.today ? `(day ${h.day}) ` : ''}They: "${clip(h.you, 110)}" You: "${clip(h.they || '…', 150)}"`);
     L.push(`The conversation so far, oldest first:\n${rows.join('\n')}`);
   }
+  // Everything they said today, to anyone (DESIGN §23.1): what popped over their head and
+  // what they say in the chat agree, and nothing is said twice.
+  if (b.saidToday?.length) L.push(`What you have already said today, to anyone, aloud or over your head (oldest first). Keep to it, build on it, and never say the same thing or ask the same question again:\n${b.saidToday.join('\n')}`);
   if (b.asked) L.push(`You had just asked them ${b.asked === 'their name' ? 'their name' : 'a question'}; this may be their answer.`);
   L.push(`They say to you now: "${clip(b.text, 300)}"`);
   L.push('Answer as yourself, in one to three short spoken sentences.');
