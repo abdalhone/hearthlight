@@ -391,7 +391,7 @@ const STATE_TEXT = {
   wary: 'wary: still together, but guarded. You keep your distance, refuse risky requests and watch them.',
   apart: 'apart: you are living your own life for now; friendly, and you may rejoin when you want to.',
   left: 'left: you broke off after they hurt or betrayed you. You avoid them and answer coldly. You come back only after real amends: an apology you believe, trust back above 35, fear below 30, and time.',
-  gone: 'gone: you have cut them out of your life for good. You live with your parents in Hearthvale, keep out of their way, and give them a word at most.',
+  gone: 'gone: you have cut them out of your life. You live with your parents in Hearthvale and keep out of their way. They can still speak to you and you hear every word; you answer as you feel: a word, a cold line, or nothing at all (an empty say). You help them with nothing.',
 };
 
 function hourText(h) {

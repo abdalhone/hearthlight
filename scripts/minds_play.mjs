@@ -13,7 +13,8 @@
 //   hate     Lyra afraid of you: the player walks at her; she keeps away, no moving in place
 //   wall     a killing on the far side of a house: nobody inside sees it
 //   witness  a killing in front of Elda, far from the watch: she runs screaming for the
-//            watch, will not talk, and the watch knows only when she reaches them
+//            watch, answers only in terror (never a locked chat), and the watch knows
+//            only when she reaches them
 //
 //   node scripts/minds_play.mjs [--out DIR] [--size 844x390|390x844|1280x720]
 // Build first (npm run build). Exit 1 on a failed check or a page error.
@@ -491,7 +492,8 @@ async function play(size) {
   });
   check(open.seen.includes('elda') && fear.fear === 'terror' && fear.mode === 'flee' && !!fear.runningTo, `${tag}: Elda saw it, and runs screaming for the watch (${JSON.stringify({ ...fear, seen: open.seen })})`);
   check(!open.wanted && !fear.wanted, `${tag}: the watch (${open.nearestWatch} px off) does not know yet`);
-  // Go after her and tap her: she will not talk.
+  // Go after her and tap her. Never a locked chat (the author: "even if somebody really
+  // hates me, make me able to talk to them"): she can be spoken to, and answers in terror.
   await page.evaluate(() => {
     const g = window.__game;
     const e = g.entities.get('elda');
@@ -499,15 +501,23 @@ async function play(size) {
     g.player.y = e.y + 2;
   });
   await wait(150);
-  await tapPerson('elda');
-  await page.waitForFunction(() => window.__game.ui.chat.isOpen(), null, { timeout: 3000 }).catch(() => null);
-  await wait(400);
-  await shot('13-witness-wont-talk');
-  const refused = await page.evaluate(() => {
+  await talkTo('elda');
+  await wait(300);
+  const chatTo = await page.evaluate(() => {
     const c = window.__game.ui.chat;
-    return { open: c.isOpen(), target: c.target, away: c.away, disabled: c.field.disabled, placeholder: c.field.placeholder };
+    return { open: c.isOpen(), target: c.target, disabled: c.field.disabled, placeholder: c.field.placeholder };
   });
-  check(refused.target === 'elda' && refused.away === 'refuses' && refused.disabled, `${tag}: tapped, she will not talk (${JSON.stringify(refused)})`);
+  check(chatTo.target === 'elda' && !chatTo.disabled && /Say something to Elda/.test(chatTo.placeholder), `${tag}: tapped, the chat is open to her (${JSON.stringify(chatTo)})`);
+  await standBy('elda');
+  await say('Elda, please, wait. I can explain.');
+  await wait(900);
+  await shot('13-witness-terror');
+  const terror = await page.evaluate(() => {
+    const g = window.__game;
+    const t = (g.village.talks.elda || []).filter((x) => /I can explain/.test(x.you)).map((x) => x.they.join(' '))[0] || null;
+    return { heard: !!t, answer: t, log: (document.querySelector('.chat-log')?.textContent || '').slice(-200) };
+  });
+  check(terror.heard && !/love|sit down|kettle/i.test(terror.answer || ''), `${tag}: her words reached her, and she answered in terror, not calmly ("${terror.answer}")`);
   await closeChat();
   // Let her run (the game runs, faster): the watch learns when she reaches them.
   await page.evaluate(() => {

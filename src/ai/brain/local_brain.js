@@ -177,9 +177,20 @@ export class LocalBrain {
       if (text && !parts.includes(text)) parts.push(text);
     }
     if (!parsed.clauses.length && parsed.offer) parts.push(this.line('offer_nothing'));
-    reply.say = joinParts(parts) || (reply._spoken ? '' : this.line(state === 'left' ? 'left_reply' : state === 'wary' ? 'wary_reply' : 'unknown_statement') || 'Hm.');
+    reply.say = joinParts(parts) || (reply._spoken ? '' : state === 'gone' ? this.goneWord() : this.line(state === 'left' ? 'left_reply' : state === 'wary' ? 'wary_reply' : 'unknown_statement') || 'Hm.');
     delete reply._spoken;
     return reply;
+  }
+
+  // Her word for someone she has cut off (her will's own lines), or silence.
+  goneWord() {
+    let w = null;
+    try {
+      w = this.mind?.autonomy?.line?.('gone_word') || null;
+    } catch {
+      w = null;
+    }
+    return w || 'No.';
   }
 
   answer(clause, reply, env, state = 'together') {
@@ -197,7 +208,14 @@ export class LocalBrain {
       if (reply._apologyAnswered) return null;
       reply._apologyAnswered = true;
     }
-    // Gone or broken off: she does not chat like a companion. Requests still get her refusal,
+    // Gone (she has cut them out of her life): she hears it, and answers as she feels — a
+    // word at most, once (her choice, never a lock; DESIGN §19.7).
+    if (state === 'gone') {
+      if (reply._coldSaid) return null;
+      reply._coldSaid = true;
+      return this.goneWord();
+    }
+    // Broken off: she does not chat like a companion. Requests still get her refusal,
     // and a few things (an apology, "why did you leave?") still reach her.
     if (state === 'left' && !(it && (it.actions?.length || LEFT_HEARS.has(it.id)))) {
       if (reply._coldSaid) return null;

@@ -801,16 +801,17 @@ export class Village {
     }
   }
 
-  // Can the stranger talk with this villager at all? A narration of why not, or null.
-  // A killing seen today: they back away and will not talk (DESIGN §29.3).
-  refusesTalk(npc) {
+  // What the stranger sees as they turn to someone who watched them kill: a narration, or
+  // null. Never a lock (the author: "even if somebody really hates me, make me able to
+  // talk to them"): the words reach them, and they answer in terror (playerSays).
+  fearNote(npc) {
     const e = typeof npc === 'string' ? this.entity(npc) : npc;
     if (!e) return null;
     const fear = safe(() => this.game?.murder?.fearOf?.(e), null);
-    if (fear !== 'terror') return null;
+    if (!fear) return null;
     const n = this.name(e.id).replace(/^(Captain|Sister|Reeve)\s+/, '').split(' ')[0];
-    const she = ['hobb', 'bram', 'pip', 'rowan', 'tobias', 'garrick', 'alder', 'corran', 'wys'].includes(e.id) ? 'he' : 'she';
-    return `${n} backs away from you, white to the lips. ${she === 'he' ? 'He' : 'She'} won't talk to you.`;
+    const he = ['hobb', 'bram', 'pip', 'rowan', 'tobias', 'garrick', 'alder', 'corran', 'wys'].includes(e.id);
+    return fear === 'terror' ? `${n} backs away from you, white to the lips.` : `${n} stiffens as you come near, and keeps ${he ? 'his' : 'her'} distance.`;
   }
 
   // Two people near enough to tell each other something: side by side, under the same

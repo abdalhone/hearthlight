@@ -704,15 +704,21 @@ test('gone keeps her in the village with a home: her parents at the chandlery, a
     const sleep = today.find((b) => b.type === 'sleep');
     assert.equal(sleep.bed, 'lyra_inn_bed');
     assert.equal(sleep.at, 'ember_kettle');
-    // Far away: the chat says where she lives; close up, a word at most.
+    // Far away: only distance stops a talk; the chat says where she lives. Close up she
+    // hears it, and gives a word at most (her choice, never a lock).
     lyra.x = player.x + 30 * TILE;
     const far = await brain.handlePlayerMessage('Lyra, please talk to me');
-    assert.equal(far.unreachable, 'gone');
+    assert.equal(far.unreachable, 'far');
     const sys = game.ui.chat.messages.filter((m) => m.from === 'system').at(-1);
-    assert.match(sys.text, /won't speak to you\. She lives in her room at the Ember Kettle/);
+    assert.match(sys.text, /too far away to hear you\. She lives in her room at the Ember Kettle/);
+    assert.doesNotMatch(sys.text, /won't (speak|talk)/);
     lyra.x = player.x + TILE;
     const near = await brain.handlePlayerMessage('Lyra, please talk to me');
-    assert.ok(near.say.split(/\s+/).length <= 1, `a word at most: ${near.say}`);
+    assert.equal(near.unreachable, undefined, 'she hears it');
+    assert.ok(near.say && near.say.split(/\s+/).length <= 1, `a word at most: ${near.say}`);
+    // Asked for something, a word all the same (the gate refuses; she says no in a word).
+    const ask = await brain.handlePlayerMessage('follow me please');
+    assert.ok(ask.say && ask.say.split(/\s+/).length <= 1, `a word at most: ${ask.say}`);
   }
   // With the chandlery on Lamplight Lane and a bed of her own there: home with Mam and Da.
   {

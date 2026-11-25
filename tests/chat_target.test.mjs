@@ -562,6 +562,48 @@ test('browser: the chat talks to anyone within earshot (and screenshots)', { tim
         return /Not like this, love/.test(document.querySelector('.chat-log')?.textContent || '');
       });
       assert.equal(late, false, `${view.label}: gone on her way, she cannot answer after`);
+      // Catch up with her: a new conversation. And hate, fear and "cut ties" never lock the
+      // chat (the author: "even if somebody really hates me, make me able to talk to them").
+      const unlocked = await page.evaluate(() => {
+        const g = window.__game;
+        const c = g.ui.chat;
+        const e = g.entities.get('elda');
+        const roofAt = (x, y) => g.map.buildingAt(Math.floor(x / 16), Math.floor(y / 16))?.id || null;
+        const mine = roofAt(g.player.x, g.player.y);
+        const spot = [[-20, 0], [20, 0], [0, -20], [0, 20], [-10, 6]].find(([dx, dy]) => roofAt(g.player.x + dx, g.player.y + dy) === mine) || [0, 0];
+        e.x = g.player.x + spot[0];
+        e.y = g.player.y + spot[1];
+        c.checkTarget();
+        const t = g.murder?.now?.() ?? g.clock.t;
+        e.terror = { about: 'wys', since: t, until: t + 600 };
+        c.selectTarget('lyra');
+        c.selectTarget('elda');
+        const terrified = { disabled: c.field.disabled, ph: c.field.placeholder, note: /backs away from you/.test(document.querySelector('.chat-log')?.textContent || '') };
+        c.setGone(true);
+        c.selectTarget('lyra');
+        const gone = { disabled: c.field.disabled, ph: c.field.placeholder, chip: document.querySelector('.chat-to-chip[data-id="lyra"]')?.textContent || '' };
+        c.setGone(false);
+        c.selectTarget('elda');
+        return { terrified, gone };
+      });
+      assert.deepEqual(unlocked.terrified, { disabled: false, ph: 'Say something to Elda…', note: true }, `${view.label}: terrified, she can still be spoken to`);
+      assert.equal(unlocked.gone.disabled, false, `${view.label}: Lyra gone: the field stays open`);
+      assert.equal(unlocked.gone.ph, 'Say something to Lyra…');
+      assert.doesNotMatch(unlocked.gone.chip, /won't talk/);
+      await page.fill('.chat-field', 'Elda, please, wait');
+      await page.press('.chat-field', 'Enter');
+      await page.waitForFunction(() => window.__game.village.you.chats.elda.at(-1)?.from === 'npc' || (window.__game.village.talks.elda || []).some((t) => /please, wait/.test(t.you)), null, { timeout: 15000 });
+      const answer = await page.evaluate(() => (window.__game.village.talks.elda || []).filter((t) => /please, wait/.test(t.you)).map((t) => t.they.join(' '))[0] || '');
+      assert.match(answer, /Stay away|Don't|Go away|telling|Help|Get away|No/i, `${view.label}: her words reached her, and she answered in terror: ${answer}`);
+      // Her fright over (for the rest of this test), and her well away again.
+      await page.evaluate(() => {
+        const g = window.__game;
+        const e = g.entities.get('elda');
+        e.terror = null;
+        e.endFlee?.();
+        e.x += 400;
+        g.ui.chat.checkTarget();
+      });
       // Click someone in the world (desktop): the chat turns to them.
       if (!view.touch) {
         const at = await page.evaluate(() => {

@@ -34,7 +34,7 @@ const REFUSAL_MEMORY = 120; // "why not?" refers to a refusal this recent
 const OFFER_WINDOW = 60; // a bare coin offer sweetens a refusal this recent
 const COUNTER_WINDOW = 90; // "deal" accepts a counter-offer this recent
 const ASK_WINDOW = 120; // "yes" to something she asked of the player this recent becomes their promise
-const EARSHOT = { left: 18, apart: 30 };
+const EARSHOT = { left: 18, apart: 30, gone: 12 };
 // "Let's go", "lead the way", "sure, let's go", "ok I'll come": yes to going along with her.
 const GO_ALONG = /^(?:(?:yes|yeah|yep|sure|ok|okay|alright|all right|of course|absolutely|fine|right|aye|great|good|deal)\s*)?(?:let'?s go|lets go|let us go|lead the way|lead on|after you|i'?ll come|i will come|i'?m coming|i'?m in|come on|go on then|show me|take me there|let'?s do it|lets do it|i'?ll go with you|i'?ll walk with you|count me in|with you|sure thing|okay let'?s go)(?:\s+(?:then|now|lyra|together))?(?:\s*(?:yes|sure|ok|okay))?$/; // tiles: beyond this she cannot hear the chat
 const KNOWLEDGE_SOURCE = { fact: 'player', rumor: 'told', lore: 'lore', theory: 'inferred' };
@@ -233,8 +233,9 @@ export class Brain {
     return this._localTurn({ text: clean, parsed, executed });
   }
 
-  // When she cannot answer at all: gone (she has cut the player out of her life), knocked
-  // out, or out of earshot.
+  // When she cannot hear at all: not there, knocked out, or out of earshot. Nothing else:
+  // hate, fear and having cut the player off never lock her chat (the author: "even if
+  // somebody really hates me, make me able to talk to them"); her answer is her own.
   _unreachable() {
     const g = this.game;
     const lyra = g.companion;
@@ -245,16 +246,10 @@ export class Brain {
       return { say: '', thought: null, actions: [], provider: 'local', unreachable: why };
     };
     if (!lyra || lyra.removed) return out(`${name} isn't here.`, 'gone');
-    if (state === 'gone') {
-      // DESIGN §19.7: she still lives in Hearthvale. Up close she gives a word at most.
-      const will = lyra.mind?.autonomy;
-      if (distanceTiles(g) <= 4 && !lyra.downed && lyra.state !== 'sleep' && will?.line) {
-        const word = will.line('gone_word');
-        will.say?.(word, { force: true });
-        return { say: word, thought: null, actions: [], provider: 'local', unreachable: 'gone' };
-      }
-      const phrase = will?.goneHome?.().phrase || 'in Hearthvale';
-      return out(`${name} won't speak to you. She lives ${phrase} now, and keeps out of your way.`, 'gone');
+    if (state === 'gone' && !lyra.downed && lyra.state !== 'downed' && distanceTiles(g) > EARSHOT.gone) {
+      // DESIGN §19.7: she still lives in Hearthvale, and keeps out of the player's way.
+      const phrase = lyra.mind?.autonomy?.goneHome?.().phrase || 'in Hearthvale';
+      return out(`${name} is too far away to hear you. She lives ${phrase} now, and keeps out of your way.`, 'far');
     }
     if (lyra.downed || lyra.state === 'downed') return out(`${name} is knocked out and can't hear you. Go to her and help her up.`, 'downed');
     const far = EARSHOT[state];

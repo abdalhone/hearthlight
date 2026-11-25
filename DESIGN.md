@@ -1317,7 +1317,9 @@ village. She should be able to ask help for other people. They can come and help
 - Hearthvale is Lyra's home. **She never leaves the map or vanishes** — not when hurt, not
   in `left`, not in `gone`. `gone` now means she has cut the player out of her life: she
   lives with her parents at the chandlery (or her room at the Kettle), keeps her distance,
-  won't talk beyond a word, and the village stands with her. (LORE §7's table changes to
+  and the village stands with her. She can still be spoken to (r13, the author: "even if
+  somebody really hates me, make me able to talk to them"): she hears it, and answers as she
+  feels, a word at most offline, her own choice with Claude. (LORE §7's table changes to
   match: the road to Saltmere is something she *thinks about*, never a despawn.)
 - **Calling for help.** When she is attacked, badly hurt, or afraid for her life, she shouts
   for help (a real line, by name when someone is near: "Rowan! Hess!") and runs toward
@@ -1670,6 +1672,14 @@ Stop* (trust 72; its lesson waits while she is unsure: a talk step's `trust`) an
   of the player — on the player's action, with the local fallback. Villagers remember what
   the player said, talk about it to others, and it shapes their opinion; Lyra overhears
   when near. The villager dialog's own "Say something…" field stays as a shortcut.
+- **Never a locked chat** (r13, the author: "even if somebody really hates me, make me able
+  to talk to them. Because in real life, if somebody hates me, I can still talk to them").
+  Hate, fear, terror, grief and "cut ties" never disable the field or say someone "won't
+  talk to you": the words always reach them and are remembered, and they answer as they
+  feel (cold, insulting, terrified, begging, refusing to help, one word, or turning away).
+  The only reasons not to be heard are physical: dead, unconscious or downed, out of
+  earshot, or a cutscene. "Has gone on her way" ends that conversation: an answer still on
+  its way is never given, and catching up with her starts a new one.
 - A tap or click on someone talks to them, whatever the chat puts under the finger as it
   opens: the browser's click from that same tap is swallowed (on phones it pressed a chip
   of the "To" row and talked to a neighbour), and the release of a mouse click that opened
@@ -1946,9 +1956,11 @@ notices and has opinions (berserk frightens her).
 - Someone who watched the stranger kill is **terrified** (`e.terror`, 18 h): they run for the
   watch, screaming (`npc.startFlee(…, { to })`: the nearest of Rowan, Wys or Hess awake, else
   the guardhouse; another cry for help on the way does not turn them aside), their opinion
-  falls to the floor, and they **will not talk**: tapping them or picking them in the chat
-  closes the talk on them with why ("Elda backs away from you, white to the lips. She won't
-  talk to you."), the field reads "won't talk to you", and they run no errands for a killer.
+  falls to the floor, and they **answer only in terror**: tapping them or picking them in
+  the chat shows what the player sees ("Elda backs away from you, white to the lips.") and
+  the field stays open; what the player says reaches them and is remembered, and the answer
+  is fear in their own words ("Don't come near me. Murderer."), never calm, never Claude
+  wording it kindly, and no errands run for a killer.
 - After two killings seen, they are never calm with the stranger again (`e.dread`, saved).
 - A villager who **has gone on their way** cannot answer after: a reply that comes late is
   not delivered (the author saw Elda answer after "Elda has gone on her way", twice).

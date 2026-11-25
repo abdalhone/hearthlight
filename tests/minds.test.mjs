@@ -840,7 +840,31 @@ test('A6: a witness who has run to the watch tells them at the door, even with W
 
 // ------------------------------------------------------------------ A7: witnesses are people
 
-test('A7: Elda watches the stranger kill: terrified, she runs and screams, will not talk; after several killings, never calm again', async () => {
+test('never a locked chat: nothing the player reads says someone "won\'t talk to you" (the author: "even if somebody really hates me, make me able to talk to them")', async () => {
+  const { readFileSync, readdirSync, statSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const root = new URL('../src/', import.meta.url).pathname;
+  const files = [];
+  const walk = (d) => {
+    for (const f of readdirSync(d)) {
+      const p = join(d, f);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (f.endsWith('.js')) files.push(p);
+    }
+  };
+  walk(root);
+  const hits = [];
+  for (const f of files) {
+    const text = readFileSync(f, 'utf8');
+    for (const m of text.matchAll(/(?:won['’]t (?:talk|speak) to you|will not talk to you|beyond a word)/gi)) hits.push(`${f.slice(root.length)}: ${m[0]}`);
+  }
+  assert.deepEqual(hits, [], 'no lock wording left');
+  const { COMPANIONSHIP } = await import('../src/ui/lyra_view.js');
+  assert.match(COMPANIONSHIP.gone.blurb, /hears you/);
+});
+
+
+test('A7: Elda watches the stranger kill: terrified, she runs and screams, answers only in terror (never a locked chat); after several killings, never calm again', async () => {
   const g = makeVillage({ hour: 12 });
   quietAll(g, ['bram', 'elda', 'tobias', 'garrick']);
   const sq = g.locations.get('town_square').center;
@@ -859,8 +883,13 @@ test('A7: Elda watches the stranger kill: terrified, she runs and screams, will 
   assert.equal(g.murder.fearOf(elda), 'terror');
   assert.equal(elda.mode, 'flee', 'she runs');
   assert.ok(g.said.some((s) => s.who === 'elda'), 'screaming');
-  assert.match(g.village.refusesTalk(elda), /won't talk to you/, 'the chat closes on her');
+  // The author: "even if somebody really hates me, make me able to talk to them". What the
+  // player sees as they turn to her, and no lock: their words reach her and are kept.
+  assert.equal(typeof g.village.refusesTalk, 'undefined', 'no refusal lock left');
+  assert.match(g.village.fearNote(elda), /backs away from you/);
+  assert.doesNotMatch(g.village.fearNote(elda), /won't talk/);
   const r1 = await g.village.playerSays(elda, 'WILL YOU TALK TO LYRA FOR ME');
+  assert.ok(g.village.talks.elda.some((t) => /WILL YOU TALK TO LYRA/.test(t.you)), 'what the player said reached her, and is remembered');
   assert.ok(!g.village.commitments.open('elda').length, 'no errands run for a killer');
   assert.match(r1.lines[0], /Stay away|Don't|Go away|telling/i, `only fear: ${r1.lines[0]}`);
   // A second killing before her eyes: dread, for good.
@@ -868,7 +897,7 @@ test('A7: Elda watches the stranger kill: terrified, she runs and screams, will 
   assert.equal(elda.dread, true);
   g.clock.t += 2 * 900; // days later, the terror past
   assert.equal(g.murder.fearOf(elda), 'dread');
-  assert.equal(g.village.refusesTalk(elda), null, 'she can be spoken to again…');
+  assert.match(g.village.fearNote(elda) || '', /keeps (her|his) distance/, 'she can be spoken to, as ever…');
   const v = g.village;
   v.provider = () => ({ id: 'fake' });
   let asked = 0;

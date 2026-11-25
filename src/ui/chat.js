@@ -44,6 +44,7 @@ export class Chat {
     this.away = null; // why the selected villager can't hear the player any more, or null
     this.people = []; // ids within earshot, nearest first
     this.sessions = new Map(); // villager id -> TalkSession
+    this.talkSeq = new Map(); // villager id -> which conversation this is (a new one after they leave)
     this.waiting = new Set(); // villager ids whose answer is on its way
     this.queued = new Map(); // villager id -> a line typed while they were still answering
     this.unreadBy = new Map(); // id -> unread lines from someone not selected
@@ -422,7 +423,7 @@ export class Chat {
       return;
     }
     const t = cleanLine(text, 400);
-    if (!t || this.gone) return;
+    if (!t) return;
     const g = this.game;
     if (this.target !== LYRA) this.selectTarget(LYRA);
     if (!g.brain?.handlePlayerMessage) return;
@@ -475,10 +476,12 @@ export class Chat {
     if (last && used && !last.memories?.length) this.attachMemories(last, used);
   }
 
-  // Once she has cut the player off she will not talk; the log stays to read.
+  // She has cut the player off. Nothing is locked (the author: "even if somebody really
+  // hates me, make me able to talk to them"): the field stays open, she hears it, and
+  // answers as she feels. The flag only colours the header and her chip.
   setGone(on) {
     const gone = !!on;
-    if (gone === this.gone && this.mounted && this.field.disabled === gone) return;
+    if (gone === this.gone && this.mounted) return;
     this.gone = gone;
     if (!this.mounted) return;
     if (gone && this.dictState !== 'idle' && this.target === LYRA) this.stopDictation();
@@ -800,19 +803,12 @@ export class Chat {
       if (this.dictState !== 'idle' && this.ownsDictation()) this.stopDictation();
       this.target = id;
       this.away = null;
-      if (id !== LYRA) {
-        const e = this.entity(id);
-        if (e && this.refusalStill(e)) {
-          this.applyTarget();
-          this.renderThread();
-          this.refusal(e);
-          this.refreshPeople(true);
-          return true;
-        }
-      }
       this.unreadBy.set(id, 0);
       this.applyTarget();
       this.renderThread();
+      // Someone who watched the stranger kill: what the player sees as they turn to them.
+      // The talk stays open; they answer in terror (DESIGN §29.3).
+      if (id !== LYRA) this.fearNote(this.entity(id));
       if (from) this.game.audio?.play('ui_click', { volume: 0.6 });
     }
     this.refreshPeople(true);
@@ -827,12 +823,13 @@ export class Chat {
     const lyra = this.target === LYRA;
     const n = this.targetName();
     const gone = lyra && this.gone;
+    // Only the body stops a talk (out of earshot, asleep, hurt): never hate or fear.
     const away = !lyra && !!this.away;
-    this.field.disabled = gone || away;
-    this.sendBtn.disabled = gone || away;
-    this.mic.disabled = gone || away;
+    this.field.disabled = away;
+    this.sendBtn.disabled = away;
+    this.mic.disabled = away;
     this.chips.hidden = gone || away;
-    this.field.placeholder = gone || this.away === 'refuses' ? `${n} won't talk to you.` : away ? `${n} can't hear you now.` : `Say something to ${n}…`;
+    this.field.placeholder = away ? `${n} can't hear you now.` : `Say something to ${n}…`;
     this.field.setAttribute('aria-label', `Message to ${n}`);
     if (this.dictState === 'idle') this.mic.title = `Speak to ${n}`;
     this.log.setAttribute('aria-label', `Conversation with ${n}`);
@@ -933,7 +930,7 @@ export class Chat {
     const list = [];
     if (lyra) {
       const expr = cs === 'gone' || cs === 'left' ? 'sad' : this.thinking ? 'neutral' : 'happy';
-      list.push({ id: LYRA, name: this.targetName(LYRA), portrait: portraitUrl(g, 'lyra', expr), tone: cs === 'gone' ? 'hostile' : cs === 'left' ? 'wary' : 'lyra', label: cs === 'gone' ? "won't talk to you" : companionshipLabel(cs).toLowerCase(), selected: this.target === LYRA, unread: this.unreadBy.get(LYRA) || 0, gone: cs === 'gone' });
+      list.push({ id: LYRA, name: this.targetName(LYRA), portrait: portraitUrl(g, 'lyra', expr), tone: cs === 'gone' ? 'hostile' : cs === 'left' ? 'wary' : 'lyra', label: cs === 'gone' ? 'cut you off' : companionshipLabel(cs).toLowerCase(), selected: this.target === LYRA, unread: this.unreadBy.get(LYRA) || 0, gone: cs === 'gone' });
     }
     for (const e of people) list.push(chipFor(g, e, { selected: this.target === e.id, unread: this.unreadBy.get(e.id) || 0 }));
     if (this.target !== LYRA && !ids.includes(this.target)) {
@@ -953,7 +950,7 @@ export class Chat {
     const e = this.entity(id);
     const why = !e ? 'gone' : ids ? (ids.includes(id) ? null : whyNotHeard(this.game, e, EARSHOT_LOSE) || 'far') : whyNotHeard(this.game, e, EARSHOT_LOSE);
     if (!why) {
-      if (this.away && !(this.away === 'refuses' && e && this.refusalStill(e))) {
+      if (this.away) {
         // Back within earshot: the field opens again.
         this.away = null;
         this.applyTarget();
@@ -962,6 +959,14 @@ export class Chat {
     }
     if (this.away) return;
     this.away = why;
+    // That conversation is over: an answer still on its way is never given, and catching
+    // up with them starts a new one (DESIGN §23).
+    this.talkSeq.set(id, (this.talkSeq.get(id) || 0) + 1);
+    const ended = this.sessions.get(id);
+    if (ended) {
+      ended.onLate = null;
+      this.sessions.delete(id);
+    }
     // Who moved: the villager walking off, or the player walking away?
     const seen = this.seenAt.get(id);
     const p = this.game.player;
@@ -977,14 +982,6 @@ export class Chat {
       return;
     }
     this.applyTarget();
-  }
-
-  refusalStill(e) {
-    try {
-      return !!this.village()?.refusesTalk?.(e);
-    } catch {
-      return false;
-    }
   }
 
   sessionFor(e) {
@@ -1015,9 +1012,6 @@ export class Chat {
       this.checkTarget();
       return;
     }
-    // Someone who just watched the stranger kill will not talk (DESIGN §29.3).
-    const refuses = this.refusal(e);
-    if (refuses) return;
     // The rest of their last answer is said before the player's next line, never after.
     this.flushUnsaid(id);
     this.pushVillager(id, { from: 'player', text: t });
@@ -1031,22 +1025,20 @@ export class Chat {
     this.ask(e, t);
   }
 
-  // A villager who will not talk with the player at all: the talk closes, with why.
-  refusal(e) {
-    let why = null;
+  // A villager in terror of the player: one line of what the player sees (once in a
+  // row), and nothing locked. Their answers come in terror, from them.
+  fearNote(e) {
+    if (!e) return null;
+    let note = null;
     try {
-      why = this.village()?.refusesTalk?.(e) || null;
+      note = this.village()?.fearNote?.(e) || null;
     } catch {
-      why = null;
+      note = null;
     }
-    if (!why) return null;
-    if (this.target === e.id && this.away !== 'refuses') {
-      const last = this.threadOf(e.id).slice(-1)[0];
-      if (!last || last.text !== why) this.pushVillager(e.id, { from: 'system', text: why });
-      this.away = 'refuses';
-      this.applyTarget();
-    }
-    return why;
+    if (!note || this.target !== e.id) return note;
+    const last = this.threadOf(e.id).slice(-1)[0];
+    if (!last || last.text !== note) this.pushVillager(e.id, { from: 'system', text: note });
+    return note;
   }
 
   ask(e, t) {
@@ -1063,6 +1055,7 @@ export class Chat {
       /* cosmetic */
     }
     let p;
+    const talk = this.talkSeq.get(id) || 0;
     try {
       p = s.send(t);
     } catch (err) {
@@ -1072,7 +1065,8 @@ export class Chat {
     Promise.resolve(p).then(
       (reply) => {
         this.setWaiting(id, false);
-        if (reply) this.villagerReplied(e, reply);
+        // Only within the conversation it answers: not after they went on their way.
+        if (reply && (this.talkSeq.get(id) || 0) === talk) this.villagerReplied(e, reply);
         const next = this.queued.get(id);
         if (next) {
           this.queued.delete(id);

@@ -539,7 +539,7 @@ export class UI {
     if (!this.chat.messages.length) {
       const intro =
         state === 'gone'
-          ? `${name} has cut you out of her life. She is still in Hearthvale, with her own people, but she won't talk to you beyond a word.`
+          ? `${name} has cut you out of her life. She is still in Hearthvale, with her own people, and keeps out of your way. You can still speak to her; what she answers is up to her.`
           : `${name} travels with you because she chooses to. Talk to her about anything, or ask her for help in plain words; she decides what she does.`;
       this.chat.addMessage({ from: 'system', text: intro });
     }
