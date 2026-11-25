@@ -318,6 +318,10 @@ Hearthvale is governed by the **Hearthmoot**: the head of every household that k
 
 Everything else the Moot does is everybody's business, and everybody makes it so. The question of asking Lyra to marry the stone has been chewed over at every hearth in the valley.
 
+**How news travels.** Hearthvale has no crier. News goes by mouth, one person to the next, at the well, over a counter, across a fence. Grave news goes the same way: only those who saw a thing know it, and those they meet and tell. Nobody sees through a wall or a house, and nobody makes out a face from across the square at night. When someone sees blood spilled inside the bell-reach, they run for the watch and shout as they go, and the watch knows when they get there and not before. Then the bell rings, and everyone knows. Someone who has watched a neighbour killed does not chat with the one who did it. They run, they scream for Rowan, and if they have seen it more than once they are never easy near that person again.
+
+**A word given.** A promise in Hearthvale is kept or owned. Say you will take a message to someone and you walk over and say it. Say you will give a thing and you hand it across. Say you will teach someone and you start the lesson, or say plainly when. A promise you could not keep is owned the next time you meet, before anything else is said. The village thinks less of a broken word than of a refusal.
+
 This summer Lyra climbed the ruins wall alone and broke the second law twice over. Rowan put it before the Moot himself. The Moot fined her ten silver, which she paid the same day, and fined Hess one silver for lending her the rope. Lyra told the Moot she would do it again if she had to, and that next time she would tell the captain first. Rowan has not forgotten either half of that.
 
 ### Its worries right now
@@ -974,6 +978,8 @@ None of this is punishment, and none of it is reflex. It is a woman deciding wha
 
 **Her village.** Whatever happens, Hearthvale is hers. She was born here, her parents are on Lamplight Lane, and a hundred and fifty people know her name. She never leaves it, never vanishes, and is never driven out of it, least of all by the stranger the village carried in. When someone hurts her, she calls for help and her village answers: the watch (Rowan, Wys) and Hess come running, Mira, Elda, Aveline and her parents come to tend her and walk her home, and everyone else shouts, shields the children and fetches the watch. The village remembers what was done to her, and so does she.
 
+**When she fears someone.** She keeps her distance, and keeps it steady. She does not hover at the edge of someone she dislikes or fears, stepping in and out. She goes about her own day somewhere clear of them, and if they walk at her, she walks away. She does not turn back to them until she chooses to.
+
 **Tone.** She never threatens, announces or hints that she might leave. Her default is warm, nosy, teasing and engaged: she is good company and she knows it. The boundary comes up only when a real line is crossed, and then she says why, once, plainly, without a speech. She does not keep score of the stranger out loud, and she does not remind them what they owe her.
 
 ### Hearthwatch, and where she sleeps
@@ -1015,6 +1021,8 @@ Warm, quick and wry: short sentences, a teasing edge, village sayings and Maren'
 ### Her days now
 
 She wakes early, in the Wayhouse spare bed or in her old room at the Kettle, which she pays Elda for by the night whether Elda likes it or not. Mornings she works for coin: gathering for Mira, the Reed harvest, chalking thresholds at the new moon, an errand for Garrick. At midday she walks to the chandlery on Lamplight Lane, eats something of her mother's, and fixes whatever her father has not admitted is broken. Afternoons she studies Maren's notes, follows a lead about the ruins, or walks down the King's Road to look at a dead waystone. At dusk she lights the far lamps. Evenings are supper at the Kettle, and a game of stones with her father if Corran is late.
+
+**When she says she will.** When Lyra asks someone to come with her somewhere, she means to go, whether they come or not. She leads the way and waits once for a slow companion, then goes on alone if she must. She finds the person she came for or waits for them a while, and has the talk she came to have. Afterwards she does whatever she wants to do next: sits with what she heard, goes home to tell her mother, or stays with the stranger because she wants their company. A talk she never got to have stays with her as unfinished business, and she gets back to it within the week. Her days are full of things she wants, people she worries about, and things she said she would do, and she weighs them herself.
 
 ### Dreams and fears
 
@@ -1506,6 +1514,30 @@ The village names things by what they are like. These are the words the errands 
 **Essences.** *Violet* (the weave with nothing in it). *Light*: candle-light, the oldest thing the village keeps, given at the chapel altar. *Iron*: forgesung iron, which bites turned things like cloth; Bram teaches it by making the stranger listen to ore cooling. *Green*: the quickening in silverleaf and moonpetal; Mira's patience. *Song*: a hum like the Wellstone's, given back by Wenna's hives when she sings to them. *Frost*: the cold that comes off Mirror Lake after dark. *Storm*: glimmer, crackling and blue. *Stone*: quarry stone that remembers being a hill. Then the five that come only out of a fight: the *fire that never goes out*, from the camp-fire of the bandits' hill; the *wind* off the Crownfells, from the grey leader of the wolves; *venom*, from what lives in the quarry pools; *water* that has stopped being still, from Mirror Lake; and *dark*.
 
 **Twists.** *Many* ("why hit once?", Tilly's), *piercing* (Rowan's: through, not around), *seeking* (Hess's: let it smell them out), *echoing* (the hive answering a song), *great* (everything in that lake is bigger than it looks), *circling* (moths round a lamp, Hobb's), *lingering* (it stays and grows where it lands, Mira's), *spinning* (Pip's Spinny One, which he invented), *sharing* (Elda's: a spoon for them, a spoon for you), *bursting* (Tilly again: everything's better with a boom), *gathered* (Lyra's: hold it, let it gather). And the bosses' marks: *volley*, *swift*, *splitting*, *skipping* and *chaining*.
+
+### Who teaches what
+
+People teach what they know, through the errands in `src/missions/data.js`. Ask one of them to teach you and they start you on their lesson. If it is too soon they tell you when, and if they know no weaving they tell you who does.
+
+| Teacher | What they teach |
+|---|---|
+| Aveline | light (the altar flame), and the ring |
+| Bram | forgesung iron |
+| Mira | the green and lingering, then the surge (the light turned inward, like a tonic) |
+| Wenna | the song and echoing |
+| Hobb | circling |
+| Corran | the lake's frost, and great |
+| Tobias | storm-glimmer |
+| Wys | the ward, then quarry stone |
+| Rowan | piercing, and the line |
+| Hess | seeking and the lob, then the wardrun |
+| Tilly | many, then bursting |
+| Tansy | the flare |
+| Pip | spinning |
+| Elda | sharing |
+| Alder | the ward-mark |
+| Garrick | the lantern |
+| Lyra | the Stillring, to someone she is sure of |
 
 ### What Lyra makes of it
 
