@@ -12,6 +12,10 @@ import { tone, noise, fm, makeNoiseBuffer, makeImpulse } from '../ui/synth.js';
 import { VoicePlayer } from '../audio/voice.js';
 
 const MAX_VOICES = 28; // concurrent effects; quieter extras are dropped
+// Background sounds (`other: true`, e.g. other people's footfalls) keep their own spacing,
+// so they never swallow the same sound of the player's own, and they leave the last voices
+// free for what the player does (a swing, a hit, their own step).
+const BACKGROUND_VOICES = 14;
 const FULL_RADIUS = 90; // world px around the camera center heard at full volume
 const FALLOFF = 300; // further world px over which a sound fades to silence
 
@@ -169,7 +173,8 @@ export class Audio {
     this.applyVolumes();
   }
 
-  // play(name, { x, y, volume, pitch }): x/y in world px enable positional falloff.
+  // play(name, { x, y, volume, pitch, other }): x/y in world px enable positional falloff;
+  // `other` marks a background sound (someone else's footfall) that yields to the player's.
   play(name, opts = {}) {
     if (!this.ctx || this.ctx.state === 'closed') return;
     const recipe = SFX[name];
@@ -177,7 +182,8 @@ export class Audio {
     const ctx = this.ctx;
     const now = ctx.currentTime;
     const gap = SFX_GAP[name] ?? 0.02;
-    const last = this.lastPlay.get(name) ?? -1;
+    const key = opts.other ? `${name}~other` : name;
+    const last = this.lastPlay.get(key) ?? -1;
     if (now - last < gap) return;
 
     let gain = opts.volume ?? 1;
@@ -198,9 +204,9 @@ export class Audio {
       if (this.voiceEnds[i] < now) this.voiceEnds.splice(i, 1);
       else live++;
     }
-    if (live >= MAX_VOICES) return;
+    if (live >= (opts.other ? BACKGROUND_VOICES : MAX_VOICES)) return;
 
-    this.lastPlay.set(name, now);
+    this.lastPlay.set(key, now);
     const out = ctx.createGain();
     out.gain.value = gain;
     let head = out;
