@@ -1644,6 +1644,25 @@ is a **gain** and a **cost**, both timed modifiers on the shared stat pipeline (
 - `lastlight` — when the player would fall, heal fully once; max HP −50% until the next
   sleep.
 - `oath` — +30% to everything while Lyra is near; if she is hurt, the player is too.
+- `laststand` — the Last Stand (round 14: "if I die, maybe I come back for 1 minute and
+  kill anybody, but it will not let me live anymore"). Carried by the Bone Warden (a
+  second glyph-shard beside overdraw's, `BOSS_SECOND_PRICES`), never at the start, never
+  lent by "Try all magic". Casting a weave that carries it asks first, in the game's own
+  dialog with the danger style and "Not this" focused, the price in full ("you die for
+  good… no kept flame, nobody can carry you to Mira, waking at home does not save you:
+  your story ends and this save closes"); only a yes holds it (a ☠ mark on the HUD; a tap
+  puts it out while it is only held). When you would die it rises you instead: whole, for
+  60 s, strength ×2.5, weaves ×2, +35% speed, faster swings and casts, no stagger, damage
+  taken ×0.4, and nothing can put you down (preventFall holds you at 1). While down with
+  it held you may also choose to rise at once: a Rise button under the countdown that
+  must be held for a second (R on a keyboard). The minute shows as embers off the body,
+  the rage aura, fire at the screen's edges breathing faster as it runs out and white-hot
+  in the last ten seconds, and the HUD timer. When it ends you die for good
+  (`survival.burnOut`): the final death whatever flame burns or Settings say, its own
+  curtain ("The fire goes out.") and memorial words, and Lyra's last entry says what she
+  saw. Order with the others: lastlight catches the fall first (the last stand stays
+  held); berserk's end cannot fell you while you burn, and the burn ends it. Saved as
+  held or as the seconds left, so closing the page does not escape the minute.
 Prices are earned like other components (missions, bosses, a few found), shown with their
 cost in red in the Spellbook and on the hotbar button, and their timers on the HUD. Lyra
 notices and has opinions (berserk frightens her).

@@ -748,8 +748,7 @@ export class PriceRuntime {
       if (b) b.left = this.state.berserk.t;
     }
     if (this.burning()) {
-      const c = out.find((x) => x.id === 'price:laststand:cost');
-      if (c) c.left = this.state.laststand.t;
+      for (const c of out) if (c.price === 'laststand') c.left = this.state.laststand.t;
     }
     return out;
   }

@@ -81,6 +81,16 @@ export function lyraLastEntry(game, rec) {
   const mem = lyra ? bestMemory(lyra.mind, game?.clock?.t ?? Infinity) : '';
   const came = !!rec?.lyraCame;
   const parts = [];
+  // The last stand (§25): they stood up from dying, burning, for one minute.
+  if (rec?.cause === 'laststand') {
+    if (tone === 'warm') parts.push(came ? `I watched ${Pm} get up from dying with fire in their eyes, and I knew what it meant. One minute. I couldn't put it out. I could only watch it go out.` : `${P} died today ${where}. They had taken something into them that let them stand up from dying for one minute, and then it took everything. I wasn't there.`);
+    else if (tone === 'steady') parts.push(`${P} died today, ${where}. They stood up from dying, burning, for one minute${came ? ', and I saw every second of it' : ''}. Then nothing.`);
+    else if (tone === 'guarded') parts.push(`${P} is dead. They chose it: a minute of fire for the rest of their life.${came ? ' I saw them choose it.' : ''}`);
+    else parts.push(`The stranger died today ${where}. They burned themselves up for one last minute. I'd cut them out of my life, and still I can't stop seeing it.`);
+    if (mem) parts.push(`${tone === 'cold' ? 'Even now I remember' : 'I remember this'}: ${mem}`);
+    parts.push('Aveline says a kept flame could not have brought them back from that. There was nothing left to bring.');
+    return { text: parts.join(' '), tone };
+  }
   if (tone === 'warm') {
     parts.push(came ? `I got to ${Pm} and it wasn't enough. I had them, and then I didn't.` : `${P} died today ${where}, and I wasn't there.`);
     if (mem) parts.push(`I keep thinking about it: ${mem}`);
@@ -140,7 +150,8 @@ export function villageSays(game, rec, max = 5) {
     const e = byId.get(id);
     if (!e) continue;
     const b = band(Number(e.opinionOfPlayer ?? 40));
-    out.push({ id, name: e.name, text: SAYS[id](b) });
+    const text = id === 'aveline' && rec?.cause === 'laststand' ? 'A flame would not have helped. What they burned with leaves nothing to bring back. Peace on you, child.' : SAYS[id](b);
+    out.push({ id, name: e.name, text });
   }
   return out;
 }

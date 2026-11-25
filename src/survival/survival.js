@@ -1143,6 +1143,7 @@ export class Survival {
       place: placeName(g, P.x, P.y),
       where: placePhrase(g, P.x, P.y),
       savedIds: [...this.saved],
+      lyraCame: !!g.companion && !g.companion.downed && dist(g.companion, P) < 260,
     };
     return finalDeath(this, rec);
   }
