@@ -236,10 +236,13 @@ export class Actor extends Entity {
       ctx.ellipse(sx, sy, this.radius + 1, 2.5, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    drawCharacter(ctx, this.game.atlas, this.spriteKey, animForState(this.state), this.dir, this.animTime, sx, sy - Math.round(this.z), {
+    // A fallen body dragging itself along (game.survival sets crawlPose, DESIGN §27).
+    const crawl = this.downed ? this.crawlPose : null;
+    drawCharacter(ctx, this.game.atlas, this.spriteKey, crawl ? 'crawl' : animForState(this.state), this.dir, this.animTime, sx, sy - Math.round(this.z), {
       flash: this.flash,
       alpha: this.invuln > 0 && !this.downed ? (Math.floor(this.invuln * 20) % 2 ? 0.55 : 1) : 1,
       state: this.state,
+      frame: crawl ? crawl.frame : undefined,
     });
   }
 

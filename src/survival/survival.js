@@ -24,6 +24,12 @@ import {
   OUT_FOR_A_DAY,
   POTION_REVIVE_HP,
   CARRY_SPEED,
+  NPC_CRAWL,
+  SMEAR_EVERY,
+  HEART_BPM,
+  REVIVE_SECONDS,
+  LIFT_SECONDS,
+  LAY_SECONDS,
 } from './constants.js';
 import { CALL_LINES, LYRA_CARRIED, LYRA_POTION, lyraTone, pickLine } from './lines.js';
 import { stepJob, newJob, canRespond, roleFor, countRoles, isLyra, isPlayer, isVillager, speak, lineFor, stopFeet, nearestCarrier } from './rescue.js';
@@ -31,6 +37,9 @@ import { startCarry, endCarry, syncCarries } from './carry.js';
 import { tendPlayer, wakeHome, flameReturn, finalDeath, admitPatient, releasePatient, carriedOff } from './outcomes.js';
 import { hasKeptFlame } from './kept_flame.js';
 import { placeName, placePhrase } from './epitaph.js';
+import { BloodTrail } from './trail.js';
+import { ensureCrawl } from '../art/characters_art.js';
+import { CRAWL_STEP, CRAWL_ANIM } from '../art/characters_humanoid.js';
 
 // Death is dangerous (DESIGN §27). `game.survival` owns every fall in the world: the
 // player's bleed-out window and the cinematic around it, Lyra's and the villagers' own
@@ -81,6 +90,7 @@ export class Survival {
     this.fast = false; // tests: skip real-time waits
     this._quiet = false;
     this._drawables = [];
+    this.trail = new BloodTrail(game); // blood where people fall and drag themselves (§27)
     // What Lyra's mind is told while someone lies bleeding (her prompt, through a plugin).
     try {
       game.plugins?.register?.({ id: 'survival', name: 'Someone fell', description: 'Falls, rescues and the sickroom (DESIGN §27)', promptContext: () => this.promptContext() });
@@ -309,6 +319,11 @@ export class Survival {
       }
     }
     this.falls.set(actor, rec);
+    // The crawl is painted the first time this body needs it (off the boot path), and the
+    // blood starts where they went down.
+    if (!actor.species) safe(() => ensureCrawl(g.atlas, actor.spriteKey || actor.id));
+    actor.crawlPose = null;
+    if (!opts.load && !rec.wet) safe(() => this.trail.pool(actor.x, actor.y - 3, 1));
     if (player) {
       this.slowmo = opts.load ? null : { t: 0 };
       rec.wanted = rec.wanted || !!opts.wanted;
@@ -385,6 +400,7 @@ export class Survival {
     const rec = this.falls.get(actor);
     if (!rec) return null;
     this.falls.delete(actor);
+    actor.crawlPose = null;
     for (const r of [...rec.responders]) {
       const j = this.jobs.get(r);
       if (j && j.fall === rec && j.phase !== 'lay') this.endJob(j);
@@ -797,18 +813,27 @@ export class Survival {
       h.pulse = Math.max(0, h.pulse - dt * 3);
       return;
     }
+    // The heart races as the window closes, then falters: beats come unevenly and weaker,
+    // some do not come at all.
     const frac = Math.max(0, rec.left / rec.window);
-    h.bpm = 44 + 66 * frac;
+    const falter = frac < HEART_BPM.falter ? 1 - frac / HEART_BPM.falter : 0;
+    h.bpm = HEART_BPM.start + (HEART_BPM.end - HEART_BPM.start) * (1 - frac) - 40 * falter;
+    h.falter = falter;
     const before = h.phase;
     h.phase += (dt * h.bpm) / 60;
     if (Math.floor(h.phase) !== Math.floor(before)) {
-      h.beats++;
-      h.pulse = 1;
-      try {
-        g.audio?.heartbeat?.(0.5 + 0.5 * (1 - frac));
-      } catch {
-        /* sound is optional */
+      const skip = falter > 0 && this.rand() < 0.3 * falter;
+      if (!skip) {
+        h.beats++;
+        h.pulse = 1 - 0.45 * falter;
+        try {
+          g.audio?.heartbeat?.((0.5 + 0.5 * (1 - frac)) * (1 - 0.5 * falter));
+        } catch {
+          /* sound is optional */
+        }
       }
+      // A faltering heart does not keep time.
+      if (falter > 0) h.phase += (this.rand() - 0.5) * 0.35 * falter;
     } else h.pulse = Math.max(0, h.pulse - dt * 4);
   }
 
@@ -852,6 +877,7 @@ export class Survival {
     const F = rec.actor;
     if (F.removed || F.dead) {
       this.falls.delete(F);
+      F.crawlPose = null;
       return;
     }
     if (!F.downed) {
@@ -862,7 +888,9 @@ export class Survival {
     if (F.state !== 'downed' && !F.carriedBy) F.setState?.('downed');
     const player = isPlayer(this, F);
     rec.crawling = false;
-    if (player && !F.carriedBy) this.crawl(rec, dt);
+    if (F.carriedBy) F.crawlPose = null;
+    else if (player) this.crawl(rec, dt);
+    else this.crawlAway(rec, dt);
     if (player && !F.carriedBy) {
       try {
         if (g.input?.pressed?.('interact') && g.state === 'playing' && !g.paused) this.callForHelp(F);
@@ -871,12 +899,7 @@ export class Survival {
       }
     }
     if (rec.grave) return;
-    let rate = RATE.alone;
-    if (F.carriedBy) rate = RATE.carried;
-    else if (rec.stanchers.size) rate = RATE.stanched;
-    else if (rec.crawling) rate = RATE.crawling;
-    if (rec.wet && !F.carriedBy) rate *= RATE.water;
-    rec.left -= dt * rate;
+    rec.left -= dt * this.rateOf(rec);
     if (player) {
       // Whoever walks by and sees you lying there comes, call or no call.
       rec.lookT = (rec.lookT ?? 1) - dt;
@@ -901,28 +924,71 @@ export class Survival {
     const my = mv?.y || 0;
     const l = Math.hypot(mx, my);
     if (l < 0.2) return;
-    const sp = CRAWL_SPEED * Math.min(1, l);
+    this.drag(rec, mx / l, my / l, CRAWL_SPEED * Math.min(1, l), dt);
+  }
+
+  // Drag a fallen body along the ground by (ux, uy) at `speed` px/s: the crawl frame
+  // follows the distance (so the hands never slide), and blood smears behind it.
+  drag(rec, ux, uy, speed, dt) {
+    const g = this.game;
+    const F = rec.actor;
+    const room = Math.max(0, CRAWL_BUDGET - rec.crawled);
+    const step = Math.min(room, speed * dt);
+    if (step <= 0) return 0;
     const bx = F.x;
     const by = F.y;
     try {
-      g.entities?.moveActor?.(F, (mx / l) * sp * dt, (my / l) * sp * dt);
+      g.entities?.moveActor?.(F, ux * step, uy * step);
     } catch {
-      F.x += (mx / l) * sp * dt;
-      F.y += (my / l) * sp * dt;
+      F.x += ux * step;
+      F.y += uy * step;
     }
     const moved = Math.hypot(F.x - bx, F.y - by);
-    if (moved > 0.01) {
-      rec.crawled += moved;
-      rec.crawling = true;
-      F.faceDir?.(Math.abs(mx) > Math.abs(my) ? (mx < 0 ? 'left' : 'right') : my < 0 ? 'up' : 'down');
-      if (Math.floor(rec.crawled / 6) !== Math.floor((rec.crawled - moved) / 6)) {
-        try {
-          g.particles?.emit?.('dust', F.x, F.y, { count: 1, speed: 8, life: 0.4 });
-        } catch {
-          /* cosmetic */
-        }
+    if (moved <= 0.01) return 0;
+    const before = rec.crawled;
+    rec.crawled += moved;
+    rec.crawling = true;
+    const dir = Math.abs(ux) > Math.abs(uy) ? (ux < 0 ? 'left' : 'right') : uy < 0 ? 'up' : 'down';
+    F.faceDir?.(dir);
+    F.crawlPose = { frame: Math.floor(rec.crawled / CRAWL_STEP) % CRAWL_ANIM.frames };
+    // A smear every few pixels, from the middle of the body (it is left behind as they go).
+    if (Math.floor(rec.crawled / SMEAR_EVERY) !== Math.floor(before / SMEAR_EVERY)) {
+      const off = dir === 'left' || dir === 'right' ? 6 : dir === 'up' ? 9 : 4;
+      safe(() => this.trail.smear(F.x - ux * 2, F.y - off, ux, uy));
+    }
+    if (Math.floor(rec.crawled / 6) !== Math.floor(before / 6)) {
+      try {
+        g.particles?.emit?.('dust', F.x, F.y, { count: 1, speed: 8, life: 0.4 });
+      } catch {
+        /* cosmetic */
       }
     }
+    return moved;
+  }
+
+  // Villagers and Lyra on the ground drag themselves away from whoever is still standing
+  // over them (the one who put them down first), a little, while nobody kneels with them.
+  crawlAway(rec, dt) {
+    const F = rec.actor;
+    if (rec.crawled >= CRAWL_BUDGET || rec.grave || rec.stanchers.size) return;
+    rec.threatT = (rec.threatT ?? 0) - dt;
+    if (rec.threatT <= 0) {
+      rec.threatT = 0.4;
+      const by = rec.by && !rec.by.removed && !rec.by.dead && !rec.by.downed && rec.by.type === 'actor' ? rec.by : null;
+      rec.threat = by && dist(by, F) < DANGER_RADIUS ? by : this.dangerNear(F, F);
+    }
+    const T = rec.threat;
+    if (!T || T.removed || T.downed || dist(T, F) > DANGER_RADIUS) return;
+    let ux = F.x - T.x;
+    let uy = F.y - T.y;
+    const d = Math.hypot(ux, uy) || 1;
+    ux /= d;
+    uy /= d;
+    const speed = CRAWL_SPEED * NPC_CRAWL;
+    if (this.drag(rec, ux, uy, speed, dt) > 0) return;
+    // Pinned against a wall: try along it.
+    if (this.drag(rec, -uy, ux, speed, dt) > 0) return;
+    this.drag(rec, uy, -ux, speed, dt);
   }
 
   // Nobody near: a patrol of the watch may come by, or not (§27). Inside the ward by day it
@@ -1062,6 +1128,7 @@ export class Survival {
   drawables() {
     const out = this._drawables;
     out.length = 0;
+    if (this.trail.marks.length) out.push(this.trail);
     for (const c of this.carries.values()) out.push(c.drawable);
     return out;
   }
@@ -1072,6 +1139,58 @@ export class Survival {
     const rec = this.falls.get(g.player);
     if (!rec) return null;
     return { frac: Math.max(0, rec.left / rec.window), carried: !!g.player.carriedBy, pulse: this.heart.pulse, t: rec.t, wet: rec.wet };
+  }
+
+  // The countdown's numbers (ui/death_view.js): seconds left, how fast they drain now,
+  // and who is helping with how far along it is.
+  //   { left, window, frac, rate, help: null | { kind: 'carry'|'lay'|'salve'|'warmth'|'lift'|'stanch',
+  //     who, progress 0..1, eta (s, carrying only), to ('sickroom'|'chapel'|'cell') } }
+  countdown(actor = this.game.player) {
+    const rec = this.falls.get(actor);
+    if (!rec) return null;
+    const out = { left: Math.max(0, rec.left), window: rec.window, frac: Math.max(0, rec.left / rec.window), rate: this.rateOf(rec), crawling: rec.crawling, help: null };
+    const carrier = actor.carriedBy;
+    if (carrier) {
+      const job = this.jobs.get(carrier);
+      const d = job?.dest;
+      const id = d?.bed?.id || '';
+      const to = id === 'cell_cot' ? 'cell' : id === 'infirmary_cot' ? 'chapel' : 'sickroom';
+      if (job?.phase === 'lay') return { ...out, help: { kind: 'lay', who: carrier, progress: Math.min(1, job.t / LAY_SECONDS), eta: Math.max(0, LAY_SECONDS - job.t), to } };
+      let progress = 0;
+      let eta = null;
+      if (d) {
+        const left = Math.hypot(d.x - carrier.x, d.y - carrier.y) * 1.15; // roads bend
+        if (!(job.total > 0) || left > job.total) job.total = left;
+        progress = job.total > 0 ? Math.max(0, Math.min(1, 1 - left / job.total)) : 0;
+        const v = (carrier.speed || 50) * CARRY_SPEED * this.carryBonus(carrier);
+        eta = v > 0 ? left / v + LAY_SECONDS : null;
+      }
+      return { ...out, help: { kind: 'carry', who: carrier, progress, eta, to } };
+    }
+    let best = null;
+    for (const a of rec.responders) {
+      const j = this.jobs.get(a);
+      if (!j) continue;
+      if (j.phase === 'kneel' && (j.mode === 'salve' || j.mode === 'warmth')) {
+        best = { kind: j.mode, who: a, progress: Math.min(1, j.t / REVIVE_SECONDS) };
+        break;
+      }
+      if (j.phase === 'lift') best = { kind: 'lift', who: a, progress: Math.min(1, j.t / LIFT_SECONDS) };
+      else if (j.phase === 'kneel' && !best) best = { kind: 'stanch', who: a, progress: 0 };
+    }
+    out.help = best;
+    return out;
+  }
+
+  // How fast the window drains right now (1 = a second a second).
+  rateOf(rec) {
+    const F = rec.actor;
+    let rate = RATE.alone;
+    if (F.carriedBy) rate = RATE.carried;
+    else if (rec.stanchers.size) rate = RATE.stanched;
+    else if (rec.crawling) rate = RATE.crawling;
+    if (rec.wet && !F.carriedBy) rate *= RATE.water;
+    return rate;
   }
 
   // A real-time pause inside an outcome (the flame's moment on a black screen).

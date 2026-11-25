@@ -30,6 +30,35 @@ export const HUMANOID_ANIMS = {
 // In the 'bed' pose the top of the head sits on this frame row (see characters_bed.js).
 export const BED_HEAD_ROW = 4;
 
+// Crawling while down (DESIGN §27): built on demand by characters_art.ensureCrawl (only
+// whoever falls needs it), so it is not in HUMANOID_ANIMS and costs nothing at boot.
+// Frames are picked by distance dragged (CRAWL_STEP px per frame), not by time, so the
+// hands never slide over the ground.
+export const CRAWL_ANIM = { frames: 4, fps: 6, loop: true };
+export const CRAWL_STEP = 2.5;
+// Hand and elbow per arm phase, from the shoulder (outward +, up -), seen from behind:
+// reaching past the head, hauling the body up to it, the elbow out at the end of the
+// pull, and sliding forward again.
+const CRAWL_ARM = {
+  reach: { ex: 1, ey: -7, hx: -1, hy: -14 },
+  pull: { ex: 3, ey: -5, hx: 1, hy: -10 },
+  end: { ex: 4, ey: -1, hx: 3, hy: -5 },
+  slide: { ex: 2, ey: -4, hx: 1, hy: -8 },
+};
+// Knee and foot per leg phase (from the hip; fy = rows above the usual foot line).
+const CRAWL_LEG = {
+  straight: { kx: 0, ky: 4, fx: 0, fy: 0 },
+  half: { kx: 2, ky: 3, fx: 1, fy: 2 },
+  bent: { kx: 4, ky: 2, fx: 2, fy: 4 },
+};
+// The cycle: the arm that reaches is pulled by the opposite knee.
+const CRAWL_POSES = [
+  { R: 'reach', L: 'end', legA: 'bent', legB: 'straight' },
+  { R: 'pull', L: 'slide', legA: 'half', legB: 'straight' },
+  { R: 'end', L: 'reach', legA: 'straight', legB: 'bent' },
+  { R: 'slide', L: 'pull', legA: 'straight', legB: 'half' },
+];
+
 export const DIRECTIONS = ['down', 'left', 'right', 'up'];
 
 const WOOD = tri(RAMPS.wood, 1);
@@ -548,6 +577,7 @@ class Painter {
   constructor(app, anim, frame, dir) {
     this.a = app;
     this.anim = anim;
+    this.frame = frame;
     this.dir = dir;
     this.view = dir === 'left' || dir === 'right' ? 'side' : dir;
     this.s = dir === 'left' ? -1 : 1; // facing sign for side views
@@ -590,6 +620,7 @@ class Painter {
 
   paint() {
     if (this.anim === 'bed') return this.paintInBed();
+    if (this.anim === 'crawl') return this.paintCrawl();
     if (this.anim === 'sleep' || this.anim === 'down') return this.paintLying();
     if (this.view === 'side') this.paintSide();
     else this.paintFrontBack(this.view === 'up');
@@ -613,14 +644,18 @@ class Painter {
     if (back && p.twoHand) this.armAndItem('L', !rightOnLeft, uy, by, back, 'itemOnly');
 
     // 2. legs and feet
-    this.legsFront(by, back);
+    const crawl = this.anim === 'crawl';
+    if (crawl) this.crawlLegs(by);
+    else this.legsFront(by, back);
 
     // 3. torso and outfit
     this.torsoFront(uy, by, back);
 
     // 4. arms (with items in hand)
-    this.armAndItem('L', !rightOnLeft, uy, by, back);
-    this.armAndItem('R', rightOnLeft, uy, by, back);
+    if (!crawl) {
+      this.armAndItem('L', !rightOnLeft, uy, by, back);
+      this.armAndItem('R', rightOnLeft, uy, by, back);
+    }
     // 4b. what goes over the arms: Petra's shawl, the Reeve's chain, Hess's gear
     this.overArms(uy, by, back);
 
@@ -628,12 +663,14 @@ class Painter {
     this.headFront(T, back);
 
     // 6. cloak over the shoulders / on the back
+    // (Crawling, §27: the cloak rides up over the back and the arms reach out over it.)
     if (a.cloak) {
-      if (back) this.cloakBackView(uy, by);
+      if (back) this.cloakBackView(uy, by, crawl ? g.hipY + 2 : null);
       else this.cloakMantleFront(uy);
     }
     if (back) this.hairBackView(T, uy);
     this.headwear(T, back);
+    if (crawl) this.crawlArms(uy);
     if (this.lateItem) {
       const { hx, hy, out } = this.lateItem;
       this.drawItem(hx, hy, out, back, false);
@@ -1855,10 +1892,10 @@ class Painter {
     sp.dot(CX, top + 1, a.cloakTrim ? '#a3a8b8' : GOLD[1]);
   }
 
-  cloakBackView(uy, by) {
+  cloakBackView(uy, by, hem = null) {
     const { a, g, p, sp } = this;
     const top = g.shoulderY + uy - 1;
-    const bottom = g.footY - 3 + (by > 0 ? 0 : 0);
+    const bottom = Number.isFinite(hem) ? hem : g.footY - 3 + (by > 0 ? 0 : 0);
     sp.begin({ band: 2 });
     for (let y = top; y <= bottom; y++) {
       const t = (y - top) / (bottom - top);
@@ -2539,10 +2576,111 @@ class Painter {
     }
     return dst;
   }
+
+  // ---------------------------------------------------------------- crawling
+  // Arms and legs of the crawl, seen from behind before the figure is laid down: each
+  // limb in two segments (shoulder-elbow-hand, hip-knee-foot) so elbows and knees show.
+  crawlArms(uy) {
+    const { a, g, p, sp } = this;
+    const c = p.crawl;
+    if (!c) return;
+    const sleeve = a.skeleton ? a.skin : a.top;
+    for (const [which, onLeft] of [
+      ['L', true],
+      ['R', false],
+    ]) {
+      const k = CRAWL_ARM[c[which]] || CRAWL_ARM.end;
+      const geo = this.armGeom(onLeft, uy);
+      const o = geo.out;
+      const x0 = geo.sx;
+      const y0 = geo.sy + 1;
+      const ex = x0 + k.ex * o;
+      const ey = y0 + k.ey;
+      const hx = x0 + k.hx * o;
+      const hy = y0 + k.hy;
+      sp.begin({ band: 0 });
+      sp.limb(x0, y0, ex, ey, g.armW, sleeve);
+      sp.limb(ex, ey, hx, hy + 1, g.armW, sleeve);
+      sp.begin({ shadow: 'all' });
+      sp.rect(hx, hy - 1, g.armW, 2, a.hands || a.skin);
+    }
+  }
+
+  crawlLegs(by) {
+    const { a, g, p, sp } = this;
+    const c = p.crawl;
+    if (!c) return;
+    const legRamp = a.skeleton ? a.skin : a.outfit === 'robe' || a.outfit === 'dress' ? a.shoes : a.bottom;
+    const top = g.hipY + 1 + by;
+    for (let i = 0; i < 2; i++) {
+      const k = CRAWL_LEG[i === 0 ? c.legA : c.legB] || CRAWL_LEG.straight;
+      const o = i === 0 ? -1 : 1;
+      const w = Math.max(2, g.legW - 1);
+      const x0 = g.legs[i] + (i === 0 ? 0 : g.legW - w);
+      const kx = x0 + k.kx * o;
+      const ky = top + k.ky;
+      const fx = x0 + k.fx * o;
+      const fy = Math.min(g.footY, g.footY - k.fy);
+      sp.begin({ band: 1 });
+      sp.limb(x0, top, kx, ky, w, legRamp);
+      sp.limb(kx, ky, fx, fy - 2, w, legRamp);
+      sp.begin({});
+      sp.rect(fx, fy - 1, w, 2, a.shoes);
+    }
+  }
+
+  // Dragging yourself along the ground face down (§27). The figure is painted from behind
+  // with one arm reaching past the head and the other hauling at the side, the opposite
+  // knee drawn up, then laid flat toward where it crawls: a quarter turn for left and
+  // right; for up and down it is flattened toward the ground (and turned half round for
+  // down, the crown of the head toward us), so it reads as a body on the ground rather
+  // than someone standing. Shading is recomputed for the new orientation.
+  paintCrawl() {
+    const { a } = this;
+    const n = CRAWL_ANIM.frames;
+    const f = (((this.frame | 0) % n) + n) % n;
+    const stand = new Painter(a, 'idle', 0, 'up');
+    stand.anim = 'crawl';
+    stand.p = { ...basePose(), face: 'ko', hideItem: true, crawl: CRAWL_POSES[f] };
+    stand.paintFrontBack(true);
+    const src = stand.sp;
+    const dst = this.sp;
+    dst.parts = src.parts.slice();
+    dst.cur = src.cur;
+    const copy = (sx, sy, nx, ny) => {
+      if (sx < 0 || sy < 0 || sx >= FRAME || sy >= FRAME || nx < 0 || ny < 0 || nx >= FRAME || ny >= FRAME) return;
+      const i = sy * FRAME + sx;
+      if (src.part[i] < 0) return;
+      const j = ny * FRAME + nx;
+      dst.part[j] = src.part[i];
+      dst.ramp[j] = src.ramp[i];
+      dst.tone[j] = src.tone[i];
+      dst.color[j] = src.color[i];
+      dst.alpha[j] = src.alpha[i];
+    };
+    if (this.dir === 'left' || this.dir === 'right') {
+      // head toward the way it crawls, the body lying just above the feet line
+      const left = this.dir === 'left';
+      for (let y = 0; y < FRAME; y++) for (let x = 0; x < FRAME; x++) copy(x, y, left ? y : FRAME - 1 - y, left ? FRAME - 1 - x + 7 : x + 6);
+      return dst;
+    }
+    // Up and down: flattened toward the feet line (rows sampled, so nothing smears).
+    const K = 0.8;
+    const base = ANCHOR_Y;
+    for (let ny = 0; ny < FRAME; ny++) {
+      const r = Math.round(base - (base - ny) / K);
+      if (r < 0 || r >= FRAME) continue;
+      for (let nx = 0; nx < FRAME; nx++) {
+        if (this.dir === 'up') copy(nx, r, nx, ny);
+        else copy(FRAME - 1 - nx, FRAME - r, nx, ny); // half a turn: head nearest us
+      }
+    }
+    return dst;
+  }
 }
 
 export function paintHumanoid(appearance, anim, dir, frame) {
   const a = appearance && appearance.skin && Array.isArray(appearance.skin) && appearance.top ? appearance : normalizeAppearance(appearance);
-  const pt = new Painter(a, HUMANOID_ANIMS[anim] ? anim : 'idle', frame, DIRECTIONS.includes(dir) ? dir : 'down');
+  const pt = new Painter(a, HUMANOID_ANIMS[anim] || anim === 'crawl' ? anim : 'idle', frame, DIRECTIONS.includes(dir) ? dir : 'down');
   return pt.paint();
 }
