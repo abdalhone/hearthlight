@@ -60,6 +60,12 @@ import { CRAWL_STEP, CRAWL_ANIM } from '../art/characters_humanoid.js';
 
 const PLAYER_ID = 'player';
 
+// Water underfoot, fords included (map.isWet; older maps only know deep water).
+function wetAt(g, tx, ty) {
+  const m = g.map;
+  return !!(m?.isWet ? m.isWet(tx, ty) : m?.isWater?.(tx, ty));
+}
+
 function safe(fn, fallback = null) {
   try {
     const v = fn();
@@ -193,7 +199,7 @@ export class Survival {
     try {
       if (g.isBlockedTile?.(tx, ty, null)) return true;
       if (g.objects?.doorAt?.(tx, ty)) return true;
-      if (g.map?.isWater?.(tx, ty)) return true;
+      if (wetAt(g, tx, ty)) return true;
     } catch {
       return false;
     }
@@ -316,7 +322,7 @@ export class Survival {
       lyraAt: (opts.t || 0) + 9,
     };
     // Falling into water: the body is pulled to the nearest bank, cold and soaked.
-    if (safe(() => g.map?.isWater?.(Math.floor(actor.x / TILE), Math.floor(actor.y / TILE)), false) || opts.wet) {
+    if (safe(() => wetAt(g, Math.floor(actor.x / TILE), Math.floor(actor.y / TILE)), false) || opts.wet) {
       rec.wet = true;
       const s = this.freeSpotNear(actor.x, actor.y);
       if (s) {
@@ -324,6 +330,7 @@ export class Survival {
         actor.y = s.y;
       }
     }
+    rec.fellAt = { x: actor.x, y: actor.y }; // where they went down (a carry may move them on)
     this.falls.set(actor, rec);
     // The crawl is painted the first time this body needs it (off the boot path), and the
     // blood starts where they went down.
@@ -1160,10 +1167,15 @@ export class Survival {
     if (coins <= 0) return { coins: 0, lost, where: '' };
     P.inventory.remove('coin', coins);
     const spot = this.freeSpotNear(P.x, P.y) || { x: P.x, y: P.y };
-    const where = rec?.where || placePhrase(g, spot.x, spot.y);
-    this.placeRing({ x: spot.x, y: spot.y, coins, day: g.clock?.day ?? 1, where, place: rec?.place || placeName(g, spot.x, spot.y) });
-    g.bus?.emit?.('ember_ring', { coins, lost, x: spot.x, y: spot.y, where });
-    return { coins, lost, where };
+    // The ring lies where the body was when it died. Carried part of the way (and died in
+    // someone's arms), that is not where they fell: name the place it really is.
+    const fell = rec?.fellAt;
+    const moved = !!fell && Math.hypot(spot.x - fell.x, spot.y - fell.y) > 6 * TILE;
+    const where = !moved && rec?.where ? rec.where : placePhrase(g, spot.x, spot.y);
+    const place = !moved && rec?.place ? rec.place : placeName(g, spot.x, spot.y);
+    this.placeRing({ x: spot.x, y: spot.y, coins, day: g.clock?.day ?? 1, where, place });
+    g.bus?.emit?.('ember_ring', { coins, lost, x: spot.x, y: spot.y, where, moved });
+    return { coins, lost, where, moved };
   }
 
   placeRing(o) {

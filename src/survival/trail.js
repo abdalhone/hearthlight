@@ -24,7 +24,10 @@ export class BloodTrail {
 
   wet(x, y) {
     try {
-      return !!this.game.map?.isWater?.(Math.floor(x / TILE), Math.floor(y / TILE));
+      const m = this.game.map;
+      const tx = Math.floor(x / TILE);
+      const ty = Math.floor(y / TILE);
+      return !!(m?.isWet ? m.isWet(tx, ty) : m?.isWater?.(tx, ty)); // fords wash it away too
     } catch {
       return false;
     }

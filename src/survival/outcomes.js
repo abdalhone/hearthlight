@@ -37,7 +37,7 @@ export function ringWords(ring) {
   if (!ring) return '';
   let text = '';
   if (ring.lost > 0) text += ` The embers where you fell before have gone out: those ${coins(ring.lost)} are gone for good.`;
-  if (ring.coins > 0) text += ` Everything you carried, ${coins(ring.coins)}, lies where you fell${ring.where ? `, ${ring.where}` : ''}, in a ring of embers. Walk back and take it; die before you reach it and it is gone.`;
+  if (ring.coins > 0) text += ` Everything you carried, ${coins(ring.coins)}, lies where you ${ring.moved ? 'died' : 'fell'}${ring.where ? `, ${ring.where}` : ''}, in a ring of embers. Walk back and take it; die before you reach it and it is gone.`;
   return text;
 }
 

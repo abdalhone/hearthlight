@@ -1,5 +1,5 @@
 import { TILE } from '../core/constants.js';
-import { tileDef, SOLID, WATERY, WALLISH, SPEED } from './tiles.js';
+import { tileDef, SOLID, WATERY, WALLISH, SPEED, T } from './tiles.js';
 import { paintChunk, bakeReflections, CHUNK } from '../art/tiles_art.js';
 import { paintRoof, roofGeometry } from '../art/world_buildings.js';
 
@@ -123,6 +123,14 @@ export class TileMap {
 
   isWater(tx, ty) {
     return this.inBounds(tx, ty) && WATERY[this.ground[this.idx(tx, ty)]] === 1;
+  }
+
+  // Water underfoot, the walkable fords included: blood washes away there, a body lying in
+  // it is soaked, and nothing is laid down in it (survival, the ember-ring).
+  isWet(tx, ty) {
+    if (!this.inBounds(tx, ty)) return false;
+    const g = this.ground[this.idx(tx, ty)];
+    return WATERY[g] === 1 || g === T.SHALLOWS;
   }
 
   // Blocks arrows, bolts and line of sight.
