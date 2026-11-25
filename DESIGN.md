@@ -221,7 +221,7 @@ Object types (`objType`) and behavior:
 | objType | notes |
 |---|---|
 | `door` | `open(actor) → bool`, `close(actor)`, `isOpen`, `locked`, `state.keyId`. Unlocks if the actor carries the key. Emits `door`. |
-| `tree` | variants oak/pine. Work 3 s → 2–3 `wood`, becomes a stump, regrows after ~1 in-game day. |
+| `tree` | variants oak/pine. Work 3 s → 2–3 `wood`, becomes a stump, regrows after ~1 in-game day. The player's strike and heavy weaves fell it (`fell(dir, onLand)`, §31.3). |
 | `rock` | → `stone`. `ore` (iron) → `iron_ore`. `crystal` → `crystal` (ruins only). Regrow slowly. |
 | `herb` | → `herb`. `moonpetal` → `moonpetal`, only pickable at night (glows). `berry_bush` → `berries`. Regrow. |
 | `crop` | Tobias's field. stages 0–3; stage 3 harvest → `turnip` or `wheat`; replants to 0; grows over time. |
@@ -230,7 +230,7 @@ Object types (`objType`) and behavior:
 | `campfire` / `hearth` | light source; cooking spot. `inn_hearth`, `camp_campfire`, `lake_campfire`. |
 | `lamp` | light at night (auto-lit from dusk). Street lamps around the village. |
 | `sign` | interact shows its text (`game.ui.toast` or a small dialog). `notice_board` gives hints. |
-| `well`, `anvil`, `forge`, `table`, `chair`, `barrel`, `crate`, `fence`, `altar`, `shelf`, `tent`, `ruin_pillar`, `statue` | decor; some solid; forge/altar give light. |
+| `well`, `anvil`, `forge`, `table`, `chair`, `barrel`, `crate`, `fence`, `altar`, `shelf`, `tent`, `ruin_pillar`, `statue` | decor; some solid; forge/altar give light. Fences, barrels, crates, carts, signs, woodpiles, pots, sacks, hay and bushes break under the player's blows (`state.broken`, §31.3); `dummy` is the training dummy (§31.4). |
 | `journal` | `maren_journal` in the deepest ruins room. Interact → player gets item `maren_journal`; emits `item_gained` and sets `game.flags.journal_found = true`. |
 | `fishing_spot` | an invisible marker on the dock: preferred place for the `fish` job. |
 | `window` | glows warm at night (light source), on building walls. |
