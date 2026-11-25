@@ -1175,14 +1175,18 @@ test('Claude recall tools are offered only when the view supports them', async (
 
 test('when she has left or is gone she does not answer like a companion; apologies are weighed', async () => {
   let calls = 0;
-  const game = makeGame({ runtime: fakeRuntime(async () => (calls++, GOOD_REPLY)) });
+  const prompts = [];
+  const game = makeGame({ runtime: fakeRuntime(async (p) => (calls++, prompts.push(String(p)), { ...GOOD_REPLY, say: 'No.' })) });
   const brain = brainFor(game);
   game.flags.lyra_gone = { day: 3, reason: 'knocked out' };
+  // Gone (DESIGN §19.7), within earshot: never a lock (the author: "even if somebody really
+  // hates me, make me able to talk to them"). She hears it, and answers as she feels.
   const r = await brain.handlePlayerMessage('please come back');
-  assert.equal(calls, 0, 'nobody to ask');
-  assert.equal(r.say, '');
-  // Gone (DESIGN §19.7): she still lives in Hearthvale, and will not speak to the player.
-  assert.ok(/won't speak to you/.test(game.ui.chat.messages.at(-1).text) && game.ui.chat.messages.at(-1).from === 'system');
+  assert.equal(r.unreachable, undefined, 'not refused');
+  assert.equal(calls, 1, 'her mind is asked');
+  assert.match(prompts[0], /cut them out of your life[^]*hear every word/, 'and told she hears them and answers as she feels');
+  assert.equal(r.say, 'No.');
+  assert.ok(!game.ui.chat.messages.some((m) => /won't speak to you|won't talk to you/.test(m.text)), 'no "won\'t talk to you"');
 
   const g2 = makeGame();
   const b2 = brainFor(g2);

@@ -15,7 +15,7 @@ export const COMPANIONSHIP = Object.freeze({
   wary: { label: 'Wary of you', tone: 'warn', blurb: 'She is still beside you, but guarded: she keeps her distance, turns down risky requests and watches what you do.' },
   apart: { label: 'Living her own life', tone: 'calm', blurb: 'She is going her own way for now. She is friendly, and she may travel with you again if she wants to.' },
   left: { label: 'Left you', tone: 'bad', blurb: 'She broke off after being hurt or betrayed, handed back the hearthwatch and keeps away from you. Only amends she believes, and time, might bring her back.' },
-  gone: { label: 'Cut you off', tone: 'grave', blurb: 'She has cut you out of her life. She lives with her own people in the village now, keeps her distance and will not talk to you beyond a word, and Hearthvale stands with her.' },
+  gone: { label: 'Cut you off', tone: 'grave', blurb: 'She has cut you out of her life. She lives with her own people in the village now and keeps her distance; speak to her and she hears you, and answers as she feels (a word, if that). Hearthvale stands with her.' },
 });
 
 export const COMPANIONSHIP_STATES = Object.keys(COMPANIONSHIP);

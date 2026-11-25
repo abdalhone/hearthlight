@@ -990,6 +990,81 @@ plan for today, open promises, and — for any request in the player's message �
 verdict as "your gut says: …, because …". Claude decides; its actions run with source
 `'claude'`. The UI never presents her as a tool: the command bar asks, she answers.
 
+### 16.11 Her proposals, followed through (`src/ai/mind/autonomy_outing.js`; the author: "she goes there, and the second she reaches it, she comes back following me")
+
+"Come with me to the chapel? Sister Aveline knew Maren." is a plan of hers, not an order to
+the player's feet. Her request carries `{ at, npc, topic, lead: true, why }`; the player's
+yes ("lets go", "ok", "sure, lead the way": the brain's `_goingAlong`, which takes the whole
+message as one answer, never as `follow`) is the player's promise, and the promise starts
+an **outing** (`autonomy.outings`):
+
+- `go` — she leads the way there (`goto … then stay`). A guide waits for the one she is
+  guiding: 13 tiles behind and she stops and says so; within 7 she walks on; after 70 s she
+  goes on alone (it was always her errand) and remembers that they didn't come.
+- `find` — the person it is about, if they are up and about (`available`); otherwise she
+  waits for them (up to 1.5 h) and says so, then gives up for today.
+- `talk` — the talk it was about: the social plugin's `talk_to` (Claude writes it when it
+  is to hand and the outing was agreed in a Claude chat), the `conversation` event the Maren
+  arc listens for (a chat about the weather is not it). Retried up to 3 times.
+- `after` — what she heard settles (the arc's own lines are said first), then she carries
+  on with **her own life**: her open agenda (§16.12) chooses what next — a while alone with
+  it, her mother, the player's company — said in her voice ("I'm glad you were there. Now I
+  need a while. Mam should hear it from me.").
+
+Nothing in it snaps her back to following. A `goto`/`follow` from a reply is overridden by
+her plan while it runs (Claude is told so: "the game carries it out; do not use goto or
+follow for it"). She comes back to the player only if she chooses to (her agenda picks
+their company) or if they ask and she agrees (the consent gate weighs it, and an outing in
+hand weighs against): then the outing is dropped and becomes **unfinished business**. The
+player's promise is kept when they were there. Left/gone ends it. Saved (a talk cut by the
+save starts again from finding the person). Her yes is said once: the reply adds no
+generic line after the outing's own.
+
+### 16.12 Her open agenda (`src/ai/mind/autonomy_open.js`; the author: "not only those 5 criteria")
+
+Her day is still planned each morning from a handful of factors (§16.1); her choices in
+the moment draw on everything she has going on, weighed (`openAgenda(view)`, sorted, ids
+`a1…`):
+
+| kind | what | weighs |
+|---|---|---|
+| `want` | what she wants today: food, rest, coin, a small joy (stars, the fire in the rain, a honey cake), a while alone with hard news | her needs, mood, nerves, the weather, the hour |
+| `unfinished` | unfinished business: a talk she never had, a call she was sent | older is heavier (a week, then it lapses); Maren weighs more |
+| `person` | people she cares about (affinity ≥ 35): not seen today, grieving, Mam and Da | family more; the grieving most; after hard news, family |
+| `said` | what she said she'd do: her open promises | steady |
+| `company` | the player's company | only while she wants it (trust, fear, worth §19.4) |
+| `plan` | her plan as it stands | steady, low |
+
+A day's small randomness keeps two days apart. `chooseNext` picks for her offline; with
+Claude in a chat, the list goes into her prompt with its ids, and Claude may choose one by
+`set_plan "a2"` (the game turns it into an ordinary plan block, or an outing for
+unfinished business with a person). Saved: `autonomy.unfinished`.
+
+### 16.13 Hate means distance, not jitter (`src/ai/behavior/own_life.js`; the author: "she tries to get away from me, but she wants to come back… literally moving in place")
+
+Measured first: a Lyra who had left the player, with the player standing where her day took
+her, turned back on herself 161 times in 90 s (avoiding stepped her out, her day walked her
+back in). Now one owner decides her feet (own_life), weighing both at once, with
+hysteresis:
+
+- **left / gone**: she steps clear until 3 tiles past the distance she keeps (her own day
+  avoids them by 8 tiles left, 10 gone), to a spot she keeps until they close on it; never walks toward them inside 7 tiles; does
+  her day from a spot clear of them or waits it out where she stands. If they walk at her,
+  she keeps stepping away; she never turns back toward them. While she holds off, the spot
+  she holds off at must stay clear of them and the way there must not lead toward them;
+  once her stepping clear has put them between her and it, she waits where she stands. Her
+  actual steps count, not only where she means to go: a way that bends back toward them
+  (round a house, along the shore) inside 7 tiles stops her, and she waits it out there.
+- **flee** commits to its break-away and finds another safety (or just away) when the way
+  runs past the player.
+- **wary** and afraid (fear ≥ 25 or affinity ≤ −30): she trails at a steady distance
+  (`keep_away` that follows, 4–8 tiles by fear) instead of `follow far`; she returns to
+  `follow far` only below fear 15 and above affinity −20.
+
+Reversals in the same scenes: 0–4. Played in Chromium (20 chase-then-stand trials on both
+phone sizes): 0–2 turns once the player stands (13 before the last two rules), a few more
+while she is chased into a corner such as the lake shore.
+
 ## 17. Memory and lore
 
 ### 17.1 The story (`src/lore/story.js`, `src/lore/lorebook.js`)
@@ -1242,7 +1317,10 @@ village. She should be able to ask help for other people. They can come and help
 - Hearthvale is Lyra's home. **She never leaves the map or vanishes** — not when hurt, not
   in `left`, not in `gone`. `gone` now means she has cut the player out of her life: she
   lives with her parents at the chandlery (or her room at the Kettle), keeps her distance,
-  won't talk beyond a word, and the village stands with her. (LORE §7's table changes to
+  and the village stands with her. She can still be spoken to (r13, the author: "even if
+  somebody really hates me, make me able to talk to them"): she hears it, and answers as she
+  feels: a word at most offline, or silence when pressed (shown as an act, §23.3), her own
+  choice with Claude. Out of earshot she hears nothing. (LORE §7's table changes to
   match: the road to Saltmere is something she *thinks about*, never a despawn.)
 - **Calling for help.** When she is attacked, badly hurt, or afraid for her life, she shouts
   for help (a real line, by name when someone is near: "Rowan! Hess!") and runs toward
@@ -1595,6 +1673,89 @@ Stop* (trust 72; its lesson waits while she is unsure: a talk step's `trust`) an
   of the player — on the player's action, with the local fallback. Villagers remember what
   the player said, talk about it to others, and it shapes their opinion; Lyra overhears
   when near. The villager dialog's own "Say something…" field stays as a shortcut.
+- **Never a locked chat** (r13, the author: "even if somebody really hates me, make me able
+  to talk to them. Because in real life, if somebody hates me, I can still talk to them").
+  Hate, fear, terror, grief and "cut ties" never disable the field or say someone "won't
+  talk to you": the words always reach them and are remembered, and they answer as they
+  feel (cold, insulting, terrified, begging, refusing to help, one word, or turning away).
+  The only reasons not to be heard are physical: dead, unconscious or downed, out of
+  earshot, or a cutscene. "Has gone on her way" ends that conversation: an answer still on
+  its way is never given, and catching up with her starts a new one.
+- A tap or click on someone talks to them, whatever the chat puts under the finger as it
+  opens: the browser's click from that same tap is swallowed (on phones it pressed a chip
+  of the "To" row and talked to a neighbour), and the release of a mouse click that opened
+  it is not a click outside it. Someone walking away is still a tap away: where they were
+  a moment ago counts too (0.4 s for a finger, 0.15 s for a mouse; `pickActorAt` `lag`),
+  never ahead of them, and someone standing where the tap lands wins (played on a phone: a
+  Lyra keeping away at a run could not be tapped at all).
+
+### 23.1 One memory of everything they say (`src/ai/said_today.js`, `game.saidToday`; the author: "Connect it and let it have like a shot of what it said in this day, even if it was pop up text")
+
+Every line a character says goes into a per-character log for the day (Lyra and each
+villager; 60 lines; deduplicated when the same line arrives by two routes): the `speech`
+event (chat replies, barks, shouts, her will's lines), bubbles shown without it (overheard
+talk, a cry), thoughts said aloud, a villager's conversations out of the player's earshot
+(`village.finishExchange`), gossip and listen-in lines, and toasts that quote someone.
+`note`, `today`, `repeats` (already said today, or near enough: a shared three-word run,
+or the same question), `fresh`, `dropRepeats`, `promptLines`. Saved with the brain.
+
+- **Claude** is told, in both prompts, what they already said today (the questions always,
+  then the latest lines): "keep to it, build on it, never say the same thing or ask the same
+  question twice". A Claude reply that repeats anyway loses that sentence.
+- **Local replies** dodge it: Lyra's speech banks and her will's lines pick another line;
+  villagers drop a repeated sentence and its short answer ("Have you eaten? You haven't.").
+
+### 23.2 Promises become real actions (`src/ai/social/commitments.js`, `village.commitments`; the author: "she said okay, but she didn't actually go", "The AI said he would give me something but didn't")
+
+When the player asks a villager for something they can do, the game understands the ask
+(`detect`), checks it is possible and whether they are willing (`decide`: can, will, why),
+and their answer carries what they decided. A yes is a **commitment** the game carries out:
+
+- **tell** ("go and talk to Lyra for me", "tell her I'm sorry"): when they are free they walk
+  to her (village_life's `keep` step), the two talk (lines in the world, a listen-in), and
+  Lyra really hears it (`Autonomy.hearMessage`: remembered with who brought it; an apology
+  weighed as if said to her face; a call to come goes on her open agenda §16.12). Due within
+  1.5 days.
+- **give** ("can I have a honey cake"): the item changes hands now, from their own trade
+  (`GIVES`: Elda's cakes, bread and stew, Mira's herbs, Corran's fish…, each with the opinion
+  it needs; at most two gifts a day, never the same twice). An offer in their own words
+  ("take a honey cake for the road") is handed over too.
+- **teach** ("teach me magic"): a part they actually know — their errands that end in a
+  weave (`TEACHES`, from `missions/data.js`; LORE §13): the lesson (the mission) starts and
+  the part unlocks when it is done. Not yet: they say when ("after First Spark"); none to
+  teach: they say who does. Lyra's own "teach me" offers her lesson (`offer_lesson`).
+
+A no says plainly why. Claude, when it voices them, is told the ask and what is possible,
+and answers with `commit: { kind, agree }`; the game never acts on a yes it has not checked
+(a yes to the impossible is answered with the plain reason). A promise not kept by its day
+is **broken**: both sides remember (their notes, the player's toast), and they own it first
+next time. Kept: "Elda kept their word — Elda found Lyra and talked to her for you". A
+villager who has gone on their way, or backed off in fear, cannot answer after: a late
+reply is not delivered, and the field says so. Saved in `village.commitments`.
+
+### 23.3 Silence is a choice made after hearing (`src/ai/silence.js`; the author: "make them able to choose to not respond to me but they have to get my msg so they get it and decide to not answer")
+
+Within earshot, every line the player sends reaches the person first (out of earshot,
+nothing does: Lyra's `player_message`, her will's weighing of an apology and her record of
+the talk wait until she can hear): into their conversation (a
+villager's talk and chat history, Lyra's `mind.conversation`), into what they remember of
+the player, and into their Claude prompt or local rules. Then they decide whether to answer.
+Silence is one answer, and the player sees it done, as a narration row in the chat and
+their back turned (`silenceAct`, `turnAway`): "Elda hears you. She says nothing and turns
+away." Never an empty screen, a disabled field, "didn't catch that" or a failure.
+
+- **Offline** (local rules): someone cold to the player (hostile, or raw with what the
+  player did) who has just answered them coldly lets the next line pressed on them within
+  a minute go unanswered, then speaks again; a terrified witness falls silent after terror,
+  begging and a scream (§29.3); Lyra, cut off or broken off, gives a word to the first line
+  and silence to the next one pressed on her within 40 s, and her "…" is a silence too.
+- **With Claude**: villagers answer `{"silent": true, "say": ""}` (the schema carries it;
+  the rules say they always hear and may say nothing); Lyra, gone or left, may give an empty
+  say with no action. The game keeps a silence only where it sees a reason (cold, wronged,
+  threatened, insulted, wary or worse; for Lyra, gone or left): a friend's silence for no
+  reason falls back to their own words. The next prompt carries it: "You: (you heard it, and
+  said nothing)".
+- A silent turn makes no promise and gives nothing (a request met with silence is a no).
 
 ## 24. One clean menu (the author: "the settings [are] so multiplied… when I press the menu I see all the things that I see in the HUD")
 
@@ -1771,9 +1932,10 @@ notices and has opinions (berserk frightens her).
   (`FINISH_HOLD` 1.5 s, a ring closing over them); the first time, a plain warning
   (`flags.finisherWarned`). Never Lyra, never Pip or Tansy. `murder.kill(v)` →
   `villageLife.markGone(id, { cause: 'killed', keepBody: true })`; the body lies still.
-- **Seen**: wanted (`player.crime = { level: 3, kind: 'murder' }`), the cries, the bell,
-  `crime {kind: 'murder'}`, rumor `murder`, opinions to the floor, shops refuse, Lyra goes
-  (`murdered_villager` deed → `gone`). **Unseen**: nothing; §28 runs.
+- **Seen**: the cries, the witnesses' terror (§29.3) and the rumor `murder`, carried face to
+  face (§29.2). When the news reaches the watch (`raiseAlarm`): wanted (`player.crime =
+  { level: 3, kind: 'murder' }`), the bell, `crime {kind: 'murder'}`, the village turns,
+  shops refuse, Lyra goes (`murdered_villager` deed → `gone`). **Unseen**: nothing; §28 runs.
 - **Bodies**: lift (`survival.startCarry`), and lay down / sink in the lake (back on the
   shore in 2–4 days, found in the morning) / hide in the deep woods (a search of the wood
   or Hess may find it) / leave in the ruins (kept). Seen carrying it: clearly → murder;
@@ -1796,6 +1958,45 @@ notices and has opinions (berserk frightens her).
   goes home to her surviving parent. Events: `villager_killed`, `murder_witnessed`,
   `body_hidden`, `body_found`, `murder_case`, `questioned`, `arrested`, `moot_met`,
   `funeral`, `moot_verdict`. Saved in `save.murder`.
+
+### 29.2 Eyes and words (`src/ai/sight.js` over `murder/witness.js`; `village.js`; the author: "Villagers are able to see me kill behind walls… he shouldn't be able to send off the information until he meets other people")
+
+- **One rule for eyes.** Every eye goes through `look()` (§29.1: awake, the same space, range
+  for the light, a line of sight through no wall or house): Lyra's sight (`missions/lyra.js`
+  was distance-only), the harmless kill she "saw from another house" and her cruelty
+  reactions (perception), the villagers' sightings sweep and `npc.canSee` (was: the same
+  building only), murder witnesses, and who saw a deed in the village's gossip.
+- **News travels by meeting.** Grave news passes face to face only (`MEET` 88 px, the same
+  roof, both awake). A killing seen is known by those who saw it and those near enough to
+  make out the scream (96 px); nobody else. The watch learns only when someone who knows
+  reaches them (`tickNews` → `raiseAlarm`): then wanted, the bell, the body found, the case
+  certain, the village turns, Lyra hears the bell. A watchman who saw it raises it at once;
+  a witness who has run to one of the watch tells them within 64 px, roof or no roof (she
+  shouts it in at the door).
+- **Until then, nobody knows who did it.** A witness's account counts in the watch's case
+  only once the watch has heard it; a body found first by someone else is a mystery at a
+  mystery's pace (weighed again, and hastened, when the witness arrives). A witness does not
+  "find" the body she saw fall. Shops refuse the killer only once they know (`knowsKiller`:
+  saw it, were told, or heard the bell); `knownDead` likewise.
+
+### 29.3 Witnesses are people (`murder.terrify`, `village.fearNote`, `village.afraidReply`, `ui/chat.js`; the author: "I killed in front of this old woman 3 people and she responds like this after, no effect")
+
+- Someone who watched the stranger kill is **terrified** (`e.terror`, 18 h): they run for the
+  watch, screaming (`npc.startFlee(…, { to })`: the nearest of Rowan, Wys or Hess awake, else
+  the guardhouse; another cry for help on the way does not turn them aside), their opinion
+  falls to the floor, and they **answer only in terror**: tapping them or picking them in
+  the chat shows what the player sees ("Elda backs away from you, white to the lips.") and
+  the field stays open; what the player says reaches them and is remembered, and the answer
+  is fear in their own words, never calm, never Claude wording it kindly, and no errands
+  run for a killer. Pressed on and on (within a minute of each other), fear changes as a
+  person's would: terror ("Don't come near me. Murderer."), then begging ("Please, love—
+  please. I'm an old woman. Let me be."), then a scream for help ("Rowan! ROWAN! Somebody
+  help me!"), then silence, shown as an act ("Elda hears you. She says nothing; she only
+  backs away, shaking."; §23.3), and round again. Every line is kept in their talk, and
+  they remember that the player came talking at them after what they saw.
+- After two killings seen, they are never calm with the stranger again (`e.dread`, saved).
+- A villager who **has gone on their way** cannot answer after: a reply that comes late is
+  not delivered (the author saw Elda answer after "Elda has gone on her way", twice).
 
 ## 30. pixelfx effects (the author: "download and use pixelfx if you see fit"; "the spells do not do any damage, and it's not clear")
 

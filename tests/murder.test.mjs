@@ -211,7 +211,14 @@ test('seen: murder — the cry, the watch, the village turns, shops refuse, and 
   const seen = rec.seen.map((s) => s.id);
   assert.ok(seen.includes('elda') && seen.includes('lyra'));
   assert.equal(rec.known, 'witnessed');
-  assert.equal(g.player.crime.kind, 'murder');
+  // Nobody else knows yet (DESIGN §29.2): Elda is terrified and runs for the watch; the
+  // watch knows only when she reaches them and tells them.
+  assert.notEqual(g.player.crime?.kind, 'murder', 'the watch does not know yet');
+  assert.ok(elda.terror && g.murder.fearOf(elda) === 'terror', 'Elda is terrified');
+  put(rowan, elda.x + 24, elda.y);
+  for (let i = 0; i < 120 && g.player.crime?.kind !== 'murder'; i++) step(g, 0.25, 1 / 10);
+  assert.equal(g.player.crime.kind, 'murder', 'she reached the Captain: wanted now');
+  assert.equal(rec.alarm.by, 'rowan');
   assert.ok(g.combat.isHostile(rowan, g.player), 'the watch hunts the stranger');
   assert.ok(events(g, 'crime').some((e) => e.kind === 'murder' && e.victim === bram));
   assert.ok(g.said.some((s) => s.who === 'elda'), 'Elda cried out');
@@ -549,6 +556,9 @@ test('wanted for murder and beaten down by the watch: the Moot sits once the str
   put(elda, sq.x + 50, sq.y - 10);
   downBy(g, bram);
   g.murder.kill(bram, g.player);
+  // Elda tells the watch (Wys, at her elbow).
+  put(g.entities.get('wys'), elda.x + 20, elda.y);
+  for (let i = 0; i < 120 && g.player.crime?.kind !== 'murder'; i++) step(g, 0.25, 1 / 10);
   assert.equal(g.player.crime.kind, 'murder');
   // The watch clears it where the stranger falls (player.js) — for a killing, that is custody.
   g.combat.clearCrime(g.player, 'arrested');

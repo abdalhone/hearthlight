@@ -19,7 +19,8 @@ export const VILLAGER_RULES = [
   'You voice the people of Hearthvale, a small warded village in Halcyre, a cosy pixel-art RPG. The player is "the stranger": someone found asleep in a melted circle of snow on the Hollowcrown, carried down, who slept eighty-one days and now lives in the Wayhouse. Lyra Ambrel, the lumencrafter, is a villager in her own right: Hobb and Wenna’s daughter.',
   'Stay exactly in the character you are given: their age, their voice, their verbal habits and the sample lines. Short, spoken, natural: one to three sentences, no narration, no stage directions, no quotation marks around the whole line, no emoji.',
   'Speak only from what the brief says this person knows. Never invent secrets, family history, deaths, romances or plot. If asked about something they do not know, they say so in their own way. Never claim to know what happened to Maren, where the stranger came from, who the bandit chief is, or anything about the ward’s numbers.',
-  'They react to the player as their opinion says: warm when they like them, short and guarded when they do not, cold or angry when the player has hurt someone they love. Kindness, thanks and apologies soften them slowly; insults and threats harden them. Someone cold or wronged may refuse to talk, and says so in their own way.',
+  'They react to the player as their opinion says: warm when they like them, short and guarded when they do not, cold or angry when the player has hurt someone they love. Kindness, thanks and apologies soften them slowly; insults and threats harden them.',
+  'They always hear what the player says, and remember it. Someone cold, wronged or angry may answer with a word, a cold line, or not at all: to say nothing, set "silent" to true and "say" to "" (the game shows that they heard and turned away). Never silent with someone they like.',
   'Be a living person, not an answer machine: react to what was said with feeling, keep your own mood, now and then ask the player something back, and bring up what you remember of them when it fits. Use the player’s name only if they told it to you. Asleep, you mumble or say nothing.',
   'Reply with JSON only, in the format the task gives.',
 ].join('\n');
@@ -31,7 +32,8 @@ const nullable = (schema) => ({ anyOf: [schema, { type: 'null' }] });
 export const SAY_SCHEMA = {
   type: 'object',
   properties: {
-    say: { type: 'string', description: 'what they say aloud, 1-3 sentences' },
+    say: { type: 'string', description: 'what they say aloud, 1-3 sentences; "" only when silent' },
+    silent: nullable({ type: 'boolean', description: 'true when, having heard them, they choose to say nothing at all' }),
     mood: nullable({ type: 'string', description: 'one word: warm, happy, neutral, wary, angry, sad, worried, amused, sleepy' }),
     opinion_delta: { type: 'number', description: 'how this exchange changes their opinion of the player, -10..5' },
     learned: { type: 'array', items: { type: 'string' }, description: 'ids of facts from the brief they actually told the player' },
@@ -40,13 +42,20 @@ export const SAY_SCHEMA = {
     name: nullable({ type: 'string', description: 'the name the player just told them, if they did' }),
     memory: nullable({ type: 'string', description: 'if worth keeping: a short clause to the player starting with "you", e.g. "you told me you have never seen the sea"' }),
     asked: nullable({ type: 'string', enum: ['name', 'other'], description: 'if their reply asks the player something: "name" for the player’s name, else "other"' }),
+    commit: nullable({
+      type: 'object',
+      description: 'only when the brief says they are asking you to do something: whether you agree (the game then does it)',
+      properties: { kind: { type: 'string', enum: ['tell', 'give', 'teach'] }, agree: { type: 'boolean' } },
+      required: ['kind', 'agree'],
+      additionalProperties: false,
+    }),
   },
-  required: ['say', 'mood', 'opinion_delta', 'learned', 'rumor_told', 'rumor', 'name', 'memory', 'asked'],
+  required: ['say', 'silent', 'mood', 'opinion_delta', 'learned', 'rumor_told', 'rumor', 'name', 'memory', 'asked', 'commit'],
   additionalProperties: false,
 };
 
 // The same, said in the prompt (claude.ai's sample takes no schema).
-const SAY_FORMAT = 'Reply with one JSON object and nothing else: {"say": string, "mood": one word, "opinion_delta": number from -10 to 5, "learned": [fact ids you told], "rumor_told": news id or null, "rumor": a short clause you will repeat about what they said, or null, "name": their name if they just told it, else null, "memory": a short clause starting "you" worth remembering about them, else null, "asked": "name" or "other" if you asked them something, else null}';
+const SAY_FORMAT = 'Reply with one JSON object and nothing else: {"say": string ("" only when silent), "silent": true only if you choose to say nothing at all, else null, "mood": one word, "opinion_delta": number from -10 to 5, "learned": [fact ids you told], "rumor_told": news id or null, "rumor": a short clause you will repeat about what they said, or null, "name": their name if they just told it, else null, "memory": a short clause starting "you" worth remembering about them, else null, "asked": "name" or "other" if you asked them something, else null, "commit": null, or when they ask you to do something {"kind": "tell"|"give"|"teach", "agree": true|false}}';
 
 export const LINES_SCHEMA = {
   type: 'object',
@@ -138,9 +147,15 @@ export function buildSayTask(b) {
   if (b.rumors?.length) L.push(`News you have heard (id: what you heard):\n${b.rumors.slice(0, 4).map((r) => `- [${r.id}] ${clip(r.text, 150)}`).join('\n')}`);
   if (b.week?.length) L.push(`What the village is talking about this week: ${b.week.slice(0, 2).join(' ')}`);
   if (b.history?.length) {
-    const rows = b.history.slice(-5).map((h) => `- ${h.day && b.today && h.day < b.today ? `(day ${h.day}) ` : ''}They: "${clip(h.you, 110)}" You: "${clip(h.they || '…', 150)}"`);
+    const rows = b.history.slice(-5).map((h) => `- ${h.day && b.today && h.day < b.today ? `(day ${h.day}) ` : ''}They: "${clip(h.you, 110)}" You: ${h.they ? `"${clip(h.they, 150)}"` : '(you heard it, and said nothing)'}`);
     L.push(`The conversation so far, oldest first:\n${rows.join('\n')}`);
   }
+  // Everything they said today, to anyone (DESIGN §23.1): what popped over their head and
+  // what they say in the chat agree, and nothing is said twice.
+  if (b.saidToday?.length) L.push(`What you have already said today, to anyone, aloud or over your head (oldest first). Keep to it, build on it, and never say the same thing or ask the same question again:\n${b.saidToday.join('\n')}`);
+  if (b.promises?.length) L.push(`Your promises to them (you keep your word, or say plainly why not):\n${b.promises.map((x) => `- ${clip(x, 160)}`).join('\n')}`);
+  if (b.owed) L.push(`You broke a promise to them (${clip(b.owed, 120)}): own it first, plainly.`);
+  if (b.request) L.push(b.request);
   if (b.asked) L.push(`You had just asked them ${b.asked === 'their name' ? 'their name' : 'a question'}; this may be their answer.`);
   L.push(`They say to you now: "${clip(b.text, 300)}"`);
   L.push('Answer as yourself, in one to three short spoken sentences.');
@@ -195,8 +210,10 @@ export function cleanLine(text, max = 280) {
 
 export function coerceSay(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  const say = cleanLine(raw.say, 320);
-  if (!say) return null;
+  // Silence is an answer too (DESIGN §23.3): heard, and nothing said.
+  const silent = raw.silent === true;
+  const say = silent ? '' : cleanLine(raw.say, 320);
+  if (!say && !silent) return null;
   const d = Number(raw.opinion_delta);
   const name = typeof raw.name === 'string' ? raw.name.trim().replace(/[.!,]+$/, '') : '';
   let memory = typeof raw.memory === 'string' ? cleanLine(raw.memory, 110) : null;
@@ -204,6 +221,7 @@ export function coerceSay(raw) {
   if (memory && !/^you\b/i.test(memory)) memory = null;
   return {
     say,
+    silent,
     mood: typeof raw.mood === 'string' ? raw.mood.toLowerCase().replace(/[^a-z]/g, '').slice(0, 16) || null : null,
     opinionDelta: Number.isFinite(d) ? Math.max(-10, Math.min(5, d)) : 0,
     learned: Array.isArray(raw.learned) ? raw.learned.filter((x) => typeof x === 'string').slice(0, 3) : [],
@@ -212,6 +230,7 @@ export function coerceSay(raw) {
     name: /^[A-Za-zÀ-ÿ'-]{2,20}$/.test(name) ? name.charAt(0).toUpperCase() + name.slice(1) : null,
     memory: memory ? memory.replace(/^You\b/, 'you').replace(/[.!?]+$/, '') : null,
     asked: raw.asked === 'name' || raw.asked === 'other' ? raw.asked : null,
+    commit: raw.commit && typeof raw.commit === 'object' && ['tell', 'give', 'teach'].includes(raw.commit.kind) ? { kind: raw.commit.kind, agree: raw.commit.agree === true } : null,
   };
 }
 

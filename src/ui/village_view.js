@@ -101,6 +101,8 @@ export function quietReply(npc, why = 'error') {
   const who = firstName(npc?.name) || 'They';
   if (why === 'timeout') return [`${who} seems lost in thought, and does not answer.`];
   if (why === 'asleep') return [`${who} is fast asleep.`];
+  // They heard it, and chose to say nothing (DESIGN §23.3): the act, never a failure.
+  if (why === 'silent') return [`${who} hears you, and says nothing.`];
   return [`${who} doesn't seem to catch that.`];
 }
 
@@ -155,12 +157,15 @@ export class TalkSession {
       call.then(
         (r) => {
           const reply = normalizeReply(r);
-          const ok = reply.lines.length > 0;
-          const out = ok ? { ok, ...reply } : { ok: false, why: 'empty', ...reply, lines: quietReply(this.npc) };
+          // Heard, and they chose silence: what the player sees them do (DESIGN §23.3).
+          const silent = !!(r && typeof r === 'object' && r.silent);
+          const ok = !silent && reply.lines.length > 0;
+          const act = silent ? normalizeReply(r.act ? [r.act] : []).lines[0] || quietReply(this.npc, 'silent')[0] : null;
+          const out = silent ? { ok: false, why: 'silent', silent: true, ...reply, lines: [act] } : ok ? { ok, ...reply } : { ok: false, why: 'empty', ...reply, lines: quietReply(this.npc) };
           if (ok) for (const l of reply.lines) this.history.push({ from: 'npc', text: l });
           if (settled) {
             // Too late for its turn: still worth showing if nothing newer was said.
-            if (ok && id === this.seq && typeof this.onLate === 'function') this.onLate(out);
+            if ((ok || silent) && id === this.seq && typeof this.onLate === 'function') this.onLate(out);
             return;
           }
           settled = true;

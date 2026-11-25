@@ -738,7 +738,15 @@ export function localReply(v, npc, text) {
       if (q.q.kind === 'q') effects.asked = q.q.i;
     }
   }
-  const out = lines.filter((l) => typeof l === 'string' && l.trim() && speakable(l));
+  let out = lines.filter((l) => typeof l === 'string' && l.trim() && speakable(l));
+  // Nothing they already said today, to anyone (DESIGN §23.1): a repeated sentence goes,
+  // and a line that is all repeat goes too while there is something else to say.
+  const said = g?.saidToday;
+  if (said && out.length) {
+    out = out.map((l) => said.dropRepeats(id, l));
+    const freshLines = out.filter((l) => !said.repeats(id, l));
+    if (freshLines.length) out = freshLines;
+  }
   if (!out.length) out.push(fill(pickProfile(voice.short, rng) || 'Hm.', {}) || 'Hm.');
   const note = INTENT_NOTES[intent] ? INTENT_NOTES[intent] : intent === 'topic' && TOPIC_PHRASES[u.topic] ? [`you asked me about ${TOPIC_PHRASES[u.topic]}`, 2] : intent === 'person' && u.person ? [`you asked me about ${u.person === 'maren' ? 'Maren' : thirdName(id, u.person)}`, u.person === 'maren' ? 2.5 : 1.5] : learned ? ['you told me your name', 1] : null;
   return { lines: out, mood, delta, intent, told, mentioned, name: learned, note: note ? { text: note[0], w: note[1] } : null, effects };

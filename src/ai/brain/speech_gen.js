@@ -142,12 +142,19 @@ export class SpeechGen {
     }
     if (!eligible.length) return null;
     const fresh = eligible.filter((e) => !this.recentSet.has(`${situation}#${e.i}`));
-    const pool = fresh.length ? fresh : this._leastRecent(situation, eligible);
-    const chosen = this._weighted(pool);
+    let pool = fresh.length ? fresh : this._leastRecent(situation, eligible);
+    let chosen = this._weighted(pool);
     let text = '';
-    for (let attempt = 0; attempt < 4; attempt++) {
+    // Never the same thing twice in a day (DESIGN §23.1): a line she already said, over her
+    // head or in the chat, gives way to another one while there is another one.
+    for (let attempt = 0; attempt < 6; attempt++) {
       text = this.expand(chosen.entry.t, v, c);
-      if (!this.recentTexts.has(text)) break;
+      const repeat = typeof this.repeats === 'function' && this.repeats(text);
+      if (!this.recentTexts.has(text) && !repeat) break;
+      if (repeat && pool.length > 1) {
+        pool = pool.filter((e) => e !== chosen);
+        chosen = this._weighted(pool);
+      }
     }
     this._remember(`${situation}#${chosen.i}`, text);
     return text;

@@ -1159,7 +1159,9 @@ export class Behavior {
     this.idle.reset();
     if (this.task && this.task.kind !== 'interact' && this.task.kind !== 'give') this.cancelTask();
     this.pendingVictory = false;
-    if (chance(0.55)) this.bark(say.combatStart(nameOf(this.game, t)), 'shout', 12);
+    // Away from the player (her own life, broken off, cut off), she says nothing to them.
+    const apart = !isTogether(this.game);
+    if (chance(0.55)) this.bark(say.combatStart(nameOf(this.game, t), { apart }), 'shout', 12);
   }
 
   onCombatEnd() {

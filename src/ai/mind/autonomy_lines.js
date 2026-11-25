@@ -739,6 +739,112 @@ export const LINES = {
     tired: ['Here. As promised.'],
   },
 
+  // ------------------------------------------------------------------ a message brought to her (§23.2)
+  msg_word: {
+    warm: ['Did they? Thank you, {npc}. I’ll think on it.', 'Thank you for carrying that, {npc}. I heard it.'],
+    cool: ['I heard. Thank you, {npc}.'],
+    afraid: ['Thank you, {npc}. I heard.'],
+    tired: ['Heard. Thank you.'],
+  },
+  msg_call_yes: {
+    warm: ['They sent you all this way? Then I’ll go and find them. Thank you, {npc}.', 'A word, is it? I’ll find them when I can. Thank you for coming, {npc}.'],
+    cool: ['I’ll find them. Thank you, {npc}.'],
+    afraid: ['All right. I’ll find them. Thank you, {npc}.'],
+    tired: ['I’ll find them. Later.'],
+  },
+  msg_call_later: {
+    warm: ['Not today, {npc}. Tell them I heard, if you see them.'],
+    cool: ['I heard. Not today.'],
+    afraid: ['Not today. Tell them I heard.'],
+    tired: ['Not today.'],
+  },
+  msg_apology_believed: {
+    warm: ['They said that? …Thank you, {npc}. I believe them.'],
+    cool: ['Sorry, is it. …All right. I believe it.'],
+    afraid: ['They’re sorry? …I think they mean it.'],
+    tired: ['All right. I believe them.'],
+  },
+  msg_apology_doubted: {
+    warm: ['Sorry, sent by someone else. I heard it, {npc}. I’m not sure I believe it yet.'],
+    cool: ['Sorry is easy to send. I heard it.'],
+    afraid: ['I heard it. I don’t know yet.'],
+    tired: ['I heard. Not sure yet.'],
+  },
+  msg_left: {
+    warm: ['I heard, {npc}. I’m keeping my own road for now.'],
+    cool: ['I heard. I’m keeping my own road for now.'],
+    afraid: ['I heard. I’d rather keep my distance.'],
+    tired: ['I heard. Not now.'],
+  },
+  msg_gone: {
+    warm: ['Thank you, {npc}. I’ve nothing to say back to them.'],
+    cool: ['I’ve nothing to say back to them, {npc}.'],
+    afraid: ['I’ve nothing to say back.'],
+    tired: ['Nothing to say back.'],
+  },
+
+  // ------------------------------------------------------------------ her outings (§16.11)
+  outing_go: {
+    warm: ['Right. Thank you for coming. {place}’s this way — stay close.', 'Come on, then. I’ll lead, and I’ll try not to dawdle.'],
+    cool: ['This way. Keep up.'],
+    afraid: ['This way. Stay near me, would you?'],
+    tired: ['This way. Slowly.'],
+  },
+  outing_wait_player: {
+    warm: ['{P}! This way!', 'Over here — I’m not doing this alone, remember?'],
+    cool: ['This way.'],
+    afraid: ['{P}? Over here.'],
+    tired: ['Here. I’ll wait.'],
+  },
+  outing_alone: {
+    warm: ['Fine. I’ll go on my own, then. I usually do.'],
+    cool: ['I’ll go on my own.'],
+    afraid: ['I’ll go alone, then.'],
+    tired: ['On my own, then.'],
+  },
+  outing_wait_npc: {
+    warm: ['{npc}’s not here. I’ll wait a little — she can’t be long.', 'No {npc}. I’ll give it a while.'],
+    cool: ['{npc} isn’t here. I’ll wait.'],
+    afraid: ['{npc} isn’t here. I’ll wait a bit.'],
+    tired: ['No {npc}. Waiting.'],
+  },
+  outing_no_npc: {
+    warm: ['{npc}… isn’t anywhere. Not today.'],
+    cool: ['{npc} isn’t here.'],
+    afraid: ['{npc} isn’t here.'],
+    tired: ['No {npc}.'],
+  },
+  outing_give_up: {
+    warm: ['{npc} isn’t coming. I’ll ask her another day — I’m not letting it go.', 'Not today, then. Tomorrow. I’ll ask {npc} tomorrow.'],
+    cool: ['Another day, then.'],
+    afraid: ['Another day. Maybe that’s a mercy.'],
+    tired: ['Another day.'],
+  },
+  outing_after_with: {
+    warm: ['Thank you for standing there with me. I mean it. Where to now?', 'That’s more than I had this morning. Thank you for coming. Lead on.'],
+    cool: ['Thank you for coming. Where now?'],
+    afraid: ['I’m glad you were there. Let’s go.'],
+    tired: ['Thank you. Let’s walk.'],
+  },
+  outing_after_with_missed: {
+    warm: ['Well. Not today. Come on — let’s walk.'],
+    cool: ['Not today. Let’s go.'],
+    afraid: ['Not today. Let’s go.'],
+    tired: ['Not today. Walk with me.'],
+  },
+  outing_after_alone: {
+    warm: ['Thank you for coming. I need some time now. {why} Find me after, if you like.', 'I’m glad you were there. Now I need a while. {why}'],
+    cool: ['I need some time on my own. {why}'],
+    afraid: ['I need a while to myself. {why}'],
+    tired: ['I need a while. {why}'],
+  },
+  outing_after_alone_missed: {
+    warm: ['Not today, then. I’m off to {what} — find me later, if you like.'],
+    cool: ['I’m off to {what}.'],
+    afraid: ['I’m going to {what}.'],
+    tired: ['Off to {what}.'],
+  },
+
   // ------------------------------------------------------------------ her requests (initiative)
   ask_forgive_cake: {
     warm: ['Buy me a honey cake and I’ll forgive the mud.', 'A honey cake would go a long way toward forgiving you.'],
@@ -981,6 +1087,17 @@ export class LinePicker {
     if (list.length > 1 && text === this.last) {
       i += 1;
       text = fill(list[i % list.length], vars);
+    }
+    // Something she already said today (DESIGN §23.1): another line of the bank, if any.
+    if (typeof this.repeats === 'function' && list.length > 1 && this.repeats(text)) {
+      for (let k = 1; k < list.length; k++) {
+        const alt = fill(list[(i + k) % list.length], vars);
+        if (!this.repeats(alt)) {
+          i += k;
+          text = alt;
+          break;
+        }
+      }
     }
     this.cursor.set(ck, (i + 1) % list.length);
     // A one-line bank said twice running: borrow the same thought in another register.

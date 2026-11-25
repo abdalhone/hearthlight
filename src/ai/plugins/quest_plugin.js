@@ -75,7 +75,12 @@ function onStage(ctx, stage, from, how) {
   if (id === 'ask_aveline') {
     m.appraise('hope', 0.5, 'deciding to ask about Maren');
     queueLines(ctx, STAGE_LINES.ask_aveline, {
-      after: () => m.remember(`I asked ${P} to come with me to ask Sister Aveline about Maren. I didn't want to hear it alone.`, { importance: 6, about: [PLAYER_ID, 'maren', 'aveline'], tags: ['maren', 'quest'], emotion: 'trust', gist: 'asking for help with Maren' }),
+      stage: 'ask_aveline',
+      after: () => {
+        // "Come with me when I do": a yes from the player makes it her outing (§16.11).
+        m.autonomy?.offerOuting?.(STAGE_LINES.ask_aveline[STAGE_LINES.ask_aveline.length - 1]);
+        return m.remember(`I asked ${P} to come with me to ask Sister Aveline about Maren. I didn't want to hear it alone.`, { importance: 6, about: [PLAYER_ID, 'maren', 'aveline'], tags: ['maren', 'quest'], emotion: 'trust', gist: 'asking for help with Maren' });
+      },
     });
   } else if (id === 'find_key') {
     m.appraise('hope', 0.8, 'news of Maren');
@@ -179,6 +184,26 @@ export const questPlugin = {
       ungated: true,
       run: readJournal,
     },
+  },
+
+  // Are a stage's lines still waiting to be said (her outing lets them land first)?
+  pendingLines(game) {
+    return !!state(game).pending;
+  },
+
+  // Lines that asked for what is already happening (she is on her way to Aveline): they
+  // go unsaid, and what they would have left behind (a memory) is kept.
+  settlePending(game, stage) {
+    const s = state(game);
+    if (!s.pending || (stage && s.pending.stage !== stage)) return false;
+    const after = s.pending.after;
+    s.pending = null;
+    try {
+      after?.();
+    } catch (err) {
+      console.error('[quest] settling lines failed', err);
+    }
+    return true;
   },
 
   // { index, id, title, text } of the current stage.

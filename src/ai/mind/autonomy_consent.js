@@ -429,6 +429,15 @@ function weighMove(a, v, out, add, veto, { action, args }) {
     return;
   }
   add(0.3, null);
+  // In the middle of an outing of her own (§16.11): "come here" or "wait" weighs against it
+  // (she may still agree, and then it waits for another day). "Follow" while she leads
+  // the way is the player coming along: nothing to weigh.
+  const outing = a.outings?.active?.() ? a.outings.current : null;
+  if (outing && !(action === 'follow' && outing.phase === 'go')) {
+    add(outing.npc === 'aveline' || /maren/i.test(String(outing.topic || '')) ? -0.45 : -0.3, a.outings.describe() ? `she is ${a.outings.describe()}` : 'she is in the middle of something of her own', 'no_busy');
+    out.vars.npc = a.npcName(outing.npc) || 'someone';
+    out.vars.time = hourLabel(Math.min(24, v.hour + 1));
+  }
   if (action === 'follow') {
     out.lineKey = 'ok_follow';
     if (v.state === 'wary' && String(args.value || '').toLowerCase() === 'close') {

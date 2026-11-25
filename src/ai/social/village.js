@@ -15,6 +15,10 @@ import { localReply, emptyYou, cleanYou, knownName, learnName, addNote, notesOf,
 import { TO_YOU } from './voices_player.js';
 import { speakable } from './hidden.js';
 import { WEAVE_RUMORS } from '../../missions/rumors.js';
+import { Commitments } from './commitments.js';
+import { murderLine } from '../../murder/lines.js';
+import { seesPoint } from '../sight.js';
+import { silenceAct, turnAway } from '../silence.js';
 import { VILLAGER_RULES, SAY_SCHEMA, LINES_SCHEMA, NIGHT_SCHEMA, buildSayTask, buildListenTask, buildNightTask, coerceSay, coerceLines, coerceNight, cleanLine } from './village_prompt.js';
 
 // What the village says about the stranger's weaving joins the rumor table (DESIGN §22.3).
@@ -30,6 +34,9 @@ const TALK_CAP = 6;
 const AMBIENT_CLAUDE_GAP = 45; // real seconds
 const CLAUDE_TIMEOUT_MS = 25000;
 const SIGHT = 150;
+const MEET = 88; // px: near enough to tell someone something, face to face (DESIGN §29.2)
+const PRESS = 60; // clock seconds: spoken to again within this, the same talk goes on (terror, coldness)
+const TERROR_TURNS = ['afraid', 'beg', 'screamHelp', 'silent']; // what fear does, pressed on and on
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const round1 = (v) => Math.round(v * 10) / 10;
@@ -56,11 +63,21 @@ export function lineBeat(text, speed = 1) {
   return clamp(1.3 + n / (16 * s) + 0.5, 2, 7.5);
 }
 
+const g0 = (v) => v?.game || null;
+
+// The first thing said after a promise they broke (DESIGN §23.2): plainly, and sorry.
+function owedLine(c, who) {
+  if (c.kind === 'tell') return `I never did get to ${who === 'lyra' ? 'Lyra' : who} for you. I'm sorry. I said I would.`;
+  if (c.kind === 'teach') return "That lesson I promised you. We never finished it, and that's on me.";
+  return "I said I would, and I didn't. I'm sorry.";
+}
+
 export class Village {
   constructor(game) {
     this.game = game;
     this.bonds = new Bonds({ onChange: (a, b, bond, changes, reason) => this.emit('bond_changed', { a, b, bond, changes, reason }) });
     this.rumors = new Rumors();
+    this.commitments = new Commitments(this); // their promises to the player, kept (DESIGN §23.2)
     this.log = [];
     this.talks = {}; // npcId -> [{ t, day, you, they }]
     this.mentioned = {}; // npcId -> [rumor ids raised with the player]
@@ -293,6 +310,9 @@ export class Village {
     const lines = ex.lines.filter((l) => l && l.text && speakable(l.text));
     if (!lines.length) return null;
     for (const l of lines) this.remember(l.text);
+    // Said, whether or not the player was there to hear it (DESIGN §23.1).
+    const said = this.game?.saidToday;
+    if (said) for (const l of lines) if (l.speaker) said.note(l.speaker, l.text, { kind: 'say', to: l.speaker === a ? b : a, via: 'talk' });
     if (ex.scene) {
       const si = SCENES.indexOf(ex.scene);
       if (si >= 0) this.sceneDay[si] = this.day();
@@ -560,6 +580,7 @@ export class Village {
     const g = this.game;
     if (!g || g.state !== 'playing') return;
     this.stepPlaying(dt);
+    safe(() => this.commitments.update(dt));
     this.tickT -= dt;
     if (this.tickT > 0) return;
     this.tickT = 0.5;
@@ -585,6 +606,12 @@ export class Village {
 
   awake(e) {
     return alive(e) && e.state !== 'sleep' && e.activity !== 'sleep' && (e.mode === undefined || e.mode === 'routine');
+  }
+
+  // Awake and on their feet, whatever they are doing (running for the watch, fighting):
+  // enough to shout or hear grave news face to face.
+  conscious(e) {
+    return alive(e) && !e.downed && e.state !== 'sleep' && e.activity !== 'sleep';
   }
 
   busyWithPlayer(e) {
@@ -747,15 +774,20 @@ export class Village {
     if (!grave.length) return;
     const people = this.villagers().filter((e) => alive(e));
     for (const r of grave) {
-      const tellers = people.filter((e) => r.heardBy.includes(e.id) && this.awake(e));
+      const tellers = people.filter((e) => r.heardBy.includes(e.id) && this.conscious(e));
       if (r.heardBy.includes('lyra') && this.lyraFree({ passing: true })) tellers.push(this.game.companion);
-      const hearers = people.filter((e) => !r.heardBy.includes(e.id) && r.victim !== e.id && this.awake(e));
+      const hearers = people.filter((e) => !r.heardBy.includes(e.id) && r.victim !== e.id && this.conscious(e));
+      const L = this.game?.companion;
+      if (L && !r.heardBy.includes('lyra') && r.about !== 'lyra' && this.conscious(L)) hearers.push(L);
       if (!tellers.length || !hearers.length) continue;
-      // The teller who loves the hearer most passes it on.
+      // The teller who loves the hearer most passes it on: but only face to face. News
+      // travels by people meeting (DESIGN §29.2; the author: "he shouldn't be able to send
+      // off the information until he meets other people. And tell them, like literally").
       let best = null;
       let bw = -Infinity;
       for (const a of tellers) {
         for (const b of hearers) {
+          if (!this.meeting(a, b)) continue;
           const w = (this.bond(a.id, b.id)?.affinity ?? 0) + (this.isFamily(a.id, b.id) ? 60 : 0) - dist(a, b) / 40 + rnd(this.rng()) * 20;
           if (w > bw) {
             bw = w;
@@ -770,6 +802,31 @@ export class Village {
       else this.converse(a.id, b.id, { topic: 'rumor', onScreen: false });
       return; // one telling per beat
     }
+  }
+
+  // What the stranger sees as they turn to someone who watched them kill: a narration, or
+  // null. Never a lock (the author: "even if somebody really hates me, make me able to
+  // talk to them"): the words reach them, and they answer in terror (playerSays).
+  fearNote(npc) {
+    const e = typeof npc === 'string' ? this.entity(npc) : npc;
+    if (!e) return null;
+    const fear = safe(() => this.game?.murder?.fearOf?.(e), null);
+    if (!fear) return null;
+    const n = this.name(e.id).replace(/^(Captain|Sister|Reeve)\s+/, '').split(' ')[0];
+    const he = ['hobb', 'bram', 'pip', 'rowan', 'tobias', 'garrick', 'alder', 'corran', 'wys'].includes(e.id);
+    return fear === 'terror' ? `${n} backs away from you, white to the lips.` : `${n} stiffens as you come near, and keeps ${he ? 'his' : 'her'} distance.`;
+  }
+
+  // Two people near enough to tell each other something: side by side, under the same
+  // roof (or both outdoors), both awake.
+  meeting(a, b) {
+    if (!a || !b || a === b || !this.conscious(a) || !this.conscious(b)) return false;
+    if (dist(a, b) > MEET) return false;
+    const roof = (e) => safe(() => {
+      const bd = this.game?.map?.buildingAt?.(Math.floor(e.x / 16), Math.floor(e.y / 16));
+      return bd ? bd.id ?? bd : null;
+    }, null);
+    return roof(a) === roof(b);
   }
 
   // ------------------------------------------------------------------ gossip
@@ -793,9 +850,15 @@ export class Village {
     return r;
   }
 
-  witnessesNear(x, y, r = SIGHT) {
+  // Who is near enough: to hear (a cry, a word), or with `sight`, who actually SAW the
+  // point (DESIGN §29.2: the one rule for eyes — walls, light and distance).
+  witnessesNear(x, y, r = SIGHT, { sight = false } = {}) {
     const out = [];
-    for (const e of this.villagers()) if (alive(e) && Math.hypot(e.x - x, e.y - y) <= r && e.state !== 'sleep') out.push(e.id);
+    for (const e of this.villagers()) {
+      if (!alive(e) || Math.hypot(e.x - x, e.y - y) > r || e.state === 'sleep') continue;
+      if (sight && !seesPoint(this.game, e, x, y)) continue;
+      out.push(e.id);
+    }
     return out;
   }
 
@@ -942,10 +1005,10 @@ export class Village {
         if (!RUMOR_KINDS[kind]) return;
         const victimId = typeof p.victim === 'object' ? p.victim?.id : p.victim;
         const where = g?.player || g?.companion;
-        const witnesses = where ? this.witnessesNear(where.x, where.y) : [];
-        // Her own ledger knows it; she saw it only if she was there.
+        const witnesses = where ? this.witnessesNear(where.x, where.y, SIGHT, { sight: true }) : [];
+        // Her own ledger knows it; she saw it only if she could see it.
         const lyra = g?.companion;
-        const saw = lyra && where && dist(lyra, where) < SIGHT ? [...witnesses, 'lyra'] : [...witnesses];
+        const saw = lyra && where && seesPoint(g, lyra, where.x, where.y) ? [...witnesses, 'lyra'] : [...witnesses];
         witnesses.push('lyra');
         const victim = RUMOR_KINDS[kind].victim || victimId || null;
         this.addRumor(kind, { victim, witnesses, saw, source: 'lyra' });
@@ -956,9 +1019,9 @@ export class Village {
         // A killing (DESIGN §29) is told by game.murder, with its own witnesses.
         if (p.kind === 'murder' || p.kind === 'outside') return;
         const kind = p.kind === 'knockout' ? 'downed_villager' : 'attacked_villager';
-        const witnesses = this.witnessesNear(p.victim.x, p.victim.y);
+        const witnesses = this.witnessesNear(p.victim.x, p.victim.y, SIGHT, { sight: true });
         const lyra = g?.companion;
-        if (lyra && dist(lyra, p.victim) < SIGHT) witnesses.push('lyra');
+        if (lyra && seesPoint(g, lyra, p.victim.x, p.victim.y)) witnesses.push('lyra');
         this.addRumor(kind, { victim: p.victim.id, witnesses });
         return;
       }
@@ -1097,9 +1160,15 @@ export class Village {
 
   // ------------------------------------------------------------------ the player talking
 
+  // What they have said lately: to the player, and (DESIGN §23.1) to anyone today, aloud
+  // or over their head. A Set's has(): exact lines, or a near repeat of something today.
   recentPlayerLines(npcId) {
     const s = new Set();
     for (const x of this.talks[npcId] || []) for (const l of x.they || []) s.add(l);
+    const said = this.game?.saidToday;
+    if (!said) return s;
+    const has = s.has.bind(s);
+    s.has = (t) => has(t) || said.repeats(npcId, t);
     return s;
   }
 
@@ -1147,22 +1216,117 @@ export class Village {
       .slice(0, 300);
     if (!e || !e.profile) return { lines: ['...'], mood: null };
     if (!said) return { lines: [say(voiceOf(e.id)?.short, e.id, 'player', { rng: this.rng() }) || 'Hm?'], mood: null };
+    // They watched the stranger kill (DESIGN §29.3): no calm talk, no favours, no Claude
+    // wording it kindly. Their words reach them and are kept; only fear comes back.
+    const fear = safe(() => this.game?.murder?.fearOf?.(e), null);
+    if (fear) return this.afraidReply(e, said);
     const local = safe(() => localReply(this, e, said), null) || { lines: ['Hm.'], mood: null, delta: 0, intent: 'unknown', told: [], mentioned: [] };
-    let reply = { lines: local.lines, mood: local.mood, delta: local.delta, told: local.told || [], mentioned: local.mentioned || [], source: 'local' };
-    const provider = this.provider();
+    // An ask they can act on (go to Lyra, give, teach): what the game allows, and their
+    // answer to it, decided before anyone words it (DESIGN §23.2).
+    const cm = this.commitments;
     const asleep = e.state === 'sleep' || e.activity === 'sleep';
+    const ask = !asleep && !local.intent?.match?.(/^(threat|insult)$/) ? safe(() => cm.detect(e, said), null) : null;
+    const dec = ask ? safe(() => cm.decide(e, ask), null) : null;
+    if (ask && dec?.line) local.lines = [dec.line];
+    // A promise they broke: they say so first, once.
+    const owed = !asleep ? cm.owed(e.id) : null;
+    if (owed && !ask) {
+      owed.owned = true;
+      local.lines = [owedLine(owed, this.name(owed.to === 'lyra' ? 'lyra' : owed.to)), ...local.lines].slice(0, 3);
+    }
+    let reply = { lines: local.lines, mood: local.mood, delta: local.delta, told: local.told || [], mentioned: local.mentioned || [], source: 'local' };
+    // Heard, and they may choose to say nothing (DESIGN §23.3): offline, someone cold to
+    // the player who has just answered them coldly lets the next line go unanswered.
+    let silent = !asleep && !ask && !owed && this.coldSilence(e, local);
+    const provider = this.provider();
     if (provider && !asleep) {
-      const r = await this.askClaude(provider, VILLAGER_RULES, buildSayTask(this.sayBrief(e, said, local)), SAY_SCHEMA, 'say');
+      const brief = this.sayBrief(e, said, local);
+      if (ask && dec) brief.request = cm.brief(e, ask, dec);
+      if (owed && !ask) brief.owed = owed.text;
+      const r = await this.askClaude(provider, VILLAGER_RULES, buildSayTask(brief), SAY_SCHEMA, 'say');
       const c = coerceSay(r);
       if (c) {
         // Threats and insults weigh what they weigh, whoever words the answer.
         // (An apology mends through amend(), slowly, whatever Claude makes of it.)
         const delta = local.intent === 'threat' || local.intent === 'insult' ? Math.min(local.delta, c.opinionDelta) : local.intent === 'apology' ? 0 : c.opinionDelta;
-        reply = { lines: [c.say], mood: c.mood || local.mood, delta, told: c.learned.filter((id) => (e.profile.facts || []).some((f) => f.id === id)), mentioned: c.rumorTold && this.rumors.get(c.rumorTold) ? [c.rumorTold] : [], source: 'claude', rumor: c.rumor, name: c.name || local.name, memory: c.memory, asked: c.asked };
+        const kept = { mood: c.mood || local.mood, delta, told: c.learned.filter((id) => (e.profile.facts || []).some((f) => f.id === id)), mentioned: c.rumorTold && this.rumors.get(c.rumorTold) ? [c.rumorTold] : [], source: 'claude', rumor: c.rumor, name: c.name || local.name, memory: c.memory, asked: c.asked, commit: c.commit };
+        // Claude's silence is kept only where the game sees a reason for it (cold, wronged,
+        // threatened, insulted); a friend's silence for no reason falls back to their words.
+        if (c.silent && this.maySilence(e, local)) {
+          silent = true;
+          reply = { ...kept, lines: [], told: [], mentioned: [], asked: null };
+        } else if (c.say) {
+          silent = false;
+          reply = { ...kept, lines: [g0(this)?.saidToday?.dropRepeats?.(e.id, c.say) || c.say] };
+        }
       }
     }
+    if (silent) reply.lines = [];
+    // Their answer, acted on: a checked yes becomes a commitment (walks, gifts, lessons);
+    // a yes to the impossible is answered with the plain reason instead.
+    if (ask && dec) {
+      const st = safe(() => cm.settle(e, ask, dec, { text: reply.lines.join(' '), commit: reply.commit || null, source: reply.source }), null);
+      if (st?.lines?.length) reply.lines = st.lines;
+      reply.commitment = st?.made || null;
+    }
+    // Something offered in what they said ("take a honey cake for the road") is handed over.
+    if (!asleep) safe(() => cm.offersIn(e, reply.lines));
+    reply.silent = silent && !reply.lines.length;
     this.afterPlayerSays(e, said, local, reply);
+    if (reply.silent) return this.silentReply(e, 'cold', { mood: reply.mood || 'cold', intent: local.intent, source: reply.source });
     return { lines: reply.lines, mood: reply.mood || null, intent: local.intent, source: reply.source, name: reply.name || null };
+  }
+
+  // Spoken to by the one they watched kill (DESIGN §29.3). The words reach them and are
+  // kept; what comes back is fear, never calm: terror, then begging, then a scream for
+  // help, and, pressed on, silence (their choice, shown as what they do).
+  afraidReply(e, said) {
+    const now = this.now();
+    const T = (this.pressed ||= {});
+    const prev = T[e.id];
+    const n = prev && prev.kind === 'afraid' && now - prev.t < PRESS ? prev.n + 1 : 0;
+    T[e.id] = { kind: 'afraid', n, t: now };
+    const turn = TERROR_TURNS[n % TERROR_TURNS.length];
+    const P = this.game?.settings?.playerName || 'you';
+    const line = turn === 'silent' ? null : safe(() => murderLine(e.id, turn, { P }, this.rng()), null) || (turn === 'beg' ? 'Please. Let me go.' : turn === 'screamHelp' ? 'Help! Somebody help me!' : 'Stay away from me.');
+    // Backing off from the stranger, unless already running for the watch with the news.
+    if (!(e.mode === 'flee' && e.fleeHome === 'to')) safe(() => e.startFlee?.(this.game?.player, 6, 'crime', { quiet: true }));
+    // What the player said, kept: in the talk and in what they remember of the player.
+    const list = (this.talks[e.id] ||= []);
+    list.push({ t: Math.round(now), day: this.day(), you: said.slice(0, 160), they: line ? [line] : [], silent: !line });
+    if (list.length > TALK_CAP) list.splice(0, list.length - TALK_CAP);
+    safe(() => addNote(this, e.id, 'you came talking at me after I saw what you did', 3));
+    if (!line) return this.silentReply(e, 'afraid', { mood: 'afraid', intent: 'afraid', source: 'local' });
+    return { lines: [line], mood: 'afraid', intent: turn === 'afraid' ? 'afraid' : turn, source: 'local', name: null };
+  }
+
+  // Offline: someone cold to the player (or raw with what they did) who answered the last
+  // line coldly lets this one go unanswered; the next one gets a word again.
+  coldSilence(e, local) {
+    if (local?.intent !== 'cold') return false;
+    const now = this.now();
+    const T = (this.pressed ||= {});
+    const prev = T[e.id];
+    const silent = !!prev && prev.kind === 'cold' && now - prev.t < PRESS && !prev.silent;
+    T[e.id] = { kind: 'cold', t: now, silent, n: (prev?.kind === 'cold' ? prev.n + 1 : 0) };
+    return silent;
+  }
+
+  // Is there a reason for silence the game can see? (Claude's choice is checked against it.)
+  maySilence(e, local) {
+    if (['threat', 'insult', 'cold'].includes(local?.intent)) return true;
+    const st = this.standing(e.id);
+    return !!st.cold || st.opinion < 30 || !!st.grievance?.fresh;
+  }
+
+  // They heard, and say nothing: the act the chat shows, and their back turned.
+  silentReply(e, kind, { mood = null, intent = null, source = 'local' } = {}) {
+    const T = (this.silences ||= {});
+    const n = (T[e.id] = (T[e.id] ?? -1) + 1);
+    const act = silenceAct(e.id, this.name(e.id).replace(/^(Captain|Sister|Reeve)\s+/, '').split(' ')[0], { kind, n });
+    turnAway(e, this.game?.player);
+    this.emit('npc_silent', { npc: e, kind, act });
+    return { lines: [], silent: true, act, mood, intent, source, name: null };
   }
 
   afterPlayerSays(e, said, local, reply) {
@@ -1196,7 +1360,7 @@ export class Village {
       this.famDay[id] = { day, n: n + 1.5 };
     }
     const list = (this.talks[id] ||= []);
-    list.push({ t: Math.round(this.now()), day, you: said.slice(0, 160), they: reply.lines.map((l) => String(l).slice(0, 200)).slice(0, 3) });
+    list.push({ t: Math.round(this.now()), day, you: said.slice(0, 160), they: reply.lines.map((l) => String(l).slice(0, 200)).slice(0, 3), ...(reply.silent ? { silent: true } : {}) });
     if (list.length > TALK_CAP) list.splice(0, list.length - TALK_CAP);
     if (e.talkingUntil !== undefined) e.talkingUntil = Math.max(e.talkingUntil ?? 0, this.now() + 8);
     this.overheard(e, said, local, reply);
@@ -1290,6 +1454,8 @@ export class Village {
       week,
       lyra: lyraState ? `travelling with the player: ${lyraState === 'together' ? 'yes' : 'no'} (${lyraState}).` : '',
       standing,
+      saidToday: safe(() => g?.saidToday?.promptLines?.(id, { limit: 10, max: 650 }), []) || [],
+      promises: safe(() => this.commitments.promptFor(id), []) || [],
       text: said,
       local: local.lines?.[0] || '',
     };
@@ -1544,6 +1710,7 @@ export class Village {
       scenes: this.sceneDay,
       seq: this.seq,
       you: cleanYou(this.you),
+      commitments: this.commitments.serialize(),
     };
   }
 
@@ -1564,6 +1731,7 @@ export class Village {
     this.amendsDay = objOf(d.amends);
     this.sceneDay = objOf(d.scenes);
     this.you = cleanYou(d.you);
+    this.commitments.deserialize(d.commitments);
     this.seq = Number.isFinite(d.seq) ? d.seq : this.log.reduce((m, c) => Math.max(m, Number(c.id) || 0), 0);
     for (const c of this.log) this.pairAt.set(pairKey(c.a, c.b), c.t);
   }

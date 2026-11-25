@@ -59,8 +59,11 @@ export function gatherEvidence(m, rec) {
   };
   const V = m.name(rec.id);
   const P = m.playerName();
-  // Who saw the killing itself.
-  for (const s of rec.seen || []) {
+  // Who saw the killing itself — once the watch has heard it from them (DESIGN §29.2: a
+  // witness still running for the watch has told nobody yet; a found body is a mystery
+  // until they arrive). Records from before r13 carry no alarm: as they were.
+  const told = !rec.alarm || rec.alarm.raised;
+  for (const s of told ? rec.seen || [] : []) {
     if (s.id === 'lyra') continue; // Lyra speaks for herself (lyra.js)
     const clear = s.clarity === 'clear';
     add(clear ? 'witness_clear' : 'witness_glimpse', s.id, { place: rec.place, t: rec.t, text: clear ? `${m.name(s.id)} saw ${P} strike ${V} down ${where(m, rec.place)}.` : `${m.name(s.id)} saw someone strike ${V} down ${where(m, rec.place)}, ${clear ? '' : 'and could not see clearly'}.`.replace(', .', '.') });

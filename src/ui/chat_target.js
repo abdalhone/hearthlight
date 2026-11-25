@@ -97,19 +97,31 @@ export function inFight(game) {
 
 // The person (Lyra or a villager) drawn at a world point, or null. Sprites stand on their
 // feet at (x, y), about 16 px wide and 26 px tall; a fingertip gets a little more room.
-export function pickActorAt(game, wx, wy, { pad = 3 } = {}) {
+// lag: seconds a finger trails someone on the move (they walk on while it comes down):
+// where they were that long ago counts too, a little behind where they are now. Someone
+// keeping away from the player is still a tap away (the author: "If I go to her, she goes
+// away"; and "even if somebody really hates me, make me able to talk to them").
+export function pickActorAt(game, wx, wy, { pad = 3, lag = 0 } = {}) {
   if (!Number.isFinite(wx) || !Number.isFinite(wy)) return null;
   const ents = safe(() => game.entities.all(), []) || [];
   let best = null;
   let bestD = Infinity;
+  const hit = (x, y) => {
+    const dx = wx - x;
+    const dy = wy - y;
+    if (Math.abs(dx) > 8 + pad || dy < -26 - pad || dy > 3 + pad) return Infinity;
+    return Math.hypot(dx, dy + 11);
+  };
   for (const e of ents) {
     if (!e || e.removed) continue;
     if (e.id !== LYRA && !isVillager(e)) continue;
     const z = num(e.z, 0);
-    const dx = wx - e.x;
-    const dy = wy - (e.y - z);
-    if (Math.abs(dx) > 8 + pad || dy < -26 - pad || dy > 3 + pad) continue;
-    const d = Math.hypot(dx, dy + 11);
+    let d = hit(e.x, e.y - z);
+    const mi = e.moveIntent;
+    if (lag > 0 && mi && (Math.abs(mi.x) > 0.01 || Math.abs(mi.y) > 0.01)) {
+      const sp = num(e.speed, 0) * num(e.speedMul, 1);
+      for (const k of [0.5, 1]) d = Math.min(d, hit(e.x - mi.x * sp * lag * k, e.y - z - mi.y * sp * lag * k) + 3 * k);
+    }
     if (d < bestD) {
       bestD = d;
       best = e;

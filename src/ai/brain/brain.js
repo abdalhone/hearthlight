@@ -1,6 +1,7 @@
 // game.brain: Lyra's conversational mind (DESIGN §13, §16, §17).
 //
-// A player message flows like this: echo it in the chat, emit player_message, face the
+// A player message flows like this: echo it in the chat; out of earshot, say so and stop;
+// within earshot, emit player_message (she hears every word), face the
 // player with a "..." icon, run the offline NLU. Everything the player asks of her is a
 // request: clear commands go through her consent gate at once (source 'player'), so the
 // game never waits on the network, and she answers with an acknowledgement, a condition,
@@ -24,6 +25,8 @@ import { Barker } from './barks.js';
 import { composeDiary } from './diary.js';
 import { companionshipOf, distanceTiles, previewVerdict, isRefusal } from './her_state.js';
 import { DAY_SECONDS } from '../../core/constants.js';
+import { saidToday } from '../said_today.js';
+import { silenceAct, turnAway } from '../silence.js';
 
 const REFLECT_WAIT = 20; // seconds the wake-up waits for Claude's diary before using her own
 const ICON_EVERY = 2.2;
@@ -33,7 +36,9 @@ const REFUSAL_MEMORY = 120; // "why not?" refers to a refusal this recent
 const OFFER_WINDOW = 60; // a bare coin offer sweetens a refusal this recent
 const COUNTER_WINDOW = 90; // "deal" accepts a counter-offer this recent
 const ASK_WINDOW = 120; // "yes" to something she asked of the player this recent becomes their promise
-const EARSHOT = { left: 18, apart: 30 }; // tiles: beyond this she cannot hear the chat
+const EARSHOT = { left: 18, apart: 30, gone: 12 };
+// "Let's go", "lead the way", "sure, let's go", "ok I'll come": yes to going along with her.
+const GO_ALONG = /^(?:(?:yes|yeah|yep|sure|ok|okay|alright|all right|of course|absolutely|fine|right|aye|great|good|deal)\s*)?(?:let'?s go|lets go|let us go|lead the way|lead on|after you|i'?ll come|i will come|i'?m coming|i'?m in|come on|go on then|show me|take me there|let'?s do it|lets do it|i'?ll go with you|i'?ll walk with you|count me in|with you|sure thing|okay let'?s go)(?:\s+(?:then|now|lyra|together))?(?:\s*(?:yes|sure|ok|okay))?$/; // tiles: beyond this she cannot hear the chat
 const KNOWLEDGE_SOURCE = { fact: 'player', rumor: 'told', lore: 'lore', theory: 'inferred' };
 const KNOWLEDGE_CONFIDENCE = { fact: 0.8, rumor: 0.4, lore: 0.7, theory: 0.5 };
 
@@ -76,6 +81,9 @@ export class Brain {
     if (this._inited) return;
     this._inited = true;
     const g = this.game;
+    // One memory of everything everyone says today (DESIGN §23.1); her own lines dodge it.
+    const said = saidToday(g);
+    this.speech.repeats = (t) => !!said?.repeats('lyra', t);
     this.barks.install();
     this._providerId = this.providers.currentId();
     g.bus?.on('settings_changed', (p) => {
@@ -202,10 +210,13 @@ export class Brain {
     } catch (err) {
       console.error('[brain] chat failed', err);
     }
-    g.bus?.emit('player_message', { text: clean });
-    logConversation(g, 'player', clean);
+    // Out of earshot (or knocked out), she does not hear it: nothing reaches her mind.
     const away = this._unreachable();
     if (away) return away;
+    // Within earshot, every word reaches her (DESIGN §23.3): her mind, her will and her
+    // record of the talk; then it is hers to answer or not.
+    g.bus?.emit('player_message', { text: clean });
+    logConversation(g, 'player', clean);
     this._faceThePlayer();
 
     let parsed;
@@ -227,8 +238,9 @@ export class Brain {
     return this._localTurn({ text: clean, parsed, executed });
   }
 
-  // When she cannot answer at all: gone (she has cut the player out of her life), knocked
-  // out, or out of earshot.
+  // When she cannot hear at all: not there, knocked out, or out of earshot. Nothing else:
+  // hate, fear and having cut the player off never lock her chat (the author: "even if
+  // somebody really hates me, make me able to talk to them"); her answer is her own.
   _unreachable() {
     const g = this.game;
     const lyra = g.companion;
@@ -239,16 +251,10 @@ export class Brain {
       return { say: '', thought: null, actions: [], provider: 'local', unreachable: why };
     };
     if (!lyra || lyra.removed) return out(`${name} isn't here.`, 'gone');
-    if (state === 'gone') {
-      // DESIGN §19.7: she still lives in Hearthvale. Up close she gives a word at most.
-      const will = lyra.mind?.autonomy;
-      if (distanceTiles(g) <= 4 && !lyra.downed && lyra.state !== 'sleep' && will?.line) {
-        const word = will.line('gone_word');
-        will.say?.(word, { force: true });
-        return { say: word, thought: null, actions: [], provider: 'local', unreachable: 'gone' };
-      }
-      const phrase = will?.goneHome?.().phrase || 'in Hearthvale';
-      return out(`${name} won't speak to you. She lives ${phrase} now, and keeps out of your way.`, 'gone');
+    if (state === 'gone' && !lyra.downed && lyra.state !== 'downed' && distanceTiles(g) > EARSHOT.gone) {
+      // DESIGN §19.7: she still lives in Hearthvale, and keeps out of the player's way.
+      const phrase = lyra.mind?.autonomy?.goneHome?.().phrase || 'in Hearthvale';
+      return out(`${name} is too far away to hear you. She lives ${phrase} now, and keeps out of your way.`, 'far');
     }
     if (lyra.downed || lyra.state === 'downed') return out(`${name} is knocked out and can't hear you. Go to her and help her up.`, 'downed');
     const far = EARSHOT[state];
@@ -285,14 +291,21 @@ export class Brain {
       }
     }
     const ask = this.pendingAsk && now - this.pendingAsk.t < ASK_WINDOW ? this.pendingAsk : null;
-    if (ask && clauses.length === 1 && (first?.intent?.id === 'social.yes' || first?.intent?.id === 'social.no')) {
+    // "Let's go" to "come with me to the chapel?" is a yes, not "follow me" (§16.11): the
+    // whole message agrees to go along, so it is taken as the one answer it is.
+    if (ask && clauses.length && this._goingAlong(parsed.text || '')) {
+      clauses.length = 1;
+      clauses[0] = { ...clauses[0], text: parsed.text, intent: { id: 'social.yes', source: 'builtin', kind: 'social', command: false, confidence: 0.9, match: null, slots: {}, actions: [], answer: null } };
+    }
+    const one = clauses[0];
+    if (ask && clauses.length === 1 && (one?.intent?.id === 'social.yes' || one?.intent?.id === 'social.no')) {
       this.pendingAsk = null;
-      if (first.intent.id === 'social.yes' && this.game.actions?.has?.('promise')) {
+      if (one.intent.id === 'social.yes' && this.game.actions?.has?.('promise')) {
         // Agreeing to what she asked is the player's promise (DESIGN §16.8).
-        first.intent = { id: 'ask.accept', source: 'builtin', kind: 'command', command: true, confidence: 0.95, match: null, slots: {}, actions: [{ name: 'promise', args: { target: 'player', value: ask.text, amount: null } }], answer: null };
-        first.runAs = 'local';
-      } else if (first.intent.id === 'social.no') {
-        first.intent = { id: 'ask.decline', source: 'builtin', kind: 'social', command: false, confidence: 0.9, match: null, slots: {}, actions: [], answer: null };
+        one.intent = { id: 'ask.accept', source: 'builtin', kind: 'command', command: true, confidence: 0.95, match: null, slots: {}, actions: [{ name: 'promise', args: { target: 'player', value: ask.text, amount: null } }], answer: null };
+        one.runAs = 'local';
+      } else if (one.intent.id === 'social.no') {
+        one.intent = { id: 'ask.decline', source: 'builtin', kind: 'social', command: false, confidence: 0.9, match: null, slots: {}, actions: [], answer: null };
       }
     }
     const offer = parsed.offer || null;
@@ -306,6 +319,14 @@ export class Brain {
     }
     if (offer) for (const c of clauses) if (c.intent?.actions?.length) c.offer = offer;
     parsed.commands = clauses.filter((c) => c.intent && c.intent.command && c.intent.confidence >= COMMAND_THRESHOLD && c.intent.actions.length);
+  }
+
+  // Does the whole message say "yes, let's go" to an invitation to go somewhere with her?
+  _goingAlong(text) {
+    const r = this.game?.companion?.mind?.autonomy?.pendingRequest;
+    if (!r || r.spec?.kind !== 'visit') return false;
+    const t = String(text || '').toLowerCase().replace(/[!.?,]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return GO_ALONG.test(t);
   }
 
   _enqueue(turn) {
@@ -436,7 +457,7 @@ export class Brain {
     }
     this._deliver(reply, 'local');
     this._apologyEvent(parsed, reply.apology);
-    return { say: reply.say, thought: reply.thought || null, actions: all, provider: 'local', memories: reply.chips || [] };
+    return { say: reply.say, thought: reply.thought || null, actions: all, provider: 'local', memories: reply.chips || [], ...(reply.silent ? { silent: true } : {}) };
   }
 
   // Chips for an offline reply: what she recalled for it, plus today's memories (answers
@@ -595,9 +616,16 @@ export class Brain {
     }
     if (resp.rejected?.length) console.warn('[brain] ignored unknown actions:', resp.rejected.join(', '));
     if (!resp.say) {
-      // Claude only acted (or said nothing): she still answers in her own words.
-      const ack = turn.executed.length || ran.length ? this._ackText(turn.parsed, ran) : '';
-      resp.say = ack || this.local.compose(turn.parsed, nluEnv(g)).say;
+      const state = companionshipOf(g);
+      if (!turn.executed.length && !ran.length && (state === 'gone' || state === 'left')) {
+        // Cut off or broken off, she heard it and chose to say nothing (DESIGN §23.3): a
+        // silence the game can see a reason for, shown as what she does.
+        resp.silent = true;
+      } else {
+        // Claude only acted (or said nothing): she still answers in her own words.
+        const ack = turn.executed.length || ran.length ? this._ackText(turn.parsed, ran) : '';
+        resp.say = ack || this.local.compose(turn.parsed, nluEnv(g)).say;
+      }
     }
     const items = call?.items || new Map();
     resp.chips = (resp.used_memories || []).filter((id) => items.has(id)).slice(0, 4).map((id) => ({ id, label: items.get(id) }));
@@ -605,7 +633,7 @@ export class Brain {
     resp.edited = this._editMemories(resp.memory_edits, call);
     this._deliver(resp, providerId);
     this._apologyEvent(turn.parsed, null, resp);
-    return { say: resp.say, thought: resp.thought, actions: turn.executed.concat(ran), provider: providerId, memories: resp.chips };
+    return { say: resp.say, thought: resp.thought, actions: turn.executed.concat(ran), provider: providerId, memories: resp.chips, ...(resp.silent ? { silent: true } : {}) };
   }
 
   // Her own edits to her memory (DESIGN §17.4), only for ids in what this reply was shown
@@ -715,7 +743,9 @@ export class Brain {
   _deliver(reply, providerId) {
     const g = this.game;
     const lyra = g.companion;
-    const say = String(reply.say || '').trim();
+    let say = String(reply.say || '').trim();
+    // What she already said today is not said again (DESIGN §23.1).
+    if (say && providerId !== 'local') say = g.saidToday?.dropRepeats?.('lyra', say) || say;
     if (say) {
       try {
         const msg = { from: 'lyra', text: say, name: lyra?.name || g.settings?.companionName || 'Lyra' };
@@ -734,6 +764,14 @@ export class Brain {
       }
       g.bus?.emit('speech', { speaker: lyra, text: say, target: g.player || null, kind: 'say' });
       logConversation(g, 'lyra', say);
+    } else if (reply.silent) {
+      // She heard it and chose silence (DESIGN §23.3): the player sees it done, and her
+      // own record of the talk keeps that she said nothing.
+      const name = lyra?.name || g.settings?.companionName || 'Lyra';
+      this._system(silenceAct('lyra', name, { kind: 'gone', n: (this._silences = (this._silences ?? -1) + 1) }));
+      turnAway(lyra, g.player);
+      logConversation(g, 'lyra', '(heard it, and said nothing)');
+      g.bus?.emit('lyra_silent', { by: lyra, target: g.player || null });
     }
     applyEffects(g, reply, { source: providerId === 'local' ? 'local' : 'claude', cause: 'conversation' });
     this.lastReplyAt = this.now();
@@ -980,6 +1018,7 @@ export class Brain {
       insults: Math.round((this.local.insults || 0) * 10) / 10,
       why: this.lastCompanionshipReason ? this.lastCompanionshipReason.slice(0, 160) : undefined,
       barks: this.barks.serialize(),
+      said: this.game?.saidToday?.serialize?.() || undefined,
     };
   }
 
@@ -990,6 +1029,7 @@ export class Brain {
     if (Number.isFinite(d.insults)) this.local.insults = Math.max(0, Math.min(10, d.insults));
     if (typeof d.why === 'string') this.lastCompanionshipReason = d.why.slice(0, 200);
     this.barks.deserialize(d.barks);
+    if (d.said) saidToday(this.game)?.deserialize?.(d.said);
   }
 }
 

@@ -390,8 +390,8 @@ const STATE_TEXT = {
   together: 'together: you travel with them by your own choice.',
   wary: 'wary: still together, but guarded. You keep your distance, refuse risky requests and watch them.',
   apart: 'apart: you are living your own life for now; friendly, and you may rejoin when you want to.',
-  left: 'left: you broke off after they hurt or betrayed you. You avoid them and answer coldly. You come back only after real amends: an apology you believe, trust back above 35, fear below 30, and time.',
-  gone: 'gone: you have cut them out of your life for good. You live with your parents in Hearthvale, keep out of their way, and give them a word at most.',
+  left: 'left: you broke off after they hurt or betrayed you. You avoid them; you still hear every word, and answer coldly, or not at all (an empty say: they see you heard and said nothing). You come back only after real amends: an apology you believe, trust back above 35, fear below 30, and time.',
+  gone: 'gone: you have cut them out of your life. You live with your parents in Hearthvale and keep out of their way. They can still speak to you and you hear every word; you answer as you feel: a word, a cold line, or nothing at all (an empty say). You help them with nothing.',
 };
 
 function hourText(h) {
@@ -441,6 +441,13 @@ function planSection(game) {
     lines.push('Your plan for today:');
     for (const p of today) lines.push(`- ${hourText(p.from)}-${hourText(p.to)}: ${clip(p.activity || '?', 40)}${p.at ? ` at ${p.at}` : ''}${p.why ? ` (${clip(p.why, 70)})` : ''}`);
   }
+  // Her outing (DESIGN §16.11): the game carries it out; she only speaks about it.
+  const will = game.companion?.mind?.autonomy;
+  const outing = safeCall(() => will?.outings?.describe?.(), '');
+  if (outing) lines.push(`Right now you are ${clip(outing, 120)}: your own plan, which the game carries out (walking there, finding them, the talk itself). Do not use goto or follow for it; set_plan only to give it up.`);
+  // Her open agenda (DESIGN §16.12): what else she has going on, weighed by her own head.
+  const items = (safeCall(() => will?.openAgenda?.(), []) || []).filter((it) => it.kind !== 'plan').slice(0, 5);
+  if (items.length) lines.push(`Your open agenda (yours to weigh; set_plan "a<n>" does one now): ${items.map((it) => `${it.id} ${clip(it.text, 50)} (${it.kind})`).join('; ')}.`);
   return lines.join('\n');
 }
 
@@ -544,6 +551,9 @@ export function buildContext(game, { message = '', executed = [], requests = [],
   if (rc.text) sections.push({ title: 'What comes back to you', text: rc.text, priority: 6, recall: true });
   const nearby = nearbyLines(g);
   if (nearby.length) sections.push({ title: 'Nearby', text: nearby.join('\n'), priority: 4 });
+  // Everything she said today, aloud or over her head (DESIGN §23.1): the player saw it all.
+  const said = safeCall(() => g.saidToday?.promptLines?.('lyra', { limit: 12, max: 800 }), []) || [];
+  if (said.length) sections.push({ title: 'What you have already said today (aloud, in the chat, or over your head; oldest first). The player saw every one: keep to it, build on it, never say the same thing or ask the same question twice', text: said.join('\n'), priority: 5.5 });
   const hasRecall = typeof mind?.recallContext === 'function';
   for (const s of safeCall(() => g.plugins?.promptSections?.(message), []) || []) {
     // The recall context replaces the memory plugin's raw memory dump.

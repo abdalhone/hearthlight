@@ -138,6 +138,8 @@ const PLACE_TAKES = {
   kings_road: "The road where we met. I'm fond of it, wolves and all.",
 };
 
+const PRESSED = 40; // seconds: a line pressed on her this soon after a cold answer may go unanswered
+
 export class LocalBrain {
   constructor(game, speech) {
     this.game = game;
@@ -177,8 +179,39 @@ export class LocalBrain {
       if (text && !parts.includes(text)) parts.push(text);
     }
     if (!parsed.clauses.length && parsed.offer) parts.push(this.line('offer_nothing'));
-    reply.say = joinParts(parts) || this.line(state === 'left' ? 'left_reply' : state === 'wary' ? 'wary_reply' : 'unknown_statement') || 'Hm.';
+    reply.say = joinParts(parts) || (reply._spoken ? '' : state === 'gone' ? this.goneWord() : this.line(state === 'left' ? 'left_reply' : state === 'wary' ? 'wary_reply' : 'unknown_statement') || 'Hm.');
+    // She heard every word; cut off or broken off, she may choose to say nothing (DESIGN
+    // §23.3): her "…", or the next line pressed on her right after a cold one.
+    const coldOnly = (state === 'gone' || state === 'left') && !reply._spoken && !reply.apology && parts.length <= 1 && (reply._coldWord || !parts.length);
+    if (coldOnly && this.choosesSilence(state, reply.say)) {
+      reply.say = '';
+      reply.silent = true;
+    } else if (state !== 'gone' && state !== 'left') this.lastCold = null;
+    delete reply._spoken;
+    delete reply._coldSaid;
+    delete reply._coldWord;
     return reply;
+  }
+
+  // A word, then silence if pressed (within PRESSED seconds), then a word again.
+  choosesSilence(state, word) {
+    const now = this.now();
+    const last = this.lastCold;
+    const pressed = !!last && last.state === state && now - last.t < PRESSED && !last.silent;
+    const silent = pressed || /^(?:…|\.\.\.)$/.test(String(word || '').trim());
+    this.lastCold = { state, t: now, silent };
+    return silent;
+  }
+
+  // Her word for someone she has cut off (her will's own lines), or silence.
+  goneWord() {
+    let w = null;
+    try {
+      w = this.mind?.autonomy?.line?.('gone_word') || null;
+    } catch {
+      w = null;
+    }
+    return w || 'No.';
   }
 
   answer(clause, reply, env, state = 'together') {
@@ -196,11 +229,20 @@ export class LocalBrain {
       if (reply._apologyAnswered) return null;
       reply._apologyAnswered = true;
     }
-    // Gone or broken off: she does not chat like a companion. Requests still get her refusal,
+    // Gone (she has cut them out of her life): she hears it, and answers as she feels — a
+    // word at most, once (her choice, never a lock; DESIGN §19.7).
+    if (state === 'gone') {
+      if (reply._coldSaid) return null;
+      reply._coldSaid = true;
+      reply._coldWord = true;
+      return this.goneWord();
+    }
+    // Broken off: she does not chat like a companion. Requests still get her refusal,
     // and a few things (an apology, "why did you leave?") still reach her.
     if (state === 'left' && !(it && (it.actions?.length || LEFT_HEARS.has(it.id)))) {
       if (reply._coldSaid) return null;
       reply._coldSaid = true;
+      reply._coldWord = true;
       return this.line('left_reply');
     }
     if (!it) return this.unknown(clause, reply, state);
@@ -247,6 +289,9 @@ export class LocalBrain {
     for (let i = 0; i < it.actions.length; i++) {
       const res = results[i];
       if (isRefusal(res)) refused = true;
+      // Her yes was already said by what it started (the outing's "Chapel's this way"):
+      // the reply adds nothing, and is not a stray "Mm. I'll think about that." (§16.11).
+      if (res?.outing) reply._spoken = true;
       const t = this.ackAction(it.actions[i], res, { offer: clause.offer || null });
       if (t && !out.includes(t)) out.push(t);
     }
@@ -447,6 +492,8 @@ export class LocalBrain {
       case 'leave_player':
         return (res?.message && String(res.message).trim()) || this.line(args.value === 'apart' || !args.value ? 'ack_part_ways' : 'leaving');
       case 'promise':
+        // A yes that started her outing: she already said so, leading the way (§16.11).
+        if (res?.outing) return '';
         return this.line('ack_promise');
       case 'flee':
         return this.line('ack_flee');

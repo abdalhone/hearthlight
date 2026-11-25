@@ -46,6 +46,12 @@ const SLOW = 1;
 const TELL_REACH = 44; // px: someone this close to a fallen victim hears who did it
 const NOTICE = { day: 120, night: 46 }; // px a body lying in the open is noticed from
 const OVER_BODY = 70; // px: found standing this close to the body
+// Who can raise the alarm (DESIGN §29.2): the watch, and Hess who fights beside them.
+export const ALARM_TAKERS = ['rowan', 'wys', 'hess'];
+const SCREAM_REACH = 96; // px: near enough to make out who and what in a scream
+const WATCH_REACH = 64; // px: a witness this close to one of the watch has told them
+const TERROR_HOURS = 18; // a killing seen stays this raw: they run, and will not talk
+const DREAD_AFTER = 2; // killings seen: after this many, never calm with the stranger again
 
 function safe(fn, fallback = null) {
   try {
@@ -67,6 +73,7 @@ export class Murder {
     this.pending = {}; // victimId -> a blow nobody saw: { kind, t, x, y, place }
     this.cases = {}; // victimId -> the watch's investigation
     this.wanted = null; // { about, since, reason }
+    this.witnessedBy = {}; // villagerId -> killings they have seen (DESIGN §29.3)
     this.outside = null; // { until, day, about }
     this.funerals = []; // { about, day, hour, state }
     this.moots = []; // { about, day, hour, state, kind }
@@ -203,10 +210,21 @@ export class Murder {
     return !!this.dead[id];
   }
 
-  // Dead, and the village knows it (a body was found, or someone saw it happen).
+  // Dead, and the village knows it (a body was found, or someone saw it happen and the
+  // alarm is up: a witness still running for the watch has told nobody yet, §29.2).
   knownDead(id) {
     const r = this.dead[id];
-    return !!r && (r.foundAt != null || r.known === 'witnessed');
+    return !!r && (r.foundAt != null || (r.known === 'witnessed' && (!r.alarm || r.alarm.raised)));
+  }
+
+  // Does this villager know who did it: they saw it, the news reached them face to face,
+  // or the bell has rung (§29.2)?
+  knowsKiller(rec, id) {
+    if (!rec || rec.known !== 'witnessed') return false;
+    if (!rec.alarm || rec.alarm.raised) return true;
+    if ((rec.seen || []).some((s) => s.id === id)) return true;
+    const r = rec.rumor ? safe(() => this.village?.rumors?.get?.(rec.rumor), null) : null;
+    return !!r && Array.isArray(r.heardBy) && r.heardBy.includes(id);
   }
 
   isVillager(e) {
@@ -562,36 +580,166 @@ export class Murder {
 
   // ------------------------------------------------------------------ seen
 
+  // Seen (DESIGN §29.2): those who saw it know, and those near enough to make out the
+  // scream. Nobody else knows yet: the news travels as they meet people (the village's
+  // gossip, face to face), and the watch knows only when someone who knows reaches them
+  // (raiseAlarm). The witnesses are terrified: they run for the watch, screaming (§29.3).
   seenMurder(rec) {
     const g = this.game;
     const v = this.entity(rec.id);
-    const P = g.player;
     const clear = rec.seen.filter((s) => s.clarity === 'clear');
     rec.known = 'witnessed';
-    this.setWanted(rec.id, 'murder');
-    // The cries: the nearest few who saw it.
+    rec.alarm = rec.alarm || { raised: false, by: null, t: null };
     let n = 0;
+    const knowers = [];
     for (const s of rec.seen) {
       if (s.id === 'lyra') continue;
       const e = this.entity(s.id);
       if (!e) continue;
+      knowers.push(s.id);
       if (n < 3) this.say(e, murderLine(s.id, s.clarity === 'clear' ? 'alarm' : 'alarmGlimpse', { about: rec.id, P: this.playerName() }, this.rng()), 'shout');
       n++;
-      safe(() => e.startFlee?.(P, 12, 'crime'));
+      this.terrify(e, rec);
     }
-    this.emit('crime', { actor: P, victim: v, kind: 'murder', witnesses: rec.seen.map((s) => s.id) });
+    // The scream carries a little way: whoever is close enough to make out the words.
+    for (const e of this.life?.villagers?.() || []) {
+      if (!e || e.id === rec.id || knowers.includes(e.id) || !e.isAlive?.() || e.state === 'sleep') continue;
+      if (rec.seen.some((s) => s.id !== 'lyra' && dist(this.entity(s.id), e) <= SCREAM_REACH)) knowers.push(e.id);
+    }
+    const r = safe(() => this.village?.addRumor?.('murder', { victim: rec.id, witnesses: knowers, saw: rec.seen.filter((s) => s.id !== 'lyra').map((s) => s.id), source: knowers[0] || 'village' }), null);
+    rec.rumor = r?.id || null;
     this.emit('murder_witnessed', { id: rec.id, witnesses: rec.seen, clear: clear.map((s) => s.id) });
-    safe(() => g.audio?.play?.('bell', { volume: 0.7 }));
     this.event('murder', `${this.playerName()} killed ${this.name(rec.id)} ${placeAt(rec.place, this.placeName(rec.place))}. ${rec.seen.filter((s) => s.id !== 'lyra').map((s) => this.name(s.id)).join(', ') || 'Lyra'} saw it.`, { who: 'player', about: rec.id });
-    // Those who saw found the body.
-    const finder = rec.seen.find((s) => s.id !== 'lyra')?.id || rec.seen[0]?.id || null;
-    this.found(rec.id, finder, rec.place, { witnessed: true });
-    // The village turns.
-    Grief.villageTurns(this, rec);
-    // Lyra: there, or soon told.
-    if (rec.seen.some((s) => s.id === 'lyra')) Lyra.witnessed(this, rec);
-    else rec.lyraHearsAt = this.now() + 20;
-    this.toast(`${this.name(rec.id)} is dead, and ${rec.seen.length > 1 ? 'people' : this.name(rec.seen[0].id)} saw you do it. The watch is coming.`, 'warn', 'murder');
+    // Lyra: there, or told by whoever reaches her with it (or the bell).
+    if (rec.seen.some((s) => s.id === 'lyra')) {
+      rec.lyraTold = true;
+      Lyra.witnessed(this, rec);
+    }
+    // One of the watch saw it: the alarm goes up at once.
+    const taker = knowers.find((id) => ALARM_TAKERS.includes(id));
+    if (taker) {
+      this.raiseAlarm(rec, taker, { saw: true });
+      return;
+    }
+    const names = rec.seen.filter((s) => s.id !== 'lyra').map((s) => this.name(s.id));
+    if (names.length) {
+      const who = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+      this.toast(`${who} saw you kill ${this.name(rec.id)}, and ${names.length > 1 ? 'they are' : `${this.pronoun(rec.seen.find((s) => s.id !== 'lyra').id, 'he')} is`} running for the watch.`, 'warn', 'murder');
+    }
+  }
+
+  // Someone who knows has reached the watch (or the watch saw it): wanted, the bell, the
+  // body found, the case opened, the village turns, and Lyra hears the bell.
+  raiseAlarm(rec, by, { saw = false } = {}) {
+    if (!rec || rec.alarm?.raised) return false;
+    const g = this.game;
+    const P = g.player;
+    const v = this.entity(rec.id);
+    rec.alarm = { raised: true, by, t: this.now() };
+    this.setWanted(rec.id, 'murder');
+    this.emit('crime', { actor: P, victim: v, kind: 'murder', witnesses: rec.seen.map((s) => s.id) });
+    safe(() => g.audio?.play?.('bell', { volume: 0.7 }));
+    if (!saw) this.event('alarm', `${this.name(by)} heard who killed ${this.name(rec.id)}, and raised the alarm.`, { who: by, about: rec.id });
+    const finder = rec.seen.find((s) => s.id !== 'lyra')?.id || by;
+    if (rec.foundAt == null) this.found(rec.id, finder, rec.place, { witnessed: true });
+    else if (this.cases[rec.id]) {
+      // The body was found first (a mystery); now the watch has the witness's word.
+      const c = this.cases[rec.id];
+      c.askAt = Math.min(c.askAt ?? Infinity, Math.round(this.now() + 0.2 * HOUR));
+      this.weigh(rec.id);
+    }
+    if (!rec.turned) Grief.villageTurns(this, rec);
+    if (!rec.lyraTold) rec.lyraHearsAt = this.now() + 20;
+    const e = this.entity(by);
+    if (e && !saw) this.say(e, watchLine?.(by, 'alarm', { about: rec.id, P: this.playerName() }, this.rng()) || `The stranger killed ${this.name(rec.id)}! Ring the bell!`, 'shout');
+    this.toast(saw ? `${this.name(rec.id)} is dead, and the watch saw you do it. The watch is coming.` : `${this.name(by)} knows what you did to ${this.name(rec.id)}. The bell is ringing: the watch is coming.`, 'warn', 'murder');
+    return true;
+  }
+
+  // A witness to a killing (DESIGN §29.3): terrified. They run for the watch, screaming,
+  // and will not talk with the stranger; after DREAD_AFTER killings seen, never calmly again.
+  terrify(e, rec) {
+    if (!e) return;
+    const t = this.now();
+    const seen = (this.witnessedBy[e.id] = (this.witnessedBy[e.id] || 0) + 1);
+    e.terror = { about: rec.id, since: t, until: t + TERROR_HOURS * HOUR };
+    if (seen >= DREAD_AFTER) e.dread = true;
+    safe(() => e.adjustOpinion?.(-60, `watched the stranger kill ${this.name(rec.id)}`));
+    const P = this.game?.player;
+    if (!P) return;
+    // To the watch: the nearest of them awake, else the guardhouse; else simply away.
+    const to = this.watchFor(e);
+    safe(() => e.startFlee?.(P, ALARM_TAKERS.includes(e.id) ? 6 : 90, 'crime', to ? { to } : undefined));
+  }
+
+  watchFor(e) {
+    let best = null;
+    let bd = Infinity;
+    for (const id of ALARM_TAKERS) {
+      if (id === e.id) continue;
+      const w = this.entity(id);
+      if (!w || w.dead || !w.isAlive?.() || w.state === 'sleep' || w.downed) continue;
+      const d = dist(w, e);
+      if (d < bd) {
+        bd = d;
+        best = w;
+      }
+    }
+    if (best) return { x: best.x, y: best.y, entity: best };
+    const gh = this.game?.locations?.get?.('guardhouse');
+    return gh?.center ? { x: gh.center.x, y: gh.center.y } : null;
+  }
+
+  // Is this villager in no state to talk with the stranger (a killing seen today), or only
+  // in fear (killings seen before)? -> 'terror' | 'dread' | null
+  fearOf(npc) {
+    const e = typeof npc === 'string' ? this.entity(npc) : npc;
+    if (!e) return null;
+    if (e.terror && this.now() < e.terror.until) return 'terror';
+    if (e.dread || (this.witnessedBy[e.id] || 0) >= DREAD_AFTER) return 'dread';
+    return null;
+  }
+
+  // The news reaching the watch (and Lyra) face to face, as the village's gossip carries it.
+  tickNews() {
+    for (const rec of Object.values(this.dead)) {
+      if (rec.known !== 'witnessed') continue;
+      const r = rec.rumor ? safe(() => this.village?.rumors?.get?.(rec.rumor), null) : null;
+      if (!r) continue;
+      if (!rec.alarm?.raised) {
+        const by = ALARM_TAKERS.find((id) => r.heardBy.includes(id) && this.entity(id)?.isAlive?.());
+        if (by) this.raiseAlarm(rec, by);
+      }
+      if (!rec.lyraTold && r.heardBy.includes('lyra')) {
+        rec.lyraTold = true;
+        rec.lyraHearsAt = null;
+        safe(() => Lyra.hearsOfMurder(this, rec));
+      }
+    }
+    // A witness who has run to the watch tells them at once: she runs in through the door
+    // shouting it (the doorway is no wall between them, whatever the roof says).
+    for (const e of this.life?.villagers?.() || []) {
+      if (!e.terror || this.now() >= e.terror.until || ALARM_TAKERS.includes(e.id)) continue;
+      const rec = this.dead[e.terror.about];
+      if (!rec || rec.alarm?.raised || !e.isAlive?.() || e.downed) continue;
+      for (const id of ALARM_TAKERS) {
+        const w = this.entity(id);
+        if (!w || w.dead || w.downed || !w.isAlive?.() || w.state === 'sleep' || dist(e, w) > WATCH_REACH) continue;
+        const r = rec.rumor ? safe(() => this.village?.rumors?.get?.(rec.rumor), null) : null;
+        if (r) safe(() => this.village.rumors.hear(r, id, e.id, this.game?.rng));
+        this.raiseAlarm(rec, id);
+        break;
+      }
+    }
+    // The terrified keep running for the watch while they carry the news.
+    for (const e of this.life?.villagers?.() || []) {
+      if (!e.terror || this.now() >= e.terror.until || e.mode === 'flee') continue;
+      const rec = this.dead[e.terror.about];
+      if (!rec || rec.alarm?.raised) continue;
+      const to = this.watchFor(e);
+      const P = this.game?.player;
+      if (to && P && dist(e, to) > 60) safe(() => e.startFlee?.(P, 60, 'crime', { to, quiet: true }));
+    }
   }
 
   setWanted(about, reason = 'murder', seconds = MURDER_WANTED) {
@@ -617,6 +765,8 @@ export class Murder {
     const rec = this.dead[deadId];
     if (!rec) return safe(() => this.life?.bodySeen?.(seer, deadId, place));
     if (rec.foundAt != null || seer === 'player' || rec.hidden || rec.state === 'carried') return;
+    // One who saw it done does not "find" the body: they carry the news to the watch (§29.2).
+    if ((rec.seen || []).some((s) => s.id === seer)) return;
     const g = this.game;
     const e = this.entity(seer);
     const v = this.entity(deadId);
@@ -792,13 +942,16 @@ export class Murder {
         const e = this.entity(w.id);
         this.say(e, murderLine(w.id, 'seenCarryClear', { about: v.id, P: this.playerName() }, this.rng()), 'shout');
         safe(() => e?.startFlee?.(P, 10, 'crime'));
+        // Known now, by them: the rest as for a killing seen (news by meeting, §29.2).
+        rec.seen = [...(rec.seen || []).filter((s) => s.id !== w.id), { id: w.id, clarity: 'clear', d: Math.round(dist(e, P)) }];
+        if (c.seenBy.lyra) rec.lyraTold = true;
         rec.known = 'witnessed';
-        this.setWanted(v.id, 'murder');
-        this.emit('crime', { actor: P, victim: v, kind: 'murder', witnesses: [w.id] });
-        this.found(v.id, w.id, place, { witnessed: true });
-        Grief.villageTurns(this, rec);
-        if (!rec.lyraHearsAt && !c.seenBy.lyra) rec.lyraHearsAt = this.now() + 20;
-        this.toast(`${this.name(w.id)} saw you carrying ${this.name(v.id)}'s body. The watch is coming.`, 'warn', 'murder');
+        rec.alarm = rec.alarm || { raised: false, by: null, t: null };
+        this.terrify(e, rec);
+        const r = safe(() => this.village?.addRumor?.('murder', { victim: v.id, witnesses: [w.id], saw: [w.id], source: w.id }), null);
+        rec.rumor = rec.rumor || r?.id || null;
+        if (ALARM_TAKERS.includes(w.id)) this.raiseAlarm(rec, w.id, { saw: true });
+        else this.toast(`${this.name(w.id)} saw you carrying ${this.name(v.id)}'s body, and is running for the watch.`, 'warn', 'murder');
         return;
       }
     }
@@ -811,7 +964,10 @@ export class Murder {
     if (!rec) return null;
     let c = this.cases[id];
     if (!c) {
-      c = this.cases[id] = { about: id, opened: Math.round(this.now()), day: this.day(), lead: this.investigator(id), suspicion: 0, level: 'none', evidence: [], state: 'open', questionedAt: null, askAt: Math.round(this.now() + (rec.known === 'witnessed' ? 0.2 : 1.2) * HOUR), verdict: null, outside: false };
+      // Quick when the watch knows who did it; a mystery's pace while the witness is still
+      // on their way to tell them (§29.2).
+      const known = rec.known === 'witnessed' && (!rec.alarm || rec.alarm.raised);
+      c = this.cases[id] = { about: id, opened: Math.round(this.now()), day: this.day(), lead: this.investigator(id), suspicion: 0, level: 'none', evidence: [], state: 'open', questionedAt: null, askAt: Math.round(this.now() + (known ? 0.2 : 1.2) * HOUR), verdict: null, outside: false };
       const loc = safe(() => this.game?.locations?.get?.(rec.foundPlace || rec.place), null);
       c.outside = !!loc && (loc.danger ?? 0) >= 2;
       this.emit('murder_case', { about: id, lead: c.lead });
@@ -1000,6 +1156,7 @@ export class Murder {
 
   tick() {
     const g = this.game;
+    safe(() => this.tickNews());
     if (g.player?.carrying && this.dead[g.player.carrying.id]) this.scanCarry();
     else if (this.carrying) this.carrying = null;
     // A fallen victim tells whoever reaches them.
@@ -1250,6 +1407,8 @@ export class Murder {
       lyra: this.lyra,
       watchUntil: Number.isFinite(this.watchUntil) ? this.watchUntil : null,
       trialPending: this.trialPending || null,
+      witnessedBy: this.witnessedBy,
+      terror: Object.fromEntries((this.life?.villagers?.() || []).filter((e) => e.terror && this.now() < e.terror.until).map((e) => [e.id, e.terror])),
     };
   }
 
@@ -1266,6 +1425,15 @@ export class Murder {
     this.graves = Array.isArray(d.graves) ? d.graves : [];
     this.lyra = obj(d.lyra);
     this.watchUntil = Number.isFinite(d.watchUntil) ? d.watchUntil : -Infinity;
+    this.witnessedBy = obj(d.witnessedBy);
+    for (const [id, tr] of Object.entries(obj(d.terror))) {
+      const e = this.entity(id);
+      if (e && tr && Number.isFinite(tr.until)) e.terror = tr;
+    }
+    for (const [id, n] of Object.entries(this.witnessedBy)) {
+      const e = this.entity(id);
+      if (e && n >= DREAD_AFTER) e.dread = true;
+    }
     this.trialPending = d.trialPending && typeof d.trialPending.about === 'string' ? d.trialPending : null;
     // The dead stay dead.
     for (const rec of Object.values(this.dead)) {

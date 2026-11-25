@@ -162,6 +162,26 @@ test('a tap lands on the person drawn there, Lyra included', () => {
   assert.equal(inFight(game), true);
 });
 
+test('a finger finds someone walking away: where they were a moment ago counts too (she keeps away; the player can still talk to her)', () => {
+  const { game, add } = earWorld();
+  const elda = add('elda', 300, 300);
+  // She walks east at 60 px/s; the finger comes down where she was 0.3 s ago.
+  elda.moveIntent = { x: 1, y: 0 };
+  elda.speed = 60;
+  elda.speedMul = 1;
+  assert.equal(pickActorAt(game, 300 - 18, 290, { pad: 6 }), null, 'without the lag, a miss');
+  assert.equal(pickActorAt(game, 300 - 18, 290, { pad: 6, lag: 0.4 })?.id, 'elda', 'a tap just behind her is hers');
+  assert.equal(pickActorAt(game, 300 + 18, 290, { pad: 6, lag: 0.4 }), null, 'never ahead of her');
+  // Standing still, nothing changes.
+  elda.moveIntent = { x: 0, y: 0 };
+  assert.equal(pickActorAt(game, 300 - 18, 290, { pad: 6, lag: 0.4 }), null);
+  // Someone standing where the tap lands still wins over someone passing behind it.
+  const hobb = add('hobb', 282, 300);
+  elda.moveIntent = { x: 1, y: 0 };
+  assert.equal(pickActorAt(game, 283, 290, { pad: 6, lag: 0.4 })?.id, 'hobb');
+  assert.ok(hobb);
+});
+
 test('chips, tones and parting lines read right', () => {
   assert.equal(toneOf(5), 'hostile');
   assert.equal(toneOf(25), 'wary');
@@ -554,6 +574,89 @@ test('browser: the chat talks to anyone within earshot (and screenshots)', { tim
       });
       await page.waitForFunction(() => /gone on her way/.test(document.querySelector('.chat-log')?.textContent || ''), null, { timeout: 5000 });
       assert.equal(await page.isDisabled('.chat-field'), true);
+      // Her answer to what was said before she went, arriving late: she cannot answer now
+      // (the author saw Elda reply after "Elda has gone on her way", twice).
+      const late = await page.evaluate(() => {
+        const c = window.__game.ui.chat;
+        c.villagerReplied(window.__game.entities.get('elda'), { ok: true, lines: ['Not like this, love, shouting at me.'] });
+        return /Not like this, love/.test(document.querySelector('.chat-log')?.textContent || '');
+      });
+      assert.equal(late, false, `${view.label}: gone on her way, she cannot answer after`);
+      // Catch up with her: a new conversation. And hate, fear and "cut ties" never lock the
+      // chat (the author: "even if somebody really hates me, make me able to talk to them").
+      const unlocked = await page.evaluate(() => {
+        const g = window.__game;
+        const c = g.ui.chat;
+        const e = g.entities.get('elda');
+        const roofAt = (x, y) => g.map.buildingAt(Math.floor(x / 16), Math.floor(y / 16))?.id || null;
+        const mine = roofAt(g.player.x, g.player.y);
+        const spot = [[-20, 0], [20, 0], [0, -20], [0, 20], [-10, 6]].find(([dx, dy]) => roofAt(g.player.x + dx, g.player.y + dy) === mine) || [0, 0];
+        e.x = g.player.x + spot[0];
+        e.y = g.player.y + spot[1];
+        c.checkTarget();
+        const t = g.murder?.now?.() ?? g.clock.t;
+        e.terror = { about: 'wys', since: t, until: t + 600 };
+        c.selectTarget('lyra');
+        c.selectTarget('elda');
+        const terrified = { disabled: c.field.disabled, ph: c.field.placeholder, note: /backs away from you/.test(document.querySelector('.chat-log')?.textContent || '') };
+        c.setGone(true);
+        c.selectTarget('lyra');
+        const gone = { disabled: c.field.disabled, ph: c.field.placeholder, chip: document.querySelector('.chat-to-chip[data-id="lyra"]')?.textContent || '' };
+        c.setGone(false);
+        c.selectTarget('elda');
+        return { terrified, gone };
+      });
+      assert.deepEqual(unlocked.terrified, { disabled: false, ph: 'Say something to Elda…', note: true }, `${view.label}: terrified, she can still be spoken to`);
+      assert.equal(unlocked.gone.disabled, false, `${view.label}: Lyra gone: the field stays open`);
+      assert.equal(unlocked.gone.ph, 'Say something to Lyra…');
+      assert.doesNotMatch(unlocked.gone.chip, /won't talk/);
+      await page.fill('.chat-field', 'Elda, please, wait');
+      await page.press('.chat-field', 'Enter');
+      await page.waitForFunction(() => window.__game.village.you.chats.elda.at(-1)?.from === 'npc' || (window.__game.village.talks.elda || []).some((t) => /please, wait/.test(t.you)), null, { timeout: 15000 });
+      const answer = await page.evaluate(() => (window.__game.village.talks.elda || []).filter((t) => /please, wait/.test(t.you)).map((t) => t.they.join(' '))[0] || '');
+      assert.match(answer, /Stay away|Don't|Go away|telling|Help|Get away|No/i, `${view.label}: her words reached her, and she answered in terror: ${answer}`);
+      // Pressed on, she begs, screams for help, then chooses silence: the words reach her and
+      // the chat shows what she does (the author: "they have to get my msg so they get it and
+      // decide to not answer").
+      for (const t of ['I will not hurt you', 'Just listen to me', 'Elda!']) {
+        // She keeps backing off; the player keeps beside her.
+        await page.evaluate(() => {
+          const g = window.__game;
+          const e = g.entities.get('elda');
+          const roofAt = (x, y) => g.map.buildingAt(Math.floor(x / 16), Math.floor(y / 16))?.id || null;
+          const mine = roofAt(g.player.x, g.player.y);
+          const spot = [[-20, 0], [20, 0], [0, -20], [0, 20], [-10, 6]].find(([dx, dy]) => roofAt(g.player.x + dx, g.player.y + dy) === mine) || [0, 0];
+          e.x = g.player.x + spot[0];
+          e.y = g.player.y + spot[1];
+          g.ui.chat.checkTarget();
+        });
+        const ready = await page
+          .waitForFunction(() => !window.__game.ui.chat.waiting.has('elda') && !window.__game.ui.chat.field.disabled, null, { timeout: 15000 })
+          .then(() => null)
+          .catch(() => page.evaluate(() => ({ waiting: [...window.__game.ui.chat.waiting], away: window.__game.ui.chat.away, disabled: window.__game.ui.chat.field.disabled, target: window.__game.ui.chat.target })));
+        assert.equal(ready, null, `${view.label}: the field is open to her: ${JSON.stringify(ready)}`);
+        await page.fill('.chat-field', t);
+        await page.press('.chat-field', 'Enter');
+        const got = await page
+          .waitForFunction((t) => (window.__game.village.talks.elda || []).some((x) => x.you === t), t, { timeout: 15000 })
+          .then(() => null)
+          .catch(() => page.evaluate(() => ({ away: window.__game.ui.chat.away, target: window.__game.ui.chat.target, log: (document.querySelector('.chat-log')?.textContent || '').slice(-300) })));
+        assert.equal(got, null, `${view.label}: "${t}" reached her: ${JSON.stringify(got)}`);
+      }
+      await page.waitForTimeout(200);
+      const hush = await page.evaluate(() => ({ last: (window.__game.village.talks.elda || []).at(-1), rows: [...document.querySelectorAll('.chat-log .msg-system')].map((r) => r.textContent.trim()) }));
+      assert.equal(hush.last.you, 'Elda!');
+      assert.equal(hush.last.silent, true, `${view.label}: her silence, after hearing it`);
+      assert.ok(hush.rows.some((r) => /^Elda (hears you|stares at you)/.test(r)), `${view.label}: a silence row is shown: ${hush.rows.slice(-2).join(' | ')}`);
+      // Her fright over (for the rest of this test), and her well away again.
+      await page.evaluate(() => {
+        const g = window.__game;
+        const e = g.entities.get('elda');
+        e.terror = null;
+        e.endFlee?.();
+        e.x += 400;
+        g.ui.chat.checkTarget();
+      });
       // Click someone in the world (desktop): the chat turns to them.
       if (!view.touch) {
         const at = await page.evaluate(() => {
@@ -568,6 +671,12 @@ test('browser: the chat talks to anyone within earshot (and screenshots)', { tim
         assert.equal(await page.evaluate(() => window.__game.ui.chat.target), 'pip');
         assert.equal(await page.getAttribute('.chat-field', 'placeholder'), 'Say something to Pip…');
         assert.equal(await page.evaluate(() => window.__game.player.crime ?? null), null, 'no sword stroke, no crime');
+        // With the chat shut, a click on someone opens it to them, and it stays open (the
+        // release of that same click is not a click outside the chat).
+        await page.evaluate(() => window.__game.ui.chat.close());
+        await page.mouse.click(at.x, at.y);
+        await page.waitForTimeout(250);
+        assert.deepEqual(await page.evaluate(() => [window.__game.ui.chat.isOpen(), window.__game.ui.chat.target]), [true, 'pip'], `${view.label}: clicking Pip opens the chat to him`);
       } else {
         // A tap on someone in the world (chat shut) opens it, talking to them.
         await page.evaluate(() => window.__game.ui.chat.close());
@@ -581,6 +690,22 @@ test('browser: the chat talks to anyone within earshot (and screenshots)', { tim
         await page.touchscreen.tap(at.x, at.y);
         await page.waitForTimeout(250);
         assert.deepEqual(await page.evaluate(() => [window.__game.ui.chat.isOpen(), window.__game.ui.chat.target]), [true, 'pip'], `${view.label}: tapping Pip`);
+        // The click the browser makes from that same tap lands on whatever the chat just put
+        // under the finger (a chip of its "To" row): it must not pick someone else.
+        const ghost = await page.evaluate(() => {
+          const g = window.__game;
+          const c = g.ui.chat;
+          c.close();
+          const pip = g.entities.get('pip');
+          c.pickInWorld(pip.x, pip.y - 10, { pointerType: 'touch' });
+          const chip = document.querySelector('.chat-to-chip[data-id="lyra"]');
+          chip?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          return { chip: !!chip, target: c.target };
+        });
+        assert.deepEqual(ghost, { chip: true, target: 'pip' }, `${view.label}: the tap's own click does not pick a neighbour`);
+        await page.waitForTimeout(600);
+        await page.click('.chat-to-chip[data-id="lyra"]');
+        assert.equal(await page.evaluate(() => window.__game.ui.chat.target), 'lyra', 'a real tap on the chip later still picks');
       }
       assert.deepEqual(errors, [], `${view.label}: page errors`);
       await ctx.close();

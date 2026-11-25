@@ -21,6 +21,9 @@ export const ANY = {
   glimpseTell: ['I saw someone strike {who} {at}. In the dark. I think it was {P}.'],
   mournGreet: ["Not today. We buried {who} {when}.", "I can't talk. Not today. {who}…"],
   afraid: ['Stay away from me. I know what you did.', "Don't come near me. Murderer."],
+  // Spoken to again by the one they watched kill (DESIGN §29.3): begging, then screaming.
+  beg: ['Please. Please, just let me go.', "Please— I've done nothing to you. Let me be."],
+  screamHelp: ['Help! Somebody, HELP ME!', 'Watch! WATCH! Somebody help me!'],
   refuse: ["I'll not sell to you. Not after {who}.", 'Get out of my shop.'],
   heir: ["{who}'s work won't do itself.", "Someone has to keep {his} work going. It's me now."],
   undone: ["Nobody does what {who} did. Nobody can."],
@@ -47,6 +50,8 @@ export const LIFE = {
     funeralWord: ["I'll keep your bowl at the end of the bar, {who}. I'll keep it anyway."],
     mournGreet: ["Kettle's open. Don't ask me how I am."],
     refuse: ["Not in my Kettle. Not after {who}. Out."],
+    beg: ["Please, love— please. I'm an old woman. Let me be."],
+    screamHelp: ['Rowan! ROWAN! Somebody help me!'],
   },
   bram: {
     alarm: ['HEY! Stand away from {him}! WATCH!'],
@@ -133,6 +138,7 @@ export const LIFE = {
 // The watch's questions (DESIGN §29): the one who leads the investigation asks.
 export const WATCH = {
   rowan: {
+    alarm: ['{who}? Dead? And you saw who? Ring the bell. Now.', 'Ring the bell. The stranger killed {who}.'],
     open: ["We found {who}. I'm asking everyone the same questions. You first.", "{who} is dead. A blade. I'm asking questions, and you're going to answer them."],
     lastSeen: ['When did you last see {who}?'],
     near: ['{from} saw you {at}, {when}. What were you doing there?'],
@@ -146,6 +152,7 @@ export const WATCH = {
     arrest: ["You're coming to the guardhouse. The Moot will hear this.", "That's enough. You'll come with me. Now."],
   },
   wys: {
+    alarm: ['The stranger— {who}— Captain! CAPTAIN! The bell!'],
     open: ["Citizen. I— the captain would want me to ask. About {who}."],
     lastSeen: ['When did you— when did you last see {who}?'],
     near: ['{from} says you were {at}, {when}. Why?'],
@@ -159,6 +166,7 @@ export const WATCH = {
     arrest: ["You're coming with me. To the guardhouse. Now. I mean it."],
   },
   hess: {
+    alarm: ['{who}. Right. The bell.'],
     open: ['{who} is dead. You and I are going to talk.'],
     lastSeen: ['Last time you saw {who}. When.'],
     near: ['{from} saw you {at}, {when}. Why.'],

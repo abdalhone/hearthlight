@@ -265,7 +265,9 @@ export class UI {
   }
 
   noteWorldDown(e) {
-    this.worldDown = this.chat.isOpen() && !this.stack.length && this.isWorldTarget(e.target) ? { id: e.pointerId, x: e.clientX, y: e.clientY, at: performance.now() } : null;
+    // A click that landed on someone (input's pick took it, and may have just opened the
+    // chat to them) is not a click outside the chat: on release it must not close it.
+    this.worldDown = !e.defaultPrevented && this.chat.isOpen() && !this.stack.length && this.isWorldTarget(e.target) ? { id: e.pointerId, x: e.clientX, y: e.clientY, at: performance.now() } : null;
   }
 
   noteWorldUp(e) {
@@ -537,7 +539,7 @@ export class UI {
     if (!this.chat.messages.length) {
       const intro =
         state === 'gone'
-          ? `${name} has cut you out of her life. She is still in Hearthvale, with her own people, but she won't talk to you beyond a word.`
+          ? `${name} has cut you out of her life. She is still in Hearthvale, with her own people, and keeps out of your way. You can still speak to her; what she answers is up to her.`
           : `${name} travels with you because she chooses to. Talk to her about anything, or ask her for help in plain words; she decides what she does.`;
       this.chat.addMessage({ from: 'system', text: intro });
     }
@@ -933,6 +935,7 @@ export class UI {
     const line = String(text || '').trim();
     if (!line) return;
     if (bubble && c && !c.removed) safe(() => g.bubbles?.say?.(c, line, { kind: 'say' }));
+    else safe(() => g.saidToday?.quote?.('lyra', line, 'chat')); // said all the same (DESIGN §23.1)
     this.chat.addMessage({ from: 'lyra', text: line, kind, offer, memories });
     // A panel covers the world (and her bubble); off-screen she cannot be seen either.
     if (this.stack.length || (!this.chat.isOpen() && !this.lyraInView())) this.toast(line, 'lyra', { title: g.settings?.companionName || c?.name || 'Lyra' });

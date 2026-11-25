@@ -26,6 +26,10 @@ import { rand, chance, dist, tileOf, tileCenter, walkable, nearestWalkable, isAc
 export const OWN_DIRECTIVES = ['independent', 'flee', 'leave', 'keep_away', 'wait_outside'];
 export const LEAVE_MODES = ['apart', 'left', 'gone'];
 const LEFT_AVOID_TILES = 8;
+const AVOID_CLEAR = 3; // tiles past the avoid distance before she stops stepping away
+const HOLD_OFF = 20; // seconds a choice to do her day somewhere clear of them holds
+const COMFORT = 7; // tiles: inside this she never walks toward someone she avoids
+const BREAK_CLEAR = 96; // px: a break-away from a threat holds until she is this far from it
 const NIGHT_ENTRY = Object.freeze({ from: 22, to: 6, activity: 'sleep', at: null });
 const LEFT_LIFE = Object.freeze({ type: 'independent', avoid: 'player', tiles: LEFT_AVOID_TILES });
 // Gone (DESIGN §19.7): Hearthvale is her home. She cuts the player out of her life and
@@ -402,9 +406,12 @@ export class OwnLife {
     const g = this.game;
     const a = this.actor;
     const hour = g.clock?.hour ?? 12;
-    // Someone she has left behind: keep well away from them.
+    // Someone she has left behind: keep well away from them. This is the one place her
+    // feet are decided while she avoids someone (DESIGN §16.13): stepping clear, and where
+    // her day takes her, are weighed together, so the two never pull against each other.
     const avoid = d.avoid ? this.resolveWho(d.avoid) : null;
-    if (avoid && this.avoidStep(dt, avoid, (d.tiles || LEFT_AVOID_TILES) * TILE)) return true;
+    const avoidD = (d.tiles || LEFT_AVOID_TILES) * TILE;
+    if (avoid && this.avoidStep(dt, avoid, avoidD)) return true;
     // A haul already on its way to whoever pays for it is delivered before anything new.
     if (this.day?.jobOn && b.jobs.active && b.jobs.phase === 'deliver') {
       b.jobs.update(dt);
@@ -422,6 +429,9 @@ export class OwnLife {
     day.t += dt;
     if (!entry) return this.ownIdle(dt, null);
     if (day.skipped) return this.ownIdle(dt, day.spot);
+    // Her day, lived clear of them: if it would take her to where they stand, she does it
+    // elsewhere for a while (and never walks back into reach to get there).
+    if (avoid && this.keepDayClear(dt, day, avoid, avoidD)) return this.ownIdle(dt, day.spot);
     switch (day.mode) {
       case 'sleep':
         return this.doSleep(dt, day);
@@ -738,6 +748,9 @@ export class OwnLife {
   }
 
   // Step away from someone she is avoiding. True while she is moving away.
+  // Step away from them. Hysteresis: she starts once they are inside minD and keeps going
+  // until she is AVOID_CLEAR tiles past it, to a spot chosen once and kept (re-chosen only
+  // if they close on it), so a step away is never undone by the next step.
   avoidStep(dt, who, minD) {
     const b = this.b;
     const a = this.actor;
@@ -745,21 +758,111 @@ export class OwnLife {
     const d = dist(a.x, a.y, who.x, who.y);
     const st = this.st;
     if (d >= minD && !st.avoiding) return false;
-    if (d >= minD + TILE) {
+    if (d >= minD + AVOID_CLEAR * TILE) {
       st.avoiding = null;
+      st.clearedAt = b.t;
       return false;
     }
     st.repickT = (st.repickT || 0) - dt;
-    if (!st.avoiding || st.repickT <= 0) {
-      st.repickT = 0.8;
-      st.avoiding = openSpotAway(this.game, a, who.x, who.y, minD + 2 * TILE);
+    const stale = st.avoiding && dist(st.avoiding.x, st.avoiding.y, who.x, who.y) < minD + TILE;
+    if (!st.avoiding || stale || (st.repickT <= 0 && st.stuckT > 1)) {
+      st.repickT = 1.5;
+      st.stuckT = 0;
+      st.avoiding = openSpotAway(this.game, a, who.x, who.y, minD + (AVOID_CLEAR + 2) * TILE);
       if (!st.avoiding) return false;
       if (b.task?.kind === 'sit' || b.task?.own) b.cancelTask();
       b.idle.reset();
       if (this.day) this.day.phase = 'travel';
     }
     const r = b.steering.moveTo(st.avoiding.x, st.avoiding.y, dt, { arrive: 6, run: d < minD * 0.5 ? 1.3 : 1.05 });
-    if (r !== 'moving') st.avoiding = null;
+    if (r === 'arrived') {
+      // There, and still not far enough (they followed): the next spot is chosen from here.
+      st.avoiding = null;
+      return d < minD;
+    }
+    st.stuckT = r === 'moving' ? 0 : (st.stuckT || 0) + dt;
+    return true;
+  }
+
+  // Where her day would take her is too close to someone she avoids, or the way there
+  // runs back toward them: she does it from a spot clear of them (in the same place when
+  // there is room), or waits it out where she stands, and holds that choice a while.
+  // Returns true while she is holding off. With avoidStep, this is the whole rule for her
+  // feet while she avoids someone: never toward them inside COMFORT tiles, never into
+  // reach of them, and no choice undone a moment after it was made.
+  keepDayClear(dt, day, who, minD) {
+    if (!isActorAlive(who)) return false;
+    const a = this.actor;
+    const st = this.st;
+    const dHer = dist(a.x, a.y, who.x, who.y);
+    // A spot is fine if it is clear of them and, while they are near, the way to it does
+    // not lead toward them (the direction, not only the end: a path past them is toward).
+    const toward = (sp) => {
+      if (dHer >= minD + COMFORT * TILE) return false;
+      const tx = sp.x - a.x;
+      const ty = sp.y - a.y;
+      const tl = Math.hypot(tx, ty);
+      if (tl < TILE) return false;
+      return (tx * (who.x - a.x) + ty * (who.y - a.y)) / (tl * Math.max(1, dHer)) > 0.3 || dist(sp.x, sp.y, who.x, who.y) < dHer - TILE;
+    };
+    const ok = (sp) => !!sp && dist(sp.x, sp.y, who.x, who.y) >= minD + AVOID_CLEAR * TILE && !toward(sp);
+    st.clearT = (st.clearT || 0) - dt;
+    // Her actual steps, not only where she means to go: a way there that bends back toward
+    // them (round a house, along the shore) is toward them too. Inside COMFORT tiles she
+    // stops and waits it out where she stands (else: walk in, step clear, walk in again).
+    const mi = a.moveIntent;
+    const ml = mi ? Math.hypot(mi.x, mi.y) : 0;
+    if (ml > 0.1 && !st.avoiding && dHer < minD + COMFORT * TILE && (mi.x * (who.x - a.x) + mi.y * (who.y - a.y)) / (ml * Math.max(1, dHer)) > 0.3) {
+      return this.holdOff(day, who, minD, dHer);
+    }
+    if (day.heldOff && st.clearT > 0) {
+      // Where she waits it out stays clear of them too, and so does the way there: if they
+      // came on, or her stepping clear has put them between her and it, she waits where she
+      // now stands, never back past them (else: step clear, walk back, step clear, the
+      // author's "moving in place").
+      if (!ok(day.spot)) {
+        day.spot = dHer >= minD ? { x: a.x, y: a.y } : openSpotAway(this.game, a, who.x, who.y, minD + (AVOID_CLEAR + 2) * TILE) || { x: a.x, y: a.y };
+        if (st.home) st.home = day.spot;
+      }
+      return true;
+    }
+    const target = day.person && !day.asked && isActorAlive(day.person) ? day.person : day.spot;
+    if (!target || ok(target)) {
+      if (day.heldOff) {
+        // They have gone: back to what she meant to do, from where she is.
+        day.heldOff = false;
+        if (day.place && !(day.person && !day.asked)) day.spot = this.pickSpotIn(day.place) || day.spot;
+        if (!ok(day.spot)) return this.holdOff(day, who, minD, dHer);
+        day.phase = 'travel';
+      }
+      return false;
+    }
+    // A spot in the same place, clear of them (not for a visit: that is to a person).
+    if (day.place && !(day.person && !day.asked)) {
+      for (let i = 0; i < 10; i++) {
+        const s2 = this.pickSpotIn(day.place);
+        if (ok(s2)) {
+          day.spot = s2;
+          day.phase = 'travel';
+          day.heldOff = false;
+          st.clearT = HOLD_OFF;
+          return false;
+        }
+      }
+    }
+    return this.holdOff(day, who, minD, dHer);
+  }
+
+  holdOff(day, who, minD, dHer) {
+    const a = this.actor;
+    const st = this.st;
+    const away = dHer >= minD ? { x: a.x, y: a.y } : openSpotAway(this.game, a, who.x, who.y, minD + (AVOID_CLEAR + 2) * TILE);
+    day.spot = away || { x: a.x, y: a.y };
+    if (st.home) st.home = day.spot;
+    day.phase = 'travel';
+    day.heldOff = true;
+    st.clearT = HOLD_OFF;
+    this.b.steering.stop();
     return true;
   }
 
@@ -789,7 +892,18 @@ export class OwnLife {
         b.combatAI.daggerCd = ok ? 0.55 : 0.25;
       }
     }
-    // When the way to safety leads past the threat, break away from it first.
+    // Breaking away from the threat: kept until she is clear of it (hysteresis), so the
+    // way to safety and the step away never take turns frame by frame (DESIGN §16.13).
+    if (st.breakAway) {
+      const ba = st.breakAway;
+      ba.t += dt;
+      const r = b.steering.moveTo(ba.x, ba.y, dt, { arrive: 6, run: 1.45 });
+      const clear = !from || dist(a.x, a.y, from.x, from.y) > BREAK_CLEAR;
+      if (r === 'moving' && !clear && ba.t < 3) return true;
+      st.breakAway = null;
+    }
+    // When the way to safety leads past the threat, break away from it first, and if it
+    // keeps leading past them, somewhere else is safety.
     if (from && dest && dist(a.x, a.y, from.x, from.y) < 48) {
       const tx = from.x - a.x;
       const ty = from.y - a.y;
@@ -798,8 +912,27 @@ export class OwnLife {
       const tl = Math.hypot(tx, ty) || 1;
       const ul = Math.hypot(ux, uy) || 1;
       if ((tx * ux + ty * uy) / (tl * ul) > 0.4) {
-        const spot = openSpotAway(g, a, from.x, from.y, 72);
+        st.passes = (st.passes || 0) + 1;
+        if (st.passes >= 2) {
+          // Safety is past them, again: another safe place, or if every way is past them
+          // (a lane they block), simply away from them, and she stops there.
+          const other = chooseSafePlace(g, a, from, null);
+          const past = (c) => {
+            const cx = c.x - a.x;
+            const cy = c.y - a.y;
+            const cl = Math.hypot(cx, cy) || 1;
+            return (tx * cx + ty * cy) / (tl * cl) > 0.4 && tl < cl;
+          };
+          const sameAsNow = other && dest && Math.hypot(other.x - dest.x, other.y - dest.y) < 2 * TILE;
+          if (other && !sameAsNow && !past(other)) st.dest = other;
+          else {
+            const away = openSpotAway(g, a, from.x, from.y, 10 * TILE);
+            if (away) st.dest = { x: away.x, y: away.y, label: 'away', entity: null, location: null };
+          }
+        }
+        const spot = openSpotAway(g, a, from.x, from.y, BREAK_CLEAR + TILE);
         if (spot) {
+          st.breakAway = { x: spot.x, y: spot.y, t: 0 };
           b.steering.moveTo(spot.x, spot.y, dt, { arrive: 6, run: 1.45 });
           return true;
         }
