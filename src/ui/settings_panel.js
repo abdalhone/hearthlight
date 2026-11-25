@@ -466,7 +466,7 @@ export class SettingsPanel {
           danger: true,
         });
         if (!ok) return this.refreshActions();
-        if (m.startTrial()) ui.toast('Everything is open: try it in the Spellbook (B, or Menu → Spellbook). Settings → Game turns it off.', 'good', { title: 'Trying all magic' });
+        if (m.startTrial()) ui.toast(`Everything is open: try it in the Spellbook (${ui.isTouch ? 'Menu → Spellbook, or + New' : 'B, or Menu → Spellbook'}). Settings → Game turns it off.`, 'good', { title: 'Trying all magic' });
       } else {
         const ok = await ui.confirm({
           title: 'Stop trying all magic?',
