@@ -1,6 +1,7 @@
 // game.brain: Lyra's conversational mind (DESIGN §13, §16, §17).
 //
-// A player message flows like this: echo it in the chat, emit player_message, face the
+// A player message flows like this: echo it in the chat; out of earshot, say so and stop;
+// within earshot, emit player_message (she hears every word), face the
 // player with a "..." icon, run the offline NLU. Everything the player asks of her is a
 // request: clear commands go through her consent gate at once (source 'player'), so the
 // game never waits on the network, and she answers with an acknowledgement, a condition,
@@ -209,10 +210,13 @@ export class Brain {
     } catch (err) {
       console.error('[brain] chat failed', err);
     }
-    g.bus?.emit('player_message', { text: clean });
-    logConversation(g, 'player', clean);
+    // Out of earshot (or knocked out), she does not hear it: nothing reaches her mind.
     const away = this._unreachable();
     if (away) return away;
+    // Within earshot, every word reaches her (DESIGN §23.3): her mind, her will and her
+    // record of the talk; then it is hers to answer or not.
+    g.bus?.emit('player_message', { text: clean });
+    logConversation(g, 'player', clean);
     this._faceThePlayer();
 
     let parsed;

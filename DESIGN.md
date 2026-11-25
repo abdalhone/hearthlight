@@ -1734,7 +1734,9 @@ reply is not delivered, and the field says so. Saved in `village.commitments`.
 
 ### 23.3 Silence is a choice made after hearing (`src/ai/silence.js`; the author: "make them able to choose to not respond to me but they have to get my msg so they get it and decide to not answer")
 
-Every line the player sends reaches the person first: into their conversation (a
+Within earshot, every line the player sends reaches the person first (out of earshot,
+nothing does: Lyra's `player_message`, her will's weighing of an apology and her record of
+the talk wait until she can hear): into their conversation (a
 villager's talk and chat history, Lyra's `mind.conversation`), into what they remember of
 the player, and into their Claude prompt or local rules. Then they decide whether to answer.
 Silence is one answer, and the player sees it done, as a narration row in the chat and

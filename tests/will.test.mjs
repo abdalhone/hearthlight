@@ -712,6 +712,7 @@ test('gone keeps her in the village with a home: her parents at the chandlery, a
     const sys = game.ui.chat.messages.filter((m) => m.from === 'system').at(-1);
     assert.match(sys.text, /too far away to hear you\. She lives in her room at the Ember Kettle/);
     assert.doesNotMatch(sys.text, /won't (speak|talk)/);
+    assert.ok(!lyra.mind.conversation.some((c) => c.role === 'player' && c.text === 'Lyra, please talk to me'), 'out of earshot, she did not hear it');
     lyra.x = player.x + TILE;
     const word = brain.local.goneWord.bind(brain.local);
     brain.local.goneWord = () => 'No.'; // her word, not her "…", for a story that reads the same each run
