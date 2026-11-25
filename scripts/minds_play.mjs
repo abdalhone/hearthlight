@@ -101,9 +101,20 @@ async function play(size) {
       );
     return true;
   };
+  // The player walks up beside someone (they may be on their way somewhere; the chat holds
+  // them once the player is close and talking).
+  const standBy = (id) =>
+    page.evaluate((id) => {
+      const g = window.__game;
+      const e = g.entities.get(id);
+      if (!e) return;
+      g.player.x = e.x + 20;
+      g.player.y = e.y + 2;
+    }, id);
   // The person the player meant: if a tap in a crowd picked a neighbour, the player taps
   // the one they meant in the chat's "To" row (the real way to put it right).
   const talkTo = async (id) => {
+    if (id !== 'lyra') await standBy(id);
     await tapPerson(id);
     await page.waitForFunction(() => window.__game.ui.chat.isOpen(), null, { timeout: 4000 }).catch(() => null);
     const t = await page.evaluate(() => window.__game.ui.chat.target);
@@ -272,6 +283,7 @@ async function play(size) {
   await quiet();
   await talkTo('elda');
   check(await page.evaluate(() => window.__game.ui.chat.target === 'elda'), `${tag}: tapping Elda talks to her`);
+  await standBy('elda');
   await say("please go to Lyra and tell her I'm sorry");
   await wait(1500);
   await shot('05-elda-promise');
@@ -279,6 +291,7 @@ async function play(size) {
   check(c1.some((c) => c.kind === 'tell'), `${tag}: Elda promised, and it is a real errand (${JSON.stringify(c1)})`);
   // ------------------------------------------------------------------ gift
   const cakes0 = await page.evaluate(() => window.__game.player.inventory.count('honey_cake'));
+  await standBy('elda');
   await say('can I have a honey cake please');
   await wait(1200);
   await shot('06-elda-gift');
@@ -317,6 +330,7 @@ async function play(size) {
   await wait(600);
   await quiet();
   await talkTo('bram');
+  await standBy('bram');
   await say('can you teach me magic?');
   await wait(1200);
   await shot('08-bram-teach');
@@ -348,7 +362,10 @@ async function play(size) {
       const g = window.__game;
       const L = g.companion;
       const d = L.behavior.directive;
-      return { x: L.x, y: L.y, d: Math.hypot(L.x - g.player.x, L.y - g.player.y), dir: d.type, follow: d.type === 'follow' && d.target === 'player' };
+      const o = L.behavior.own;
+      const st = o?.st || {};
+      const day = o?.day || {};
+      return { x: L.x, y: L.y, d: Math.hypot(L.x - g.player.x, L.y - g.player.y), dir: d.type, follow: d.type === 'follow' && d.target === 'player', px: Math.round(g.player.x), py: Math.round(g.player.y), av: !!st.avoiding, held: !!day.heldOff, phase: day.phase, spot: day.spot ? `${Math.round(day.spot.x)},${Math.round(day.spot.y)}` : '', label: day.label || '', person: day.person?.id || '', task: L.behavior.task?.kind || '', tiles: d.tiles };
     });
   let prev = null;
   let lastV = null;
@@ -383,6 +400,7 @@ async function play(size) {
     }
     if (i > 8) minD = Math.min(minD, s.d);
     if (s.follow) followed = true;
+    if (DEBUG) console.log('hate', i, Math.round(s.x), Math.round(s.y), Math.round(s.d), s.dir, s.tiles, `P ${s.px},${s.py}`, s.av ? 'AV' : '-', s.held ? 'HELD' : '-', s.phase, s.spot, s.label, s.person, s.task);
     dirs.add(s.dir);
     prev = s;
     if (i === 30) await shot('09-hate-walk-at-her');

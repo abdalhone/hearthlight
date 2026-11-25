@@ -808,9 +808,11 @@ export class OwnLife {
     const ok = (sp) => !!sp && dist(sp.x, sp.y, who.x, who.y) >= minD + AVOID_CLEAR * TILE && !toward(sp);
     st.clearT = (st.clearT || 0) - dt;
     if (day.heldOff && st.clearT > 0) {
-      // Where she waits it out stays clear of them too: if they came on, she waits where
-      // she now stands (she has just stepped clear), never back where they are.
-      if (!day.spot || dist(day.spot.x, day.spot.y, who.x, who.y) < minD + AVOID_CLEAR * TILE) {
+      // Where she waits it out stays clear of them too, and so does the way there: if they
+      // came on, or her stepping clear has put them between her and it, she waits where she
+      // now stands, never back past them (else: step clear, walk back, step clear, the
+      // author's "moving in place").
+      if (!ok(day.spot)) {
         day.spot = dHer >= minD ? { x: a.x, y: a.y } : openSpotAway(this.game, a, who.x, who.y, minD + (AVOID_CLEAR + 2) * TILE) || { x: a.x, y: a.y };
         if (st.home) st.home = day.spot;
       }

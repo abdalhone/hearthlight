@@ -365,6 +365,49 @@ test('A3: wary and afraid, she trails at a steady distance (hysteresis), not "fo
   assert.equal(L.behavior.directive.distance, 'far');
 });
 
+test('A3: having stepped clear past them, she waits where she stands; she never walks back past them to where she was holding off', () => {
+  // Played on a phone: chased up the lake shore, she stepped clear to the north, and the
+  // spot she had been holding off at was now behind the player, so she walked back toward
+  // it, stepped clear again, and again (14 turns in 9 s, standing 10 to 13 tiles off).
+  const g = makeGame({ hour: 12 });
+  const L = g.companion;
+  const P = g.player;
+  const a = L.mind.autonomy;
+  step(g, 1);
+  a.adjustPlayer({ trust: -40, fear: 70, affinity: -60 }, 'test');
+  a.setCompanionship('left', 'You frighten me.', { cause: 'fear_left' });
+  step(g, 1);
+  const sq = g.locations.get('town_square').center;
+  placeAt(g, P, sq.x, sq.y);
+  placeAt(g, L, sq.x, sq.y - 210);
+  step(g, 0.2);
+  const own = L.behavior.own;
+  assert.ok(own.day, 'her day is running');
+  // She is holding off; the spot she was holding off at is now on the far side of them.
+  own.day.heldOff = true;
+  own.day.spot = { x: sq.x, y: sq.y + 260 };
+  own.st.clearT = 15;
+  let prev = { x: L.x, y: L.y };
+  let lastV = null;
+  let reversals = 0;
+  let minD = Infinity;
+  for (let i = 0; i < 12 / 0.05; i++) {
+    g.input.move = { x: 0, y: 0 };
+    step(g, 0.05, 0.05);
+    const vx = L.x - prev.x;
+    const vy = L.y - prev.y;
+    const sp = Math.hypot(vx, vy);
+    prev = { x: L.x, y: L.y };
+    if (sp > 0.15) {
+      if (lastV && vx * lastV.x + vy * lastV.y < -0.5 * sp * Math.hypot(lastV.x, lastV.y)) reversals++;
+      lastV = { x: vx, y: vy };
+    }
+    minD = Math.min(minD, Math.hypot(L.x - P.x, L.y - P.y));
+  }
+  assert.ok(minD > 150, `she never walked back toward them (closest ${Math.round(minD)} px)`);
+  assert.ok(reversals <= 1, `${reversals} turns back on herself`);
+});
+
 // ------------------------------------------------------------------ A4: one memory of what they said
 
 import { makeGame as makeVillage, step as stepVillage, clearScene } from './murder_world.mjs';
