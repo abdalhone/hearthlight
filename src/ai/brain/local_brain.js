@@ -138,6 +138,8 @@ const PLACE_TAKES = {
   kings_road: "The road where we met. I'm fond of it, wolves and all.",
 };
 
+const PRESSED = 40; // seconds: a line pressed on her this soon after a cold answer may go unanswered
+
 export class LocalBrain {
   constructor(game, speech) {
     this.game = game;
@@ -178,8 +180,27 @@ export class LocalBrain {
     }
     if (!parsed.clauses.length && parsed.offer) parts.push(this.line('offer_nothing'));
     reply.say = joinParts(parts) || (reply._spoken ? '' : state === 'gone' ? this.goneWord() : this.line(state === 'left' ? 'left_reply' : state === 'wary' ? 'wary_reply' : 'unknown_statement') || 'Hm.');
+    // She heard every word; cut off or broken off, she may choose to say nothing (DESIGN
+    // §23.3): her "…", or the next line pressed on her right after a cold one.
+    const coldOnly = (state === 'gone' || state === 'left') && !reply._spoken && !reply.apology && parts.length <= 1 && (reply._coldWord || !parts.length);
+    if (coldOnly && this.choosesSilence(state, reply.say)) {
+      reply.say = '';
+      reply.silent = true;
+    } else if (state !== 'gone' && state !== 'left') this.lastCold = null;
     delete reply._spoken;
+    delete reply._coldSaid;
+    delete reply._coldWord;
     return reply;
+  }
+
+  // A word, then silence if pressed (within PRESSED seconds), then a word again.
+  choosesSilence(state, word) {
+    const now = this.now();
+    const last = this.lastCold;
+    const pressed = !!last && last.state === state && now - last.t < PRESSED && !last.silent;
+    const silent = pressed || /^(?:…|\.\.\.)$/.test(String(word || '').trim());
+    this.lastCold = { state, t: now, silent };
+    return silent;
   }
 
   // Her word for someone she has cut off (her will's own lines), or silence.
@@ -213,6 +234,7 @@ export class LocalBrain {
     if (state === 'gone') {
       if (reply._coldSaid) return null;
       reply._coldSaid = true;
+      reply._coldWord = true;
       return this.goneWord();
     }
     // Broken off: she does not chat like a companion. Requests still get her refusal,
@@ -220,6 +242,7 @@ export class LocalBrain {
     if (state === 'left' && !(it && (it.actions?.length || LEFT_HEARS.has(it.id)))) {
       if (reply._coldSaid) return null;
       reply._coldSaid = true;
+      reply._coldWord = true;
       return this.line('left_reply');
     }
     if (!it) return this.unknown(clause, reply, state);

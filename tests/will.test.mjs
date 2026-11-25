@@ -713,12 +713,29 @@ test('gone keeps her in the village with a home: her parents at the chandlery, a
     assert.match(sys.text, /too far away to hear you\. She lives in her room at the Ember Kettle/);
     assert.doesNotMatch(sys.text, /won't (speak|talk)/);
     lyra.x = player.x + TILE;
+    const word = brain.local.goneWord.bind(brain.local);
+    brain.local.goneWord = () => 'No.'; // her word, not her "…", for a story that reads the same each run
     const near = await brain.handlePlayerMessage('Lyra, please talk to me');
     assert.equal(near.unreachable, undefined, 'she hears it');
     assert.ok(near.say && near.say.split(/\s+/).length <= 1, `a word at most: ${near.say}`);
-    // Asked for something, a word all the same (the gate refuses; she says no in a word).
+    // Pressed on her at once (an order, even): she heard it, and chooses silence (DESIGN
+    // §23.3). The player sees it done; the words are in her own record of the talk.
     const ask = await brain.handlePlayerMessage('follow me please');
-    assert.ok(ask.say && ask.say.split(/\s+/).length <= 1, `a word at most: ${ask.say}`);
+    assert.equal(ask.silent, true, `silence, her choice: ${ask.say}`);
+    assert.equal(ask.say, '');
+    assert.match(game.ui.chat.messages.at(-1).text, /^Lyra hears (you|every word)\b.*(nothing|without a word)/);
+    assert.equal(game.ui.chat.messages.at(-1).from, 'system');
+    assert.ok(lyra.mind.conversation.some((c) => c.role === 'player' && c.text === 'follow me please'), 'what the player said reached her');
+    assert.ok(lyra.mind.conversation.some((c) => c.role === 'lyra' && /said nothing/.test(c.text)), 'and her record keeps her silence');
+    // Later, a word again; her "…" is a silence too.
+    game.time = (game.time ?? 0) + 60;
+    const later = await brain.handlePlayerMessage('Lyra?');
+    assert.equal(later.say, 'No.');
+    brain.local.goneWord = () => '…';
+    game.time += 60;
+    const dots = await brain.handlePlayerMessage('Lyra, I am sorry');
+    assert.equal(dots.silent, true, 'her "…" is shown as the silence it is');
+    brain.local.goneWord = word;
   }
   // With the chandlery on Lamplight Lane and a bed of her own there: home with Mam and Da.
   {

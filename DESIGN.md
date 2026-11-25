@@ -1729,6 +1729,28 @@ next time. Kept: "Elda kept their word — Elda found Lyra and talked to her for
 villager who has gone on their way, or backed off in fear, cannot answer after: a late
 reply is not delivered, and the field says so. Saved in `village.commitments`.
 
+### 23.3 Silence is a choice made after hearing (`src/ai/silence.js`; the author: "make them able to choose to not respond to me but they have to get my msg so they get it and decide to not answer")
+
+Every line the player sends reaches the person first: into their conversation (a
+villager's talk and chat history, Lyra's `mind.conversation`), into what they remember of
+the player, and into their Claude prompt or local rules. Then they decide whether to answer.
+Silence is one answer, and the player sees it done, as a narration row in the chat and
+their back turned (`silenceAct`, `turnAway`): "Elda hears you. She says nothing and turns
+away." Never an empty screen, a disabled field, "didn't catch that" or a failure.
+
+- **Offline** (local rules): someone cold to the player (hostile, or raw with what the
+  player did) who has just answered them coldly lets the next line pressed on them within
+  a minute go unanswered, then speaks again; a terrified witness falls silent after terror,
+  begging and a scream (§29.3); Lyra, cut off or broken off, gives a word to the first line
+  and silence to the next one pressed on her within 40 s, and her "…" is a silence too.
+- **With Claude**: villagers answer `{"silent": true, "say": ""}` (the schema carries it;
+  the rules say they always hear and may say nothing); Lyra, gone or left, may give an empty
+  say with no action. The game keeps a silence only where it sees a reason (cold, wronged,
+  threatened, insulted, wary or worse; for Lyra, gone or left): a friend's silence for no
+  reason falls back to their own words. The next prompt carries it: "You: (you heard it, and
+  said nothing)".
+- A silent turn makes no promise and gives nothing (a request met with silence is a no).
+
 ## 24. One clean menu (the author: "the settings [are] so multiplied… when I press the menu I see all the things that I see in the HUD")
 
 - The pause menu never repeats what the HUD already gives one tap away. One menu: Resume,
@@ -1951,7 +1973,7 @@ notices and has opinions (berserk frightens her).
   "find" the body she saw fall. Shops refuse the killer only once they know (`knowsKiller`:
   saw it, were told, or heard the bell); `knownDead` likewise.
 
-### 29.3 Witnesses are people (`murder.terrify`, `village.refusesTalk`, `ui/chat.js`; the author: "I killed in front of this old woman 3 people and she responds like this after, no effect")
+### 29.3 Witnesses are people (`murder.terrify`, `village.fearNote`, `village.afraidReply`, `ui/chat.js`; the author: "I killed in front of this old woman 3 people and she responds like this after, no effect")
 
 - Someone who watched the stranger kill is **terrified** (`e.terror`, 18 h): they run for the
   watch, screaming (`npc.startFlee(…, { to })`: the nearest of Rowan, Wys or Hess awake, else
@@ -1959,8 +1981,13 @@ notices and has opinions (berserk frightens her).
   falls to the floor, and they **answer only in terror**: tapping them or picking them in
   the chat shows what the player sees ("Elda backs away from you, white to the lips.") and
   the field stays open; what the player says reaches them and is remembered, and the answer
-  is fear in their own words ("Don't come near me. Murderer."), never calm, never Claude
-  wording it kindly, and no errands run for a killer.
+  is fear in their own words, never calm, never Claude wording it kindly, and no errands
+  run for a killer. Pressed on and on (within a minute of each other), fear changes as a
+  person's would: terror ("Don't come near me. Murderer."), then begging ("Please, love—
+  please. I'm an old woman. Let me be."), then a scream for help ("Rowan! ROWAN! Somebody
+  help me!"), then silence, shown as an act ("Elda hears you. She says nothing; she only
+  backs away, shaking."; §23.3), and round again. Every line is kept in their talk, and
+  they remember that the player came talking at them after what they saw.
 - After two killings seen, they are never calm with the stranger again (`e.dread`, saved).
 - A villager who **has gone on their way** cannot answer after: a reply that comes late is
   not delivered (the author saw Elda answer after "Elda has gone on her way", twice).

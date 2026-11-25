@@ -918,3 +918,134 @@ test('A7: Elda watches the stranger kill: terrified, she runs and screams, answe
   g.murder.deserialize(saved);
   assert.equal(elda.dread, true);
 });
+
+// ------------------------------------------------------------------ silence is a choice made after hearing
+
+import { TalkSession } from '../src/ui/village_view.js';
+
+// The author (brief, AUTHOR UPDATE): "make them able to choose to not respond to me but they
+// have to get my msg so they get it and decide to not answer". Every line reaches them and is
+// kept; then they choose; silence is shown as what they do, never as a lock or a failure.
+test('silence, terrified: pressed on and on, Elda answers in terror, begs, screams for help, then says nothing — every word kept, the silence a visible act', async () => {
+  const g = makeVillage({ hour: 12 });
+  quietAll(g, ['bram', 'elda']);
+  const sq = g.locations.get('town_square').center;
+  const elda = g.entities.get('elda');
+  const bram = g.entities.get('bram');
+  bram.think = () => {};
+  put(bram, sq.x, sq.y);
+  put(g.player, sq.x - 14, sq.y);
+  put(elda, sq.x + 50, sq.y - 10);
+  downBy(g, bram);
+  g.murder.kill(bram, g.player);
+  assert.equal(g.murder.fearOf(elda), 'terror');
+  const talk = new TalkSession({ village: g.village, npc: elda });
+  const said = ['Elda, wait', 'I just want to talk', 'please listen to me', 'ELDA'];
+  const got = [];
+  for (const t of said) got.push(await talk.send(t));
+  assert.match(got[0].lines[0], /Stay away|Don't come near/, `terror: ${got[0].lines[0]}`);
+  assert.match(got[1].lines[0], /Please/, `she begs: ${got[1].lines[0]}`);
+  assert.match(got[2].lines[0], /help/i, `she screams for help: ${got[2].lines[0]}`);
+  assert.equal(got[3].silent, true, 'then silence, her choice');
+  assert.equal(got[3].ok, false);
+  assert.match(got[3].lines[0], /^Elda (hears you|stares at you).*(says nothing|without a word)/, `a visible act: ${got[3].lines[0]}`);
+  assert.doesNotMatch(got[3].lines[0], /catch that|can't hear|won't talk/);
+  // Every word reached her: in the talk she keeps, and in what she remembers of the player.
+  for (const t of said) assert.ok(g.village.talks.elda.some((x) => x.you === t), `kept: ${t}`);
+  assert.equal(g.village.talks.elda.at(-1).silent, true);
+  const { notesOf } = await import('../src/ai/social/player_talk.js');
+  assert.ok(notesOf(g.village, 'elda').some((n) => /after I saw what you did/.test(n.text)));
+});
+
+test('silence, cold: someone done with the player answers coldly, lets the next line go unanswered (shown as an act), then answers again', async () => {
+  const g = makeVillage({ hour: 11 });
+  clearScene(g, ['bram']);
+  const bram = g.entities.get('bram');
+  const P = g.player;
+  P.x = bram.x + 18;
+  P.y = bram.y;
+  bram.opinionOfPlayer = 5; // hostile: cold to them
+  const talk = new TalkSession({ village: g.village, npc: bram });
+  const a = await talk.send('hello Bram');
+  assert.equal(a.ok, true, `a cold word first: ${a.lines[0]}`);
+  const b = await talk.send('come on, talk to me');
+  assert.equal(b.silent, true, 'pressed at once: silence');
+  assert.match(b.lines[0], /^Bram hears (you|every word)/);
+  assert.ok(g.village.talks.bram.some((x) => x.you === 'come on, talk to me' && x.silent), 'the line reached him and is kept');
+  const c = await talk.send('fine, be like that');
+  assert.equal(c.ok, true, 'then a word again');
+  // A friend never goes quiet on them for no reason.
+  const elda = g.entities.get('elda');
+  elda.opinionOfPlayer = 80;
+  P.x = elda.x + 18;
+  P.y = elda.y;
+  for (const t of ['hello', 'how are you?']) assert.equal((await g.village.playerSays(elda, t)).silent, undefined);
+});
+
+test('silence with Claude: the reply may be silence (the schema carries it); kept when the game sees a reason, a friend’s falls back to words', async () => {
+  const g = makeVillage({ hour: 11 });
+  clearScene(g, ['bram', 'elda']);
+  const v = g.village;
+  const bram = g.entities.get('bram');
+  const elda = g.entities.get('elda');
+  const P = g.player;
+  const { SAY_SCHEMA, buildSayTask, VILLAGER_RULES } = await import('../src/ai/social/village_prompt.js');
+  assert.ok(SAY_SCHEMA.properties.silent && SAY_SCHEMA.required.includes('silent'));
+  assert.match(VILLAGER_RULES, /always hear what the player says[^]*"silent"/);
+  v.provider = () => ({ id: 'fake' });
+  const tasks = [];
+  v.askClaude = async (p, rules, task) => {
+    tasks.push(task);
+    return { say: '', silent: true, mood: 'cold', opinion_delta: -1, learned: [], rumor_told: null, rumor: null, name: null, memory: 'you kept on at me after what you did', asked: null, commit: null };
+  };
+  bram.opinionOfPlayer = 5;
+  P.x = bram.x + 18;
+  P.y = bram.y;
+  const r = await v.playerSays(bram, 'Bram, I need a sword');
+  assert.equal(r.silent, true, 'Claude chose silence, and the game sees a reason (he is cold)');
+  assert.match(r.act, /^Bram /);
+  assert.ok(v.talks.bram.some((x) => x.you === 'Bram, I need a sword' && x.silent));
+  // His next prompt carries that he heard it and said nothing.
+  await v.playerSays(bram, 'hello?');
+  assert.match(tasks.at(-1), /Bram, I need a sword" You: \(you heard it, and said nothing\)/);
+  // A friend's silence for no reason is not kept: their own words instead.
+  elda.opinionOfPlayer = 85;
+  P.x = elda.x + 18;
+  P.y = elda.y;
+  const f = await v.playerSays(elda, 'good morning Elda!');
+  assert.notEqual(f.silent, true);
+  assert.ok(f.lines.length && f.lines[0].length > 1, `words: ${f.lines[0]}`);
+  assert.match(buildSayTask(v.sayBrief(elda, 'hi', { lines: ['Hm.'] })), /"silent"/);
+});
+
+test('silence, Lyra with Claude: cut off, she hears every word and may answer with nothing — shown as an act; together, an empty say is still answered', async () => {
+  const back = quiet();
+  const prompts = [];
+  const g = makeGame({ hour: 10 });
+  g.runtime = fakeRuntime(async (p) => {
+    prompts.push(String(p));
+    return { thought: 'I will not.', say: '', emotion: { name: 'anger', intensity: 0.4 }, actions: [], memories: [], relationships: [], goal: null };
+  });
+  g.brain.providers = new (g.brain.providers.constructor)(g);
+  const L = g.companion;
+  const P = g.player;
+  placeAt(g, L, P.x + 24, P.y);
+  L.mind.autonomy.setCompanionship('gone', 'You hurt me.', { cause: 'downed', goneReason: 'downed', silent: true });
+  const r = await g.brain.handlePlayerMessage('Lyra, please, just say something');
+  back();
+  assert.equal(r.provider, 'claude.ai');
+  assert.match(prompts[0], /hear every word[^]*nothing at all/);
+  assert.equal(r.silent, true);
+  const row = g.ui.chat.messages.at(-1);
+  assert.equal(row.from, 'system');
+  assert.match(row.text, /^Lyra hears (you|every word)/);
+  assert.ok(L.mind.conversation.some((c) => c.role === 'player' && /just say something/.test(c.text)), 'her record has the words');
+  // Together, Claude's empty say is not a silence: she answers in her own words.
+  const g2 = makeGame({ hour: 10 });
+  g2.runtime = fakeRuntime(async () => ({ thought: '', say: '', emotion: { name: 'calm', intensity: 0.2 }, actions: [], memories: [], relationships: [], goal: null }));
+  g2.brain.providers = new (g2.brain.providers.constructor)(g2);
+  placeAt(g2, g2.companion, g2.player.x + 24, g2.player.y);
+  const r2 = await g2.brain.handlePlayerMessage('how are you?');
+  assert.notEqual(r2.silent, true);
+  assert.ok(r2.say, 'words');
+});

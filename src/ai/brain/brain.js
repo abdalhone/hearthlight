@@ -25,6 +25,7 @@ import { composeDiary } from './diary.js';
 import { companionshipOf, distanceTiles, previewVerdict, isRefusal } from './her_state.js';
 import { DAY_SECONDS } from '../../core/constants.js';
 import { saidToday } from '../said_today.js';
+import { silenceAct, turnAway } from '../silence.js';
 
 const REFLECT_WAIT = 20; // seconds the wake-up waits for Claude's diary before using her own
 const ICON_EVERY = 2.2;
@@ -452,7 +453,7 @@ export class Brain {
     }
     this._deliver(reply, 'local');
     this._apologyEvent(parsed, reply.apology);
-    return { say: reply.say, thought: reply.thought || null, actions: all, provider: 'local', memories: reply.chips || [] };
+    return { say: reply.say, thought: reply.thought || null, actions: all, provider: 'local', memories: reply.chips || [], ...(reply.silent ? { silent: true } : {}) };
   }
 
   // Chips for an offline reply: what she recalled for it, plus today's memories (answers
@@ -611,9 +612,16 @@ export class Brain {
     }
     if (resp.rejected?.length) console.warn('[brain] ignored unknown actions:', resp.rejected.join(', '));
     if (!resp.say) {
-      // Claude only acted (or said nothing): she still answers in her own words.
-      const ack = turn.executed.length || ran.length ? this._ackText(turn.parsed, ran) : '';
-      resp.say = ack || this.local.compose(turn.parsed, nluEnv(g)).say;
+      const state = companionshipOf(g);
+      if (!turn.executed.length && !ran.length && (state === 'gone' || state === 'left')) {
+        // Cut off or broken off, she heard it and chose to say nothing (DESIGN §23.3): a
+        // silence the game can see a reason for, shown as what she does.
+        resp.silent = true;
+      } else {
+        // Claude only acted (or said nothing): she still answers in her own words.
+        const ack = turn.executed.length || ran.length ? this._ackText(turn.parsed, ran) : '';
+        resp.say = ack || this.local.compose(turn.parsed, nluEnv(g)).say;
+      }
     }
     const items = call?.items || new Map();
     resp.chips = (resp.used_memories || []).filter((id) => items.has(id)).slice(0, 4).map((id) => ({ id, label: items.get(id) }));
@@ -621,7 +629,7 @@ export class Brain {
     resp.edited = this._editMemories(resp.memory_edits, call);
     this._deliver(resp, providerId);
     this._apologyEvent(turn.parsed, null, resp);
-    return { say: resp.say, thought: resp.thought, actions: turn.executed.concat(ran), provider: providerId, memories: resp.chips };
+    return { say: resp.say, thought: resp.thought, actions: turn.executed.concat(ran), provider: providerId, memories: resp.chips, ...(resp.silent ? { silent: true } : {}) };
   }
 
   // Her own edits to her memory (DESIGN §17.4), only for ids in what this reply was shown
@@ -752,6 +760,14 @@ export class Brain {
       }
       g.bus?.emit('speech', { speaker: lyra, text: say, target: g.player || null, kind: 'say' });
       logConversation(g, 'lyra', say);
+    } else if (reply.silent) {
+      // She heard it and chose silence (DESIGN §23.3): the player sees it done, and her
+      // own record of the talk keeps that she said nothing.
+      const name = lyra?.name || g.settings?.companionName || 'Lyra';
+      this._system(silenceAct('lyra', name, { kind: 'gone', n: (this._silences = (this._silences ?? -1) + 1) }));
+      turnAway(lyra, g.player);
+      logConversation(g, 'lyra', '(heard it, and said nothing)');
+      g.bus?.emit('lyra_silent', { by: lyra, target: g.player || null });
     }
     applyEffects(g, reply, { source: providerId === 'local' ? 'local' : 'claude', cause: 'conversation' });
     this.lastReplyAt = this.now();
