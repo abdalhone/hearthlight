@@ -1964,3 +1964,20 @@ three levels, more health and bite, a scarred leader for a pack of three or more
 missions now ask you to follow the trail, clear the brood or the pack, or take the
 lookout first; Hold the Line is a line to hold; The Count sends you to Brindlecombe.
 
+### 32.9 A shop that buys what you carry (the author: "a shop to sell my stuff")
+
+Gale's Goods buys anything worth anything: Garrick's own prices for what he names
+(`shop.buys`), and half its worth for any other item of value (`shop.buysAll: 0.5`; not
+keys, quest items or coin). The shop's sign says so. The full selling shop of round 14b
+can build on `buysAll`.
+
+### 32.10 People grow older (the author: "make people age as well")
+
+`src/world/calendar.js` (`game.calendar`, saved by `calendarPlugin`). Hearthvale's year
+turns every 12 days. Everyone has a birthday (a day of the year fixed by their name); on
+it they turn a year older: the profile's `age` (which every prompt and line reads) and
+Lyra's soul age change, a `birthday { id, name, age, day }` event goes out and the village
+hears of it. Children grow up with the rest; they stay unkillable by their build (child or
+teen), not by a number. The stranger does not know their own age. Old age does not kill
+anyone (yet), and sprites do not change with age (yet).
+

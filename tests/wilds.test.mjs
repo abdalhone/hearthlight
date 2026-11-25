@@ -312,3 +312,41 @@ test('footsteps sound of the ground: grass, dirt, stone, wood, water, sand, snow
   assert.equal(plays[0][0], 'step_stone');
   assert.ok(plays[1][1] < plays[0][1], 'a neighbour treads softer than you');
 });
+
+// ---------------------------------------------------------------------------
+// People grow older; a shop that buys what you carry (the author's request)
+
+import { Calendar, YEAR_DAYS, birthdayOf, birthdaysBy, baseAge, firstBirthday } from '../src/world/calendar.js';
+import { profileById } from '../src/entities/npc_data.js';
+
+test('people age: a birthday a year, and everyone reads the new age', () => {
+  const bus = [];
+  const clock = { day: 1 };
+  const g = { clock, bus: { emit: (t, p) => bus.push([t, p]) }, entities: { all: () => [], get: () => null }, ui: { toast() {} }, companion: { mind: { soul: { age: 24 } } } };
+  const cal = new Calendar(g);
+  cal.update();
+  assert.equal(cal.ageOf('pip'), 9, 'Pip is nine on the first morning');
+  assert.equal(profileById('pip').age, 9);
+  const b = birthdayOf('pip');
+  assert.ok(b >= 1 && b <= YEAR_DAYS);
+  clock.day = firstBirthday('pip');
+  cal.update();
+  assert.equal(cal.ageOf('pip'), 10);
+  assert.equal(profileById('pip').age, 10, "Pip's profile (and every prompt that reads it) says ten");
+  assert.ok(bus.some(([t, p]) => t === 'birthday' && p.id === 'pip' && p.age === 10));
+  clock.day = firstBirthday('pip') + YEAR_DAYS * 2;
+  cal.update();
+  assert.equal(cal.ageOf('pip'), 12, 'two more years go round');
+  assert.equal(g.companion.mind.soul.age, baseAge('lyra') + birthdaysBy('lyra', clock.day), 'Lyra too');
+  // Back to the first morning (other tests read the canon ages).
+  clock.day = 1;
+  cal.lastDay = null;
+  cal.update();
+  assert.equal(profileById('pip').age, 9);
+});
+
+test("Garrick's shop buys anything worth anything, at half its worth", () => {
+  const shop = profileById('garrick').shop;
+  assert.equal(shop.buysAll, 0.5);
+  assert.equal(shop.buys.wolf_pelt, 8, 'his own prices stand');
+});

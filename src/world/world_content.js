@@ -256,7 +256,7 @@ export const NOTICE_BOARD = {
 export const SIGNS = {
   inn: { title: 'The Ember Kettle', text: 'Hot stew, warm beds, and the best honey cakes this side of the mountains. Elda Thornbury, proprietor.' },
   smithy: { title: 'Ironhand Smithy', text: 'Blades sharpened, tools mended, horses shod. Knock loud; the hammer is louder.' },
-  store: { title: "Gale's Goods", text: "A little of everything from everywhere. Haggling welcome. Garrick insists." },
+  store: { title: "Gale's Goods", text: "A little of everything from everywhere. Haggling welcome. Garrick insists. WE BUY ANYTHING: bring what you found on the road and sell it here." },
   herbalist: { title: "Fennick's Herbs", text: 'Remedies, salves and teas for whatever ails you. Please do not lick the mushrooms.' },
   chapel: { title: 'Chapel of the Hearth', text: 'All who carry a flame are welcome. Prayers for the lost each evening at dusk.' },
   guardhouse: { title: 'Hearthvale Guard', text: 'Report trouble here. Report bandits twice.' },
