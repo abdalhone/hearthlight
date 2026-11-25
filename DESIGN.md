@@ -1364,7 +1364,11 @@ village. She should be able to ask help for other people. They can come and help
   words — the Wayhouse, which way and how far from the one asked, which bed — from Lyra
   (a plugin question; Claude gets the facts in its prompt and a `show_home` action) and
   from every villager (`player_talk.js` local reply; the Claude brief carries the same
-  fact), and the game marks the way whoever words the answer.
+  fact), and the game marks the way whoever words the answer, once they do answer: not after
+  a silence they chose (§23.3), and not by a Lyra who has broken off with the player or cut
+  them off (her word is the whole answer; Claude's `show_home` stays hers to use). Lyra says
+  "our cottage" only while she sleeps in the Wayhouse too (`mind.agenda.sleepAt`), not while
+  she lodges at the Kettle or the chandlery (LORE: Hearthwatch, and where she sleeps).
 - **Sleep and sit** (r13; the author: "I can't sit anywhere, and I can't sleep";
   `src/world/rest.js`). Your bed says "Sleep until morning" at **any hour** (no more
   "from 6 PM"): you wake at 7 the next morning (the same morning before 7), healed, and the
@@ -1799,6 +1803,10 @@ is **broken**: both sides remember (their notes, the player's toast), and they o
 next time. Kept: "Elda kept their word — Elda found Lyra and talked to her for you". A
 villager who has gone on their way, or backed off in fear, cannot answer after: a late
 reply is not delivered, and the field says so. Saved in `village.commitments`.
+Sleeping to morning (§19.8, now at any hour) breaks no promise: hours skipped are hours
+nobody could keep one in, so an open promise's day moves on with the clock (the walk a sleep
+interrupted starts again). "Teach me" asks for a lesson on its own; "show me…" only with the
+weave in it, so "show me where my bed is" is the way home (§19.8), never a lesson.
 
 ### 23.3 Silence is a choice made after hearing (`src/ai/silence.js`; the author: "make them able to choose to not respond to me but they have to get my msg so they get it and decide to not answer")
 
@@ -2045,6 +2053,10 @@ notices and has opinions (berserk frightens her).
   was distance-only), the harmless kill she "saw from another house" and her cruelty
   reactions (perception), the villagers' sightings sweep and `npc.canSee` (was: the same
   building only), murder witnesses, and who saw a deed in the village's gossip.
+  The line of sight stops at the tiles a blow stops at (§31.1 `wallTile`: walls, rock, a shut
+  door); a felled tree's stump (§31.3) hides nobody; and a lamp under a roof lights its own
+  room, never the street outside the wall (the rule the roofs give the renderer, §31.5), so
+  the chapel's altar does not light a killing in the square.
 - **News travels by meeting.** Grave news passes face to face only (`MEET` 88 px, the same
   roof, both awake). A killing seen is known by those who saw it and those near enough to
   make out the scream (96 px); nobody else. The watch learns only when someone who knows
@@ -2147,7 +2159,8 @@ One rule for every attack, the tiles projectiles already stopped at: `map.blocks
 - `wallTile(game, tx, ty)`, `wallAt(game, x, y)`, `wallBetween(game, x0, y0, x1, y1)` (a grid
   walk of every tile the segment crosses; the two end tiles do not count, so a body hugging a
   wall stays in reach) and `canReach(game, a, b)` (feet lifted 3 px, where actors collide).
-- The sword and every creature's bite (`combat.melee`) skip anyone `canReach` says no to.
+- The sword and every creature's bite (`combat.melee`) skip anyone `canReach` says no to,
+  and so does the finishing blow on someone fallen (§29.1 `murder.finishTarget`).
 - Weaves (`bodies.js` `reaches(rt, x, y, a)`, `magic.blocked(...)`): rings, bursts, cones, the
   strike's fist (thrown into a wall it lands on the wall's face) and wave, beams (from the point
   of the ray nearest the target), weave walls, trails, rune triggers, reactions' spread, and
@@ -2193,6 +2206,8 @@ arc reaches the props in front of it.
   colors; not solid, not interactable, no baked shadow), a pixelfx dust cloud in the material's
   colors (`playDust`), chips, sometimes a little wood. A broken fence's neighbours lose the rail
   to it. Mended two days on (`MEND`; bushes grow back in one) unless someone stands there.
+  Until then nobody leans on it or works at it: a villager's `near` and work props skip the
+  rubble (`npc.js` `spotFor`), and a broken seat seats nobody (`rest.js` `seatFor`).
 - **Never**: buildings (tiles), doors, windows, beds, chests, lamps, hearths, wells, anything you
   can look at for its story (a decor with text), the notice board and signs hung on buildings.
 - Saved: `state.broken`/`mendAt` and the trees' and rocks' own `depleted`/`regrowAt` ride on each
