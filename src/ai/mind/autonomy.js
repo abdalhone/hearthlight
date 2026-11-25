@@ -2377,6 +2377,35 @@ export class Autonomy {
     return spec;
   }
 
+  // A villager brings her the player's message (DESIGN §23.2: "go and talk to Lyra for me").
+  // She really hears it: she remembers who brought it and what it said, weighs it like
+  // anything the player says to her face, and answers the one who brought it.
+  // -> { line, kind: 'apology'|'call'|'word', believed? }
+  hearMessage({ from = null, fromName = '', text = '', playerName = null } = {}) {
+    const P = playerName || this.playerName();
+    const who = fromName || this.npcName(from) || 'Someone';
+    const msg = String(text || '').trim();
+    const st = this.companionship;
+    const quoted = msg ? `“${msg}”` : 'that they want a word with me';
+    this.remember(`${who} came to find me with a message from ${P}: ${quoted}.`, { importance: 5, tags: ['message', 'promise'], about: [PLAYER_ID, ...(from ? [from] : [])] });
+    let kind = 'word';
+    let line = '';
+    if (msg && isApology(msg)) {
+      kind = 'apology';
+      const r = this.receiveApology(msg);
+      line = this.line(st === 'gone' ? 'msg_gone' : r?.believed ? 'msg_apology_believed' : r?.nothing ? 'msg_word' : 'msg_apology_doubted', { npc: who, P });
+      return { line, kind, believed: !!r?.believed };
+    }
+    if (st === 'gone') return { line: this.line('msg_gone', { npc: who, P }), kind };
+    if (st === 'left') return { line: this.line('msg_left', { npc: who, P }), kind };
+    // "Come back", "meet me", "they want a word": finding them goes on her open agenda,
+    // and she weighs it with everything else (she goes if she wants to).
+    kind = !msg || /(?:come|meet|find|see|talk|word|back|miss|need|wait)/i.test(msg) ? 'call' : 'word';
+    if (kind === 'call') this.noteUnfinished({ text: `find ${P}, who sent ${who} for me`, why: `${who} said ${P} wants a word.`, since: this.day() });
+    line = this.line(kind === 'call' ? (this._companyWanted() ? 'msg_call_yes' : 'msg_call_later') : 'msg_word', { npc: who, P });
+    return { line, kind };
+  }
+
   // Who is talking for her right now: Claude (in a chat it answers), or her own head.
   _chatSource() {
     const g = this.game;

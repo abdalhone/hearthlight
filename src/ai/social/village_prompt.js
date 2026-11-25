@@ -40,13 +40,20 @@ export const SAY_SCHEMA = {
     name: nullable({ type: 'string', description: 'the name the player just told them, if they did' }),
     memory: nullable({ type: 'string', description: 'if worth keeping: a short clause to the player starting with "you", e.g. "you told me you have never seen the sea"' }),
     asked: nullable({ type: 'string', enum: ['name', 'other'], description: 'if their reply asks the player something: "name" for the player’s name, else "other"' }),
+    commit: nullable({
+      type: 'object',
+      description: 'only when the brief says they are asking you to do something: whether you agree (the game then does it)',
+      properties: { kind: { type: 'string', enum: ['tell', 'give', 'teach'] }, agree: { type: 'boolean' } },
+      required: ['kind', 'agree'],
+      additionalProperties: false,
+    }),
   },
-  required: ['say', 'mood', 'opinion_delta', 'learned', 'rumor_told', 'rumor', 'name', 'memory', 'asked'],
+  required: ['say', 'mood', 'opinion_delta', 'learned', 'rumor_told', 'rumor', 'name', 'memory', 'asked', 'commit'],
   additionalProperties: false,
 };
 
 // The same, said in the prompt (claude.ai's sample takes no schema).
-const SAY_FORMAT = 'Reply with one JSON object and nothing else: {"say": string, "mood": one word, "opinion_delta": number from -10 to 5, "learned": [fact ids you told], "rumor_told": news id or null, "rumor": a short clause you will repeat about what they said, or null, "name": their name if they just told it, else null, "memory": a short clause starting "you" worth remembering about them, else null, "asked": "name" or "other" if you asked them something, else null}';
+const SAY_FORMAT = 'Reply with one JSON object and nothing else: {"say": string, "mood": one word, "opinion_delta": number from -10 to 5, "learned": [fact ids you told], "rumor_told": news id or null, "rumor": a short clause you will repeat about what they said, or null, "name": their name if they just told it, else null, "memory": a short clause starting "you" worth remembering about them, else null, "asked": "name" or "other" if you asked them something, else null, "commit": null, or when they ask you to do something {"kind": "tell"|"give"|"teach", "agree": true|false}}';
 
 export const LINES_SCHEMA = {
   type: 'object',
@@ -144,6 +151,9 @@ export function buildSayTask(b) {
   // Everything they said today, to anyone (DESIGN §23.1): what popped over their head and
   // what they say in the chat agree, and nothing is said twice.
   if (b.saidToday?.length) L.push(`What you have already said today, to anyone, aloud or over your head (oldest first). Keep to it, build on it, and never say the same thing or ask the same question again:\n${b.saidToday.join('\n')}`);
+  if (b.promises?.length) L.push(`Your promises to them (you keep your word, or say plainly why not):\n${b.promises.map((x) => `- ${clip(x, 160)}`).join('\n')}`);
+  if (b.owed) L.push(`You broke a promise to them (${clip(b.owed, 120)}): own it first, plainly.`);
+  if (b.request) L.push(b.request);
   if (b.asked) L.push(`You had just asked them ${b.asked === 'their name' ? 'their name' : 'a question'}; this may be their answer.`);
   L.push(`They say to you now: "${clip(b.text, 300)}"`);
   L.push('Answer as yourself, in one to three short spoken sentences.');
@@ -215,6 +225,7 @@ export function coerceSay(raw) {
     name: /^[A-Za-zÀ-ÿ'-]{2,20}$/.test(name) ? name.charAt(0).toUpperCase() + name.slice(1) : null,
     memory: memory ? memory.replace(/^You\b/, 'you').replace(/[.!?]+$/, '') : null,
     asked: raw.asked === 'name' || raw.asked === 'other' ? raw.asked : null,
+    commit: raw.commit && typeof raw.commit === 'object' && ['tell', 'give', 'teach'].includes(raw.commit.kind) ? { kind: raw.commit.kind, agree: raw.commit.agree === true } : null,
   };
 }
 

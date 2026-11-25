@@ -739,6 +739,50 @@ export const LINES = {
     tired: ['Here. As promised.'],
   },
 
+  // ------------------------------------------------------------------ a message brought to her (§23.2)
+  msg_word: {
+    warm: ['Did they? Thank you, {npc}. I’ll think on it.', 'Thank you for carrying that, {npc}. I heard it.'],
+    cool: ['I heard. Thank you, {npc}.'],
+    afraid: ['Thank you, {npc}. I heard.'],
+    tired: ['Heard. Thank you.'],
+  },
+  msg_call_yes: {
+    warm: ['They sent you all this way? Then I’ll go and find them. Thank you, {npc}.', 'A word, is it? I’ll find them when I can. Thank you for coming, {npc}.'],
+    cool: ['I’ll find them. Thank you, {npc}.'],
+    afraid: ['All right. I’ll find them. Thank you, {npc}.'],
+    tired: ['I’ll find them. Later.'],
+  },
+  msg_call_later: {
+    warm: ['Not today, {npc}. Tell them I heard, if you see them.'],
+    cool: ['I heard. Not today.'],
+    afraid: ['Not today. Tell them I heard.'],
+    tired: ['Not today.'],
+  },
+  msg_apology_believed: {
+    warm: ['They said that? …Thank you, {npc}. I believe them.'],
+    cool: ['Sorry, is it. …All right. I believe it.'],
+    afraid: ['They’re sorry? …I think they mean it.'],
+    tired: ['All right. I believe them.'],
+  },
+  msg_apology_doubted: {
+    warm: ['Sorry, sent by someone else. I heard it, {npc}. I’m not sure I believe it yet.'],
+    cool: ['Sorry is easy to send. I heard it.'],
+    afraid: ['I heard it. I don’t know yet.'],
+    tired: ['I heard. Not sure yet.'],
+  },
+  msg_left: {
+    warm: ['I heard, {npc}. I’m keeping my own road for now.'],
+    cool: ['I heard. I’m keeping my own road for now.'],
+    afraid: ['I heard. I’d rather keep my distance.'],
+    tired: ['I heard. Not now.'],
+  },
+  msg_gone: {
+    warm: ['Thank you, {npc}. I’ve nothing to say back to them.'],
+    cool: ['I’ve nothing to say back to them, {npc}.'],
+    afraid: ['I’ve nothing to say back.'],
+    tired: ['Nothing to say back.'],
+  },
+
   // ------------------------------------------------------------------ her outings (§16.11)
   outing_go: {
     warm: ['Right. Thank you for coming. {place}’s this way — stay close.', 'Come on, then. I’ll lead, and I’ll try not to dawdle.'],

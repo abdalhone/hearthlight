@@ -386,3 +386,146 @@ test('A4: Elda does not ask "have you eaten?" twice in a day — offline, and th
   // And a Claude reply that repeats it anyway loses that sentence.
   assert.equal(g.saidToday.dropRepeats('elda', 'Have you eaten today? Mind the frost on the step going out.'), 'Mind the frost on the step going out.');
 });
+
+// ------------------------------------------------------------------ A5: promises become real actions
+
+import { stepUntil as stepUntilSurvival } from './survival_world.mjs';
+
+function nearElda(g) {
+  clearScene(g, ['elda', 'lyra']);
+  const elda = g.entities.get('elda');
+  const P = g.player;
+  P.x = elda.x + 18;
+  P.y = elda.y;
+  elda.adjustOpinion?.(30, 'test: she likes them');
+  return elda;
+}
+
+test('A5: "please can you go to her" — Elda says yes, walks to Lyra, they talk, and Lyra really hears it', async () => {
+  const g = makeVillage({ hour: 11 });
+  const elda = nearElda(g);
+  const L = g.companion;
+  // Lyra across the village, living her own day.
+  L.x = g.locations.get('town_square').center.x;
+  L.y = g.locations.get('town_square').center.y;
+  await g.village.playerSays(elda, 'how is Lyra doing?');
+  const r = await g.village.playerSays(elda, 'please can you go to her and tell her I am sorry');
+  assert.match(r.lines.join(' '), /Lyra/, `she answers about it: ${r.lines.join(' ')}`);
+  const c = g.village.commitments.open('elda')[0];
+  assert.ok(c && c.kind === 'tell', 'a commitment, not just words');
+  assert.equal(c.message, 'I am sorry');
+  // The player walks off; she goes when she is free.
+  g.player.x += 300;
+  let talked = null;
+  g.bus.on('conversation', (p) => {
+    if ((p.a?.id === 'lyra' || p.b?.id === 'lyra') && (p.a?.id === 'elda' || p.b?.id === 'elda')) talked = p;
+  });
+  for (let i = 0; i < 400 && c.state !== 'kept'; i++) stepVillage(g, 0.5);
+  assert.equal(c.state, 'kept', `she went (state ${c.state})`);
+  assert.ok(talked, 'the two of them talked');
+  assert.ok(talked.lines.some((l) => /sorry/i.test(l.text)), 'Elda passed the message on');
+  const mem = L.mind.memory.all?.() || L.mind.memory.list || [];
+  const heard = (Array.isArray(mem) ? mem : []).some((m) => /Elda came to find me with a message/.test(m.text));
+  assert.ok(heard || (L.mind.recall?.('Elda message', { limit: 6 }) || []).some((m) => /message/.test(m.text)), 'Lyra remembers who brought it and what it said');
+});
+
+test('A5: "give me a honey cake" — the item changes hands; "take a honey cake for the road" gives one too; too much asked, she says why', async () => {
+  const g = makeVillage({ hour: 11 });
+  const elda = nearElda(g);
+  const inv = g.player.inventory;
+  const before = inv.count('honey_cake');
+  const r = await g.village.playerSays(elda, 'can I have a honey cake please');
+  assert.equal(inv.count('honey_cake'), before + 1, `the cake is in their pack: ${r.lines.join(' ')}`);
+  const r2 = await g.village.playerSays(elda, 'can I have another honey cake');
+  assert.equal(inv.count('honey_cake'), before + 1, 'not twice in a day');
+  assert.match(r2.lines.join(' '), /already|tomorrow/i, 'and she says why');
+  const r3 = await g.village.playerSays(elda, 'give me an iron sword');
+  assert.match(r3.lines.join(' '), /no Iron Sword|no iron sword/i, `she has none to give, and says so: ${r3.lines.join(' ')}`);
+  // An offer in her own words is handed over (once).
+  const bread = inv.count('bread');
+  g.village.commitments.offersIn(elda, ['Take some bread for the road, love.']);
+  assert.equal(inv.count('bread'), bread + 1);
+});
+
+test('A5: "teach me magic" — a teacher starts the lesson that unlocks what they know; someone who knows none says who does', async () => {
+  const g = makeVillage({ hour: 11 });
+  const { MissionSystem } = await import('../src/missions/system.js');
+  g.missions = new MissionSystem(g);
+  clearScene(g, ['bram', 'elda']);
+  const bram = g.entities.get('bram');
+  g.player.x = bram.x + 18;
+  g.player.y = bram.y;
+  bram.adjustOpinion?.(30, 'test');
+  const r = await g.village.playerSays(bram, 'can you teach me magic?');
+  const st = g.missions.status('hinge_ore');
+  assert.ok(st === 'active' || /not yet/i.test(r.lines.join(' ')), `the lesson began, or he says plainly when: ${r.lines.join(' ')} (${st})`);
+  if (st === 'active') {
+    assert.match(r.lines.join(' '), /iron/i, 'he teaches what he knows: iron');
+    const c = g.village.commitments.open('bram')[0];
+    assert.equal(c?.kind, 'teach');
+    // The lesson done, the part unlocks and his word is kept.
+    g.missions.complete('hinge_ore');
+    stepVillage(g, 2);
+    assert.equal(c.state, 'kept');
+  }
+  const elda = g.entities.get('elda');
+  g.player.x = elda.x + 18;
+  g.player.y = elda.y;
+  const e2 = await g.village.playerSays(elda, 'teach me a spell');
+  assert.ok(/teach|lesson|begun|ask/i.test(e2.lines.join(' ')), e2.lines.join(' '));
+});
+
+test('A5: a Claude yes to something impossible is answered with the plain reason; a Claude yes the game can do is done', async () => {
+  const g = makeVillage({ hour: 11 });
+  const elda = nearElda(g);
+  const v = g.village;
+  let answer = { say: "Of course, love, here's an iron sword.", mood: 'warm', opinion_delta: 1, learned: [], rumor_told: null, rumor: null, name: null, memory: null, asked: null, commit: { kind: 'give', agree: true } };
+  v.provider = () => ({ id: 'fake' });
+  const briefs = [];
+  v.askClaude = async (p, rules, task) => {
+    briefs.push(task);
+    return answer;
+  };
+  const r = await v.playerSays(elda, 'give me an iron sword');
+  assert.ok(briefs[0].includes('You will not or cannot'), 'Claude was told it cannot be done');
+  assert.ok(!g.player.inventory.count('iron_sword'), 'no sword appeared');
+  assert.match(r.lines.join(' '), /no iron sword/i, `she says plainly why not: ${r.lines.join(' ')}`);
+  answer = { ...answer, say: 'Here, love, a honey cake.', commit: { kind: 'give', agree: true } };
+  const n = g.player.inventory.count('honey_cake');
+  await v.playerSays(elda, 'can I have a honey cake?');
+  assert.equal(g.player.inventory.count('honey_cake'), n + 1, 'the checked yes is done');
+});
+
+test('A5: a promise not kept by its day is broken, and both sides remember', async () => {
+  const g = makeVillage({ hour: 11 });
+  const elda = nearElda(g);
+  await g.village.playerSays(elda, 'go and talk to Lyra for me');
+  const c = g.village.commitments.open('elda')[0];
+  assert.ok(c);
+  c.due = g.clock.t - 1; // the day came and went
+  g.village.commitments._acc = 5;
+  g.village.commitments.update(1);
+  assert.equal(c.state, 'broken');
+  assert.ok(g.toasts.some((t) => /didn't keep their word/.test(t.opts?.title || '')), 'the player is told');
+  const r = await g.village.playerSays(elda, 'hello');
+  assert.match(r.lines[0], /never did get to Lyra/i, 'and she owns it the next time they talk');
+});
+
+test('A5: asking Lyra to teach you: a lesson she can give is offered as one (a yes chip); not yet, she says when, and who else teaches', async () => {
+  const g = makeVillage({ hour: 11 });
+  const { missionsPlugin } = await import('../src/missions/plugin.js');
+  g.plugins.register(missionsPlugin);
+  g.plugins.installAll?.();
+  const L = g.companion;
+  g.player.x = L.x + 20;
+  g.player.y = L.y;
+  const r1 = await g.brain.handlePlayerMessage('can you teach me magic?');
+  assert.match(r1.say, /Not yet/);
+  assert.match(r1.say, /Aveline|Bram|Tilly/, 'and who else teaches what');
+  g.missions.flags.weave_seen = true;
+  const r2 = await g.brain.handlePlayerMessage('teach me a spell');
+  assert.match(r2.say, /teach you/);
+  assert.ok(g.ui.chat.messages.some((m) => m.offer?.name === 'accept_mission'), 'the lesson is offered, with a yes');
+  g.actions.run('accept_mission', { value: 'first_spark' }, 'player');
+  assert.equal(g.missions.status('first_spark'), 'active', 'and saying yes starts it');
+});

@@ -15,6 +15,7 @@ import { localReply, emptyYou, cleanYou, knownName, learnName, addNote, notesOf,
 import { TO_YOU } from './voices_player.js';
 import { speakable } from './hidden.js';
 import { WEAVE_RUMORS } from '../../missions/rumors.js';
+import { Commitments } from './commitments.js';
 import { VILLAGER_RULES, SAY_SCHEMA, LINES_SCHEMA, NIGHT_SCHEMA, buildSayTask, buildListenTask, buildNightTask, coerceSay, coerceLines, coerceNight, cleanLine } from './village_prompt.js';
 
 // What the village says about the stranger's weaving joins the rumor table (DESIGN §22.3).
@@ -58,11 +59,19 @@ export function lineBeat(text, speed = 1) {
 
 const g0 = (v) => v?.game || null;
 
+// The first thing said after a promise they broke (DESIGN §23.2): plainly, and sorry.
+function owedLine(c, who) {
+  if (c.kind === 'tell') return `I never did get to ${who === 'lyra' ? 'Lyra' : who} for you. I'm sorry. I said I would.`;
+  if (c.kind === 'teach') return "That lesson I promised you. We never finished it, and that's on me.";
+  return "I said I would, and I didn't. I'm sorry.";
+}
+
 export class Village {
   constructor(game) {
     this.game = game;
     this.bonds = new Bonds({ onChange: (a, b, bond, changes, reason) => this.emit('bond_changed', { a, b, bond, changes, reason }) });
     this.rumors = new Rumors();
+    this.commitments = new Commitments(this); // their promises to the player, kept (DESIGN §23.2)
     this.log = [];
     this.talks = {}; // npcId -> [{ t, day, you, they }]
     this.mentioned = {}; // npcId -> [rumor ids raised with the player]
@@ -565,6 +574,7 @@ export class Village {
     const g = this.game;
     if (!g || g.state !== 'playing') return;
     this.stepPlaying(dt);
+    safe(() => this.commitments.update(dt));
     this.tickT -= dt;
     if (this.tickT > 0) return;
     this.tickT = 0.5;
@@ -1159,19 +1169,43 @@ export class Village {
     if (!e || !e.profile) return { lines: ['...'], mood: null };
     if (!said) return { lines: [say(voiceOf(e.id)?.short, e.id, 'player', { rng: this.rng() }) || 'Hm?'], mood: null };
     const local = safe(() => localReply(this, e, said), null) || { lines: ['Hm.'], mood: null, delta: 0, intent: 'unknown', told: [], mentioned: [] };
+    // An ask they can act on (go to Lyra, give, teach): what the game allows, and their
+    // answer to it, decided before anyone words it (DESIGN §23.2).
+    const cm = this.commitments;
+    const asleep = e.state === 'sleep' || e.activity === 'sleep';
+    const ask = !asleep && !local.intent?.match?.(/^(threat|insult)$/) ? safe(() => cm.detect(e, said), null) : null;
+    const dec = ask ? safe(() => cm.decide(e, ask), null) : null;
+    if (ask && dec?.line) local.lines = [dec.line];
+    // A promise they broke: they say so first, once.
+    const owed = !asleep ? cm.owed(e.id) : null;
+    if (owed && !ask) {
+      owed.owned = true;
+      local.lines = [owedLine(owed, this.name(owed.to === 'lyra' ? 'lyra' : owed.to)), ...local.lines].slice(0, 3);
+    }
     let reply = { lines: local.lines, mood: local.mood, delta: local.delta, told: local.told || [], mentioned: local.mentioned || [], source: 'local' };
     const provider = this.provider();
-    const asleep = e.state === 'sleep' || e.activity === 'sleep';
     if (provider && !asleep) {
-      const r = await this.askClaude(provider, VILLAGER_RULES, buildSayTask(this.sayBrief(e, said, local)), SAY_SCHEMA, 'say');
+      const brief = this.sayBrief(e, said, local);
+      if (ask && dec) brief.request = cm.brief(e, ask, dec);
+      if (owed && !ask) brief.owed = owed.text;
+      const r = await this.askClaude(provider, VILLAGER_RULES, buildSayTask(brief), SAY_SCHEMA, 'say');
       const c = coerceSay(r);
       if (c) {
         // Threats and insults weigh what they weigh, whoever words the answer.
         // (An apology mends through amend(), slowly, whatever Claude makes of it.)
         const delta = local.intent === 'threat' || local.intent === 'insult' ? Math.min(local.delta, c.opinionDelta) : local.intent === 'apology' ? 0 : c.opinionDelta;
-        reply = { lines: [g0(this)?.saidToday?.dropRepeats?.(e.id, c.say) || c.say], mood: c.mood || local.mood, delta, told: c.learned.filter((id) => (e.profile.facts || []).some((f) => f.id === id)), mentioned: c.rumorTold && this.rumors.get(c.rumorTold) ? [c.rumorTold] : [], source: 'claude', rumor: c.rumor, name: c.name || local.name, memory: c.memory, asked: c.asked };
+        reply = { lines: [g0(this)?.saidToday?.dropRepeats?.(e.id, c.say) || c.say], mood: c.mood || local.mood, delta, told: c.learned.filter((id) => (e.profile.facts || []).some((f) => f.id === id)), mentioned: c.rumorTold && this.rumors.get(c.rumorTold) ? [c.rumorTold] : [], source: 'claude', rumor: c.rumor, name: c.name || local.name, memory: c.memory, asked: c.asked, commit: c.commit };
       }
     }
+    // Their answer, acted on: a checked yes becomes a commitment (walks, gifts, lessons);
+    // a yes to the impossible is answered with the plain reason instead.
+    if (ask && dec) {
+      const st = safe(() => cm.settle(e, ask, dec, { text: reply.lines.join(' '), commit: reply.commit || null, source: reply.source }), null);
+      if (st?.lines?.length) reply.lines = st.lines;
+      reply.commitment = st?.made || null;
+    }
+    // Something offered in what they said ("take a honey cake for the road") is handed over.
+    if (!asleep) safe(() => cm.offersIn(e, reply.lines));
     this.afterPlayerSays(e, said, local, reply);
     return { lines: reply.lines, mood: reply.mood || null, intent: local.intent, source: reply.source, name: reply.name || null };
   }
@@ -1302,6 +1336,7 @@ export class Village {
       lyra: lyraState ? `travelling with the player: ${lyraState === 'together' ? 'yes' : 'no'} (${lyraState}).` : '',
       standing,
       saidToday: safe(() => g?.saidToday?.promptLines?.(id, { limit: 10, max: 650 }), []) || [],
+      promises: safe(() => this.commitments.promptFor(id), []) || [],
       text: said,
       local: local.lines?.[0] || '',
     };
@@ -1556,6 +1591,7 @@ export class Village {
       scenes: this.sceneDay,
       seq: this.seq,
       you: cleanYou(this.you),
+      commitments: this.commitments.serialize(),
     };
   }
 
@@ -1576,6 +1612,7 @@ export class Village {
     this.amendsDay = objOf(d.amends);
     this.sceneDay = objOf(d.scenes);
     this.you = cleanYou(d.you);
+    this.commitments.deserialize(d.commitments);
     this.seq = Number.isFinite(d.seq) ? d.seq : this.log.reduce((m, c) => Math.max(m, Number(c.id) || 0), 0);
     for (const c of this.log) this.pairAt.set(pairKey(c.a, c.b), c.t);
   }

@@ -618,6 +618,7 @@ export class VillageLife {
       case 'alarm':
       case 'meet':
       case 'askPlayer':
+      case 'keep':
         return this.progressApproach(e, step, t);
       default:
     }
@@ -1171,8 +1172,23 @@ export class VillageLife {
       return;
     }
     if (step.kind === 'alarm') return this.alarmExchange(e, tgt, step, prob, t);
+    if (step.kind === 'keep') return this.keepExchange(e, tgt, step, t);
     if (step.kind === 'meet') return this.meetExchange(e, tgt, step, t);
     return this.askExchange(e, tgt, step, prob, t);
+  }
+
+  // A promise of theirs to the player, kept on foot (DESIGN §23.2): walk up to someone
+  // (Lyra, for a message) and do what was promised. The village's commitments say what.
+  keepPromise(e, c) {
+    if (!e || !c?.to || this.steps.get(e.id)) return null;
+    return this.makeStep(e, 'keep', { target: c.to, commit: c.id, doing: c.to === 'lyra' ? 'going to find Lyra, as promised' : 'keeping a promise' });
+  }
+
+  keepExchange(e, tgt, step, t) {
+    const r = safe(() => this.village?.commitments?.fulfil?.(step.commit, e, tgt), null);
+    if (!r?.lines?.length) return this.endStep(e);
+    this.event('promise', r.summary || `${this.name(e.id)} kept a promise.`, { who: e.id, about: tgt.id });
+    this.talk(e, tgt, r.lines, { topic: 'message', summary: r.summary, step, after: r.after });
   }
 
   // What `who` can tell about `about`, from their own eyes first, then what they were told.
