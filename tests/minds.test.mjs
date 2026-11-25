@@ -772,6 +772,36 @@ test('A6: until the witness reaches the watch, nobody knows who did it: a body f
   assert.equal(g.murder.refusesTrade(garrick), true, 'the bell has rung: no shop sells to a known killer');
 });
 
+test('A6: a witness who has run to the watch tells them at the door, even with Wys inside and her on the step', () => {
+  const g = makeVillage({ hour: 12 });
+  quietAll(g, ['bram', 'elda', 'wys']);
+  const sq = g.locations.get('town_square').center;
+  const bram = g.entities.get('bram');
+  const elda = g.entities.get('elda');
+  const wys = g.entities.get('wys');
+  for (const e of [bram, wys]) e.think = () => {};
+  const gh = g.map.buildings.find((b) => b.id === 'guardhouse');
+  const door = gh.doorTiles[0];
+  const dx = door.tx ?? door.x ?? door[0];
+  const dy = door.ty ?? door.y ?? door[1];
+  const southDoor = dy >= gh.y + gh.h - 1;
+  put(wys, tpx(dx), tpx(southDoor ? dy - 1 : dy + 1));
+  put(bram, sq.x, sq.y);
+  put(g.player, sq.x - 14, sq.y);
+  put(elda, sq.x + 50, sq.y - 10);
+  downBy(g, bram);
+  const rec = g.murder.kill(bram, g.player);
+  assert.ok(rec.seen.some((s) => s.id === 'elda'));
+  // She arrives on the step, outside, Wys just inside: not the same roof.
+  elda.think = () => {};
+  put(elda, tpx(dx), tpx(southDoor ? dy + 1 : dy - 1));
+  assert.equal(g.village.meeting(elda, wys), false, 'not under one roof');
+  stepVillage(g, 0.5);
+  assert.equal(rec.alarm?.raised, true, 'she shouted it in at the door');
+  assert.equal(rec.alarm.by, 'wys');
+  assert.ok(g.village.rumors.get(rec.rumor).heardBy.includes('wys'), 'and Wys heard it from her');
+});
+
 // ------------------------------------------------------------------ A7: witnesses are people
 
 test('A7: Elda watches the stranger kill: terrified, she runs and screams, will not talk; after several killings, never calm again', async () => {

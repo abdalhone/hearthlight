@@ -49,6 +49,7 @@ const OVER_BODY = 70; // px: found standing this close to the body
 // Who can raise the alarm (DESIGN §29.2): the watch, and Hess who fights beside them.
 export const ALARM_TAKERS = ['rowan', 'wys', 'hess'];
 const SCREAM_REACH = 96; // px: near enough to make out who and what in a scream
+const WATCH_REACH = 64; // px: a witness this close to one of the watch has told them
 const TERROR_HOURS = 18; // a killing seen stays this raw: they run, and will not talk
 const DREAD_AFTER = 2; // killings seen: after this many, never calm with the stranger again
 
@@ -713,6 +714,21 @@ export class Murder {
         rec.lyraTold = true;
         rec.lyraHearsAt = null;
         safe(() => Lyra.hearsOfMurder(this, rec));
+      }
+    }
+    // A witness who has run to the watch tells them at once: she runs in through the door
+    // shouting it (the doorway is no wall between them, whatever the roof says).
+    for (const e of this.life?.villagers?.() || []) {
+      if (!e.terror || this.now() >= e.terror.until || ALARM_TAKERS.includes(e.id)) continue;
+      const rec = this.dead[e.terror.about];
+      if (!rec || rec.alarm?.raised || !e.isAlive?.() || e.downed) continue;
+      for (const id of ALARM_TAKERS) {
+        const w = this.entity(id);
+        if (!w || w.dead || w.downed || !w.isAlive?.() || w.state === 'sleep' || dist(e, w) > WATCH_REACH) continue;
+        const r = rec.rumor ? safe(() => this.village?.rumors?.get?.(rec.rumor), null) : null;
+        if (r) safe(() => this.village.rumors.hear(r, id, e.id, this.game?.rng));
+        this.raiseAlarm(rec, id);
+        break;
       }
     }
     // The terrified keep running for the watch while they carry the news.
