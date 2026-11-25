@@ -1086,7 +1086,7 @@ export class Survival {
       rec.carrierName = carrier.name;
       endCarry(this, carrier);
     }
-    if (safe(() => g.prices?.lastStandArmed?.(), false)) return this.riseInstead(P, 'death');
+    if (safe(() => g.prices?.lastStandArmed?.(), false) && this.riseInstead(P, 'death')) return null;
     this.resolveFall(P, 'died');
     const mode = g.settings?.deathMode === 'home' ? 'home' : hasKeptFlame(g) ? 'flame' : 'final';
     rec.savedIds = [...this.saved];
@@ -1105,9 +1105,8 @@ export class Survival {
     const g = this.game;
     if (!P || !safe(() => g.prices?.lastStandArmed?.(), false)) return false;
     if (P.carriedBy) endCarry(this, P.carriedBy);
-    const rec = this.falls.get(P);
-    if (rec) this.resolveFall(P, 'laststand');
     const ok = !!safe(() => g.prices.riseLastStand(P, how), false);
+    if (ok && this.falls.has(P)) this.resolveFall(P, 'laststand');
     if (ok) {
       // Whoever was on their way sees them get up, and burn.
       const lyra = g.companion;
