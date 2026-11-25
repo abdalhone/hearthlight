@@ -74,12 +74,10 @@ async function play(size) {
     page.evaluate((id) => {
       const g = window.__game;
       const e = id === 'lyra' ? g.companion : g.entities.get(id);
-      const c = document.querySelector('canvas');
-      if (!e || !c) return null;
-      const r = c.getBoundingClientRect();
-      const s = r.width / g.camera.vw;
-      const p = g.camera.worldToScreen(e.x, e.y - 10);
-      return { x: r.left + p.x * s, y: r.top + p.y * s };
+      if (!e) return null;
+      const p = g.renderer.worldToCss(e.x, e.y - 10);
+      const r = g.canvas.getBoundingClientRect();
+      return { x: r.left + p.x, y: r.top + p.y };
     }, id);
   const tapPerson = async (id) => {
     const p = await screenOf(id);

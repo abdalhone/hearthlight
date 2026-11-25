@@ -2292,6 +2292,8 @@ export class Autonomy {
     // An item of her open agenda, by its id ("a2"), as Claude names it.
     const am = t.match(/^a(\d{1,2})\b/);
     const item = am ? this.openAgenda().find((it) => it.id === `a${am[1]}`) : null;
+    // An id that is not (or no longer) on her agenda: nothing to do, her day stands.
+    if (am && !item && /^a\d{1,2}[.!]?$/.test(t.trim())) return { ok: false, message: '' };
     if (item && item.kind === 'company') {
       this.outings.drop('changed');
       return this.companionship === 'apart' ? this.rejoin({ asked: false }) : { ok: true, message: '' };

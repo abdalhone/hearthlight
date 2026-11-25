@@ -117,7 +117,7 @@ export const autonomyPlugin = {
       },
     },
     set_plan: {
-      description: "Change her own plan for today from now on, e.g. 'gather herbs for Mira', 'supper at the Kettle', 'visit Bram', 'rejoin at 14', 'explore sunken_ruins in the morning'.",
+      description: "Change her own plan for today from now on, e.g. 'gather herbs for Mira', 'supper at the Kettle', 'visit Bram', 'rejoin at 14', 'explore sunken_ruins in the morning' — or do one item of her open agenda now by its id ('a2').",
       params: { value: 'the activity or plan, in words' },
       run(args, ctx) {
         const a = autonomyOf(ctx);

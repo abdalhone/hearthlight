@@ -189,6 +189,37 @@ test('A2: her open agenda weighs wants, unfinished business, people, what she sa
   assert.ok(['want', 'person', 'unfinished'].includes(after.kind), after.text);
 });
 
+test('A2 with Claude: her open agenda is in the prompt with ids, and set_plan "a<n>" does that item (unfinished business becomes an outing)', async () => {
+  const g = makeGame({ hour: 14 });
+  const L = g.companion;
+  const a = L.mind.autonomy;
+  step(g, 1);
+  a.noteUnfinished({ text: 'talk to Aveline about Maren', npc: 'aveline', at: 'chapel', topic: 'Maren', why: 'I still have to ask her.', since: a.day() });
+  const { buildContext } = await import('../src/ai/brain/prompt.js');
+  const ctx = buildContext(g, { message: 'what do you want to do now?' });
+  const text = JSON.stringify(ctx);
+  assert.match(text, /open agenda/i, 'Claude is told her open agenda');
+  const items = a.openAgenda();
+  const u = items.find((it) => it.kind === 'unfinished');
+  assert.ok(u && new RegExp(`${u.id}`).test(text), `with ids Claude can name (${u?.id})`);
+  // Claude picks it: the game turns it into her outing (checked: the place and person exist).
+  const r = g.actions.run('set_plan', { value: u.id }, 'claude');
+  assert.ok(r.ok !== false, JSON.stringify(r));
+  assert.equal(a.outings.current?.npc, 'aveline', 'the unfinished talk is her outing now');
+  // A person on her agenda: an ordinary block of her day, marked as chosen.
+  a.outings.drop('changed');
+  const p = a.openAgenda().find((it) => it.kind === 'person');
+  if (p) {
+    g.actions.run('set_plan', { value: p.id }, 'claude');
+    assert.equal(a.currentBlock()?.chosen, 'person');
+  }
+  // An id that is not on her agenda is just words, never an action the game cannot do.
+  const before = JSON.stringify(a.currentBlock());
+  const r2 = g.actions.run('set_plan', { value: 'a99' }, 'claude');
+  assert.equal(r2.ok, false);
+  assert.equal(JSON.stringify(a.currentBlock()), before, 'her day stands');
+});
+
 function fakeRuntime(json) {
   const rt = { hostPresent: true, disabled: [], listeners: [], tts: null };
   const sample = Object.assign(async (p, o) => ({ text: JSON.stringify(await json(p, o)) }), { json: (p, o) => json(p, o) });
