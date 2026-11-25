@@ -554,7 +554,7 @@ test('dialogue: options, topics emit npc_topic, facts unlock with familiarity', 
   const garrick = g.entities.add(new NPC(g, profileById('garrick'), { x: px(31), y: px(23) }));
   const d = garrick.getDialogue(p);
   assert.ok(d.lines.length >= 1);
-  assert.deepEqual(d.options.map((o) => o.id), ['talk', 'ask', 'gift', 'shop', 'bye']);
+  assert.deepEqual(d.options.map((o) => o.id), ['talk', 'ask', 'rumor', 'gift', 'shop', 'bye']);
   const ask = av.chooseOption('ask', p);
   assert.ok(ask.options.some((o) => o.id === 'ask:maren'));
   const r = av.chooseOption('ask:maren', p);

@@ -1,5 +1,5 @@
 import { TILE } from '../core/constants.js';
-import { tileDef, SOLID, WATERY, WALLISH } from './tiles.js';
+import { tileDef, SOLID, WATERY, WALLISH, SPEED } from './tiles.js';
 import { paintChunk, bakeReflections, CHUNK } from '../art/tiles_art.js';
 import { paintRoof, roofGeometry } from '../art/world_buildings.js';
 
@@ -27,10 +27,15 @@ const DRY_RATE = 1 / 70; // puddles linger after the rain
 const FREE_WET_AFTER = 20; // seconds of dry weather before wet canvases are freed
 
 export class TileMap {
-  constructor(w, h, game = null) {
+  // (x0, y0): the first tile column and row. The wider world starts west and north of
+  // the vale, so its tile coordinates go negative there (constants.js: WORLD_X0/Y0);
+  // every query takes world tile coordinates and arrays are indexed through idx().
+  constructor(w, h, game = null, x0 = 0, y0 = 0) {
     this.game = game;
     this.w = w;
     this.h = h;
+    this.x0 = x0 | 0;
+    this.y0 = y0 | 0;
     this.ground = new Uint16Array(w * h);
     this.deco = new Uint16Array(w * h); // 0 = none (see DECO in tiles.js)
     this.buildings = []; // { id, name, x, y, w, h (tiles, outer footprint incl. walls), doorTiles: [{tx,ty}], material, roof, rug }
@@ -49,20 +54,30 @@ export class TileMap {
   }
 
   idx(tx, ty) {
-    return ty * this.w + tx;
+    return (ty - this.y0) * this.w + (tx - this.x0);
+  }
+
+  // Tile coordinates of an array index (the inverse of idx).
+  tileOf(i) {
+    return { tx: (i % this.w) + this.x0, ty: Math.floor(i / this.w) + this.y0 };
   }
 
   inBounds(tx, ty) {
-    return tx >= 0 && ty >= 0 && tx < this.w && ty < this.h;
+    return tx >= this.x0 && ty >= this.y0 && tx < this.x0 + this.w && ty < this.y0 + this.h;
+  }
+
+  // The whole map in world pixels: { x, y, w, h } (x and y are negative in the wider world).
+  pxBounds() {
+    return { x: this.x0 * TILE, y: this.y0 * TILE, w: this.w * TILE, h: this.h * TILE };
   }
 
   tileAt(tx, ty) {
-    return this.inBounds(tx, ty) ? this.ground[ty * this.w + tx] : 0;
+    return this.inBounds(tx, ty) ? this.ground[this.idx(tx, ty)] : 0;
   }
 
   set(tx, ty, id) {
     if (!this.inBounds(tx, ty)) return;
-    const i = ty * this.w + tx;
+    const i = this.idx(tx, ty);
     if (this.ground[i] === id) return;
     this.ground[i] = id;
     this.version++;
@@ -71,12 +86,12 @@ export class TileMap {
   }
 
   decoAt(tx, ty) {
-    return this.inBounds(tx, ty) ? this.deco[ty * this.w + tx] : 0;
+    return this.inBounds(tx, ty) ? this.deco[this.idx(tx, ty)] : 0;
   }
 
   setDeco(tx, ty, id) {
     if (!this.inBounds(tx, ty)) return;
-    const i = ty * this.w + tx;
+    const i = this.idx(tx, ty);
     if (this.deco[i] === id) return;
     this.deco[i] = id;
     if (this._chunks.size) this.invalidateTile(tx, ty);
@@ -87,30 +102,37 @@ export class TileMap {
     const bld = { roof: { style: 'red', lift: 1, chimneys: [] }, material: 'timber', rug: 'red', doorTiles: [], ...b };
     bld._alpha = 1;
     this.buildings.push(bld);
-    for (let y = bld.y; y < bld.y + bld.h; y++) for (let x = bld.x; x < bld.x + bld.w; x++) if (this.inBounds(x, y)) this.bIndex[y * this.w + x] = k;
+    for (let y = bld.y; y < bld.y + bld.h; y++) for (let x = bld.x; x < bld.x + bld.w; x++) if (this.inBounds(x, y)) this.bIndex[this.idx(x, y)] = k;
     return bld;
   }
 
   // Blocks walking (walls, water, void). Flying actors ignore water.
   isSolidTile(tx, ty, actor = null) {
-    if (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) return true;
-    const id = this.ground[ty * this.w + tx];
+    if (!this.inBounds(tx, ty)) return true;
+    const id = this.ground[this.idx(tx, ty)];
     if (WATERY[id] && actor?.flying) return false;
     return SOLID[id] === 1;
   }
 
+  // Walking pace over the ground at a pixel point (tiles.js SPEED: snow, scree, fords).
+  speedAt(px, py) {
+    const tx = Math.floor(px / TILE);
+    const ty = Math.floor(py / TILE);
+    return this.inBounds(tx, ty) ? SPEED[this.ground[this.idx(tx, ty)]] : 1;
+  }
+
   isWater(tx, ty) {
-    return this.inBounds(tx, ty) && WATERY[this.ground[ty * this.w + tx]] === 1;
+    return this.inBounds(tx, ty) && WATERY[this.ground[this.idx(tx, ty)]] === 1;
   }
 
   // Blocks arrows, bolts and line of sight.
   blocksProjectile(tx, ty) {
-    return !this.inBounds(tx, ty) || WALLISH[this.ground[ty * this.w + tx]] === 1;
+    return !this.inBounds(tx, ty) || WALLISH[this.ground[this.idx(tx, ty)]] === 1;
   }
 
   buildingAt(tx, ty) {
     if (!this.inBounds(tx, ty)) return null;
-    const k = this.bIndex[ty * this.w + tx];
+    const k = this.bIndex[this.idx(tx, ty)];
     return k >= 0 ? this.buildings[k] : null;
   }
 
@@ -296,10 +318,11 @@ export class TileMap {
       return;
     }
     const span = CHUNK * TILE;
-    const cx0 = Math.max(0, Math.floor(ox / span));
-    const cy0 = Math.max(0, Math.floor(oy / span));
-    const cx1 = Math.min(Math.ceil(this.w / CHUNK) - 1, Math.floor((ox + vw - 1) / span));
-    const cy1 = Math.min(Math.ceil(this.h / CHUNK) - 1, Math.floor((oy + vh - 1) / span));
+    const R = this._chunkRange();
+    const cx0 = Math.max(R.cx0, Math.floor(ox / span));
+    const cy0 = Math.max(R.cy0, Math.floor(oy / span));
+    const cx1 = Math.min(R.cx1, Math.floor((ox + vw - 1) / span));
+    const cy1 = Math.min(R.cy1, Math.floor((oy + vh - 1) / span));
     const water = this._waterPatterns(ctx, art);
     const n = art.waterFrames;
     const wf = (time * WATER_FPS) % n;
@@ -355,14 +378,27 @@ export class TileMap {
     }
   }
 
+  // Chunk indices covering the map (chunk (cx, cy) holds tiles cx*CHUNK .. +CHUNK-1).
+  _chunkRange() {
+    if (!this._cr) {
+      this._cr = {
+        cx0: Math.floor(this.x0 / CHUNK),
+        cy0: Math.floor(this.y0 / CHUNK),
+        cx1: Math.floor((this.x0 + this.w - 1) / CHUNK),
+        cy1: Math.floor((this.y0 + this.h - 1) / CHUNK),
+      };
+    }
+    return this._cr;
+  }
+
   _drawFlat(ctx, ox, oy, vw, vh) {
-    const x0 = Math.max(0, Math.floor(ox / TILE));
-    const y0 = Math.max(0, Math.floor(oy / TILE));
-    const x1 = Math.min(this.w - 1, Math.floor((ox + vw) / TILE));
-    const y1 = Math.min(this.h - 1, Math.floor((oy + vh) / TILE));
+    const x0 = Math.max(this.x0, Math.floor(ox / TILE));
+    const y0 = Math.max(this.y0, Math.floor(oy / TILE));
+    const x1 = Math.min(this.x0 + this.w - 1, Math.floor((ox + vw) / TILE));
+    const y1 = Math.min(this.y0 + this.h - 1, Math.floor((oy + vh) / TILE));
     for (let ty = y0; ty <= y1; ty++) {
       for (let tx = x0; tx <= x1; tx++) {
-        ctx.fillStyle = tileDef(this.ground[ty * this.w + tx]).color;
+        ctx.fillStyle = tileDef(this.ground[this.idx(tx, ty)]).color;
         ctx.fillRect(tx * TILE - ox, ty * TILE - oy, TILE, TILE);
       }
     }
@@ -392,10 +428,11 @@ export class TileMap {
       }
     }
     const span = CHUNK * TILE;
-    const cx0 = Math.max(0, Math.floor((cam.x - span) / span));
-    const cy0 = Math.max(0, Math.floor((cam.y - span) / span));
-    const cx1 = Math.min(Math.ceil(this.w / CHUNK) - 1, Math.floor((cam.x + cam.vw + span) / span));
-    const cy1 = Math.min(Math.ceil(this.h / CHUNK) - 1, Math.floor((cam.y + cam.vh + span) / span));
+    const R = this._chunkRange();
+    const cx0 = Math.max(R.cx0, Math.floor((cam.x - span) / span));
+    const cy0 = Math.max(R.cy0, Math.floor((cam.y - span) / span));
+    const cx1 = Math.min(R.cx1, Math.floor((cam.x + cam.vw + span) / span));
+    const cy1 = Math.min(R.cy1, Math.floor((cam.y + cam.vh + span) / span));
     let dryNeighbour = null;
     for (let cy = cy0; cy <= cy1; cy++) {
       for (let cx = cx0; cx <= cx1; cx++) {

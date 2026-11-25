@@ -48,6 +48,8 @@ import { ClaudeRuntime } from '../platform/claude_runtime.js';
 import { UI } from '../ui/ui.js';
 import { StoryDirector } from '../story/director.js';
 import { missionsPlugin, ensureMissions } from '../missions/plugin.js';
+import { travelPlugin } from '../world/travel.js';
+import { calendarPlugin } from '../world/calendar.js';
 import { BossManager } from '../bosses/manager.js';
 import { Survival } from '../survival/survival.js';
 import { installDeathView } from '../ui/death_view.js';
@@ -106,6 +108,8 @@ export class Game {
     this.plugins = new PluginRegistry(this);
     for (const p of BUILTIN_PLUGINS) this.plugins.register(p);
     this.plugins.register(missionsPlugin); // missions (DESIGN §22.3); saved with the plugins
+    this.plugins.register(travelPlugin); // the wider world: map fog, places reached, bosses heard of (§32)
+    this.plugins.register(calendarPlugin); // the year goes round: birthdays, everyone older (§32.10)
     ensureMissions(this); // game.missions
     this.brain = new Brain(this);
     this.save = new SaveManager(this);

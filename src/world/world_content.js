@@ -1,3 +1,5 @@
+import { WILDS_INFO } from './wilds_content.js';
+
 // Written content for the world of Hearthvale: place descriptions, sign texts and the
 // little lines objects say when you use them. Kept apart from worldgen so the layout
 // code stays readable.
@@ -236,11 +238,15 @@ export const LOCATION_INFO = {
   },
 };
 
+// The wider world's places (DESIGN §32) are places like any other.
+Object.assign(LOCATION_INFO, WILDS_INFO);
+
 export const NOTICE_BOARD = {
   title: 'Notice Board',
   text: [
     'WANTED: the bandit crew camped northeast of Mirror Lake. Among the goods they stole from the old ruins-keeper\'s lodge was a rusted iron key stamped with the crest of the Sunken Ruins. Bring it to the Guardhouse. — Capt. Rowan Vale',
     'The Sunken Ruins are no place to wander after dark. Things walk there that ought to stay buried. — Sister Aveline',
+    'KEEP OUT OF THE QUARRY POOLS. Something big lives in the deepest one, up the quarry trail past Reed Farm. It ate an ore-cart wheel. Not alone. Not you, Tilly. — B. Ironhand',
     'HELP WANTED: wild boars are tearing up my turnips again. Coin and a hot supper for anyone who drives them off. Reed Farm, west road. — Tobias Reed',
     'The Ember Kettle is hiring hands: dishes, firewood, and the occasional rowdy guest. Ask for Elda. Honey cakes for anyone who stays to the end of a shift!',
     'LOST: one grey cat, answers to nothing. (Pip says the cat is not lost, it is exploring.)',
@@ -250,7 +256,7 @@ export const NOTICE_BOARD = {
 export const SIGNS = {
   inn: { title: 'The Ember Kettle', text: 'Hot stew, warm beds, and the best honey cakes this side of the mountains. Elda Thornbury, proprietor.' },
   smithy: { title: 'Ironhand Smithy', text: 'Blades sharpened, tools mended, horses shod. Knock loud; the hammer is louder.' },
-  store: { title: "Gale's Goods", text: "A little of everything from everywhere. Haggling welcome. Garrick insists." },
+  store: { title: "Gale's Goods", text: "A little of everything from everywhere. Haggling welcome. Garrick insists. WE BUY ANYTHING: bring what you found on the road and sell it here." },
   herbalist: { title: "Fennick's Herbs", text: 'Remedies, salves and teas for whatever ails you. Please do not lick the mushrooms.' },
   chapel: { title: 'Chapel of the Hearth', text: 'All who carry a flame are welcome. Prayers for the lost each evening at dusk.' },
   guardhouse: { title: 'Hearthvale Guard', text: 'Report trouble here. Report bandits twice.' },

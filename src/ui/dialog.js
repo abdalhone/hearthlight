@@ -420,10 +420,18 @@ export class DialogPanel {
         buyList.append(this.shopRow(s.id, def, `${price}`, b, !afford));
       }
       const buys = shop.buys && typeof shop.buys === 'object' ? shop.buys : {};
-      const mine = sortItems(p.inventory.list()).filter((it) => it.id !== 'coin' && buys[it.id] != null);
+      // A shop that buys anything (round 14: "a shop to sell my stuff"): what it names at
+      // its own price, anything else of value at a share of what it is worth.
+      const anyPrice = (it) => {
+        if (buys[it.id] != null) return Number(buys[it.id]) || 0;
+        const def = it.def || itemDef(it.id);
+        if (!shop.buysAll || !def || !(def.value > 0) || def.type === 'quest' || def.type === 'key' || def.type === 'currency') return null;
+        return Math.max(1, Math.round(def.value * shop.buysAll));
+      };
+      const mine = sortItems(p.inventory.list()).filter((it) => it.id !== 'coin' && anyPrice(it) != null);
       if (!mine.length) sellList.append(h('p', { class: 'empty', text: `${npc.name?.split(' ')[0] || 'They'} isn't buying anything you carry.` }));
       for (const it of mine) {
-        const price = Math.max(0, Math.round(Number(buys[it.id]) || 0));
+        const price = Math.max(0, Math.round(anyPrice(it) || 0));
         const b = button('Sell', { cls: 'btn-small' });
         b.addEventListener('click', () => {
           this.trade(it.id, price, false);

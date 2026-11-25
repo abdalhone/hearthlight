@@ -424,6 +424,105 @@ function rockTexture(rng) {
   return buf;
 }
 
+// ---- The wider world (src/world/wilds.js) ----------------------------------------
+
+const SNOW_LUT = lut(['#5d6f8c', '#7d91ad', '#9fb2c9', '#bfcfdf', '#d9e4ef', '#ecf2f8', '#fbfdff']);
+// Heather: dark olive tussocks under a purple haze of bloom, gorse yellow here and there.
+const HEATH_LUT = lut(['#1b2219', '#26301f', '#343b27', '#454530', '#57503b', '#6a5a4a', '#7d6a5c']);
+const HEATHER = lut(['#3a2338', '#52304d', '#6e4067', '#8c5383', '#a96aa0', '#c58cbc']);
+const DEAD_LUT = lut(['#2b2e2a', '#3d4139', '#53584b', '#6b705f', '#848874', '#9da08a', '#b8b9a3']);
+const SCREE_LUT = lut(['#2a2833', '#3c3a47', '#53515f', '#6c6a79', '#868494', '#a3a1b0', '#c0bfcb']);
+
+// Wind-packed snow: soft drifts lit from the upper left, blue in the hollows, a few
+// glinting crystals and the odd stone poking through.
+function snowTexture(rng) {
+  const buf = new PixelBuf(TEX, TEX);
+  const n1 = tileNoise(TEX, 4, rng, 3);
+  const n2 = tileNoise(TEX, 8, rng, 2);
+  const H = new Float32Array(TEX * TEX);
+  for (let k = 0; k < 18; k++) addBump(H, rng.next() * TEX, rng.next() * TEX, 5 + rng.next() * 7, 0.8 + rng.next() * 0.5);
+  for (let y = 0; y < TEX; y++) {
+    for (let x = 0; x < TEX; x++) {
+      const i = y * TEX + x;
+      const t = 0.66 + (n1[i] - 0.5) * 0.12 + (n2[i] - 0.5) * 0.06 + lightOf(H, x, y) * 0.32 + H[i] * 0.03;
+      buf.data[i] = toneAt(SNOW_LUT, t, x, y, 0.025);
+    }
+  }
+  for (let k = 0; k < 26; k++) {
+    const x = Math.floor(rng.next() * TEX);
+    const y = Math.floor(rng.next() * TEX);
+    buf.data[y * TEX + x] = SNOW_LUT[63];
+  }
+  pebbleScatter(buf, rng, 3, STONE_LUT, 0.4);
+  return buf;
+}
+
+// Heather and gorse: low dark tussocks with purple flower heads and yellow gorse.
+function heathTexture(rng, { bloom = 1 } = {}) {
+  const buf = grassTexture(rng, { L: HEATH_LUT, base: 0.5, clumps: 70, blades: 240, bladeLen: [2, 4] });
+  // Heather bloom in soft patches (clumps of 3-6 px lit from the upper left).
+  const n = tileNoise(TEX, 4, rng, 2);
+  for (let i = 0; i < TEX * TEX; i++) {
+    if (n[i] < 0.5 - bloom * 0.08) continue;
+    const x = i & M;
+    const y = i >> 6;
+    const h = ih(x, y, 151);
+    if (h > 0.34 * bloom + (n[i] - 0.5) * 0.5) continue;
+    buf.data[i] = toneAt(HEATHER, 0.35 + (n[i] - 0.5) * 0.5 + (ih(x >> 1, y >> 1, 152) - 0.5) * 0.3 - ((x + y) & 1) * 0.06, x, y, 0.06);
+  }
+  const gorse = [rgb('#c9a640'), rgb('#e0c25a'), rgb('#9c7f2c')];
+  for (let k = 0; k < 26; k++) {
+    const x = Math.floor(rng.next() * TEX);
+    const y = Math.floor(rng.next() * TEX);
+    buf.data[wrap(y) * TEX + wrap(x)] = gorse[k % 3];
+    buf.data[wrap(y + 1) * TEX + wrap(x)] = shade(gorse[k % 3], 0.6);
+  }
+  return buf;
+}
+
+// Broken stone on a slope: big angular chips over a dark gritty bed.
+function screeTexture(rng) {
+  const buf = new PixelBuf(TEX, TEX);
+  const cells = tileCells(TEX, 7, rng);
+  const n1 = tileNoise(TEX, 4, rng, 2);
+  const tones = new Float32Array(cells.count).map(() => 0.34 + rng.next() * 0.36);
+  for (let i = 0; i < TEX * TEX; i++) {
+    const x = i & M;
+    const y = i >> 6;
+    const e = cells.edge[i];
+    if (e < 0.7) {
+      buf.data[i] = SCREE_LUT[Math.round(clamp01(0.12 + n1[i] * 0.12) * 63)];
+      continue;
+    }
+    const sh = (-cells.dx[i] - cells.dy[i]) * 0.09;
+    const t = tones[cells.id[i]] + sh + (n1[i] - 0.5) * 0.1 + Math.min(0.06, (e - 0.7) * 0.04);
+    buf.data[i] = toneAt(SCREE_LUT, t, x, y, 0.05);
+  }
+  return buf;
+}
+
+// A ford: clear, ankle-deep water over a bed of rounded stones, a few bright ripples.
+const SHALLOWS_LUT = lut(['#1d3a48', '#295163', '#356a7d', '#4a8395', '#629cab', '#84b7c2', '#b3d6dc']);
+function shallowsTexture(rng) {
+  const buf = new PixelBuf(TEX, TEX);
+  const cells = tileCells(TEX, 6, rng);
+  const n1 = tileNoise(TEX, 4, rng, 2);
+  const n2 = tileNoise(TEX, 16, rng, 2);
+  const tones = new Float32Array(cells.count).map(() => 0.4 + rng.next() * 0.28);
+  for (let i = 0; i < TEX * TEX; i++) {
+    const x = i & M;
+    const y = i >> 6;
+    const e = cells.edge[i];
+    // Stones are lighter and lit from the upper left; the gaps between them sink dark.
+    let t = e < 0.62 ? 0.26 + n1[i] * 0.1 : tones[cells.id[i]] + (-cells.dx[i] - cells.dy[i]) * 0.07;
+    // Long soft ripples running across the current.
+    const r = Math.sin((x * 0.35 + y * 0.9 + n2[i] * 6) * 0.9);
+    if (r > 0.86) t += 0.2;
+    buf.data[i] = toneAt(SHALLOWS_LUT, t + (n1[i] - 0.5) * 0.06, x, y, 0.03);
+  }
+  return buf;
+}
+
 // The full set, plus a mid-tone per texture for quick fallbacks.
 export function buildTextures(rng) {
   const t = {
@@ -445,6 +544,11 @@ export function buildTextures(rng) {
     flag: [flagTexture(rng.fork(111))],
     flagWarm: [flagTexture(rng.fork(112), { L: lut(['#30282a', '#463a3a', '#5f504c', '#78665e', '#917d72', '#ab9788']) })],
     rock: [rockTexture(rng.fork(131))],
+    snow: [snowTexture(rng.fork(141)), snowTexture(rng.fork(142))],
+    heath: [heathTexture(rng.fork(151)), heathTexture(rng.fork(152), { bloom: 0.6 })],
+    deadgrass: [grassTexture(rng.fork(161), { L: DEAD_LUT, base: 0.5, blades: 200, bladeLen: [2, 5] }), grassTexture(rng.fork(162), { L: DEAD_LUT, base: 0.45, clumps: 60, blades: 120 })],
+    scree: [screeTexture(rng.fork(171))],
+    shallows: [shallowsTexture(rng.fork(181))],
     bridge: [plankTexture(rng.fork(121), { L: lut(['#2a1a12', '#41291b', '#5a3a25', '#734c30', '#8c603e', '#a6774f']), h: 4 })],
   };
   return t;

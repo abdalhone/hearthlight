@@ -364,7 +364,7 @@ export class ChestPanel {
     } else {
       const n = chest.inventory.transfer(p.inventory, id, qty);
       if (n) {
-        g.bus.emit('item_gained', { actor: p, itemId: id, qty: n, from: 'chest' });
+        g.bus.emit('item_gained', { actor: p, itemId: id, qty: n, from: 'chest', chest });
         g.audio?.play(id === 'coin' ? 'coin' : 'pickup');
       }
     }

@@ -26,6 +26,9 @@ export const ITEMS = {
   bone: { name: 'Old Bone', type: 'material', value: 2, desc: 'From something that should have stayed dead.' },
   iron_sword: { name: 'Iron Sword', type: 'weapon', value: 40, atk: 3, desc: 'Forged by Bram Ironhand.' },
   ruins_key: { name: 'Rusted Key', type: 'key', value: 0, desc: 'Stamped with the Sunken Ruins crest.' },
+  flame_book: { name: 'The Flame-Book', type: 'quest', value: 0, desc: "Brindlecombe's chapel book: every household, every name, every flame. Water-stained, the ink gone brown." },
+  guard_key: { name: "Rowan's Key", type: 'key', value: 0, desc: "The watch's footlocker key, off Captain Rowan's belt. He gave it to you." },
+  lyra_trunk_key: { name: "Lyra's Key", type: 'key', value: 0, desc: "The key to Lyra's old trunk. She does not give it lightly." },
   maren_journal: { name: "Maren's Journal", type: 'quest', value: 0, desc: "Lyra's mentor's journal, water-stained." },
   lantern: { name: 'Lantern', type: 'tool', value: 15, desc: 'Lights the dark.' },
   // Creature drops (added by the combat module). Ids and names avoid common short words as

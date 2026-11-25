@@ -57,6 +57,8 @@ export class Spawner {
         max: Math.max(0, Math.floor(z.max ?? 3)),
         night: z.night === true ? true : z.night === false ? false : undefined,
         rect: { x: z.rect.x, y: z.rect.y, w: Math.max(1, z.rect.w), h: Math.max(1, z.rect.h) },
+        // The wider world's zones (wilds.js) live only while you are near: `near` tiles.
+        near: Number.isFinite(z.near) ? z.near : null,
       });
     }
     this.t = 0;
@@ -119,6 +121,11 @@ export class Spawner {
         this.retire(z);
         continue;
       }
+      if (z.near != null) {
+        const d = this.playerDist(z);
+        if (d > z.near * 1.6) this.retire(z, true);
+        if (d > z.near) continue;
+      }
       const have = counts.get(z.id) || 0;
       if (have >= z.max) continue;
       if (this.total >= this.maxTotal) return;
@@ -152,9 +159,22 @@ export class Spawner {
     }
   }
 
-  // Night-only creatures leave at dawn, but never while someone watches or fights them.
-  retire(z) {
-    if (z.night !== true) return;
+  // How far the player is from a zone's rectangle, in tiles (0 inside it).
+  playerDist(z) {
+    const p = this.game.player;
+    if (!p) return Infinity;
+    const tx = p.x / TILE;
+    const ty = p.y / TILE;
+    const r = z.rect;
+    const dx = Math.max(r.x - tx, 0, tx - (r.x + r.w));
+    const dy = Math.max(r.y - ty, 0, ty - (r.y + r.h));
+    return Math.hypot(dx, dy);
+  }
+
+  // Night-only creatures leave at dawn, but never while someone watches or fights them;
+  // a far-off wilds zone lets its creatures go the same way (`far`).
+  retire(z, far = false) {
+    if (z.night !== true && !far) return;
     const list = this.game.entities?.list || [];
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
@@ -177,6 +197,9 @@ export class Spawner {
       return true;
     }
     if (!SPECIES[species]?.village && inVillage(g, x, y)) return true;
+    // Nothing turned comes into a lit waystone's light (wilds.js: map.safeSpots).
+    const safe = g.map?.safeSpots;
+    if (safe && !SPECIES[species]?.village) for (const s of safe) if (Math.hypot(x - s.x, y - s.y) < s.r) return true;
     return false;
   }
 

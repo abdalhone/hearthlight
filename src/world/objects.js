@@ -1,4 +1,4 @@
-import { TILE, WORLD_W, WORLD_H } from '../core/constants.js';
+import { TILE, WORLD_W, WORLD_H, WORLD_X0, WORLD_Y0 } from '../core/constants.js';
 import { Inventory, itemName } from '../entities/items.js';
 import { playCollect } from '../render/pixel_fx_play.js';
 
@@ -53,6 +53,7 @@ export class WorldObject {
     this.interactReach = o.interactReach ?? 0;
     this.shadow = o.shadow ?? null; // {dx, dy, rx, ry}: soft ground shadow baked into the map
     this.words = o.words ?? [];
+    this.trailBoss = o.trailBoss ?? null; // a sign of a boss: looking at it puts the boss on the map (boss_trails.js)
     this.hidden = !!o.hidden;
     this.dirty = false; // state differs from the generated world (saved)
     this.removed = false;
@@ -489,6 +490,9 @@ class Harvestable extends WorldObject {
   }
 
   update(dt) {
+    // Most of the world's trees and stones are untouched: nothing to do (thousands of
+    // them out in the wider world).
+    if (!this._worker && !(this.progress > 0) && !this.state.depleted) return;
     this._sinceWork += dt;
     if (this._sinceWork > 4 && this.progress > 0) this.progress = 0;
     if (this.state.depleted && this.state.regrowAt) {
@@ -865,6 +869,9 @@ export class Crop extends Harvestable {
   }
 
   update(dt) {
+    // Most of the world's trees and stones are untouched: nothing to do (thousands of
+    // them out in the wider world).
+    if (!this._worker && !(this.progress > 0) && !this.state.depleted) return;
     this._sinceWork += dt;
     if (this._sinceWork > 4 && this.progress > 0) this.progress = 0;
     if (this._worker) this._tickSession(dt);
@@ -946,6 +953,12 @@ export class Chest extends WorldObject {
     this.inventory = o.inventory instanceof Inventory ? o.inventory : new Inventory(o.items || null);
     this.owner = o.owner ?? null; // 'player' for home_chest
     this.loot = !!o.loot; // anyone may empty it (bandit loot)
+    // A lock (DESIGN §32.6): its key (keyId), who keeps it (keeper, a person id) and what
+    // the lock says. No key: you may force it, and if it is someone's that is theft.
+    this.state.locked = this.state.locked ?? !!o.locked;
+    this.keyId = o.keyId ?? null;
+    this.keeper = o.keeper ?? null;
+    this.lockedText = o.lockedText ?? null;
     this.lid = 0;
     this._viewer = null;
     this._idle = 0;
@@ -956,12 +969,24 @@ export class Chest extends WorldObject {
     return !!actor;
   }
 
-  interactLabel() {
+  interactLabel(actor) {
+    if (this.state.locked) return this.keyId && hasItem(actor, this.keyId) ? `Unlock ${this.name.toLowerCase()}` : `${this.name}: locked`;
     return this.loot && this.inventory.isEmpty() ? 'Empty chest' : `Open ${this.name.toLowerCase()}`;
   }
 
   interact(actor) {
     const g = this.game;
+    if (this.state.locked) {
+      if (this.keyId && hasItem(actor, this.keyId)) {
+        this.state.locked = false;
+        this.markDirty();
+        this._sound('door_open', { pitch: 0.8 });
+        this._toast(actor, `The ${itemName(this.keyId)} turns. ${this.name} is open.`, 'good');
+      } else {
+        if (isPlayer(g, actor)) lockedChest(g, this, actor);
+        return;
+      }
+    }
     this._viewer = actor;
     this._idle = 0;
     if (!this.state.opened) {
@@ -971,6 +996,7 @@ export class Chest extends WorldObject {
       if (!this.inventory.isEmpty()) playCollect(g, this.x, this.y, { gold: true, size: 1, height: 8 });
     }
     this._sound('door_open', { pitch: 1.5 });
+    g?.bus?.emit?.('chest_opened', { chest: this, actor });
     if (isPlayer(g, actor)) {
       if (typeof g.ui?.openChest === 'function') {
         g.ui.openChest(this);
@@ -994,7 +1020,7 @@ export class Chest extends WorldObject {
       const n = this.inventory.transfer(actor.inventory, id, qty);
       if (n > 0) {
         out.push({ id, qty: n });
-        this.game?.bus?.emit('item_gained', { actor, itemId: id, qty: n, from: 'chest' });
+        this.game?.bus?.emit('item_gained', { actor, itemId: id, qty: n, from: 'chest', chest: this });
       }
     }
     this.markDirty();
@@ -1034,6 +1060,13 @@ export class Chest extends WorldObject {
     super.deserialize(d);
     if (d?.items) this.inventory.deserialize(d.items);
   }
+}
+
+// A locked chest without its key (src/world/containers.js decides: its keeper may open
+// it for you, or you may force the lock).
+let lockedChest = () => {};
+export function setLockedChestHandler(fn) {
+  lockedChest = typeof fn === 'function' ? fn : () => {};
 }
 
 export class Bed extends WorldObject {
@@ -1468,6 +1501,7 @@ export class Sign extends WorldObject {
       console.error('[objects] sign failed', err);
     }
     this._sound('ui_open');
+    this.game?.bus?.emit?.('sign_read', { sign: this, actor: actor || null });
   }
 }
 
@@ -1614,6 +1648,7 @@ export class Decor extends WorldObject {
 
   interact(actor) {
     if (!this.text) return;
+    this.game?.bus?.emit?.('object_looked', { obj: this, actor: actor || null });
     const ui = this.game?.ui;
     if (this.heal > 0 && this.cooldown <= 0) {
       this.cooldown = 45;
@@ -1690,6 +1725,8 @@ export function makeObject(game, d) {
 // with well over a thousand objects in the world.
 
 const CELL = 8; // tiles per spatial cell
+const FAR_UPDATE = 40 * TILE; // px: objects farther from the player update in turns
+const FAR_SLICES = 8;
 
 const WORD_ALIASES = {
   fire: ['campfire', 'hearth'],
@@ -1737,24 +1774,41 @@ const WORD_ALIASES = {
 };
 
 export class ObjectManager {
-  constructor(game, w = WORLD_W, h = WORLD_H) {
+  // (x0, y0): the first tile, as in TileMap: tileIndex shares the map's indexing. With no
+  // size given it covers the whole world (constants.js); a given size starts at 0, 0.
+  constructor(game, w, h, x0, y0) {
     this.game = game;
-    this.w = w;
-    this.h = h;
+    const whole = w == null;
+    this.w = whole ? WORLD_W : w;
+    this.h = whole ? WORLD_H : h;
+    this.x0 = (x0 ?? (whole ? WORLD_X0 : 0)) | 0;
+    this.y0 = (y0 ?? (whole ? WORLD_Y0 : 0)) | 0;
+    w = this.w;
+    h = this.h;
     this.list = [];
     this.byId = new Map();
-    this.tileIndex = new Array(w * h); // per tile: array of objects covering it
-    this.cw = Math.ceil(w / CELL);
-    this.ch = Math.ceil(h / CELL);
+    this.tileIndex = new Array(w * h); // per tile (map.idx order): array of objects covering it
+    this.cx0 = Math.floor(this.x0 / CELL); // first spatial cell column and row
+    this.cy0 = Math.floor(this.y0 / CELL);
+    this.cw = Math.floor((this.x0 + w - 1) / CELL) - this.cx0 + 1;
+    this.ch = Math.floor((this.y0 + h - 1) / CELL) - this.cy0 + 1;
     this.cells = Array.from({ length: this.cw * this.ch }, () => []);
     this.removedIds = new Set();
     this.version = 0; // bumps whenever walkability changes (doors, mined rocks)
   }
 
   _cellOf(o) {
-    const cx = Math.max(0, Math.min(this.cw - 1, Math.floor(o.x / TILE / CELL)));
-    const cy = Math.max(0, Math.min(this.ch - 1, Math.floor(o.y / TILE / CELL)));
+    const cx = Math.max(0, Math.min(this.cw - 1, Math.floor(o.x / TILE / CELL) - this.cx0));
+    const cy = Math.max(0, Math.min(this.ch - 1, Math.floor(o.y / TILE / CELL) - this.cy0));
     return cy * this.cw + cx;
+  }
+
+  _in(tx, ty) {
+    return tx >= this.x0 && ty >= this.y0 && tx < this.x0 + this.w && ty < this.y0 + this.h;
+  }
+
+  _idx(tx, ty) {
+    return (ty - this.y0) * this.w + (tx - this.x0);
   }
 
   add(o) {
@@ -1767,8 +1821,8 @@ export class ObjectManager {
     this.list.push(o);
     this.byId.set(o.id, o);
     for (const [tx, ty] of o.occupiedTiles()) {
-      if (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) continue;
-      const i = ty * this.w + tx;
+      if (!this._in(tx, ty)) continue;
+      const i = this._idx(tx, ty);
       (this.tileIndex[i] || (this.tileIndex[i] = [])).push(o);
     }
     o._cell = this._cellOf(o);
@@ -1783,7 +1837,7 @@ export class ObjectManager {
     this.list.splice(this.list.indexOf(o), 1);
     this.byId.delete(o.id);
     for (const [tx, ty] of o.occupiedTiles()) {
-      const l = this.tileIndex[ty * this.w + tx];
+      const l = this._in(tx, ty) ? this.tileIndex[this._idx(tx, ty)] : null;
       if (l) {
         const k = l.indexOf(o);
         if (k >= 0) l.splice(k, 1);
@@ -1816,30 +1870,61 @@ export class ObjectManager {
     return this.list;
   }
 
+  // Everything near the player updates every step; the rest of the (wide) world takes
+  // turns, an eighth of it a step with eight steps' time, so far timers still run and a
+  // step never walks all the world's thousands of trees.
   update(dt) {
     const list = this.list;
-    for (let i = 0; i < list.length; i++) {
-      const o = list[i];
-      try {
-        o.update(dt);
-      } catch (err) {
-        o._errors = (o._errors || 0) + 1;
-        if (o._errors < 4) console.error('[objects] update failed for', o.id, err);
+    const p = this.game?.player;
+    if (!p || list.length < 1500) {
+      for (let i = 0; i < list.length; i++) {
+        const o = list[i];
+        this._updateOne(o, dt);
+        // An object may remove itself (the journal); keep the index in step.
+        if (list[i] !== o) i--;
       }
-      // An object may remove itself (the journal); keep the index in step.
-      if (list[i] !== o) i--;
+      return;
+    }
+    const stamp = (this._stamp = (this._stamp || 0) + 1);
+    const near = this._near || (this._near = []);
+    near.length = 0;
+    const R = FAR_UPDATE;
+    this._eachInRect(p.x - R, p.y - R, p.x + R, p.y + R, (o) => near.push(o));
+    for (let i = 0; i < near.length; i++) {
+      const o = near[i];
+      o._updStamp = stamp;
+      if (!o.removed) this._updateOne(o, dt);
+    }
+    const n = list.length;
+    const per = Math.ceil(n / FAR_SLICES);
+    let c = (this._cursor || 0) % Math.max(1, n);
+    for (let k = 0; k < per && n > 0; k++, c = (c + 1) % n) {
+      const o = list[c];
+      if (!o || o._updStamp === stamp || o.removed) continue;
+      this._updateOne(o, dt * FAR_SLICES);
+      if (list[c] !== o) c--;
+    }
+    this._cursor = c;
+  }
+
+  _updateOne(o, dt) {
+    try {
+      o.update(dt);
+    } catch (err) {
+      o._errors = (o._errors || 0) + 1;
+      if (o._errors < 4) console.error('[objects] update failed for', o.id, err);
     }
   }
 
   // Objects covering a tile (or null). Shared array: do not modify.
   objectsAt(tx, ty) {
-    if (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) return null;
-    return this.tileIndex[ty * this.w + tx] || null;
+    if (!this._in(tx, ty)) return null;
+    return this.tileIndex[this._idx(tx, ty)] || null;
   }
 
   isBlockingTile(tx, ty, actor = null) {
-    if (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) return false;
-    const l = this.tileIndex[ty * this.w + tx];
+    if (!this._in(tx, ty)) return false;
+    const l = this.tileIndex[this._idx(tx, ty)];
     if (!l) return false;
     for (let i = 0; i < l.length; i++) if (l[i].blocksTile(tx, ty, actor)) return true;
     return false;
@@ -1855,10 +1940,10 @@ export class ObjectManager {
   // Visit objects in cells overlapping a pixel rectangle.
   _eachInRect(x0, y0, x1, y1, fn) {
     const span = TILE * CELL;
-    const cx0 = Math.max(0, Math.floor(x0 / span));
-    const cy0 = Math.max(0, Math.floor(y0 / span));
-    const cx1 = Math.min(this.cw - 1, Math.floor(x1 / span));
-    const cy1 = Math.min(this.ch - 1, Math.floor(y1 / span));
+    const cx0 = Math.max(0, Math.floor(x0 / span) - this.cx0);
+    const cy0 = Math.max(0, Math.floor(y0 / span) - this.cy0);
+    const cx1 = Math.min(this.cw - 1, Math.floor(x1 / span) - this.cx0);
+    const cy1 = Math.min(this.ch - 1, Math.floor(y1 / span) - this.cy0);
     for (let cy = cy0; cy <= cy1; cy++) {
       for (let cx = cx0; cx <= cx1; cx++) {
         const cell = this.cells[cy * this.cw + cx];

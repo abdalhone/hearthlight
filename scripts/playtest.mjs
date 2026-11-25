@@ -64,7 +64,8 @@ const world = await page.evaluate(() => {
     brain: g.brain.status(),
   };
 });
-check('world is full size', world.size === '160x120', world.size);
+// The vale (160x120) inside the wider world (DESIGN §32: x -384..255, y -288..119).
+check('world is full size', world.size === '640x408', world.size);
 check('all required locations exist', world.missingLocations.length === 0, world.missingLocations.join(', '));
 check('all required objects exist', world.missingObjects.length === 0, world.missingObjects.join(', '));
 check('all villagers exist', world.missingNpcs.length === 0, world.missingNpcs.join(', '));

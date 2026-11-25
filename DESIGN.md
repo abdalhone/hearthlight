@@ -11,6 +11,10 @@ This document is the contract between modules. **If you own a module, implement 
 interface described here.** Other modules are being written at the same time against the same
 text, so a renamed method or a changed payload breaks someone else's code.
 
+**Every change walks [docs/IMPACT.md](docs/IMPACT.md)**: the axes a change can ripple across
+(builds, terrain, places, characters, states, devices, weather, Claude on or off, saves,
+story branches) and the systems that must react to each. Say which axes a change touches.
+
 ---
 
 ## 0. Quality bar
@@ -1858,3 +1862,122 @@ palette, tag, life, ...opts })` → handle, `stop(handle | tag)`, `playing()`, `
 
 Tests: `tests/pixel_fx.test.mjs`. Shots: `scripts/pixelfx_shots.mjs` (in the game, three screen sizes,
 day and night), `scripts/pixelfx_preview.mjs` (contact sheets from above, aimed several ways).
+
+---
+
+## 32. The wider world, on foot (round 14: "the map is really small. If you are going to add other places that I can go, do not make it teleportation. Make me walk there and expand the map into the lore.")
+
+### 32.1 One map around the vale
+
+The world is one tile map from x −384 to 255 and y −288 to 119 (`WORLD_X0`, `WORLD_Y0`,
+`WORLD_W`, `WORLD_H` in `src/core/constants.js`; edges on 16-tile chunk lines). The vale
+keeps tiles 0..159 × 0..119, so every save, mission point and object id keeps its meaning
+(ids are positional). `TileMap` and `ObjectManager` take an origin (`x0`, `y0`) and index
+through `map.idx(tx, ty)`; queries take world tiles, which go negative west and north of
+the vale. The camera, renderer, pathfinder, ground painter and spawner all respect it.
+
+`worldgen.js` lays out the vale as before (its builder never writes outside 0..159 ×
+0..119) and then calls `buildWilds` (`src/world/wilds.js`), which borrows the vale
+builder's tools with world bounds. The layout is data (`src/world/wilds_layout.js`):
+roads (`ROADS`), the walkable land as corridors along them and open places (`LAND`, with
+half-widths), regions (`regionAt`: heath, grey, wood, pine, foothill, snow, east), waters
+(pools, rivers, fords) and the named places (`P`). Inside a corridor is open country,
+then five tiles of thick walkable wood, then the wilds' wall (thicket, or cliff on the
+mountain), roughened so no edge runs straight. The vale's ring of edge trees is left out
+only at three seams (`SEAMS`), where the roads walk on.
+
+### 32.2 What is out there, and how far
+
+- **West**, the King's Road across the western heath: the dead waystone (Lyra's, a mile
+  out), Bracken Ford, the Long Mile (a lit waystone: rest and safety), the west fork,
+  the Saltmere road to the Greyford (the bridge is gone), and up the Brindle lane,
+  **Brindlecombe**: open doors, a cold wardstone with new candle stubs, a chapel, five
+  houses to loot, graves, the grey over it all.
+- **North**, the old Crown path from the heart of Whisperwood: the deep Whisperwood, a
+  Lanternwright marker stone, a mountain stream, the treeline camp (Hess's lean-to, a
+  wardrunner's cache), the switchbacks of the Hollowcrown, and the **Crown Ring**: nine
+  stones in snow round the green circle where the stranger lay.
+- **East**, round the far shore of Mirror Lake: the **Cinderwick fork** with its burning
+  waystone and a carter's cart, the bandits' lookout above it, the oil track buried under
+  a slide, the Owlsend track closed by fallen pines.
+
+Walking from the square at full pace (paths measured by `tests/wilds.test.mjs`): the
+dead waystone ~30 s, the Long Mile ~55 s, Brindlecombe ~90 s, the Greyford ~100 s, the
+treeline camp ~50 s, the Crown Ring ~80 s (more in snow), the Cinderwick fork ~40 s. Snow
+(0.8), fords (0.7), scree (0.88) and heather (0.94) slow your feet (`tiles.js` `speed`);
+the vale walks as it always did.
+
+### 32.3 The map
+
+`src/ui/world_map.js`, opened with **N** or Menu → Map: the world one pixel a tile, what
+you have not walked under a dark wash (`game.travel` keeps 8×8-tile fog cells as a
+bitset: the save grows by about a kilobyte), names of places you reached, lit waystones,
+you, Lyra, home, the mission objective, the ember-ring where your coins lie (any entity
+of type `ember_ring`, or any entity with `mapMark()`), and the bosses you have heard of.
+Drag, pinch, wheel or +/− to zoom, "Me" to come back; the tools sit over the chart so a
+phone held sideways keeps its height.
+
+### 32.4 Bosses you can find
+
+`src/world/boss_trails.js`. Every boss has a trail: the villagers who would know tell
+you when asked "Heard anything out there?" (and then talk of the roads beyond); the
+notice board warns of the quarry pools, the camp and the ruins from the first morning;
+signs stand on the way (slime smears up the quarry trail, claw-scored trunks to Greyjaw's
+den, the toll board on the shore trail, the humming dock end, bones at the ruins gate)
+and looking at one marks its boss; seeing an arena marks it; a boss mission marks its
+boss; after the first lesson the village talks of the Mother of Slimes (the first boss,
+pointed to on day one). Marked bosses show on the map with their names. Events:
+`boss_heard { id, from }`, `place_reached { id, name, first }`.
+
+### 32.5 Living with a bigger world
+
+- **Spawns**: a wilds zone (`near` in tiles) fills only while you are near and lets its
+  creatures go when you are far; nothing turned spawns in a lit waystone's light
+  (`map.safeSpots`).
+- **Objects**: those within 40 tiles of you update every step; the rest take turns (an
+  eighth a step, with eight steps' time), so far timers still run.
+- **Paths**: journeys out in the wilds route along the roads (`map.roadGraph`, short
+  searches per leg); the vale's own paths keep their single search.
+- **Weather**: the grey over Brindlecombe is one flat wash; snow falls on the
+  Hollowcrown (`weather.localFog`, `weather.localSnow`, set by `travel.js`).
+- **Knowledge**: every place has a location entry, a lore page (the Book's "The Roads
+  Beyond" chapter) and road talk; `travelPlugin.promptContext` tells Claude where you are.
+
+### 32.6 Chests you can open
+
+`src/world/containers.js`. Chests have locks: a key (`keyId`), a keeper (`keeper`), an
+owner. No key: the keeper may open it (Lyra opens her own trunk for someone she trusts),
+or you may force the lock. Forcing or emptying someone's chest is theft (`crime`, kind
+`theft`, `owner`). Rowan gives the watch's footlocker key for Hold the Line. Loot
+(bandits', Brindlecombe's) is free.
+
+### 32.7 Footsteps by ground
+
+`src/world/footsteps.js`: `surfaceAt` (grass, dirt, stone, wood, water, sand, snow) picks
+`step_<surface>` (code-made in `src/ui/sfx.js`). Your own steps are the loudest; anyone
+walking near you treads softer and fades with distance; splashes in fords, puffs in snow.
+
+### 32.8 Harder missions
+
+Mission foes scale with your level (`toughen` in `src/missions/system.js`: one more every
+three levels, more health and bite, a scarred leader for a pack of three or more). Boss
+missions now ask you to follow the trail, clear the brood or the pack, or take the
+lookout first; Hold the Line is a line to hold; The Count sends you to Brindlecombe.
+
+### 32.9 A shop that buys what you carry (the author: "a shop to sell my stuff")
+
+Gale's Goods buys anything worth anything: Garrick's own prices for what he names
+(`shop.buys`), and half its worth for any other item of value (`shop.buysAll: 0.5`; not
+keys, quest items or coin). The shop's sign says so. The full selling shop of round 14b
+can build on `buysAll`.
+
+### 32.10 People grow older (the author: "make people age as well")
+
+`src/world/calendar.js` (`game.calendar`, saved by `calendarPlugin`). Hearthvale's year
+turns every 12 days. Everyone has a birthday (a day of the year fixed by their name); on
+it they turn a year older: the profile's `age` (which every prompt and line reads) and
+Lyra's soul age change, a `birthday { id, name, age, day }` event goes out and the village
+hears of it. Children grow up with the rest; they stay unkillable by their build (child or
+teen), not by a number. The stranger does not know their own age. Old age does not kill
+anyone (yet), and sprites do not change with age (yet).
+

@@ -317,6 +317,16 @@ export function lovedDownedNearby(game, actor, r = 4 * TILE) {
 export function edgeExit(game, actor) {
   const map = game.map;
   if (!map?.w || !map?.h) return null;
+  // The world names where the King's Road leaves it (worldgen: map.exits, west and east).
+  const ex = map.exits ? Object.values(map.exits).filter((e) => e && Number.isFinite(e.x)) : [];
+  if (ex.length) {
+    ex.sort((a, b) => dist(actor.x, actor.y, a.x, a.y) - dist(actor.x, actor.y, b.x, b.y));
+    return { x: ex[0].x, y: ex[0].y, tx: tileOf(ex[0].x), ty: tileOf(ex[0].y) };
+  }
+  const X0 = map.x0 || 0;
+  const Y0 = map.y0 || 0;
+  const X1 = X0 + map.w;
+  const Y1 = Y0 + map.h;
   const road = asLocation(game, 'kings_road');
   let best = null;
   let bd = Infinity;
@@ -336,27 +346,27 @@ export function edgeExit(game, actor) {
   if (b && b.w >= b.h) {
     for (let ty = b.y; ty < b.y + b.h; ty++) {
       for (let k = 0; k < 3; k++) {
-        if (b.x <= k) consider(k, ty);
-        if (b.x + b.w >= map.w - k) consider(map.w - 1 - k, ty);
+        if (b.x <= X0 + k) consider(X0 + k, ty);
+        if (b.x + b.w >= X1 - k) consider(X1 - 1 - k, ty);
       }
     }
   } else if (b) {
     for (let tx = b.x; tx < b.x + b.w; tx++) {
       for (let k = 0; k < 3; k++) {
-        if (b.y <= k) consider(tx, k);
-        if (b.y + b.h >= map.h - k) consider(tx, map.h - 1 - k);
+        if (b.y <= Y0 + k) consider(tx, Y0 + k);
+        if (b.y + b.h >= Y1 - k) consider(tx, Y1 - 1 - k);
       }
     }
   }
   if (best) return best;
   for (let k = 0; k < 3 && !best; k++) {
-    for (let tx = 0; tx < map.w; tx++) {
-      consider(tx, k);
-      consider(tx, map.h - 1 - k);
+    for (let tx = X0; tx < X1; tx++) {
+      consider(tx, Y0 + k);
+      consider(tx, Y1 - 1 - k);
     }
-    for (let ty = 0; ty < map.h; ty++) {
-      consider(k, ty);
-      consider(map.w - 1 - k, ty);
+    for (let ty = Y0; ty < Y1; ty++) {
+      consider(X0 + k, ty);
+      consider(X1 - 1 - k, ty);
     }
   }
   return best;
@@ -367,7 +377,9 @@ export function atMapEdge(game, actor, margin = 1) {
   if (!map?.w) return false;
   const tx = tileOf(actor.x);
   const ty = tileOf(actor.y);
-  return tx <= margin || ty <= margin || tx >= map.w - 1 - margin || ty >= map.h - 1 - margin;
+  const X0 = map.x0 || 0;
+  const Y0 = map.y0 || 0;
+  return tx <= X0 + margin || ty <= Y0 + margin || tx >= X0 + map.w - 1 - margin || ty >= Y0 + map.h - 1 - margin;
 }
 
 // --- the player's sword ---

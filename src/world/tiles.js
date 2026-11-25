@@ -35,6 +35,13 @@ export const T = {
   RUBBLE: 20, // collapsed wall: an impassable heap of stones
   GRAVEL: 21,
   FLOWERBED: 22,
+  // The wider world (src/world/wilds.js).
+  SNOW: 23, // the Hollowcrown's snowfields: snow at midsummer
+  HEATH: 24, // the moor along the King's Road west: heather and gorse
+  DEAD_GRASS: 25, // grey, forgotten grass where the grey lingers (Brindlecombe)
+  SCREE: 26, // broken stone on the foothills
+  THICKET: 27, // wood too thick to walk: the wild's walls (deep Whisperwood, the road's margins)
+  SHALLOWS: 28, // a ford: ankle-deep water over stones, walkable (and loud underfoot)
 };
 
 const D = (name, o) => ({
@@ -76,6 +83,13 @@ DEFS[T.RUBBLE] = D('rubble', { solid: true, color: '#545266', low: true, raised:
 DEFS[T.GRAVEL] = D('gravel', { color: '#727085', cost: 1.1, blend: 'gravel', prio: 2 });
 // A raised planter with a stone rim: you walk round it, not through it.
 DEFS[T.FLOWERBED] = D('flower bed', { solid: true, low: true, color: '#b04a6e', cost: 1.6, raised: true });
+DEFS[T.SNOW] = D('snow', { color: '#dfe8f2', cost: 1.3, blend: 'snow', prio: 6, speed: 0.8 });
+DEFS[T.HEATH] = D('heath', { color: '#6e5a5e', cost: 1.25, blend: 'heath', prio: 5, speed: 0.94 });
+DEFS[T.DEAD_GRASS] = D('grey grass', { color: '#7d8270', cost: 1.15, blend: 'deadgrass', prio: 5 });
+DEFS[T.SCREE] = D('scree', { color: '#8a8794', cost: 1.2, blend: 'scree', prio: 2, speed: 0.88 });
+// A wall of trunks and crowns: blocks feet, arrows and sight like a cliff does.
+DEFS[T.THICKET] = D('thicket', { solid: true, wall: true, color: '#1c2f22', tall: true, raised: true, cost: 0 });
+DEFS[T.SHALLOWS] = D('ford', { color: '#5b93a8', cost: 1.6, blend: 'shallows', prio: 1, speed: 0.7 });
 
 for (let i = 0; i < DEFS.length; i++) if (DEFS[i]) DEFS[i].id = i;
 
@@ -92,6 +106,9 @@ export const WALLISH = new Uint8Array(64);
 export const TALL = new Uint8Array(64);
 export const LOW = new Uint8Array(64);
 export const COST = new Float32Array(64);
+// How fast feet go over the ground (1 = full pace): snow, scree, heather and fords drag
+// (the wider world's ground only; the vale walks as it always has).
+export const SPEED = new Float32Array(64);
 for (let i = 0; i < 64; i++) {
   const d = tileDef(i);
   SOLID[i] = d.solid ? 1 : 0;
@@ -100,6 +117,7 @@ for (let i = 0; i < 64; i++) {
   TALL[i] = d.tall ? 1 : 0;
   LOW[i] = d.low ? 1 : 0;
   COST[i] = d.cost;
+  SPEED[i] = d.speed ?? 1;
 }
 
 export const isWaterId = (id) => WATERY[id] === 1;

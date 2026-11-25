@@ -50,6 +50,11 @@ const isWater = (m) => m === T.WATER || m === T.DEEP_WATER;
     [T.COBBLE]: ['cobble', 3, 0.3],
     [T.FARMLAND]: ['farmland', 2.5, 0.25],
     [T.RUIN_FLOOR]: ['ruinfloor', 3, 0.5],
+    [T.SNOW]: ['snow', 4.4, 1],
+    [T.HEATH]: ['heath', 4.2, 1],
+    [T.DEAD_GRASS]: ['deadgrass', 4, 1],
+    [T.SCREE]: ['scree', 2.4, 0.8],
+    [T.SHALLOWS]: ['shallows', 2.2, 0.6],
     [T.WATER]: [null, 0, 1],
     [T.DEEP_WATER]: [null, 0, 1],
   };
@@ -60,8 +65,8 @@ const isWater = (m) => m === T.WATER || m === T.DEEP_WATER;
     AMP[id] = amp;
     TEXKEY[id] = key;
   }
-  for (const id of [T.GRASS, T.TALL_GRASS, T.FOREST, T.DIRT]) DITHERV[id] = 1;
-  for (const id of [T.WALL, T.RUIN_WALL, T.ROCK, T.PALISADE]) {
+  for (const id of [T.GRASS, T.TALL_GRASS, T.FOREST, T.DIRT, T.SNOW, T.HEATH, T.DEAD_GRASS]) DITHERV[id] = 1;
+  for (const id of [T.WALL, T.RUIN_WALL, T.ROCK, T.PALISADE, T.THICKET]) {
     HEIGHT[id] = 9;
     TALLM[id] = 1;
   }
@@ -239,20 +244,25 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
   const mat = new Uint8Array(SW * SW);
   const W = map.w;
   const H = map.h;
+  // The map's first tile (negative west and north of the vale in the wider world).
+  const X0 = map.x0 || 0;
+  const Y0 = map.y0 || 0;
+  const X1 = X0 + W;
+  const Y1 = Y0 + H;
   const ground = map.ground;
   const warpX = art.warpX;
   const warpY = art.warpY;
   let anyWater = false;
 
   // 1. Materials: bilinear majority of the soft tiles around a warped sample point.
-  const tAt = (x, y) => ground[(y < 0 ? 0 : y >= H ? H - 1 : y) * W + (x < 0 ? 0 : x >= W ? W - 1 : x)];
+  const tAt = (x, y) => ground[((y < Y0 ? Y0 : y >= Y1 ? Y1 - 1 : y) - Y0) * W + ((x < X0 ? X0 : x >= X1 ? X1 - 1 : x) - X0)];
   for (let j = 0; j < SW; j++) {
     const wy = y0 - MG + j;
     const ty = wy >> 4;
     for (let i = 0; i < SW; i++) {
       const wx = x0 - MG + i;
       const tx = wx >> 4;
-      const g = tx < 0 || ty < 0 || tx >= W || ty >= H ? T.VOID : ground[ty * W + tx];
+      const g = tx < X0 || ty < Y0 || tx >= X1 || ty >= Y1 ? T.VOID : ground[(ty - Y0) * W + (tx - X0)];
       let m = g;
       if (SOFT[g]) {
         const wi = ((wy & 255) << 8) | (wx & 255);
@@ -346,7 +356,7 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
       if (!SOFT[m]) continue;
       if (isWater(m)) {
         if (wet) continue;
-        od[ly * CPX + lx] = waterTint(art, depth, W, H, wx, wy, wd[k], run[k]);
+        od[ly * CPX + lx] = waterTint(art, depth, W, H, X0, Y0, wx, wy, wd[k], run[k]);
         if (lx < wbx0) wbx0 = lx;
         if (lx > wbx1) wbx1 = lx;
         if (ly < wby0) wby0 = ly;
@@ -395,7 +405,7 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
       const g = map.tileAt(tx, ty);
       const lx = (tx - tx0) * TILE;
       const ly = (ty - ty0) * TILE;
-      if (tx >= W || ty >= H) {
+      if (tx < X0 || ty < Y0 || tx >= X1 || ty >= Y1) {
         fillTile(out, lx, ly, 0);
         continue;
       }
@@ -406,9 +416,9 @@ export function paintChunkBuf(art, map, cx, cy, shadows = [], wet = false) {
 
   // 4. Ground decorations.
   const decos = art.decos;
-  for (let ty = ty0; ty < ty0 + CHUNK && ty < H; ty++) {
-    for (let tx = tx0; tx < tx0 + CHUNK && tx < W; tx++) {
-      const d = map.deco[ty * W + tx];
+  for (let ty = Math.max(ty0, Y0); ty < ty0 + CHUNK && ty < Y1; ty++) {
+    for (let tx = Math.max(tx0, X0); tx < tx0 + CHUNK && tx < X1; tx++) {
+      const d = map.deco[(ty - Y0) * W + (tx - X0)];
       if (!d || !decos[d]) continue;
       const list = decos[d];
       const spr = list[Math.floor(ih(tx, ty, 301) * list.length)];
@@ -486,7 +496,7 @@ function skyAt(sky, wx, wy) {
 }
 
 // Translucent water color over the animated pattern: depth, sky, the dark mirror of the bank.
-function waterTint(art, depth, W, H, wx, wy, wdist, run) {
+function waterTint(art, depth, W, H, X0, Y0, wx, wy, wdist, run) {
   // Bilinear tile depth (0 = land) for smooth shallows.
   const fx = (wx - 8) / 16;
   const fy = (wy - 8) / 16;
@@ -494,7 +504,7 @@ function waterTint(art, depth, W, H, wx, wy, wdist, run) {
   const iy = Math.floor(fy);
   const ax = fx - ix;
   const ay = fy - iy;
-  const dAt = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 4 : depth[y * W + x]);
+  const dAt = (x, y) => (x < X0 || y < Y0 || x >= X0 + W || y >= Y0 + H ? 4 : depth[(y - Y0) * W + (x - X0)]);
   const d = dAt(ix, iy) * (1 - ax) * (1 - ay) + dAt(ix + 1, iy) * ax * (1 - ay) + dAt(ix, iy + 1) * (1 - ax) * ay + dAt(ix + 1, iy + 1) * ax * ay;
   const deep = Math.max(0, Math.min(1, (d - 0.7) / 3.2));
   let c = mixc(C.shallow, C.deep, deep);
@@ -703,6 +713,9 @@ function paintBuiltTile(art, out, lx, ly, map, tx, ty, g, wet) {
     case T.FLOWERBED:
       paintFlowerbed(art, out, lx, ly, map, tx, ty, wet);
       return;
+    case T.THICKET:
+      paintThicket(art, out, lx, ly, map, tx, ty, wet);
+      return;
     default:
       fillTile(out, lx, ly, C.void);
   }
@@ -870,6 +883,86 @@ function paintRock(art, out, lx, ly, map, tx, ty, wet) {
         c = shade(base, f);
       }
       if (wet) c = mixc(shade(c, 0.66), WET.spec, !s && y >= 9 ? 0.04 : 0.18);
+      out.data[(ly + y) * CPX + lx + x] = c;
+    }
+  }
+}
+
+// Wood too thick to walk (the wilds' walls): a roof of tree crowns seen from above.
+// Crowns sit on a jittered 10 px grid in world pixels, so the canopy flows across tile
+// borders; the southern crown wins an overlap (it stands in front), each is a lit dome
+// with leaf grain, and the gaps between them fall into deep shade.
+const CANOPY_LUT = lut(['#08130d', '#0f2016', '#16301e', '#1f4226', '#2b552d', '#3a6a35', '#4f7f3d', '#6a9548']);
+const CANOPY_PINE_LUT = lut(['#071210', '#0c1c19', '#122823', '#1a382e', '#244839', '#305a45', '#3f6d51']);
+const CANOPY_SNOW_LUT = lut(['#3a4a5e', '#56677e', '#7d8ea6', '#a3b3c8', '#c6d3e2', '#e2eaf3', '#f6f9fc']);
+const CANOPY_GREY_LUT = lut(['#121412', '#1c1f1b', '#272b25', '#343a31', '#444b3f', '#565d4f', '#6a7062']);
+let THICKET_CROWNS = new Float32Array(64);
+function paintThicket(art, out, lx, ly, map, tx, ty, wet) {
+  const isT = (x, y) => map.tileAt(x, y) === T.THICKET;
+  // Which kind of wood: pines on the mountain, snow above the snowline, grey where
+  // the grey lingers (the map's region hint, else by the ground around it).
+  const kind = map.thicketKind ? map.thicketKind(tx, ty) : 'oak';
+  const L = kind === 'snow' ? CANOPY_SNOW_LUT : kind === 'pine' ? CANOPY_PINE_LUT : kind === 'grey' ? CANOPY_GREY_LUT : CANOPY_LUT;
+  const floor = art.tex.forest[0].data;
+  const S = 10;
+  // The crowns that can reach this tile, worked out once (centers, radii, whether their
+  // trunk stands in thicket) rather than hashed again for every pixel.
+  const gx0 = Math.floor((tx * TILE) / S) - 1;
+  const gy0 = Math.floor((ty * TILE) / S) - 1;
+  const GN = Math.floor((tx * TILE + TILE - 1) / S) + 1 - gx0 + 1;
+  const GM = Math.floor((ty * TILE + TILE - 1) / S) + 1 - gy0 + 1;
+  const crowns = THICKET_CROWNS.length >= GN * GM * 4 ? THICKET_CROWNS : (THICKET_CROWNS = new Float32Array(GN * GM * 4));
+  for (let j = 0; j < GM; j++) {
+    for (let i = 0; i < GN; i++) {
+      const cxi = gx0 + i;
+      const cyi = gy0 + j;
+      const k = (j * GN + i) * 4;
+      const ccx = cxi * S + 2 + ih(cxi, cyi, 431) * 6;
+      const ccy = cyi * S + 2 + ih(cxi, cyi, 432) * 6;
+      crowns[k] = ccx;
+      crowns[k + 1] = ccy;
+      crowns[k + 2] = 7 + ih(cxi, cyi, 433) * 3.5;
+      crowns[k + 3] = isT(Math.floor(ccx / TILE), Math.floor(ccy / TILE)) ? 1 : 0;
+    }
+  }
+  for (let y = 0; y < TILE; y++) {
+    const wy = ty * TILE + y;
+    for (let x = 0; x < TILE; x++) {
+      const wx = tx * TILE + x;
+      const gx = Math.floor(wx / S);
+      const gy = Math.floor(wy / S);
+      let best = -1e9;
+      let bt = -1;
+      for (let j = -1; j <= 1; j++) {
+        for (let i = -1; i <= 1; i++) {
+          const k = ((gy + j - gy0) * GN + (gx + i - gx0)) * 4;
+          if (!crowns[k + 3]) continue;
+          const ccx = crowns[k];
+          const ccy = crowns[k + 1];
+          const r = crowns[k + 2];
+          const nx = (wx + 0.5 - ccx) / r;
+          const ny = (wy + 0.5 - ccy) / r;
+          const d = nx * nx + ny * ny;
+          if (d > 1) continue;
+          const z = ccy + (1 - d) * 3;
+          if (z <= best) continue;
+          best = z;
+          const h = 1 - d;
+          // Lit from the upper left, a darker rim, leaf grain in 2 px clumps.
+          let t = 0.42 + h * 0.3 - nx * 0.18 - ny * 0.26 + (ih(wx >> 1, wy >> 1, 434) - 0.5) * 0.16;
+          if (d > 0.78) t -= 0.14;
+          if (kind === 'pine' && ih(wx, wy >> 1, 435) > 0.82) t -= 0.12;
+          bt = t;
+        }
+      }
+      let c;
+      if (bt < -0.5) {
+        const f = 0.32 + art.lf[(((wy >> 2) & 127) << 7) | ((wx >> 2) & 127)] * 0.1;
+        c = shade(floor[((wy & 63) << 6) | (wx & 63)], f);
+      } else {
+        c = pickL(L, bt + (bayer(wx, wy) - 0.5) * 0.05);
+      }
+      if (wet) c = shade(c, 0.8);
       out.data[(ly + y) * CPX + lx + x] = c;
     }
   }

@@ -124,6 +124,9 @@ export class Weather {
     const inten = Math.max(0, Math.min(1, w?.intensity ?? 0));
     this.rain = approach(this.rain, type === 'rain' ? inten : 0, 0.14 * dt);
     this.fog = approach(this.fog, type === 'fog' ? inten : 0, 0.1 * dt);
+    // A place may keep its own weather (src/world/travel.js): the grey over Brindlecombe,
+    // falling snow on the Hollowcrown. The grey is a flat wash (one fill, cheap on a phone).
+    this.grey = approach(this.grey || 0, this.localFog || 0, 0.25 * dt);
     this.cloud = approach(this.cloud, type === 'cloudy' ? inten : type === 'rain' ? inten * 0.6 : 0, 0.1 * dt);
 
     const p = g.player;
@@ -139,6 +142,7 @@ export class Weather {
     if (!p || !g.map) return;
 
     if (!indoors) {
+      this._spawnSnow(dt);
       this._spawnSplashes(dt);
       this._spawnLeaves(dt);
       this._spawnFireflies(dt);
@@ -169,6 +173,19 @@ export class Weather {
       parts.emit('rain_splash', x, y, water ? { color: '#8ccbe6', count: 2 } : undefined);
     }
     if (this._splashAcc > 4) this._splashAcc = 0;
+  }
+
+  // Snow drifting down on the Hollowcrown's shoulder (travel.js sets localSnow, 0..1).
+  _spawnSnow(dt) {
+    const k = this.localSnow || 0;
+    if (k <= 0.01) return;
+    const g = this.game;
+    const cam = g.camera;
+    this._snowAcc = (this._snowAcc || 0) + k * 9 * dt;
+    while (this._snowAcc >= 1) {
+      this._snowAcc -= 1;
+      g.particles?.emit('snowflake', cam.x + Math.random() * (cam.vw + 40) - 20, cam.y + Math.random() * (cam.vh + 30));
+    }
   }
 
   _placeAt(x, y) {
@@ -338,6 +355,16 @@ export class Weather {
   drawOverlay(ctx, r) {
     const amb = this.game.lighting?.ambient;
     const dark = amb ? amb.darkness : 0;
+    if (this.grey > 0.01) {
+      // The grey: colour drained toward a cold ash, thicker away from you (indoors too:
+      // Brindlecombe's houses stand open to it).
+      const W = ctx.canvas.width;
+      const H = ctx.canvas.height;
+      ctx.globalAlpha = Math.min(1, this.grey);
+      ctx.fillStyle = dark > 0.5 ? 'rgba(40,44,46,0.34)' : 'rgba(146,152,144,0.3)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
     if (!this.indoors) {
       if (this.cloud > 0.02) this._drawClouds(ctx, r, dark);
       if (this.fog > 0.02 || this.rain > 0.2) this._drawFog(ctx, r, dark);
