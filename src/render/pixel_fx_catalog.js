@@ -102,7 +102,7 @@ export const PIXEL_FX = {
     layer: 'top',
     priority: 3,
     bounds: [-52, -50, 52, 36],
-    max: 4,
+    max: 6,
     opts: { size: 0.5, height: 10 },
     lightK: 0.8,
   },

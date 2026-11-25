@@ -40,6 +40,7 @@ const STEP_MAX = 0.25; // the longest step an effect takes at once (the loop's o
 // two (loops up to 3, one-shots 1) instead of repainting, so a brawl full of effects costs
 // about the same as a quiet fight; each effect's first frame is always painted.
 const PAINT_BUDGET_MS = 1.6;
+const FLASH_KEEP = 0.1; // s: an effect with a budget (spec.max) is never cut before this
 const now = typeof performance !== 'undefined' && performance.now ? () => performance.now() : () => Date.now();
 const REDUCE_SIZE = 0.85; // reduced motion: effects a little smaller...
 const REDUCE_LIGHT = 0.5; // ...with half the glow...
@@ -203,9 +204,24 @@ export class PixelFx {
       this.stats.culled++;
       return null;
     }
+    // An effect that wraps a body is made round OUR body from the start: pixelfx would
+    // otherwise build it round its 24x38 side-on stand-in (resolveOptions), and effects
+    // that read the body once when made (heal's size and rows, soul-rise's copy of the
+    // body) would draw that stand-in over ours. No readable body: not started (the
+    // caller keeps its old look), and nothing is pushed out for it.
+    let body = null;
+    if (spec.actor) {
+      body = o.actor || (o.follow && this.actorOf ? this.actorOf(o.follow) : null);
+      if (!body) {
+        this.stats.refused++;
+        return null;
+      }
+    }
     const prio = o.priority ?? spec.priority;
     // An effect with a budget of its own (spec.max: the everyday hit spark) replaces its own
     // oldest when at it, so a brawl's flurry of sparks never pushes statuses off the bodies.
+    // One still in its first flash is not cut: the newcomer is refused instead (a blast's
+    // dozen hits in one frame: the first ones keep their sparks, the rest their old look).
     const budget = this.budget(spec);
     if (budget < Infinity) {
       let n = 0;
@@ -216,6 +232,10 @@ export class PixelFx {
           n++;
         }
       if (n >= budget && oldest >= 0) {
+        if (this.live[oldest].t < FLASH_KEEP) {
+          this.stats.refused++;
+          return null;
+        }
         this._release(this.live[oldest]);
         this.live.splice(oldest, 1);
         this.stats.evicted++;
@@ -248,19 +268,7 @@ export class PixelFx {
     delete opts.life;
     delete opts.dx;
     delete opts.dy;
-    // An effect that wraps a body is made round OUR body from the start: pixelfx would
-    // otherwise build it round its 24x38 side-on stand-in (resolveOptions), and effects
-    // that read the body once when made (heal's size and rows, soul-rise's copy of the
-    // body) would draw that stand-in over ours. No readable body: not started (the
-    // caller keeps its old look).
-    if (spec.actor) {
-      const a = o.actor || (o.follow && this.actorOf ? this.actorOf(o.follow) : null);
-      if (!a) {
-        this.stats.refused++;
-        return null;
-      }
-      opts.actor = a;
-    }
+    if (body) opts.actor = body;
     if (typeof spec.prepare === 'function') {
       try {
         spec.prepare(opts, o, this);

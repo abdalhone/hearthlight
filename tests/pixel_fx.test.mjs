@@ -311,9 +311,17 @@ test('pixel fx: a flurry of hit sparks replaces its own oldest and never pushes 
     host.actorOf = () => body;
     const foes = Array.from({ length: 6 }, (_, i) => ({ x: 60 + i * 40, y: 120 }));
     const st = foes.map((f) => host.play('st-burning', { follow: f }));
-    for (let k = 0; k < 60; k++) assert.ok(host.play('hit', { x: 100 + (k % 7) * 20, y: 110, angle: k }), `hit ${k} played`);
+    const max = phone ? 4 : 8;
+    // a blast's hits all in one frame: the first ones keep their sparks, the rest are refused
+    // (their callers keep the old look)
+    for (let k = 0; k < 12; k++) assert.equal(!!host.play('hit', { x: 100 + (k % 7) * 20, y: 110, angle: k }), k < max, `hit ${k}`);
+    // a flurry over time: each new spark replaces the oldest once its flash is over
+    for (let k = 0; k < 40; k++) {
+      host.update(0.12);
+      assert.ok(host.play('hit', { x: 100 + (k % 7) * 20, y: 110, angle: k }), `flurry hit ${k} played`);
+    }
     const hits = host.live.filter((i) => i.id === 'hit').length;
-    assert.equal(hits, phone ? 4 : 8, 'the newest sparks only');
+    assert.ok(hits <= max, 'never more sparks than the budget');
     for (const h of st) assert.ok(host.playing(h), 'every status still burns');
   }
 });

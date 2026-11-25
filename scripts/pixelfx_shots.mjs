@@ -409,15 +409,15 @@ if (flag('--perf')) {
         if (k % 7 === 0) g.pixelFx.play('collect', { x: d.x - 20, y: d.y + 10, size: 0.6, height: 5 });
       }, 40);
     });
-    // (experiments: --variant blit-off | light-off | fx-off switches a part of the host off)
+    // (experiments: --variant fx-off | glow-off | nobudget | day switches a part of the host off)
     await page.evaluate((v) => {
       const P = window.__game.pixelFx;
-      if (v === 'blit-off') P._blit = () => true;
-      if (v === 'light-off') P._addLight = () => false;
-      if (v === 'fx-off') P.play = () => null;
-      if (v === 'cap24') P.capDesktop = 24;
+      if (v === 'fx-off') {
+        P.play = () => null;
+        P.clear();
+      }
       if (v === 'glow-off') P.drawGlow = () => {};
-      if (v === 'lit-off') P._addLit = () => false;
+      if (v === 'nobudget') P.paintBudget = Infinity;
       if (v === 'day') window.__px.time(11);
     }, opt('--variant', ''));
     const cdp = await context.newCDPSession(page);

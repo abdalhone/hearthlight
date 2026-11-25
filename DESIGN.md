@@ -1726,21 +1726,28 @@ actor or acts. The effects we use were redrawn top-down where they needed it (ea
 at its top): rings, pools and shockwaves lie on the floor as 0.6–0.75 ellipses; sparks, chips, clods and
 drops scatter over the floor in x and y, hopping up the screen and landing near where they rose (a
 per-particle floor in `core/sim.js`); aimed effects take the blow's angle (`aim`) and were looked at in
-four to eight directions; statuses wrap the afflicted body's own sprite frame (`pixel_fx_bodies.js`).
+four to eight directions; statuses, heals and souls wrap the afflicted body's own sprite frame
+(`pixel_fx_bodies.js`; a boss's from its own sheet, `bossFrame`). Effects that wrap a body are made round
+ours from the start; pixelfx would otherwise fill in its 24x38 stand-in, and a body it cannot read keeps
+the old look.
 
 **The host** (`src/render/pixel_fx.js`, `game.pixelFx`): `play(id, { x, y | follow, dx, dy, angle,
 palette, tag, life, ...opts })` → handle, `stop(handle | tag)`, `playing()`, `clear()`.
-- Each live effect owns a pooled frame (color + light) sized to its bounds; each frame its color goes into
-  a reused ImageData and is drawn into the world buffer at its world spot minus (ox, oy); its light is
-  summed into one buffer the size of the world buffer and added with `'lighter'` after the night's lighting
-  (held back a little by day), so effects glow at night and never wash the day out.
+- Each live effect owns a pooled frame (color + light) sized to its bounds; when painted, the box its
+  color fills is kept as a small picture and drawn into the world buffer at its world spot minus (ox, oy);
+  its light is a second small picture added with `'lighter'` after the night's lighting (held back a
+  little by day), so effects glow at night and never wash the day out.
 - Layers: `ground` (under everyone), `body` (y-sorted round its anchor: a back half behind the body, a
   front half over it) and `top` (over actors and spells). Followers track their body and end with it.
 - Culling: one-shots far off screen are not started; nothing off the view is drawn. A cap on effects at
-  once (28 desktop, 14 phone; halved with reduced motion) drops the oldest least important first
-  (ambience 0 < flourishes 1 < statuses 2 < hits 3).
+  once (24 desktop, 12 phone; halved with reduced motion) drops the oldest least important first
+  (ambience 0 < flourishes 1 < statuses 2 < hits 3). Hit sparks have a budget of their own (8, 4 on
+  phones; crits 6, punches 4): a new one replaces the oldest whose flash is over, so a brawl's sparks
+  never push statuses off the bodies.
 - Each effect is painted at its own frame rate (pixelfx's 30 fps): between its frames its picture
-  and its lit pixels are reused, moved with its body, so a 60 fps game paints each effect half as often.
+  and its light are reused, moved with its body, so a 60 fps game paints each effect half as often. Past
+  1.6 ms of painting in one rendered frame, effects show their last picture a frame (loops up to three)
+  before repainting, so a screen full of effects costs about what a quiet fight does.
 - Time: stepped with the world's `wdt`, so effects freeze while paused, in a hit-stop or a cutscene, and
   slow with `timeScale`.
 - Reduced motion: ambience is skipped; every effect plays its `calm` mode, 15% smaller, with half the glow
@@ -1756,11 +1763,12 @@ palette, tag, life, ...opts })` → handle, `stop(handle | tag)`, `playing()`, `
   The game's own ice crust stays for "frozen".
 - Bind: hands come up out of a pool round the bound one and hold on (replaces the spray). A blow on a
   ward: a spark glancing off the shell (the dome is the ward's own).
-- Heals: Lyra's spell (green), potions (red), revival, the sickroom and the kept flame (gold).
+- Heals: Lyra's spell (green), potions (red), the sickroom; revival with help (gold; combat plays it, its
+  old shimmer steps aside; getting up alone stays without fanfare); the kept flame lit (a gold burst).
 - Foe deaths: a cartoon poof that hides the fading body (replaces the old puff). Bosses arrive in a puff;
   beaten for good, the soul lifts out of them.
-- Pickups, a chest's haul, level-ups, stat points spent: a burst of light with hoops at a slant and
-  twinkles over the ground, sized to the moment.
+- Pickups, a chest's haul, level-ups (combat plays it; the old gold spray steps aside), stat points
+  spent: a burst of light with hoops at a slant and twinkles over the ground, sized to the moment.
 - Ambience: a few butterflies over the meadows by day, bats at dusk (`pixel_fx_critters.js`, tiny,
   seen from above with a shadow); fireflies and leaves stay `weather.js`'s. None indoors, in rain or under
   reduced motion.
