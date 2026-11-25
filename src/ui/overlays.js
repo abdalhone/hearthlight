@@ -8,6 +8,7 @@ import { prologueAction, bookAction } from './story_menu.js';
 import { openCodex } from './codex.js';
 import { MENU_ICONS } from './content.js';
 import { spellbookIconUrl, SPELLBOOK_ICON_SIZE } from './weave_icons.js';
+import { homeBed } from '../world/home.js';
 
 // The icon for a place in the menus (MENU_ICONS), the same everywhere it appears.
 export function menuIcon(id, cls = 'menu-ico') {
@@ -53,6 +54,14 @@ export function pauseItems(game, ui) {
   const character = characterOpener(ui);
   if (character) items.push({ id: 'character', group: 'go', label: 'Character', hint: 'Stats and gear', key: 'C', run: character });
   if (game?.villageLife && typeof ui?.openVillageLife === 'function') items.push({ id: 'village', group: 'go', label: 'Village', hint: 'Hearthvale today', key: 'V', run: () => ui.openVillageLife() });
+  // The way to your bed (r13): an arrow at the screen's edge until you get there.
+  if (ui?.homePointer && homeBed(game)) {
+    const on = !!ui.homePointer.active;
+    items.push({ id: 'home', group: 'go', label: on ? 'Home: marked' : 'Home', hint: on ? 'Hide the way home' : 'The way to your bed', key: '', run: (ctx) => {
+      ctx.close();
+      ui.homePointer.toggle();
+    } });
+  }
   const book = bookAction(game, ui) || (() => openCodex(ui));
   const prologue = prologueAction(game);
   items.push({
@@ -143,6 +152,9 @@ export function buildPause(ui) {
   // the Prologue beside it, takes a whole row, and so does an odd one out.
   const places = items.filter((it) => it.group === 'go' && it.id !== 'book');
   go.style.setProperty('--n', String(Math.max(1, places.length)));
+  // Sideways the places run in two rows (the Book and its Prologue are two cells).
+  const book = items.find((it) => it.id === 'book');
+  go.style.setProperty('--cols', String(Math.max(4, Math.ceil((places.length + (book ? (book.sub ? 2 : 1) : 0)) / 2))));
   for (const it of items) {
     if (it.group === 'main') {
       const b = itemButton(it, 'btn-ember menu-main');

@@ -9330,7 +9330,7 @@ input[type='range']::-moz-range-thumb {
     width: min(720px, 100%);
   }
   .panel-pause .menu-go {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
   }
   .panel-pause .menu-go > .menu-row {
     display: contents;

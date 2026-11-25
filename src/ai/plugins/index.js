@@ -8,6 +8,7 @@ import { socialPlugin } from './social_plugin.js';
 import { questPlugin } from './quest_plugin.js';
 import { autonomyPlugin } from './autonomy_plugin.js';
 import { villagePlugin } from './village_plugin.js';
+import { homePlugin } from './home_plugin.js';
 
 // Built-in plugins, in registration order. Earlier plugins' intents match first.
 // autonomy comes first: her own will (consent, leaving, rejoining) outranks everything else.
@@ -22,4 +23,5 @@ export const BUILTIN_PLUGINS = [
   socialPlugin,
   questPlugin,
   villagePlugin,
+  homePlugin,
 ];

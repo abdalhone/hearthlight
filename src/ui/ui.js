@@ -25,6 +25,7 @@ import { normalizeArgs } from '../ai/brain/actions.js';
 import { gainText, frac, truncate } from './format.js';
 import { companionshipOf, companionshipLabel, companionshipReason, deedLabel, requestAnswer } from './lyra_view.js';
 import { applyUiZoom } from './ui_scale.js';
+import { HomePointer } from './home_pointer.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -98,6 +99,8 @@ export class UI {
     this.inventory = new InventoryPanel(this);
     this.chest = new ChestPanel(this);
     this.settings = new SettingsPanel(this);
+    // The way to the player's bed (Menu → Home; asking anyone where it is): home_pointer.js.
+    this.homePointer = new HomePointer(g, this);
     this.title = new TitleScreen(this);
     this.touch = new TouchControls(this);
     this.village = new VillageUI(this);
@@ -728,6 +731,11 @@ export class UI {
     this.settings.open(tab);
   }
 
+  // Mark the way to the player's bed (reason: 'menu', 'lyra', a villager's id). -> bool
+  showHome(reason = 'asked') {
+    return !!this.homePointer?.show(reason);
+  }
+
   openPause() {
     if (!this.inited || this.game.state !== 'playing') return;
     if (this.stack.some((p) => p.id === 'pause')) return;
@@ -991,6 +999,7 @@ export class UI {
       this.closeTop();
     }
     this.hud.update(dt);
+    this.homePointer?.update();
     this.chat.update(dt);
     this.village.update(dt);
     this.lifeView?.update(dt);

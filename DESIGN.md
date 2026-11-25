@@ -1276,6 +1276,17 @@ village. She should be able to ask help for other people. They can come and help
   lying on the floor.
 - **Sleeping looks right.** Anyone in a bed lies in it the way the bed is oriented (head on
   the pillow, blanket over the body), never sideways across it.
+- **Finding your bed** (r13; the author: "I'm not able to find my bed"; `src/world/home.js`,
+  `src/ui/home_pointer.js`, `src/ai/plugins/home_plugin.js`): the player's bed in the
+  Wayhouse is named "Your bed" and wears a "Your bed" tag whenever the player is inside
+  the cottage. **Menu → Home** marks the way: the tag over the bed when it is on screen,
+  an arrow with "Home" at the screen's edge when it is not, until the player reaches it,
+  sleeps, or turns it off there ("Home: marked"). Asking anyone where the bed is ("where
+  is my bed", "where do I sleep", "I can't find my house"…, `asksForHome`) gets the way in
+  words — the Wayhouse, which way and how far from the one asked, which bed — from Lyra
+  (a plugin question; Claude gets the facts in its prompt and a `show_home` action) and
+  from every villager (`player_talk.js` local reply; the Claude brief carries the same
+  fact), and the game marks the way whoever words the answer.
 - **Ground reads true.** Anything drawn as raised (a terrace, a rock band, a cliff face, a
   retaining wall, a steep bank) is solid along its face and climbable only by stairs, steps
   or a ramp drawn as such; anything walkable must look walkable. No walking up walls.

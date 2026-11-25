@@ -350,6 +350,18 @@ export const ICONS = {
     'kwwdkdwwk',
     'kkkkkkkkk',
   ],
+  // The Wayhouse (r13: Menu → Home): a thatched cottage with a lit window.
+  home: [
+    '....k....',
+    '...kok...',
+    '..koOok..',
+    '.koOOOok.',
+    'kooOOOOok',
+    '.kbbbbbk.',
+    '.kbykbBk.',
+    '.kbykbBk.',
+    '.kkkkkkk.',
+  ],
 };
 
 const cache = new Map();
