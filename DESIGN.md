@@ -1319,7 +1319,8 @@ village. She should be able to ask help for other people. They can come and help
   lives with her parents at the chandlery (or her room at the Kettle), keeps her distance,
   and the village stands with her. She can still be spoken to (r13, the author: "even if
   somebody really hates me, make me able to talk to them"): she hears it, and answers as she
-  feels, a word at most offline, her own choice with Claude. (LORE §7's table changes to
+  feels: a word at most offline, or silence when pressed (shown as an act, §23.3), her own
+  choice with Claude. Out of earshot she hears nothing. (LORE §7's table changes to
   match: the road to Saltmere is something she *thinks about*, never a despawn.)
 - **Calling for help.** When she is attacked, badly hurt, or afraid for her life, she shouts
   for help (a real line, by name when someone is near: "Rowan! Hess!") and runs toward
