@@ -20,14 +20,14 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
 
 // ---------------------------------------------------------------- the numbers
 
-test('cooldowns you can feel: Spark ~0.9 s, blast and strike ~1.5 s, nova ~3.5 s, rain and wall 6-7 s; bind, ward, summon as they were', () => {
+test('cooldowns you can feel: Spark ~0.75 s (snappy), blast and strike ~1.5 s, nova ~3.5 s, rain and wall 6-7 s; bind, ward, summon as they were', () => {
   const cd = (shape) => compileWeave({ shape, essences: ['raw'] }).cooldown;
-  assert.ok(cd('bolt') >= 0.85 && cd('bolt') <= 0.95, `bolt ${cd('bolt')}`);
+  assert.ok(cd('bolt') >= 0.7 && cd('bolt') <= 0.9, `bolt ${cd('bolt')}`);
   for (const s of ['blast', 'strike']) assert.ok(cd(s) >= 1.4 && cd(s) <= 1.8, `${s} ${cd(s)}`);
   assert.ok(cd('nova') >= 3.3 && cd('nova') <= 3.7, `nova ${cd('nova')}`);
   for (const s of ['rain', 'wall']) assert.ok(cd(s) >= 6 && cd(s) <= 7, `${s} ${cd(s)}`);
   for (const s of ['bind', 'ward', 'summon']) assert.ok(near(cd(s), Shapes.get(s).base.cooldown, 0.01), `${s} ${cd(s)} unchanged`);
-  // The longer wait buys a little damage: a Spark hits ~10% harder than its bare base.
+  // The longer wait buys a little damage: a Spark hits ~9% harder than its bare base.
   const spark = compileWeave({ shape: 'bolt', essences: ['raw'] });
   assert.ok(spark.dmg >= Shapes.get('bolt').base.dmg * 1.05, `spark ${spark.dmg}`);
   assert.ok(spark.budget.buy > 1 && spark.budget.buy < 1.15, `buy ${spark.budget.buy}`);

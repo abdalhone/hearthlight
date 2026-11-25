@@ -1421,12 +1421,12 @@ registry entry, and it works with every other entry automatically.
   free or useless. Names are generated ("Splitting Ember Bolt", "Echoing Tide Nova").
 - **Cooldowns you can feel** (r12; the author: "the skills doesn't have cooldown"). Each
   shape's own cooldown is stretched by its scale (`COOLDOWN_SCALE` in
-  `src/magic/balance.js`) before the clamp (0.16–12 s): Spark (bolt) 0.9 s, strike 1.5 s,
+  `src/magic/balance.js`) before the clamp (0.16–12 s): Spark (bolt) 0.75 s, strike 1.5 s,
   blast 1.6 s, rune 1.75 s, throw 2 s, dash 2.1 s, orb 2.9 s, nova 3.5 s, rain 6.2 s,
   wall 6.6 s; a beam cools 1 s after it is let go; bind (4.5 s), ward (8 s) and summon
   (6 s) were already slow and stay. Twists and essences scale on top (swift shorter,
   volley and echo longer). The longer wait buys a little damage inside the budget (+10%
-  per e-fold of the scale: a Spark +10%, a nova +12%), so a cooldown is never a pure nerf.
+  per e-fold of the scale: a Spark +9%, a nova +12%), so a cooldown is never a pure nerf.
   A weave's timer follows the weave (its parts, `plan.key`), not its slot: the same weave
   in two slots waits once, moving it neither dodges nor hands on a timer. Only the
   player is paced by it (Lyra, familiars and bosses keep their own timers). Focus, charms
@@ -1533,7 +1533,8 @@ glyph-shards with a short reveal ("You can weave fire").
   and a full charge's damage number is bigger. A weave cooling shows a dark sweep with
   a bright leading edge and its whole seconds while one or more is left, flashes when
   it comes back (a soft tick for waits over 1.2 s); pressing it then shakes it (the
-  seconds flash red) with a quiet "not ready" knock, and nothing is cast. The magic
+  seconds flash red) with a quiet "not ready" knock (at most every 0.6 s, so pressing
+  again and again does not drum), and nothing is cast. The magic
   lesson teaches the hold (a real charged cast moves it on) and the cooldown.
 - **The Spellbook**: craft and edit weaves (pick a shape, essences, twists from what is
   unlocked; see cost, cooldown and damage; a live preview casts it at a training dummy),

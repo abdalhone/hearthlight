@@ -859,7 +859,8 @@ const H = {
     const c = p.caster;
     if (!c || (p.reason !== 'mana' && p.reason !== 'cooldown')) return;
     const now = fx.game.time || 0;
-    if (now - (fx._fizzleAt || 0) < 0.25) return;
+    // (Pressing a cooling weave again and again knocks once in a while, not every time.)
+    if (now - (fx._fizzleAt || 0) < (p.reason === 'cooldown' ? 0.6 : 0.25)) return;
     fx._fizzleAt = now;
     if (p.reason === 'cooldown') {
       fx.sound.cue('not_ready', c.x, c.y);

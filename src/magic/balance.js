@@ -56,7 +56,7 @@ export const CHILD_SPEED = 220; // split / chain shards fly at this times the pl
 // nova or a rain is something to time; what was already slow (a bind, a ward, a
 // familiar) stays as it was. Each weave's timer follows the weave, not its slot.
 export const COOLDOWN_SCALE = Object.freeze({
-  bolt: 2.8, // 0.32 s -> 0.9 s
+  bolt: 2.35, // 0.32 s -> 0.75 s (the starter Spark stays snappy)
   strike: 3, // 0.5 -> 1.5
   blast: 2.7, // 0.6 -> 1.6
   throw: 2.4, // 0.85 -> 2
@@ -69,7 +69,7 @@ export const COOLDOWN_SCALE = Object.freeze({
   wall: 2.2, // 3 -> 6.6
 });
 // A longer wait buys a little damage (so a cooldown is never a pure nerf): +COOLDOWN_DMG
-// per e-fold of the scale (a Spark's 2.8 buys +10%, a nova's 3.2 +12%).
+// per e-fold of the scale (a Spark's 2.35 buys +9%, a nova's 3.2 +12%).
 export const COOLDOWN_DMG = 0.1;
 export const cooldownScale = (shape) => (Number.isFinite(COOLDOWN_SCALE[shape]) ? COOLDOWN_SCALE[shape] : 1);
 export const cooldownBuy = (scale) => 1 + COOLDOWN_DMG * Math.log(Math.max(1, Number(scale) || 1));
