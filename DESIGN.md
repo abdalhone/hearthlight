@@ -1594,6 +1594,19 @@ glyph-shards with a short reveal ("You can weave fire").
   lesson teaches the hold (a real charged cast moves it on) and the cooldown.
 - **The Spellbook**: craft and edit weaves (pick a shape, essences, twists from what is
   unlocked; see cost, cooldown and damage; a live preview casts it at a training dummy),
+  **the preview is the real Weave** (r13; the author: "when I [add] twists on spells, it
+  does not change the preview"; `src/ui/weave_sandbox.js`): a sandbox with its own bus,
+  clock, entity manager, combat, `Magic` runtime and fx layer, in a small walled arena with
+  two straw dummies, casts the very plan the Spellbook compiled every 2.6 s (3.4 s for
+  the slow shapes), the way a press and release would (a beam pours 1.2 s, a charge
+  gathers 0.75 s), so every twist does what it does in the world — multishot fans,
+  split bursts, bounce rebounds, chain arcs to the second dummy, orbit circles, spiral
+  weaves, echo recasts, volley bursts, big and swift change the body, linger leaves its
+  patch, burst explodes, homing turns after the dummy as it steps aside, pierce passes
+  through, leech threads life back (green numbers), charge gathers first; a ward is shown
+  stopping two stones the dummy throws. It is silent, never touches the real world,
+  runs only while the Spellbook is open; if it cannot be built, the old imitation
+  (`spellbook_preview.js`) plays instead,
   assign them to slots, name them. Works on a phone in both orientations. Its Cast tile
   says how a weave is cast ("Tap or hold", "Hold" for a beam, "Fast charge" with the
   charge twist). While "Try all magic" runs, its header says "Trying all magic"; weaves

@@ -11,7 +11,7 @@
 import { h, button, setText, toggleClass, clear } from './dom.js';
 import { makePanel } from './modal.js';
 import { Weaving } from './weaving.js';
-import { WeavePreview } from './spellbook_preview.js';
+import { makePreview } from './weave_sandbox.js';
 import { shapeIconUrl, essenceIconUrl, twistIconUrl, silhouetteUrl, glyphSize, spellbookIconUrl } from './weave_icons.js';
 import { BOSS_HINTS, GENERIC_HINT, cleanWeave, weavePalette, singular, fallbackName, previewOf, castModeOf } from './weave_meta.js';
 import { ensureStatsStyle, PRICE_GLYPH, PRICE_HINTS } from './stats_style.js';
@@ -198,7 +198,7 @@ export class Spellbook {
     this.tabs = h('div', { class: 'sb-tabs', role: 'tablist', 'aria-label': 'Your weaves' });
     this.tabsHead = h('div', { class: 'sb-tabs-head' }, h('span', { class: 'sb-tabs-title', text: 'Your weaves' }), h('span', { class: 'sb-tabs-help', text: 'Tap one to change it' }));
     this.canvas = h('canvas', { class: 'sb-canvas', 'aria-label': 'A live preview: the weave cast at a training dummy' });
-    this.preview = new WeavePreview(this.canvas, this.game);
+    this.preview = makePreview(this.canvas, this.game);
     this.nameEl = h('h3', { class: 'sb-name' });
     this.renameBtn = button('', { cls: 'btn-icon btn-small sb-rename', title: 'Rename this weave', onClick: () => this.startRename() });
     this.renameBtn.append(h('span', { class: 'sb-pen', 'aria-hidden': 'true', text: '✎' }));

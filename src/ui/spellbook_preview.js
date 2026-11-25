@@ -7,10 +7,10 @@
 
 import { drawCharacter } from '../art/characters_art.js';
 
-const W = 200; // scene width in world px
-const H = 84;
-const GROUND = 64; // feet line
-const CASTER_X = 30;
+export const W = 200; // scene width in world px
+export const H = 84;
+export const GROUND = 64; // feet line
+export const CASTER_X = 30;
 const CYCLE = 2.4; // seconds between casts
 const MAX_BODIES = 60;
 const MAX_FX = 90;
