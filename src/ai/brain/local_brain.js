@@ -177,7 +177,8 @@ export class LocalBrain {
       if (text && !parts.includes(text)) parts.push(text);
     }
     if (!parsed.clauses.length && parsed.offer) parts.push(this.line('offer_nothing'));
-    reply.say = joinParts(parts) || this.line(state === 'left' ? 'left_reply' : state === 'wary' ? 'wary_reply' : 'unknown_statement') || 'Hm.';
+    reply.say = joinParts(parts) || (reply._spoken ? '' : this.line(state === 'left' ? 'left_reply' : state === 'wary' ? 'wary_reply' : 'unknown_statement') || 'Hm.');
+    delete reply._spoken;
     return reply;
   }
 
@@ -247,6 +248,9 @@ export class LocalBrain {
     for (let i = 0; i < it.actions.length; i++) {
       const res = results[i];
       if (isRefusal(res)) refused = true;
+      // Her yes was already said by what it started (the outing's "Chapel's this way"):
+      // the reply adds nothing, and is not a stray "Mm. I'll think about that." (§16.11).
+      if (res?.outing) reply._spoken = true;
       const t = this.ackAction(it.actions[i], res, { offer: clause.offer || null });
       if (t && !out.includes(t)) out.push(t);
     }

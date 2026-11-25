@@ -284,7 +284,7 @@ export class Commitments {
       const m = ms.get(t.mission);
       if (!m) continue;
       if (status === 'available') {
-        out.line = `${yesWord(id, rng)} I'll teach you ${partText(t.parts[0])}. ${(m.offer || [m.summary])[0]}`;
+        out.line = `${yesWord(id, rng)} I'll teach you ${partText(t.parts[0])}. ${lessonWords(m)}`;
         out.plan = { kind: 'teach', mission: t.mission, part: t.parts[0] };
         return out;
       }
@@ -479,7 +479,8 @@ export class Commitments {
     if (e) this.remember(e, c.kind === 'tell' ? 'I found Lyra and told her what the stranger asked, like I said I would.' : `I kept my word to the stranger: ${c.text}.`);
     this.game?.bus?.emit?.('commitment', { by: c.by, kind: c.kind, state: 'kept', text: c.text });
     const nm = nameFirst(this.name(c.by));
-    if (c.kind !== 'give') safe(() => this.game?.ui?.toast?.(c.text, 'good', { title: `${nm} kept their word`, key: `commit:${c.id}` }));
+    // Said as done, not as a plan: "Elda talked to Lyra for you", not "Elda will go…".
+    if (c.kind !== 'give') safe(() => this.game?.ui?.toast?.(doneText(c, this), 'good', { title: `${nm} kept their word`, key: `commit:${c.id}` }));
   }
 
   breakIt(c, why = '') {
@@ -541,6 +542,22 @@ function describe(c, cm) {
   if (c.kind === 'give') return `${n} gave you ${(c.qty || 1) > 1 ? itemName(c.item, c.qty).toLowerCase() : aThing(c.item)}`;
   if (c.kind === 'teach') return `${n} will teach you ${partText(c.part)}`;
   return `${n} promised`;
+}
+
+// What the lesson asks, in the teacher's words: the errand's offer, without a greeting
+// that would follow the yes ("Hmph. Fine. I'll teach you… Hmph. You again. Good.").
+function lessonWords(m) {
+  const lines = (Array.isArray(m?.offer) && m.offer.length ? m.offer : [m?.summary || '']).map((x) => String(x || '').trim()).filter(Boolean);
+  const body = lines.length > 1 && lines[0].length <= 30 ? lines.slice(1) : lines;
+  return body.slice(0, 2).join(' ');
+}
+
+// A kept commitment, in the past tense.
+function doneText(c, cm) {
+  const n = nameFirst(cm.name(c.by)) || c.by;
+  if (c.kind === 'tell') return `${n} found Lyra and talked to her for you${c.message ? `: "${c.message}"` : ''}`;
+  if (c.kind === 'teach') return `${n} taught you ${partText(c.part)}`;
+  return c.text;
 }
 
 export function looksLikeYes(text) {

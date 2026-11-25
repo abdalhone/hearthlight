@@ -46,8 +46,14 @@ function walkBehind(g, L, P, near = 40) {
 }
 
 test('A1: "Come with me to the chapel?" — "lets go": she leads, talks to Aveline about Maren, then lives her own day', async () => {
+  const said = [];
   const { g, L, P, a, r } = await chapelProposal();
   assert.ok(!r.actions.some((x) => x.name === 'follow'), '"lets go" is a yes to her, not "follow me"');
+  // Her yes is said once, by the outing ("Chapel's this way"); the reply adds no stray
+  // "Mm. I'll think about that." after it (the author's "not clicking in her head").
+  assert.equal(r.say, '', `the chat reply adds nothing to her yes (got "${r.say}")`);
+  for (const l of g.saidToday.today('lyra')) said.push(l.text);
+  assert.ok(!said.some((t) => /think about that|tell me more|I hear you/i.test(t)), `no generic line after agreeing: ${JSON.stringify(said)}`);
   const o = a.outings.current;
   assert.ok(o && o.npc === 'aveline' && o.at === 'chapel', 'agreeing made it her outing');
   assert.equal(L.behavior.directive.type, 'goto', 'she leads the way');
@@ -420,8 +426,13 @@ test('A5: "please can you go to her" — Elda says yes, walks to Lyra, they talk
   g.bus.on('conversation', (p) => {
     if ((p.a?.id === 'lyra' || p.b?.id === 'lyra') && (p.a?.id === 'elda' || p.b?.id === 'elda')) talked = p;
   });
+  const toasts = [];
+  g.ui = { ...(g.ui || {}), toast: (text, kind, o) => toasts.push({ text, kind, title: o?.title }) };
   for (let i = 0; i < 400 && c.state !== 'kept'; i++) stepVillage(g, 0.5);
   assert.equal(c.state, 'kept', `she went (state ${c.state})`);
+  // The player is told it is done, in the past tense (not "Elda will go…").
+  const told = toasts.find((t) => /kept their word/.test(t.title || ''));
+  assert.ok(told && /found Lyra and talked to her for you/.test(told.text) && !/will go/.test(told.text), JSON.stringify(toasts));
   assert.ok(talked, 'the two of them talked');
   assert.ok(talked.lines.some((l) => /sorry/i.test(l.text)), 'Elda passed the message on');
   const mem = L.mind.memory.all?.() || L.mind.memory.list || [];
@@ -456,11 +467,21 @@ test('A5: "teach me magic" — a teacher starts the lesson that unlocks what the
   g.player.x = bram.x + 18;
   g.player.y = bram.y;
   bram.adjustOpinion?.(30, 'test');
-  const r = await g.village.playerSays(bram, 'can you teach me magic?');
+  // Before the first lesson of all (First Spark): not yet, and he says when.
+  const r0 = await g.village.playerSays(bram, 'can you teach me magic?');
+  assert.equal(g.missions.status('hinge_ore'), 'locked');
+  assert.match(r0.lines.join(' '), /not yet.*First Spark/i, r0.lines.join(' '));
+  assert.equal(g.village.commitments.open('bram').length, 0, 'no promise he cannot keep');
+  g.missions.accept('first_spark', { silent: true });
+  g.missions.complete('first_spark');
+  const r = await g.village.playerSays(bram, 'please, teach me magic');
   const st = g.missions.status('hinge_ore');
-  assert.ok(st === 'active' || /not yet/i.test(r.lines.join(' ')), `the lesson began, or he says plainly when: ${r.lines.join(' ')} (${st})`);
-  if (st === 'active') {
+  assert.equal(st, 'active', `the lesson began: ${r.lines.join(' ')} (${st})`);
+  {
     assert.match(r.lines.join(' '), /iron/i, 'he teaches what he knows: iron');
+    // His yes, then what the lesson asks; no greeting tacked on after it ("…Hmph. You again.").
+    assert.doesNotMatch(r.lines.join(' '), /You again/, r.lines.join(' '));
+    assert.match(r.lines.join(' '), /ore|quarry|lumps/i, `he says what the lesson asks: ${r.lines.join(' ')}`);
     const c = g.village.commitments.open('bram')[0];
     assert.equal(c?.kind, 'teach');
     // The lesson done, the part unlocks and his word is kept.
