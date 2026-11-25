@@ -6008,6 +6008,12 @@ input[type='range']::-moz-range-thumb {
 .wbtn > * {
   grid-area: 1 / 1;
 }
+/* The overlays cover the whole button: an absolute grid child placed in a cell takes
+   that cell (as narrow as the glyph) for its box, so these sit outside the grid. */
+.wbtn > .wbtn-cd,
+.wbtn > .wbtn-chg {
+  grid-area: auto;
+}
 .wbtn-icon {
   position: relative;
   width: 33px;
