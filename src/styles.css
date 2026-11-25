@@ -8789,6 +8789,19 @@ input[type='range']::-moz-range-thumb {
     font-size: var(--fs-xs);
   }
 }
+/* Upright (r13): the preview stays pinned at the top while the steps scroll under it,
+   so a twist tapped far down the book is seen changing the weave. */
+@media (max-width: 640px) and (min-height: 521px) {
+  .panel-spellbook .sb-preview-col {
+    display: contents;
+  }
+  .panel-spellbook .sb-stage {
+    position: sticky;
+    top: -8px;
+    z-index: 3;
+    background: var(--panel-bg);
+  }
+}
 /* Sideways: the preview card stays in view on the left while the steps scroll on the
    right, under the row of your weaves. */
 @media (max-height: 520px) and (min-width: 600px) {

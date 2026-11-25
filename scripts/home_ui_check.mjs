@@ -69,7 +69,7 @@ async function run(v) {
       const g = window.__game;
       g.ui.closeAll?.();
       g.ui.toasts?.clear?.();
-      for (const e of g.entities.all()) if (e.profile && Math.hypot(e.x - g.player.x, e.y - g.player.y) < 120) e.x += 500;
+      for (const e of g.entities.all()) if ((e.profile || e === g.companion) && Math.hypot(e.x - g.player.x, e.y - g.player.y) < 120) e.x += 500;
     });
   const use = async () => {
     await clear();
