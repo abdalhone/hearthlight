@@ -248,3 +248,82 @@ test('A1 with Claude: the reply carries the outing, the body is the game’s, an
   assert.ok(g.said.some((s) => s.who === 'aveline' && /lantern and a coil of rope/.test(s.text)), 'Aveline said what Claude wrote for her');
   assert.ok(a.questStage >= 2);
 });
+
+// ------------------------------------------------------------------ A3: hate means distance
+
+// She hates and fears the player. They stand where her day takes her, or walk at her.
+function hateScene({ mode = 'left', walker = 'stand', seconds = 90 } = {}) {
+  const g = makeGame({ hour: 14 });
+  const L = g.companion;
+  const P = g.player;
+  const a = L.mind.autonomy;
+  step(g, 1);
+  a.adjustPlayer({ trust: -40, fear: mode === 'wary' ? 40 : 70, affinity: -60 }, 'test');
+  if (mode === 'left') a.setCompanionship('left', 'You frighten me.', { cause: 'fear_left' });
+  else a.setCompanionship('wary', 'You frighten me.', { cause: 'fear' });
+  const blk = a.currentBlock();
+  const loc = g.locations.get(blk?.at || 'town_square') || g.locations.get('town_square');
+  placeAt(g, P, loc.center.x, loc.center.y + 8);
+  placeAt(g, L, loc.center.x + 180, loc.center.y);
+  step(g, 0.5);
+  const dt = 0.05;
+  let prev = { x: L.x, y: L.y };
+  let lastV = null;
+  let reversals = 0;
+  let path = 0;
+  let minD = Infinity;
+  for (let i = 0; i < seconds / dt; i++) {
+    if (walker === 'approach') {
+      const dx = L.x - P.x;
+      const dy = L.y - P.y;
+      const d = Math.hypot(dx, dy);
+      g.input.move = d > 40 ? { x: (dx / d) * 0.7, y: (dy / d) * 0.7 } : { x: 0, y: 0 };
+    }
+    step(g, dt, dt);
+    const vx = L.x - prev.x;
+    const vy = L.y - prev.y;
+    const sp = Math.hypot(vx, vy);
+    prev = { x: L.x, y: L.y };
+    if (sp > 0.15) {
+      path += sp;
+      // A turn of more than ~120°: "moving in place" is made of these.
+      if (lastV && vx * lastV.x + vy * lastV.y < -0.5 * sp * Math.hypot(lastV.x, lastV.y)) reversals++;
+      lastV = { x: vx, y: vy };
+    }
+    minD = Math.min(minD, Math.hypot(L.x - P.x, L.y - P.y));
+  }
+  return { g, L, P, a, reversals, path, minD };
+}
+
+test('A3: she has left them and they stand where her day takes her: she does her day elsewhere, no back-and-forth', () => {
+  const r = hateScene({ mode: 'left', walker: 'stand' });
+  assert.ok(r.reversals <= 3, `she turned back on herself ${r.reversals} times in 90 s (the author saw her "moving in place")`);
+  assert.ok(r.minD > 8 * 16, `she kept her distance (closest ${Math.round(r.minD)} px)`);
+});
+
+test('A3: they walk at her: she keeps stepping away, never turning back toward them', () => {
+  for (const mode of ['left', 'wary']) {
+    const r = hateScene({ mode, walker: 'approach' });
+    assert.ok(r.reversals <= 6, `${mode}: ${r.reversals} reversals while being walked at`);
+  }
+});
+
+test('A3: wary and afraid, she trails at a steady distance (hysteresis), not "follow" fighting "step away"', () => {
+  const g = makeGame({ hour: 11 });
+  const L = g.companion;
+  const a = L.mind.autonomy;
+  step(g, 1);
+  a.adjustPlayer({ trust: -20, fear: 30, affinity: -10 }, 'test');
+  a.setCompanionship('wary', 'x', { cause: 'fear' });
+  step(g, 1);
+  assert.equal(L.behavior.directive.type, 'keep_away', 'afraid: a steady distance');
+  assert.equal(L.behavior.directive.follow, true, 'still traveling with them');
+  // Fear eases a little, but not past the band: no flip.
+  a.adjustPlayer({ fear: -8 }, 'test');
+  step(g, 1);
+  assert.equal(L.behavior.directive.type, 'keep_away', 'inside the band: she keeps it');
+  a.adjustPlayer({ fear: -20, affinity: 20 }, 'test');
+  step(g, 1);
+  assert.equal(L.behavior.directive.type, 'follow', 'eased: she trails close again');
+  assert.equal(L.behavior.directive.distance, 'far');
+});

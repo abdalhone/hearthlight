@@ -38,6 +38,9 @@ const DEFAULT_PERSONALITY = { openness: 0.85, conscientiousness: 0.55, extravers
 const LEAVING_TYPES = new Set(['independent', 'keep_away', 'leave', 'flee', 'wait_outside']);
 const START_PURSE = 8; // a ranger's pocket money on the first morning
 const LEFT_TILES = 10; // how far she keeps from the player once she has left them
+// Wary: when she keeps a steady distance instead of trailing close (and when she stops).
+const WARY_TENSE = { fear: 25, affinity: -30 };
+const WARY_EASED = { fear: 15, affinity: -20 };
 const GONE_TILES = 12; // gone: further still, and she crosses the lane to keep it
 const HELP_GAP = 8; // seconds between calls for help, unless things get worse
 const ACCIDENT_GAP = 30; // stray clips within this count as one (a fight's worth)
@@ -3241,6 +3244,20 @@ export class Autonomy {
         // Anything but her own day ends with her own day again (a job she was asked to do,
         // a walk somewhere): behavior falls back to following, which is not her choice now.
         if (d.type === 'follow' && d.target === 'player') b.setDirective({ type: 'independent', reason: 'apart' });
+        return;
+      }
+      if (st === 'wary') {
+        // Still traveling together, but afraid of them or sour on them: a steady distance
+        // (keep_away that trails them), never "follow" fighting "step away" (§16.13). The
+        // switch has hysteresis, so it does not flicker at the edge.
+        const s = this.stats();
+        const tense = s.fear >= WARY_TENSE.fear || s.affinity <= WARY_TENSE.affinity;
+        const eased = s.fear < WARY_EASED.fear && s.affinity > WARY_EASED.affinity;
+        if (d.type === 'follow' && d.target === 'player' && tense) {
+          b.setDirective({ type: 'keep_away', from: 'player', tiles: clamp(4 + Math.round(s.fear / 20), 4, 8), follow: true }, { quiet: true });
+        } else if (d.type === 'keep_away' && d.follow && !d.seconds && d.from === 'player' && eased) {
+          b.setDirective({ type: 'follow', target: 'player', distance: 'far' }, { quiet: true });
+        }
         return;
       }
       if (st !== 'left' && st !== 'gone') return;
