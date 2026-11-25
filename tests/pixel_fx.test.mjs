@@ -126,9 +126,9 @@ test('pixel fx: off-screen one-shots are not started; drawables are only collect
 
 test('pixel fx: a cap on effects at once, lower on phones; the least important oldest goes first', () => {
   const host = makeHost(makeGame(), {});
-  assert.equal(host.cap, 44);
+  assert.equal(host.cap, 28);
   const phone = makeHost(makeGame({ phone: true }));
-  assert.equal(phone.cap, 24);
+  assert.equal(phone.cap, 14);
   for (let i = 0; i < host.cap; i++) assert.ok(host.play('shot', { x: 100 + i, y: 100 }));
   const first = host.live[0].uid;
   assert.ok(host.play('hit', { x: 100, y: 100 }), 'a hit makes room');
@@ -144,7 +144,7 @@ test('pixel fx: a cap on effects at once, lower on phones; the least important o
 test('pixel fx: reduced motion means fewer, smaller, calmer effects with no white', () => {
   const game = makeGame({ reduce: true });
   const host = makeHost(game);
-  assert.equal(host.cap, 22, 'half the cap');
+  assert.equal(host.cap, 14, 'half the cap');
   assert.equal(host.play('ambient', { follow: { x: 1, y: 1 } }), null, 'ambience skipped');
   const h = host.play('shot', { x: 100, y: 100, size: 1 });
   const inst = host.live.find((i) => i.handle === h);

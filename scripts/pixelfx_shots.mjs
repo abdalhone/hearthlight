@@ -366,6 +366,115 @@ const SCENES = {
 
 const wanted = Object.keys(SCENES).filter((k) => !only || only.includes(k));
 
+// ------------------------------------------------------------------ performance
+// Many effects at once with the game running: a crowd of foes under statuses, blows landing
+// all the time (hits, crits, punches), deaths, pickups. Frame times over 6 s; then the same
+// with the CPU slowed 4x (Chromium emulation, a mid phone). --profile prints the hottest
+// functions (self time) of the run.
+if (flag('--perf')) {
+  const runs = [
+    { name: 'desk1280', w: 1280, h: 720, phone: false, throttle: 1 },
+    { name: 'l844x390', w: 844, h: 390, phone: true, throttle: 4 },
+  ].filter((s) => !onlySizes || onlySizes.includes(s.name));
+  for (const size of runs) {
+    const { context, page, errors } = await open(size);
+    await page.evaluate(() => {
+      const g = window.__game;
+      const S = window.__px;
+      S.time(22.5);
+      g.loop.start();
+      const c = S.spot;
+      const foes = [];
+      const st = ['burning', 'chilled', 'poisoned', 'drained', 'stunned', 'dazzled'];
+      for (let i = 0; i < 18; i++) {
+        const d = S.dummy(c.x - 150 + (i % 6) * 60, c.y - 70 + Math.floor(i / 6) * 60, ['wolf', 'slime', 'bandit'][i % 3]);
+        d.faction = 'neutral';
+        g.magic.applyStatus(d, st[i % st.length], { src: g.player, potency: 1, power: 1, duration: 600, ignoreImmunity: true, chance: 99 });
+        foes.push(d);
+      }
+      let k = 0;
+      S.timer = setInterval(() => {
+        k++;
+        const d = foes[k % foes.length];
+        g.combat.damage(g.player, d, 1, { dirX: Math.cos(k), dirY: Math.sin(k), crit: k % 5 === 0, noHitStop: true });
+        if (k % 4 === 0) g.pixelFx.play('punch', { x: d.x + 4, y: d.y, angle: k, size: 0.6 });
+        if (k % 9 === 0) g.pixelFx.play('poof', { x: d.x, y: d.y + 20, size: 0.7 });
+        if (k % 7 === 0) g.pixelFx.play('collect', { x: d.x - 20, y: d.y + 10, size: 0.6, height: 5 });
+      }, 40);
+    });
+    // (experiments: --variant blit-off | light-off | fx-off switches a part of the host off)
+    await page.evaluate((v) => {
+      const P = window.__game.pixelFx;
+      if (v === 'blit-off') P._blit = () => true;
+      if (v === 'light-off') P._addLight = () => false;
+      if (v === 'fx-off') P.play = () => null;
+      if (v === 'cap24') P.capDesktop = 24;
+      if (v === 'glow-off') P.drawGlow = () => {};
+      if (v === 'lit-off') P._addLit = () => false;
+      if (v === 'day') window.__px.time(11);
+    }, opt('--variant', ''));
+    const cdp = await context.newCDPSession(page);
+    if (size.throttle > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: size.throttle });
+    if (flag('--profile')) {
+      await cdp.send('Profiler.enable');
+      await cdp.send('Profiler.start');
+    }
+    await page.waitForTimeout(1500);
+    const result = await page.evaluate(
+      () =>
+        new Promise((done) => {
+          const g = window.__game;
+          const times = [];
+          let last = performance.now();
+          let live = 0;
+          let n = 0;
+          const t0 = last;
+          const tick = () => {
+            const now = performance.now();
+            times.push(now - last);
+            last = now;
+            live += g.pixelFx.count;
+            n++;
+            if (now - t0 < 6000) requestAnimationFrame(tick);
+            else {
+              const s = times.slice(1).sort((a, b) => a - b);
+              const avg = s.reduce((a, b) => a + b, 0) / s.length;
+              done({ frames: s.length, fps: +(1000 / avg).toFixed(1), p50: +s[Math.floor(s.length / 2)].toFixed(1), p95: +s[Math.floor(s.length * 0.95)].toFixed(1), avgLive: Math.round(live / n), cap: g.pixelFx.cap, bodies: g.entities.all().length, stats: g.pixelFx.stats });
+            }
+          };
+          requestAnimationFrame(tick);
+        }),
+    );
+    if (flag('--profile')) {
+      const { profile } = await cdp.send('Profiler.stop');
+      const self = new Map();
+      const byId = new Map(profile.nodes.map((nd) => [nd.id, nd]));
+      const dt = profile.timeDeltas;
+      for (let i = 0; i < profile.samples.length; i++) {
+        const nd = byId.get(profile.samples[i]);
+        const cf = nd.callFrame;
+        const key = `${cf.functionName || '(anon)'} ${cf.url.split('/').pop()}:${cf.lineNumber}:${cf.columnNumber}`;
+        self.set(key, (self.get(key) || 0) + (dt[i] || 0));
+      }
+      const tot = [...self.values()].reduce((a, b) => a + b, 0);
+      console.log(`[profile ${size.name}] top self time:`);
+      for (const [k, v] of [...self.entries()].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`  ${((100 * v) / tot).toFixed(1).padStart(5)}%  ${k}`);
+    }
+    console.log(`[pixelfx perf ${size.name}${size.throttle > 1 ? ` cpu/${size.throttle}` : ''}]`, JSON.stringify(result));
+    await page.screenshot({ path: `${out}/${size.name}-perf.png` });
+    await page.evaluate(() => clearInterval(window.__px.timer));
+    if (errors.length) failures.push(`${size.name} perf: ${errors.slice(0, 5).join(' | ')}`);
+    await context.close();
+  }
+  await browser.close();
+  server.close();
+  if (failures.length) {
+    console.error(failures.join('\n'));
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
 for (const size of SIZES) {
   const { context, page, errors } = await open(size);
   for (const tod of times) {

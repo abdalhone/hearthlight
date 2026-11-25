@@ -1737,8 +1737,10 @@ palette, tag, life, ...opts })` → handle, `stop(handle | tag)`, `playing()`, `
 - Layers: `ground` (under everyone), `body` (y-sorted round its anchor: a back half behind the body, a
   front half over it) and `top` (over actors and spells). Followers track their body and end with it.
 - Culling: one-shots far off screen are not started; nothing off the view is drawn. A cap on effects at
-  once (44 desktop, 24 phone; halved with reduced motion) drops the oldest least important first
+  once (28 desktop, 14 phone; halved with reduced motion) drops the oldest least important first
   (ambience 0 < flourishes 1 < statuses 2 < hits 3).
+- Each effect is painted at its own frame rate (pixelfx's 30 fps): between its frames its picture
+  and its lit pixels are reused, moved with its body, so a 60 fps game paints each effect half as often.
 - Time: stepped with the world's `wdt`, so effects freeze while paused, in a hit-stop or a cutscene, and
   slow with `timeScale`.
 - Reduced motion: ambience is skipped; every effect plays its `calm` mode, 15% smaller, with half the glow
