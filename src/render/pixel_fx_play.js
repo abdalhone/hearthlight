@@ -49,6 +49,15 @@ export function playPoof(game, e, size = 1) {
   return P.play('poof', { x: e.x, y: e.y, size: 0.55 * k, height: Math.round(h * 0.45) + 2, seed: (Math.random() * 1e6) | 0 });
 }
 
+// A prop breaks or a felled tree lands (DESIGN §31.3): the poof's cloud, calm (no white pop),
+// in the material's dust colors, its stars as chips of the same stuff.
+export function playDust(game, x, y, { palette = null, size = 1, height = 5 } = {}) {
+  const P = px(game);
+  if (!P) return null;
+  const pal = palette || RAMP.dust;
+  return P.play('poof', { x, y, size: 0.5 * size, height, palette: pal, stars: [pal[2], pal[3], pal[4]], calm: true, seed: (Math.random() * 1e6) | 0 });
+}
+
 // A heal on a body. kind: 'spell' (green), 'potion' (red), 'gold' (revival, the kept flame).
 export function playHeal(game, e, kind = 'spell') {
   const P = px(game);

@@ -138,6 +138,7 @@ export class Body {
     this.wardSeen = 0;
     this.fxState = null;
     this.why = '';
+    this.prop = null; // a ray's: the prop it ends on (DESIGN §31.3)
     this.hits.clear();
     for (const k in this.procs) this.procs[k] = 0;
     for (const k in this.procAt) this.procAt[k] = -1e9;
@@ -218,6 +219,8 @@ export function hitCircle(rt, b, x, y, r, mul, flags, again = 0) {
     n++;
     if (!b.active) break;
   }
+  // The player's weaves land on the props in it too (DESIGN §31.3).
+  if (b.active && rt.hitProps) n += rt.hitProps(b, x, y, r, mul, flags, again);
   return n;
 }
 
@@ -331,6 +334,21 @@ function updateMissile(rt, b, dt) {
       return;
     }
     if (b.noHit) continue;
+    // A prop in the way (the player's weaves): it takes the blow and stops the missile.
+    if (b.mode !== 'arc' && rt.propAt) {
+      const prop = rt.propAt(b, b.x, b.y);
+      if (prop && !b.hits.has(prop)) {
+        b.hits.set(prop, b.age);
+        rt.hitProp(b, prop, 1, b.heavy ? HIT_HEAVY : HIT);
+        if (!b.active || b.ending) return;
+        if (b.pierceLeft > 0) {
+          b.pierceLeft--;
+          continue;
+        }
+        rt.end(b, 'hit');
+        return;
+      }
+    }
     if (b.mode === 'arc') {
       const t = b.target;
       const rr = b.r + (t.radius ?? 5) + 2;
@@ -547,7 +565,13 @@ function hitCone(rt, b, x, y, ang, arc, r, mul, flags) {
     rt.hit(b, a, mul, flags);
     if (!b.active) return;
   }
+  if (rt.hitProps) {
+    CONE.ang = ang;
+    CONE.arc = arc;
+    rt.hitProps(b, x, y, r, mul, flags, 0, CONE);
+  }
 }
+const CONE = { ang: 0, arc: 0 };
 
 // A punch: the fist lands first (heavy), then an impact wave rolls out in a cone.
 function updateStrike(rt, b, dt) {
@@ -583,9 +607,18 @@ function traceBeam(rt, b, x, y, ang, range, bounces) {
   let cx = x;
   let cy = y;
   const step = 3;
+  b.prop = null;
   while (left > 0 && n < pts.length - 2) {
     const nx = cx + dx * step;
     const ny = cy + dy * step;
+    // The player's ray ends on the first prop it meets, and burns at it (DESIGN §31.3).
+    const prop = rt.propAt ? rt.propAt(b, nx, ny) : null;
+    if (prop) {
+      b.prop = prop;
+      cx = nx;
+      cy = ny;
+      break;
+    }
     if (rt.wallAt(nx, ny)) {
       if (bounces > 0) {
         bounces--;
@@ -636,6 +669,10 @@ function updateBeam(rt, b, dt) {
   b.tickT -= dt;
   if (b.tickT > 0) return;
   b.tickT += b.tick;
+  if (b.prop && rt.hitProp) {
+    rt.hitProp(b, b.prop, 1, HIT_TICK);
+    if (!b.active) return;
+  }
   const list = rt.cands;
   const pts = b.pts;
   for (let i = 0; i < list.length; i++) {

@@ -13,6 +13,7 @@ import { TILE } from '../core/constants.js';
 import { factionRelation } from '../entities/entity.js';
 import { T as TILE_IDS } from '../world/tiles.js';
 import { wallAt as wallAtPoint, wallBetween } from '../world/walls.js';
+import { propAt as propAtPoint, propsInCircle, strikeProp } from '../world/breakables.js';
 
 // The Weave runtime: game.magic (DESIGN §22.2).
 //
@@ -469,6 +470,79 @@ export class Magic {
   // Walls (DESIGN §31.1): the tiles projectiles stop at, and closed doors.
   wallAt(x, y) {
     return wallAtPoint(this.game, x, y);
+  }
+
+  // ================================================================ props (DESIGN §31.3)
+  // The player's weaves land on the world's props as well as its people: missiles and rays
+  // stop at the first prop they meet; bursts, rings, cones, the fist and the wave reach
+  // every prop in them (never through a wall). Damage builds up: small blows chip, a strike
+  // or a heavy blow breaks. Everyone else's weaves pass over props as they always did.
+  _breaks(b) {
+    const o = b?.owner;
+    return !!o && (o === this.game.player || o.id === 'player') && !!this.game.objects;
+  }
+
+  propAt(b, x, y) {
+    return this._breaks(b) ? propAtPoint(this.game, x, y) : null;
+  }
+
+  hitProp(b, o, mul = 1, flags = HIT) {
+    let dx;
+    let dy;
+    if (b.kind === 'projectile' && (b.vx || b.vy)) {
+      const l = Math.hypot(b.vx, b.vy);
+      dx = b.vx / l;
+      dy = b.vy / l;
+    } else if (b.kind === 'beam' || b.kind === 'strike') {
+      dx = Math.cos(b.angle);
+      dy = Math.sin(b.angle);
+    } else {
+      dx = o.x - b.x;
+      dy = o.y - 8 - b.y;
+      const l = Math.hypot(dx, dy) || 1;
+      dx /= l;
+      dy /= l;
+    }
+    let ok = false;
+    try {
+      ok = strikeProp(this.game, o, {
+        source: b.owner,
+        amount: b.dmg * mul,
+        heavy: !!flags.heavy,
+        punch: (flags.knock || 0) >= 2,
+        charge: flags.tick ? 0 : b.charge || 0,
+        tick: !!flags.tick || !!flags.pool,
+        dirX: dx,
+        dirY: dy,
+        pal: b.plan?.palette || null,
+        pooled: this,
+      });
+    } catch (err) {
+      this.warn('props', err);
+    }
+    if (ok) {
+      // The weave's own flourish and sound where it struck (a stand-in for a body).
+      const t = this._propProxy || (this._propProxy = { type: 'prop', x: 0, y: 0, z: 0, hp: 1, maxHp: 1, dead: false, removed: false, radius: 6, prop: null });
+      t.x = o.x;
+      t.y = o.y - 6;
+      t.prop = o;
+      this.fx('hit', { body: b, target: t, x: t.x, y: t.y, amount: 0, tick: !!flags.tick, prop: o });
+    }
+    return ok;
+  }
+
+  hitProps(b, x, y, r, mul = 1, flags = HIT, again = 0, cone = null) {
+    if (!this._breaks(b)) return 0;
+    const list = propsInCircle(this.game, x, y, r, cone).slice();
+    let n = 0;
+    for (let i = 0; i < list.length && b.active; i++) {
+      const o = list[i];
+      const last = b.hits.get(o);
+      if (last !== undefined && (again <= 0 || b.age - last < again)) continue;
+      b.hits.set(o, b.age);
+      if (this.hitProp(b, o, mul, flags)) n++;
+    }
+    return n;
   }
 
   // Is a wall between two points? Every body's blow asks this before it lands, so a

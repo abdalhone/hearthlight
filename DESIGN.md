@@ -1890,3 +1890,39 @@ it: statuses hold `lockTime` and stop `moveIntent` each step, and break a held w
   and are pinned half as hard. The player keeps the short hurt pose they always had; without the
   Weave (tests of combat alone) everyone does.
 - `stack: 'keep'` and `quiet` (no flourish, no `status_applied`) are new status fields.
+
+### 31.3 Strike and heavy spells break things (`src/world/breakables.js`, `src/world/broken.js`)
+The player's blows land on the world's props as well as its people (everyone else's pass over
+props as before). Missiles and rays stop at the first intact prop they meet; bursts, rings,
+cones, the strike's fist and wave reach every prop in them (never through a wall); the sword's
+arc reaches the props in front of it.
+- **Damage builds up** on a prop (`o._dmg`, not saved): a blow counts its damage, x4 for a
+  strike's fist, x3.5 for a heavy blow (a bomb, a rune, a heavy missile), up to x2 more when
+  charged; a sword blow counts half and never fells a tree or cracks a rock (the work swing is
+  the axe and the pick). Small blows chip: the prop jolts a pixel, chips of its material fly, a
+  knock. Toughness (`BREAKABLE`): tree 56 (one Strike, a bomb, ~6 bolts, ~2.5 s of beam), rock
+  48, cart 40, woodpile 24, sign 20, fence 18, barrel 16, crate 14, bush 10, hay 10, sack 8,
+  berry bush 8, pot 6.
+- **Trees** fall away from the blow (`Tree.fell(dir, onLand)`, drawn turning about its foot
+  for `FALL_SECONDS`), leave their stump, and when they land a dust cloud and their logs (the
+  2–3 wood a chop gives) lie along the trunk to pick up. They grow back in a day, as a chopped
+  tree does. **Rocks** crack to rubble and give their stones; **berry bushes** are torn and
+  give their berries; both come back as they always did.
+- **Other props** (fences, barrels, crates, carts, signs, woodpiles, pots, sacks, hay, bushes)
+  burst into debris (`state.broken`: drawn as planks, shards, cloth or straw in the prop's own
+  colors; not solid, not interactable, no baked shadow), a pixelfx dust cloud in the material's
+  colors (`playDust`), chips, sometimes a little wood. A broken fence's neighbours lose the rail
+  to it. Mended two days on (`MEND`; bushes grow back in one) unless someone stands there.
+- **Never**: buildings (tiles), doors, windows, beds, chests, lamps, hearths, wells, anything you
+  can look at for its story (a decor with text), the notice board and signs hung on buildings.
+- Saved: `state.broken`/`mendAt` and the trees' and rocks' own `depleted`/`regrowAt` ride on each
+  object's state; a load redraws the fence rails. Bus: `prop_broken {object, by, kind}`,
+  `object_mended {object}`.
+
+### 31.4 Training dummies (`breakables.js` `trainOn`)
+The dummy by the guardhouse takes the sword and every weave: each blow shows its number (crits
+too, a beam's ticks pooled), a hit spark in the blow's colors, and the dummy rocks on its post.
+Each blow that lands teaches `TRAIN_XP` (1; a tick a quarter), shown as a rising "+N xp", up to
+`TRAIN_DAY` (40) a day per dummy; then it says it has taught all it can today. It never breaks.
+With nothing alive to fight, the sword turns toward a dummy or prop just in front
+(`Player._findProp`). Bus: `dummy_hit {object, by, amount, crit}`.

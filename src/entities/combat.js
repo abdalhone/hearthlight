@@ -5,6 +5,7 @@ import { Projectile } from './projectiles.js';
 import { dropItem, updatePickupToasts } from './pickups.js';
 import { playHit, playPoof, playHeal, playLevelUp } from '../render/pixel_fx_play.js';
 import { canReach } from '../world/walls.js';
+import { swingAtProps } from '../world/breakables.js';
 
 // Combat rules for every actor: melee arcs, projectiles, damage, healing, death,
 // knock-outs, crimes, items that heal, experience. Contract in DESIGN.md ("Combat", §16.7).
@@ -353,6 +354,15 @@ export class Combat {
       if (dealt > 0) hits++;
     }
     this.lastMeleeHits = hits;
+    // The player's blade also lands on what stands in the arc: the training dummy, a
+    // barrel, a fence (DESIGN §31.3–31.4).
+    if (this.isPlayer(attacker)) {
+      try {
+        this.lastPropHits = swingAtProps(g, attacker, { fx, fy, minCos, range, power, heavy: !!opts.heavy });
+      } catch (err) {
+        this._warn('props', err);
+      }
+    }
     return true;
   }
 

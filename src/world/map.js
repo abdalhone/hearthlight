@@ -264,7 +264,7 @@ export class TileMap {
     const span = CHUNK * TILE;
     const out = [];
     objs._eachInRect(cx * span - 32, cy * span - 16, (cx + 1) * span + 32, (cy + 1) * span + 32, (o) => {
-      if (o.removed || !o.shadow) return;
+      if (o.removed || !o.shadow || o.state?.broken) return;
       let s = o.shadow;
       if (o.state?.depleted) {
         if (o.objType === 'tree') s = { dx: 1, dy: -1, rx: 6, ry: 2 };
