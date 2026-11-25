@@ -239,6 +239,19 @@ export const STORY = {
     { id: 'p_weavers_row', locationId: 'weavers_row', title: "Weavers' Row", text: "A short lane south of the square, where Nan Pike's loom clacks and Wys's three sisters argue.", tags: ['lane', 'pike', 'wys'], knownBy: ALL },
     { id: 'p_net_shed', locationId: 'net_shed', title: "Corran's net-shed", text: 'At the landward end of his dock on Mirror Lake. Corran sleeps here; he cannot sleep in the ferry-house with the empty slip below it.', tags: ['home', 'corran', 'lake'], knownBy: ALL },
     { id: 'p_wenna_hives', locationId: 'wenna_hives', title: "Wenna's hives", text: "Among the lindens at Whisperwood's near edge, inside the ward. Wenna finds them by their sound and sings the old songs to them. Lindenflower honey keeps for a hundred years.", tags: ['bees', 'wenna', 'honey', 'forest'], knownBy: ALL },
+    // Round fourteen (DESIGN §32): the wider world, on foot.
+    { id: 'p_dead_waystone', locationId: 'dead_waystone', title: 'The dead waystone', text: "A mile down the King's Road west. Its lamp niche is cold; the soot on its lip is from the one night last spring that Lyra made it burn, to see if she could. It went out at dawn.", tags: ['waystone', 'road', 'lyra'], knownBy: ALL },
+    { id: 'p_long_mile', locationId: 'long_mile', title: 'The Long Mile waystone', text: "Halfway across the western heath, a waystone that still burns. Its light throws a small ward over the road: carters sleep under it and nowhere else, and the turned beasts keep out of it.", tags: ['waystone', 'road', 'safe'], knownBy: ALL },
+    { id: 'p_west_fork', locationId: 'west_fork', title: 'The west fork', text: "Where the King's Road bends south-west for Saltmere, twelve days off, and the old Brindle lane goes on north-west to the dead village.", tags: ['road', 'fork'], knownBy: ALL },
+    { id: 'p_greyford', locationId: 'greyford', title: 'The Greyford', text: "The crossing of the river Grey on the Saltmere road. The spring floods took the bridge; the road goes on beyond it and nobody from the vale can follow it this year.", tags: ['river', 'road', 'saltmere'], knownBy: ALL },
+    { id: 'p_brindlecombe', locationId: 'brindlecombe', title: 'Brindlecombe', text: "The dead village west of the fork. Its houses stand with their doors open, the grey has never quite lifted from its lanes, and its wardstone is cold. Someone has been leaving candles at its foot.", tags: ['village', 'greywinter', 'dead'], knownBy: ALL },
+    { id: 'p_deep_whisperwood', locationId: 'deep_whisperwood', title: 'The deep Whisperwood', text: "Past the heart of Whisperwood the old Crown path climbs north through close, uncoppiced wood toward the Hollowcrown. Wolves hunt it after dusk.", tags: ['forest', 'wolves', 'crown_path'], knownBy: ALL },
+    { id: 'p_treeline_camp', locationId: 'treeline_camp', title: 'The treeline camp', text: "Where the trees give out under the Hollowcrown, by a cold tarn: Hess's fire ring and lean-to. Lyra and Hess camped here the night before they reached the Crown Ring and found the stranger.", tags: ['camp', 'hess', 'lyra', 'stranger'], knownBy: ALL },
+    { id: 'p_hollowcrown', locationId: 'hollowcrown', title: 'The Hollowcrown', text: "The nearest and highest peak of the Crownfells. The Crown path switchbacks up its scree above the trees into snow that never melts.", tags: ['mountain', 'snow'], knownBy: ALL },
+    { id: 'p_crown_ring', locationId: 'crown_ring', title: 'The Crown Ring', text: "Nine broken standing stones on the Hollowcrown's shoulder, deep in snow at midsummer, carved with worn Lanternwright script. In the middle a circle stays green where the snow once melted round a sleeping stranger.", tags: ['ring', 'stones', 'stranger', 'lanternwright'], knownBy: ALL },
+    { id: 'p_cinderwick_fork', locationId: 'cinderwick_fork', title: 'The Cinderwick fork', text: "Round the far shore of Mirror Lake the King's Road meets the oil track to Cinderwick. Its waystone burns red in Cinderwick oil; carters camp under it. The bandits watch it from the hill.", tags: ['road', 'fork', 'waystone', 'cinderwick'], knownBy: ALL },
+    { id: 'p_bandit_lookout', locationId: 'bandit_lookout', title: "The bandits' lookout", text: "A stake fence, a brazier and a red banner on the hill above the fork, where Varek's men watch both roads.", tags: ['bandits', 'danger'], knownBy: ALL },
+    { id: 'p_owlsend_track', locationId: 'owlsend_track', title: 'The Owlsend track', text: "North from the fork, three days to Owlsend under the mountains. The snow brought pines down across it at midsummer, and nobody has come down it since.", tags: ['road', 'owlsend'], knownBy: ALL },
   ],
 
   people: [
@@ -670,6 +683,11 @@ export const BOOK_CHAPTERS = [
       ...keys('world', ['hearthvale_founding', 'the_ambrels', 'hearth_faith', 'flame_count', 'hearthmoot', 'moot_laws', 'looks_after_its_own', 'hearthwatch', 'threshold_night', 'festivals', 'sheaf_moot', 'lamplighters_star', 'sayings', 'oil_trouble']),
       ...keys('timeline', ['hearthvale_founded', 'ruins_locked', 'road_candle']),
     ],
+  },
+  {
+    id: 'roads_beyond', title: 'The Roads Beyond', unlock: 'seen',
+    blurb: 'West to the dead village, north to the ring, east to the fork: the country past the hem, as you walk it.',
+    entries: keys('place', ['p_dead_waystone', 'p_long_mile', 'p_west_fork', 'p_greyford', 'p_brindlecombe', 'p_deep_whisperwood', 'p_treeline_camp', 'p_hollowcrown', 'p_crown_ring', 'p_cinderwick_fork', 'p_bandit_lookout', 'p_owlsend_track']),
   },
   {
     id: 'places', title: 'Places', unlock: 'seen',

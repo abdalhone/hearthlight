@@ -1,3 +1,5 @@
+import { WILDS_INFO } from './wilds_content.js';
+
 // Written content for the world of Hearthvale: place descriptions, sign texts and the
 // little lines objects say when you use them. Kept apart from worldgen so the layout
 // code stays readable.
@@ -235,6 +237,9 @@ export const LOCATION_INFO = {
     description: 'Hedgerows, lone oaks and long grass between the places that have names.',
   },
 };
+
+// The wider world's places (DESIGN §32) are places like any other.
+Object.assign(LOCATION_INFO, WILDS_INFO);
 
 export const NOTICE_BOARD = {
   title: 'Notice Board',
