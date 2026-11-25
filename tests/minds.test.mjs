@@ -637,14 +637,65 @@ test('A6: a killing seen travels only by meeting: the watch learns when the witn
   assert.deepEqual(r.heardBy.filter((x) => x !== 'bram').sort(), ['elda'], 'only the one who saw it knows');
   assert.notEqual(g.player.crime?.kind, 'murder');
   assert.ok(elda.fleeTo, 'Elda runs for the watch');
-  for (let i = 0; i < 40; i++) stepVillage(g, 0.5);
+  // Someone else's cry for help on the way does not turn her aside.
+  const sq2 = { x: elda.x + 30, y: elda.y + 10 };
+  elda.onCallForHelp({ victimEntity: mira, attackerEntity: g.player, x: sq2.x, y: sq2.y, severity: 2 });
+  assert.equal(elda.mode, 'flee', 'still running for the watch');
+  assert.ok(elda.fleeTo, 'still running to them');
+  for (let i = 0; i < 6; i++) stepVillage(g, 0.5);
   assert.ok(!r.heardBy.includes('mira'), 'Mira, far off, has heard nothing');
-  // Elda reaches Wys (we bring them together; her run takes her there in time).
-  put(elda, wys.x + 20, wys.y);
-  for (let i = 0; i < 60 && !rec.alarm?.raised; i++) stepVillage(g, 0.5);
+  assert.notEqual(g.player.crime?.kind, 'murder', 'on her way: the watch does not know yet');
+  // Her own feet take her to Wys at the guardhouse, and she tells him.
+  let ran = 0;
+  for (let i = 0; i < 400 && !rec.alarm?.raised; i++) {
+    stepVillage(g, 0.5);
+    ran++;
+  }
   assert.equal(rec.alarm.raised, true, 'she told the watch');
   assert.equal(rec.alarm.by, 'wys');
   assert.equal(g.player.crime?.kind, 'murder', 'now the stranger is wanted');
+});
+
+test('A6: until the witness reaches the watch, nobody knows who did it: a body found is a mystery, and the shops still trade', () => {
+  const g = makeVillage({ hour: 12 });
+  quietAll(g, ['bram', 'elda', 'wys', 'garrick', 'tilly']);
+  const sq = g.locations.get('town_square').center;
+  const bram = g.entities.get('bram');
+  const elda = g.entities.get('elda');
+  const wys = g.entities.get('wys');
+  const tilly = g.entities.get('tilly');
+  const garrick = g.entities.get('garrick');
+  for (const e of [bram, wys, tilly, garrick]) e.think = () => {};
+  put(bram, sq.x, sq.y);
+  put(g.player, sq.x - 14, sq.y);
+  put(elda, sq.x + 50, sq.y - 10);
+  put(tilly, tpx(20), tpx(20));
+  const gh = g.locations.get('guardhouse').center;
+  put(wys, gh.x, gh.y);
+  downBy(g, bram);
+  const rec = g.murder.kill(bram, g.player);
+  assert.ok(rec.seen.some((s) => s.id === 'elda'));
+  // The witness does not stop to "find" the body: she is carrying the news.
+  g.murder.bodySeen('elda', 'bram', rec.place);
+  assert.equal(rec.foundAt, null, 'a witness is not a finder');
+  // Tilly comes upon the body: it is found, and the watch asks questions, but nobody has
+  // told them who did it yet.
+  put(tilly, bram.x + 30, bram.y + 10);
+  g.murder.bodySeen('tilly', 'bram', rec.place);
+  assert.ok(rec.foundAt != null, 'the body is found');
+  const c = g.murder.cases.bram;
+  assert.ok(c, 'a case is open');
+  assert.ok(!c.evidence.some((e) => e.kind === 'witness_clear'), `no witness's word yet: ${JSON.stringify(c.evidence.map((e) => e.kind))}`);
+  assert.notEqual(c.level, 'certain');
+  assert.equal(g.murder.refusesTrade(garrick), false, 'Garrick has heard nothing: he still trades');
+  assert.notEqual(g.player.crime?.kind, 'murder');
+  // Elda reaches Wys and tells him: now the watch is certain, and the village turns.
+  put(elda, wys.x + 20, wys.y);
+  for (let i = 0; i < 60 && !rec.alarm?.raised; i++) stepVillage(g, 0.5);
+  assert.equal(rec.alarm.by, 'wys');
+  assert.ok(g.murder.cases.bram.evidence.some((e) => e.kind === 'witness_clear' && e.by === 'elda'), 'her word is evidence now');
+  assert.equal(g.murder.cases.bram.level, 'certain');
+  assert.equal(g.murder.refusesTrade(garrick), true, 'the bell has rung: no shop sells to a known killer');
 });
 
 // ------------------------------------------------------------------ A7: witnesses are people

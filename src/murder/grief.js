@@ -644,7 +644,8 @@ export function toneFor(m, npc) {
 
 export function refusesTrade(m, npc) {
   for (const rec of Object.values(m.dead)) {
-    const guilty = rec.known === 'witnessed' || m.cases[rec.id]?.verdict === 'guilty';
+    // Only once they know (they saw it, were told, or heard the bell): §29.2.
+    const guilty = (typeof m.knowsKiller === 'function' ? m.knowsKiller(rec, npc.id) : rec.known === 'witnessed') || m.cases[rec.id]?.verdict === 'guilty';
     if (guilty) return true;
     const c = m.cases[rec.id];
     if (c && c.suspicion >= 0.6 && (kin(npc.id, rec.id) || care(m, npc.id, rec.id) >= 0.6)) return true;

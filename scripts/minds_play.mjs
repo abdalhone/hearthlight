@@ -10,8 +10,10 @@
 //   elda     "please go to Lyra and tell her I'm sorry": Elda really goes, and Lyra hears it
 //   gift     "can I have a honey cake": it changes hands
 //   teach    "teach me magic" to Bram: the lesson starts (or he says when)
-//   witness  a killing in front of Elda: she runs screaming for the watch, and will not talk
-//   hate     Lyra afraid of you: a steady distance, no moving in place
+//   hate     Lyra afraid of you: the player walks at her; she keeps away, no moving in place
+//   wall     a killing on the far side of a house: nobody inside sees it
+//   witness  a killing in front of Elda, far from the watch: she runs screaming for the
+//            watch, will not talk, and the watch knows only when she reaches them
 //
 //   node scripts/minds_play.mjs [--out DIR] [--size 844x390|390x844|1280x720]
 // Build first (npm run build). Exit 1 on a failed check or a page error.
@@ -29,6 +31,7 @@ const arg = (name, dflt) => {
 };
 const OUT = arg('--out', 'screenshots/minds');
 const ONLY = arg('--size', '');
+const DEBUG = argv.includes('--debug');
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 const SIZES = [
   { tag: '844x390', viewport: { width: 844, height: 390 }, touch: true },
@@ -294,80 +297,54 @@ async function play(size) {
   check(lesson === 'active', `${tag}: Bram's lesson (iron) has begun (${lesson})`);
   await closeChat();
 
-  // ------------------------------------------------------------------ witness
-  await page.evaluate(() => {
-    const g = window.__game;
-    g.flags.finisherWarned = true;
-    const sq = g.locations.get('town_square').center;
-    const v = g.entities.get('tobias');
-    const e = g.entities.get('elda');
-    for (const x of [v, e]) {
-      x.walker?.stop?.();
-      if (x.r) x.r.key = null;
-    }
-    v.x = sq.x;
-    v.y = sq.y;
-    g.player.x = sq.x - 14;
-    g.player.y = sq.y;
-    e.x = sq.x + 50;
-    e.y = sq.y - 8;
-    v.hp = 1;
-    g.combat.damage(g.player, v, 999, { exact: true, crit: false });
-    g.murder.kill(v, g.player);
-  });
-  await wait(700);
-  await shot('09-witness-screams');
-  const fear = await page.evaluate(() => {
-    const g = window.__game;
-    const e = g.entities.get('elda');
-    return { fear: g.murder.fearOf(e), mode: e.mode, to: !!e.fleeTo, wanted: g.player.crime?.kind || null };
-  });
-  check(fear.fear === 'terror' && fear.mode === 'flee', `${tag}: Elda is terrified and running (${JSON.stringify(fear)})`);
-  check(fear.wanted !== 'murder' || fear.to === false, `${tag}: the watch does not know until someone reaches them`);
-  // Talk to her: she backs away; the chat closes on her.
-  await page.evaluate(() => {
-    const g = window.__game;
-    const e = g.entities.get('elda');
-    g.player.x = e.x - 22;
-    g.player.y = e.y;
-    g.ui.chat.open(false);
-  });
-  await wait(300);
-  await page.evaluate(() => window.__game.ui.chat.selectTarget('elda', { from: 'chip' }));
-  await wait(500);
-  await shot('10-witness-wont-talk');
-  const refused = await page.evaluate(() => {
-    const c = window.__game.ui.chat;
-    return { away: c.away, disabled: c.field.disabled, placeholder: c.field.placeholder };
-  });
-  check(refused.away === 'refuses' && refused.disabled, `${tag}: she will not talk (${JSON.stringify(refused)})`);
-  await closeChat();
-
   // ------------------------------------------------------------------ hate
-  const hate = await page.evaluate(async () => {
+  // She has left them, afraid. The village is calm (nobody killed yet). The player stands
+  // where her day takes her, then walks at her ("If I go to her, she goes away"): she keeps
+  // her distance and goes about her day, without stepping back and forth in place.
+  const hate = await page.evaluate(() => {
     const g = window.__game;
     const L = g.companion;
     const a = L.mind.autonomy;
     a.adjustPlayer({ trust: -40, fear: 70, affinity: -60 }, 'play');
-    if (a.companionship !== 'gone') a.setCompanionship('left', 'You frighten me.', { cause: 'fear_left' });
-    const blk = a.currentBlock();
-    const loc = g.locations.get(blk?.at || 'town_square') || g.locations.get('town_square');
-    g.player.x = loc.center.x;
-    g.player.y = loc.center.y + 8;
-    L.x = loc.center.x + 180;
-    L.y = loc.center.y;
+    if (a.companionship !== 'left' && a.companionship !== 'gone') a.setCompanionship('left', 'You frighten me.', { cause: 'fear_left' });
+    const sq = g.locations.get('town_square').center;
+    g.player.x = sq.x;
+    g.player.y = sq.y + 8;
+    L.x = sq.x + 90;
+    L.y = sq.y;
     L.behavior?.steering?.reset?.();
     return { state: a.companionship };
   });
+  await quiet();
+  const sample = () =>
+    page.evaluate(() => {
+      const g = window.__game;
+      const L = g.companion;
+      const d = L.behavior.directive;
+      return { x: L.x, y: L.y, d: Math.hypot(L.x - g.player.x, L.y - g.player.y), dir: d.type, follow: d.type === 'follow' && d.target === 'player' };
+    });
   let prev = null;
   let lastV = null;
   let reversals = 0;
   let minD = Infinity;
-  for (let i = 0; i < 60; i++) {
-    const s = await page.evaluate(() => {
-      const g = window.__game;
-      return { x: g.companion.x, y: g.companion.y, d: Math.hypot(g.companion.x - g.player.x, g.companion.y - g.player.y) };
-    });
+  let followed = false;
+  const dirs = new Set();
+  for (let i = 0; i < 72; i++) {
+    // The first half: the player walks at her, at walking pace. The second: stands still.
+    if (i < 36)
+      await page.evaluate(() => {
+        const g = window.__game;
+        const L = g.companion;
+        const p = g.player;
+        const dx = L.x - p.x;
+        const dy = L.y - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 20) {
+          p.x += (dx / d) * 18;
+          p.y += (dy / d) * 18;
+        }
+      });
+    const s = await sample();
     if (prev) {
       const vx = s.x - prev.x;
       const vy = s.y - prev.y;
@@ -377,13 +354,143 @@ async function play(size) {
         lastV = { x: vx, y: vy };
       }
     }
-    minD = Math.min(minD, s.d);
+    if (i > 8) minD = Math.min(minD, s.d);
+    if (s.follow) followed = true;
+    dirs.add(s.dir);
     prev = s;
-    if (i === 30) await shot('11-hate-distance');
+    if (i === 30) await shot('09-hate-walk-at-her');
+    if (i === 70) await shot('10-hate-her-day');
     await wait(250);
   }
-  check(reversals <= 3, `${tag}: afraid of you, she keeps her distance without moving in place (${reversals} reversals, closest ${Math.round(minD)} px, ${hate.state})`);
-  log.push({ tag, scene: 'hate', reversals, minD: Math.round(minD) });
+  check(reversals <= 3 && !followed, `${tag}: afraid of you, she keeps away without moving in place (${reversals} reversals, closest ${Math.round(minD)} px, ${hate.state}, ${[...dirs].join('/')})`);
+  log.push({ tag, scene: 'hate', reversals, minD: Math.round(minD), dirs: [...dirs] });
+
+  // ------------------------------------------------------------------ a killing behind a house
+  // Elda in the Ember Kettle; Corran killed outside, the far side of its wall. Nobody sees.
+  const wall = await page.evaluate(() => {
+    const g = window.__game;
+    g.flags.finisherWarned = true;
+    const b = g.locations.get('ember_kettle').bounds;
+    const T = 16;
+    const e = g.entities.get('elda');
+    const v = g.entities.get('corran');
+    for (const x of [v, e]) {
+      x.walker?.stop?.();
+      if (x.r) x.r.key = null;
+      x.think = () => {};
+    }
+    const cy = (b.y + b.h / 2) * T;
+    e.x = (b.x + 2.5) * T;
+    e.y = cy;
+    v.x = (b.x - 1.5) * T;
+    v.y = cy;
+    g.player.x = v.x - 14;
+    g.player.y = v.y;
+    v.hp = 1;
+    g.combat.damage(g.player, v, 999, { exact: true, crit: false });
+    const rec = g.murder.kill(v, g.player);
+    return { seen: (rec?.seen || []).map((s) => s.id), fear: g.murder.fearOf(e), d: Math.round(Math.hypot(e.x - v.x, e.y - v.y)), wanted: !!g.murder.wanted };
+  });
+  await wait(600);
+  await shot('11-kill-behind-wall');
+  check(!wall.seen.includes('elda') && !wall.fear && !wall.wanted, `${tag}: Elda, ${wall.d} px away behind the Kettle's wall, saw nothing (${JSON.stringify(wall)})`);
+  await page.evaluate(() => {
+    const e = window.__game.entities.get('elda');
+    delete e.think;
+  });
+
+  // ------------------------------------------------------------------ a killing in front of Elda
+  // In the open, far from the watch: she sees it, she is terrified, she runs for the watch
+  // screaming, and will not talk. The watch knows only when she reaches them.
+  const open = await page.evaluate(() => {
+    const g = window.__game;
+    const at = g.locations.get('south_meadow')?.center || g.locations.get('town_square').center;
+    const v = g.entities.get('tobias');
+    const e = g.entities.get('elda');
+    for (const x of [v, e]) {
+      x.walker?.stop?.();
+      if (x.r) x.r.key = null;
+    }
+    v.think = () => {};
+    v.x = at.x;
+    v.y = at.y;
+    g.player.x = at.x - 14;
+    g.player.y = at.y;
+    e.x = at.x + 50;
+    e.y = at.y - 8;
+    const watch = ['rowan', 'wys', 'hess'].map((id) => g.entities.get(id)).filter(Boolean);
+    const nearestWatch = Math.round(Math.min(...watch.map((w) => Math.hypot(w.x - at.x, w.y - at.y))));
+    v.hp = 1;
+    g.combat.damage(g.player, v, 999, { exact: true, crit: false });
+    const rec = g.murder.kill(v, g.player);
+    return { seen: (rec?.seen || []).map((s) => s.id), nearestWatch, wanted: !!g.murder.wanted };
+  });
+  await wait(500);
+  await shot('12-witness-screams');
+  const fear = await page.evaluate(() => {
+    const g = window.__game;
+    const e = g.entities.get('elda');
+    return { fear: g.murder.fearOf(e), mode: e.mode, runningTo: e.fleeHome === 'to' ? e.fleeTo?.entity?.id || 'guardhouse' : null, wanted: !!g.murder.wanted };
+  });
+  check(open.seen.includes('elda') && fear.fear === 'terror' && fear.mode === 'flee' && !!fear.runningTo, `${tag}: Elda saw it, and runs screaming for the watch (${JSON.stringify({ ...fear, seen: open.seen })})`);
+  check(!open.wanted && !fear.wanted, `${tag}: the watch (${open.nearestWatch} px off) does not know yet`);
+  // Go after her and tap her: she will not talk.
+  await page.evaluate(() => {
+    const g = window.__game;
+    const e = g.entities.get('elda');
+    g.player.x = e.x - 20;
+    g.player.y = e.y + 2;
+  });
+  await wait(150);
+  await tapPerson('elda');
+  await page.waitForFunction(() => window.__game.ui.chat.isOpen(), null, { timeout: 3000 }).catch(() => null);
+  await wait(400);
+  await shot('13-witness-wont-talk');
+  const refused = await page.evaluate(() => {
+    const c = window.__game.ui.chat;
+    return { open: c.isOpen(), target: c.target, away: c.away, disabled: c.field.disabled, placeholder: c.field.placeholder };
+  });
+  check(refused.target === 'elda' && refused.away === 'refuses' && refused.disabled, `${tag}: tapped, she will not talk (${JSON.stringify(refused)})`);
+  await closeChat();
+  // Let her run (the game runs, faster): the watch learns when she reaches them.
+  await page.evaluate(() => {
+    window.__game.timeScale = 3;
+  });
+  const tw = Date.now();
+  let alarm = null;
+  while (Date.now() - tw < 60000) {
+    if (DEBUG)
+      console.log(
+        JSON.stringify(
+          await page.evaluate(() => {
+            const g = window.__game;
+            const rec = g.murder.dead.tobias;
+            const e = g.entities.get('elda');
+            const r = rec?.rumor ? g.village.rumors.get(rec.rumor) : null;
+            const w = (id) => {
+              const x = g.entities.get(id);
+              return x ? [Math.round(x.x), Math.round(x.y), x.mode, x.state] : null;
+            };
+            return { t: Math.round(g.time), paused: g.paused || g.state, dlg: !!document.querySelector('.dialog:not([hidden]), .dlg:not([hidden])'), elda: [Math.round(e.x), Math.round(e.y), e.mode, e.fleeHome, e.fleeTo?.entity?.id, Math.round((e.fleeUntil ?? 0) - g.time)], hess: w('hess'), rowan: w('rowan'), wys: w('wys'), heard: r?.heardBy, found: rec?.foundAt, alarm: rec?.alarm };
+          }),
+        ),
+      );
+    alarm = await page.evaluate(() => {
+      const g = window.__game;
+      const rec = g.murder.dead.tobias;
+      const e = g.entities.get('elda');
+      return rec?.alarm?.raised ? { by: rec.alarm.by, wanted: !!g.murder.wanted, elda: Math.round(Math.min(...['rowan', 'wys', 'hess'].map((id) => g.entities.get(id)).filter(Boolean).map((w) => Math.hypot(w.x - e.x, w.y - e.y)))) } : null;
+    });
+    if (alarm) break;
+    await wait(400);
+  }
+  await page.evaluate(() => {
+    window.__game.timeScale = 1;
+  });
+  await wait(600);
+  await shot('14-the-watch-knows');
+  check(!!alarm && ['rowan', 'wys', 'hess'].includes(alarm.by) && alarm.wanted, `${tag}: she reached the watch and they know now (${JSON.stringify(alarm)})`);
+  log.push({ tag, scene: 'witness', open, alarm });
 
   for (const e of errors) failures.push(`${tag}: ${e}`);
   await ctx.close();

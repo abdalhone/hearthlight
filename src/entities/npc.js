@@ -1501,6 +1501,9 @@ export class NPC extends Actor {
     if (!victim || victim === this || who === this || victim.removed) return;
     if (!this.isAlive() || this.downed || this.mode === 'downed') return;
     if (this.mode === 'rescue' || this.mode === 'patient') return; // already carrying someone in (§27)
+    // A witness running for the watch with a killing to tell keeps running (DESIGN §29.3):
+    // another cry does not turn her aside before the watch has heard it from her.
+    if (!forced && this.mode === 'flee' && this.fleeHome === 'to' && this.terror && !this.isGuard) return;
     const attacker = who && who !== victim && !who.removed ? attackerOf(who) : null;
     const sev = Math.max(1, Math.min(3, Math.round(Number(p.severity) || 1)));
     const x = Number.isFinite(p.x) ? p.x : victim.x;

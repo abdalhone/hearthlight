@@ -209,10 +209,21 @@ export class Murder {
     return !!this.dead[id];
   }
 
-  // Dead, and the village knows it (a body was found, or someone saw it happen).
+  // Dead, and the village knows it (a body was found, or someone saw it happen and the
+  // alarm is up: a witness still running for the watch has told nobody yet, §29.2).
   knownDead(id) {
     const r = this.dead[id];
-    return !!r && (r.foundAt != null || r.known === 'witnessed');
+    return !!r && (r.foundAt != null || (r.known === 'witnessed' && (!r.alarm || r.alarm.raised)));
+  }
+
+  // Does this villager know who did it: they saw it, the news reached them face to face,
+  // or the bell has rung (§29.2)?
+  knowsKiller(rec, id) {
+    if (!rec || rec.known !== 'witnessed') return false;
+    if (!rec.alarm || rec.alarm.raised) return true;
+    if ((rec.seen || []).some((s) => s.id === id)) return true;
+    const r = rec.rumor ? safe(() => this.village?.rumors?.get?.(rec.rumor), null) : null;
+    return !!r && Array.isArray(r.heardBy) && r.heardBy.includes(id);
   }
 
   isVillager(e) {
@@ -630,6 +641,12 @@ export class Murder {
     if (!saw) this.event('alarm', `${this.name(by)} heard who killed ${this.name(rec.id)}, and raised the alarm.`, { who: by, about: rec.id });
     const finder = rec.seen.find((s) => s.id !== 'lyra')?.id || by;
     if (rec.foundAt == null) this.found(rec.id, finder, rec.place, { witnessed: true });
+    else if (this.cases[rec.id]) {
+      // The body was found first (a mystery); now the watch has the witness's word.
+      const c = this.cases[rec.id];
+      c.askAt = Math.min(c.askAt ?? Infinity, Math.round(this.now() + 0.2 * HOUR));
+      this.weigh(rec.id);
+    }
     if (!rec.turned) Grief.villageTurns(this, rec);
     if (!rec.lyraTold) rec.lyraHearsAt = this.now() + 20;
     const e = this.entity(by);
@@ -732,6 +749,8 @@ export class Murder {
     const rec = this.dead[deadId];
     if (!rec) return safe(() => this.life?.bodySeen?.(seer, deadId, place));
     if (rec.foundAt != null || seer === 'player' || rec.hidden || rec.state === 'carried') return;
+    // One who saw it done does not "find" the body: they carry the news to the watch (§29.2).
+    if ((rec.seen || []).some((s) => s.id === seer)) return;
     const g = this.game;
     const e = this.entity(seer);
     const v = this.entity(deadId);
@@ -929,7 +948,10 @@ export class Murder {
     if (!rec) return null;
     let c = this.cases[id];
     if (!c) {
-      c = this.cases[id] = { about: id, opened: Math.round(this.now()), day: this.day(), lead: this.investigator(id), suspicion: 0, level: 'none', evidence: [], state: 'open', questionedAt: null, askAt: Math.round(this.now() + (rec.known === 'witnessed' ? 0.2 : 1.2) * HOUR), verdict: null, outside: false };
+      // Quick when the watch knows who did it; a mystery's pace while the witness is still
+      // on their way to tell them (§29.2).
+      const known = rec.known === 'witnessed' && (!rec.alarm || rec.alarm.raised);
+      c = this.cases[id] = { about: id, opened: Math.round(this.now()), day: this.day(), lead: this.investigator(id), suspicion: 0, level: 'none', evidence: [], state: 'open', questionedAt: null, askAt: Math.round(this.now() + (known ? 0.2 : 1.2) * HOUR), verdict: null, outside: false };
       const loc = safe(() => this.game?.locations?.get?.(rec.foundPlace || rec.place), null);
       c.outside = !!loc && (loc.danger ?? 0) >= 2;
       this.emit('murder_case', { about: id, lead: c.lead });
