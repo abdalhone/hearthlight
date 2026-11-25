@@ -119,9 +119,14 @@ export class EmberRingView {
     const cy = H / 2;
     const dx = p.x - cx;
     const dy = p.y - cy;
-    const pad = 44;
+    // Clear of the HUD: the cards and the quest line at the top, the hotbar at the bottom.
+    const pad = 40;
+    const top = 74;
+    // (on a phone, above the thumbs: the stick and the buttons own the bottom corners)
+    const touch = !!g.ui?.isTouch;
+    const bottom = Math.max(46, touch ? Math.min(150, H * 0.28) : this.hotbarClear(H));
     const sx = dx ? (dx > 0 ? W - pad - cx : pad - cx) / dx : Infinity;
-    const sy = dy ? (dy > 0 ? H - pad - cy : pad - cy) / dy : Infinity;
+    const sy = dy ? (dy > 0 ? H - bottom - cy : top - cy) / dy : Infinity;
     const s = Math.min(Math.abs(sx), Math.abs(sy));
     const x = cx + dx * s;
     const y = cy + dy * s;
@@ -132,9 +137,22 @@ export class EmberRingView {
     const paces = Math.round(d / 16);
     setText(this.edgeLabel, `${label} · ${paces} ${paces === 1 ? 'pace' : 'paces'}`);
     // Keep the label inside the screen near the left and right edges.
-    this.edgeLabel.style.transform = `translate(${x < 90 ? '-10%' : x > W - 90 ? '-90%' : '-50%'}, ${y > H - 60 ? '-34px' : '14px'})`;
+    this.edgeLabel.style.transform = `translate(${x < 90 ? '-10%' : x > W - 90 ? '-90%' : '-50%'}, ${y > H - bottom - 20 ? '-34px' : '14px'})`;
     if (this.edge.hidden) this.edge.hidden = false;
     return true;
+  }
+
+  // How far up from the bottom the hotbar reaches (re-read now and then, not every frame).
+  hotbarClear(H) {
+    const now = performance.now();
+    if (now - (this._hbAt || 0) > 500) {
+      this._hbAt = now;
+      const hb = document.querySelector('.hotbar');
+      const r = hb && !hb.hidden && hb.offsetParent !== null ? hb.getBoundingClientRect() : null;
+      // (and the "E · Talk to…" prompt that sits just above it)
+      this._hb = r && r.height > 0 ? Math.max(0, H - r.top + 62) : 0;
+    }
+    return this._hb || 0;
   }
 }
 
