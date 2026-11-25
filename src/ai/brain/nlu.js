@@ -1006,9 +1006,25 @@ export const BUILTIN_INTENTS = [
     },
   },
   {
+    // "Did Elda tell you anything?": a message the player sent her by someone (DESIGN §23.2).
+    id: 'ask.did_tell', kind: 'question', confidence: 0.86,
+    patterns: [
+      /^(?:did|has|have) (?<who>[a-z]+) (?:tell|told|say|said|bring|brought|give|given|pass(?:ed)? on|pass(?:ed)? along|deliver(?:ed)?)(?: (?:to )?you)?(?: (?:anything|something|my message|the message|a message|my words|what i said|it|that|my apology|sorry))?(?: (?:to you|from me|for me))?$/,
+      /^(?:did|has|have) (?<who>[a-z]+) (?:talk(?:ed)? to|speak to|spoken to|come (?:to )?(?:see|find)|came to (?:see|find)|been to see|find|found|visit(?:ed)?) you(?: yet| today)?$/,
+      /^what did (?<who>[a-z]+) (?:tell you|say to you|say)$/,
+      /^did you (?:get|hear) my (?:message|apology|words)(?: from (?<who>[a-z]+))?$/,
+    ],
+    slots: (m, c, env) => {
+      const w = m.groups.who ? cleanRef(m.groups.who) : null;
+      if (w && /^(?:you|i|we|it)$/.test(w)) return null;
+      return { who: w ? whoRef(w, env || {}, w) : null };
+    },
+  },
+  {
     id: 'ask.where_is', kind: 'question', confidence: 0.84,
     patterns: [/^(?:where (?:is|are|can i find|do i find|would i find|could i find|might i find)|how do (?:i|we) get to|which way (?:is|to)|how far is|how far to|where does) (?<topic>.+?)(?: live| work| from here)?$/],
-    slots: (m) => ({ topic: cleanRef(m.groups.topic) }),
+    // "where is she?": whoever this message named before (the brain resolves the rest).
+    slots: (m, c, env) => ({ topic: whoRef(m.groups.topic, env || {}, cleanRef(m.groups.topic)) }),
   },
   {
     id: 'ask.what_is', kind: 'question', confidence: 0.8,
@@ -1216,8 +1232,13 @@ function canModify(id, prev) {
   return false;
 }
 
-function matchBuiltin(c, env, prev, { modifiersOnly = false } = {}) {
+// Questions about what someone brought her are hers to answer before any plugin reads the
+// name in them as "tell me about Elda" (DESIGN §23.2).
+const FIRST_BUILTINS = new Set(['ask.did_tell']);
+
+function matchBuiltin(c, env, prev, { modifiersOnly = false, only = null } = {}) {
   for (const intent of BUILTIN_INTENTS) {
+    if (only && !only.has(intent.id)) continue;
     if (intent.kind === 'modifier') {
       if (!canModify(intent.id, prev)) continue;
     } else if (modifiersOnly) continue;
@@ -1303,7 +1324,8 @@ export function parseMessage(text, env = {}) {
     }
     // A question about a word of the lore is answered from her knowledge first, before a
     // plugin reads "Mirror Lake" as a person or a place handler gives its plain description.
-    let intent = matchLoreQuestion(c, env);
+    let intent = matchBuiltin(c, env, null, { only: FIRST_BUILTINS });
+    if (!intent) intent = matchLoreQuestion(c, env);
     if (!intent) intent = matchPlugin(c, env);
     if (!intent) intent = matchBuiltin(c, env, null);
     const clause = { text: raw, norm, core, question, forMe, intent };

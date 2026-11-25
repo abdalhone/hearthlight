@@ -95,3 +95,46 @@ test('a blow nobody saw, told later by the one who took it, is news to Lyra far 
   assert.deepEqual(deeds(g), [], 'Lyra, far off, did not see it happen');
   back();
 });
+
+// "where is she?" in the chapel walk was answered "Corran's Net-Shed is east of here": the
+// pronoun went to the place finder, which found "she" inside "Net-Shed".
+test('"where is she?" means the person this talk is about, never a place with "she" in its name', async () => {
+  const back = quietConsole();
+  const { makeGame: makeSurvival, placeAt } = await import('./survival_world.mjs');
+  const g = makeSurvival({ hour: 10 });
+  const L = g.companion;
+  placeAt(g, L, g.player.x + 24, g.player.y);
+  // On her outing to Aveline (DESIGN §16.11): "she" is Aveline.
+  L.mind.autonomy.outings.current = { npc: 'aveline', at: 'chapel', phase: 'go', topic: 'Maren' };
+  const r1 = await g.brain.handlePlayerMessage('where is she?');
+  assert.doesNotMatch(r1.say, /Net-Shed|Shed/i, r1.say);
+  assert.match(r1.say, /Aveline/, r1.say);
+  // No outing: the last one named between them.
+  L.mind.autonomy.outings.current = null;
+  L.mind.conversation.push({ role: 'lyra', text: 'Bram gave me tea once.', t: g.time });
+  const r2 = await g.brain.handlePlayerMessage('where is he?');
+  assert.match(r2.say, /Bram/, r2.say);
+  // Nobody named at all: she asks who.
+  L.mind.conversation.length = 0;
+  const r3 = await g.brain.handlePlayerMessage('where is she?');
+  assert.match(r3.say, /Who do you mean/, r3.say);
+  back();
+});
+
+// "Go and talk to Lyra for me": Elda went, Lyra remembered the message, but asked "did Elda
+// tell you anything?" she gave her stock sketch of Elda instead.
+test('asked "did Elda tell you anything?", Lyra answers from the message she really got', async () => {
+  const back = quietConsole();
+  const { makeGame: makeSurvival, placeAt } = await import('./survival_world.mjs');
+  const g = makeSurvival({ hour: 11 });
+  const L = g.companion;
+  placeAt(g, L, g.player.x + 24, g.player.y);
+  const before = await g.brain.handlePlayerMessage('did Elda tell you anything?');
+  assert.match(before.say, /Elda hasn't said a word/, before.say);
+  L.mind.autonomy.hearMessage({ from: 'elda', fromName: 'Elda', text: "I'm sorry about earlier" });
+  for (const q of ['did Elda tell you anything?', 'has Elda been to see you?', 'did you get my message?']) {
+    const r = await g.brain.handlePlayerMessage(q);
+    assert.match(r.say, /Elda did[^]*sorry about earlier/, `${q} -> ${r.say}`);
+  }
+  back();
+});

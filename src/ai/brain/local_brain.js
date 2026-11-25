@@ -37,6 +37,9 @@ const JOB_VERBS = {
   guard: 'stand guard',
 };
 
+// A pronoun standing for someone (or something) named earlier in the talk.
+const PRONOUN_REF = /^(?:she|he|her|him|they|them|it|that|this|there)$/i;
+
 const JOB_NOUNS = { chop_wood: 'wood', gather_herbs: 'herbs', forage: 'forage', mine_ore: 'ore', fish: 'fish', farm: 'crops', cook: 'meals', collect_loot: 'loot' };
 
 export function jobLabel(job, amount) {
@@ -152,6 +155,26 @@ export class LocalBrain {
 
   get mind() {
     return this.game?.companion?.mind || null;
+  }
+
+  // The person "she" or "him" means in this talk: the one her outing is about (DESIGN
+  // §16.11), else the last villager named in the last few lines between them, or null.
+  personInContext() {
+    const m = this.mind;
+    const o = m?.autonomy?.outings?.current;
+    if (o?.npc && o.phase !== 'done') return o.npc;
+    const conv = m?.conversation || [];
+    for (let i = conv.length - 1; i >= Math.max(0, conv.length - 6); i--) {
+      const t = String(conv[i]?.text || '').toLowerCase();
+      let best = null;
+      for (const [id, v] of Object.entries(VILLAGERS)) {
+        const first = String(v.name || id).split(/\s+/)[0].toLowerCase();
+        const at = Math.max(t.lastIndexOf(id), first.length > 2 ? t.lastIndexOf(first) : -1);
+        if (at >= 0 && (!best || at > best.at)) best = { id, at };
+      }
+      if (best) return best.id;
+    }
+    return null;
   }
 
   now() {
@@ -707,7 +730,7 @@ const WILL_QUESTIONS = new Set(['ask.trust_me', 'ask.fear_me', 'ask.plan', 'ask.
 const APOLOGY_INTENTS = new Set(['social.apology', 'autonomy.apology']);
 
 // What still reaches her when she has left the player.
-const LEFT_HEARS = new Set(['ask.decline', 'social.apology', 'social.greet', 'social.farewell', 'social.insult', 'ask.why_left', 'ask.trust_me', 'ask.fear_me', 'ask.why_refused', 'counter.take', 'counter.decline']);
+const LEFT_HEARS = new Set(['ask.decline', 'social.apology', 'social.greet', 'social.farewell', 'social.insult', 'ask.why_left', 'ask.trust_me', 'ask.fear_me', 'ask.why_refused', 'counter.take', 'counter.decline', 'ask.did_tell']);
 
 // The memories an offline reply drew on, as "remembered" chips [{ id, label }] (DESIGN
 // §17.3): what she recalled while composing it (hits from her memory index) and what she
@@ -1100,10 +1123,42 @@ const HANDLERS = {
     return this.line('know_none', { topic });
   },
 
+  // "Did Elda tell you anything?" (DESIGN §23.2): what a messenger really brought her, from
+  // her memory; not yet, if the promise is still open; plainly no, if nobody came.
+  'ask.did_tell'(s) {
+    const g = this.game;
+    let ref = s.who;
+    if (ref && PRONOUN_REF.test(String(ref))) ref = this.personInContext();
+    const id = ref ? resolvePerson(g, ref) : null;
+    const nameOf = (x) => firstName(g.entities?.get?.(x)?.name || VILLAGERS[x]?.name || String(x));
+    const first = id && id !== 'player' ? nameOf(id) : null;
+    const mems = (this.mind?.memory?.all?.() || []).filter((m) => (m.tags || []).includes('message') && (!id || (m.about || []).includes(id)));
+    let last = null;
+    for (const m of mems) if (!last || (m.t ?? 0) >= (last.t ?? 0)) last = m;
+    if (last) {
+      const said = /“([^”]+)”/.exec(last.text)?.[1] || null;
+      const who = first || /^(\S+)/.exec(last.text)?.[1] || 'Someone';
+      const st = companionshipOf(g);
+      const after = st === 'gone' || st === 'left' ? "It doesn't change what happened." : st === 'wary' ? "I heard it. I'm still thinking about it." : 'Thank you for sending word.';
+      return said ? `${who} did. Came and found me and told me: “${said}”. ${after}` : `${who} did. Said you wanted a word with me. ${after}`;
+    }
+    const pending = id ? (g.village?.commitments?.open?.(id) || []).some((c) => c.kind === 'tell') : false;
+    if (pending) return `Not yet. ${first} hasn't found me.`;
+    if (first) return `No. ${first} hasn't said a word to me about you.`;
+    return "No one's brought me anything from you.";
+  },
+
   'ask.where_is'(s, clause, reply) {
     const g = this.game;
-    const topic = s.topic;
+    let topic = s.topic;
     if (!topic) return this.line('unknown_question');
+    // "Where is she?": the person this talk is about (her outing's, or the last one named),
+    // never a place whose name happens to hold the word ("Net-Shed").
+    if (PRONOUN_REF.test(String(topic).trim())) {
+      const who = this.personInContext();
+      if (!who) return /^(?:it|that|this|there)$/i.test(String(topic).trim()) ? 'Where is what?' : 'Who do you mean?';
+      topic = who;
+    }
     const me = g.companion || g.player;
     const id = resolvePerson(g, topic);
     const e = id ? g.entities?.get?.(id) : null;
