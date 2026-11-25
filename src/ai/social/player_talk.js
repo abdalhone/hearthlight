@@ -544,6 +544,11 @@ export function localReply(v, npc, text) {
   const home = !/\b(?:kill|hurt|burn)\b/i.test(text) && asksForHome(text) ? wayHomeLine(g, npc, id, v.day?.() || 0) : null;
   if (home) return { lines: [home], mood, delta: 0, intent: 'home', homeFact: homeFacts(g, npc).line, told: [], mentioned: [] };
 
+  // "What were you just saying?" (DESIGN §23.1): what they really said today, aloud or over
+  // their head, to the player or to anyone — the bubble and the chat are one memory.
+  const recall = recallSaid(g, npc, text, v);
+  if (recall) return { lines: [recall], mood, delta: 0, intent: 'recall', told: [], mentioned: [] };
+
   // Their day (DESIGN §28): "what's wrong?", "have you seen Garrick?", an answer to their
   // own question — from what they really know.
   let life = null;
@@ -697,8 +702,18 @@ export function localReply(v, npc, text) {
     lines.push(P(voice.short) || P(voice.yes));
   } else {
     intent = 'unknown';
-    // Something they have a line about, if any word in it touches one of their topics.
-    lines.push(P(voice.reply?.unknown) || P(voice.short));
+    // Something they have a line about, if any word in it touches one of their topics; never
+    // the same shrug twice in a day while they have another (DESIGN §23.1).
+    const recent = v.recentPlayerLines(id);
+    let l = null;
+    for (const pool of [voice.reply?.unknown, voice.short, voice.yes]) {
+      const c = Array.isArray(pool) ? P(pool) : null;
+      if (c && !recent.has(c)) {
+        l = c;
+        break;
+      }
+    }
+    lines.push(l || P(voice.reply?.unknown) || P(voice.short));
   }
   // Whatever they asked has had its turn: answered, or talked past.
   if (open && intent !== 'myname') effects.question = null;
@@ -848,6 +863,25 @@ function overlaps(a, b) {
   const wb = words(b);
   for (let i = 0; i + 2 < wb.length; i++) if (tri.has(`${wb[i]} ${wb[i + 1]} ${wb[i + 2]}`)) return true;
   return false;
+}
+
+// "What were you just saying?" / "what did you say to Pip?": the last line they said today
+// (to that person, if one is named), quoted back, or null when the question is something else.
+const RECALL_RE = /\b(?:what (?:were|was) you (?:just )?(?:saying|talking about|on about|telling \w+)|what did you (?:just )?(?:say|tell)|what was that you said|say that again|what did you say)\b/i;
+function recallSaid(g, npc, text, v = null) {
+  if (!RECALL_RE.test(String(text || ''))) return null;
+  const said = g?.saidToday;
+  const day = g?.clock?.day;
+  const lines = [...(said?.today?.(npc.id) || [])];
+  // Their answers in this talk count too (to the player), whichever route noted them.
+  for (const x of v?.talks?.[npc.id] || []) if (x.day == null || x.day === v.day?.() || x.day === day) for (const l of x.they || []) lines.push({ t: x.t ?? 0, text: l, to: 'player' });
+  lines.sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
+  const m = /\bto (\w+)\b/i.exec(String(text));
+  const to = m ? String(m[1]).toLowerCase() : null;
+  const pick = [...lines].reverse().find((l) => (!to || to === 'me' || String(l.to || '').toLowerCase() === to) && l.text);
+  if (!pick) return to && to !== 'me' ? `I haven't said a word to ${to.charAt(0).toUpperCase()}${to.slice(1)} today.` : 'Nothing worth repeating.';
+  const q = String(pick.text).trim();
+  return `I said, “${q}”`;
 }
 
 // A line from the pool that does not open on the same word as one already said

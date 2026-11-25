@@ -207,3 +207,27 @@ test('a witness in terror of the stranger never turns back to tend a new victim 
   assert.notEqual(elda.mode, 'help', `she keeps clear (${elda.mode} ${elda.help?.role || ''})`);
   back();
 });
+
+// Replayed by the chat: Elda shrugged "I couldn't say. Ask Petra." twice running while her
+// other shrug was unsaid, and asked "what were you just saying?" she could not say, though the
+// words had just popped over her head. The bubble and the chat are one memory (DESIGN §23.1).
+test('a villager quotes what she said today, bubble or chat, and does not shrug the same way twice', async () => {
+  const back = quietConsole();
+  const { makeGame: makeSurvival, placeAt } = await import('./survival_world.mjs');
+  const g = makeSurvival({ hour: 10 });
+  const elda = g.entities.get('elda');
+  placeAt(g, g.player, elda.x + 18, elda.y);
+  // Over her head, to Pip, before the player spoke to her.
+  g.saidToday.note('elda', 'Pip! Boots off the table!', { kind: 'say', to: 'pip', via: 'bubble' });
+  const r1 = await g.village.playerSays(elda, 'what were you just saying?');
+  assert.equal(r1.intent, 'recall');
+  assert.match(r1.lines[0], /Boots off the table/);
+  const r2 = await g.village.playerSays(elda, 'what did you say to Pip?');
+  assert.match(r2.lines[0], /Boots off the table/);
+  // Two questions she has no answer to: two different shrugs.
+  const a = await g.village.playerSays(elda, 'how is the baking going?');
+  const b = await g.village.playerSays(elda, 'what are you baking?');
+  assert.equal(a.intent, 'unknown');
+  assert.notEqual(a.lines.join(' '), b.lines.join(' '), `${a.lines} / ${b.lines}`);
+  back();
+});

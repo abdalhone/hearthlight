@@ -1774,7 +1774,14 @@ or the same question), `fresh`, `dropRepeats`, `promptLines`. Saved with the bra
   then the latest lines): "keep to it, build on it, never say the same thing or ask the same
   question twice". A Claude reply that repeats anyway loses that sentence.
 - **Local replies** dodge it: Lyra's speech banks and her will's lines pick another line;
-  villagers drop a repeated sentence and its short answer ("Have you eaten? You haven't.").
+  villagers drop a repeated sentence and its short answer ("Have you eaten? You haven't."),
+  and a shrug ("I couldn't say. Ask Petra.") is never given twice while another is unsaid.
+- **Asked about it** ("what were you just saying?", "what did you say to Pip?"), a villager
+  quotes the last thing they said today, over their head or in the chat (to that person, if
+  one is named), from this log (`player_talk.js` `recallSaid`); Lyra's Claude prompt has it.
+- **"Did Elda tell you anything?"** Lyra answers from the message she really got
+  (`ask.did_tell`, §23.2): who brought it and what it said, "not yet" while the promise is
+  open, a plain no when nobody came.
 
 ### 23.2 Promises become real actions (`src/ai/social/commitments.js`, `village.commitments`; the author: "she said okay, but she didn't actually go", "The AI said he would give me something but didn't")
 
