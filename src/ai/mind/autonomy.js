@@ -9,6 +9,8 @@ import { analyzeRequest, requestKey } from './autonomy_consent.js';
 import { buildPlan, blockAt, blockIndexAt, weighGoals, sleepSpot, questStageIndex, hourLabel, describeBlock, makeBlock } from './autonomy_agenda.js';
 import { RE, isApology, parseOffer, parsePromiseText, parseAskText } from './autonomy_words.js';
 import { weighWorth, WorthTracker, WORTH, worthLine, topCost } from './autonomy_worth.js';
+import { Outings } from './autonomy_outing.js';
+import { openAgenda, chooseNext, agendaText } from './autonomy_open.js';
 
 // Lyra's own will (DESIGN §16). She lives for herself: she keeps her own day, her own
 // coin and her own counsel; she watches what the player does (the ledger), decides
@@ -41,9 +43,12 @@ const HELP_GAP = 8; // seconds between calls for help, unless things get worse
 const ACCIDENT_GAP = 30; // stray clips within this count as one (a fight's worth)
 // What she shouts when she calls someone (LORE §7, "Lyra's people").
 const CALL_NAMES = { hobb: 'Da', wenna: 'Mam', sabeth: 'Beth', hess: 'Hess', wys: 'Wys', rowan: 'Rowan' };
+const CALL_NAMES_FAMILY = { hobb: 'Da', wenna: 'Mam' };
 // Who she would not call into a fight: children, and the frail.
 const NOT_INTO_A_FIGHT = new Set(['pip', 'tansy', 'petra', 'wenna']);
 const OBSERVED_DEEDS = new Set(['lied', 'kindness', 'stole']);
+// Orders that, once she has agreed to them, set an outing of hers aside for another day.
+const OUTING_STOPPERS = new Set(['follow', 'come_here', 'stay', 'wait', 'goto', 'start_job', 'guard', 'patrol', 'explore', 'sleep', 'talk_to', 'interact', 'give_item', 'leave_player']);
 
 // Why her state changed: what she tells the player, and what she remembers.
 const CAUSES = {
@@ -178,6 +183,8 @@ export class Autonomy {
     this._helpSev = 0;
     this._pendingShout = null;
     this._goneWordT = NEG_INF;
+    this.outings = new Outings(this); // her proposals, followed through (§16.11)
+    this.unfinished = []; // unfinished business: [{ kind, text, at, npc, topic, why, since }] (§16.12)
   }
 
   // ------------------------------------------------------------------ time and people
@@ -551,6 +558,10 @@ export class Autonomy {
         case 'weather':
           if (payload.type === 'rain') this.planDay('weather');
           return undefined;
+        case 'conversation':
+          return this.outings.onConversation(payload);
+        case 'companion_action':
+          return this._onCompanionAction(payload);
         case 'player_message':
           return this.hearPlayer(payload.text);
         case 'apology':
@@ -2271,7 +2282,20 @@ export class Autonomy {
       this.addPromise({ by: 'lyra', kind: 'free', params: {}, what: loc ? `go to ${loc.name} with you in the morning` : t.slice(0, 80), days: 1.2 });
       return { ok: true, message: this.line('ok_plan') };
     }
-    const b = this._blockFromText(t, h);
+    // An item of her open agenda, by its id ("a2"), as Claude names it.
+    const am = t.match(/^a(\d{1,2})\b/);
+    const item = am ? this.openAgenda().find((it) => it.id === `a${am[1]}`) : null;
+    if (item && item.kind === 'company') {
+      this.outings.drop('changed');
+      return this.companionship === 'apart' ? this.rejoin({ asked: false }) : { ok: true, message: '' };
+    }
+    if (item?.kind === 'unfinished' && item.block?.npc) {
+      this.outings.drop('changed');
+      this.outings.start({ at: item.block.at, npc: item.block.npc, topic: (this.unfinished.find((u) => u.npc === item.block.npc) || {}).topic || null, why: item.block.why, what: item.text, withPlayer: this.companionship === 'together' || this.companionship === 'wary', source: 'claude' });
+      return { ok: true, message: this.line('ok_plan') };
+    }
+    const b = item?.block ? { ...item.block, from: h, to: Math.max(h + 0.5, Math.min(item.block.to, h + 2)), chosen: item.kind } : this._blockFromText(t, h);
+    if (this.outings.active()) this.outings.drop('changed');
     this._insertBlock(b);
     if (by === 'player') this.lastAcceptedT = this.now();
     // Her own new plan takes her away from the player now, unless it is with them.
@@ -2334,6 +2358,188 @@ export class Autonomy {
     this._insertBlock(makeBlock(h, Math.max(h + 0.25, b.to), 'travel', null, 'You asked; my errands can wait.', { company: 'player' }));
   }
 
+  // ------------------------------------------------------------------ outings and the open agenda
+
+  // She has said aloud what she wants to do and asked the player along (the Maren arc's
+  // "Will you ask her? Or come with me when I do."): a yes makes it her outing.
+  offerOuting(text, { at = 'chapel', npc = 'aveline', topic = 'Maren', why = '' } = {}) {
+    if (this.outings.active()) return null;
+    const loc = this.game?.locations?.get?.(at);
+    const spec = { kind: 'visit', params: { at, npc, topic, lead: true, why: why || (npc ? `I need to ask ${this.npcName(npc)} about ${topic || 'it'}.` : '') }, what: `go with me to ${loc?.name || at}`, days: 1 };
+    this.makeRequest(text, { spec, say: false });
+    const brain = this.game?.brain;
+    if (brain) brain.pendingAsk = { text: String(text).slice(0, 200), t: brain.now?.() ?? 0, outing: true };
+    this.asked.lead = this.day();
+    return spec;
+  }
+
+  // Who is talking for her right now: Claude (in a chat it answers), or her own head.
+  _chatSource() {
+    const g = this.game;
+    try {
+      return g?.brain?.llmAvailable?.() ? 'claude' : 'self';
+    } catch {
+      return 'self';
+    }
+  }
+
+  // What she agreed to do for the player while an outing of hers was under way.
+  _onCompanionAction(p) {
+    if (!p || !this.outings?.active()) return;
+    const o = this.outings.current;
+    if (p.source !== 'player' || p.ok === false || p.refused) return;
+    if (!OUTING_STOPPERS.has(p.name)) return;
+    // "Let's go" while she leads the way: the player is coming along. She leads on.
+    if (p.name === 'follow' && o.phase === 'go') {
+      this.outings._go();
+      return;
+    }
+    this.outings.drop('asked');
+    this.remember(`${this.playerName()} asked me to leave it for now${o.npc ? `, and I never got to talk to ${this.npcName(o.npc)}` : ''}. Another day.`, { importance: 3, tags: ['outing', 'unfinished'], about: [PLAYER_ID] });
+  }
+
+  // Something she meant to do and didn't: it stays on her open agenda for a week.
+  noteUnfinished(item) {
+    if (!item?.text) return;
+    const key = `${item.npc || ''}|${item.at || ''}|${item.topic || ''}`;
+    this.unfinished = this.unfinished.filter((u) => `${u.npc || ''}|${u.at || ''}|${u.topic || ''}` !== key);
+    this.unfinished.push({ kind: 'unfinished', text: String(item.text).slice(0, 90), at: item.at || null, npc: item.npc || null, topic: item.topic || null, why: String(item.why || '').slice(0, 120), since: item.since ?? this.day() });
+    if (this.unfinished.length > 8) this.unfinished.shift();
+  }
+
+  // Unfinished business that got done some other way (the talk happened after all).
+  _clearUnfinished({ npc = null, topic = null } = {}) {
+    this.unfinished = this.unfinished.filter((u) => !(npc && u.npc === npc && (!topic || !u.topic || String(u.topic).toLowerCase() === String(topic).toLowerCase())));
+  }
+
+  // Everything her open agenda weighs (autonomy_open.js).
+  openView(extra = {}) {
+    const s = this.stats();
+    const n = this.needs();
+    const P = this.personality();
+    const h = this.hour();
+    let mood = null;
+    try {
+      mood = this.mind?.mood?.() || null;
+    } catch {
+      mood = null;
+    }
+    const people = [];
+    let rels = [];
+    try {
+      rels = this.mind?.relationships?.all?.() || [];
+    } catch {
+      rels = [];
+    }
+    const dayStart = this.now() - (h - 0) * this.sph();
+    for (const r of rels) {
+      if (!r || r.id === PLAYER_ID || r.id === 'maren' || r.absent || r.kind === 'group') continue;
+      const e = this.game?.entities?.get?.(r.id);
+      if (!e?.profile || e.dead || e.absent) continue;
+      if (num(r.affinity, 0) < 35) continue;
+      const family = Array.isArray(r.tags) && r.tags.includes('family');
+      let grieving = false;
+      try {
+        grieving = !!this.game?.murder?.mourning?.(r.id);
+      } catch {
+        grieving = false;
+      }
+      people.push({ id: r.id, name: CALL_NAMES_FAMILY[r.id] || this.displayName(e), affinity: num(r.affinity, 0), at: e.profile.work || e.profile.home || 'town_square', seenToday: num(r.lastSeen, -Infinity) >= dayStart, family, grieving });
+    }
+    people.sort((a, b) => b.affinity - a.affinity);
+    const said = this.promises
+      .filter((p) => p.by === 'lyra' && p.state === 'open' && p.kind === 'free')
+      .slice(-3)
+      .map((p) => ({ text: p.text }));
+    const plan = this.currentBlock();
+    return {
+      day: this.day(),
+      hour: h,
+      state: this.companionship,
+      trust: s.trust,
+      fear: s.fear,
+      affinity: s.affinity,
+      energy: n.energy,
+      hunger: n.hunger,
+      fun: n.fun,
+      purse: this.purse(),
+      valence: num(mood?.valence, 0.1),
+      neuroticism: P.neuroticism,
+      extraversion: P.extraversion,
+      agreeableness: P.agreeableness,
+      weather: this.game?.clock?.weather?.type || 'clear',
+      isNight: !!this.game?.clock?.isNight,
+      questStage: this.questStage,
+      wantsCompany: this._companyWanted(),
+      unfinished: this.unfinished.slice(),
+      said,
+      people: people.slice(0, 4),
+      plan: plan && !plan.outing ? plan : null,
+      ...extra,
+    };
+  }
+
+  // Does she want the player's company right now (whatever state she is in)?
+  _companyWanted() {
+    const s = this.stats();
+    if (s.trust < T.calmTrust || s.fear > T.calmFear) return false;
+    return (this.worthTrack.avg ?? this.worth().net) >= WORTH.wary;
+  }
+
+  openAgenda(extra = {}) {
+    try {
+      return openAgenda(this.openView(extra));
+    } catch (err) {
+      console.error('[autonomy] open agenda failed', err);
+      return [];
+    }
+  }
+
+  // The outing is over: she carries on with her own life (§16.11). Her open agenda decides
+  // what next; the player's company is one of the things she may choose, never a reflex.
+  _afterOuting(o) {
+    if (o.result === 'talked' && o.npc) this._clearUnfinished({ npc: o.npc, topic: o.topic });
+    const st = this.companionship;
+    if (st === 'left' || st === 'gone') return;
+    let pick = null;
+    try {
+      pick = chooseNext(this.openView({ after: o }));
+    } catch (err) {
+      console.error('[autonomy] choosing what next failed', err);
+    }
+    const P = this.playerName();
+    const who = o.npc ? this.npcName(o.npc) : '';
+    if (o.result === 'talked' && who) this.remember(`I went to ${who}${o.topic ? ` about ${o.topic}` : ''}${o.withPlayer ? ` with ${P}` : ''}, like I said I would.`, { importance: 4, tags: ['outing', 'kept_word'], about: [o.npc, ...(o.withPlayer ? [PLAYER_ID] : [])] });
+    if (!pick || !pick.block || pick.kind === 'company' || (pick.kind === 'plan' && pick.block.company === 'player')) {
+      // Her choice: the player's company, for now.
+      if (st === 'together' || st === 'wary') {
+        const b = this.behavior();
+        try {
+          b?.setDirective?.({ type: 'follow', target: 'player', distance: st === 'wary' ? 'far' : 'normal' }, { quiet: true });
+        } catch {
+          /* behavior optional */
+        }
+        this.say(this.line(o.result === 'talked' ? 'outing_after_with' : 'outing_after_with_missed', { npc: who }), { force: true });
+      }
+      return;
+    }
+    const blk = { ...pick.block };
+    const h = this.hour();
+    blk.from = h;
+    blk.to = Math.max(h + 0.5, Math.min(blk.to, h + 2));
+    blk.chosen = pick.kind;
+    const what = describeBlock(blk, { npcName: this.npcName(blk.npc), place: this.game?.locations?.get?.(blk.at)?.name || blk.at });
+    if (st === 'together' || st === 'wary') {
+      this.setCompanionship('apart', blk.why || pick.why || '', { cause: 'plans', apartReason: 'plans', noReplan: true, silent: true });
+      this.planDay('outing');
+    }
+    this._insertBlock(blk);
+    this._direct('apart', 'apart');
+    this.lastAnnounceT = this.now();
+    const key = o.result === 'talked' ? 'outing_after_alone' : 'outing_after_alone_missed';
+    this.say(this.line(key, { what, npc: who, why: blk.why || pick.why || '' }), { force: true });
+  }
+
   _followPlan() {
     const today = this.agenda.today;
     if (!today.length) return;
@@ -2388,6 +2594,8 @@ export class Autonomy {
   }
 
   _canLeaveForPlan() {
+    // An outing of hers in hand is seen through first (§16.11).
+    if (this.outings?.active()) return false;
     const l = this.lyra();
     if (!l || l.downed) return false;
     const b = this.behavior();
@@ -2486,6 +2694,10 @@ export class Autonomy {
     };
     this.promises.push(p);
     this._trimPromises();
+    // "Come with me to the chapel?" — "Let's go.": her proposal becomes her outing (§16.11).
+    if (p.by === 'player' && p.kind === 'visit' && p.params.lead) {
+      this.outings.start({ at: p.params.at, npc: p.params.npc || null, topic: p.params.topic || null, why: p.params.why || '', what: p.text, promiseId: p.id, source: this._chatSource() });
+    }
     this.game?.bus?.emit?.('promise', { text: p.text, by: p.by, state: 'open' });
     const P = this.playerName();
     this.remember(p.by === 'player' ? `${P} promised to ${p.text}.` : `I promised ${P}: I’ll ${p.text}.`, { importance: 4, tags: ['promise'], about: [PLAYER_ID] });
@@ -2861,8 +3073,9 @@ export class Autonomy {
       const food = ['honey_cake', 'bread', 'cooked_fish', 'stew', 'berries', 'turnip'].find((id) => inv?.count?.(id) > 0);
       if (food) return { key: 'food', lineKey: 'ask_food', vars: { item: itemDef(food).name.toLowerCase() }, spec: { kind: 'give', params: { itemId: food, qty: 1 }, what: `share your ${itemDef(food).name.toLowerCase()}`, days: 0.1 } };
     }
-    if (v.questStage === 1 && v.hour >= 8 && v.hour < 18 && !askedToday('lead')) {
-      return { key: 'lead', lineKey: 'ask_lead', spec: { kind: 'visit', params: { at: 'chapel' }, what: 'go with me to the chapel', days: 1 } };
+    if (v.questStage === 1 && v.hour >= 8 && v.hour < 18 && !askedToday('lead') && !this.outings.active() && !this.game?.murder?.isDead?.('aveline')) {
+      // A plan, not a walk: there, Aveline, the talk about Maren (§16.11).
+      return { key: 'lead', lineKey: 'ask_lead', spec: { kind: 'visit', params: { at: 'chapel', npc: 'aveline', topic: 'Maren', lead: true, why: 'Sister Aveline knew Maren. I need to ask her.' }, what: 'go with me to the chapel', days: 1 } };
     }
     if (v.isNight && v.energy < 0.35 && !askedToday('walk_home')) {
       const at = v.sleepAt === 'lyra_bed' ? 'player_home' : 'ember_kettle';
@@ -2923,6 +3136,7 @@ export class Autonomy {
     if (this._pendingBind) this._retryBind();
     if (this.queued.length) this._flushQueued();
     this._followPlan();
+    this.outings.tick(step);
     this._checkPromises();
     this._checkRefusals();
     this._checkDeals();
@@ -3136,6 +3350,9 @@ export class Autonomy {
     const since = this.stateDay === day ? 'today' : `since day ${this.stateDay}`;
     lines.push(`Companionship: ${this.companionship} (${since}) — her reason: "${this.reason.slice(0, 140)}"`);
     lines.push(`Toward the player: trust ${Math.round(s.trust)}/100, fear ${Math.round(s.fear)}/100, affinity ${Math.round(s.affinity)}, respect ${Math.round(s.respect)}.`);
+    // Her outing (§16.11): the game walks her there and runs the talk; Claude only speaks.
+    const od = this.outings.describe();
+    if (od) lines.push(`Right now she is ${od}: her own plan, which the game carries out (the walk, finding them, the talk). Do not use goto or follow for it; use set_plan only to give it up.`);
     const wl = worthLine(this.worth(), this.worthTrack.avg);
     if (wl) lines.push(wl.slice(0, 420));
     const deeds = this.ledger.slice(-5).reverse();
@@ -3146,10 +3363,13 @@ export class Autonomy {
       .slice(0, 5)
       .map((b) => `${fmtHour(b.from)}–${fmtHour(b.to)} ${describeBlock(b, { npcName: this.npcName(b.npc), place: this.game?.locations?.get?.(b.at)?.name || b.at })}${b.company === 'invite' ? ' (player welcome)' : ''}`);
     if (plan.length) lines.push(`Her plan today: ${plan.join('; ')}.`);
+    // Her open agenda (§16.12): what else she has going on, weighed. set_plan "a2" picks one.
+    const open = agendaText(this.openAgenda().filter((it) => it.kind !== 'plan'), 300);
+    if (open) lines.push(`Her open agenda (she weighs these herself; set_plan "a<n>" to do one now): ${open}.`);
     lines.push(`Purse ${this.purse()} coins; sleeps ${this.agenda.sleepAt === 'lyra_bed' ? 'in the cottage' : 'at the Ember Kettle'}.`);
-    const open = this.promises.filter((p) => p.state === 'open');
-    const theirs = open.filter((p) => p.by === 'player').slice(-3);
-    const hers = open.filter((p) => p.by === 'lyra').slice(-2);
+    const openP = this.promises.filter((p) => p.state === 'open');
+    const theirs = openP.filter((p) => p.by === 'player').slice(-3);
+    const hers = openP.filter((p) => p.by === 'lyra').slice(-2);
     if (theirs.length || hers.length) {
       const bits = [];
       if (theirs.length) bits.push(`theirs: ${theirs.map((p) => p.text).join('; ')}`);
@@ -3200,6 +3420,8 @@ export class Autonomy {
       promiseSeq: this._promiseSeq,
       shadow: { ...this._shadow },
       worth: this.worthTrack.serialize(),
+      outings: this.outings.serialize(),
+      unfinished: this.unfinished.map((u) => ({ ...u })),
     };
   }
 
@@ -3242,6 +3464,8 @@ export class Autonomy {
     if (d.shadow && typeof d.shadow === 'object') Object.assign(this._shadow, d.shadow);
     this.worthTrack = new WorthTracker();
     this.worthTrack.deserialize(d.worth);
+    this.outings.deserialize(d.outings);
+    this.unfinished = Array.isArray(d.unfinished) ? d.unfinished.filter((u) => u && u.text).slice(-8) : [];
     this._worth = null;
     this._blockIdx = -2;
     this._hourIdx = null;

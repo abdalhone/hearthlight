@@ -441,6 +441,13 @@ function planSection(game) {
     lines.push('Your plan for today:');
     for (const p of today) lines.push(`- ${hourText(p.from)}-${hourText(p.to)}: ${clip(p.activity || '?', 40)}${p.at ? ` at ${p.at}` : ''}${p.why ? ` (${clip(p.why, 70)})` : ''}`);
   }
+  // Her outing (DESIGN §16.11): the game carries it out; she only speaks about it.
+  const will = game.companion?.mind?.autonomy;
+  const outing = safeCall(() => will?.outings?.describe?.(), '');
+  if (outing) lines.push(`Right now you are ${clip(outing, 120)}: your own plan, which the game carries out (walking there, finding them, the talk itself). Do not use goto or follow for it; set_plan only to give it up.`);
+  // Her open agenda (DESIGN §16.12): what else she has going on, weighed by her own head.
+  const items = (safeCall(() => will?.openAgenda?.(), []) || []).filter((it) => it.kind !== 'plan').slice(0, 5);
+  if (items.length) lines.push(`Your open agenda (yours to weigh; set_plan "a<n>" does one now): ${items.map((it) => `${it.id} ${clip(it.text, 50)} (${it.kind})`).join('; ')}.`);
   return lines.join('\n');
 }
 

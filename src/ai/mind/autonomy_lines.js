@@ -739,6 +739,68 @@ export const LINES = {
     tired: ['Here. As promised.'],
   },
 
+  // ------------------------------------------------------------------ her outings (§16.11)
+  outing_go: {
+    warm: ['Right. Thank you for coming. {place}’s this way — stay close.', 'Come on, then. I’ll lead, and I’ll try not to dawdle.'],
+    cool: ['This way. Keep up.'],
+    afraid: ['This way. Stay near me, would you?'],
+    tired: ['This way. Slowly.'],
+  },
+  outing_wait_player: {
+    warm: ['{P}! This way!', 'Over here — I’m not doing this alone, remember?'],
+    cool: ['This way.'],
+    afraid: ['{P}? Over here.'],
+    tired: ['Here. I’ll wait.'],
+  },
+  outing_alone: {
+    warm: ['Fine. I’ll go on my own, then. I usually do.'],
+    cool: ['I’ll go on my own.'],
+    afraid: ['I’ll go alone, then.'],
+    tired: ['On my own, then.'],
+  },
+  outing_wait_npc: {
+    warm: ['{npc}’s not here. I’ll wait a little — she can’t be long.', 'No {npc}. I’ll give it a while.'],
+    cool: ['{npc} isn’t here. I’ll wait.'],
+    afraid: ['{npc} isn’t here. I’ll wait a bit.'],
+    tired: ['No {npc}. Waiting.'],
+  },
+  outing_no_npc: {
+    warm: ['{npc}… isn’t anywhere. Not today.'],
+    cool: ['{npc} isn’t here.'],
+    afraid: ['{npc} isn’t here.'],
+    tired: ['No {npc}.'],
+  },
+  outing_give_up: {
+    warm: ['{npc} isn’t coming. I’ll ask her another day — I’m not letting it go.', 'Not today, then. Tomorrow. I’ll ask {npc} tomorrow.'],
+    cool: ['Another day, then.'],
+    afraid: ['Another day. Maybe that’s a mercy.'],
+    tired: ['Another day.'],
+  },
+  outing_after_with: {
+    warm: ['Thank you for standing there with me. I mean it. Where to now?', 'That’s more than I had this morning. Thank you for coming. Lead on.'],
+    cool: ['Thank you for coming. Where now?'],
+    afraid: ['I’m glad you were there. Let’s go.'],
+    tired: ['Thank you. Let’s walk.'],
+  },
+  outing_after_with_missed: {
+    warm: ['Well. Not today. Come on — let’s walk.'],
+    cool: ['Not today. Let’s go.'],
+    afraid: ['Not today. Let’s go.'],
+    tired: ['Not today. Walk with me.'],
+  },
+  outing_after_alone: {
+    warm: ['Thank you for coming. I need some time now. {why} Find me after, if you like.', 'I’m glad you were there. Now I need a while. {why}'],
+    cool: ['I need some time on my own. {why}'],
+    afraid: ['I need a while to myself. {why}'],
+    tired: ['I need a while. {why}'],
+  },
+  outing_after_alone_missed: {
+    warm: ['Not today, then. I’m off to {what} — find me later, if you like.'],
+    cool: ['I’m off to {what}.'],
+    afraid: ['I’m going to {what}.'],
+    tired: ['Off to {what}.'],
+  },
+
   // ------------------------------------------------------------------ her requests (initiative)
   ask_forgive_cake: {
     warm: ['Buy me a honey cake and I’ll forgive the mud.', 'A honey cake would go a long way toward forgiving you.'],

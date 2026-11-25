@@ -382,6 +382,11 @@ export const socialPlugin = {
   name: 'Social',
   description: 'Lyra walks over to people and talks with them, learning what they know and remembering it.',
 
+  // The talk in progress, or the walk to one (her outings wait on it).
+  talkState(game) {
+    return state(game);
+  },
+
   actions: {
     talk_to: {
       description: 'Walk over to someone and talk with them (optionally about a topic). Lyra learns facts and lore they know, and remembers the conversation.',

@@ -33,7 +33,9 @@ const REFUSAL_MEMORY = 120; // "why not?" refers to a refusal this recent
 const OFFER_WINDOW = 60; // a bare coin offer sweetens a refusal this recent
 const COUNTER_WINDOW = 90; // "deal" accepts a counter-offer this recent
 const ASK_WINDOW = 120; // "yes" to something she asked of the player this recent becomes their promise
-const EARSHOT = { left: 18, apart: 30 }; // tiles: beyond this she cannot hear the chat
+const EARSHOT = { left: 18, apart: 30 };
+// "Let's go", "lead the way", "sure, let's go", "ok I'll come": yes to going along with her.
+const GO_ALONG = /^(?:(?:yes|yeah|yep|sure|ok|okay|alright|all right|of course|absolutely|fine|right|aye|great|good|deal)\s*)?(?:let'?s go|lets go|let us go|lead the way|lead on|after you|i'?ll come|i will come|i'?m coming|i'?m in|come on|go on then|show me|take me there|let'?s do it|lets do it|i'?ll go with you|i'?ll walk with you|count me in|with you|sure thing|okay let'?s go)(?:\s+(?:then|now|lyra|together))?(?:\s*(?:yes|sure|ok|okay))?$/; // tiles: beyond this she cannot hear the chat
 const KNOWLEDGE_SOURCE = { fact: 'player', rumor: 'told', lore: 'lore', theory: 'inferred' };
 const KNOWLEDGE_CONFIDENCE = { fact: 0.8, rumor: 0.4, lore: 0.7, theory: 0.5 };
 
@@ -285,14 +287,21 @@ export class Brain {
       }
     }
     const ask = this.pendingAsk && now - this.pendingAsk.t < ASK_WINDOW ? this.pendingAsk : null;
-    if (ask && clauses.length === 1 && (first?.intent?.id === 'social.yes' || first?.intent?.id === 'social.no')) {
+    // "Let's go" to "come with me to the chapel?" is a yes, not "follow me" (§16.11): the
+    // whole message agrees to go along, so it is taken as the one answer it is.
+    if (ask && clauses.length && this._goingAlong(parsed.text || '')) {
+      clauses.length = 1;
+      clauses[0] = { ...clauses[0], text: parsed.text, intent: { id: 'social.yes', source: 'builtin', kind: 'social', command: false, confidence: 0.9, match: null, slots: {}, actions: [], answer: null } };
+    }
+    const one = clauses[0];
+    if (ask && clauses.length === 1 && (one?.intent?.id === 'social.yes' || one?.intent?.id === 'social.no')) {
       this.pendingAsk = null;
-      if (first.intent.id === 'social.yes' && this.game.actions?.has?.('promise')) {
+      if (one.intent.id === 'social.yes' && this.game.actions?.has?.('promise')) {
         // Agreeing to what she asked is the player's promise (DESIGN §16.8).
-        first.intent = { id: 'ask.accept', source: 'builtin', kind: 'command', command: true, confidence: 0.95, match: null, slots: {}, actions: [{ name: 'promise', args: { target: 'player', value: ask.text, amount: null } }], answer: null };
-        first.runAs = 'local';
-      } else if (first.intent.id === 'social.no') {
-        first.intent = { id: 'ask.decline', source: 'builtin', kind: 'social', command: false, confidence: 0.9, match: null, slots: {}, actions: [], answer: null };
+        one.intent = { id: 'ask.accept', source: 'builtin', kind: 'command', command: true, confidence: 0.95, match: null, slots: {}, actions: [{ name: 'promise', args: { target: 'player', value: ask.text, amount: null } }], answer: null };
+        one.runAs = 'local';
+      } else if (one.intent.id === 'social.no') {
+        one.intent = { id: 'ask.decline', source: 'builtin', kind: 'social', command: false, confidence: 0.9, match: null, slots: {}, actions: [], answer: null };
       }
     }
     const offer = parsed.offer || null;
@@ -306,6 +315,14 @@ export class Brain {
     }
     if (offer) for (const c of clauses) if (c.intent?.actions?.length) c.offer = offer;
     parsed.commands = clauses.filter((c) => c.intent && c.intent.command && c.intent.confidence >= COMMAND_THRESHOLD && c.intent.actions.length);
+  }
+
+  // Does the whole message say "yes, let's go" to an invitation to go somewhere with her?
+  _goingAlong(text) {
+    const r = this.game?.companion?.mind?.autonomy?.pendingRequest;
+    if (!r || r.spec?.kind !== 'visit') return false;
+    const t = String(text || '').toLowerCase().replace(/[!.?,]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return GO_ALONG.test(t);
   }
 
   _enqueue(turn) {
