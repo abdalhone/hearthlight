@@ -154,7 +154,9 @@ export function buildPause(ui) {
   go.style.setProperty('--n', String(Math.max(1, places.length)));
   // Sideways the places run in two rows (the Book and its Prologue are two cells).
   const book = items.find((it) => it.id === 'book');
-  go.style.setProperty('--cols', String(Math.max(4, Math.ceil((places.length + (book ? (book.sub ? 2 : 1) : 0)) / 2))));
+  const cols = Math.max(4, Math.ceil((places.length + (book ? (book.sub ? 2 : 1) : 0)) / 2));
+  go.style.setProperty('--cols', String(cols));
+  go.classList.toggle('menu-go-5', cols >= 5);
   for (const it of items) {
     if (it.group === 'main') {
       const b = itemButton(it, 'btn-ember menu-main');

@@ -1606,7 +1606,9 @@ glyph-shards with a short reveal ("You can weave fire").
   through, leech threads life back (green numbers), charge gathers first; a ward is shown
   stopping two stones the dummy throws. It is silent, never touches the real world,
   runs only while the Spellbook is open; if it cannot be built, the old imitation
-  (`spellbook_preview.js`) plays instead,
+  (`spellbook_preview.js`) plays instead. On a phone held upright the preview stays
+  pinned at the top of the book while the steps scroll under it (sideways it already
+  stayed on the left), so a twist tapped far down is seen changing the weave,
   assign them to slots, name them. Works on a phone in both orientations. Its Cast tile
   says how a weave is cast ("Tap or hold", "Hold" for a beam, "Fast charge" with the
   charge twist). While "Try all magic" runs, its header says "Trying all magic"; weaves
