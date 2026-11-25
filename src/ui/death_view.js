@@ -104,7 +104,7 @@ export class DeathView {
     // The last stand (§25), when it is held: rise now, burning, for one minute, and then
     // die for good. Held down for a second to choose it: never a stray tap.
     this.riseFill = h('span', { class: 'sv-rise-fill', 'aria-hidden': 'true' });
-    this.riseBtn = h('button', { type: 'button', class: 'sv-rise', hidden: true, 'aria-label': 'Hold to rise in your Last Stand: one minute, then you die for good' }, this.riseFill, h('span', { class: 'sv-rise-text', text: 'Hold to rise: one minute, then death' }));
+    this.riseBtn = h('button', { type: 'button', class: 'sv-rise', hidden: true, 'aria-label': 'Hold to rise in your Last Stand: one minute, then you die for good' }, this.riseFill, h('span', { class: 'sv-rise-text', text: 'Hold: rise for a minute, then die' }));
     this.bindRise();
     // One row under the body: the ring, and beside it everything else (so it stays clear
     // of the hotbar on a computer and of the thumbs on a phone held sideways).
@@ -385,7 +385,7 @@ export class DeathView {
     const canRise = !!safe(() => g.prices?.lastStandArmed?.(), false);
     if (this.riseBtn.hidden === canRise) this.riseBtn.hidden = !canRise;
     this.fallenEl.classList.toggle('has-rise', canRise);
-    if (canRise) setText(this.riseBtn.lastChild, touch ? 'Hold to rise: one minute, then death' : 'Hold R to rise: one minute, then death');
+    if (canRise) setText(this.riseBtn.lastChild, touch ? 'Hold: rise for a minute, then die' : 'Hold R: rise for a minute, then die');
     const crawlLeft = rec.crawled < CRAWL_BUDGET - 1;
     this.hintEl.hidden = !!carrier;
     setText(this.hintEl, crawlLeft ? (touch ? 'Drag to crawl a little.' : 'Move to crawl a little · E or H calls out') : 'You cannot drag yourself any further.');

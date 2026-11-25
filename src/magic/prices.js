@@ -492,7 +492,7 @@ export class PriceRuntime {
     const text =
       'When you would die, you rise instead: one minute burning, far stronger, unafraid, able to strike anyone, and nothing can put you down. ' +
       'When the minute ends, you die for good. No kept flame brings you back, nobody can carry you to Mira, and waking at home does not save you: your story ends here and this save closes. ' +
-      'You can put it out before then by tapping its mark on the HUD.';
+      'Until it is needed you can put it out with its ☠ mark on the HUD.';
     let p = null;
     try {
       p = confirm.call(g.ui, { title: 'Take up the Last Stand?', text, yes: 'Take it up', no: 'Not this', danger: true });
