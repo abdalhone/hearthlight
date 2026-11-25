@@ -69,7 +69,7 @@ export function playCollect(game, x, y, { gold = true, pal = null, size = 1, hei
 export function playWardHit(game, x, y, angle, pal) {
   const P = px(game);
   if (!P) return null;
-  return P.play('hit', { x, y: y + 6, height: 6, angle, palette: rampOf(pal), size: 0.42, sparks: 6, seed: (Math.random() * 1e6) | 0 });
+  return P.play('hit', { x, y: y + 6, height: 6, angle, palette: rampOf(pal), size: 0.42, sparks: 6, lightScale: 0.5, seed: (Math.random() * 1e6) | 0 });
 }
 
 // A bind takes hold: hands come up round the bound one, in the weave's colors.

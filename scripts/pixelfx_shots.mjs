@@ -6,6 +6,7 @@
 //
 //   npm run build && node scripts/pixelfx_shots.mjs [--out dir] [--scenes hits,crit] [--sizes desk1280]
 //   --night (night only) --day (day only) --hud (keep the HUD) --reduce (reduced motion)
+//   --without punch,hit  leave those effects out (A/B against the older look)
 //   --perf   frame times with many effects at once (desktop, then 4x CPU throttle)
 // Fails (exit 1) on a page error or when a scene played no effect.
 import { createRequire } from 'node:module';
@@ -56,6 +57,10 @@ async function open(size) {
   await page.waitForFunction(() => window.__game.state === 'playing', null, { timeout: 30000 });
   await page.waitForTimeout(400);
   await page.evaluate(setupStage, { hud: flag('--hud') });
+  // --without punch,hit: those effects are not played (A/B against the game's older look)
+  await page.evaluate((ids) => {
+    for (const id of ids) window.__game.pixelFx?.specs?.delete(id);
+  }, opt('--without', '') ? opt('--without', '').split(',') : []);
   return { context, page, errors };
 }
 
@@ -513,7 +518,7 @@ for (const size of SIZES) {
       if (sc.after) await page.evaluate(sc.after);
       if (sc.hour != null) await page.evaluate((h) => window.__px.time(h), tod === 'day' ? 11 : 22.5);
       const after = await page.evaluate(() => window.__game.pixelFx?.stats?.played || 0);
-      if (after <= before && !flag('--reduce')) failures.push(`${size.name} ${tod} ${name}: no pixelfx effect played`);
+      if (after <= before && !flag('--reduce') && !opt('--without', '')) failures.push(`${size.name} ${tod} ${name}: no pixelfx effect played`);
     }
   }
   if (errors.length) failures.push(`${size.name}: ${errors.slice(0, 5).join(' | ')}`);
