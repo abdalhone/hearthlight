@@ -148,7 +148,8 @@ export const autonomyPlugin = {
         if (!a) return { ok: false, message: '' };
         const by = String(args.target || 'player').toLowerCase();
         const p = a.promiseFromAction({ by: by === PLAYER_ID ? 'player' : by, text: args.value || '', amount: args.amount });
-        return p ? { ok: true, message: '', promise: { text: p.text, by: p.by, due: p.due } } : { ok: false, message: '' };
+        const outing = !!p && a.outings?.current?.promiseId === p.id && a.outings.active();
+        return p ? { ok: true, message: '', promise: { text: p.text, by: p.by, due: p.due }, outing } : { ok: false, message: '' };
       },
     },
     record_deed: {

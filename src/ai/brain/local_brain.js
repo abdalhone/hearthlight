@@ -447,6 +447,8 @@ export class LocalBrain {
       case 'leave_player':
         return (res?.message && String(res.message).trim()) || this.line(args.value === 'apart' || !args.value ? 'ack_part_ways' : 'leaving');
       case 'promise':
+        // A yes that started her outing: she already said so, leading the way (§16.11).
+        if (res?.outing) return '';
         return this.line('ack_promise');
       case 'flee':
         return this.line('ack_flee');
