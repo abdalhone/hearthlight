@@ -4,10 +4,12 @@
 //     each once, all on screen;
 //   - Settings: every setting key exactly once in the page, five tabs that fit without
 //     sideways scrolling, every pane without sideways overflow;
-//   - the in-game menu: its items unique, none of them a second copy of a HUD shortcut
-//     whose home is the HUD (inventory, chat), all on screen without scrolling; each place
-//     opens on top of the menu and Esc (or a tap on ✕) comes back to it; touch taps;
-//     arrow keys; Enter on Resume resumes and does nothing else;
+//   - the in-game menu: Resume, the places (Spellbook, Bag, Missions, Lyra, Character,
+//     Village, Book + Prologue), Settings, Save, Quit; its items unique, none of them a
+//     second copy of a button the HUD shows (Talk, Menu), all on screen without scrolling;
+//     a ✕ closes it as it closes every panel (the phone pass); each place opens on top of
+//     the menu and Esc (or a tap on ‹ Menu) comes back to it; touch taps; arrow keys walk the
+//     grid by where the buttons are; Enter on Resume resumes and does nothing else;
 //   - How to play reachable in game (Settings → Controls).
 // Screenshots of every screen go to --out. Fails on page errors or a failed check.
 //   node scripts/menu_check.mjs [--dist] [--out DIR] [--only land,port,desk]
@@ -224,30 +226,35 @@ async function run(v) {
   await wait(page, 400);
 
   // Open the menu the way a player does: the pause button (touch) or Esc.
-  if (v.touch) await tap(page, v, '.hud-buttons .hud-btn[title^="Pause"]');
+  if (v.touch) await tap(page, v, '.hud-menu');
   else await page.keyboard.press('Escape');
   await wait(page, 250);
   const menu = await page.evaluate(() => {
     const p = window.__game.ui.top();
     const items = [...p.el.querySelectorAll('.pause-menu [data-item]')];
     const hud = [...document.querySelectorAll('.hud-buttons .hud-btn')].filter((b) => b.offsetParent).map((b) => (b.title || '').split(' (')[0]);
-    return { id: p?.id, paused: window.__game.paused, items: items.map((b) => b.dataset.item), labels: items.map((b) => b.querySelector('.menu-label').textContent), close: getComputedStyle(p.el.querySelector('.panel-close')).display, hud };
+    const x = p.el.querySelector('.panel-close');
+    const xr = x?.getBoundingClientRect();
+    return { id: p?.id, paused: window.__game.paused, items: items.map((b) => b.dataset.item), labels: items.map((b) => b.querySelector('.menu-label').textContent), close: x && getComputedStyle(x).display !== 'none' && xr.width >= 40 && xr.height >= 40, hud };
   });
   check(`[${L}] menu: opens and pauses`, menu.id === 'pause' && menu.paused, JSON.stringify(menu.id));
-  const want = ['resume', 'spellbook', 'missions', 'lyra', 'book', 'prologue', 'settings', 'save', 'quit'];
-  const got = menu.items.filter((i) => i !== 'character');
-  check(`[${L}] menu: Resume, Spellbook, Missions, Lyra, Book (+ Prologue), Settings, Save, Quit`, got.join() === want.join(), menu.items.join());
+  const want = ['resume', 'spellbook', 'inventory', 'missions', 'lyra', 'character', 'village', 'book', 'prologue', 'settings', 'save', 'quit'];
+  check(`[${L}] menu: Resume, Spellbook, Bag, Missions, Lyra, Character, Village, Book (+ Prologue), Settings, Save, Quit`, menu.items.join() === want.join(), menu.items.join());
   check(`[${L}] menu: every item once`, new Set(menu.items).size === menu.items.length && new Set(menu.labels).size === menu.labels.length, menu.labels.join('|'));
-  check(`[${L}] menu: nothing whose home is the HUD (inventory, chat)`, !menu.items.some((i) => /inventory|chat|talk/.test(i)) && !menu.labels.some((l) => /Inventory|Talk|Chat/.test(l)), `HUD: ${menu.hud.join(', ')}`);
-  check(`[${L}] menu: one way back (Resume; no second ✕)`, menu.close === 'none');
+  // The Bag's home is the menu now (the HUD keeps only what play needs every second);
+  // nothing in it may repeat a button the HUD shows, and the chat lives on the HUD.
+  const hudNames = menu.hud.map((s) => s.toLowerCase());
+  check(`[${L}] menu: nothing the HUD already shows (${menu.hud.join(', ')})`, !menu.items.some((i) => /chat|talk/.test(i)) && !menu.labels.some((l) => hudNames.includes(l.toLowerCase()) || /^(Talk|Chat)$/.test(l)), menu.labels.join('|'));
+  check(`[${L}] menu: a ✕ closes it, like every panel`, menu.close);
   let m = await measure(page);
   check(`[${L}] menu: fits the screen without scrolling`, m.onScreen && m.scrolls <= 1 && m.over <= 0 && !m.wide.length, JSON.stringify(m));
   const small = await page.evaluate(() => [...document.querySelectorAll('.pause-menu button')].filter((b) => b.offsetParent && b.getBoundingClientRect().height < 41.5).map((b) => b.dataset.item));
   check(`[${L}] menu: every button easy to hit (≥ 42 px tall)`, !small.length, small.join());
   await shot(page, v, 'menu');
 
-  // Each place opens on top of the menu; Esc (or ✕ on touch) comes back to it.
-  for (const id of ['spellbook', 'missions', 'lyra', 'book', 'settings', 'character']) {
+  // Each place opens on top of the menu; Esc (or ‹ Menu on touch) comes back to it. Its ✕
+  // goes back to play (scripts/phone_check.mjs checks that on every phone size).
+  for (const id of ['spellbook', 'inventory', 'missions', 'lyra', 'character', 'village', 'book', 'settings']) {
     const has = await page.evaluate((i) => !!document.querySelector(`.pause-menu [data-item="${i}"]`), id);
     if (!has) continue;
     await tap(page, v, `.pause-menu [data-item="${id}"]`);
@@ -255,10 +262,13 @@ async function run(v) {
     const open = await page.evaluate(() => ({ stack: window.__game.ui.stack.map((p) => p.id), hidden: getComputedStyle(document.querySelector('.panel-pause')).visibility }));
     check(`[${L}] menu → ${id}: opens on top, the menu waits underneath`, open.stack.length === 2 && open.stack[0] === 'pause' && open.hidden === 'hidden', JSON.stringify(open));
     await shot(page, v, `menu-${id}`);
-    if (v.touch) await tap(page, v, '.modal-layer > .panel:last-child .panel-close');
+    if (v.touch) await tap(page, v, '.modal-layer > .panel:last-child .panel-back');
     else await page.keyboard.press('Escape');
     await wait(page, 300);
-    const back = await page.evaluate(() => ({ stack: window.__game.ui.stack.map((p) => p.id), shown: getComputedStyle(document.querySelector('.panel-pause')).visibility }));
+    const back = await page.evaluate(() => {
+      const m = document.querySelector('.panel-pause');
+      return { stack: window.__game.ui.stack.map((p) => p.id), shown: m ? getComputedStyle(m).visibility : 'gone' };
+    });
     check(`[${L}] menu → ${id} → back: the menu again`, back.stack.join() === 'pause' && back.shown === 'visible', JSON.stringify(back));
   }
 
@@ -298,7 +308,17 @@ async function run(v) {
     const f1 = await page.evaluate(() => document.activeElement?.dataset?.item);
     await page.keyboard.press('ArrowDown');
     const f2 = await page.evaluate(() => document.activeElement?.dataset?.item);
-    check(`[${L}] menu: arrow keys walk the grid`, f1 === 'spellbook' && f2 === 'lyra', `${f1}, ${f2}`);
+    // Down from Spellbook is the button straight under it on screen, whatever the grid.
+    const under = await page.evaluate(() => {
+      const r = document.querySelector('.pause-menu [data-item="spellbook"]').getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const below = [...document.querySelectorAll('.pause-menu [data-item]')]
+        .map((b) => ({ id: b.dataset.item, r: b.getBoundingClientRect() }))
+        .filter((o) => o.r.top >= r.bottom - 1 && o.r.left <= cx && o.r.right >= cx)
+        .sort((a, b) => a.r.top - b.r.top);
+      return below[0]?.id;
+    });
+    check(`[${L}] menu: arrow keys walk the grid`, f1 === 'spellbook' && f2 === under, `${f1}, ${f2} (under Spellbook: ${under})`);
     // A gamepad: the d-pad walks, A presses, Start comes back, B resumes.
     const pad = await page.evaluate(async () => {
       const g = window.__game;
