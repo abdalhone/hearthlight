@@ -1218,7 +1218,8 @@ export class Village {
     const fear = safe(() => this.game?.murder?.fearOf?.(e), null);
     if (fear) {
       const line = safe(() => murderLine(e.id, 'afraid', { P: this.game?.settings?.playerName || 'you' }, this.rng()), null) || 'Stay away from me.';
-      safe(() => e.startFlee?.(this.game?.player, 6, 'crime', { quiet: true }));
+      // Backing off from the stranger, unless already running for the watch with the news.
+      if (!(e.mode === 'flee' && e.fleeHome === 'to')) safe(() => e.startFlee?.(this.game?.player, 6, 'crime', { quiet: true }));
       const list = (this.talks[e.id] ||= []);
       list.push({ t: Math.round(this.now()), day: this.day(), you: said.slice(0, 160), they: [line] });
       if (list.length > TALK_CAP) list.splice(0, list.length - TALK_CAP);

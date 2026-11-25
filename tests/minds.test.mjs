@@ -724,7 +724,7 @@ test('A6: villagers’ sightings and the "who saw it" of gossip use the same eye
   assert.equal(g.villageLife.sight.canSee(elda, bram), true);
 });
 
-test('A6: a killing seen travels only by meeting: the watch learns when the witness reaches them, not before', () => {
+test('A6: a killing seen travels only by meeting: the watch learns when the witness reaches them, not before', async () => {
   const g = makeVillage({ hour: 12 });
   quietAll(g, ['bram', 'elda', 'wys', 'mira']);
   const sq = g.locations.get('town_square').center;
@@ -752,6 +752,10 @@ test('A6: a killing seen travels only by meeting: the watch learns when the witn
   elda.onCallForHelp({ victimEntity: mira, attackerEntity: g.player, x: sq2.x, y: sq2.y, severity: 2 });
   assert.equal(elda.mode, 'flee', 'still running for the watch');
   assert.ok(elda.fleeTo, 'still running to them');
+  // Spoken to on the way: she answers in terror, and keeps running for them.
+  const spoken = await g.village.playerSays(elda, 'Elda, wait!');
+  assert.match(spoken.lines[0], /Stay away|Don't|Go away|telling|Murderer|Help/i, spoken.lines[0]);
+  assert.ok(elda.fleeTo && elda.fleeHome === 'to', 'still running to the watch');
   for (let i = 0; i < 6; i++) stepVillage(g, 0.5);
   assert.ok(!r.heardBy.includes('mira'), 'Mira, far off, has heard nothing');
   assert.notEqual(g.player.crime?.kind, 'murder', 'on her way: the watch does not know yet');
