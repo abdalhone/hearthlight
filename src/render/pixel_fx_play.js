@@ -37,7 +37,7 @@ export function playHit(game, target, { dx = 0, dy = 0, crit = false, pal = null
 export function playPunch(game, x, y, angle, pal, size = 1) {
   const P = px(game);
   if (!P) return null;
-  return P.play('punch', { x, y, angle, palette: rampOf(pal), size: 0.75 * size, seed: (Math.random() * 1e6) | 0 });
+  return P.play('punch', { x, y, angle, palette: rampOf(pal), size: 0.55 * Math.min(1.2, size), seed: (Math.random() * 1e6) | 0 });
 }
 
 // A creature goes (its body fading under the cloud).

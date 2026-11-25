@@ -213,6 +213,155 @@ const SCENES = {
       if (g.prices) g.prices.state.berserk = null;
     },
   },
+  // The Strike's punch, thrown four ways (right, down, left, up) and in two essences.
+  punch: {
+    at: [0.03, 0.1, 0.22],
+    untilPlayed: true,
+    run: () => {
+      const g = window.__game;
+      const S = window.__px;
+      const c = S.spot;
+      const dirs = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+      dirs.forEach(([dx, dy], i) => {
+        const d = S.dummy(c.x - 110 + i * 70, c.y - 4, 'wolf');
+        const caster = S.dummy(d.x - dx * 16, d.y - dy * 16, 'chicken');
+        caster.hidden = true;
+        caster.faction = 'player';
+        caster.solid = false;
+        g.magic.cast(caster, { shape: 'strike', essences: [i % 2 ? 'fire' : 'raw'], twists: [] }, { x: d.x, y: d.y, target: d }, { free: true });
+      });
+    },
+  },
+  // Binds closing on three foes, in three essences.
+  bind: {
+    at: [0.15, 0.45, 1.0],
+    untilPlayed: true,
+    run: () => {
+      const g = window.__game;
+      const S = window.__px;
+      const c = S.spot;
+      ['dark', 'nature', 'frost'].forEach((e, i) => {
+        const d = S.dummy(c.x - 80 + i * 80, c.y - 6, i === 1 ? 'bandit' : 'wolf');
+        const caster = S.dummy(d.x - 40, d.y + 30, 'chicken');
+        caster.hidden = true;
+        caster.faction = 'player';
+        caster.solid = false;
+        g.magic.cast(caster, { shape: 'bind', essences: [e], twists: [] }, { x: d.x, y: d.y, target: d }, { free: true });
+      });
+    },
+  },
+  // The player's ward, struck from four sides.
+  ward: {
+    at: [0.03, 0.1, 0.3],
+    prep: 0.6,
+    run: () => {
+      const g = window.__game;
+      const S = window.__px;
+      const p = g.player;
+      p.invuln = 0;
+      g.magic.cast(p, { shape: 'ward', essences: ['light'], twists: [] }, null, { free: true });
+      S.wardHits = () => {
+        [[1, 0], [0, 1], [-1, 0], [0, -1]].forEach(([dx, dy]) => {
+          const foe = S.dummy(p.x + dx * 26, p.y + dy * 22, 'wolf');
+          foe.hidden = true;
+          g.combat.damage(foe, p, 2, { dirX: -dx, dirY: -dy, noHitStop: true });
+        });
+      };
+    },
+    // the hits land after the ward has formed (prep), then the shots
+    afterPrep: () => window.__px.wardHits(),
+    after: () => {
+      window.__game.player.invuln = 1e9;
+    },
+  },
+  // Heals: Lyra's spell, a potion, a revival in gold.
+  heals: {
+    at: [0.2, 0.6, 1.1],
+    run: () => {
+      const g = window.__game;
+      const S = window.__px;
+      const c = S.spot;
+      const p = g.player;
+      const lyra = g.companion;
+      if (lyra) {
+        lyra.x = p.x + 30;
+        lyra.y = p.y - 4;
+      }
+      p.hp = Math.max(1, p.maxHp - 30);
+      if (lyra) g.combat.castHeal(lyra, p);
+      // a villager drinking a potion (combat.useItem, as anyone with a bag does)
+      const v = S.dummy(c.x - 70, c.y, 'bandit');
+      v.faction = 'neutral';
+      v.hp = 5;
+      if (!v.inventory) v.inventory = p.inventory.constructor ? new p.inventory.constructor() : null;
+      v.inventory?.add?.('potion', 1);
+      g.combat.useItem(v, 'potion');
+      const f = S.dummy(c.x + 80, c.y, 'bandit');
+      g.bus.emit('revived', { entity: f, by: p });
+    },
+  },
+  // Deaths: four creatures go in a poof; a boss arrives in one; a boss's soul lifts out.
+  deaths: {
+    at: [0.25, 0.4, 0.7],
+    run: () => {
+      const g = window.__game;
+      const S = window.__px;
+      const c = S.spot;
+      ['slime', 'wolf', 'bandit', 'chicken'].forEach((sp, i) => {
+        const d = S.dummy(c.x - 120 + i * 50, c.y - 10, sp);
+        d.maxHp = d.hp = 3;
+        g.combat.damage(g.player, d, 50, { dirX: 1, dirY: 0, noHitStop: true });
+      });
+      const b = S.dummy(c.x + 110, c.y - 10, 'bandit');
+      g.bus.emit('boss_defeated', { boss: b, yielded: false });
+      const a = S.dummy(c.x + 60, c.y + 50, 'wolf');
+      g.bus.emit('boss_started', { boss: a });
+    },
+  },
+  // Coins and an item picked up, a chest opened, a level gained, the kept flame lit.
+  pickups: {
+    at: [0.05, 0.2, 0.5],
+    run: () => {
+      const g = window.__game;
+      const S = window.__px;
+      const c = S.spot;
+      const p = g.player;
+      g.bus.emit('level_up', { entity: p, level: 3 });
+      if (g.companion) {
+        g.companion.x = c.x - 70;
+        g.companion.y = c.y;
+        g.bus.emit('level_up', { entity: g.companion, level: 3 });
+      }
+      // a coin picked up (as Pickup.collect plays it) and a chest's haul (as Chest.open does)
+      g.pixelFx.play('collect', { x: c.x + 60, y: c.y, height: 5, size: 0.55, palette: undefined });
+      g.pixelFx.play('collect', { x: c.x + 120, y: c.y - 6, height: 8, size: 1 });
+    },
+  },
+  // Butterflies over the meadow by day, bats at dusk (the director's ambience).
+  bats: {
+    at: [0.3, 0.6],
+    prep: 3,
+    hour: 19.6,
+    run: () => {
+      const g = window.__game;
+      const d = g.pixelFx.director;
+      for (const c of d.critters) g.pixelFx.stop(c.handle);
+      d.critters.length = 0;
+      d._ambT = 0;
+    },
+  },
+  critters: {
+    at: [0.5, 1.5],
+    prep: 6,
+    hour: 12,
+    run: () => {
+      const g = window.__game;
+      const d = g.pixelFx.director;
+      for (const c of d.critters) g.pixelFx.stop(c.handle);
+      d.critters.length = 0;
+      d._ambT = 0;
+    },
+  },
 };
 
 const wanted = Object.keys(SCENES).filter((k) => !only || only.includes(k));
@@ -225,12 +374,14 @@ for (const size of SIZES) {
       const sc = SCENES[name];
       await page.evaluate(() => window.__px.reset());
       const before = await page.evaluate(() => window.__game.pixelFx?.stats?.played || 0);
+      if (sc.hour != null) await page.evaluate((h) => window.__px.time(h), sc.hour);
       await page.evaluate(sc.run);
       let t = 0;
       if (sc.prep) {
         await page.evaluate((s) => window.__px.step(s), sc.prep);
         t = sc.prep;
       }
+      if (sc.afterPrep) await page.evaluate(sc.afterPrep);
       let t0 = sc.prep || 0;
       if (sc.untilPlayed) {
         // Step until the first effect starts (a weave in flight lands), then time from there.
@@ -251,6 +402,7 @@ for (const size of SIZES) {
         await page.screenshot({ path: `${out}/${size.name}-${tod}-${name}-${String(Math.round(at * 1000)).padStart(4, '0')}.png` });
       }
       if (sc.after) await page.evaluate(sc.after);
+      if (sc.hour != null) await page.evaluate((h) => window.__px.time(h), tod === 'day' ? 11 : 22.5);
       const after = await page.evaluate(() => window.__game.pixelFx?.stats?.played || 0);
       if (after <= before && !flag('--reduce')) failures.push(`${size.name} ${tod} ${name}: no pixelfx effect played`);
     }

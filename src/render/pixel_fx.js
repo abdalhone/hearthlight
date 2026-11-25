@@ -26,13 +26,50 @@ import { createFrame, createFx } from '../vendor/pixelfx/core/fx.js';
 // - Time: update(dt) is called with the world's step, so effects freeze while the game
 //   is paused or in a hit-stop and slow with timeScale.
 // - Reduced motion: specs may be skipped, scaled down or given calmer options (no white
-//   flashes, fewer particles) through spec.reduce.
+//   flashes, fewer particles) through spec.reduce; every effect gets its own `calm` mode,
+//   is drawn 15% smaller, glows half as much, and has its white pixels drawn in its ramp's
+//   brightest color, so nothing flashes white. The cap is halved.
 
 const MARGIN = 24; // px past the view an effect may reach and still be drawn
 const SPAWN_MARGIN = 80; // a one-shot further than this off screen is not started at all
 const CAP_DESKTOP = 44;
 const CAP_PHONE = 24;
 const STEP_MAX = 0.1; // the longest step an effect takes at once (a stalled tab)
+const REDUCE_SIZE = 0.85; // reduced motion: effects a little smaller...
+const REDUCE_LIGHT = 0.5; // ...with half the glow...
+const WHITE_MIN = 236; // ...and no white flashes: a pixel this bright in every channel is "white"
+
+// The brightest color of a ramp that is not white, as a frame pixel (ABGR), for reduced motion.
+export function softWhite(palette) {
+  const list = Array.isArray(palette) ? palette : [];
+  let best = 0;
+  let bestL = -1;
+  for (const c of list) {
+    // '#rrggbb', or a number already in pixelfx's frame order (ABGR)
+    const str = typeof c === 'string';
+    const v = str ? parseInt(c.replace('#', '').slice(0, 6), 16) : Number(c);
+    if (!Number.isFinite(v)) continue;
+    const r = str ? (v >> 16) & 255 : v & 255;
+    const g = (v >> 8) & 255;
+    const b = str ? v & 255 : (v >>> 16) & 255;
+    if (r >= WHITE_MIN && g >= WHITE_MIN && b >= WHITE_MIN) continue;
+    const L = r * 0.3 + g * 0.59 + b * 0.11;
+    if (L > bestL) {
+      bestL = L;
+      best = (b << 16) | (g << 8) | r;
+    }
+  }
+  return bestL < 0 ? 0xc8d0d8 : best; // (as 0xBBGGRR; a pale grey when the ramp is all white)
+}
+
+// Reduced motion: every white pixel of a frame takes the soft color (alpha kept).
+export function softenWhites(color, n, soft) {
+  for (let i = 0; i < n; i++) {
+    const c = color[i];
+    if (!c) continue;
+    if ((c & 255) >= WHITE_MIN && ((c >>> 8) & 255) >= WHITE_MIN && ((c >>> 16) & 255) >= WHITE_MIN) color[i] = (c & 0xff000000) | soft;
+  }
+}
 
 let nextId = 1;
 
@@ -153,9 +190,16 @@ export class PixelFx {
     // An aim turns the painter only for effects drawn flat in the view (spec.rotates); the
     // top-down variants take it as their own `aim`, so whatever hops or rises still rises.
     const angle = Number.isFinite(o.angle) ? o.angle : 0;
-    const opts = { ...(spec.opts || {}), ...(red?.opts || {}), ...o, angle: spec.rotates ? angle : 0 };
+    // (an option the caller left undefined keeps the default, so `palette: pal && ramp` is safe)
+    const opts = { ...(spec.opts || {}), ...(red?.opts || {}) };
+    for (const k in o) if (o[k] !== undefined) opts[k] = o[k];
+    opts.angle = spec.rotates ? angle : 0;
     if (!spec.rotates && Number.isFinite(o.angle)) opts.aim = angle;
-    if (reduce) opts.calm = true;
+    if (reduce) {
+      // calmer: the effect's own calm mode where it has one, and a little smaller
+      opts.calm = true;
+      if (typeof opts.size === 'number') opts.size *= REDUCE_SIZE;
+    }
     delete opts.follow;
     delete opts.layer;
     delete opts.priority;
@@ -204,7 +248,9 @@ export class PixelFx {
       life: Number.isFinite(o.life) ? o.life : Number.isFinite(spec.life) ? spec.life : Infinity,
       t: 0,
       loop,
-      lightK: (opts.lightScale ?? 1) * (spec.lightK ?? 1),
+      lightK: (opts.lightScale ?? 1) * (spec.lightK ?? 1) * (reduce ? REDUCE_LIGHT : 1),
+      // under reduced motion, white pixels are drawn in the ramp's brightest color instead
+      soft: reduce ? softWhite(opts.palette || spec.mod.meta?.options?.palette) : 0,
       stopped: false,
       proxyBack: null,
       proxyFront: null,
@@ -377,6 +423,7 @@ export class PixelFx {
       return;
     }
     this.stats.drawn++;
+    if (inst.soft) softenWhites(fr.color, n, inst.soft);
     const lit = this._addLight(fr, inst.lightK, ox, oy);
     const drew = this._blit(fr, ctx, x0 - ox, y0 - oy);
     if (!drew && !lit) return;

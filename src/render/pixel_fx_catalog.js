@@ -108,14 +108,14 @@ export const PIXEL_FX = {
     layer: 'top',
     priority: 3,
     bounds: [-48, -46, 48, 34],
-    opts: { size: 0.75, height: 8 },
-    lightK: 0.8,
+    opts: { size: 0.55, height: 8 },
+    lightK: 0.3,
   },
 
   // ---------------------------------------------------------------- deaths, heals, pickups
   // A creature goes: a cartoon poof of round smoke balls that hides the fading body, little
   // stars spinning off, dust skidding out over the floor all round. Also a boss's arrival.
-  poof: { mod: poof, layer: 'top', priority: 1, bounds: [-40, -44, 40, 26], opts: { size: 0.55, height: 9 }, reduce: { opts: { calm: true } } },
+  poof: { mod: poof, layer: 'top', priority: 1, bounds: [-40, -44, 40, 26], opts: { size: 0.55, height: 9 }, lightK: 0.3, reduce: { opts: { calm: true } } },
   // A boss beaten for good: a pale copy of its body lifts out of it and thins into light,
   // a ring of light running out across the floor.
   'soul-rise': { mod: soulRise, layer: 'body', actor: true, priority: 2, bounds: [-40, -90, 40, 24], opts: { height: 34, ring: 0.7 } },
@@ -124,12 +124,12 @@ export const PIXEL_FX = {
   heal: { mod: heal, layer: 'body', actor: true, priority: 2, bounds: [-34, -64, 34, 20], opts: {} },
   // A pickup, a chest's haul, a level-up: a flash and a cross of light, rings snapping out,
   // twinkles flung on curving paths.
-  collect: { mod: collectBurst, layer: 'top', priority: 1, bounds: [-44, -60, 44, 24], opts: { height: 6 } },
+  collect: { mod: collectBurst, layer: 'top', priority: 1, bounds: [-44, -60, 44, 24], opts: { height: 6 }, lightK: 0.7 },
 
   // ---------------------------------------------------------------- bind
   // A bind closing on someone: a pool opens round their feet and hands come up all round
   // them, clench over them, strain, and are dragged back under. In the weave's colors.
-  bind: { mod: graspingHands, layer: 'body', priority: 2, bounds: [-34, -50, 34, 22], opts: { radius: 15, size: 0.42 }, reduce: { opts: { size: 0.38 } } },
+  bind: { mod: graspingHands, layer: 'body', priority: 2, bounds: [-34, -50, 34, 22], opts: { radius: 15, size: 0.42 }, lightK: 0.5, reduce: { opts: { size: 0.38 } } },
 
   // ---------------------------------------------------------------- ambience (critters)
   // Tiny, seen from above, flying over their shadows; moved by the director's wanderers

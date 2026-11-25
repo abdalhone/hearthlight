@@ -651,7 +651,10 @@ export class Combat {
     const color = HIT_COLORS[target.species] || '#ffffff';
     // The hit spark (pixelfx, DESIGN §30), in the weave's colors for a weave; the old
     // streaks only when it could not play. Status ticks keep the small streaks.
-    const played = !o?.dot && playHit(this.game, target, { dx, dy, crit, heavy, pal: o?.magic ? o.weave?.palette : null });
+    // The Strike's fist is carried by its own punch (played on the weave's impact), so the
+    // fist's blow draws no second spark; the wave rolling on after it does.
+    const fist = !!(o?.magic && o.heavy && o.weave?.shape === 'strike');
+    const played = fist || (!o?.dot && playHit(this.game, target, { dx, dy, crit, heavy, pal: o?.magic ? o.weave?.palette : null }));
     if (!played) {
       this._particles('hit', x, y, { count: crit ? 10 : 6, color, dir: { x: dx, y: dy }, spread: 1.1, speed: crit ? 90 : 65, life: 0.35 });
       if (crit) this._particles('spark', x, y, { count: 6, color: '#ffe27a', speed: 70, life: 0.3 });
