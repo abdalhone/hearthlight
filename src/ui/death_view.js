@@ -33,8 +33,9 @@ function safe(fn, fallback = null) {
   }
 }
 
+// "Rowan", not "Captain"; "Aveline", not "Sister".
 function firstName(a) {
-  return (a?.name || 'Someone').split(' ')[0];
+  return String(a?.name || 'Someone').replace(/^(Captain|Sister|Brother|Master|Mistress|Old)\s+/i, '').split(' ')[0];
 }
 
 function joinNames(list) {
