@@ -827,7 +827,7 @@ export class Survival {
         h.beats++;
         h.pulse = 1 - 0.45 * falter;
         try {
-          g.audio?.heartbeat?.((0.5 + 0.5 * (1 - frac)) * (1 - 0.5 * falter));
+          g.audio?.heartbeat?.((0.5 + 0.5 * (1 - frac)) * (1 - 0.5 * falter), h.bpm);
         } catch {
           /* sound is optional */
         }

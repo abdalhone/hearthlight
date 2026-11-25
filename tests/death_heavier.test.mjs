@@ -156,3 +156,106 @@ test('a villager on the ground drags themselves away from whoever stands over th
   step(g, 2);
   assert.ok(Math.abs(hobb.x - x) < 0.01, 'no danger, no crawl');
 });
+
+// ---------------------------------------------------------------- D1: the countdown
+
+test('the countdown: seconds left and how fast they go; the heart races as the window closes, then falters', () => {
+  const g = makeGame({ hour: 14 });
+  alone(g);
+  banish(g);
+  const P = g.player;
+  const m = at(g, 'south_meadow');
+  placeAt(g, P, m.x, m.y);
+  lyraAway(g, m.x + 900, m.y);
+  const rec = fell(g);
+  step(g, 2.5);
+  let cd = g.survival.countdown(P);
+  assert.ok(Math.abs(cd.left - rec.left) < 1e-9 && cd.window === rec.window && Math.abs(cd.frac - rec.left / rec.window) < 1e-9);
+  assert.equal(cd.rate, RATE.alone);
+  assert.equal(cd.help, null, 'nobody is with you');
+  g.input.move = { x: 1, y: 0 };
+  step(g, 0.3);
+  assert.equal(g.survival.countdown(P).rate, RATE.crawling, 'crawling: faster');
+  g.input.move = { x: 0, y: 0 };
+  // The heart: slow and steady with most of the window left, racing near the end, then
+  // faltering (weaker, uneven, some beats missing) in the last stretch.
+  const bpmAt = (left) => {
+    rec.left = left;
+    g.survival.realtime(0.01);
+    return g.survival.heart.bpm;
+  };
+  const early = bpmAt(rec.window * 0.95);
+  const mid = bpmAt(rec.window * 0.5);
+  const late = bpmAt(rec.window * 0.15);
+  assert.ok(early < mid && mid < late, `the heart speeds up (${early.toFixed(0)} < ${mid.toFixed(0)} < ${late.toFixed(0)})`);
+  assert.ok(early < 80 && late > 130, 'from a resting beat to racing');
+  bpmAt(rec.window * 0.03);
+  assert.ok(g.survival.heart.falter > 0.5, 'it falters at the very end');
+  // Beats in 10 s of real time, early vs late: more of them as it closes.
+  const count = (left) => {
+    rec.left = left;
+    const b0 = g.survival.heart.beats;
+    for (let i = 0; i < 200; i++) {
+      rec.left = left;
+      g.survival.realtime(0.05);
+    }
+    return g.survival.heart.beats - b0;
+  };
+  const slow = count(rec.window * 0.9);
+  const fast = count(rec.window * 0.2);
+  assert.ok(fast > slow * 1.6, `you hear it race (${slow} beats in 10 s, then ${fast})`);
+  assert.ok(!g.survival.countdown(g.companion), 'only for someone fallen');
+});
+
+test('the countdown shows who is saving you and how far along: a salve kneeling, the carry to a cot with its distance closing', () => {
+  // Mira kneels with her salves: progress fills.
+  const g = makeGame({ hour: 14 });
+  const P = g.player;
+  const sq = at(g, 'town_square');
+  banish(g, ['mira']);
+  lyraAway(g, 20 * TILE, 20 * TILE);
+  g.companion.mind.autonomy.companionship = 'gone';
+  placeAt(g, P, sq.x, sq.y);
+  const mira = g.entities.get('mira');
+  placeAt(g, mira, sq.x + 60, sq.y);
+  step(g, 0.3);
+  fell(g);
+  let seen = [];
+  for (let i = 0; i < 400 && g.survival.isFallen(P); i++) {
+    step(g, 0.05);
+    const h = g.survival.countdown(P)?.help;
+    if (h) seen.push({ kind: h.kind, p: h.progress, who: h.who?.id });
+  }
+  const salve = seen.filter((x) => x.kind === 'salve');
+  assert.ok(salve.length > 5, 'Mira is dressing the wound');
+  assert.equal(salve[0].who, 'mira');
+  assert.ok(salve.at(-1).p > salve[0].p && salve.at(-1).p > 0.8, 'and it fills');
+
+  // Rowan carries: the bar fills and the time to the cot shrinks; slower drain on his shoulders.
+  const g2 = makeGame({ hour: 14 });
+  const P2 = g2.player;
+  const sq2 = at(g2, 'town_square');
+  lyraAway(g2, 20 * TILE, 20 * TILE);
+  g2.companion.mind.autonomy.companionship = 'gone';
+  placeAt(g2, g2.entities.get('mira'), 25 * TILE, 53 * TILE);
+  banish(g2, ['rowan', 'mira']);
+  const rowan = g2.entities.get('rowan');
+  placeAt(g2, rowan, sq2.x + 100, sq2.y);
+  placeAt(g2, P2, sq2.x, sq2.y);
+  step(g2, 0.3);
+  fell(g2);
+  const carry = [];
+  for (let i = 0; i < 1600 && g2.survival.isFallen(P2); i++) {
+    step(g2, 0.05);
+    const cd = g2.survival.countdown(P2);
+    if (cd?.help?.kind === 'carry') carry.push({ p: cd.help.progress, eta: cd.help.eta, to: cd.help.to, rate: cd.rate });
+  }
+  assert.ok(carry.length > 20, `carried (${carry.length} samples)`);
+  assert.equal(carry[0].to, 'sickroom');
+  assert.equal(carry[0].rate, RATE.carried, 'held tight: slower');
+  assert.ok(carry.at(-1).p > 0.85, `nearly there at the end (${carry.at(-1).p.toFixed(2)})`);
+  const timed = carry.filter((c) => Number.isFinite(c.eta));
+  assert.ok(timed.length > 10 && timed.at(-1).eta < timed[0].eta - 5, `the time to the cot shrinks (${timed[0].eta.toFixed(1)} s -> ${timed.at(-1).eta.toFixed(1)} s)`);
+  // never goes backwards by much (roads bend)
+  for (let i = 1; i < carry.length; i++) assert.ok(carry[i].p >= carry[i - 1].p - 0.05, 'progress only grows');
+});
