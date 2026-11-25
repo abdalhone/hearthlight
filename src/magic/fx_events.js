@@ -440,11 +440,13 @@ const H = {
       if (!punched) {
         star(fx, x, y, 6, P.core, L.halo, 0.16, 8);
         burstStyles(fx, L.debris, x, y, 8, 8, 1.3, b.angle, 1.4);
+        // (the punch has its own dust ring on the floor: one ring, not two)
+        ring(fx, x, y, 2, (p.r || 12) * 1.6, P.core, P.glow, 0.25, 2, 4);
       }
-      ring(fx, x, y, 2, (p.r || 12) * 1.6, P.core, P.glow, 0.25, 2, 4);
       fx.shake(1.2, 0.1);
-      // (the punch brings its own warm glow: the scene's flash is smaller with it)
-      fx.flash(x, y - 8, punched ? 26 : 36, L.lightColor, punched ? 0.5 : 0.8, 0.14);
+      // (the punch brings its own warm glow: the scene's flash is small with it, so a
+      // night punch doesn't bloom white over the fight)
+      fx.flash(x, y - 8, punched ? 20 : 36, L.lightColor, punched ? 0.32 : 0.8, 0.14);
       return;
     }
     // A rain drop landing.
