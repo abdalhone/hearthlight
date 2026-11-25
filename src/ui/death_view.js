@@ -263,7 +263,7 @@ export class DeathView {
     ctx.arc(cx, cy, R, 0, Math.PI * 2);
     ctx.stroke();
     // Minute marks every five seconds of the window (quiet ticks round the rim).
-    const ticks = Math.max(1, Math.round(cd.window / 5));
+    const ticks = Math.max(1, Math.min(36, Math.round(cd.window / 5)));
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
     ctx.lineWidth = Math.max(2, W * 0.012);
     for (let i = 0; i < ticks; i++) {
