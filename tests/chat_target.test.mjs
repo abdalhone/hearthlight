@@ -554,6 +554,14 @@ test('browser: the chat talks to anyone within earshot (and screenshots)', { tim
       });
       await page.waitForFunction(() => /gone on her way/.test(document.querySelector('.chat-log')?.textContent || ''), null, { timeout: 5000 });
       assert.equal(await page.isDisabled('.chat-field'), true);
+      // Her answer to what was said before she went, arriving late: she cannot answer now
+      // (the author saw Elda reply after "Elda has gone on her way", twice).
+      const late = await page.evaluate(() => {
+        const c = window.__game.ui.chat;
+        c.villagerReplied(window.__game.entities.get('elda'), { ok: true, lines: ['Not like this, love, shouting at me.'] });
+        return /Not like this, love/.test(document.querySelector('.chat-log')?.textContent || '');
+      });
+      assert.equal(late, false, `${view.label}: gone on her way, she cannot answer after`);
       // Click someone in the world (desktop): the chat turns to them.
       if (!view.touch) {
         const at = await page.evaluate(() => {
