@@ -70,6 +70,33 @@ const WILDS_METHODS = {
     return this.map.idx(x, y);
   },
 
+  // A cheaper stroke than the vale's: two samples a tile and a hashed wobble (the wilds'
+  // roads are long; the vale's careful one costs a noise call per step).
+  stroke(points, width, fn) {
+    const r = width / 2;
+    for (let s = 0; s < points.length - 1; s++) {
+      const [ax, ay] = points[s];
+      const [bx, by] = points[s + 1];
+      const len = Math.hypot(bx - ax, by - ay);
+      const steps = Math.max(1, Math.ceil(len * 2));
+      for (let k = 0; k <= steps; k++) {
+        const t = k / steps;
+        const cx = ax + (bx - ax) * t;
+        const cy = ay + (by - ay) * t;
+        const rr = r + (this.hash(Math.floor(cx * 2), Math.floor(cy * 2), 471) - 0.5) * 0.5;
+        const rr2 = rr * rr;
+        for (let y = Math.floor(cy - rr - 1); y <= Math.ceil(cy + rr); y++) {
+          for (let x = Math.floor(cx - rr - 1); x <= Math.ceil(cx + rr); x++) {
+            if (!this.inb(x, y)) continue;
+            const dx = x + 0.5 - cx;
+            const dy = y + 0.5 - cy;
+            if (dx * dx + dy * dy <= rr2) fn(x, y);
+          }
+        }
+      }
+    }
+  },
+
   // The wilds' own tiles: in the world, outside the vale.
   inb(x, y) {
     return this.map.inBounds(x, y) && !inVale(x, y);
@@ -169,6 +196,72 @@ const WILDS_METHODS = {
       return r === 'snow' || r === 'foothill' ? 'snow' : r === 'pine' ? 'pine' : r === 'grey' ? 'grey' : 'oak';
     };
     map.places = this.places;
+    map.roadGraph = this.roadGraph();
+  },
+
+  // The roads as a graph of waypoints for long journeys (pathfind.js _findLong): every
+  // road of the wilds, sampled every few tiles, plus the vale's own spine (the King's
+  // Road across it and the north-south street up the forest road to the Crown path).
+  roadGraph() {
+    const lines = ROADS.map((R) => R.points);
+    lines.push(
+      [
+        [0, 84],
+        [40, 84],
+        [80, 84],
+        [120, 84],
+        [159, 84],
+      ],
+      [
+        [80, 84],
+        [80, 62],
+        [80, 38],
+        [79, 31],
+        [76.5, 23],
+        [74.5, 17],
+        [74, 11],
+        [73.5, 0],
+      ],
+    );
+    const nodes = [];
+    const edges = [];
+    const key = new Map();
+    const node = (x, y) => {
+      const k = `${Math.round(x)},${Math.round(y)}`;
+      let i = key.get(k);
+      if (i === undefined) {
+        i = nodes.length;
+        key.set(k, i);
+        nodes.push({ x: px(Math.round(x)), y: px(Math.round(y)) });
+        edges.push([]);
+      }
+      return i;
+    };
+    const link = (a, b) => {
+      if (a === b) return;
+      if (!edges[a].includes(b)) edges[a].push(b);
+      if (!edges[b].includes(a)) edges[b].push(a);
+    };
+    for (const pts of lines) {
+      let last = -1;
+      for (let s = 0; s < pts.length - 1; s++) {
+        const [ax, ay] = pts[s];
+        const [bx, by] = pts[s + 1];
+        const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 12));
+        for (let k = 0; k <= n; k++) {
+          const i = node(ax + ((bx - ax) * k) / n, ay + ((by - ay) * k) / n);
+          if (last >= 0) link(last, i);
+          last = i;
+        }
+      }
+    }
+    // Ends that meet (forks, the seams) join up.
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        if (Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y) < 5 * TILE) link(i, j);
+      }
+    }
+    return { nodes, edges };
   },
 
   // How open each tile is: the largest (half-width - distance) over the corridors and
@@ -196,14 +289,17 @@ const WILDS_METHODS = {
           const x1 = Math.ceil(Math.max(ax, bx) + r);
           const y0 = Math.floor(Math.min(ay, by) - r);
           const y1 = Math.ceil(Math.max(ay, by) + r);
+          const r2 = r * r;
           for (let y = y0; y <= y1; y++) {
             for (let x = x0; x <= x1; x++) {
               const cx = x + 0.5;
               const cy = y + 0.5;
               let t = ((cx - ax) * vx + (cy - ay) * vy) / len2;
               t = t < 0 ? 0 : t > 1 ? 1 : t;
-              const d = Math.hypot(cx - ax - vx * t, cy - ay - vy * t);
-              if (d <= r) mark(x, y, L.hw - d);
+              const ex = cx - ax - vx * t;
+              const ey = cy - ay - vy * t;
+              const d2 = ex * ex + ey * ey;
+              if (d2 <= r2) mark(x, y, L.hw - Math.sqrt(d2));
             }
           }
         }
@@ -267,7 +363,7 @@ const WILDS_METHODS = {
           break;
         case 'foothill':
           // Grass low on the mountain, scree higher up, gravel in the gullies.
-          if (y > -112 && n > 0.48) t = T.GRASS;
+          if (y > -176 && n > 0.48) t = T.GRASS;
           else if (n < 0.28) t = T.GRAVEL;
           if (o <= 0 && n > 0.6) t = T.ROCK;
           break;
@@ -717,8 +813,8 @@ const WILDS_METHODS = {
       for (let x = map.x0; x < map.x0 + map.w; x++) {
         if (inVale(x, y)) continue;
         const i = this.ix(x, y);
-        if (this.occ[i]) continue;
         const g = map.ground[i];
+        if (this.occ[i] || g === T.THICKET || g === T.ROCK) continue;
         const h = this.hash(x, y, 461);
         let d = DECO.NONE;
         switch (g) {
@@ -775,31 +871,31 @@ const WILDS_METHODS = {
 
   makeWildsLocations() {
     const C = (p) => [p.x, p.y];
-    this.loc('western_heath', { x: -160, y: 62, w: 160, h: 42 }, [-60, 84]);
-    this.loc('kings_road_west', { x: -152, y: 80, w: 152, h: 9 }, [-60, 84]);
+    this.loc('western_heath', { x: -240, y: 60, w: 240, h: 46 }, [-90, 84]);
+    this.loc('kings_road_west', { x: -230, y: 80, w: 230, h: 9 }, [-90, 84]);
     this.loc('dead_waystone', { x: -40, y: 72, w: 20, h: 14 }, [P.deadWaystone.x + 1, P.deadWaystone.y + 3]);
-    this.loc('long_mile', { x: -114, y: 70, w: 28, h: 18 }, [P.longMile.x + 1, P.longMile.y + 3]);
-    this.loc('bracken_ford', { x: -72, y: 78, w: 12, h: 12 }, C(P.ford));
-    this.loc('west_fork', { x: -164, y: 76, w: 28, h: 20 }, C(P.westFork));
-    this.loc('saltmere_road', { x: -258, y: 88, w: 106, h: 28 }, [-200, 101]);
-    this.loc('greyford', { x: -270, y: 96, w: 26, h: 24 }, [P.greyford.x + 3, P.greyford.y]);
-    this.loc('brindle_lane', { x: -206, y: 50, w: 58, h: 36 }, [-176, 68]);
-    this.loc('brindlecombe', { x: -250, y: 22, w: 72, h: 54 }, [P.brindlecombe.x, P.brindlecombe.y + 5]);
+    this.loc('long_mile', { x: -162, y: 70, w: 28, h: 18 }, [P.longMile.x + 1, P.longMile.y + 3]);
+    this.loc('bracken_ford', { x: -90, y: 78, w: 12, h: 12 }, C(P.ford));
+    this.loc('west_fork', { x: -242, y: 76, w: 28, h: 20 }, C(P.westFork));
+    this.loc('saltmere_road', { x: -368, y: 88, w: 140, h: 28 }, [-290, 103]);
+    this.loc('greyford', { x: -384, y: 96, w: 30, h: 24 }, [P.greyford.x + 4, P.greyford.y]);
+    this.loc('brindle_lane', { x: -296, y: 46, w: 70, h: 40 }, [-262, 64]);
+    this.loc('brindlecombe', { x: -342, y: 18, w: 72, h: 54 }, [P.brindlecombe.x, P.brindlecombe.y + 5]);
     for (const id of ['brindle_chapel', 'brindle_coll_house', 'brindle_fallow_house', 'brindle_mill_house', 'brindle_haskett_house', 'brindle_lane_house']) {
       const b = this.map.buildings.find((bb) => bb.id === id);
       if (b) this.loc(id, { x: b.x, y: b.y, w: b.w, h: b.h }, [b.doorTiles[0].tx, b.y + b.h - 3], { parent: 'brindlecombe' });
     }
-    this.loc('deep_whisperwood', { x: 40, y: -88, w: 72, h: 88 }, [73, -30]);
-    this.loc('crown_shrine', { x: 56, y: -54, w: 20, h: 16 }, [P.shrine.x + 2, P.shrine.y + 3], { parent: 'deep_whisperwood' });
-    this.loc('treeline_camp', { x: 68, y: -102, w: 28, h: 20 }, [P.treelineCamp.x + 1, P.treelineCamp.y + 3]);
-    this.loc('hollowcrown', { x: 40, y: -152, w: 80, h: 50 }, [78, -120]);
-    this.loc('crown_ring', { x: 52, y: -194, w: 46, h: 36 }, [P.crownRing.x, P.crownRing.y + 2]);
+    this.loc('deep_whisperwood', { x: 40, y: -148, w: 72, h: 148 }, [73, -40]);
+    this.loc('crown_shrine', { x: 52, y: -72, w: 20, h: 16 }, [P.shrine.x + 2, P.shrine.y + 3], { parent: 'deep_whisperwood' });
+    this.loc('treeline_camp', { x: 70, y: -160, w: 28, h: 20 }, [P.treelineCamp.x + 1, P.treelineCamp.y + 3]);
+    this.loc('hollowcrown', { x: 40, y: -234, w: 80, h: 74 }, [78, -190]);
+    this.loc('crown_ring', { x: 53, y: -276, w: 46, h: 42 }, [P.crownRing.x, P.crownRing.y + 2]);
     this.loc('far_shore', { x: 160, y: 38, w: 44, h: 52 }, C(P.farShore));
     this.loc('cinderwick_fork', { x: 176, y: 8, w: 34, h: 28 }, [P.eastFork.x, P.eastFork.y + 3]);
     this.loc('bandit_lookout', { x: 162, y: -2, w: 20, h: 15 }, [P.lookout.x, P.lookout.y + 3]);
-    this.loc('oil_track', { x: 206, y: 12, w: 44, h: 22 }, [222, 22]);
-    this.loc('owlsend_track', { x: 180, y: -50, w: 28, h: 58 }, [193, -14]);
-    this.loc('far_fields', { x: 160, y: 86, w: 90, h: 34 }, [196, 100]);
+    this.loc('oil_track', { x: 206, y: 12, w: 50, h: 22 }, [222, 22]);
+    this.loc('owlsend_track', { x: 180, y: -90, w: 30, h: 98 }, [193, -30]);
+    this.loc('far_fields', { x: 160, y: 86, w: 96, h: 34 }, [196, 100]);
   },
 
   makeWildsSpawns() {
@@ -807,24 +903,24 @@ const WILDS_METHODS = {
     // Spawn zones in the wilds fill only while you are near them (near, in tiles) and
     // let their creatures go when you are far away, so the world stays light.
     const Z = (id, locationId, species, max, rect, night, near = 56) => S.spawnZones.push({ id, locationId, species, max, night, rect, near });
-    Z('heath_wolves_night', 'western_heath', ['wolf'], 4, { x: -146, y: 66, w: 136, h: 36 }, true);
-    Z('heath_boars', 'western_heath', ['boar'], 3, { x: -146, y: 66, w: 136, h: 36 }, false);
-    Z('heath_slimes', 'western_heath', ['slime'], 2, { x: -118, y: 64, w: 90, h: 34 }, undefined);
-    Z('saltmere_wolves', 'saltmere_road', ['wolf'], 3, { x: -250, y: 90, w: 96, h: 24 }, undefined);
-    Z('brindle_dead_night', 'brindlecombe', ['skeleton'], 3, { x: -236, y: 30, w: 44, h: 40 }, true);
-    Z('brindle_bats_night', 'brindlecombe', ['bat'], 3, { x: -236, y: 30, w: 44, h: 40 }, true);
-    Z('brindle_wolves', 'brindle_lane', ['wolf'], 2, { x: -200, y: 54, w: 46, h: 30 }, undefined);
-    Z('deepwood_wolves', 'deep_whisperwood', ['wolf'], 3, { x: 58, y: -86, w: 32, h: 80 }, false);
-    Z('deepwood_wolves_night', 'deep_whisperwood', ['wolf'], 5, { x: 56, y: -88, w: 36, h: 84 }, true);
-    Z('deepwood_boars', 'deep_whisperwood', ['boar'], 2, { x: 58, y: -60, w: 30, h: 50 }, undefined);
-    Z('deepwood_deer', 'deep_whisperwood', ['deer'], 2, { x: 58, y: -80, w: 30, h: 70 }, undefined);
-    Z('hollowcrown_wolves', 'hollowcrown', ['wolf'], 3, { x: 62, y: -146, w: 34, h: 50 }, undefined);
-    Z('crown_wolves_night', 'crown_ring', ['wolf'], 2, { x: 56, y: -190, w: 40, h: 30 }, true);
+    Z('heath_wolves_night', 'western_heath', ['wolf'], 4, { x: -226, y: 66, w: 216, h: 36 }, true);
+    Z('heath_boars', 'western_heath', ['boar'], 3, { x: -226, y: 66, w: 216, h: 36 }, false);
+    Z('heath_slimes', 'western_heath', ['slime'], 2, { x: -196, y: 62, w: 160, h: 38 }, undefined);
+    Z('saltmere_wolves', 'saltmere_road', ['wolf'], 3, { x: -360, y: 90, w: 130, h: 24 }, undefined);
+    Z('brindle_dead_night', 'brindlecombe', ['skeleton'], 3, { x: -328, y: 26, w: 44, h: 40 }, true);
+    Z('brindle_bats_night', 'brindlecombe', ['bat'], 3, { x: -328, y: 26, w: 44, h: 40 }, true);
+    Z('brindle_wolves', 'brindle_lane', ['wolf'], 2, { x: -284, y: 52, w: 52, h: 32 }, undefined);
+    Z('deepwood_wolves', 'deep_whisperwood', ['wolf'], 3, { x: 56, y: -146, w: 34, h: 140 }, false);
+    Z('deepwood_wolves_night', 'deep_whisperwood', ['wolf'], 5, { x: 54, y: -148, w: 38, h: 144 }, true);
+    Z('deepwood_boars', 'deep_whisperwood', ['boar'], 2, { x: 56, y: -100, w: 32, h: 90 }, undefined);
+    Z('deepwood_deer', 'deep_whisperwood', ['deer'], 2, { x: 56, y: -140, w: 32, h: 130 }, undefined);
+    Z('hollowcrown_wolves', 'hollowcrown', ['wolf'], 3, { x: 62, y: -228, w: 34, h: 74 }, undefined);
+    Z('crown_wolves_night', 'crown_ring', ['wolf'], 2, { x: 56, y: -272, w: 40, h: 30 }, true);
     Z('east_boars', 'far_shore', ['boar'], 2, { x: 164, y: 34, w: 36, h: 52 }, undefined);
     Z('east_deer', 'far_shore', ['deer'], 3, { x: 164, y: 34, w: 36, h: 52 }, false);
     Z('east_slimes', 'far_fields', ['slime'], 2, { x: 170, y: 88, w: 60, h: 26 }, undefined);
     Z('lookout_bandits', 'bandit_lookout', ['bandit', 'bandit_archer'], 2, { x: 166, y: 2, w: 12, h: 9 }, undefined);
-    Z('owlsend_wolves', 'owlsend_track', ['wolf'], 2, { x: 184, y: -44, w: 20, h: 50 }, undefined);
+    Z('owlsend_wolves', 'owlsend_track', ['wolf'], 2, { x: 184, y: -84, w: 22, h: 90 }, undefined);
     // Two of Varek's men keep the lookout from the start.
     const C = (species, x, y) => {
       const t = this.freeNear(x, y);

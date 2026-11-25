@@ -9,10 +9,10 @@ export const TILE = 16; // world pixels per tile
 export const VALE_W = 160; // tiles
 export const VALE_H = 120; // tiles
 // Edges sit on 16-tile chunk lines (map.js CHUNK) so no ground chunk hangs off the world.
-export const WORLD_X0 = -272; // first tile column (west of the vale)
-export const WORLD_Y0 = -208; // first tile row (north of the vale)
-export const WORLD_W = 528; // tiles, west edge to east edge (x -272 .. 255)
-export const WORLD_H = 328; // tiles, north edge to south edge (y -208 .. 119, the vale's south edge)
+export const WORLD_X0 = -384; // first tile column (west of the vale)
+export const WORLD_Y0 = -288; // first tile row (north of the vale)
+export const WORLD_W = 640; // tiles, west edge to east edge (x -384 .. 255)
+export const WORLD_H = 408; // tiles, north edge to south edge (y -288 .. 119, the vale's south edge)
 
 export const FIXED_DT = 1 / 60; // simulation step (seconds)
 export const DAY_SECONDS = 900; // real seconds for one full in-game day (15 minutes)

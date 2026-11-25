@@ -22,21 +22,21 @@ export const inSeam = (x, y) => SEAMS.some((s) => x >= s.x0 && x <= s.x1 && y >=
 // Places worth a name on the map (tile centers).
 export const P = {
   deadWaystone: { x: -30, y: 80 }, // "a mile down the road": Lyra lit it for one night
-  ford: { x: -66, y: 84 }, // the Bracken Water crosses the King's Road
-  longMile: { x: -100, y: 80 }, // a waystone that still burns
-  westFork: { x: -150, y: 86 }, // the King's Road bends south-west; the Brindle lane goes on
-  greyford: { x: -258, y: 108 }, // the bridge the spring floods took
-  brindlecombe: { x: -214, y: 50 }, // the dead village: its square and wardstone
+  ford: { x: -84, y: 85 }, // the Bracken Water crosses the King's Road
+  longMile: { x: -148, y: 80 }, // a waystone that still burns
+  westFork: { x: -228, y: 86 }, // the King's Road bends south-west; the Brindle lane goes on
+  greyford: { x: -366, y: 108 }, // the bridge the spring floods took
+  brindlecombe: { x: -306, y: 46 }, // the dead village: its square and wardstone
   crownPathFoot: { x: 73, y: -6 },
-  shrine: { x: 66, y: -46 }, // a Lanternwright marker stone in the deep wood
-  tarnFord: { x: 74, y: -66 }, // a cold stream across the Crown path
-  treelineCamp: { x: 82, y: -92 }, // where Lyra and Hess camped, the night before the ring
-  crownRing: { x: 75, y: -176 }, // nine stones, snow at midsummer
+  shrine: { x: 62, y: -64 }, // a Lanternwright marker stone in the deep wood
+  tarnFord: { x: 74, y: -104 }, // a cold stream across the Crown path
+  treelineCamp: { x: 84, y: -150 }, // where Lyra and Hess camped, the night before the ring
+  crownRing: { x: 76, y: -258 }, // nine stones, snow at midsummer
   farShore: { x: 182, y: 66 },
   eastFork: { x: 192, y: 22 }, // the Cinderwick fork and its burning waystone
   lookout: { x: 172, y: 6 }, // the bandits' hill above the fork
-  rockslide: { x: 234, y: 23 }, // the oil track, buried
-  owlsendTrackEnd: { x: 194, y: -46 }, // the north track, closed by fallen pines
+  rockslide: { x: 238, y: 24 }, // the oil track, buried
+  owlsendTrackEnd: { x: 198, y: -84 }, // the north track, closed by fallen pines
 };
 
 // Roads and paths, drawn as ground. width in tiles; tile 'dirt' | 'gravel' | 'track'.
@@ -47,37 +47,43 @@ export const ROADS = [
     points: [
       [0, 84],
       [-24, 84],
-      [-46, 85],
-      [-66, 84],
-      [-86, 82.5],
-      [-112, 83],
-      [-134, 85],
-      [-150, 86],
+      [-50, 86],
+      [-70, 84],
+      [-84, 85],
+      [-104, 82],
+      [-126, 83],
+      [-148, 84],
+      [-170, 86],
+      [-194, 84],
+      [-212, 87],
+      [-228, 86],
     ],
   },
   {
     id: 'saltmere_road',
     width: 3,
     points: [
-      [-150, 86],
-      [-170, 92],
-      [-192, 99],
-      [-214, 104],
-      [-236, 107],
-      [-254, 108],
-      [-257, 108],
+      [-228, 86],
+      [-248, 93],
+      [-270, 99],
+      [-296, 103],
+      [-320, 107],
+      [-344, 108],
+      [-362, 108],
+      [-365, 108],
     ],
   },
   {
     id: 'brindle_lane',
     width: 2,
     points: [
-      [-150, 86],
-      [-160, 77],
-      [-172, 69],
-      [-188, 61],
-      [-202, 55],
-      [-210, 52],
+      [-228, 86],
+      [-238, 77],
+      [-250, 70],
+      [-266, 63],
+      [-282, 56],
+      [-296, 50],
+      [-302, 48],
     ],
   },
   {
@@ -87,12 +93,15 @@ export const ROADS = [
     points: [
       [73.5, 0],
       [71, -14],
-      [77, -30],
-      [70, -44],
-      [66, -56],
-      [74, -66],
-      [80, -80],
-      [82, -92],
+      [78, -30],
+      [70, -46],
+      [62, -60],
+      [66, -76],
+      [76, -90],
+      [74, -104],
+      [64, -118],
+      [72, -134],
+      [84, -150],
     ],
   },
   {
@@ -100,12 +109,14 @@ export const ROADS = [
     width: 2,
     tile: 'gravel',
     points: [
-      [82, -92],
-      [70, -103],
-      [86, -114],
-      [69, -126],
-      [84, -138],
-      [76, -148],
+      [84, -150],
+      [70, -162],
+      [88, -174],
+      [68, -187],
+      [86, -200],
+      [70, -213],
+      [82, -226],
+      [77, -234],
     ],
   },
   {
@@ -128,7 +139,7 @@ export const ROADS = [
       [192, 22],
       [206, 25],
       [220, 22],
-      [232, 23],
+      [236, 24],
     ],
   },
   {
@@ -139,8 +150,10 @@ export const ROADS = [
       [192, 20],
       [195, 6],
       [190, -10],
-      [196, -28],
-      [194, -44],
+      [197, -30],
+      [192, -50],
+      [199, -68],
+      [198, -82],
     ],
   },
   {
@@ -164,17 +177,19 @@ export const LAND = [
   { region: 'heath', hw: 12, points: ROADS[1].points },
   { region: 'heath', hw: 10, points: ROADS[2].points },
   { region: 'heath', cx: -30, cy: 78, rx: 14, ry: 11 },
-  { region: 'heath', cx: -100, cy: 79, rx: 18, ry: 14 },
-  { region: 'heath', cx: -150, cy: 86, rx: 16, ry: 13 },
-  { region: 'heath', cx: -250, cy: 106, rx: 18, ry: 12 },
-  { region: 'grey', cx: -214, cy: 50, rx: 34, ry: 26 },
+  { region: 'heath', cx: -110, cy: 74, rx: 22, ry: 18 },
+  { region: 'heath', cx: -148, cy: 79, rx: 18, ry: 14 },
+  { region: 'heath', cx: -228, cy: 86, rx: 16, ry: 13 },
+  { region: 'heath', cx: -356, cy: 106, rx: 18, ry: 12 },
+  { region: 'grey', cx: -306, cy: 46, rx: 34, ry: 26 },
   // North: the deep Whisperwood, then the Hollowcrown's foothills and its snow.
   { region: 'wood', hw: 9, points: ROADS[3].points },
-  { region: 'wood', cx: 66, cy: -46, rx: 9, ry: 7 },
-  { region: 'wood', cx: 82, cy: -92, rx: 12, ry: 9 },
+  { region: 'wood', cx: 62, cy: -64, rx: 9, ry: 7 },
+  { region: 'wood', cx: 74, cy: -104, rx: 10, ry: 7 },
+  { region: 'wood', cx: 84, cy: -150, rx: 12, ry: 9 },
   { region: 'foothill', hw: 8, points: ROADS[4].points },
-  { region: 'snow', hw: 10, points: [[76, -146], [75, -162], [75, -170]] },
-  { region: 'snow', cx: 75, cy: -174, rx: 22, ry: 17 },
+  { region: 'snow', hw: 10, points: [[77, -228], [76, -244], [76, -252]] },
+  { region: 'snow', cx: 76, cy: -256, rx: 22, ry: 17 },
   // East: round the far shore of Mirror Lake to the fork; the oil track; the north track.
   { region: 'east', hw: 13, points: ROADS[5].points },
   { region: 'east', cx: 192, cy: 22, rx: 16, ry: 13 },
@@ -187,13 +202,13 @@ export const LAND = [
 
 // Which country a tile lies in, for its ground and its wood (and the art's thicket kind).
 export function regionAt(x, y) {
-  if (y < -146 + Math.sin(x * 0.11) * 3) return 'snow';
-  if (y < -96 && x > -40 && x < 160) return 'foothill';
+  if (y < -228 + Math.sin(x * 0.11) * 3) return 'snow';
+  if (y < -156 && x > -40 && x < 160) return 'foothill';
   if (x >= 160 && y < -4) return 'pine';
   if (y < 0) return 'wood';
   if (x < 0) {
-    const dx = (x + 214) / 44;
-    const dy = (y - 50) / 34;
+    const dx = (x + 306) / 44;
+    const dy = (y - 46) / 34;
     if (dx * dx + dy * dy < 1) return 'grey';
     return 'heath';
   }
@@ -204,10 +219,11 @@ export function regionAt(x, y) {
 // crosses shallow water (walkable: T.SHALLOWS).
 export const WATERS = {
   pools: [
-    { cx: -112, cy: 70, rx: 4.5, ry: 3 },
+    { cx: -116, cy: 68, rx: 4.5, ry: 3 },
     { cx: -40, cy: 92, rx: 3.5, ry: 2.2 },
-    { cx: -232, cy: 38, rx: 5, ry: 3.2 }, // Brindlecombe's mill pond
-    { cx: 90, cy: -96, rx: 4, ry: 2.6 }, // the tarn by the treeline camp
+    { cx: -184, cy: 96, rx: 4, ry: 2.6 },
+    { cx: -324, cy: 34, rx: 5, ry: 3.2 }, // Brindlecombe's mill pond
+    { cx: 92, cy: -154, rx: 4, ry: 2.6 }, // the tarn by the treeline camp
     { cx: 205, cy: 96, rx: 4, ry: 2.5 },
   ],
   rivers: [
@@ -216,12 +232,12 @@ export const WATERS = {
       width: 2.6,
       ford: true,
       points: [
-        [-60, 60],
-        [-64, 72],
-        [-66, 84],
-        [-63, 96],
-        [-66, 112],
-        [-64, 120],
+        [-78, 60],
+        [-82, 72],
+        [-84, 85],
+        [-81, 96],
+        [-84, 112],
+        [-82, 120],
       ],
     },
     // The Grey, at the world's west edge: the Greyford's bridge is gone.
@@ -229,10 +245,10 @@ export const WATERS = {
       width: 7,
       deep: true,
       points: [
-        [-262, 60],
-        [-261, 84],
-        [-263, 108],
-        [-262, 120],
+        [-372, 60],
+        [-371, 84],
+        [-373, 108],
+        [-372, 120],
       ],
     },
     // A cold stream off the mountain, across the Crown path.
@@ -240,11 +256,11 @@ export const WATERS = {
       width: 2.2,
       ford: true,
       points: [
-        [50, -58],
-        [62, -63],
-        [74, -66],
-        [86, -70],
-        [98, -68],
+        [50, -96],
+        [62, -101],
+        [74, -104],
+        [86, -108],
+        [98, -106],
       ],
     },
     // The Owlsend track crosses a beck.

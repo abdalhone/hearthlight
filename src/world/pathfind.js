@@ -17,6 +17,10 @@ import { SOLID, WATERY, COST } from './tiles.js';
 const SQRT2 = Math.SQRT2;
 const DOOR_COST = 4;
 const CACHE_TTL = 1; // seconds
+const LONG = 90; // tiles: farther than this, out in the wilds, route along the roads (map.roadGraph)
+const VALE_PX_W = 160 * TILE; // the vale's own journeys keep their single search
+const VALE_PX_H = 120 * TILE;
+const LEG = 40; // tiles between waypoints on such a route
 const DX = [1, -1, 0, 0, 1, 1, -1, -1];
 const DY = [0, 0, 1, -1, 1, -1, 1, -1];
 
@@ -175,7 +179,69 @@ export class Pathfinder {
     return top;
   }
 
+  // Journeys across the wider world (DESIGN §32.5): past LONG tiles, walk the roads. The
+  // route runs start -> nearest road node -> along the road graph (map.roadGraph, built
+  // by wilds.js) -> the node nearest the goal -> goal, each leg a short search, so a
+  // villager or Lyra can set out for Brindlecombe without one search over the world.
   find(sx, sy, gx, gy, opts = {}) {
+    const map = this.game.map;
+    const outside = (x, y) => x < 0 || y < 0 || x >= VALE_PX_W || y >= VALE_PX_H;
+    if (map?.roadGraph && !opts._leg && Number.isFinite(sx) && Number.isFinite(gx) && (outside(sx, sy) || outside(gx, gy)) && Math.hypot(gx - sx, gy - sy) > LONG * TILE) {
+      const r = this._findLong(sx, sy, gx, gy, opts);
+      if (r) return r;
+    }
+    return this._find(sx, sy, gx, gy, opts);
+  }
+
+  _findLong(sx, sy, gx, gy, opts) {
+    const G = this.game.map.roadGraph;
+    const nodes = G.nodes;
+    const near = (x, y) => {
+      let best = -1;
+      let bd = Infinity;
+      for (let i = 0; i < nodes.length; i++) {
+        const d = Math.hypot(nodes[i].x - x, nodes[i].y - y);
+        if (d < bd) (bd = d), (best = i);
+      }
+      return best;
+    };
+    const a = near(sx, sy);
+    const b = near(gx, gy);
+    if (a < 0 || b < 0 || a === b) return null;
+    // Dijkstra over the few hundred road nodes.
+    const dist = new Float64Array(nodes.length).fill(Infinity);
+    const prev = new Int32Array(nodes.length).fill(-1);
+    const done = new Uint8Array(nodes.length);
+    dist[a] = 0;
+    for (;;) {
+      let u = -1;
+      let ud = Infinity;
+      for (let i = 0; i < nodes.length; i++) if (!done[i] && dist[i] < ud) (ud = dist[i]), (u = i);
+      if (u < 0 || u === b) break;
+      done[u] = 1;
+      for (const v of G.edges[u]) {
+        const nd = ud + Math.hypot(nodes[u].x - nodes[v].x, nodes[u].y - nodes[v].y);
+        if (nd < dist[v]) (dist[v] = nd), (prev[v] = u);
+      }
+    }
+    if (!Number.isFinite(dist[b])) return null;
+    const chain = [];
+    for (let i = b; i >= 0; i = prev[i]) chain.push(nodes[i]);
+    chain.reverse();
+    // Thin the chain to one waypoint every ~LEG tiles, then search each leg.
+    const pts = [{ x: sx, y: sy }];
+    for (const n of chain) if (Math.hypot(n.x - pts[pts.length - 1].x, n.y - pts[pts.length - 1].y) > LEG * TILE * 0.5) pts.push(n);
+    pts.push({ x: gx, y: gy });
+    const out = [];
+    for (let k = 0; k < pts.length - 1; k++) {
+      const leg = this._find(pts[k].x, pts[k].y, pts[k + 1].x, pts[k + 1].y, { ...opts, _leg: true, maxNodes: Math.max(opts.maxNodes ?? 6000, 8000) });
+      if (!leg) return null;
+      for (const p of leg) out.push(p);
+    }
+    return out.length ? out : null;
+  }
+
+  _find(sx, sy, gx, gy, opts = {}) {
     const map = this.game.map;
     if (!map || !Number.isFinite(sx) || !Number.isFinite(sy) || !Number.isFinite(gx) || !Number.isFinite(gy)) return null;
     this._syncTerrain();
