@@ -13,7 +13,7 @@ export class DeathFx {
     this.bars = 0; // 0..1 letterbox
     this.flash = 0; // the white-out of the moment you fall
     this.burn = 0; // 0..1 the last stand's fire round the edges (§25)
-    this._burnGrad = null;
+    this._burnTex = null;
     this._grad = null;
     this._gradCtx = null;
     this.was = false;
@@ -60,25 +60,35 @@ export class DeathFx {
     if (this.burn < 0.005) return;
     const W = renderer.canvas.width;
     const H = renderer.canvas.height;
-    if (!this._burnGrad || this._burnCtx !== ctx) {
-      const gr = ctx.createRadialGradient(0, 0, 0.35, 0, 0, 1);
+    // The fire at the edges is painted once, small, and stretched over the screen each
+    // frame (a gradient evaluated per pixel every frame costs a phone a third of its frames).
+    if (!this._burnTex && typeof document !== 'undefined') {
+      const c = document.createElement('canvas');
+      c.width = 96;
+      c.height = 64;
+      const x = c.getContext('2d');
+      const gr = x.createRadialGradient(0, 0, 0.35, 0, 0, 1);
       gr.addColorStop(0, 'rgba(255,90,20,0)');
       gr.addColorStop(0.62, 'rgba(255,80,20,0)');
       gr.addColorStop(0.86, 'rgba(255,72,16,0.38)');
       gr.addColorStop(1, 'rgba(255,120,40,0.75)');
-      this._burnGrad = gr;
-      this._burnCtx = ctx;
+      x.setTransform(48 * 1.25, 0, 0, 32 * 1.35, 48, 32);
+      x.fillStyle = gr;
+      x.fillRect(-1, -1, 2, 2);
+      this._burnTex = c;
     }
+    if (!this._burnTex) return;
     const t = g.time || 0;
     const L = left ?? 0;
     const speed = 2.2 + (1 - Math.min(1, L / 60)) * 6;
     const pulse = reduce ? 0.5 : 0.5 + 0.5 * Math.sin(t * speed);
     ctx.save();
-    ctx.setTransform((W / 2) * 1.25, 0, 0, (H / 2) * 1.35, W / 2, H / 2);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = clamp01(this.burn * (0.45 + 0.35 * pulse));
-    ctx.fillStyle = this._burnGrad;
-    ctx.fillRect(-1, -1, 2, 2);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(this._burnTex, 0, 0, W, H);
+    ctx.imageSmoothingEnabled = false;
     ctx.restore();
     if (left != null && L < 10 && !reduce) {
       ctx.save();

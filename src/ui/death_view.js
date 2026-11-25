@@ -174,6 +174,13 @@ export class DeathView {
     if (!this.mounted) return;
     this.visible = true;
     this.fallenEl.hidden = false;
+    // The ring's canvas at the pixels it is shown at (88-136 CSS px, times the screen's density).
+    const px = Math.max(96, Math.min(320, Math.round((this.ring.clientWidth || 112) * (window.devicePixelRatio || 1))));
+    if (this.ring.width !== px) {
+      this.ring.width = px;
+      this.ring.height = px;
+    }
+    this._ringKey = '';
     this.shownLeft = null;
     this.helpShown = 0;
     this.lastBeats = this.game.survival?.heart?.beats || 0;
@@ -231,6 +238,15 @@ export class DeathView {
     const frac = cd.frac;
     const low = frac < 0.25;
     const kick = reduce ? 0 : this.thump * this.thump;
+    // Only redraw when something you could see has changed (a phone thanks us).
+    const want0 = cd.left;
+    const shown = this.shownLeft == null ? want0 : this.shownLeft + (want0 - this.shownLeft) * Math.min(1, dt * 12);
+    const key = `${W}|${Math.ceil(shown - 0.001)}|${Math.round(frac * 360)}|${Math.round(kick * 16)}|${Math.round(this.helpShown * 180)}|${cd.help ? cd.help.kind : ''}`;
+    if (key === this._ringKey) {
+      this.shownLeft = shown;
+      return;
+    }
+    this._ringKey = key;
     const R = W * 0.4 * (1 + 0.05 * kick);
     ctx.clearRect(0, 0, W, H);
     // The disc behind (so the number reads on snow and grass alike).
@@ -261,14 +277,17 @@ export class DeathView {
     if (frac > 0) {
       const hot = low ? (reduce ? 1 : 0.75 + 0.25 * kick) : 1;
       const col = frac > 0.5 ? `rgba(255, 107, 94, ${hot})` : frac > 0.25 ? `rgba(255, 74, 58, ${hot})` : `rgba(255, 40, 32, ${hot})`;
-      ctx.strokeStyle = col;
-      ctx.lineWidth = lw;
-      ctx.shadowColor = 'rgba(255, 50, 40, 0.9)';
-      ctx.shadowBlur = W * 0.03 + W * 0.06 * kick;
+      // A soft glow under the arc (a wide faint stroke: no blur, cheap on a phone).
+      ctx.strokeStyle = `rgba(255, 50, 40, ${(0.22 + 0.3 * kick).toFixed(3)})`;
+      ctx.lineWidth = lw * (1.7 + 0.6 * kick);
       ctx.beginPath();
       ctx.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
       ctx.stroke();
-      ctx.shadowBlur = 0;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2);
+      ctx.stroke();
       // The leading edge: a bright bead where the arc ends.
       const ea = -Math.PI / 2 + frac * Math.PI * 2;
       ctx.fillStyle = '#ffd7cf';
@@ -286,27 +305,23 @@ export class DeathView {
       ctx.stroke();
       if (this.helpShown > 0.005) {
         ctx.strokeStyle = '#ffe08a';
-        ctx.shadowColor = 'rgba(255, 200, 90, 0.8)';
-        ctx.shadowBlur = W * 0.03;
         ctx.beginPath();
         ctx.arc(cx, cy, r2, -Math.PI / 2, -Math.PI / 2 + Math.min(1, this.helpShown) * Math.PI * 2);
         ctx.stroke();
-        ctx.shadowBlur = 0;
       }
     }
     // The seconds, big; eased so a frame never jumps two numbers.
-    const want = cd.left;
-    this.shownLeft = this.shownLeft == null ? want : this.shownLeft + (want - this.shownLeft) * Math.min(1, dt * 12);
+    this.shownLeft = shown;
     const n = Math.max(0, Math.ceil(this.shownLeft - 0.001));
     const big = n >= 100 ? W * 0.3 : W * 0.36;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = `${Math.round(big * (1 + 0.04 * kick))}px 'Pixelify Sans', ui-rounded, system-ui, sans-serif`;
+    const off = Math.max(1, Math.round(W * 0.012));
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillText(String(n), cx + off, cy - W * 0.025 + off);
     ctx.fillStyle = low ? '#ff6a5c' : '#f4ead7';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
-    ctx.shadowBlur = W * 0.02;
     ctx.fillText(String(n), cx, cy - W * 0.025);
-    ctx.shadowBlur = 0;
     ctx.font = `${Math.round(W * 0.1)}px 'Pixelify Sans', ui-rounded, system-ui, sans-serif`;
     ctx.fillStyle = low ? 'rgba(255, 140, 128, 0.95)' : 'rgba(224, 212, 189, 0.85)';
     ctx.fillText(n === 1 ? 'SECOND' : 'SECONDS', cx, cy + W * 0.175);
