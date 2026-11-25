@@ -1935,3 +1935,7 @@ roof; walk in, the roof fades (`map.drawRoofs`) and they shine. Windows, lamps a
 the front wall are outside the roof and glow to the street at night. It applies to every light
 the renderer collects (objects, actors, flashes), in all three passes (the light map, the
 night lift and the glow).
+
+Tests: `tests/walls.test.mjs`, `tests/hit_stun.test.mjs`, `tests/breakables.test.mjs`,
+`tests/interior_lights.test.mjs`. In the browser: `node scripts/world_check.mjs` (each scene by
+touch sideways and upright, and on a desktop; screenshots in `screenshots/world`).
