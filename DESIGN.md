@@ -1404,7 +1404,8 @@ registry entry, and it works with every other entry automatically.
   moment later), `big`, `swift`, `burst` (explodes on hit or at the end), `linger` (leaves
   a ground patch of its essences), `orbit` (circles the caster first), `volley` (three in
   quick succession), `spiral` (weaving path), `leech` (heals the caster a little),
-  `charge` (hold to power up). Hooks: `onPlan(plan)`, `onEmit(bodies)`, `onSpawn(body)`,
+  `charge` (every weave charges while held, §22.4; this twist charges twice as fast, to
+  ×3 instead of ×2.5, and makes even a beam charge instead of pour). Hooks: `onPlan(plan)`, `onEmit(bodies)`, `onSpawn(body)`,
   `onUpdate(body, dt)`, `onHit(body, target)`, `onEnd(body)`, plus multipliers
   (`dmg, cost, cooldown, speed, size, life`). Children made by twists (split, burst,
   chain) inherit the weave minus that twist, with a generation cap, so nothing recurses
@@ -1418,6 +1419,28 @@ registry entry, and it works with every other entry automatically.
 - **Numbers.** Cost = (shape cost + essence costs) × twist multipliers; cooldown and damage
   scale the same way; every plan stays inside a power budget so a combination is never
   free or useless. Names are generated ("Splitting Ember Bolt", "Echoing Tide Nova").
+- **Cooldowns you can feel** (r12; the author: "the skills doesn't have cooldown"). Each
+  shape's own cooldown is stretched by its scale (`COOLDOWN_SCALE` in
+  `src/magic/balance.js`) before the clamp (0.16–12 s): Spark (bolt) 0.9 s, strike 1.5 s,
+  blast 1.6 s, rune 1.75 s, throw 2 s, dash 2.1 s, orb 2.9 s, nova 3.5 s, rain 6.2 s,
+  wall 6.6 s; a beam cools 1 s after it is let go; bind (4.5 s), ward (8 s) and summon
+  (6 s) were already slow and stay. Twists and essences scale on top (swift shorter,
+  volley and echo longer). The longer wait buys a little damage inside the budget (+10%
+  per e-fold of the scale: a Spark +10%, a nova +12%), so a cooldown is never a pure nerf.
+  A weave's timer follows the weave (its parts, `plan.key`), not its slot: the same weave
+  in two slots waits once, moving it neither dodges nor hands on a timer. Only the
+  player is paced by it (Lyra, familiars and bosses keep their own timers). Focus, charms
+  and cast speed shorten it (`magic.cooldownOf`).
+- **Hold to charge** (r12; the author: "if I hold it it gets stronger"). Every weave but a
+  beam charges while it is held and is cast on the release. A press shorter than 0.18 s
+  is a tap (k = 0, exactly as before); past it the walk slows (×0.62) and the charge k
+  grows to 1 at 1.5 s after the press (cast speed shortens it; the charge twist halves
+  it). At charge k a weave hits ×(1 + 1.5k) (×2.5 full; the twist ×(1 + 2k), ×3), is up
+  to ×1.45 bigger and flies up to ×1.25 faster; binds hold, wards shield and surges last
+  longer by their own scalings; count and range stay. It costs ×(1 + k) mana (×2 full),
+  paid at the release; the charge stops growing at what the mana in hand can pay for (the
+  button says so). A weave still cooling cannot start a charge. One charge at a time: a
+  second weave pressed meanwhile lets the first one go. Beams pour while held as before.
 - **Mana.** A violet bar under health (start 40, regenerates; grows with level and
   missions). **Four weave slots** on the hotbar to start (six later).
 - **Rules of harm** (r8; the author: "the spells do not do any damage"). A weave physically
@@ -1446,9 +1469,19 @@ registry entry, and it works with every other entry automatically.
   `compile(weave) → plan`, `bodies` (live bodies: `{ kind: 'projectile'|'area'|'beam'|
   'strike'|'summon'|'rune'|'wall'|'trail', x, y, vx, vy, r, angle, age, life, owner,
   plan, essences, palette, gen }`), serialize/deserialize.
-- Bus events: `spell_cast {caster, weave, plan}`, `spell_hit {body, target, amount,
-  essences}`, `status_applied {target, status}`, `reaction {id, x, y}`,
-  `magic_unlocked {kind, id, source}`, `mana_changed {cur, max}`.
+- Holds: `castStart(caster, slot, aim, { charge })` on the press (a beam pours at once;
+  anything else waits, charging when `charge` is asked — the controls ask it for every
+  press), `castHold(caster, aim)` each step (→ `{ mode, t, k, live, capped }`),
+  `castRelease(caster, aim)` casts at charge k, `castCancel(caster)` lets go for free.
+  Cooldowns: `cooldownLeft(i)`, `cooldownFraction(i)`, `cooldownTotal(i)`,
+  `cooldownOfPlan(plan)`, `resetCooldowns()`.
+- "Try all magic" (§24 Practice): `startTrial()` / `endTrial()`, `trial` (null when off),
+  `realUnlocked` / `isEarned(kind, id)` (what is really earned, also during a trial),
+  `trialDrafts` (weaves that left their slot when a trial ended).
+- Bus events: `spell_cast {caster, weave, plan, slot, chargeK}`, `spell_hit {body, target,
+  amount, essences}`, `status_applied {target, status}`, `reaction {id, x, y}`,
+  `magic_unlocked {kind, id, source}`, `mana_changed {cur, max}`, `weave_ready {key,
+  plan}` (a cooldown ran out), `magic_trial {on}`.
 - Visuals live in `src/magic/fx.js` (a render layer drawing every body by kind with its
   palette, particle style and light, impacts, trails, status overlays, screen shake) and
   sound in `src/magic/sfx.js` (synthesized, per essence and shape). Core draws a plain
@@ -1484,13 +1517,31 @@ glyph-shards with a short reveal ("You can weave fire").
   move stick (appears under the thumb); the right side has the sword button, the dodge,
   and the weave buttons in an arc. Drag from a weave button to aim (a preview shows the
   line, cone, circle or landing spot for its shape), release to cast, drag back to cancel;
-  a tap casts at the nearest foe. Safe areas (notches) respected; the HUD is a thin top
-  strip. Portrait keeps working. A one-time hint suggests turning the phone.
+  a tap casts at the nearest foe; holding charges it. Safe areas (notches) respected; the
+  HUD is a thin top strip. Portrait keeps working. A one-time hint suggests turning the
+  phone.
 - **Desktop**: move with WASD, aim with the mouse, sword on the left button, weaves on
   1–4 (and the right button casts the selected weave), B opens the Spellbook.
+- **Press, hold, release, on every device** (r12): a weave starts on the press and is
+  cast on the release (`src/ui/weaving.js` `begin`/`finish`); a quick tap of a key, a
+  click or a touch casts within the 0.18 s tap window (about 0.1 s later than an instant
+  cast), a hold charges. The button shows it: a ring filling round the weave button (and
+  the desktop hotbar slot), pulsing when full, dimmed with a hollow mana drop when the
+  mana in hand caps it; in the world, motes gather at the hands with a light and a
+  rising tone (none inside the tap window), and the release throws a burst that grows
+  with the charge (a full one: a star, a wider ring, a small kick); the hit spark grows
+  and a full charge's damage number is bigger. A weave cooling shows a dark sweep with
+  a bright leading edge and its whole seconds while one or more is left, flashes when
+  it comes back (a soft tick for waits over 1.2 s); pressing it then shakes it (the
+  seconds flash red) with a quiet "not ready" knock, and nothing is cast. The magic
+  lesson teaches the hold (a real charged cast moves it on) and the cooldown.
 - **The Spellbook**: craft and edit weaves (pick a shape, essences, twists from what is
   unlocked; see cost, cooldown and damage; a live preview casts it at a training dummy),
-  assign them to slots, name them. Works on a phone in both orientations.
+  assign them to slots, name them. Works on a phone in both orientations. Its Cast tile
+  says how a weave is cast ("Tap or hold", "Hold" for a beam, "Fast charge" with the
+  charge twist). While "Try all magic" runs, its header says "Trying all magic"; weaves
+  made then that left their slot when it ended wait in a "From trying all magic" row (a
+  tap weaves one into the open slot when it can be woven).
 
 ### 22.5 Bind and Ward (the author: "even the binding spell that the girl has, I can have it as well, or a shield spell that would save me from spells")
 
@@ -1547,6 +1598,29 @@ Stop* (trust 72; its lesson waits while she is unsure: a talk step's `trust`) an
   title. Settings are grouped into a few tabs (Game, Controls, Sound & voices, Minds
   (Claude), Display), each option exactly once, with short plain explanations; nothing
   duplicated between the settings, the menu and the HUD.
+- **Game → Practice** (r12; the author: "can you add in the settings a thing that will
+  reset states and a thing that gives me all the magic stuff to try it"): two action rows
+  (a label, a note and a button; not settings, so never saved with them), each behind the
+  in-game confirm (`ui.confirm`, danger), both greyed on the title screen and while the
+  player lies fallen, the note saying why.
+  - **Reset stat points**: every spent point back to spend again, free
+    (`Progression.resetPoints()`; greyed with nothing spent). "All N points come back to
+    spend again. Your level, gear and weaves stay." A toast then says to open the
+    Character sheet; its points badge shows them.
+  - **Try all magic: On/Off**: every shape, essence, twist and price, six weave slots,
+    three essences and four twists to a weave, until it is turned off here
+    (`Magic.startTrial()` / `endTrial()`). The mana is not refilled. The real unlocks,
+    sources, slot counts and weaves are kept aside; a real reward earned meanwhile (a
+    mission's part, a slot, a boss's price) goes into the real state too, so it stays
+    when the trial ends (boss price drops, glyph shards, mission reveals and offers ask
+    the real sets: `magic.realUnlocked`). Off: the real unlocks and counts come back, a
+    weave made meanwhile that the real parts can weave stays in its slot, any other goes
+    back to what was there and waits in the Spellbook as a draft; prices still running
+    that were only borrowed end, their modifiers with them. The confirm warns that prices
+    still cost what they say (Berserk's end can still end the story). Saved with the game
+    (the save holds the real state and the trial's own slots; loading it keeps the trial
+    on). Lent parts raise no "found" toast, Lyra line, lesson, book dot or Spellbook "new"
+    mark.
 
 ## 25. Prices: power with a cost (the author: "side effects, where I can choose… for 15 seconds my attack power +20%, but my HP goes down 40% for 2 minutes… or Berserk: strength 200%, speed, but I die at the end")
 
@@ -1577,7 +1651,10 @@ notices and has opinions (berserk frightens her).
   3 points to spend: Vitality (max HP, regen), Might (sword and strike damage), Weave
   (spell power), Focus (max mana, mana regen, cooldowns), Grace (speed, dodge, crit),
   Resolve (status resistance, longer bleed-out window, carry speed). A character sheet in
-  the menu; respec at the chapel for a price.
+  the menu; respec at the chapel for a price, or for free from Settings → Game → Reset
+  stat points (§24; the Character sheet names both). Either gives back every spent point
+  and keeps the level, gear, weaves and the points missions gave; health and mana settle
+  into the new maximums.
 - **Gear**: slots weapon, armor, cloak, boots, two charms. Items have stats and a rarity
   color; Bram forges and upgrades weapons and armor (with ore, crystals and coin), Sabeth
   sews cloaks, Garrick sells charms, bosses and missions drop special pieces, Mira and Elda

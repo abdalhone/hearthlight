@@ -315,8 +315,22 @@ async function run([W, H]) {
     await wait(1300);
     L = await lesson();
     check(L.i === 2, `${tag}: a drag-cast moves the lesson on (${L.i})`);
-    // 3, 4: mana, the buttons.
-    for (const want of [3, 4]) {
+    // 3: hold the weave to charge it, let go (a real hold: the ring fills, then it flies).
+    await shot('05b-lesson-hold');
+    if (wb) {
+      await page.evaluate(() => window.__game.magic.resetCooldowns?.());
+      const cdp = await ctx.newCDPSession(page);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(wb.cx), y: Math.round(wb.cy), id: 2 }] });
+      await wait(1000);
+      await shot('05c-charging');
+      await wait(700);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    }
+    await wait(1300);
+    L = await lesson();
+    check(L.i === 3, `${tag}: a charged cast moves the lesson on (${L.i})`);
+    // 4, 5: mana and the cooldown, the buttons.
+    for (const want of [4, 5]) {
       await tapSel('.coach-next', 'the lesson’s Next');
       await wait(350);
       L = await lesson();

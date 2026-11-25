@@ -6,8 +6,8 @@
 // relevant; How to play replays them; "Skip" ends one.
 //
 //   cast  — in play, with a weave on a button, when a foe is in sight (or after a
-//           while in the world): cast (tap / drag to aim), mana, what the buttons are,
-//           where weaves are made.
+//           while in the world): cast (tap / drag to aim), hold to charge it stronger,
+//           mana and the cooldown, what the buttons are, where weaves are made.
 //   book  — the first time the Spellbook opens: your weaves, then steps 1–3, saving.
 //   found — the first new piece found (a shape, an essence, a twist, a price): where
 //           to put it to use.
@@ -119,7 +119,10 @@ export class Coach {
     const bus = this.game.bus;
     if (!bus?.on) return;
     bus.on('spell_cast', (p) => {
-      if (p?.caster && p.caster === this.game.player) this.event('cast');
+      if (!p?.caster || p.caster !== this.game.player) return;
+      // A charged cast is the hold step's moment; it is a cast for the others too.
+      if (p.chargeK >= 0.5 && this.lesson?.steps[this.lesson.i]?.wait === 'charged') this.event('charged');
+      else this.event('cast');
     });
     bus.on('ui_open', (p) => {
       if (p?.panel === 'spellbook') {
@@ -189,8 +192,18 @@ export class Coach {
           button: touch ? 'Next' : 'Got it',
         },
         {
+          target: weaveBtn,
+          text: touch
+            ? 'Hold the button instead of tapping: the weave gathers (the ring fills) and flies up to 2.5× as strong when you let go. It costs more mana, up to twice.'
+            : 'Hold the key instead of tapping: the weave gathers (the ring fills) and flies up to 2.5× as strong when you let go. It costs more mana, up to twice.',
+          wait: 'charged',
+          button: 'Next',
+        },
+        {
           target: () => document.querySelector('.player-card .meter-mana'),
-          text: touch ? 'Each cast costs mana: the blue bar (the number on a button is its cost). It fills up again by itself.' : 'Each cast costs mana: the blue bar. It fills up again by itself.',
+          text: touch
+            ? 'Each cast costs mana: the blue bar (the number on a button is its cost). It fills up again by itself. After a cast a weave needs a moment: its button darkens and counts the seconds.'
+            : 'Each cast costs mana: the blue bar. It fills up again by itself. After a cast a weave needs a moment: its slot darkens and counts the seconds.',
         },
         {
           target: () => (touch ? document.querySelector('.tcluster .wslots') : document.querySelector('.hotbar .hb-row')),
@@ -359,7 +372,7 @@ export class Coach {
       const at = l.i;
       this.waitT = setTimeout(() => {
         if (this.lesson === l && l.i === at) this.next();
-      }, kind === 'cast' ? 700 : kind === 'saved' ? 500 : 0);
+      }, kind === 'cast' || kind === 'charged' ? 700 : kind === 'saved' ? 500 : 0);
     }
   }
 
