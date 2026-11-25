@@ -8,6 +8,7 @@ import { LOCATION_INFO, NOTICE_BOARD, SIGNS, LOOKS, BED_TEXT } from './world_con
 import { buildWilds } from './wilds.js';
 import { inSeam } from './wilds_layout.js';
 import { trailSigns } from './boss_trails.js';
+import { CONTAINERS } from './containers.js';
 
 // Places of healing (DESIGN §27).
 const SICKBED_TEXT = "A sickroom cot: clean linen, a basin, a bundle of silverleaf hung to dry above it. Mira keeps two of these for whoever the village carries in.";
@@ -595,6 +596,12 @@ export class WorldBuilder {
     this.villageLamps();
   }
 
+  // A real container with a lock and an owner (DESIGN §32.6, src/world/containers.js).
+  container(id) {
+    const C = CONTAINERS[id];
+    return this.must({ objType: 'chest', id, tx: C.tx, ty: C.ty, name: C.name, variant: C.variant, owner: C.owner, keeper: C.keeper ?? null, locked: !!C.locked, keyId: C.keyId ?? null, lockedText: C.lockedText ?? null, items: C.items, words: [C.name.toLowerCase(), 'trunk'] });
+  }
+
   // A villager's own bed (DESIGN §19.8): `owner` sleeps in it, in their own home.
   bed(owner, x, y, extra = {}) {
     const B = BED_TEXT[owner] || {};
@@ -661,7 +668,7 @@ export class WorldBuilder {
       words: ['inn bed', 'her room', 'rented room', 'room at the inn', "lyra's room"],
     });
     this.look('desk', 73, 40, 'lyraDesk', { name: "Lyra's desk", variant: 'lyra' });
-    this.look('trunk', 75, 44, 'lyraTrunk', { name: "Lyra's trunk" });
+    this.container('lyra_trunk'); // her trunk: locked, and she keeps the key (containers.js)
     this.rug(73, 42, 2, 2);
     this.decor('pot', 74, 40, { variant: 'plant' });
     // Taproom.
@@ -782,7 +789,7 @@ export class WorldBuilder {
     this.partition(this.col(62, 64, 68), [[62, 68]]);
     this.bed('rowan', 63, 64);
     this.bed('wys', 64, 64);
-    this.decor('trunk', 64, 67, { name: 'Footlocker' });
+    this.container('guard_footlocker'); // the watch's spare kit: Rowan's key
     this.decor('rack', 57, 64, { name: 'Weapon rack' });
     this.decor('rack', 58, 64, { name: 'Weapon rack' });
     this.look('table', 0, 0, 'mapTable', { footprint: { x: 59, y: 66, w: 2, h: 1 }, variant: 'map' });
@@ -1004,7 +1011,7 @@ export class WorldBuilder {
     this.must({ objType: 'hearth', id: 'farm_hearth', footprint: { x: 21, y: 49, w: 2, h: 1 }, name: 'Farmhouse hearth' });
     this.bed('tobias', 27, 49);
     this.bed('tansy', 29, 49);
-    this.decor('trunk', 28, 49, { name: 'Linen chest' });
+    this.container('reed_linen_chest'); // the Reeds' own: open, but theirs
     this.decor('shelf', 25, 49, { variant: 'goods' });
     this.decor('table', 0, 0, { footprint: { x: 23, y: 51, w: 2, h: 1 } });
     this.decor('chair', 22, 51, { variant: 'right' });

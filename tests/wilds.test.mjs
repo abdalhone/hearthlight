@@ -230,3 +230,51 @@ test('tiles beyond the vale are never the vale (inVale)', () => {
   assert.ok(!inVale(-1, 0) && !inVale(160, 5) && !inVale(10, -1));
   assert.ok(tile(world.spawns.player).tx >= 0);
 });
+
+// ---------------------------------------------------------------------------
+// Chests you could not open (DESIGN §32.6)
+
+import { CONTAINERS, onContainerEvent } from '../src/world/containers.js';
+import { Inventory } from '../src/entities/items.js';
+
+test('every chest has a way in: a key someone has, its keeper, or a forced lock', async () => {
+  const trunk = world.objects.get('lyra_trunk');
+  const locker = world.objects.get('guard_footlocker');
+  const linen = world.objects.get('reed_linen_chest');
+  for (const c of [trunk, locker, linen]) assert.equal(c.objType, 'chest', `${c.id} is a real chest`);
+  assert.ok(trunk.state.locked && locker.state.locked && !linen.state.locked);
+  // No chest-shaped prop is left that does nothing.
+  assert.ok(!world.objects.list.some((o) => o.objType === 'trunk' && !o.text), 'no silent trunks');
+  // Rowan's key opens his footlocker.
+  const opened = [];
+  const g = { ...game, ui: { toast() {}, openChest: (c) => opened.push(c.id) }, player: { id: 'player', inventory: new Inventory({ guard_key: 1 }) } };
+  locker.game = g;
+  locker.interact(g.player);
+  assert.equal(locker.state.locked, false);
+  assert.deepEqual(opened, ['guard_footlocker']);
+  // Without a key: the lock can be forced, and Lyra's trunk forced is theft from Lyra.
+  const crimes = [];
+  const lyra = { id: 'lyra', x: 0, y: 0 };
+  const g2 = { ...game, companion: lyra, bus: { emit: (t, p) => t === 'crime' && crimes.push(p) }, ui: { toast() {}, confirm: async () => true, openChest() {} }, player: { id: 'player', inventory: new Inventory() } };
+  trunk.game = g2;
+  trunk.interact(g2.player);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(trunk.state.locked, false);
+  assert.equal(trunk.state.forced, true);
+  assert.equal(crimes.length, 1);
+  assert.equal(crimes[0].kind, 'theft');
+  assert.equal(crimes[0].victim, lyra);
+  // Taking from the Reeds' open linen chest is theft too, once a day.
+  const c2 = [];
+  const g3 = { ...game, entities: { get: (id) => ({ id }) }, bus: { emit: (t, p) => t === 'crime' && c2.push(p) }, clock: { day: 3 } };
+  linen.game = g3;
+  onContainerEvent(g3, 'item_gained', { actor: g3.player, itemId: 'wheat', qty: 1, from: 'chest', chest: linen });
+  onContainerEvent(g3, 'item_gained', { actor: g3.player, itemId: 'wheat', qty: 1, from: 'chest', chest: linen });
+  assert.equal(c2.length, 1);
+  assert.equal(c2[0].owner, 'tobias');
+  // Loot is free: Brindlecombe's chests are nobody's now.
+  const vestry = world.objects.get('chest_brindle_chapel');
+  onContainerEvent(g3, 'item_gained', { from: 'chest', chest: vestry });
+  assert.equal(c2.length, 1);
+  assert.ok(Object.keys(CONTAINERS).length >= 3);
+});

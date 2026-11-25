@@ -953,6 +953,12 @@ export class Chest extends WorldObject {
     this.inventory = o.inventory instanceof Inventory ? o.inventory : new Inventory(o.items || null);
     this.owner = o.owner ?? null; // 'player' for home_chest
     this.loot = !!o.loot; // anyone may empty it (bandit loot)
+    // A lock (DESIGN §32.6): its key (keyId), who keeps it (keeper, a person id) and what
+    // the lock says. No key: you may force it, and if it is someone's that is theft.
+    this.state.locked = this.state.locked ?? !!o.locked;
+    this.keyId = o.keyId ?? null;
+    this.keeper = o.keeper ?? null;
+    this.lockedText = o.lockedText ?? null;
     this.lid = 0;
     this._viewer = null;
     this._idle = 0;
@@ -963,12 +969,24 @@ export class Chest extends WorldObject {
     return !!actor;
   }
 
-  interactLabel() {
+  interactLabel(actor) {
+    if (this.state.locked) return this.keyId && hasItem(actor, this.keyId) ? `Unlock ${this.name.toLowerCase()}` : `${this.name}: locked`;
     return this.loot && this.inventory.isEmpty() ? 'Empty chest' : `Open ${this.name.toLowerCase()}`;
   }
 
   interact(actor) {
     const g = this.game;
+    if (this.state.locked) {
+      if (this.keyId && hasItem(actor, this.keyId)) {
+        this.state.locked = false;
+        this.markDirty();
+        this._sound('door_open', { pitch: 0.8 });
+        this._toast(actor, `The ${itemName(this.keyId)} turns. ${this.name} is open.`, 'good');
+      } else {
+        if (isPlayer(g, actor)) lockedChest(g, this, actor);
+        return;
+      }
+    }
     this._viewer = actor;
     this._idle = 0;
     if (!this.state.opened) {
@@ -978,6 +996,7 @@ export class Chest extends WorldObject {
       if (!this.inventory.isEmpty()) playCollect(g, this.x, this.y, { gold: true, size: 1, height: 8 });
     }
     this._sound('door_open', { pitch: 1.5 });
+    g?.bus?.emit?.('chest_opened', { chest: this, actor });
     if (isPlayer(g, actor)) {
       if (typeof g.ui?.openChest === 'function') {
         g.ui.openChest(this);
@@ -1001,7 +1020,7 @@ export class Chest extends WorldObject {
       const n = this.inventory.transfer(actor.inventory, id, qty);
       if (n > 0) {
         out.push({ id, qty: n });
-        this.game?.bus?.emit('item_gained', { actor, itemId: id, qty: n, from: 'chest' });
+        this.game?.bus?.emit('item_gained', { actor, itemId: id, qty: n, from: 'chest', chest: this });
       }
     }
     this.markDirty();
@@ -1041,6 +1060,13 @@ export class Chest extends WorldObject {
     super.deserialize(d);
     if (d?.items) this.inventory.deserialize(d.items);
   }
+}
+
+// A locked chest without its key (src/world/containers.js decides: its keeper may open
+// it for you, or you may force the lock).
+let lockedChest = () => {};
+export function setLockedChestHandler(fn) {
+  lockedChest = typeof fn === 'function' ? fn : () => {};
 }
 
 export class Bed extends WorldObject {

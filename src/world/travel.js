@@ -1,6 +1,7 @@
 import { TILE } from '../core/constants.js';
 import { inVale } from './wilds_layout.js';
 import { onTrailEvent, checkSight } from './boss_trails.js';
+import { onContainerEvent, onChestOpened } from './containers.js';
 
 // Travel in the wider world (DESIGN §32): what you have walked (the map's fog), the
 // places you reach for the first time, the weather a place keeps for itself (snow on
@@ -215,6 +216,8 @@ export const travelPlugin = {
   },
   onEvent(type, p, ctx) {
     onTrailEvent(ctx.game, type, p);
+    onContainerEvent(ctx.game, type, p);
+    if (type === 'chest_opened' && p?.chest) onChestOpened(ctx.game, p.chest);
   },
   serialize(ctx) {
     return ctx.game?.travel?.serialize() ?? null;
