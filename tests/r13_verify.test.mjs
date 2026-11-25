@@ -5,6 +5,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeGame, step, px, put, holdLyra, downBy, villagers } from './murder_world.mjs';
+import { ObjectManager, makeObject } from '../src/world/objects.js';
+import { MEND, breakSpec } from '../src/world/breakables.js';
+import { makeGame as makeArena, step as stepArena, resetArena, W, H } from './magic_helpers.mjs';
 
 const quietConsole = () => {
   const keep = { log: console.log, info: console.info, warn: console.warn };
@@ -137,4 +140,35 @@ test('asked "did Elda tell you anything?", Lyra answers from the message she rea
     assert.match(r.say, /Elda did[^]*sorry about earlier/, `${q} -> ${r.say}`);
   }
   back();
+});
+
+// A bomb on the Holloways' barrels (the barrels nearest the square) did nothing: a prop with
+// words to read was spared as if a story needed it. Only a `story` prop is spared now.
+test('a heavy weave breaks a barrel you can look at; it reads again once mended; a story prop stays', () => {
+  const g = makeArena({ foes: 0, party: false });
+  g.objects = new ObjectManager(g, W, H);
+  g.bubbles = { number: () => {} };
+  g.magic.unlockAll();
+  resetArena(g);
+  const run = (seconds, dt = 1 / 60) => {
+    for (let i = 0, n = Math.round(seconds / dt); i < n; i++) {
+      stepArena(g, dt);
+      g.objects.update(dt);
+    }
+  };
+  const looks = g.objects.add(makeObject(g, { objType: 'barrel', tx: 12, ty: 14, solid: true, low: true, text: "Barrels from the Holloways' yard.", name: "Holloways' barrels" }));
+  const kept = g.objects.add(makeObject(g, { objType: 'crate', tx: 16, ty: 14, solid: true, low: true, story: true, text: 'Evidence.', name: 'Stolen crate' }));
+  assert.ok(breakSpec(looks), 'something to look at still breaks');
+  assert.equal(breakSpec(kept), null, 'a story prop never does');
+  g.magic.resetCooldowns();
+  const r = g.magic.cast(g.player, { shape: 'throw', essences: ['raw'] }, { x: looks.x, y: looks.y - 6 }, { free: true });
+  assert.ok(r.ok, r.reason);
+  run(1.5);
+  assert.equal(looks.state.broken, true, 'the bomb broke it');
+  assert.equal(looks.canInteract?.(g.player) ?? false, false, 'rubble has nothing to read');
+  g.player.x = 4 * 16;
+  g.clock.t += MEND + 1;
+  run(0.1);
+  assert.equal(looks.state.broken, false, 'mended');
+  assert.ok(looks.canInteract?.(g.player), 'and its words are back');
 });

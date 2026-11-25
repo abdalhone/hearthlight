@@ -16,9 +16,10 @@ import { materialOf, refreshFences } from './broken.js';
 //   - fences, barrels, crates, carts, signs, woodpiles, pots, sacks, hay and bushes burst
 //     into debris (pixelfx dust and chips) and sometimes a little wood; the debris lies
 //     there, walkable, until it is mended or grows back (MEND below).
-// Never: buildings (tiles), doors, windows, beds, chests, lamps, hearths, wells, anything
-// you can look at or read for its story (a decor with text), the notice board and the signs
-// hung on buildings. The training dummy never breaks: it counts blows (training XP below).
+// Never: buildings (tiles), doors, windows, beds, chests, lamps, hearths, wells, anything a
+// story needs (`story`), the notice board and the signs hung on buildings. A prop you can
+// look at breaks like the rest (its words come back with it when it is mended). The
+// training dummy never breaks: it counts blows (training XP below).
 // Broken and felled state lives on each object's state, so the save keeps it.
 // Only the player's blows break things; everyone else's pass over props as they always did.
 
@@ -71,9 +72,11 @@ export function breakSpec(o) {
   if (!spec) return null;
   if (o.unbreakable || o.story) return null;
   if (spec.training) return spec;
-  if (o.objType === 'sign') {
-    if (o.id === 'notice_board' || o.variant === 'board' || o.variant === 'hanging' || !o.solid) return null;
-  } else if (o.text) return null; // something to look at for its story
+  // The notice board and the signs hung on buildings stay. A prop you can look at (the
+  // Holloways' barrels, the thatching reed) breaks like any other and reads again once it
+  // is mended: only what a story needs is marked `story` (the author: "a strike and a heavy
+  // spell should break trees and also anything else").
+  if (o.objType === 'sign' && (o.id === 'notice_board' || o.variant === 'board' || o.variant === 'hanging' || !o.solid)) return null;
   return spec;
 }
 

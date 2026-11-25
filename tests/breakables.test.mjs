@@ -114,7 +114,7 @@ test('a broken fence is walkable debris, saved, its neighbours lose the rail, an
 
 test('what never breaks: story things, the notice board, beds, lamps, and anything behind a wall', () => {
   const g = world({ party: false });
-  const looks = put(g, { objType: 'barrel', tx: 12, ty: 14, solid: true, low: true, text: "The Holloways' barrels.", name: "Holloways' barrels" });
+  const looks = put(g, { objType: 'barrel', tx: 12, ty: 14, solid: true, low: true, story: true, text: "The Holloways' barrels.", name: "Holloways' barrels" });
   const board = put(g, { objType: 'sign', id: 'notice_board', tx: 12, ty: 16, variant: 'board', title: 'Notices', text: 'x', solid: true });
   const bed = put(g, { objType: 'bed', id: 'bed_t', footprint: { x: 11, y: 17, w: 1, h: 2 }, owner: 'player' });
   const lamp = put(g, { objType: 'lamp', tx: 9, ty: 13 });

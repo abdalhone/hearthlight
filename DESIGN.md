@@ -2208,8 +2208,12 @@ arc reaches the props in front of it.
   to it. Mended two days on (`MEND`; bushes grow back in one) unless someone stands there.
   Until then nobody leans on it or works at it: a villager's `near` and work props skip the
   rubble (`npc.js` `spotFor`), and a broken seat seats nobody (`rest.js` `seatFor`).
-- **Never**: buildings (tiles), doors, windows, beds, chests, lamps, hearths, wells, anything you
-  can look at for its story (a decor with text), the notice board and signs hung on buildings.
+- **Never**: buildings (tiles), doors, windows, beds, chests, lamps, hearths, wells, anything a
+  story needs (`story: true` on the object; `unbreakable` likewise), the notice board and signs
+  hung on buildings. A prop you can look at (the Holloways' barrels, the thatching reed, Pip's
+  treasure crate) breaks like any other: its rubble has nothing to read, and its words come
+  back with it when it is mended (the author: "a strike and a heavy spell should break trees
+  and also anything else").
 - Saved: `state.broken`/`mendAt` and the trees' and rocks' own `depleted`/`regrowAt` ride on each
   object's state; a load redraws the fence rails. Bus: `prop_broken {object, by, kind}`,
   `object_mended {object}`.

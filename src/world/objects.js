@@ -56,6 +56,9 @@ export class WorldObject {
     this.shadow = o.shadow ?? null; // {dx, dy, rx, ry}: soft ground shadow baked into the map
     this.words = o.words ?? [];
     this.hidden = !!o.hidden;
+    // Never broken by a blow (DESIGN §31.3): something a story needs, or kept whole on purpose.
+    if (o.story) this.story = true;
+    if (o.unbreakable) this.unbreakable = true;
     this.dirty = false; // state differs from the generated world (saved)
     this.removed = false;
     this.phase = phaseOf(this.tx, this.ty);
@@ -1640,7 +1643,7 @@ export class Decor extends WorldObject {
   }
 
   canInteract(actor) {
-    return !!this.text && isPlayer(this.game, actor);
+    return !!this.text && isPlayer(this.game, actor) && !this.state.broken; // rubble has nothing to read
   }
 
   interactLabel() {
