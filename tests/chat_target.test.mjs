@@ -680,6 +680,19 @@ test('browser: the chat talks to anyone within earshot (and screenshots)', { tim
       } else {
         // A tap on someone in the world (chat shut) opens it, talking to them.
         await page.evaluate(() => window.__game.ui.chat.close());
+        // On a phone held upright the open chat had the camera look lower (chat.frameWorld);
+        // shut, it eases back. Tap Pip where he is drawn once the view has come to rest
+        // (a tap aimed at where he was drawn a moment before lands above his head).
+        await page.waitForFunction(
+          () => {
+            const c = window.__game.camera;
+            const prev = window.__camY;
+            window.__camY = c.y;
+            return prev != null && Math.abs(c.y - prev) < 0.25;
+          },
+          null,
+          { polling: 120, timeout: 10000 },
+        );
         const at = await page.evaluate(() => {
           const g = window.__game;
           const pip = g.entities.get('pip');
