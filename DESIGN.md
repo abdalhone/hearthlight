@@ -1752,6 +1752,11 @@ notices and has opinions (berserk frightens her).
   read `survival.mapMarks()`. Lyra knows (her prompt). A rescue is not a death: carried
   to the sickroom you keep your purse (less Mira's bill). The final death leaves no ring.
   Only coins: items stay with you. (The watch's fine when it hauls you in stays 10%.)
+- **Checked** by `tests/death_heavier.test.mjs` (the crawl frames, the drag, the
+  countdown's numbers and the heart, the ember-ring's life, the Last Stand's rules) and
+  `scripts/death_check.mjs`, which plays all of it by touch on a phone both ways and by
+  keys on a computer (countdown in view and clear of the stick and hotbar, crawl, the
+  rescue bar, the ring and its arrow, taking it back, the confirm, the held Rise, the end).
 
 ## 28. Errands, problems, and the missing (the author: "everyone has a job… he needs to go to the ironsmith today… he doesn't find the ironsmith… he is not able to continue his day… Claude thinks: why am I not able to continue my job? The shopkeeper isn't there. Where is he? He will ask other villagers… if they don't know, they will search… ask more people… and at the end they might just say that he's missing, and they will have no idea why")
 
