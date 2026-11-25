@@ -243,13 +243,13 @@ async function run(v) {
   await wait(800);
   await tap('.sb-sec-twists .sb-tile[title^="Multishot"]');
   await wait(400);
-  const sb = await ev(() => ({ kind: window.__game.ui.hud.spellbook.preview.constructor.name, tw: window.__game.ui.hud.spellbook.preview.weave?.twists || [] }));
+  const sb = await ev(() => ({ sandbox: !!window.__game.ui.hud.spellbook.preview.sg?.magic, tw: window.__game.ui.hud.spellbook.preview.weave?.twists || [] }));
   let most = 0;
   for (let i = 0; i < 30; i++) {
     most = Math.max(most, await ev(() => window.__game.ui.hud.spellbook.preview.sg?.magic.bodies.filter((b) => b.active).length || 0));
     await wait(100);
   }
-  check(L, 'the Spellbook preview is the real Weave, and multishot fans three', sb.kind === 'SandboxPreview' && sb.tw.includes('multishot') && most >= 3, `${JSON.stringify(sb)} bodies ${most}`);
+  check(L, 'the Spellbook preview is the real Weave, and multishot fans three', sb.sandbox && sb.tw.includes('multishot') && most >= 3, `${JSON.stringify(sb)} bodies ${most}`);
   await shot('spellbook-multishot');
   await ev(() => window.__game.ui.closeAll?.());
 
