@@ -1146,7 +1146,7 @@ export class Chat {
   pickInWorld(wx, wy, { pointerType = 'mouse' } = {}) {
     const g = this.game;
     if (!this.mounted || g.state !== 'playing' || g.paused || this.ui.isModalOpen?.()) return false;
-    const e = pickActorAt(g, wx, wy, { pad: pointerType === 'mouse' ? 2 : 6 });
+    const e = pickActorAt(g, wx, wy, pointerType === 'mouse' ? { pad: 2, lag: 0.15 } : { pad: 6, lag: 0.4 });
     if (!e) return false;
     // In a fight a click is a sword stroke, unless the chat is already open to talk.
     if (!this._open && inFight(g)) return false;

@@ -13,8 +13,9 @@
 //   hate     Lyra afraid of you: the player walks at her; she keeps away, no moving in place
 //   wall     a killing on the far side of a house: nobody inside sees it
 //   witness  a killing in front of Elda, far from the watch: she runs screaming for the
-//            watch, answers only in terror (never a locked chat), and the watch knows
-//            only when she reaches them
+//            watch, answers only in terror (never a locked chat), begs, screams, then
+//            falls silent (shown as an act), and the watch knows only when she reaches them
+//   silence  Lyra who has left you: pressed, she says nothing, and the chat shows it
 //
 //   node scripts/minds_play.mjs [--out DIR] [--size 844x390|390x844|1280x720]
 // Build first (npm run build). Exit 1 on a failed check or a page error.
@@ -57,6 +58,7 @@ async function play(size) {
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('crash', () => console.log(`CRASH ${size.tag}: the page crashed`));
   page.on('console', (m) => {
     if (m.type() !== 'error') return;
     const t = m.text();
@@ -138,7 +140,10 @@ async function play(size) {
   };
   const say = async (text) => {
     const f = await page.$('.chat .chat-field');
-    if (!f) return false;
+    if (!f || !(await f.isVisible())) {
+      console.log(`note  ${tag}: the chat field is not open to say "${text}"`);
+      return false;
+    }
     await f.click();
     await f.fill(text);
     const b = await page.evaluate(() => {
@@ -422,6 +427,28 @@ async function play(size) {
   // keeps her distance and goes about her day, or waits: no back and forth.
   check(standing <= 2 && reversals <= 6 && !followed, `${tag}: afraid of you, she keeps away without moving in place (${standing} turns once they stood, ${reversals} in all, closest ${Math.round(minD)} px, ${hate.state}, ${[...dirs].join('/')})`);
   log.push({ tag, scene: 'hate', reversals, standing, minD: Math.round(minD), dirs: [...dirs] });
+  // She has left the player, and they talk to her anyway: she hears every word, answers
+  // coldly, and when pressed at once, says nothing — shown as what she does (DESIGN §23.3).
+  // She keeps moving off: the player taps her where she walks (a finger trailing her still
+  // finds her), and the chat opens to her.
+  await tapPerson('lyra');
+  await page.waitForFunction(() => window.__game.ui.chat.isOpen(), null, { timeout: 3000 }).catch(() => null);
+  const tapped = await page.evaluate(() => ({ open: window.__game.ui.chat.isOpen(), target: window.__game.ui.chat.target }));
+  check(tapped.open && tapped.target === 'lyra', `${tag}: a tap on Lyra as she keeps away opens the chat to her (${JSON.stringify(tapped)})`);
+  if (!tapped.open) await tapPerson('lyra');
+  await say('Lyra, please talk to me');
+  await wait(600);
+  await say('Lyra? Please.');
+  await wait(900);
+  await shot('10b-hate-silence');
+  const hush = await page.evaluate(() => {
+    const g = window.__game;
+    const c = g.ui.chat;
+    const rows = [...document.querySelectorAll('.chat-log .msg')].slice(-4).map((r) => r.textContent.trim());
+    return { open: c.isOpen(), target: c.target, disabled: c.field.disabled, rows, heard: g.companion.mind.conversation.some((x) => x.role === 'player' && x.text === 'Lyra? Please.'), state: g.companion.mind.companionship };
+  });
+  check(hush.target === 'lyra' && !hush.disabled && hush.heard && hush.rows.some((r) => /^Lyra hears (you|every word)/.test(r)), `${tag}: she heard both lines, and her silence shows as an act (${JSON.stringify(hush)})`);
+  await closeChat();
 
   // ------------------------------------------------------------------ a killing behind a house
   // Elda in the Ember Kettle; Corran killed outside, the far side of its wall. Nobody sees.
@@ -518,6 +545,21 @@ async function play(size) {
     return { heard: !!t, answer: t, log: (document.querySelector('.chat-log')?.textContent || '').slice(-200) };
   });
   check(terror.heard && !/love|sit down|kettle/i.test(terror.answer || ''), `${tag}: her words reached her, and she answered in terror, not calmly ("${terror.answer}")`);
+  // Pressed on: she begs, she screams for help, then she says nothing (her choice, shown).
+  for (const t of ['I am not going to hurt you.', 'Just listen to me!', 'Elda!']) {
+    await standBy('elda');
+    await say(t);
+    await wait(500);
+  }
+  await shot('13b-witness-pressed');
+  const pressed = await page.evaluate(() => {
+    const g = window.__game;
+    const talks = (g.village.talks.elda || []).slice(-4).map((x) => ({ you: x.you, they: x.they.join(' '), silent: !!x.silent }));
+    const rows = [...document.querySelectorAll('.chat-log .msg')].slice(-6).map((r) => r.textContent.trim());
+    return { talks, rows };
+  });
+  const [, beg, scream, hushed] = pressed.talks;
+  check(/Please/.test(beg?.they || '') && /help/i.test(scream?.they || '') && hushed?.silent && hushed.you === 'Elda!' && pressed.rows.some((r) => /^Elda (hears you|stares at you)/.test(r)), `${tag}: pressed on, she begs, screams for help, then says nothing, shown as an act (${JSON.stringify(pressed)})`);
   await closeChat();
   // Let her run (the game runs, faster): the watch learns when she reaches them.
   await page.evaluate(() => {

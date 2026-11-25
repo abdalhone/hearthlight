@@ -1683,7 +1683,10 @@ Stop* (trust 72; its lesson waits while she is unsure: a talk step's `trust`) an
 - A tap or click on someone talks to them, whatever the chat puts under the finger as it
   opens: the browser's click from that same tap is swallowed (on phones it pressed a chip
   of the "To" row and talked to a neighbour), and the release of a mouse click that opened
-  it is not a click outside it.
+  it is not a click outside it. Someone walking away is still a tap away: where they were
+  a moment ago counts too (0.4 s for a finger, 0.15 s for a mouse; `pickActorAt` `lag`),
+  never ahead of them, and someone standing where the tap lands wins (played on a phone: a
+  Lyra keeping away at a run could not be tapped at all).
 
 ### 23.1 One memory of everything they say (`src/ai/said_today.js`, `game.saidToday`; the author: "Connect it and let it have like a shot of what it said in this day, even if it was pop up text")
 

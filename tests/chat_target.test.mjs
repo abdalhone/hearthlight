@@ -162,6 +162,26 @@ test('a tap lands on the person drawn there, Lyra included', () => {
   assert.equal(inFight(game), true);
 });
 
+test('a finger finds someone walking away: where they were a moment ago counts too (she keeps away; the player can still talk to her)', () => {
+  const { game, add } = earWorld();
+  const elda = add('elda', 300, 300);
+  // She walks east at 60 px/s; the finger comes down where she was 0.3 s ago.
+  elda.moveIntent = { x: 1, y: 0 };
+  elda.speed = 60;
+  elda.speedMul = 1;
+  assert.equal(pickActorAt(game, 300 - 18, 290, { pad: 6 }), null, 'without the lag, a miss');
+  assert.equal(pickActorAt(game, 300 - 18, 290, { pad: 6, lag: 0.4 })?.id, 'elda', 'a tap just behind her is hers');
+  assert.equal(pickActorAt(game, 300 + 18, 290, { pad: 6, lag: 0.4 }), null, 'never ahead of her');
+  // Standing still, nothing changes.
+  elda.moveIntent = { x: 0, y: 0 };
+  assert.equal(pickActorAt(game, 300 - 18, 290, { pad: 6, lag: 0.4 }), null);
+  // Someone standing where the tap lands still wins over someone passing behind it.
+  const hobb = add('hobb', 282, 300);
+  elda.moveIntent = { x: 1, y: 0 };
+  assert.equal(pickActorAt(game, 283, 290, { pad: 6, lag: 0.4 })?.id, 'hobb');
+  assert.ok(hobb);
+});
+
 test('chips, tones and parting lines read right', () => {
   assert.equal(toneOf(5), 'hostile');
   assert.equal(toneOf(25), 'wary');
