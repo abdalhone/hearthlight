@@ -103,8 +103,7 @@ export class Travel {
     const tx = Math.floor(p.x / TILE);
     const ty = Math.floor(p.y / TILE);
     const region = inVale(tx, ty) ? null : this.game.map?.regionAt?.(tx, ty);
-    w.localFog = region === 'grey' ? 0.55 : region === 'snow' ? 0.18 : 0;
-    w.localFogTint = region === 'grey' ? 'grey' : null;
+    w.localFog = region === 'grey' ? 1 : 0;
     w.localSnow = region === 'snow' ? 1 : region === 'foothill' && ty < -120 ? 0.4 : 0;
   }
 

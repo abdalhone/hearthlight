@@ -490,6 +490,9 @@ class Harvestable extends WorldObject {
   }
 
   update(dt) {
+    // Most of the world's trees and stones are untouched: nothing to do (thousands of
+    // them out in the wider world).
+    if (!this._worker && !(this.progress > 0) && !this.state.depleted) return;
     this._sinceWork += dt;
     if (this._sinceWork > 4 && this.progress > 0) this.progress = 0;
     if (this.state.depleted && this.state.regrowAt) {
@@ -866,6 +869,9 @@ export class Crop extends Harvestable {
   }
 
   update(dt) {
+    // Most of the world's trees and stones are untouched: nothing to do (thousands of
+    // them out in the wider world).
+    if (!this._worker && !(this.progress > 0) && !this.state.depleted) return;
     this._sinceWork += dt;
     if (this._sinceWork > 4 && this.progress > 0) this.progress = 0;
     if (this._worker) this._tickSession(dt);
@@ -1693,6 +1699,8 @@ export function makeObject(game, d) {
 // with well over a thousand objects in the world.
 
 const CELL = 8; // tiles per spatial cell
+const FAR_UPDATE = 40 * TILE; // px: objects farther from the player update in turns
+const FAR_SLICES = 8;
 
 const WORD_ALIASES = {
   fire: ['campfire', 'hearth'],
@@ -1836,18 +1844,49 @@ export class ObjectManager {
     return this.list;
   }
 
+  // Everything near the player updates every step; the rest of the (wide) world takes
+  // turns, an eighth of it a step with eight steps' time, so far timers still run and a
+  // step never walks all the world's thousands of trees.
   update(dt) {
     const list = this.list;
-    for (let i = 0; i < list.length; i++) {
-      const o = list[i];
-      try {
-        o.update(dt);
-      } catch (err) {
-        o._errors = (o._errors || 0) + 1;
-        if (o._errors < 4) console.error('[objects] update failed for', o.id, err);
+    const p = this.game?.player;
+    if (!p || list.length < 1500) {
+      for (let i = 0; i < list.length; i++) {
+        const o = list[i];
+        this._updateOne(o, dt);
+        // An object may remove itself (the journal); keep the index in step.
+        if (list[i] !== o) i--;
       }
-      // An object may remove itself (the journal); keep the index in step.
-      if (list[i] !== o) i--;
+      return;
+    }
+    const stamp = (this._stamp = (this._stamp || 0) + 1);
+    const near = this._near || (this._near = []);
+    near.length = 0;
+    const R = FAR_UPDATE;
+    this._eachInRect(p.x - R, p.y - R, p.x + R, p.y + R, (o) => near.push(o));
+    for (let i = 0; i < near.length; i++) {
+      const o = near[i];
+      o._updStamp = stamp;
+      if (!o.removed) this._updateOne(o, dt);
+    }
+    const n = list.length;
+    const per = Math.ceil(n / FAR_SLICES);
+    let c = (this._cursor || 0) % Math.max(1, n);
+    for (let k = 0; k < per && n > 0; k++, c = (c + 1) % n) {
+      const o = list[c];
+      if (!o || o._updStamp === stamp || o.removed) continue;
+      this._updateOne(o, dt * FAR_SLICES);
+      if (list[c] !== o) c--;
+    }
+    this._cursor = c;
+  }
+
+  _updateOne(o, dt) {
+    try {
+      o.update(dt);
+    } catch (err) {
+      o._errors = (o._errors || 0) + 1;
+      if (o._errors < 4) console.error('[objects] update failed for', o.id, err);
     }
   }
 

@@ -123,9 +123,10 @@ export class Weather {
     const type = w?.type || 'clear';
     const inten = Math.max(0, Math.min(1, w?.intensity ?? 0));
     this.rain = approach(this.rain, type === 'rain' ? inten : 0, 0.14 * dt);
+    this.fog = approach(this.fog, type === 'fog' ? inten : 0, 0.1 * dt);
     // A place may keep its own weather (src/world/travel.js): the grey over Brindlecombe,
-    // a thin mist and falling snow on the Hollowcrown.
-    this.fog = approach(this.fog, Math.max(type === 'fog' ? inten : 0, this.localFog || 0), 0.1 * dt);
+    // falling snow on the Hollowcrown. The grey is a flat wash (one fill, cheap on a phone).
+    this.grey = approach(this.grey || 0, this.localFog || 0, 0.25 * dt);
     this.cloud = approach(this.cloud, type === 'cloudy' ? inten : type === 'rain' ? inten * 0.6 : 0, 0.1 * dt);
 
     const p = g.player;
@@ -354,6 +355,16 @@ export class Weather {
   drawOverlay(ctx, r) {
     const amb = this.game.lighting?.ambient;
     const dark = amb ? amb.darkness : 0;
+    if (this.grey > 0.01) {
+      // The grey: colour drained toward a cold ash, thicker away from you (indoors too:
+      // Brindlecombe's houses stand open to it).
+      const W = ctx.canvas.width;
+      const H = ctx.canvas.height;
+      ctx.globalAlpha = Math.min(1, this.grey);
+      ctx.fillStyle = dark > 0.5 ? 'rgba(40,44,46,0.34)' : 'rgba(146,152,144,0.3)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
     if (!this.indoors) {
       if (this.cloud > 0.02) this._drawClouds(ctx, r, dark);
       if (this.fog > 0.02 || this.rain > 0.2) this._drawFog(ctx, r, dark);
@@ -379,8 +390,6 @@ export class Weather {
         wisps: makeFogTexture(wisps, [236, 238, 245], 0.5, 0.82, 0.8),
         wispsNight: makeFogTexture(wisps, [82, 92, 124], 0.5, 0.82, 0.8),
         shadow: makeFogTexture(banks, [12, 10, 30], 0.48, 0.74, 1),
-        grey: makeFogTexture(banks, [150, 156, 146], 0.38, 0.76, 0.95),
-        greyNight: makeFogTexture(banks, [52, 58, 56], 0.38, 0.76, 0.95),
       };
     }
     return this._fog;
@@ -408,8 +417,7 @@ export class Weather {
     ctx.imageSmoothingEnabled = true;
     const night = Math.min(1, dark * 1.15);
     // Slow banks fixed to the ground, then faster wisps drifting above them.
-    if (this.localFogTint === 'grey') this._fogLayer(ctx, r, tex.grey, tex.greyNight, night, level * 0.55, 3.4, 1, t * 2, t * 0.6);
-    else this._fogLayer(ctx, r, tex.day, tex.night, night, level * 0.5, 3, 1, t * 5, t * 1.2);
+    this._fogLayer(ctx, r, tex.day, tex.night, night, level * 0.5, 3, 1, t * 5, t * 1.2);
     this._fogLayer(ctx, r, tex.wisps, tex.wispsNight, night, level * 0.32, 1.9, 1.25, t * 11 + 300, 120 - t * 2);
     ctx.globalAlpha = 1;
     ctx.imageSmoothingEnabled = false;

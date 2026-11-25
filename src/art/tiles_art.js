@@ -896,6 +896,7 @@ const CANOPY_LUT = lut(['#08130d', '#0f2016', '#16301e', '#1f4226', '#2b552d', '
 const CANOPY_PINE_LUT = lut(['#071210', '#0c1c19', '#122823', '#1a382e', '#244839', '#305a45', '#3f6d51']);
 const CANOPY_SNOW_LUT = lut(['#3a4a5e', '#56677e', '#7d8ea6', '#a3b3c8', '#c6d3e2', '#e2eaf3', '#f6f9fc']);
 const CANOPY_GREY_LUT = lut(['#121412', '#1c1f1b', '#272b25', '#343a31', '#444b3f', '#565d4f', '#6a7062']);
+let THICKET_CROWNS = new Float32Array(64);
 function paintThicket(art, out, lx, ly, map, tx, ty, wet) {
   const isT = (x, y) => map.tileAt(x, y) === T.THICKET;
   // Which kind of wood: pines on the mountain, snow above the snowline, grey where
@@ -904,6 +905,26 @@ function paintThicket(art, out, lx, ly, map, tx, ty, wet) {
   const L = kind === 'snow' ? CANOPY_SNOW_LUT : kind === 'pine' ? CANOPY_PINE_LUT : kind === 'grey' ? CANOPY_GREY_LUT : CANOPY_LUT;
   const floor = art.tex.forest[0].data;
   const S = 10;
+  // The crowns that can reach this tile, worked out once (centers, radii, whether their
+  // trunk stands in thicket) rather than hashed again for every pixel.
+  const gx0 = Math.floor((tx * TILE) / S) - 1;
+  const gy0 = Math.floor((ty * TILE) / S) - 1;
+  const GN = Math.floor((tx * TILE + TILE - 1) / S) + 1 - gx0 + 1;
+  const GM = Math.floor((ty * TILE + TILE - 1) / S) + 1 - gy0 + 1;
+  const crowns = THICKET_CROWNS.length >= GN * GM * 4 ? THICKET_CROWNS : (THICKET_CROWNS = new Float32Array(GN * GM * 4));
+  for (let j = 0; j < GM; j++) {
+    for (let i = 0; i < GN; i++) {
+      const cxi = gx0 + i;
+      const cyi = gy0 + j;
+      const k = (j * GN + i) * 4;
+      const ccx = cxi * S + 2 + ih(cxi, cyi, 431) * 6;
+      const ccy = cyi * S + 2 + ih(cxi, cyi, 432) * 6;
+      crowns[k] = ccx;
+      crowns[k + 1] = ccy;
+      crowns[k + 2] = 7 + ih(cxi, cyi, 433) * 3.5;
+      crowns[k + 3] = isT(Math.floor(ccx / TILE), Math.floor(ccy / TILE)) ? 1 : 0;
+    }
+  }
   for (let y = 0; y < TILE; y++) {
     const wy = ty * TILE + y;
     for (let x = 0; x < TILE; x++) {
@@ -914,12 +935,11 @@ function paintThicket(art, out, lx, ly, map, tx, ty, wet) {
       let bt = -1;
       for (let j = -1; j <= 1; j++) {
         for (let i = -1; i <= 1; i++) {
-          const cxi = gx + i;
-          const cyi = gy + j;
-          const ccx = cxi * S + 2 + ih(cxi, cyi, 431) * 6;
-          const ccy = cyi * S + 2 + ih(cxi, cyi, 432) * 6;
-          if (!isT(Math.floor(ccx / TILE), Math.floor(ccy / TILE))) continue;
-          const r = 7 + ih(cxi, cyi, 433) * 3.5;
+          const k = ((gy + j - gy0) * GN + (gx + i - gx0)) * 4;
+          if (!crowns[k + 3]) continue;
+          const ccx = crowns[k];
+          const ccy = crowns[k + 1];
+          const r = crowns[k + 2];
           const nx = (wx + 0.5 - ccx) / r;
           const ny = (wy + 0.5 - ccy) / r;
           const d = nx * nx + ny * ny;
