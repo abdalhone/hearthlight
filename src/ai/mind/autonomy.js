@@ -3087,7 +3087,10 @@ export class Autonomy {
     const g = this.game;
     if (g?.state && g.state !== 'playing') return;
     const l = this.lyra();
-    if (!l || !this.player() || l.downed || l.state === 'sleep') return;
+    const p = this.player();
+    if (!l || !p || l.downed || l.state === 'sleep') return;
+    // Not a word about an outing while they lie downed, or are being carried off.
+    if (p.downed || p.carriedBy || p.dead) return;
     const now = this.now();
     if (now - this.lastInitiativeT < 180 || now - this.lastSpokeT < 20) return;
     if (!this._playerNear(160)) return;

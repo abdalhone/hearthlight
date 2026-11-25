@@ -231,3 +231,30 @@ test('a villager quotes what she said today, bubble or chat, and does not shrug 
   assert.notEqual(a.lines.join(' '), b.lines.join(' '), `${a.lines} / ${b.lines}`);
   back();
 });
+
+// Replayed: carried off downed by the watch, the player heard Lyra start on her chapel walk
+// ("Maren went over the ruins wall at midsummer…"). No outing is proposed to someone lying downed.
+test('Lyra proposes no outing while the player lies downed or is carried', async () => {
+  const back = quietConsole();
+  const { makeGame: makeSurvival, placeAt } = await import('./survival_world.mjs');
+  const g = makeSurvival({ hour: 10 });
+  const L = g.companion;
+  const a = L.mind.autonomy;
+  placeAt(g, L, g.player.x + 24, g.player.y);
+  g.plugins.get('quest')?.advance?.(g.plugins.ctx, 1, 'test');
+  const ready = () => {
+    a.lastInitiativeT = -1e9;
+    a.lastSpokeT = -1e9;
+    a.pendingRequest = null;
+    a.asked = {};
+  };
+  ready();
+  g.player.downed = true;
+  a._initiative();
+  assert.equal(a.pendingRequest ?? null, null, 'not while downed');
+  g.player.downed = false;
+  ready();
+  a._initiative();
+  assert.match(JSON.stringify(a.pendingRequest?.spec || {}), /chapel/, 'on their feet, she asks');
+  back();
+});
