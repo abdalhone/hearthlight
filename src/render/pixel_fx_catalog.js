@@ -11,6 +11,7 @@
 //              keep "up" pointing up the screen for anything that hops or rises)
 //   reduce     under reduced motion: false (skip it) or { scale, opts } (calmer)
 //   lightK     how strongly its light is added (1 = as drawn)
+//   max        how many may play at once (halved on phones); a new one replaces the oldest
 // }
 //
 // Every effect here was looked at from above, at the game's scale and in several aim
@@ -88,6 +89,9 @@ export const PIXEL_FX = {
     layer: 'top',
     priority: 3,
     bounds: [-44, -40, 44, 34],
+    // (a flurry of blows keeps the newest 8 sparks, 4 on a phone, and leaves the rest of the
+    // cap to statuses and flourishes)
+    max: 8,
     opts: { size: 0.6, height: 10, sparks: 9 },
     reduce: { opts: { sparks: 5 } },
   },
@@ -98,6 +102,7 @@ export const PIXEL_FX = {
     layer: 'top',
     priority: 3,
     bounds: [-52, -50, 52, 36],
+    max: 4,
     opts: { size: 0.5, height: 10 },
     lightK: 0.8,
   },
@@ -109,6 +114,7 @@ export const PIXEL_FX = {
     layer: 'top',
     priority: 3,
     bounds: [-48, -46, 48, 34],
+    max: 4,
     opts: { size: 0.55, height: 8 },
     lightK: 0.3,
   },

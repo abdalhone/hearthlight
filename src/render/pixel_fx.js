@@ -14,9 +14,9 @@ import { createFrame, createFx } from '../vendor/pixelfx/core/fx.js';
 // - A live effect owns a pooled frame (pixelfx's two buffers, color and light) sized to
 //   its bounds. Each frame it is cleared, drawn by the effect, its color composited into
 //   a reused ImageData and blitted into the world buffer at its world spot minus the
-//   buffer origin (ox, oy). Its light is added into one shared light buffer the size of
-//   the world buffer, which drawGlow() lays over the lit picture with 'lighter', after
-//   the night's lighting, so effects glow at night and stay crisp by day.
+//   buffer origin (ox, oy). Its light is kept as a second small picture, which drawGlow()
+//   lays over the lit picture with 'lighter' (overlapping lights sum), after the night's
+//   lighting, so effects glow at night and stay crisp by day.
 // - Layers: 'ground' lies on the floor under everyone (rings, scorch, frost, pools),
 //   'body' is y-sorted with the actors (its back half just behind the anchor's feet, its
 //   front half just in front: statuses, auras, things on a body), 'top' is over every
@@ -32,10 +32,15 @@ import { createFrame, createFx } from '../vendor/pixelfx/core/fx.js';
 
 const MARGIN = 24; // px past the view an effect may reach and still be drawn
 const SPAWN_MARGIN = 80; // a one-shot further than this off screen is not started at all
-const CAP_DESKTOP = 28;
-const CAP_PHONE = 14;
+const CAP_DESKTOP = 24;
+const CAP_PHONE = 12;
 const STEP_MAX = 0.25; // the longest step an effect takes at once (the loop's own cap: a stalled tab)
-const EMPTY_LIT = new Int32Array(0);
+// Painting is the host's real cost (pixelfx draws in JS, pixel by pixel). Past this much
+// painting in one rendered frame, effects keep showing their last picture for a frame or
+// two (loops up to 3, one-shots 1) instead of repainting, so a brawl full of effects costs
+// about the same as a quiet fight; each effect's first frame is always painted.
+const PAINT_BUDGET_MS = 1.6;
+const now = typeof performance !== 'undefined' && performance.now ? () => performance.now() : () => Date.now();
 const REDUCE_SIZE = 0.85; // reduced motion: effects a little smaller...
 const REDUCE_LIGHT = 0.5; // ...with half the glow...
 const WHITE_MIN = 236; // ...and no white flashes: a pixel this bright in every channel is "white"
@@ -110,9 +115,13 @@ export class PixelFx {
     this.live = [];
     this._pool = new Map(); // "w x h" -> frames ready for reuse
     this._img = new Map(); // "w x h" -> free pictures ({ canvas, ctx, img, u32 }) for painted parts
-    this._light = null; // { w, h, buf: Uint32Array, canvas, ctx, img, x0, y0, x1, y1 }
+    this._glows = []; // this frame's lit parts: { canvas, sx, sy, sw, sh, bx, by, k } (pooled)
+    this._glowN = 0;
     this._proxies = [];
-    this._stamp = 0; // the renderer frame the light buffer belongs to
+    this._stamp = -1; // the renderer frame the glow list belongs to
+    this._paintAt = -1; // the renderer frame the paint time belongs to
+    this._paintMs = 0;
+    this.paintBudget = opts.paintBudget ?? PAINT_BUDGET_MS;
     this.capDesktop = opts.cap ?? CAP_DESKTOP;
     this.capPhone = opts.capPhone ?? CAP_PHONE;
     this.stats = { played: 0, refused: 0, evicted: 0, drawn: 0, culled: 0 };
@@ -139,13 +148,27 @@ export class PixelFx {
     return !!this.game?.settings?.reduceMotion;
   }
 
+  // (read once per rendered frame: the canvas size is a layout read, and play() runs often)
   get phone() {
     const g = this.game;
-    if (g?.ui?.isTouch) return true;
-    const c = g?.renderer?.canvas;
-    const w = c?.clientWidth || (typeof window !== 'undefined' ? window.innerWidth : 1280);
-    const h = c?.clientHeight || (typeof window !== 'undefined' ? window.innerHeight : 720);
-    return Math.min(w, h) < 500;
+    const stamp = g?.renderer?.frame;
+    if (this._phoneAt === stamp && stamp != null) return this._phone;
+    let phone = !!g?.ui?.isTouch;
+    if (!phone) {
+      const c = g?.renderer?.canvas;
+      const w = c?.clientWidth || (typeof window !== 'undefined' ? window.innerWidth : 1280);
+      const h = c?.clientHeight || (typeof window !== 'undefined' ? window.innerHeight : 720);
+      phone = Math.min(w, h) < 500;
+    }
+    this._phoneAt = stamp;
+    this._phone = phone;
+    return phone;
+  }
+
+  // How many of one effect may play at once (spec.max, halved on phones), or Infinity.
+  budget(spec) {
+    if (!Number.isFinite(spec?.max)) return Infinity;
+    return this.phone ? Math.max(1, Math.ceil(spec.max / 2)) : spec.max;
   }
 
   // How many effects may play at once right now.
@@ -181,6 +204,23 @@ export class PixelFx {
       return null;
     }
     const prio = o.priority ?? spec.priority;
+    // An effect with a budget of its own (spec.max: the everyday hit spark) replaces its own
+    // oldest when at it, so a brawl's flurry of sparks never pushes statuses off the bodies.
+    const budget = this.budget(spec);
+    if (budget < Infinity) {
+      let n = 0;
+      let oldest = -1;
+      for (let i = 0; i < this.live.length; i++)
+        if (this.live[i].id === id) {
+          if (oldest < 0) oldest = i;
+          n++;
+        }
+      if (n >= budget && oldest >= 0) {
+        this._release(this.live[oldest]);
+        this.live.splice(oldest, 1);
+        this.stats.evicted++;
+      }
+    }
     if (this.live.length >= this.cap && !this._evictFor(prio)) {
       this.stats.refused++;
       return null;
@@ -420,20 +460,35 @@ export class PixelFx {
   _drawInst(inst, part, ctx, ox, oy) {
     if (!ctx || !inst.frame) return;
     const k = part === 'back' ? 0 : 1;
-    const c = inst.parts[k] || (inst.parts[k] = { fi: -1, pic: null, any: false, lit: EMPTY_LIT, litN: 0 });
+    const c = inst.parts[k] || (inst.parts[k] = { fi: -1, wait: 0, pic: null, any: false, bx: 0, by: 0, bw: 0, bh: 0, lpic: null, lit: false, lx: 0, ly: 0, lw: 0, lh: 0 });
     const x0 = inst.x + inst.box[0];
     const y0 = inst.y + inst.box[1];
     const fi = Math.floor(inst.fx.t * inst.fps + 1e-6);
     if (c.fi !== fi) {
-      if (!this._paint(inst, part, c, x0, y0)) return;
-      c.fi = fi;
+      const stamp = this.game?.renderer?.frame;
+      if (stamp !== this._paintAt) {
+        this._paintAt = stamp;
+        this._paintMs = 0;
+      }
+      if (c.fi >= 0 && c.wait < (inst.loop ? 3 : 1) && this._paintMs > this.paintBudget) {
+        // over this frame's budget: the last picture again, moved with its body
+        c.wait++;
+        this.stats.waited = (this.stats.waited || 0) + 1;
+      } else {
+        const t0 = now();
+        const ok = this._paint(inst, part, c, x0, y0);
+        this._paintMs += now() - t0;
+        if (!ok) return;
+        c.fi = fi;
+        c.wait = 0;
+      }
     }
-    if (c.litN) this._addLit(c.lit, c.litN, inst.w, x0 - ox, y0 - oy, inst.lightK);
-    if (c.any && c.pic) ctx.drawImage(c.pic.canvas, 0, 0, inst.w, inst.h, x0 - ox, y0 - oy, inst.w, inst.h);
+    if (c.lit && c.lpic) this._glow(c, x0 - ox, y0 - oy, inst.lightK);
+    if (c.any && c.pic) ctx.drawImage(c.pic.canvas, c.bx, c.by, c.bw, c.bh, x0 - ox + c.bx, y0 - oy + c.by, c.bw, c.bh);
   }
 
   // Paint a part afresh: clear the frame, let the effect draw, keep its color as a picture
-  // and its light as a short list of lit pixels. False when it could not be drawn.
+  // and its light as another (each cut to the box it fills). False when it could not be drawn.
   _paint(inst, part, c, x0, y0) {
     const fr = inst.frame;
     fr.ox = x0;
@@ -461,32 +516,78 @@ export class PixelFx {
     const C = fr.color;
     const L = fr.light;
     if (inst.soft) softenWhites(C, n, inst.soft);
-    // one pass: is there any color (an empty frame, between flickers or before a delay, needs
-    // no picture), and its light as (index, value) pairs
-    let any = false;
-    let lit = c.lit;
-    let m = 0;
-    for (let i = 0; i < n; i++) {
-      if (C[i]) any = true;
-      const l = L[i];
-      if (l) {
-        if (m + 2 > lit.length) {
-          const bigger = new Int32Array(Math.max(64, lit.length * 2));
-          bigger.set(lit.subarray(0, m));
-          lit = c.lit = bigger;
+    // one pass: the boxes round its color and round its light (an empty frame, between
+    // flickers or before a delay, needs no picture; most frames fill a small part of their
+    // bounds, and only that part is uploaded and drawn)
+    const W = inst.w;
+    const H = inst.h;
+    let minX = W;
+    let maxX = -1;
+    let minY = H;
+    let maxY = -1;
+    let lx0 = W;
+    let lx1 = -1;
+    let ly0 = H;
+    let ly1 = -1;
+    let i = 0;
+    for (let y = 0; y < H; y++) {
+      let row = false;
+      let lrow = false;
+      for (let x = 0; x < W; x++, i++) {
+        if (C[i]) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          row = true;
         }
-        lit[m++] = i;
-        lit[m++] = l;
+        if (L[i]) {
+          if (x < lx0) lx0 = x;
+          if (x > lx1) lx1 = x;
+          lrow = true;
+        }
+      }
+      if (row) {
+        if (y < minY) minY = y;
+        maxY = y;
+      }
+      if (lrow) {
+        if (y < ly0) ly0 = y;
+        ly1 = y;
       }
     }
-    c.litN = m;
     c.any = false;
-    if (any) {
-      if (!c.pic) c.pic = this._scratch(inst.w, inst.h);
+    if (maxX >= 0) {
+      if (!c.pic) c.pic = this._scratch(W, H);
       if (c.pic) {
         c.pic.u32.set(C.subarray(0, n));
-        c.pic.ctx.putImageData(c.pic.img, 0, 0);
+        c.bx = minX;
+        c.by = minY;
+        c.bw = maxX - minX + 1;
+        c.bh = maxY - minY + 1;
+        c.pic.ctx.putImageData(c.pic.img, 0, 0, c.bx, c.by, c.bw, c.bh);
         c.any = true;
+      }
+    }
+    // its light as an opaque picture of the light's color (added with 'lighter' after the
+    // night's lighting, drawGlow): unlit pixels stay clear
+    c.lit = false;
+    if (lx1 >= 0) {
+      if (!c.lpic) c.lpic = this._scratch(W, H);
+      const P = c.lpic;
+      if (P) {
+        const u = P.u32;
+        for (let y = ly0; y <= ly1; y++) {
+          const row = y * W;
+          for (let x = lx0; x <= lx1; x++) {
+            const l = L[row + x];
+            u[row + x] = l ? 0xff000000 | (l & 0xffffff) : 0;
+          }
+        }
+        c.lx = lx0;
+        c.ly = ly0;
+        c.lw = lx1 - lx0 + 1;
+        c.lh = ly1 - ly0 + 1;
+        P.ctx.putImageData(P.img, 0, 0, c.lx, c.ly, c.lw, c.lh);
+        c.lit = true;
       }
     }
     return true;
@@ -509,105 +610,49 @@ export class PixelFx {
     }
   }
 
-  // Light into the shared light buffer (the world buffer's size), summed.
-  _addLit(lit, n, fw, bx, by, k) {
-    const Lb = this._lightBuf();
-    if (!Lb) return false;
+  // A lit part drawn this frame, at (bx, by) in the buffer: noted for drawGlow (the list is
+  // this renderer frame's; its records are reused).
+  _glow(c, bx, by, k) {
     const r = this.game?.renderer;
-    if (r && r.frame !== this._stamp) this._beginLight(r.frame);
-    const W = Lb.w;
-    const H = Lb.h;
-    const buf = Lb.buf;
-    const kk = k * this.lightK;
-    let x0 = Lb.x0;
-    let x1 = Lb.x1;
-    let y0 = Lb.y0;
-    let y1 = Lb.y1;
-    let any = false;
-    for (let j = 0; j < n; j += 2) {
-      const i0 = lit[j];
-      const l = lit[j + 1] >>> 0;
-      const fy = (i0 / fw) | 0;
-      const ty = by + fy;
-      if (ty < 0 || ty >= H) continue;
-      const tx = bx + (i0 - fy * fw);
-      if (tx < 0 || tx >= W) continue;
-      const i = ty * W + tx;
-      const d = buf[i];
-      let rr = (l & 255) * kk;
-      let gg = ((l >>> 8) & 255) * kk;
-      let b = ((l >>> 16) & 255) * kk;
-      if (d) {
-        rr += d & 255;
-        gg += (d >>> 8) & 255;
-        b += (d >>> 16) & 255;
-      }
-      buf[i] = (255 << 24) | ((b > 255 ? 255 : b) << 16) | ((gg > 255 ? 255 : gg) << 8) | (rr > 255 ? 255 : rr);
-      if (tx < x0) x0 = tx;
-      if (tx > x1) x1 = tx;
-      if (ty < y0) y0 = ty;
-      if (ty > y1) y1 = ty;
-      any = true;
+    const stamp = r ? r.frame : 0;
+    if (stamp !== this._stamp) {
+      this._stamp = stamp;
+      this._glowN = 0;
     }
-    Lb.x0 = x0;
-    Lb.x1 = x1;
-    Lb.y0 = y0;
-    Lb.y1 = y1;
-    return any;
+    let g = this._glows[this._glowN];
+    if (!g) g = this._glows[this._glowN] = { canvas: null, sx: 0, sy: 0, sw: 0, sh: 0, bx: 0, by: 0, k: 1 };
+    this._glowN++;
+    g.canvas = c.lpic.canvas;
+    g.sx = c.lx;
+    g.sy = c.ly;
+    g.sw = c.lw;
+    g.sh = c.lh;
+    g.bx = bx + c.lx;
+    g.by = by + c.ly;
+    g.k = k;
+    return true;
   }
 
-  _lightBuf() {
-    const r = this.game?.renderer;
-    const buf = r?.buffer;
-    if (!buf) return null;
-    const w = buf.width;
-    const h = buf.height;
-    let Lb = this._light;
-    if (!Lb || Lb.w !== w || Lb.h !== h) {
-      try {
-        const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
-        const ctx = canvas.getContext('2d');
-        const img = ctx.createImageData(w, h);
-        Lb = this._light = { w, h, canvas, ctx, img, buf: new Uint32Array(img.data.buffer), x0: w, y0: h, x1: -1, y1: -1, shownX0: 0, shownY0: 0, shownX1: -1, shownY1: -1 };
-      } catch (err) {
-        this.warn('light buffer', err);
-        return null;
-      }
-    }
-    return Lb;
-  }
-
-  _beginLight(stamp) {
-    const Lb = this._light;
-    this._stamp = stamp;
-    if (!Lb) return;
-    if (Lb.x1 >= Lb.x0) {
-      for (let y = Lb.y0; y <= Lb.y1; y++) Lb.buf.fill(0, y * Lb.w + Lb.x0, y * Lb.w + Lb.x1 + 1);
-    }
-    Lb.x0 = Lb.w;
-    Lb.y0 = Lb.h;
-    Lb.x1 = -1;
-    Lb.y1 = -1;
-  }
-
-  // After the lighting (renderer hook): the summed light, pixel-sharp, added on top. By
-  // day it is held back a little so glows never wash the colors out.
+  // After the lighting (renderer hook): each lit part's light, pixel-sharp, added on top with
+  // 'lighter' (lights that overlap sum). By day it is held back a little so glows never wash
+  // the colors out. Only the boxes that hold light are drawn, never the whole view.
   drawGlow(ctx, r) {
-    const Lb = this._light;
-    if (!Lb || !r || r.frame !== this._stamp || Lb.x1 < Lb.x0) return;
+    if (!r || r.frame !== this._stamp || !this._glowN) return;
     const dark = this.game?.lighting?.ambient?.darkness ?? 0;
-    const k = Math.min(1, 0.62 + 0.5 * dark);
-    const x0 = Lb.x0;
-    const y0 = Lb.y0;
-    const w = Lb.x1 - x0 + 1;
-    const h = Lb.y1 - y0 + 1;
-    Lb.ctx.putImageData(Lb.img, 0, 0, x0, y0, w, h);
+    const day = Math.min(1, 0.62 + 0.5 * dark) * this.lightK;
     const s = r.scale || 1;
+    const sx = r.subX || 0;
+    const sy = r.subY || 0;
     const prevOp = ctx.globalCompositeOperation;
     ctx.globalCompositeOperation = 'lighter';
     ctx.imageSmoothingEnabled = false;
-    ctx.globalAlpha = k;
-    ctx.drawImage(Lb.canvas, x0, y0, w, h, x0 * s - (r.subX || 0), y0 * s - (r.subY || 0), w * s, h * s);
+    for (let i = 0; i < this._glowN; i++) {
+      const g = this._glows[i];
+      ctx.globalAlpha = Math.min(1, day * g.k);
+      ctx.drawImage(g.canvas, g.sx, g.sy, g.sw, g.sh, g.bx * s - sx, g.by * s - sy, g.sw * s, g.sh * s);
+      g.canvas = null;
+    }
+    this._glowN = 0;
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = prevOp || 'source-over';
   }
@@ -623,13 +668,16 @@ export class PixelFx {
 
   _release(inst) {
     for (const c of inst.parts) {
-      const pic = c?.pic;
-      if (!pic) continue;
+      if (!c) continue;
+      for (const pic of [c.pic, c.lpic]) {
+        if (!pic) continue;
+        const key = pic.key || `${pic.canvas?.width}x${pic.canvas?.height}`;
+        let free = this._img.get(key);
+        if (!free) this._img.set(key, (free = []));
+        if (free.length < 24) free.push(pic);
+      }
       c.pic = null;
-      const key = pic.key || `${pic.canvas?.width}x${pic.canvas?.height}`;
-      let free = this._img.get(key);
-      if (!free) this._img.set(key, (free = []));
-      if (free.length < 12) free.push(pic);
+      c.lpic = null;
     }
     inst.parts.length = 0;
     const fr = inst.frame;

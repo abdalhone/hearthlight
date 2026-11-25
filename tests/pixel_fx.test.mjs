@@ -126,9 +126,9 @@ test('pixel fx: off-screen one-shots are not started; drawables are only collect
 
 test('pixel fx: a cap on effects at once, lower on phones; the least important oldest goes first', () => {
   const host = makeHost(makeGame(), {});
-  assert.equal(host.cap, 28);
+  assert.equal(host.cap, 24);
   const phone = makeHost(makeGame({ phone: true }));
-  assert.equal(phone.cap, 14);
+  assert.equal(phone.cap, 12);
   for (let i = 0; i < host.cap; i++) assert.ok(host.play('shot', { x: 100 + i, y: 100 }));
   const first = host.live[0].uid;
   assert.ok(host.play('hit', { x: 100, y: 100 }), 'a hit makes room');
@@ -144,7 +144,7 @@ test('pixel fx: a cap on effects at once, lower on phones; the least important o
 test('pixel fx: reduced motion means fewer, smaller, calmer effects with no white', () => {
   const game = makeGame({ reduce: true });
   const host = makeHost(game);
-  assert.equal(host.cap, 14, 'half the cap');
+  assert.equal(host.cap, 12, 'half the cap');
   assert.equal(host.play('ambient', { follow: { x: 1, y: 1 } }), null, 'ambience skipped');
   const h = host.play('shot', { x: 100, y: 100, size: 1 });
   const inst = host.live.find((i) => i.handle === h);
@@ -182,8 +182,6 @@ test('pixel fx: drawing composites the color into the buffer and the light into 
   // a stand-in canvas: record what is put and drawn
   const drawn = [];
   host._scratch = (w, h) => ({ canvas: { w, h }, ctx: { putImageData() {} }, img: {}, u32: new Uint32Array(w * h) });
-  const lightBuf = { w: 480, h: 270, buf: new Uint32Array(480 * 270), x0: 480, y0: 270, x1: -1, y1: -1 };
-  host._lightBuf = () => lightBuf;
   host.play('shot', { x: 100, y: 100 });
   host.update(0.05);
   const list = [];
@@ -191,10 +189,23 @@ test('pixel fx: drawing composites the color into the buffer and the light into 
   const ctx = { drawImage: (...a) => drawn.push(a) };
   list[0].draw(ctx, 0, 0);
   assert.equal(drawn.length, 1, 'blitted once');
-  const [, , , , , dx, dy] = drawn[0];
-  assert.equal(dx, 100 - 8);
-  assert.equal(dy, 100 - 12);
-  assert.ok(lightBuf.buf[96 * 480 + 100] & 255, 'light added where the dot is');
+  // only the painted part (the one dot, at (0, -4) from the anchor) is uploaded and drawn
+  const [, sx, sy, sw, sh, dx, dy, dw, dh] = drawn[0];
+  assert.deepEqual([sx, sy], [8, 8], 'the dot inside its frame (origin 8, 12)');
+  assert.deepEqual([sw, sh, dw, dh], [1, 1, 1, 1], 'just the painted box');
+  assert.equal(dx, 100);
+  assert.equal(dy, 100 - 4);
+  // its light: noted for the glow pass, at the dot, and laid on with 'lighter' (scaled up)
+  assert.equal(host._glowN, 1, 'one lit part this frame');
+  const g = host._glows[0];
+  assert.deepEqual([g.bx, g.by, g.sw, g.sh], [100, 96, 1, 1], 'light where the dot is');
+  const glow = [];
+  const gctx = { globalCompositeOperation: 'source-over', globalAlpha: 1, drawImage: (...a) => glow.push({ a, op: gctx.globalCompositeOperation, alpha: gctx.globalAlpha }) };
+  host.drawGlow(gctx, { frame: game.renderer.frame, scale: 3, subX: 0, subY: 0 });
+  assert.equal(glow.length, 1);
+  assert.equal(glow[0].op, 'lighter');
+  assert.deepEqual(glow[0].a.slice(5), [300, 288, 3, 3], 'pixel-sharp, scaled with the view');
+  assert.equal(gctx.globalCompositeOperation, 'source-over', 'left as it was');
   assert.equal(host.stats.drawn, 1);
 });
 
@@ -249,7 +260,6 @@ test('pixel fx: the real effects play and draw headless at the game scale (smoke
   const actor = { mask, pixels: new Uint32Array(200).fill(0xff406080), x: -5, y: -20, w: 10, h: 20, k: 1, head: [0, -20], chest: [0, -11] };
   host.actorOf = () => actor;
   host._scratch = (w, h) => ({ canvas: {}, ctx: { putImageData() {} }, img: {}, u32: new Uint32Array(w * h) });
-  host._lightBuf = () => null;
   const body = { x: 100, y: 120 };
   for (const id of Object.keys(PIXEL_FX)) {
     const h = PIXEL_FX[id].actor || PIXEL_FX[id].sync ? host.play(id, { follow: body, angle: 1 }) : host.play(id, { x: 100, y: 120, angle: 1 });
@@ -290,4 +300,44 @@ test('pixel fx: effects that wrap a body are made round OUR body, never pixelfx 
   dir.live.set(unreadable, new Map([['st-burning', { handle: { uid: -1 }, retry: 0 }]]));
   host.playing = () => true;
   assert.equal(dir.owns(unreadable, 'burning'), false);
+});
+
+test('pixel fx: a flurry of hit sparks replaces its own oldest and never pushes statuses off bodies', () => {
+  for (const phone of [false, true]) {
+    const game = makeGame({ phone });
+    const host = new PixelFx(game, PIXEL_FX);
+    const mask = { w: 10, h: 20, data: new Uint8Array(200).fill(1) };
+    const body = { mask, pixels: new Uint32Array(200).fill(0xff406080), x: -5, y: -20, w: 10, h: 20, k: 1, head: [0, -20], chest: [0, -11] };
+    host.actorOf = () => body;
+    const foes = Array.from({ length: 6 }, (_, i) => ({ x: 60 + i * 40, y: 120 }));
+    const st = foes.map((f) => host.play('st-burning', { follow: f }));
+    for (let k = 0; k < 60; k++) assert.ok(host.play('hit', { x: 100 + (k % 7) * 20, y: 110, angle: k }), `hit ${k} played`);
+    const hits = host.live.filter((i) => i.id === 'hit').length;
+    assert.equal(hits, phone ? 4 : 8, 'the newest sparks only');
+    for (const h of st) assert.ok(host.playing(h), 'every status still burns');
+  }
+});
+
+test('pixel fx: past the paint budget in a frame, effects show their last picture a frame or two', () => {
+  const game = makeGame();
+  const host = makeHost(game);
+  host.paintBudget = -1; // every frame is over budget
+  host._scratch = (w, h) => ({ canvas: { w, h }, ctx: { putImageData() {} }, img: {}, u32: new Uint32Array(w * h) });
+  const h = host.play('shot', { x: 100, y: 100 });
+  const inst = host.live.find((i) => i.handle === h);
+  const ctx = { drawImage() {} };
+  const frame = () => {
+    game.renderer.frame++;
+    host.update(1 / 30);
+    const list = [];
+    host.collect(list, 0, 0, 480, 270);
+    for (const d of list) d.draw(ctx, 0, 0);
+  };
+  frame();
+  assert.equal(host.stats.drawn, 1, 'the first frame is always painted');
+  frame();
+  assert.equal(host.stats.drawn, 1, 'a one-shot waits one frame at most');
+  assert.equal(inst.parts[1].wait, 1);
+  frame();
+  assert.equal(host.stats.drawn, 2, 'then it is painted again');
 });
