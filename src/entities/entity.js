@@ -1,3 +1,4 @@
+import { otherStep } from '../world/footsteps.js';
 import { TILE, FACTION } from '../core/constants.js';
 import { dirFromVec, vecFromDir, norm } from '../core/math.js';
 import { Inventory } from './items.js';
@@ -214,6 +215,7 @@ export class Actor extends Entity {
     if (this.isAlive() && this.lockTime <= 0) {
       if (moving && this.moved > 0.01) {
         if (this.state !== 'walk') this.setState('walk');
+        if (this.type === 'actor' || this.species) otherStep(this.game, this); // quieter footfalls near you
       } else if (this.state === 'walk' || this.state === 'attack' || this.state === 'cast' || this.state === 'hurt') {
         this.setState('idle');
       }

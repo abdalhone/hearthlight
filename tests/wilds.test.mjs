@@ -278,3 +278,37 @@ test('every chest has a way in: a key someone has, its keeper, or a forced lock'
   assert.equal(c2.length, 1);
   assert.ok(Object.keys(CONTAINERS).length >= 3);
 });
+
+// ---------------------------------------------------------------------------
+// Footsteps by ground (DESIGN §32.7)
+
+import { surfaceAt, playerStep, otherStep, SURFACES } from '../src/world/footsteps.js';
+import { SFX, SFX_GAP } from '../src/ui/sfx.js';
+
+test('footsteps sound of the ground: grass, dirt, stone, wood, water, sand, snow', () => {
+  const m = world.map;
+  const at = (tx, ty) => surfaceAt(m, tx * TILE + 8, ty * TILE + 8);
+  assert.equal(at(78, 62), 'stone', 'the square is cobbled');
+  assert.equal(at(5, 84), 'dirt', "the King's Road");
+  assert.equal(at(P.crownRing.x + 12, P.crownRing.y), 'snow');
+  let ford = null;
+  for (let y = 80; y < 90 && !ford; y++) for (let x = -90; x < -76; x++) if (m.tileAt(x, y) === T.SHALLOWS) ford = [x, y];
+  assert.equal(at(...ford), 'water');
+  const door = world.objects.get('door_player_home');
+  assert.equal(surfaceAt(m, door.x, door.y - 20), 'wood', 'the cottage floor');
+  for (const s of SURFACES) {
+    assert.equal(typeof SFX[`step_${s}`], 'function', `a sound for ${s}`);
+    assert.ok(SFX_GAP[`step_${s}`] > 0);
+  }
+  // Your own steps are louder than anyone else's, and others are heard only near you.
+  const plays = [];
+  const g = { map: m, player: { x: 78 * TILE, y: 62 * TILE }, audio: { play: (n, o) => plays.push([n, o.volume]) }, particles: null };
+  playerStep(g, g.player, 0);
+  const villager = { x: g.player.x + 40, y: g.player.y, moved: 4, radius: 6, z: 0 };
+  for (let i = 0; i < 4; i++) otherStep(g, villager);
+  const farOne = { x: g.player.x + 400, y: g.player.y, moved: 4, radius: 6, z: 0 };
+  for (let i = 0; i < 4; i++) otherStep(g, farOne);
+  assert.equal(plays.length, 2);
+  assert.equal(plays[0][0], 'step_stone');
+  assert.ok(plays[1][1] < plays[0][1], 'a neighbour treads softer than you');
+});

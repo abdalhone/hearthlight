@@ -1,3 +1,4 @@
+import { playerStep } from '../world/footsteps.js';
 import { Actor, animForState } from './entity.js';
 import { FACTION, PLAYER_ID } from '../core/constants.js';
 import { dirFromVec } from '../core/math.js';
@@ -394,8 +395,9 @@ export class Player extends Actor {
   _footstep() {
     const g = this.game;
     try {
-      g.audio?.play?.('step', { x: this.x, y: this.y, volume: 0.35, pitch: 0.9 + Math.random() * 0.2 });
-      if (this.stepIndex % 2 === 0) {
+      // The sound of the ground underfoot (world/footsteps.js); dust on dry ground.
+      const surface = playerStep(g, this, this.stepIndex);
+      if (this.stepIndex % 2 === 0 && surface !== 'water' && surface !== 'snow' && surface !== 'wood' && surface !== 'rug') {
         g.particles?.emit?.('dust', this.x, this.y, { count: 2, speed: 10, life: 0.35, dir: { x: -this.facing.x, y: -this.facing.y } });
       }
     } catch {

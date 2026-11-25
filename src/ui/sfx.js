@@ -90,6 +90,43 @@ export const SFX = {
     S.noise(t, { dur: 0.045, gain: 0.12, filter: { type: 'lowpass', freq: r(500, 800) * p }, offset: r(0, 1) });
   },
 
+  // Footsteps by ground (src/world/footsteps.js).
+  step_dirt(S, t, p) {
+    S.noise(t, { dur: 0.05, gain: 0.13, filter: { type: 'lowpass', freq: r(520, 820) * p }, offset: r(0, 1) });
+    S.noise(t + 0.008, { dur: 0.02, gain: 0.03, filter: { type: 'bandpass', freq: 2600 * p, q: 2 }, offset: r(0, 1) });
+  },
+  step_grass(S, t, p) {
+    // A soft brush of blades, then the heel.
+    S.noise(t, { dur: 0.09, gain: 0.06, a: 0.012, filter: { type: 'bandpass', freq: r(2600, 3400) * p, to: 1600 * p, q: 0.9 }, offset: r(0, 1) });
+    S.noise(t + 0.01, { dur: 0.04, gain: 0.07, filter: { type: 'lowpass', freq: r(300, 420) * p }, offset: r(0, 1) });
+  },
+  step_stone(S, t, p) {
+    // A hard heel on cobbles: a click and a short knock.
+    S.noise(t, { dur: 0.025, gain: 0.1, filter: { type: 'highpass', freq: 2200 * p }, offset: r(0, 1) });
+    S.tone(t, { type: 'triangle', freq: r(170, 210) * p, to: 120 * p, dur: 0.05, gain: 0.07 });
+  },
+  step_wood(S, t, p) {
+    // A hollow board.
+    S.tone(t, { type: 'triangle', freq: r(230, 270) * p, to: 150 * p, dur: 0.08, gain: 0.08, filter: { type: 'lowpass', freq: 900 } });
+    S.noise(t, { dur: 0.04, gain: 0.05, filter: { type: 'bandpass', freq: 1100 * p, q: 1.2 }, offset: r(0, 1) });
+  },
+  step_water(S, t, p) {
+    // Ankle-deep: a slosh and a couple of drops.
+    S.noise(t, { dur: 0.16, gain: 0.12, a: 0.01, filter: { type: 'lowpass', freq: 3200 * p, to: 500 }, offset: r(0, 1) });
+    for (let i = 0; i < 2; i++) {
+      const f = r(520, 900) * p;
+      S.tone(t + 0.04 + i * r(0.03, 0.06), { type: 'sine', freq: f, to: f * 1.6, dur: 0.05, gain: 0.04 });
+    }
+  },
+  step_sand(S, t, p) {
+    S.noise(t, { dur: 0.08, gain: 0.07, a: 0.01, filter: { type: 'lowpass', freq: r(1300, 1700) * p }, offset: r(0, 1) });
+  },
+  step_snow(S, t, p) {
+    // Packed snow: a squeaky crunch of tiny grains.
+    S.noise(t, { dur: 0.1, gain: 0.07, a: 0.008, filter: { type: 'bandpass', freq: r(1500, 1900) * p, q: 2.5 }, offset: r(0, 1) });
+    for (let i = 0; i < 4; i++) S.noise(t + 0.012 + i * r(0.012, 0.02), { dur: 0.012, gain: 0.05, filter: { type: 'highpass', freq: 3000 * p }, offset: r(0, 1) });
+  },
+
   levelup(S, t, p) {
     const notes = [783.99, 987.77, 1174.66, 1567.98];
     notes.forEach((f, i) => S.tone(t + i * 0.09, { type: 'triangle', freq: f * p, dur: 0.32, gain: 0.13 }));
@@ -193,4 +230,4 @@ export const SFX = {
 export const SFX_NAMES = Object.keys(SFX);
 
 // Minimum seconds between two plays of the same effect (stops stacking into a roar).
-export const SFX_GAP = { step: 0.07, talk_blip: 0.045, ui_click: 0.03, hit: 0.03, coin: 0.05, pickup: 0.04 };
+export const SFX_GAP = { step: 0.07, step_dirt: 0.06, step_grass: 0.06, step_stone: 0.06, step_wood: 0.06, step_water: 0.06, step_sand: 0.06, step_snow: 0.06, talk_blip: 0.045, ui_click: 0.03, hit: 0.03, coin: 0.05, pickup: 0.04 };
