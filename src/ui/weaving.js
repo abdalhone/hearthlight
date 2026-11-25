@@ -1,6 +1,9 @@
 // The weave controller (DESIGN.md §22.4): every way of casting — a touch drag from a
 // weave button, a tap, the number keys toward the mouse, the right mouse button, a
 // gamepad trigger — ends here, and here alone talks to the runtime (game.magic, §22.2).
+// A click on a desktop hotbar slot is that slot's number key: it casts at once (a hold
+// charges), aimed by the key's rules, and selects nothing (the author: "I click the
+// button and the skill gets unselected after I hit it").
 // Every weave, on every device, starts on the press and is cast on the release: a quick
 // tap casts as it always did, a longer hold charges it (castStart {charge: true}; a beam
 // pours instead), and one charge builds at a time — a second weave pressed meanwhile
@@ -105,6 +108,7 @@ export class Weaving {
     this.selected = typeof window !== 'undefined' ? readSelected() : 0;
     this.casts = new Map(); // source -> cast in progress
     this.touches = new Map(); // pointerId -> { slot, dx, dy, aimed, cancel, ended }
+    this.clicks = new Map(); // pointerId -> { slot, started, ended, cancel } (hotbar presses)
     this.plans = []; // per slot: { key, plan, weave, palette, mode, preview, name }
     this.castAt = []; // per slot: game time of the last cast (cooldown fallback)
     this.aims = []; // what the aim layer draws this frame
@@ -443,6 +447,28 @@ export class Weaving {
     return this.touches.get(id) || null;
   }
 
+  // ---------- the desktop hotbar (called by its slots) ----------
+
+  // A press on a slot: cast it like its number key, from the next step on.
+  clickStart(slot, id = 0) {
+    if (this.clicks.has(id)) return;
+    this.clicks.set(id, { slot, started: false, ended: false, cancel: false });
+  }
+
+  // The button let go (anywhere: a hold may be dragged out over the world to aim).
+  clickEnd(id = 0, cancelled = false) {
+    const k = this.clicks.get(id);
+    if (!k) return;
+    k.ended = true;
+    if (cancelled) k.cancel = true;
+  }
+
+  // The slot a press is casting or charging right now (the hotbar names it), or -1.
+  castingSlot() {
+    for (const c of this.casts.values()) if (c.started) return c.slot;
+    return -1;
+  }
+
   // ---------- per step ----------
 
   canAct() {
@@ -471,6 +497,7 @@ export class Weaving {
     if (!live || !this.canAct()) {
       this.stopAll();
       this.touches.clear();
+      this.clicks.clear();
       return;
     }
     // (A hit-stop freezes the world, not the hands: presses made in it still count.)
@@ -500,6 +527,19 @@ export class Weaving {
       if (t.ended) {
         this.finish(src, t.cancel);
         this.touches.delete(id);
+      }
+    }
+    // The hotbar: a click is the slot's key — started on the press, cast on the release
+    // (a quick click casts uncharged; a hold charges). It never changes the selection.
+    for (const [id, k] of this.clicks) {
+      const src = `c${id}`;
+      if (!k.started) {
+        k.started = true;
+        this.begin(src, k.slot, 'click');
+      }
+      if (k.ended) {
+        this.finish(src, k.cancel);
+        this.clicks.delete(id);
       }
     }
     // Held casts: keep aiming, release when the key / button lets go.
@@ -724,7 +764,9 @@ export class Weaving {
       }
       return this.autoAim(out, o, range, spot, pv);
     }
-    // Mouse (number keys and the right button aim at it while it is over the game).
+    // Mouse (number keys, hotbar clicks and the right button aim at it while it is over
+    // the game; a click still on its slot aims like a key with the mouse away: the
+    // nearest foe in range, else straight ahead).
     const w = input?.mouseAiming?.(30) ? input.mouseWorld() : null;
     if (w) {
       let dx = w.x - o.x;
