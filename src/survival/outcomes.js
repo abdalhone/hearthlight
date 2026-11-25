@@ -190,7 +190,7 @@ export function tendPlayer(sv, carrier, bed, { arrested = false } = {}) {
 // ---------------------------------------------------------------- dying
 
 // "Wake at home" (the softer setting, §27): the old way. Someone found you; you wake in
-// your own bed, a little poorer.
+// your own bed; your coins stay where you fell, in the ember-ring.
 export function wakeHome(sv, rec) {
   const g = sv.game;
   const P = g.player;

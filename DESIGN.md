@@ -1672,8 +1672,30 @@ notices and has opinions (berserk frightens her).
 - **Falling.** At 0 HP the player falls and lies on the ground, alive, with a **bleed-out
   timer** (75 s; Resolve lengthens it; berserk's end gives 30 s). The scene turns
   cinematic: a beat of slow motion, the color drains, a heartbeat, muffled sound, a
-  closing vignette, the timer as a fading heartbeat line. The player can crawl a little and
-  **call for help** (a button; the shout reaches whoever is in earshot).
+  closing vignette. The player can crawl a little and **call for help** (a button; the
+  shout reaches whoever is in earshot).
+- **The countdown** (round 14: "there isn't a clear countdown to me dying";
+  `src/ui/death_view.js`, numbers from `survival.countdown()`). Under the body, one row:
+  a ring that drains clockwise with the seconds left, the number big in its middle (red in
+  the last quarter), and beside it what is happening. The ring kicks on every heartbeat,
+  and the heart (`HEART_BPM`) goes from a resting 66 to a racing 158 as the window
+  closes, then falters in the last 12% (weaker, uneven, some beats missing); the sound's
+  lub-dub closes up as it races. Why it drains faster or slower is said (crawling, cold
+  water, someone pressing on the wound, held on someone's shoulders). Whoever is saving
+  you fills an inner gold ring and a bar: dressing the wound, lending warmth, lifting you,
+  and the carry with its time to the cot (red if it is longer than the seconds you have).
+  Phone sideways the ring is 88 px, upright 96 px, a computer 136 px; it stays clear of the
+  stick, the hotbar and the buttons.
+- **Crawling** (round 14: "the crawling has no animation"). A fallen body drags itself
+  face down: a four-frame crawl in every direction (`paintCrawl` in
+  `art/characters_humanoid.js`: one arm reaching past the head, the other hauling, the
+  opposite knee driving; laid along the ground for left and right, flattened for up and
+  down), painted only for whoever falls (`ensureCrawl`, off the boot path). The frame is
+  picked by distance dragged (2.5 px a frame), so hands never slide. 11 px/s (walking is
+  60), 88 px in all, and it drains the window 1.6× while you move. A pool of blood where
+  someone falls and a smear behind them (`survival/trail.js`, cosmetic, capped, not saved,
+  fading over 2.5 min; water takes it). Villagers and Lyra on the ground drag themselves
+  away from whoever stands over them (0.8× the player's pace).
 - **Rescue.** Lyra comes for the player whatever their quarrel (LORE: she never leaves a
   living person to die when she could carry them; how she speaks to them while doing it
   depends on everything between them), and so do villagers in earshot (the watch, Hess,
@@ -1692,11 +1714,25 @@ notices and has opinions (berserk frightens her).
 - **Death.** If the window closes, the player dies. **A kept flame brings them back**: at
   the chapel, Sister Aveline can relight the stranger's family flame for them (a rite, a
   price; one at a time). Dying with a kept flame: they wake at the chapel at dawn, the flame
-  spent, coin lost, *flame-thin* (weaker) for a day, and the village knows. Dying without
+  spent, *flame-thin* (weaker) for a day, and the village knows. Dying without
   one ends the story: a memorial (Lyra's last diary entry about them, what the village
   says), and that save can never be continued — it moves to *Past lives* on the title
   screen. New Game explains this clearly. A setting (Game tab) can soften it to "wake at
   home" for players who want that; it is off by default, as the author wants.
+- **The ember-ring: death costs everything you carry** (round 14: "I lose all my coins,
+  and the place I died in would have this Elden Ring thing… click E to regain my coins…
+  if I die before going there, I lose it"). Coming back from a death (the kept flame, or
+  waking at home) leaves every coin where you fell (`survival.dropRing`,
+  `survival/ember_ring.js`): a ring of embers on the ground with the coins in its heart,
+  sparks rising, lit at night. Walk back and take it (E, or the hand button: "Take back
+  your 57 coins"). Die again before you reach it and it goes out, coins and all (the
+  waking words say so); die with an empty purse and there is no new ring. One at a time,
+  saved with the game (`survival.serialize().ring`, a few dozen bytes). A tag floats over
+  it while it is in view and an ember arrow at the screen's edge points the way with the
+  paces to it (`ui/ember_ring_view.js`, clear of the HUD, the hotbar and the thumbs); maps
+  read `survival.mapMarks()`. Lyra knows (her prompt). A rescue is not a death: carried
+  to the sickroom you keep your purse (less Mira's bill). The final death leaves no ring.
+  Only coins: items stay with you. (The watch's fine when it hauls you in stays 10%.)
 
 ## 28. Errands, problems, and the missing (the author: "everyone has a job… he needs to go to the ironsmith today… he doesn't find the ironsmith… he is not able to continue his day… Claude thinks: why am I not able to continue my job? The shopkeeper isn't there. Where is he? He will ask other villagers… if they don't know, they will search… ask more people… and at the end they might just say that he's missing, and they will have no idea why")
 

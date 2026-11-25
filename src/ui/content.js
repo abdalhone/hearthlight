@@ -168,7 +168,7 @@ export const HOW_TO_PLAY = [
     id: 'falling',
     title: 'Falling, and death',
     text:
-      'At no health you fall and lie bleeding. Call for help: Lyra and anyone in earshot may come, help you up or carry you to Mira in time. If nobody does, you die, and unless Sister Aveline keeps a flame for you at the chapel, your story ends for good: the save moves to Past lives. You can carry the fallen too. Settings → Game can soften death to waking at home.',
+      'At no health you fall and lie bleeding: the ring under you counts the seconds you have left, and your heart races as it closes. Call for help: Lyra and anyone in earshot may come, help you up or carry you to Mira in time (the gold ring shows how far along they are). You can crawl a little, but it opens the wound. If nobody comes, you die, and unless Sister Aveline keeps a flame for you at the chapel, your story ends for good: the save moves to Past lives. Coming back costs everything you carried: your coins stay where you fell, in a ring of embers. Walk back and press E (or the hand button) to take them; die again before you get there and they are gone. You can carry the fallen too. Settings → Game can soften death to waking at home.',
   },
   {
     id: 'days',
