@@ -9405,3 +9405,42 @@ body {
   position: absolute;
   inset: 0;
 }
+
+/* "Try all magic" (Settings → Game → Practice): the Spellbook says it is on, and keeps
+   the weaves made then that left their slot when it ended. */
+.sb-trial-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 6px;
+  font-size: var(--fs-xs);
+  line-height: 18px;
+  color: #1a1030;
+  background: var(--arcane-pale);
+  box-shadow: 0 0 0 2px var(--arcane-dark);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.sb-trial-tag[hidden] {
+  display: none;
+}
+.sb-drafts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 4px 8px;
+}
+.sb-drafts[hidden] {
+  display: none;
+}
+.sb-drafts-label {
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+}
+.sb-draft.locked {
+  opacity: 0.7;
+  border-style: dashed;
+}
+.set-action.is-on .set-label {
+  color: var(--arcane-pale);
+}

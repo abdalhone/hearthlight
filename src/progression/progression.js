@@ -174,6 +174,28 @@ export class Progression {
     return respecCost(this.level());
   }
 
+  // Give back every spent point, free (Settings → Game → Practice; the author: "a thing
+  // that will reset states"). Level, gear, weaves, coin and the points missions gave stay;
+  // health and mana settle into the new maximums (changed()).
+  resetPoints() {
+    const g = this.game;
+    const P = g.player;
+    if (!P) return { ok: false, reason: 'Start or continue a journey first.' };
+    let fallen = !!P.downed;
+    try {
+      fallen = fallen || !!g.survival?.isFallen?.(P);
+    } catch {
+      /* survival is optional */
+    }
+    if (fallen) return { ok: false, reason: 'Not while you lie bleeding.' };
+    const n = this.spent();
+    if (!n) return { ok: false, reason: 'You have not spent any points yet.' };
+    this.points = emptyPoints();
+    this.changed();
+    this.game.bus?.emit?.('respec', { cost: 0, free: true, points: n });
+    return { ok: true, points: n };
+  }
+
   changed() {
     const g = this.game;
     g.stats?.refresh(g.player);

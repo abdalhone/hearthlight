@@ -131,15 +131,16 @@ export class MissionSystem {
 
   // ------------------------------------------------------------------ what the player has
 
+  // What the player really has: while "Try all magic" runs, the real sets, not the trial's.
   unlocked(kind, id) {
-    const u = this.game.magic?.unlocked;
+    const u = this.game.magic?.realUnlocked || this.game.magic?.unlocked;
     const set = u?.[`${kind}s`] || u?.[kind];
     if (set && typeof set.has === 'function' && set.has(id)) return true;
     return this.granted.some((g) => g.kind === kind && g.id === id);
   }
 
   essenceCount() {
-    const u = this.game.magic?.unlocked?.essences;
+    const u = (this.game.magic?.realUnlocked || this.game.magic?.unlocked)?.essences;
     const own = new Set(this.granted.filter((g) => g.kind === 'essence').map((g) => g.id));
     if (u && typeof u.forEach === 'function') u.forEach((e) => own.add(e));
     own.delete('raw');

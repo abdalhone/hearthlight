@@ -370,7 +370,8 @@ export class Hud {
   bindMagic() {
     const bus = this.game.bus;
     if (!bus?.on) return;
-    bus.on('magic_unlocked', () => {
+    bus.on('magic_unlocked', (p) => {
+      if (p?.source === 'trial') return;
       this.newMagic = true;
       if (this.bookDot) this.bookDot.hidden = false;
     });

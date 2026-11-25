@@ -18,7 +18,8 @@ import { ensureStatsStyle, PRICE_GLYPH, PRICE_HINTS } from './stats_style.js';
 
 const SEEN_KEY = 'hearthlight.spellbook.seen';
 
-const INPUT_LABEL = { quick: 'Tap', hold: 'Hold', charge: 'Charge' };
+// How it is cast (DESIGN §22.4): every weave but a beam charges while held.
+const INPUT_LABEL = { quick: 'Tap or hold', hold: 'Hold', charge: 'Fast charge' };
 
 // The steps, in order: what each part of a weave is, in a few words.
 export const SB_STEPS = {
@@ -28,7 +29,11 @@ export const SB_STEPS = {
   prices: { n: 4, title: 'Price', help: 'Optional: more power, at a cost.' },
 };
 const SINGULAR = { shapes: 'shape', essences: 'essence', twists: 'twist', prices: 'price' };
-const INPUT_NOTE = { quick: 'Tap to cast', hold: 'Hold to keep it flowing', charge: 'Hold to charge, let go to cast' };
+const INPUT_NOTE = {
+  quick: 'Tap to cast. Hold to charge it, then let go: up to 2.5× as strong and a little bigger, for up to twice the mana.',
+  hold: 'Hold to keep it flowing: it drains mana while it pours (a beam does not charge).',
+  charge: 'Hold to charge, let go to cast: the charge twist fills twice as fast and hits up to 3× as hard.',
+};
 
 function readSeen() {
   try {
@@ -104,10 +109,11 @@ export class Spellbook {
     // "new" the very first time: it is all new then).
     this.fresh.clear();
     const first = this.seen.size === 0;
+    // (Only what is really earned: "Try all magic" lends everything and marks nothing seen.)
     for (const kind of ['shapes', 'essences', 'twists', 'prices']) {
       for (const id of kind === 'prices' ? this.priceIds() : w.ids(kind)) {
         const key = `${kind}:${id}`;
-        if ((kind === 'prices' ? this.priceUnlocked(id) : w.isUnlocked(kind, id)) && !this.seen.has(key)) {
+        if (this.earned(kind, id) && !this.seen.has(key)) {
           if (!first) this.fresh.add(key);
           this.seen.add(key);
         }
@@ -124,6 +130,9 @@ export class Spellbook {
     ic.style.setProperty('--iw', '9');
     ic.style.setProperty('--ih', '9');
     panel.head.prepend(ic);
+    // While "Try all magic" (Settings) runs, the book says so.
+    this.trialTag = h('span', { class: 'sb-trial-tag', text: 'Trying all magic', title: 'Settings → Game → Try all magic. Turn it off to go back to what you have earned.', hidden: true });
+    panel.head.querySelector('.panel-heading')?.append(this.trialTag);
     panel.pauses = true;
     panel.onClose = () => {
       this.preview?.stop();
@@ -164,6 +173,17 @@ export class Spellbook {
 
   priceUnlocked(id) {
     return !!this.game.magic?.unlocked?.prices?.has?.(id);
+  }
+
+  // Really earned (not lent by "Try all magic").
+  earned(kind, id) {
+    const m = this.game.magic;
+    if (typeof m?.isEarned === 'function') return m.isEarned(kind, id);
+    return kind === 'prices' ? this.priceUnlocked(id) : this.weaving.isUnlocked(kind, id);
+  }
+
+  trialOn() {
+    return !!this.game.magic?.trial;
   }
 
   priceLimit() {
@@ -215,7 +235,9 @@ export class Spellbook {
     this.buildCol = h('section', { class: 'sb-col sb-build-col' }, sec('shapes'), sec('essences'), sec('twists'), sec('prices'));
     this.priceLineEl = h('p', { class: 'sb-price-line', hidden: true });
     this.descEl.after(this.priceLineEl);
-    p.body.append(h('div', { class: 'sb-slots' }, this.tabsHead, this.tabs), h('div', { class: 'sb-main' }, this.previewCol, this.buildCol));
+    // Weaves made while trying all magic that left their slot when it ended.
+    this.draftsEl = h('div', { class: 'sb-drafts', hidden: true });
+    p.body.append(h('div', { class: 'sb-slots' }, this.tabsHead, this.tabs, this.draftsEl), h('div', { class: 'sb-main' }, this.previewCol, this.buildCol));
 
     const done = button('Done', { cls: 'btn-ember sb-done', onClick: () => this.close() });
     this.footNote = h('span', { class: 'sb-foot-note', role: 'status' });
@@ -239,6 +261,8 @@ export class Spellbook {
       toggleClass(t, 'empty', !rec.weave);
       this.tabs.append(t);
     }
+    if (this.trialTag) this.trialTag.hidden = !this.trialOn();
+    this.renderDrafts();
     const saved = !!w.slotInfo(this.slot).weave;
     this.panel.setTitle('Spellbook', `Weave ${this.slot + 1}${n ? ` of ${n}` : ''} · ${saved ? 'saved, on your weave buttons' : 'empty'}`);
     setText(this.footNote, saved ? `✓ Weave ${this.slot + 1} is saved: it is on your weave buttons.` : 'Every change is saved at once.');
@@ -300,7 +324,7 @@ export class Spellbook {
     const pv = previewOf(plan, d);
     const stats = [
       ['Mana', plan ? fmt(plan.cost) + (plan.drain ? '/s' : '') : '—', 'mana'],
-      ['Cooldown', plan ? `${fmt(plan.cooldown, 1)}s` : '—', 'cd'],
+      ['Cooldown', plan ? `${fmt(plan.cooldown, 1)}s` : '—', 'cd', 'Seconds before it can be cast again: the sweep and the seconds on its button.'],
       ['Damage', plan ? fmt(plan.dmg) + (Number(plan.count) > 1 ? ` ×${fmt(plan.count)}` : '') : '—', 'dmg'],
       ['Reach', plan ? tiles(pv.type === 'ring' ? pv.radius : pv.range) : '—', 'reach', plan ? (pv.type === 'ring' ? 'Tiles around you' : 'Tiles it reaches') : ''],
     ];
@@ -453,6 +477,50 @@ export class Spellbook {
       return;
     }
     this.apply(d);
+  }
+
+  // Trial weaves: a tap loads one into this slot (it is saved there if it can be woven
+  // with what you have — or while trying all magic again).
+  renderDrafts() {
+    const el = this.draftsEl;
+    if (!el) return;
+    const list = Array.isArray(this.game.magic?.trialDrafts) ? this.game.magic.trialDrafts : [];
+    clear(el);
+    el.hidden = !list.length;
+    if (!list.length) return;
+    el.append(h('span', { class: 'sb-drafts-label', text: 'From trying all magic:' }));
+    list.forEach((d, i) => {
+      const plan = this.weaving.compile(d);
+      const ok = Weaving.planOk(plan);
+      const name = d.name || (ok && plan.name) || fallbackName(d);
+      const b = h('button', { type: 'button', class: `btn btn-small sb-draft${ok ? '' : ' locked'}`, title: ok ? `Weave ${name} into slot ${this.slot + 1}` : `${name}: ${plan?.reason || 'not woven yet'}` }, h('span', { text: name }));
+      b.addEventListener('click', () => this.takeDraft(i));
+      el.append(b);
+    });
+  }
+
+  takeDraft(i) {
+    const m = this.game.magic;
+    const d = m?.trialDrafts?.[i];
+    if (!d) return;
+    const w = this.weaving;
+    const draft = cleanWeave(d, 9, 9);
+    draft.essences = draft.essences.filter((e) => e !== 'raw');
+    draft.prices = (Array.isArray(d.prices) ? d.prices : []).slice(0, this.priceLimit());
+    if (d.name) draft.name = d.name;
+    this.draft = draft;
+    const plan = w.compile(draft);
+    if (!Weaving.planOk(plan)) {
+      this.say(`Not saved: ${plan?.reason || "that can't be woven"} (it stays here for when you have it).`, 'warn');
+      this.render();
+      return;
+    }
+    const r = w.setSlot(this.slot, draft);
+    if (r.ok) {
+      m.dropDraft?.(i);
+      this.say(`Saved to slot ${this.slot + 1}.`, 'good');
+    } else this.say(`Not saved: ${r.reason}`, 'warn');
+    this.render();
   }
 
   // ---------- actions ----------

@@ -131,7 +131,7 @@ export class Coach {
     bus.on('magic_unlocked', (p) => {
       const k = String(p?.kind || '');
       if (!['shape', 'essence', 'twist', 'price'].includes(k) || this.done.found) return;
-      if (p?.id === 'raw') return;
+      if (p?.id === 'raw' || p?.source === 'trial') return;
       this.foundKind = { kind: k, id: p?.id };
     });
     bus.on('game_start', () => {

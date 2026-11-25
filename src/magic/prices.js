@@ -517,6 +517,34 @@ export class PriceRuntime {
     }
   }
 
+  // Every price still running stops at once, its modifiers with it, except the ids in
+  // `keep` (a Set): the end of "Try all magic" ends what was only borrowed. -> ids ended.
+  endRunning(keep = null, why = 'ended') {
+    const P = this.player();
+    const S = this.state;
+    const ended = [];
+    const stop = (id) => {
+      if (keep?.has?.(id)) return false;
+      if (P) this.stats?.removeModifier(P, `price:${id}`);
+      ended.push(id);
+      this.game.bus?.emit?.('price_ended', { price: id, actor: P, why });
+      return true;
+    };
+    if (S.berserk && stop('berserk')) S.berserk = null;
+    if (S.overdraw && stop('overdraw')) S.overdraw = null;
+    if (S.ember && stop('emberblood')) {
+      S.ember = false;
+      this._emberAcc = 0;
+    }
+    if (S.lastlight && stop('lastlight')) S.lastlight = null;
+    if (S.oath && stop('oath')) S.oath = null;
+    // The plain ones (bloodprice, glass…) are only their modifiers.
+    const special = new Set(['berserk', 'overdraw', 'emberblood', 'lastlight', 'oath']);
+    if (P) for (const id of Prices.ids()) if (!special.has(id) && (this.active(P, id, 'gain') || this.active(P, id, 'cost'))) stop(id);
+    if (P && ended.length) this.stats?.refresh?.(P);
+    return ended;
+  }
+
   // Two minutes are up: the heart gives out.
   endBerserk(P) {
     this.state.berserk = null;

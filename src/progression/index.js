@@ -73,7 +73,7 @@ export function installProgression(game) {
       }
     });
     bus?.on?.('magic_unlocked', (p) => {
-      if (p?.kind !== 'price' || p.source === 'dev') return;
+      if (p?.kind !== 'price' || p.source === 'dev' || p.source === 'trial') return;
       const d = game.magic?.registry?.prices?.get?.(p.id);
       if (!d) return;
       try {
@@ -130,7 +130,9 @@ function dropBossPrice(game, p) {
   const boss = p?.id;
   const id = BOSS_PRICES[boss];
   if (!id || !game.flags || game.flags[`price_shard_${boss}`]) return;
-  if (game.magic?.unlocked?.prices?.has?.(id)) return;
+  // (While "Try all magic" runs every price is open: the real set says if it is earned.)
+  const known = game.magic?.realUnlocked || game.magic?.unlocked;
+  if (known?.prices?.has?.(id)) return;
   const b = p.boss;
   const x = Number.isFinite(b?.x) ? b.x : game.player?.x ?? 0;
   const y = Number.isFinite(b?.y) ? b.y : game.player?.y ?? 0;

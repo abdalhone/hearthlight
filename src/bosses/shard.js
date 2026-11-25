@@ -53,7 +53,7 @@ export function grantGlyph(game, kind, id, source) {
 }
 
 function hasUnlocked(m, kind, id) {
-  const u = m.unlocked;
+  const u = m.realUnlocked || m.unlocked; // the real sets while "Try all magic" runs
   if (!u) return false;
   const set = u[kind] || u[`${kind}s`] || u[kind === 'essence' ? 'essences' : kind === 'twist' ? 'twists' : 'shapes'];
   return !!(set && typeof set.has === 'function' && set.has(id));

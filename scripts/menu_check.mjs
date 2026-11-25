@@ -10,7 +10,10 @@
 //     a ✕ closes it as it closes every panel (the phone pass); each place opens on top of
 //     the menu and Esc (or a tap on ‹ Menu) comes back to it; touch taps; arrow keys walk the
 //     grid by where the buttons are; Enter on Resume resumes and does nothing else;
-//   - How to play reachable in game (Settings → Controls).
+//   - How to play reachable in game (Settings → Controls);
+//   - Settings → Game → Practice: "Reset stat points" and "Try all magic" — greyed on the
+//     title (the note says why), in game each asks first (the in-game confirm) and does
+//     what it says: the points come back; the trial turns on ("On"), then off again.
 // Screenshots of every screen go to --out. Fails on page errors or a failed check.
 //   node scripts/menu_check.mjs [--dist] [--out DIR] [--only land,port,desk]
 import { createRequire } from 'node:module';
@@ -153,6 +156,71 @@ async function settings(page, v, where) {
   }
 }
 
+// Settings → Game → Practice (the Settings panel is open).
+async function practice(page, v, where) {
+  const L = v.label;
+  await tap(page, v, '.settings-tabs [data-tab="game"]');
+  await wait(page, 150);
+  const rows = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('#set-pane-game .set-row[data-action]')].map((r) => ({
+        id: r.dataset.action,
+        label: r.querySelector('.set-label').textContent,
+        note: r.querySelector('.set-note').textContent,
+        disabled: r.querySelector('button').disabled,
+        h: r.querySelector('button').getBoundingClientRect().height,
+      })),
+    );
+  let r = await rows();
+  check(`[${L}] ${where} Settings → Game → Practice: Reset stat points and Try all magic`, r.map((x) => x.id).join() === 'resetPoints,trialMagic', JSON.stringify(r.map((x) => x.id)));
+  if (where === 'title') {
+    check(`[${L}] title Practice rows: greyed, and the note says why`, r.every((x) => x.disabled && /journey/.test(x.note)), JSON.stringify(r.map((x) => [x.disabled, x.note])));
+    await page.evaluate(() => document.querySelector('#set-pane-game .set-group-practice')?.scrollIntoView({ block: 'center' }));
+    await shot(page, v, 'title-settings-practice');
+    return;
+  }
+  if (v.touch) check(`[${L}] Practice buttons easy to hit with a thumb (≥ 40 px tall)`, r.every((x) => x.h >= 40), JSON.stringify(r.map((x) => x.h)));
+  const reset0 = r.find((x) => x.id === 'resetPoints');
+  check(`[${L}] Reset stat points: greyed with nothing spent, and says so`, reset0.disabled && /not spent/.test(reset0.note), JSON.stringify(reset0));
+  // Spend three points, then reset them through the confirm.
+  await page.evaluate(() => {
+    const g = window.__game;
+    g.player.level = Math.max(2, g.player.level || 1);
+    g.progression.spend('might', 1);
+    g.progression.spend('weave', 2);
+    g.ui.settings.refreshActions();
+  });
+  r = await rows();
+  check(`[${L}] Reset stat points: ready once points are spent`, !r[0].disabled && /3/.test(await page.evaluate(() => document.querySelector('[data-action="resetPoints"] button').textContent)), JSON.stringify(r[0]));
+  await tap(page, v, '[data-action="resetPoints"] button');
+  await wait(page, 250);
+  const ask = await page.evaluate(() => ({ stack: window.__game.ui.stack.map((p) => p.id).join(), text: document.querySelector('.panel-confirm .confirm-text')?.textContent || '' }));
+  check(`[${L}] Reset stat points asks first`, /confirm$/.test(ask.stack) && /All 3 points/.test(ask.text), JSON.stringify(ask));
+  await shot(page, v, 'practice-reset-confirm');
+  await tap(page, v, '.panel-confirm .panel-foot button:last-child');
+  await wait(page, 250);
+  const after = await page.evaluate(() => ({ spent: window.__game.progression.spent(), unspent: window.__game.progression.unspent(), stack: window.__game.ui.stack.map((p) => p.id).join() }));
+  check(`[${L}] Reset stat points: every point back to spend, Settings still open`, after.spent === 0 && after.unspent >= 3 && /settings$/.test(after.stack), JSON.stringify(after));
+  // Try all magic: on, through the confirm; then off again.
+  await tap(page, v, '[data-action="trialMagic"] button');
+  await wait(page, 250);
+  const ask2 = await page.evaluate(() => document.querySelector('.panel-confirm .confirm-text')?.textContent || '');
+  check(`[${L}] Try all magic asks first and warns about prices`, /Berserk/.test(ask2), ask2.slice(0, 80));
+  await shot(page, v, 'practice-trial-confirm');
+  await tap(page, v, '.panel-confirm .panel-foot button:last-child');
+  await wait(page, 250);
+  const on = await page.evaluate(() => ({ trial: !!window.__game.magic.trial, label: document.querySelector('[data-action="trialMagic"] .set-label').textContent, slots: window.__game.magic.slotCount }));
+  check(`[${L}] Try all magic: On (six slots, everything open)`, on.trial && /On$/.test(on.label) && on.slots === 6, JSON.stringify(on));
+  await page.evaluate(() => document.querySelector('#set-pane-game .set-group-practice')?.scrollIntoView({ block: 'center' }));
+  await shot(page, v, 'practice-trial-on');
+  await tap(page, v, '[data-action="trialMagic"] button');
+  await wait(page, 250);
+  await tap(page, v, '.panel-confirm .panel-foot button:last-child');
+  await wait(page, 250);
+  const off = await page.evaluate(() => ({ trial: !!window.__game.magic.trial, label: document.querySelector('[data-action="trialMagic"] .set-label').textContent, slots: window.__game.magic.slotCount, w0: window.__game.magic.slots[0]?.shape }));
+  check(`[${L}] Try all magic: Off again, the real weaves back`, !off.trial && /Off$/.test(off.label) && off.slots === 4 && off.w0 === 'bolt', JSON.stringify(off));
+}
+
 async function run(v) {
   const L = v.label;
   const ctx = await browser.newContext({ viewport: v.viewport, deviceScaleFactor: 1, hasTouch: v.touch, isMobile: v.touch });
@@ -175,6 +243,7 @@ async function run(v) {
   check(`[${L}] title: New game, Prologue, Book, Settings, How to play — each once, on screen`, t.labels.join('|') === 'New game|Prologue|The Book of Halcyre|Settings|How to play' && !t.off, `${t.labels.join('|')} off ${t.off}`);
   await shot(page, v, 'title');
   await settings(page, v, 'title');
+  await practice(page, v, 'title');
   await page.evaluate(() => window.__game.ui.closeAll());
   await page.evaluate(() => window.__game.ui.title.openHowTo());
   await wait(page, 200);
@@ -272,8 +341,9 @@ async function run(v) {
     check(`[${L}] menu → ${id} → back: the menu again`, back.stack.join() === 'pause' && back.shown === 'visible', JSON.stringify(back));
   }
 
-  // Settings in game, then How to play from Settings → Controls.
+  // Settings in game (with Practice), then How to play from Settings → Controls.
   await settings(page, v, 'game');
+  await practice(page, v, 'game');
   await tap(page, v, '.settings-tabs [data-tab="controls"]');
   await tap(page, v, '.set-link button');
   await wait(page, 250);

@@ -1,6 +1,7 @@
 // Settings (DESIGN.md §14, §24): five tabs (Game, Controls, Sound & voices, Minds
 // (Claude), Display), every option exactly once, each with a short plain label and a
-// one-line note. Every field goes through game.setSetting so other modules hear
+// one-line note. A group may also hold action rows (a button, not a setting): Game →
+// Practice has "Reset stat points" and "Try all magic" (each asks first, ui.confirm). Every field goes through game.setSetting so other modules hear
 // `settings_changed`. The API key is stored only in this browser. Save and Quit live in
 // the menu, the list of keys and buttons in How to play (Controls links there).
 
@@ -21,6 +22,7 @@ export const SETTINGS_LAYOUT = {
   game: [
     { id: 'names', title: 'Names', keys: ['playerName', 'companionName'] },
     { id: 'journey', title: 'Your journey', keys: ['deathMode', 'cloudSave'] },
+    { id: 'practice', title: 'Practice', keys: [], actions: ['resetPoints', 'trialMagic'] },
   ],
   controls: [
     { id: 'touch', title: 'Touch', keys: ['touchScale', 'leftHanded', 'touchBuzz'] },
@@ -39,6 +41,13 @@ export const SETTINGS_LAYOUT = {
     { id: 'screen', title: 'Screen', keys: ['zoom', 'showQuestLine', 'reduceMotion', 'showFps'] },
     { id: 'words', title: 'Words', keys: ['textSpeed', 'showThoughts'] },
   ],
+};
+
+// Action rows (a group's `actions`): a label, a one-line note and a button; not settings,
+// so not saved with them (each one acts on the journey in play).
+export const ACTION_ROWS = {
+  resetPoints: { label: 'Reset stat points', note: 'Every point you spent comes back to spend again, free. Level, gear and weaves stay.', button: 'Reset' },
+  trialMagic: { label: 'Try all magic', note: 'Every shape, essence, twist and price, to try. Off: back to what you earned (rewards earned meanwhile stay).', button: 'Turn on' },
 };
 
 // Settings the touch and aim controls keep outside DEFAULT_SETTINGS (unset = default).
@@ -256,6 +265,7 @@ export class SettingsPanel {
     if (this.statusT < 0.5) return;
     this.statusT = 0;
     this.refreshStatus();
+    this.refreshActions();
   }
 
   refreshStatus() {
@@ -339,6 +349,7 @@ export class SettingsPanel {
     for (const [id, top] of Object.entries(keepScroll)) if (this.panes[id]) this.panes[id].scrollTop = top;
     this.refreshDeps();
     this.refreshStatus();
+    this.refreshActions();
   }
 
   showTab(id, focus = false) {
@@ -377,8 +388,102 @@ export class SettingsPanel {
       sec.append(this.statusEl);
     }
     for (const key of g.keys) sec.append(this.rowFor(key));
+    for (const id of g.actions || []) sec.append(this.actionRow(id));
     if (g.howTo) sec.append(this.howToRow());
     return sec;
+  }
+
+  // ---------- Practice (Game tab): action rows, each behind ui.confirm ----------
+
+  // Why an action cannot be used now (greyed, the note says it), or null.
+  actionBlocked(id) {
+    const g = this.game;
+    const P = g.player;
+    if (g.state !== 'playing' || !P) return 'Start or continue a journey first.';
+    if (safe(() => g.survival?.isFallen?.(P), false) || P.downed) return 'Not while you lie bleeding. Ask again once you are on your feet.';
+    if (id === 'resetPoints') {
+      if (!g.progression?.resetPoints) return 'Not in this build.';
+      if (!(g.progression.spent?.() > 0)) return 'You have not spent any points yet.';
+    }
+    if (id === 'trialMagic' && typeof g.magic?.startTrial !== 'function') return 'Not in this build.';
+    return null;
+  }
+
+  actionRow(id) {
+    const def = ACTION_ROWS[id];
+    const label = h('span', { class: 'set-label' });
+    const note = h('span', { class: 'set-note' });
+    const b = button(def.button, { cls: 'btn-small', onClick: () => this.runAction(id) });
+    const row = h('div', { class: 'set-row set-action', 'data-action': id }, h('span', { class: 'set-main' }, label, note), h('span', { class: 'set-ctl' }, b));
+    row._parts = { label, note, b };
+    this.paintAction(row);
+    return row;
+  }
+
+  paintAction(row) {
+    const id = row.dataset.action;
+    const def = ACTION_ROWS[id];
+    const { label, note, b } = row._parts;
+    const why = this.actionBlocked(id);
+    const on = !!this.game.magic?.trial;
+    if (id === 'trialMagic') {
+      setText(label, `${def.label}: ${on ? 'On' : 'Off'}`);
+      setText(b, on ? 'Turn off' : 'Turn on');
+      row.classList.toggle('is-on', on);
+    } else {
+      setText(label, def.label);
+      const n = this.game.progression?.spent?.() || 0;
+      setText(b, n > 0 ? `Reset ${n}` : def.button);
+    }
+    setText(note, why || def.note);
+    b.disabled = !!why;
+    row.classList.toggle('is-disabled', !!why);
+  }
+
+  refreshActions() {
+    if (!this.panel) return;
+    for (const row of this.panel.body.querySelectorAll('.set-row[data-action]')) this.paintAction(row);
+  }
+
+  async runAction(id) {
+    const ui = this.ui;
+    const g = this.game;
+    if (this.actionBlocked(id)) return this.refreshActions();
+    if (id === 'resetPoints') {
+      const n = g.progression.spent();
+      const ok = await ui.confirm({ title: 'Reset stat points?', text: `All ${n} point${n === 1 ? '' : 's'} come back to spend again. Your level, gear and weaves stay.`, yes: 'Reset them', danger: true });
+      if (!ok) return this.refreshActions();
+      const r = g.progression.resetPoints();
+      if (r.ok) ui.toast(`${r.points} point${r.points === 1 ? '' : 's'} back to spend. Open your Character sheet to spend them.`, 'good', { title: 'Stat points reset' });
+      else ui.toast(r.reason, 'warn');
+    } else if (id === 'trialMagic') {
+      const m = g.magic;
+      if (!m.trial) {
+        const ok = await ui.confirm({
+          title: 'Try all magic?',
+          text: 'Every shape, essence, twist and price opens, with six weave slots, until you turn it off here. Off brings back only what you have earned; anything you earn meanwhile is kept. Prices still cost what they say: the end of Berserk can still end your story.',
+          yes: 'Turn it on',
+          danger: true,
+        });
+        if (!ok) return this.refreshActions();
+        if (m.startTrial()) ui.toast('Everything is open: try it in the Spellbook (B, or Menu → Spellbook). Settings → Game turns it off.', 'good', { title: 'Trying all magic' });
+      } else {
+        const ok = await ui.confirm({
+          title: 'Stop trying all magic?',
+          text: 'Back to what you have earned. Your own weaves return to their slots; weaves made with borrowed parts wait in the Spellbook. Prices still running that you have not earned end now.',
+          yes: 'Turn it off',
+          danger: true,
+        });
+        if (!ok) return this.refreshActions();
+        if (m.endTrial()) ui.toast('Back to the magic you have earned.', 'info', { title: 'Trial over' });
+      }
+      try {
+        g.save?.save?.('auto');
+      } catch {
+        /* saving is best-effort here */
+      }
+    }
+    this.refreshActions();
   }
 
   rowFor(key) {

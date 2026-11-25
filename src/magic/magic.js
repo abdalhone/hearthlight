@@ -112,6 +112,24 @@ const WARD_CAP = 1.6; // a ward thickened by echoes and recasts holds at most th
 
 const isAlive = (a) => !!a && !a.removed && !a.dead && (typeof a.isAlive === 'function' ? a.isAlive() : a.hp > 0);
 
+// A weave as saved data, and back (unknown parts dropped; no shape, no weave).
+function plainWeave(w) {
+  return w ? { id: w.id || null, name: w.name || null, shape: w.shape, essences: [...(w.essences || [])], twists: [...(w.twists || [])], prices: [...(w.prices || [])] } : null;
+}
+
+function readWeave(w) {
+  if (!w || typeof w !== 'object' || !Shapes.has(w.shape)) return null;
+  const n = normalizeWeave(w);
+  n.essences = n.essences.filter((e) => Essences.has(e));
+  if (!n.essences.length) n.essences = ['raw'];
+  n.twists = n.twists.filter((t) => Twists.has(t));
+  n.prices = n.prices.filter((t) => Prices.has(t));
+  return { id: n.id, name: n.name, shape: n.shape, essences: n.essences, twists: n.twists, prices: n.prices };
+}
+
+const cloneWeave = (w) => ({ ...w, essences: [...(w.essences || [])], twists: [...(w.twists || [])], prices: [...(w.prices || [])] });
+const sameParts = (a, b) => !!a && !!b && weaveKey(a) === weaveKey(b);
+
 function makeCtx(rt) {
   const ctx = {
     rt,
@@ -2128,43 +2146,157 @@ export class Magic {
     return !!set && set.has(id);
   }
 
+  // What the player has really earned: the same as `unlocked`, except while "Try all
+  // magic" runs (then `unlocked` holds everything and this the real sets). Rewards,
+  // mission offers and boss drops ask this, so a trial never hides a real reward.
+  get realUnlocked() {
+    return this.trial ? this.trial.unlocked : this.unlocked;
+  }
+
+  isEarned(kind, id) {
+    const set = this.realUnlocked[KIND_SETS[kind]];
+    return !!set && set.has(id);
+  }
+
   // Every component reaches the player through here (missions, bosses, the dev helper).
+  // While a trial runs, a real reward goes into the real sets too (and is announced as
+  // new), so it is still there when the trial ends.
   unlock(kind, id, source = null) {
     const k = KIND_SETS[kind];
     if (!k || !REGISTRY[k].has(id)) return false;
     const set = this.unlocked[k];
-    if (set.has(id)) return false;
+    const real = this.trial ? this.trial.unlocked[k] : set;
+    if (real.has(id)) return false;
+    real.add(id);
     set.add(id);
-    if (source != null) this.sources[`${KIND_ONE[k]}:${id}`] = source;
+    if (source != null) {
+      this.sources[`${KIND_ONE[k]}:${id}`] = source;
+      if (this.trial) this.trial.sources[`${KIND_ONE[k]}:${id}`] = source;
+    }
     this._unlockStamp = (this._unlockStamp || 0) + 1;
     this.game.bus?.emit('magic_unlocked', { kind: KIND_ONE[k], id, source });
     return true;
   }
 
-  unlockSlot() {
-    if (this.slotCount >= BAL.SLOTS_MAX) return false;
-    this.slotCount++;
-    this.game.bus?.emit('magic_unlocked', { kind: 'slot', id: String(this.slotCount), source: null });
+  // Slot counts: a trial shows the most; what is earned meanwhile counts for real.
+  _grow(field, max, kind) {
+    const T = this.trial;
+    const cur = T ? T[field] : this[field];
+    if (cur >= max) return false;
+    if (T) T[field] = cur + 1;
+    else this[field] = cur + 1;
+    if (kind !== 'slot') this._unlockStamp = (this._unlockStamp || 0) + 1;
+    this.game.bus?.emit('magic_unlocked', { kind, id: String(cur + 1), source: null });
     return true;
+  }
+
+  unlockSlot() {
+    return this._grow('slotCount', BAL.SLOTS_MAX, 'slot');
   }
 
   unlockEssenceSlot() {
-    if (this.essenceSlots >= BAL.ESSENCE_SLOTS_MAX) return false;
-    this.essenceSlots++;
-    this._unlockStamp = (this._unlockStamp || 0) + 1;
-    this.game.bus?.emit('magic_unlocked', { kind: 'essence_slot', id: String(this.essenceSlots), source: null });
-    return true;
+    return this._grow('essenceSlots', BAL.ESSENCE_SLOTS_MAX, 'essence_slot');
   }
 
   unlockTwistSlot() {
-    if (this.twistSlots >= BAL.TWIST_SLOTS_MAX) return false;
-    this.twistSlots++;
-    this._unlockStamp = (this._unlockStamp || 0) + 1;
-    this.game.bus?.emit('magic_unlocked', { kind: 'twist_slot', id: String(this.twistSlots), source: null });
+    return this._grow('twistSlots', BAL.TWIST_SLOTS_MAX, 'twist_slot');
+  }
+
+  // ---------------------------------------------------------------- "Try all magic"
+  // (Settings → Game → Practice; the author: "a thing that gives me all the magic stuff
+  // to try it"). On: every shape, essence, twist and price, six weave slots, three
+  // essences and four twists to a weave (source 'trial'); the mana stays as it is. The
+  // real state is kept aside. Off: the real unlocks, slot counts and weaves come back; a
+  // weave made meanwhile that the real unlocks can weave stays in its slot, any other
+  // goes to the Spellbook's drafts; prices still running that were not really earned end.
+  // Rewards earned during the trial are real (unlock above). Saved with the game.
+
+  startTrial() {
+    if (this.trial) return false;
+    const copy = (u) => ({ shapes: new Set(u.shapes), essences: new Set(u.essences), twists: new Set(u.twists), prices: new Set(u.prices) });
+    this.trial = {
+      unlocked: copy(this.unlocked),
+      sources: { ...this.sources },
+      slotCount: this.slotCount,
+      essenceSlots: this.essenceSlots,
+      twistSlots: this.twistSlots,
+      slots: this.slots.map((w) => (w ? cloneWeave(w) : null)),
+    };
+    const all = copy(this.unlocked);
+    for (const k of ['shapes', 'essences', 'twists', 'prices']) {
+      for (const id of REGISTRY[k].ids()) {
+        if (all[k].has(id)) continue;
+        all[k].add(id);
+        this.sources[`${KIND_ONE[k]}:${id}`] = 'trial';
+      }
+    }
+    this.unlocked = all;
+    this.slotCount = BAL.SLOTS_MAX;
+    this.essenceSlots = BAL.ESSENCE_SLOTS_MAX;
+    this.twistSlots = BAL.TWIST_SLOTS_MAX;
+    this._trialChanged(true);
     return true;
   }
 
-  // Developer helper for testing (not shown in any UI): everything, every slot.
+  endTrial() {
+    const T = this.trial;
+    if (!T) return false;
+    const made = this.slots.map((w) => (w ? cloneWeave(w) : null));
+    this.trial = null;
+    this.unlocked = T.unlocked;
+    this.sources = T.sources;
+    this.slotCount = T.slotCount;
+    this.essenceSlots = T.essenceSlots;
+    this.twistSlots = T.twistSlots;
+    this._planCache.clear();
+    for (let i = 0; i < BAL.SLOTS_MAX; i++) {
+      const now = made[i];
+      const before = T.slots[i] || null;
+      if (now && i < this.slotCount && this.validate(now).ok) {
+        this.slots[i] = now;
+        continue;
+      }
+      if (now && !sameParts(now, before)) this._keepDraft(now);
+      this.slots[i] = i < this.slotCount ? before : null;
+    }
+    // Prices still running that were only borrowed end now (their modifiers go too).
+    try {
+      this.game.prices?.endRunning?.(this.unlocked.prices, 'trial');
+    } catch (err) {
+      this.warn('end trial prices', err);
+    }
+    // A hold on a weave that is no longer there lets go.
+    for (const caster of [...this.holds.keys()]) this.castCancel(caster);
+    this._trialChanged(false);
+    return true;
+  }
+
+  _trialChanged(on) {
+    this._unlockStamp = (this._unlockStamp || 0) + 1;
+    this._planCache.clear();
+    const bus = this.game.bus;
+    bus?.emit('magic_trial', { on });
+    for (let i = 0; i < BAL.SLOTS_MAX; i++) bus?.emit('weave_slots', { slot: i, weave: this.slots[i] });
+    bus?.emit('magic_loaded', { trial: on });
+  }
+
+  // A weave from a trial, kept for the Spellbook (newest first, no two alike, a few).
+  _keepDraft(w) {
+    const list = this.trialDrafts.filter((d) => !sameParts(d, w));
+    list.unshift(cloneWeave(w));
+    this.trialDrafts = list.slice(0, BAL.SLOTS_MAX);
+  }
+
+  // The Spellbook took a draft back (it was woven into a slot, or thrown away).
+  dropDraft(i) {
+    if (!Number.isInteger(i) || i < 0 || i >= this.trialDrafts.length) return false;
+    this.trialDrafts.splice(i, 1);
+    this.game.bus?.emit('weave_slots', { slot: -1, weave: null });
+    return true;
+  }
+
+  // Developer helper for testing (not shown in any UI): everything, every slot, for good.
+  // (Players use "Try all magic", which can be turned off again.)
   unlockAll() {
     for (const k of ['shapes', 'essences', 'twists', 'prices']) for (const id of REGISTRY[k].ids()) this.unlock(k, id, 'dev');
     while (this.unlockSlot());
@@ -2415,21 +2547,28 @@ export class Magic {
   // ================================================================ saving
 
   serialize() {
+    const R = this.trial || this; // the real state, also while a trial runs
+    const u = R.unlocked;
     return {
       v: 1,
-      unlocked: { shapes: [...this.unlocked.shapes], essences: [...this.unlocked.essences], twists: [...this.unlocked.twists], prices: [...this.unlocked.prices] },
-      sources: { ...this.sources },
-      slots: this.slots.map((w) => (w ? { id: w.id || null, name: w.name || null, shape: w.shape, essences: [...w.essences], twists: [...w.twists], prices: [...(w.prices || [])] } : null)),
-      slotCount: this.slotCount,
-      essenceSlots: this.essenceSlots,
-      twistSlots: this.twistSlots,
+      unlocked: { shapes: [...u.shapes], essences: [...u.essences], twists: [...u.twists], prices: [...u.prices] },
+      sources: { ...R.sources },
+      slots: R.slots.map(plainWeave),
+      slotCount: R.slotCount,
+      essenceSlots: R.essenceSlots,
+      twistSlots: R.twistSlots,
       mana: { cur: Math.round(this.mana.cur * 10) / 10, max: this.mana.max },
       manaBonus: this.manaBonus,
+      // "Try all magic": the save keeps the real state above (never the borrowed parts)
+      // and the trial's own slots, so loading it with the trial on keeps it on.
+      trial: this.trial ? { slots: this.slots.map(plainWeave) } : null,
+      drafts: this.trialDrafts.map(plainWeave),
     };
   }
 
   deserialize(d) {
     if (!d || typeof d !== 'object') return;
+    this.trial = null;
     const u = d.unlocked || {};
     for (const k of ['shapes', 'essences', 'twists', 'prices']) {
       const set = new Set(k === 'shapes' ? ['bolt'] : k === 'essences' ? ['raw'] : []);
@@ -2441,23 +2580,17 @@ export class Magic {
     this.slotCount = clampInt(d.slotCount, BAL.SLOTS_START, BAL.SLOTS_MAX, BAL.SLOTS_START);
     this.essenceSlots = clampInt(d.essenceSlots, BAL.ESSENCE_SLOTS_START, BAL.ESSENCE_SLOTS_MAX, BAL.ESSENCE_SLOTS_START);
     this.twistSlots = clampInt(d.twistSlots, BAL.TWIST_SLOTS_START, BAL.TWIST_SLOTS_MAX, BAL.TWIST_SLOTS_START);
-    if (Array.isArray(d.slots)) {
-      for (let i = 0; i < BAL.SLOTS_MAX; i++) {
-        const w = d.slots[i];
-        if (!w || typeof w !== 'object' || !Shapes.has(w.shape)) {
-          this.slots[i] = null;
-          continue;
-        }
-        const n = normalizeWeave(w);
-        n.essences = n.essences.filter((e) => Essences.has(e));
-        if (!n.essences.length) n.essences = ['raw'];
-        n.twists = n.twists.filter((t) => Twists.has(t));
-        n.prices = n.prices.filter((t) => Prices.has(t));
-        this.slots[i] = { id: n.id, name: n.name, shape: n.shape, essences: n.essences, twists: n.twists, prices: n.prices };
-      }
-    }
+    if (Array.isArray(d.slots)) for (let i = 0; i < BAL.SLOTS_MAX; i++) this.slots[i] = readWeave(d.slots[i]);
     this.manaBonus = Number.isFinite(d.manaBonus) ? d.manaBonus : 0;
+    this.trialDrafts = (Array.isArray(d.drafts) ? d.drafts : []).map(readWeave).filter(Boolean).slice(0, BAL.SLOTS_MAX);
     this._planCache.clear();
+    // Saved with the trial on: it starts again over the real state, with its own slots.
+    if (d.trial && typeof d.trial === 'object') {
+      this.startTrial();
+      const ts = Array.isArray(d.trial.slots) ? d.trial.slots : [];
+      for (let i = 0; i < BAL.SLOTS_MAX; i++) this.slots[i] = readWeave(ts[i]);
+      this._planCache.clear();
+    }
     this._unlockStamp = (this._unlockStamp || 0) + 1;
     this._recomputeMax();
     if (Number.isFinite(d.mana?.cur)) this.mana.cur = Math.max(0, Math.min(this.mana.max, d.mana.cur));

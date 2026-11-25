@@ -160,7 +160,7 @@ export class CharacterView {
       setText(r.n, String(pr.points[id] || 0));
       r.plus.disabled = un <= 0;
     }
-    setText(this.respecEl, pr.spent() ? `Want them back? Sister Aveline can give you a quiet hour in the chapel to start over (${pr.respecCost()} coins).` : 'Spend points as you level. Sister Aveline at the chapel can undo them, for a price.');
+    setText(this.respecEl, pr.spent() ? `Want them back? Settings → Game → Reset stat points gives them all back, free. Or Sister Aveline can give you a quiet hour in the chapel to start over (${pr.respecCost()} coins).` : 'Spend points as you level. Settings (Reset stat points) can give them back for free; Sister Aveline at the chapel, for a price.');
     this.renderSlots();
     this.renderPick();
     this.renderStats();

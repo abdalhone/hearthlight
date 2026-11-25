@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { DEFAULT_SETTINGS } from '../src/core/settings.js';
-import { SETTINGS_TABS, SETTINGS_LAYOUT, SETTING_ROWS, EXTRA_SETTING_KEYS, settingKeysInLayout } from '../src/ui/settings_panel.js';
+import { SETTINGS_TABS, SETTINGS_LAYOUT, SETTING_ROWS, EXTRA_SETTING_KEYS, ACTION_ROWS, settingKeysInLayout } from '../src/ui/settings_panel.js';
 import { pauseItems, characterOpener, nextInDirection } from '../src/ui/overlays.js';
 import { MENU_ICONS, CONTROLS, CONTROL_DEVICES, controlsFor, HOW_TO_PLAY } from '../src/ui/content.js';
 import { ICONS } from '../src/ui/icons.js';
@@ -31,8 +31,26 @@ test('settings: five tabs (Game, Controls, Sound & voices, Minds (Claude), Displ
   for (const t of SETTINGS_TABS) {
     assert.ok(ICONS[t.icon], t.icon);
     const groups = SETTINGS_LAYOUT[t.id];
-    assert.ok(groups.length && groups.every((g) => g.title && g.keys.length), t.id);
+    // A group holds settings, or action rows (Game → Practice), never nothing.
+    assert.ok(groups.length && groups.every((g) => g.title && (g.keys.length || g.actions?.length)), t.id);
   }
+});
+
+test('settings: Game → Practice holds the two action rows, each once, none of them a setting', () => {
+  const all = Object.values(SETTINGS_LAYOUT).flat().flatMap((g) => g.actions || []);
+  assert.deepEqual(all, ['resetPoints', 'trialMagic'], 'exactly these, once');
+  const practice = SETTINGS_LAYOUT.game.find((g) => g.id === 'practice');
+  assert.equal(practice.title, 'Practice');
+  assert.deepEqual(practice.keys, []);
+  for (const id of all) {
+    const row = ACTION_ROWS[id];
+    assert.ok(row && row.label && row.label.length <= 28, `${id}: label`);
+    assert.ok(row.note && row.note.length <= 140 && !/\n/.test(row.note), `${id}: note`);
+    assert.ok(row.button, `${id}: button`);
+    assert.ok(!(id in DEFAULT_SETTINGS) && !EXTRA_SETTING_KEYS.includes(id), `${id} is not a setting`);
+  }
+  assert.equal(ACTION_ROWS.resetPoints.label, 'Reset stat points');
+  assert.equal(ACTION_ROWS.trialMagic.label, 'Try all magic');
 });
 
 test('settings: each plain row has a short label and a one-line note', () => {

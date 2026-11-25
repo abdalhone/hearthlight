@@ -183,7 +183,7 @@ export class LyraWatch {
 
   // A boss shard or a mission reward: she hears about it if she's there.
   onUnlock(p) {
-    if (p.id !== 'dark' || !this.sees()) return;
+    if (p.id !== 'dark' || p.source === 'trial' || !this.sees()) return;
     if (this.seenEssences.includes('dark')) return;
     this.seenEssences.push('dark');
     this.comment(ESSENCE_LINES.dark, 'dark');
