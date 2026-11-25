@@ -95,6 +95,10 @@ const ZERO = Object.freeze({ x: 0, y: 0 });
 export const FRIEND_AIM_R = 20;
 export const FRIEND_LINE_R = 12;
 export const ACCIDENT_MUL = 0.5;
+// A weave let go after a hold (a charge): a friend counts as aimed at only if the aim had
+// named her for FRIEND_STEADY seconds before the release, or since the press. While a
+// charge gathers she may walk into its line or under the cursor; that is not aiming at her.
+export const FRIEND_STEADY = 0.3;
 // Bodies that touch whoever stands in them: the strike itself (bolts, beams, blasts,
 // cones, novas). What lingers on the ground or hovers (patches, rains, runes, walls,
 // trails, familiars) spares friends unless the weave was aimed at one.
@@ -1680,6 +1684,10 @@ export class Magic {
     let ay = Number.isFinite(aim?.y) ? aim.y : NaN;
     const probe = { caster, friendly: true, target: null };
     if (!target && this.isPlayer(caster)) target = this.aimedFriend(caster, aim, plan);
+    // Let go after a hold: a friend the aim named only at the last moment (she stepped into
+    // the line, under the cursor) was not aimed at (FRIEND_STEADY).
+    const s = o.steady;
+    if (target && s && this.isPlayer(caster) && this.isFriendOfPlayer(target) && (s.friend !== target || s.t < Math.min(FRIEND_STEADY, s.held) - 1e-6)) target = null;
     if (!target && Number.isFinite(ax)) {
       let best = null;
       let bd = 14 * 14;
@@ -1881,7 +1889,7 @@ export class Magic {
   _fire(caster, r, aim, opts = {}) {
     const plan = r.plan;
     this._pay(caster, r, plan.cost, opts);
-    const cast = this._newCast(caster, plan, aim, { chargeK: opts.chargeK, slot: r.slot, held: false });
+    const cast = this._newCast(caster, plan, aim, { chargeK: opts.chargeK, slot: r.slot, held: false, steady: opts.steady || null });
     this._emit(cast, plan, 1);
     this.game.bus?.emit('spell_cast', { caster, weave: plan.weave, plan, slot: r.slot, chargeK: cast.chargeK, target: cast.target });
     return { ok: true, plan, cast };
@@ -1903,7 +1911,11 @@ export class Magic {
     const plan = r.plan;
     let mode = plan.input;
     if (mode === 'tap' && opts.charge) mode = 'charge';
-    const hold = { caster, r, plan, mode, t: 0, aim: { x: aim?.x, y: aim?.y, target: aim?.target || null }, cast: null, opts, k: 0, live: false, capped: false };
+    // (The aim keeps `auto`: an auto-aimed tap never names a friend, see aimedFriend.)
+    const hold = { caster, r, plan, mode, t: 0, aim: { x: aim?.x, y: aim?.y, target: aim?.target || null, auto: !!aim?.auto }, cast: null, opts, k: 0, live: false, capped: false };
+    // Who the aim names among friends, and for how long (FRIEND_STEADY).
+    hold.friend = this.isPlayer(caster) ? this.aimedFriend(caster, hold.aim, plan) : null;
+    hold.friendT = 0;
     this.holds.set(caster, hold);
     if (mode === 'hold') {
       hold.live = true;
@@ -1927,6 +1939,7 @@ export class Magic {
       if (Number.isFinite(aim.x)) h.aim.x = aim.x;
       if (Number.isFinite(aim.y)) h.aim.y = aim.y;
       if (aim.target !== undefined) h.aim.target = aim.target;
+      if (aim.auto !== undefined) h.aim.auto = !!aim.auto;
       if (h.cast && Number.isFinite(aim.x) && Number.isFinite(aim.y)) {
         h.cast.aimX = aim.x;
         h.cast.aimY = aim.y;
@@ -1957,7 +1970,7 @@ export class Magic {
     let k = h.mode === 'charge' ? h.k : 0;
     if (k > 0 && !h.opts.free && this.isPlayer(caster)) k = Math.min(k, BAL.affordableK(this.mana.cur, this.costOf(caster, h.plan)));
     const a = h.aim;
-    return this._fire(caster, h.r, { x: a.x, y: a.y, target: a.target }, { ...h.opts, chargeK: k });
+    return this._fire(caster, h.r, { x: a.x, y: a.y, target: a.target, auto: a.auto }, { ...h.opts, chargeK: k, steady: { friend: h.friend || null, t: h.friendT || 0, held: h.t } });
   }
 
   // Let go without casting: a charge costs nothing; a beam already poured keeps its
@@ -2002,6 +2015,14 @@ export class Magic {
       if (!isAlive(caster)) {
         this.castCancel(caster);
         continue;
+      }
+      // Whom the aim names among friends, and since when (FRIEND_STEADY).
+      if (h.mode !== 'hold' && this.isPlayer(caster)) {
+        const f = this.aimedFriend(caster, h.aim, h.plan);
+        if (f !== h.friend) {
+          h.friend = f;
+          h.friendT = 0;
+        } else h.friendT = (h.friendT || 0) + dt;
       }
       if (h.mode === 'charge') {
         // A tap until CHARGE_DEAD; then it gathers (the walk slows, the swell starts) to a

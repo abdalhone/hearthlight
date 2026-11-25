@@ -303,7 +303,9 @@ export class GlyphReveal {
       this.subEl.textContent = `${pd.gainText}. Price: ${pd.costText}.`;
     }
     const g = this.game;
-    const book = g.magic ? (g.ui?.isTouch?.() ? 'Open the Spellbook to weave with it.' : 'Open the Spellbook (B) to weave with it.') : 'The Weave will remember it.';
+    // (ui.isTouch is a flag, not a function: calling it threw and the card never showed.)
+    const touch = typeof g.ui?.isTouch === 'function' ? g.ui.isTouch() : !!g.ui?.isTouch;
+    const book = g.magic ? (touch ? 'Open the Spellbook (Menu → Spellbook) to weave with it.' : 'Open the Spellbook (B) to weave with it.') : 'The Weave will remember it.';
     this.hintEl.textContent = book;
     this.timer = 4.6;
     this.el.classList.remove('on');

@@ -214,6 +214,79 @@ test('a beam cancelled or let go cools by cooldownOf (cast speed counts); a fail
   g.magicFx = undefined;
 });
 
+// The verifier's play pass: every press now goes through castStart/castRelease, so what
+// the press knew about its aim must reach the release.
+test('a tap let go after its press keeps its auto-aim: with no foe about, Lyra standing ahead is never "aimed at"', () => {
+  const g = makeGame({ log: true, foes: 0 });
+  const m = g.magic;
+  const P = g.player;
+  const lyra = g.companion;
+  lyra.x = P.x + 25;
+  lyra.y = P.y + 4;
+  // Auto-aim with nobody to aim at: straight ahead, right through where she stands.
+  const auto = { x: P.x + 140, y: P.y - 7 + 10, auto: true };
+  assert.ok(m.castStart(P, 0, auto, { charge: true }).ok);
+  magicStep(g);
+  const r = m.castRelease(P);
+  assert.ok(r.ok);
+  run(g, 1);
+  const hit = g.events.find((e) => e.type === 'damage' && e.payload.target === lyra);
+  assert.ok(hit, 'the bolt still touches her');
+  assert.equal(hit.payload.deliberate, false, 'but an auto-aimed tap is an accident, as an instant cast always was');
+  assert.equal(hit.payload.accident, true);
+});
+
+test('a charge let go just as Lyra steps into its line is an accident; aimed at her for FRIEND_STEADY it is deliberate', () => {
+  const g = makeGame({ log: true, foes: 0 });
+  const m = g.magic;
+  const P = g.player;
+  const lyra = g.companion;
+  // A dragged (not auto) aim far along a line that passes where she will stand.
+  const aim = { x: P.x + 140, y: P.y - 7 + 10, auto: false };
+  const away = () => {
+    lyra.x = P.x - 10;
+    lyra.y = P.y + 70;
+  };
+  const inLine = () => {
+    lyra.x = P.x + 25;
+    lyra.y = P.y + 4;
+  };
+  const onLyra = () => g.events.filter((e) => e.type === 'damage' && e.payload.target === lyra).pop();
+  // She walks into the line 0.1 s before the release.
+  away();
+  m.castStart(P, 0, aim, { charge: true });
+  run(g, 1.2);
+  inLine();
+  run(g, 0.1);
+  let r = m.castRelease(P, aim);
+  assert.ok(r.ok && r.cast.friendly === false, 'not aimed at her');
+  run(g, 1);
+  let hit = onLyra();
+  assert.ok(hit, 'the charged bolt still hits her on its way');
+  assert.equal(hit.payload.deliberate, false);
+  // She stood in the line all along: aimed at her, on purpose.
+  resetArena(g);
+  m.resetCooldowns();
+  g.events.length = 0;
+  inLine();
+  m.castStart(P, 0, aim, { charge: true });
+  run(g, 1.2);
+  r = m.castRelease(P, aim);
+  assert.equal(r.cast.target, lyra);
+  run(g, 1);
+  hit = onLyra();
+  assert.ok(hit && hit.payload.deliberate === true, 'a steady aim at her is a blow at her');
+  // A quick tap aimed at her (no time to be steady) still counts, as an instant cast did.
+  resetArena(g);
+  m.resetCooldowns();
+  g.events.length = 0;
+  inLine();
+  m.castStart(P, 0, aim, { charge: true });
+  magicStep(g);
+  r = m.castRelease(P, aim);
+  assert.equal(r.cast.target, lyra);
+});
+
 test('one charge at a time: starting a second weave lets the first one go (it is cast)', () => {
   const g = arena();
   const m = g.magic;

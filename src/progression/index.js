@@ -74,10 +74,14 @@ export function installProgression(game) {
     });
     bus?.on?.('magic_unlocked', (p) => {
       if (p?.kind !== 'price' || p.source === 'dev' || p.source === 'trial') return;
+      // A boss's glyph-shard shows its own reveal card (gain, price, where to weave it):
+      // a toast beside it would say it twice and cover it on a phone.
+      if (String(p.source || '').startsWith('boss:')) return;
       const d = game.magic?.registry?.prices?.get?.(p.id);
       if (!d) return;
       try {
-        game.ui?.toast?.(`A price: ${d.name}. ${cap(d.gainText)} — and ${d.costText}. Attach it to a weave in the Spellbook (B).`, 'warn', { key: `price:${p.id}`, title: 'Power with a cost' });
+        const book = game.ui?.isTouch ? 'Menu → Spellbook' : 'the Spellbook (B)';
+        game.ui?.toast?.(`A price: ${d.name}. ${cap(d.gainText)} — and ${d.costText}. Attach it to a weave in ${book}.`, 'warn', { key: `price:${p.id}`, title: 'Power with a cost' });
       } catch {
         /* the UI is optional */
       }

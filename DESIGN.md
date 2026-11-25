@@ -1452,7 +1452,11 @@ registry entry, and it works with every other entry automatically.
   anyone else (`magic.aimedFriend`, which the aim preview may ask); otherwise it is an
   **accident**: half damage, no status, no crime, no claim of self-defense, and Lyra and the
   village weigh it as one (a fight's worth of stray clips is one small wrong). A quick tap
-  auto-aims only at foes. Hits read: big outlined damage numbers (essence tints lifted until
+  auto-aims only at foes, also when it is let go after its press (r12: every weave is cast
+  on the release; the hold keeps the aim's `auto`). A weave let go after a hold names a
+  friend only if the aim had named her for 0.3 s before the release, or since the press
+  (`FRIEND_STEADY`): while a charge gathers she may walk into its line or under the cursor,
+  and that is not aiming at her (if it hits her, it is an accident). Hits read: big outlined damage numbers (essence tints lifted until
   they read on any ground), a white blink, and a small health bar under whoever was hurt
   (`src/render/health_bars.js`: at the feet, since the numbers rise over the head; red under
   creatures and bosses, a quieter green under villagers and Lyra, never the player; it fades
