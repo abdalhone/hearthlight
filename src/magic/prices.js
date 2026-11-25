@@ -8,7 +8,8 @@ import { STATUS_POTENCY } from './balance.js';
 // modifiers on the shared stat pipeline (src/core/stats.js). The runtime (`game.prices`)
 // owns what a modifier cannot: berserk's end (the heart gives out: player.fall({ window:
 // 30, cause: 'berserk' })), lastlight's once-per-sleep save, emberblood's burn, oath's
-// tie to Lyra.
+// tie to Lyra, and the last stand (armed after a confirm; when you would die you rise for
+// a minute, burning, and then you die for good: game.survival.burnOut).
 //
 // Entry format (get() fills the rest):
 // {
@@ -96,6 +97,23 @@ export const PRICES = {
     sentence: 'A light kept back for the last dark. It holds a wound shut once; it cannot restart a heart.',
     lyra: "Whatever you just held back, I hope you never need it.",
     refresh: false,
+  },
+  // The last stand (round 14: "if I die, maybe I come back for 1 minute and kill anybody,
+  // but it will not let me live anymore"). Held like lastlight until it is needed; the
+  // Bone Warden carries it. Order when you fall: lastlight first (it holds the wound shut),
+  // then the last stand (you may rise at once, or it rises you when the window closes).
+  laststand: {
+    name: 'Last Stand',
+    adj: 'Doomed',
+    color: '#ff5a1f',
+    gain: { label: 'Last Stand held', seconds: null },
+    cost: { label: 'You die for good when it ends', seconds: null },
+    gainText: 'when you would die, you rise for one minute, burning: strength ×2.5, weaves twice as strong, faster, unafraid, nothing can put you down',
+    costText: 'when the minute ends you die for good: no kept flame, no rescue, no waking at home. Your story ends',
+    sentence: 'You become your own pyre: one minute of everything you are, and then nothing ever again.',
+    lyra: "No. Not that. Whatever you just took into you, put it back. I won't watch you burn.",
+    refresh: false,
+    confirm: true,
   },
   oath: {
     name: 'Oath',
@@ -219,6 +237,9 @@ if (!Shapes.has('surge')) {
 const OATH_NEAR = 112; // px: "while Lyra is near"
 const EMBER_DRAIN = 0.02; // of max health per second
 const FALL_WINDOW = 30;
+export const LAST_STAND_SECONDS = 60;
+// What the last minute gives (a modifier on the stat pipeline while it burns).
+export const LAST_STAND_GAIN = Object.freeze({ mul: { atk: 2.5, dmgTaken: 0.4 }, pct: { spellPower: 1, speed: 0.35, swing: 0.5, castSpeed: 0.5 }, add: { poise: 1 } });
 
 function safe(fn, fallback = null) {
   try {
@@ -250,7 +271,8 @@ export class PriceRuntime {
   }
 
   fresh() {
-    return { berserk: null, overdraw: null, ember: false, lastlight: null, oath: null };
+    // laststand: null | 'armed' | { t } (burning: seconds left to live)
+    return { berserk: null, overdraw: null, ember: false, lastlight: null, oath: null, laststand: null };
   }
 
   get stats() {
@@ -363,6 +385,21 @@ export class PriceRuntime {
         this.addPart(actor, d, 'gain');
         return true;
       }
+      case 'laststand': {
+        if (S.laststand) {
+          if (typeof S.laststand === 'object') return false; // already burning
+          return false; // held already
+        }
+        // Never borrowed: "Try all magic" lends every price but this one.
+        const real = this.game.magic?.realUnlocked;
+        if (real && !real.prices?.has?.('laststand')) {
+          this.toast('The Last Stand cannot be borrowed. It has to be earned.', 'info');
+          return false;
+        }
+        // Asked every time it is taken up: its price is the whole story.
+        this.offerLastStand(actor, d, plan);
+        return false;
+      }
       case 'oath': {
         const was = !!S.oath;
         S.oath = { t: d.gain.seconds };
@@ -393,7 +430,15 @@ export class PriceRuntime {
 
   // Called by combat.down before the player falls: lastlight holds the wound shut once.
   preventFall(target) {
-    if (!this.isPlayer(target) || this.state.lastlight !== 'armed') return false;
+    if (!this.isPlayer(target)) return false;
+    // Burning in the last stand there is nothing left to put down (§25): hold at 1.
+    if (this.burning()) {
+      target._fallOpts = null;
+      target.downed = false;
+      target.hp = Math.max(1, target.hp || 0);
+      return true;
+    }
+    if (this.state.lastlight !== 'armed') return false;
     if (target._fallOpts?.cause === 'berserk') return false; // it cannot restart a heart
     const d = Prices.get('lastlight');
     this.state.lastlight = 'used';
@@ -414,6 +459,7 @@ export class PriceRuntime {
   }
 
   douse(id = 'emberblood') {
+    if (id === 'laststand') return this.quenchLastStand();
     const P = this.player();
     if (id !== 'emberblood' || !this.state.ember || !P) return false;
     this.state.ember = false;
@@ -422,6 +468,103 @@ export class PriceRuntime {
     this.toast('You douse the emberblood.', 'info');
     this.game.bus?.emit?.('price_ended', { price: 'emberblood', actor: P, why: 'doused' });
     return true;
+  }
+
+  // ---------------------------------------------------------------- the last stand
+
+  burning() {
+    const L = this.state.laststand;
+    return !!L && typeof L === 'object' && L.t > 0;
+  }
+
+  lastStandArmed() {
+    return this.state.laststand === 'armed';
+  }
+
+  // Taking it up: the confirm says the price in full (the game's own dialog, never the
+  // browser's); only a yes arms it. Without a UI (tests) it arms at once.
+  offerLastStand(actor, d = Prices.get('laststand'), plan = null) {
+    const g = this.game;
+    if (this._asking || this.state.laststand) return false;
+    const confirm = g.ui?.confirm;
+    if (typeof confirm !== 'function') return this.armLastStand(actor, plan);
+    this._asking = true;
+    const text =
+      'When you would die, you rise instead: one minute burning, far stronger, unafraid, able to strike anyone, and nothing can put you down. ' +
+      'When the minute ends, you die for good. No kept flame brings you back, nobody can carry you to Mira, and waking at home does not save you: your story ends here and this save closes. ' +
+      'You can put it out before then by tapping its mark on the HUD.';
+    let p = null;
+    try {
+      p = confirm.call(g.ui, { title: 'Take up the Last Stand?', text, yes: 'Take it up', no: 'Not this', danger: true });
+    } catch {
+      p = null;
+    }
+    Promise.resolve(p).then(
+      (yes) => {
+        this._asking = false;
+        if (yes) this.armLastStand(actor, plan);
+        else this.toast('You let the Last Stand go. Your weave still left your hands.', 'info');
+      },
+      () => {
+        this._asking = false;
+      },
+    );
+    return true;
+  }
+
+  armLastStand(actor = this.player(), plan = null) {
+    if (!actor || this.state.laststand) return false;
+    const d = Prices.get('laststand');
+    this.state.laststand = 'armed';
+    this.addPart(actor, d, 'gain', { tap: 'douse' });
+    this.stats?.refresh?.(actor);
+    this.toast('The Last Stand is in you. When you would die, you will rise for one minute, and then die for good. Tap its mark on the HUD to put it out.', 'warn');
+    this.game.bus?.emit?.('price_paid', { price: 'laststand', caster: actor, plan, first: true });
+    return true;
+  }
+
+  // Put it out while it is only held (once it burns, nothing puts it out).
+  quenchLastStand() {
+    const P = this.player();
+    if (this.state.laststand !== 'armed') return false;
+    this.state.laststand = null;
+    if (P) this.stats?.removeModifier(P, 'price:laststand');
+    this.toast('You put out the Last Stand. When you fall, you fall like anyone.', 'info');
+    this.game.bus?.emit?.('price_ended', { price: 'laststand', actor: P, why: 'quenched' });
+    return true;
+  }
+
+  // Rise (survival calls this when the window closes, or when the player chooses it while
+  // down): whole, burning, for a minute. Returns true when they rose.
+  riseLastStand(P = this.player(), how = 'death') {
+    if (!P || this.state.laststand !== 'armed') return false;
+    const g = this.game;
+    const d = Prices.get('laststand');
+    this.state.laststand = { t: LAST_STAND_SECONDS, how };
+    this.stats?.removeModifier(P, 'price:laststand');
+    this.stats?.addModifier(P, { id: this.modId('laststand', 'gain'), source: 'price:laststand', label: 'Last Stand: burning', kind: 'gain', ...LAST_STAND_GAIN, t: LAST_STAND_SECONDS, total: LAST_STAND_SECONDS, color: d.color, icon: 'laststand', price: 'laststand' });
+    this.addPart(P, d, 'cost', { t: LAST_STAND_SECONDS });
+    this.stats?.refresh?.(P);
+    P.downed = false;
+    P.dead = false;
+    P.hp = P.maxHp;
+    P.invuln = Math.max(P.invuln || 0, 1.5);
+    P.lockTime = 0;
+    P.setState?.('idle');
+    safe(() => g.combat?.downedAt?.delete?.(P));
+    safe(() => g.particles?.emit?.('spark', P.x, P.y - 8, { count: 30, speed: 90, life: 0.9 }));
+    safe(() => g.particles?.emit?.('ember', P.x, P.y - 6, { count: 16 }));
+    safe(() => g.lighting?.flash?.({ x: P.x, y: P.y - 10, r: 140, color: '#ff7a2a', intensity: 1, duration: 1.1 }));
+    safe(() => g.camera?.shake?.(6, 0.5));
+    safe(() => g.audio?.play?.('levelup', { x: P.x, y: P.y, pitch: 0.42, volume: 1 }));
+    this.toast('Last Stand. You rise burning. One minute, and then you die for good.', 'warn');
+    g.bus?.emit?.('price_triggered', { price: 'laststand', actor: P, how });
+    return true;
+  }
+
+  // Seconds of the last minute left (null when not burning).
+  lastStandLeft() {
+    return this.burning() ? this.state.laststand.t : null;
   }
 
   onDamage(p) {
@@ -472,6 +615,19 @@ export class PriceRuntime {
     const S = this.state;
     const P = this.player();
     if (!P) return;
+    if (this.burning()) {
+      const L = S.laststand;
+      L.t -= dt;
+      // Burning: embers stream off them, and the light of it goes where they go.
+      this._burnFx = (this._burnFx || 0) - dt;
+      if (this._burnFx <= 0) {
+        this._burnFx = 0.12;
+        const g = this.game;
+        safe(() => g.particles?.emit?.('ember', P.x + (Math.random() - 0.5) * 8, P.y - 6, { count: 2 }));
+        if (L.t < 10) safe(() => g.particles?.emit?.('smoke', P.x, P.y - 10, { count: 1 }));
+      }
+      if (L.t <= 0) this.endLastStand(P);
+    }
     if (S.berserk) {
       S.berserk.t -= dt;
       if (S.berserk.t <= 0) this.endBerserk(P);
@@ -538,11 +694,34 @@ export class PriceRuntime {
     }
     if (S.lastlight && stop('lastlight')) S.lastlight = null;
     if (S.oath && stop('oath')) S.oath = null;
+    if (S.laststand === 'armed' && stop('laststand')) S.laststand = null;
     // The plain ones (bloodprice, glass…) are only their modifiers.
-    const special = new Set(['berserk', 'overdraw', 'emberblood', 'lastlight', 'oath']);
+    const special = new Set(['berserk', 'overdraw', 'emberblood', 'lastlight', 'oath', 'laststand']);
     if (P) for (const id of Prices.ids()) if (!special.has(id) && (this.active(P, id, 'gain') || this.active(P, id, 'cost'))) stop(id);
     if (P && ended.length) this.stats?.refresh?.(P);
     return ended;
+  }
+
+  // The minute is up: they die for good (survival closes the story).
+  endLastStand(P = this.player()) {
+    const L = this.state.laststand;
+    if (!L || typeof L !== 'object' || L.spent) return false;
+    this.state.laststand = { t: 0, spent: true };
+    if (P) this.stats?.removeModifier(P, 'price:laststand');
+    // Nothing else they paid for outlives them.
+    if (this.state.berserk) {
+      this.state.berserk = null;
+      if (P) this.stats?.removeModifier(P, 'price:berserk');
+    }
+    this.game.bus?.emit?.('price_ended', { price: 'laststand', actor: P, why: 'burned out' });
+    const sv = this.game.survival;
+    if (sv?.burnOut) return sv.burnOut(P);
+    if (P) {
+      P.hp = 0;
+      P.downed = true;
+      P.dead = true;
+    }
+    return true;
   }
 
   // Two minutes are up: the heart gives out.
@@ -550,7 +729,7 @@ export class PriceRuntime {
     this.state.berserk = null;
     this.stats?.removeModifier(P, 'price:berserk');
     this.game.bus?.emit?.('price_ended', { price: 'berserk', actor: P, why: 'heart' });
-    if (P.downed || P.dead) return false;
+    if (P.downed || P.dead || this.burning()) return false; // (the last stand burns on without it)
     this.toast('Your heart gives out.', 'warn');
     if (typeof P.fall === 'function') return P.fall({ window: FALL_WINDOW, cause: 'berserk' });
     return false;
@@ -568,6 +747,10 @@ export class PriceRuntime {
       const b = out.find((x) => x.id === 'price:berserk:cost');
       if (b) b.left = this.state.berserk.t;
     }
+    if (this.burning()) {
+      const c = out.find((x) => x.id === 'price:laststand:cost');
+      if (c) c.left = this.state.laststand.t;
+    }
     return out;
   }
 
@@ -583,6 +766,7 @@ export class PriceRuntime {
       ember: !!S.ember,
       lastlight: S.lastlight === 'armed' || S.lastlight === 'used' ? S.lastlight : null,
       oath: S.oath ? Math.round(S.oath.t * 10) / 10 : null,
+      laststand: S.laststand === 'armed' ? 'armed' : this.burning() ? Math.round(S.laststand.t * 10) / 10 : null,
     };
   }
 
@@ -594,6 +778,9 @@ export class PriceRuntime {
       S.ember = !!d.ember;
       if (d.lastlight === 'armed' || d.lastlight === 'used') S.lastlight = d.lastlight;
       if (Number.isFinite(d.oath) && d.oath > 0) S.oath = { t: d.oath };
+      // Held, or burning: closing the page does not escape the end of the minute.
+      if (d.laststand === 'armed') S.laststand = 'armed';
+      else if (Number.isFinite(d.laststand) && d.laststand > 0) S.laststand = { t: d.laststand, how: 'loaded' };
     }
     this.state = S;
   }

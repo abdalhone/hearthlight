@@ -61,6 +61,12 @@ const CSS = `
 .sv-call[disabled] { background: #5b2530; color: #d8b9b6; cursor: default; }
 .sv-call kbd { font-family: var(--font-display, system-ui); font-size: 12px; padding: 1px 6px; background: rgba(0,0,0,.3); }
 .ui.is-touch .sv-call kbd { display: none; }
+.sv-rise { pointer-events: auto; position: relative; overflow: hidden; margin-top: 2px; min-width: 190px; min-height: 44px; padding: 0 14px;
+  font-family: var(--font-display, system-ui); font-size: var(--fs-s, 14px); color: #ffe6cf; background: #3a1208; border: 0; cursor: pointer;
+  box-shadow: 0 0 0 2px #ff5a1f, 0 0 14px rgba(255,90,31,.45); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.sv-rise[hidden] { display: none; }
+.sv-rise-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, #86301b, #ff5a1f); }
+.sv-rise-text { position: relative; }
 .sv-hint { margin: 0; font-size: var(--fs-xs, 12px); color: var(--parch-faint, #877d6e); }
 .sv-curtain { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
   pointer-events: none; opacity: 0; transition: opacity 1.4s ease; background: transparent; }
@@ -92,6 +98,8 @@ const CSS = `
 @media (max-height: 430px) { .sv-fallen { top: calc(50% + 28px); } .sv-ring-wrap { width: 88px; height: 88px; } .sv-words-col { gap: 2px; }
   .sv-status { font-size: var(--fs-m, 16px); } .sv-call { min-height: 42px; min-width: 170px; margin-top: 2px; } .sv-flame { display: none; } }
 @media (max-width: 420px) { .sv-clock { gap: 10px; } .sv-ring-wrap { width: 96px; height: 96px; } }
+.sv-fallen.has-rise .sv-hint { display: none; }
+@media (max-height: 430px) { .sv-fallen.has-rise { top: calc(50% + 14px); } .sv-fallen.has-rise .sv-sub, .sv-fallen.has-rise .sv-rate { display: none; } .sv-rise { min-height: 38px; } }
 @media (prefers-reduced-motion: reduce) { .sv-words p, .sv-curtain { transition-duration: .01s; } }
 `;
 

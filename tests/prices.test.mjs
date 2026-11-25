@@ -13,10 +13,10 @@ import { BODY_CAP } from '../src/magic/balance.js';
 
 // DESIGN §25: prices are the Weave's fourth family. Each is a gain and a cost on the
 // stat pipeline (§26); any weave may carry one, and every cast pays it. This file checks
-// the seven prices one by one, then every price with every shape (and with essences and
+// the eight prices one by one, then every price with every shape (and with essences and
 // twists), the way the magic tests check the other three families.
 
-const SEVEN = ['bloodprice', 'berserk', 'glass', 'overdraw', 'emberblood', 'lastlight', 'oath'];
+const EIGHT = ['bloodprice', 'berserk', 'glass', 'overdraw', 'emberblood', 'lastlight', 'laststand', 'oath'];
 
 function arena(opts = {}) {
   const g = makeGame({ foes: 3, ...opts });
@@ -57,9 +57,9 @@ function fresh(g) {
 const weave = (price, shape = 'bolt', essences = ['raw'], twists = []) => ({ shape, essences, twists, prices: [price] });
 const cast = (g, w) => g.magic.cast(g.player, w, AIM, { free: true });
 
-test('seven prices, each a gain and a cost in words; the surge shape is a registry entry', () => {
-  assert.deepEqual(Object.keys(PRICES), SEVEN);
-  for (const id of SEVEN) {
+test('eight prices, each a gain and a cost in words; the surge shape is a registry entry', () => {
+  assert.deepEqual(Object.keys(PRICES), EIGHT);
+  for (const id of EIGHT) {
     const d = Prices.get(id);
     assert.ok(d.name && d.adj && d.gainText && d.costText && d.sentence && d.lyra, `${id} words`);
     assert.match(d.color, /^#[0-9a-f]{6}$/i);
@@ -96,7 +96,7 @@ test('a price rides on a weave like a twist: name, words, key, locks and one slo
   assert.ok(g.magic.compile(weave('glass')).ok);
   assert.equal(g.magic.compile({ shape: 'bolt', essences: ['raw'], prices: ['glass', 'oath'] }).code, 'too_many');
   assert.equal(compileWeave({ shape: 'bolt', prices: ['nope'] }).code, 'unknown');
-  assert.ok(g.magic.catalog().prices.length === 7);
+  assert.ok(g.magic.catalog().prices.length === 8);
 });
 
 test('bloodprice: +20% damage for 15 s, max health −40% for 2 min', () => {
@@ -250,7 +250,7 @@ test('every price works with every shape (and essences and twists): casts, pays,
   const P = g.player;
   const t0 = performance.now();
   let n = 0;
-  for (const price of SEVEN) {
+  for (const price of EIGHT) {
     for (const shape of Shapes.ids()) {
       fresh(g);
       const w = weave(price, shape, ['raw']);
@@ -276,7 +276,7 @@ test('every price works with every shape (and essences and twists): casts, pays,
   const tw = Twists.ids();
   for (let i = 0; i < 60; i++) {
     fresh(g);
-    const price = SEVEN[i % SEVEN.length];
+    const price = EIGHT[i % EIGHT.length];
     const shape = Shapes.ids()[rng.int(0, Shapes.ids().length - 1)];
     const e = [ess[rng.int(0, ess.length - 1)], ess[rng.int(0, ess.length - 1)]].filter((x, j, a) => a.indexOf(x) === j);
     const t = [tw[rng.int(0, tw.length - 1)], tw[rng.int(0, tw.length - 1)], tw[rng.int(0, tw.length - 1)]].filter((x, j, a) => a.indexOf(x) === j);
@@ -296,7 +296,7 @@ test('every price works with every shape (and essences and twists): casts, pays,
     n++;
   }
   const ms = performance.now() - t0;
-  assert.ok(n >= SEVEN.length * 13 + 60);
+  assert.ok(n >= EIGHT.length * 13 + 60);
   assert.ok(ms < 60000, `${ms} ms`);
 });
 

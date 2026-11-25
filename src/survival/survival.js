@@ -1076,7 +1076,8 @@ export class Survival {
     carriedOff(this, rec);
   }
 
-  // The player's window closed: the kept flame, home (the soft setting), or the end.
+  // The player's window closed: the last stand if it is held (§25), else the kept flame,
+  // home (the soft setting), or the end.
   die(rec) {
     const g = this.game;
     const P = rec.actor;
@@ -1085,6 +1086,7 @@ export class Survival {
       rec.carrierName = carrier.name;
       endCarry(this, carrier);
     }
+    if (safe(() => g.prices?.lastStandArmed?.(), false)) return this.riseInstead(P, 'death');
     this.resolveFall(P, 'died');
     const mode = g.settings?.deathMode === 'home' ? 'home' : hasKeptFlame(g) ? 'flame' : 'final';
     rec.savedIds = [...this.saved];
@@ -1092,6 +1094,56 @@ export class Survival {
     if (mode !== 'final') rec.ring = this.dropRing(P, rec);
     if (mode === 'home') return wakeHome(this, rec);
     if (mode === 'flame') return flameReturn(this, rec);
+    return finalDeath(this, rec);
+  }
+
+  // ---------------------------------------------------------------- the last stand
+
+  // Rise from the ground burning (§25 laststand): when the window closes with it held, or
+  // when the player chooses it while down (the countdown's Rise button).
+  riseInstead(P = this.game.player, how = 'chosen') {
+    const g = this.game;
+    if (!P || !safe(() => g.prices?.lastStandArmed?.(), false)) return false;
+    if (P.carriedBy) endCarry(this, P.carriedBy);
+    const rec = this.falls.get(P);
+    if (rec) this.resolveFall(P, 'laststand');
+    const ok = !!safe(() => g.prices.riseLastStand(P, how), false);
+    if (ok) {
+      // Whoever was on their way sees them get up, and burn.
+      const lyra = g.companion;
+      if (lyra && !lyra.downed && dist(lyra, P) < 260) speak(this, lyra, 'What did you do? Your eyes—', 'shout');
+    }
+    return ok;
+  }
+
+  // The minute is over: the story ends, whatever flame burns and whatever was chosen in
+  // Settings. The memorial says how.
+  burnOut(P = this.game.player) {
+    const g = this.game;
+    if (!P || g.state === 'dead') return null;
+    if (this.falls.has(P)) this.resolveFall(P, 'died');
+    if (P.carriedBy) endCarry(this, P.carriedBy);
+    P.hp = 0;
+    P.downed = true;
+    P.setState?.('downed');
+    safe(() => g.particles?.emit?.('smoke', P.x, P.y - 8, { count: 8 }));
+    safe(() => g.particles?.emit?.('ember', P.x, P.y - 6, { count: 12 }));
+    const rec = {
+      actor: P,
+      kind: 'player',
+      window: 1,
+      left: 0,
+      t: 0,
+      cause: 'laststand',
+      by: null,
+      crawled: 0,
+      responders: new Set(),
+      stanchers: new Set(),
+      anyoneCame: false,
+      place: placeName(g, P.x, P.y),
+      where: placePhrase(g, P.x, P.y),
+      savedIds: [...this.saved],
+    };
     return finalDeath(this, rec);
   }
 

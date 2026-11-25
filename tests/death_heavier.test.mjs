@@ -377,3 +377,160 @@ test('a rescue is not a death: carried to the sickroom, your coins stay in your 
   assert.equal(g.survival.ring, null, 'no embers: you did not die');
   assert.ok(P.gold > 0 && P.gold >= coins - 15);
 });
+
+// ---------------------------------------------------------------- D4: the last stand
+
+import { installProgression, BOSS_SECOND_PRICES } from '../src/progression/index.js';
+import { Prices, LAST_STAND_SECONDS } from '../src/magic/prices.js';
+import { lightKeptFlame } from '../src/survival/kept_flame.js';
+
+function withPrices(opts = {}) {
+  const g = makeGame({ hour: 14, ...opts });
+  installProgression(g);
+  g.bus.emit('game_start', { loaded: false });
+  alone(g);
+  banish(g);
+  const m = at(g, 'south_meadow');
+  lyraAway(g, m.x + 900, m.y);
+  placeAt(g, g.player, m.x, m.y);
+  return g;
+}
+
+function run(g, seconds, dt = 0.1) {
+  for (let t = 0; t < seconds - 1e-9; t += dt) {
+    if (g.state !== 'playing') break;
+    step(g, dt, dt);
+    g.stats.update(dt);
+    g.prices.update(dt);
+  }
+}
+
+test('the Last Stand says its price in full, and only a yes in the game\'s own dialog takes it up; it can be put out while held', async () => {
+  const d = Prices.get('laststand');
+  assert.match(d.costText, /die for good/);
+  assert.match(d.costText, /no kept flame/);
+  assert.match(d.costText, /no rescue/);
+  assert.match(d.costText, /waking at home/);
+  assert.match(d.gainText, /one minute/);
+  const g = withPrices();
+  const asked = [];
+  let answer = false;
+  g.ui.confirm = (o) => {
+    asked.push(o);
+    return Promise.resolve(answer);
+  };
+  const P = g.player;
+  g.prices.pay(P, { priceDefs: [d] });
+  assert.equal(asked.length, 1, 'asked');
+  assert.equal(asked[0].danger, true);
+  assert.match(asked[0].text, /die for good/);
+  assert.match(asked[0].text, /No kept flame/);
+  assert.match(asked[0].text, /this save closes/);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(g.prices.state.laststand, null, 'no: not taken up');
+  answer = true;
+  g.prices.pay(P, { priceDefs: [d] });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(g.prices.state.laststand, 'armed', 'yes: held');
+  const chip = g.prices.timers(P).find((m) => m.price === 'laststand');
+  assert.ok(chip && chip.tap === 'douse', 'a mark on the HUD, tap to put it out');
+  assert.ok(g.events.some((e) => e.type === 'price_paid' && e.p.price === 'laststand' && e.p.first), 'Lyra hears of it');
+  g.prices.pay(P, { priceDefs: [d] });
+  assert.equal(asked.length, 2, 'held already: not asked again');
+  assert.ok(g.prices.douse('laststand'));
+  assert.equal(g.prices.state.laststand, null);
+  assert.ok(!g.prices.timers(P).some((m) => m.price === 'laststand'));
+  // "Try all magic" cannot lend it.
+  g.magic = { realUnlocked: { prices: new Set() } };
+  g.prices.pay(P, { priceDefs: [d] });
+  assert.equal(asked.length, 2, 'not offered on a borrowed weave');
+  assert.ok(g.toasts.some((t) => /cannot be borrowed/.test(t.text)));
+});
+
+test('held when the window closes: you rise for a minute, burning and unstoppable, then die for good (flame or home, it ends)', async () => {
+  for (const mode of ['flame', 'home']) {
+    const g = withPrices(mode === 'home' ? { settings: { deathMode: 'home' } } : {});
+    const P = g.player;
+    if (mode === 'flame') {
+      P.inventory.add('coin', 200);
+      assert.ok(lightKeptFlame(g, P).ok);
+    }
+    g.prices.armLastStand(P);
+    const atk0 = g.stats.get(P, 'atk');
+    const rec = fell(g);
+    run(g, rec.window + 1);
+    assert.ok(!P.downed && P.hp === P.maxHp, `${mode}: risen, whole`);
+    assert.ok(g.prices.burning(), 'burning');
+    assert.ok(Math.abs(g.prices.lastStandLeft() - LAST_STAND_SECONDS) < 1.5);
+    assert.ok(g.stats.get(P, 'atk') >= atk0 * 2.4, `far stronger (${atk0} -> ${g.stats.get(P, 'atk')})`);
+    assert.ok(!g.survival.isFallen(P));
+    assert.equal(g.survival.ring, null, 'no ember-ring: nobody comes back for it');
+    assert.ok(g.events.some((e) => e.type === 'price_triggered' && e.p.price === 'laststand'));
+    // Nothing puts them down for the minute.
+    const w = wolf(g, P.x + 10, P.y);
+    g.combat.damage(w, P, 9999);
+    assert.ok(!P.downed && P.hp >= 1, 'cannot fall');
+    w.removed = true;
+    run(g, 30);
+    assert.ok(g.prices.lastStandLeft() < 31 && g.prices.lastStandLeft() > 28);
+    const timer = g.prices.timers(P).find((m) => m.id === 'price:laststand:cost');
+    assert.ok(timer && Math.abs(timer.left - g.prices.lastStandLeft()) < 0.01, 'the HUD counts it down');
+    run(g, 32);
+    assert.equal(g.state, 'dead', `${mode}: the story ends`);
+    const died = g.events.filter((e) => e.type === 'player_died').at(-1).p;
+    assert.equal(died.mode, 'final');
+    assert.equal(died.cause, 'laststand');
+    const memorial = await g.survival.pending;
+    assert.match(memorial.cause, /one last burning minute/);
+    if (mode === 'flame') assert.ok(g.flags.keptFlame, 'the flame was not spent: it could not help');
+  }
+});
+
+test('while down with it held you may choose to rise at once; lastlight saves you first; berserk\'s end cannot fell you while you burn; a save keeps the minute', () => {
+  const g = withPrices();
+  const P = g.player;
+  g.prices.armLastStand(P);
+  const rec = fell(g);
+  run(g, 3);
+  assert.ok(rec && g.survival.isFallen(P));
+  assert.ok(g.survival.riseInstead(P, 'chosen'));
+  assert.ok(!P.downed && g.prices.burning());
+  assert.ok(!g.survival.isFallen(P), 'the fall is over');
+  // Berserk ending mid-burn: the heart has nothing left to give out.
+  g.prices.state.berserk = { t: 0.05 };
+  run(g, 0.3);
+  assert.ok(!P.downed, 'berserk ends; the fire burns on');
+  // Saved mid-burn: the minute goes on after a reload.
+  run(g, 10);
+  const saved = JSON.parse(JSON.stringify(g.prices.serialize()));
+  assert.ok(saved.laststand > 45 && saved.laststand < 51, `${saved.laststand} s saved`);
+  const g2 = withPrices();
+  g2.prices.deserialize(saved);
+  assert.ok(g2.prices.burning() && Math.abs(g2.prices.lastStandLeft() - saved.laststand) < 0.01);
+
+  // Lastlight and the last stand both held: lastlight holds the wound shut first.
+  const g3 = withPrices();
+  const P3 = g3.player;
+  g3.prices.state.lastlight = 'armed';
+  g3.prices.armLastStand(P3);
+  const w = wolf(g3, P3.x + 10, P3.y);
+  g3.combat.damage(w, P3, 9999);
+  assert.ok(!P3.downed, 'lastlight caught the fall');
+  assert.equal(g3.prices.state.lastlight, 'used');
+  assert.equal(g3.prices.state.laststand, 'armed', 'the last stand is still held');
+});
+
+test('the Bone Warden carries the Last Stand: a second shard beside its own, never at the start', () => {
+  assert.deepEqual(BOSS_SECOND_PRICES.bone_warden_laststand, { boss: 'bone_warden', id: 'laststand' });
+  const g = withPrices();
+  const known = new Set();
+  g.magic = { unlocked: { prices: known }, realUnlocked: { prices: known }, unlock: (k, id) => known.add(id) };
+  assert.ok(!known.has('laststand'), 'not at the start');
+  g.bus.emit('boss_defeated', { id: 'bone_warden', boss: { x: g.player.x, y: g.player.y - 40 } });
+  const shards = g.entities.all().filter((e) => e.glyphId);
+  assert.deepEqual(shards.map((s) => s.glyphId).sort(), ['laststand', 'overdraw']);
+  assert.equal(g.flags.price_shard_bone_warden_laststand, 'dropped');
+  assert.equal(g.flags.price_shard_bone_warden, 'dropped');
+});

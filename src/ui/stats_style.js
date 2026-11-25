@@ -128,7 +128,7 @@ export function ensureStatsStyle() {
 }
 
 // One glyph per price, drawn as text (they read at 12 px on a hotbar button).
-export const PRICE_GLYPH = { bloodprice: '♥', berserk: '✸', glass: '◇', overdraw: '∞', emberblood: '♨', lastlight: '✦', oath: '⚭' };
+export const PRICE_GLYPH = { bloodprice: '♥', berserk: '✸', glass: '◇', overdraw: '∞', emberblood: '♨', lastlight: '✦', oath: '⚭', laststand: '☠' };
 
 // Where each price is found, for the Spellbook's locked tiles (never a hidden truth).
 export const PRICE_HINTS = {
@@ -139,6 +139,7 @@ export const PRICE_HINTS = {
   emberblood: 'Bram knows something about blood and forge-heat. Ask at the smithy.',
   lastlight: 'Sister Aveline keeps a light for the last dark. Ask at the chapel.',
   oath: 'Something Lyra would only give someone she trusts.',
+  laststand: 'The Bone Warden stood long after it should have fallen. What kept it standing is in its shard.',
 };
 
 // A glyph for the self-cast surge shape (the Spellbook's tiles and the hotbar).

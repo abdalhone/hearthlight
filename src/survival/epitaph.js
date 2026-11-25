@@ -43,6 +43,7 @@ export function causePhrase(game, rec) {
   const where = rec?.where || (P ? placePhrase(game, P.x, P.y) : 'in the wilds');
   const night = !!safe(() => game.clock?.isNight ?? (game.clock?.phase === 'night'), false);
   if (rec?.cause === 'berserk') return `Their heart gave out after the berserk fury, ${where}.`;
+  if (rec?.cause === 'laststand') return `They rose from their own death for one last burning minute, ${where}, and when it was over there was nothing left to bring back.`;
   if (rec?.carrierName) return `They died on ${rec.carrierName}'s shoulders, on the way to Mira's.`;
   if (rec?.wet) return `They went down in the cold water ${where} and did not come up again.`;
   const alone = !rec?.anyoneCame;

@@ -281,9 +281,11 @@ export function finalDeath(sv, rec) {
   const memorial = composeMemorial(g, rec);
   const mind = g.companion?.mind;
   safe(() => mind?.addDiary?.(memorial.lyra.text, g.clock?.day ?? 1));
-  safe(() => mind?.remember?.(`${g.player?.name && g.player.name !== 'Traveler' ? g.player.name : 'The stranger'} died today, ${memorial.where}. No flame was kept for them.`, { importance: 10, about: ['player'], tags: ['death'], emotion: 'sadness' }));
+  const who = g.player?.name && g.player.name !== 'Traveler' ? g.player.name : 'The stranger';
+  const how = rec?.cause === 'laststand' ? `They rose from dying for one last burning minute, and then it took them. Nothing could bring them back.` : 'No flame was kept for them.';
+  safe(() => mind?.remember?.(`${who} died today, ${memorial.where}. ${how}`, { importance: 10, about: ['player'], tags: ['death'], emotion: 'sadness' }));
   sv.memorial = memorial;
-  g.bus?.emit?.('player_died', { mode: 'final', memorial });
+  g.bus?.emit?.('player_died', { mode: 'final', memorial, cause: rec?.cause || null });
   const seq = async () => {
     let closed = false;
     try {

@@ -68,10 +68,17 @@ export class DeathView {
     });
     this._onKey = (e) => {
       if (!this.visible || e.repeat) return;
-      if (e.key !== 'h' && e.key !== 'H') return;
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if ((e.key === 'r' || e.key === 'R') && this.riseBtn && !this.riseBtn.hidden) {
+        this._riseKeys?.start(null);
+        return;
+      }
+      if (e.key !== 'h' && e.key !== 'H') return;
       this.call();
+    };
+    this._onKeyUp = (e) => {
+      if (e.key === 'r' || e.key === 'R') this._riseKeys?.stop();
     };
   }
 
@@ -94,9 +101,14 @@ export class DeathView {
     this.callBtn = button('Call for help', { cls: 'sv-call', onClick: () => this.call() });
     this.callBtn.append(h('kbd', { text: 'H' }));
     this.hintEl = h('p', { class: 'sv-hint' });
+    // The last stand (§25), when it is held: rise now, burning, for one minute, and then
+    // die for good. Held down for a second to choose it: never a stray tap.
+    this.riseFill = h('span', { class: 'sv-rise-fill', 'aria-hidden': 'true' });
+    this.riseBtn = h('button', { type: 'button', class: 'sv-rise', hidden: true, 'aria-label': 'Hold to rise in your Last Stand: one minute, then you die for good' }, this.riseFill, h('span', { class: 'sv-rise-text', text: 'Hold to rise: one minute, then death' }));
+    this.bindRise();
     // One row under the body: the ring, and beside it everything else (so it stays clear
     // of the hotbar on a computer and of the thumbs on a phone held sideways).
-    const col = h('div', { class: 'sv-words-col' }, this.statusEl, this.subEl, this.rateEl, this.helpEl, this.flameEl, this.callBtn, this.hintEl);
+    const col = h('div', { class: 'sv-words-col' }, this.statusEl, this.subEl, this.rateEl, this.helpEl, this.flameEl, this.callBtn, this.riseBtn, this.hintEl);
     const clock = h('div', { class: 'sv-clock' }, h('div', { class: 'sv-ring-wrap' }, this.ring, this.secsEl), col);
     this.fallenEl = h('div', { class: 'sv-fallen', hidden: true }, clock);
     this.layer = h('div', { class: 'layer sv-layer' }, this.fallenEl);
@@ -107,7 +119,45 @@ export class DeathView {
     else root.append(this.layer);
     root.append(this.curtain);
     window.addEventListener('keydown', this._onKey);
+    window.addEventListener('keyup', this._onKeyUp);
     this.mounted = true;
+  }
+
+  // Press and hold (pointer, or R on a keyboard) for RISE_HOLD seconds to rise.
+  bindRise() {
+    const HOLD = 1.1;
+    const b = this.riseBtn;
+    let t0 = 0;
+    let raf = 0;
+    const stop = () => {
+      t0 = 0;
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+      this.riseFill.style.width = '0%';
+    };
+    const tick = () => {
+      raf = 0;
+      if (!t0) return;
+      const k = Math.min(1, (performance.now() - t0) / (HOLD * 1000));
+      this.riseFill.style.width = `${Math.round(k * 100)}%`;
+      if (k >= 1) {
+        stop();
+        const g = this.game;
+        safe(() => g.survival?.riseInstead?.(g.player, 'chosen'));
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    const start = (e) => {
+      if (!this.visible || b.hidden || t0) return;
+      e?.preventDefault?.();
+      t0 = performance.now();
+      raf = requestAnimationFrame(tick);
+    };
+    b.addEventListener('pointerdown', start);
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, stop);
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+    this._riseKeys = { start, stop };
   }
 
   call() {
@@ -132,6 +182,7 @@ export class DeathView {
 
   hide() {
     this.visible = false;
+    this._riseKeys?.stop();
     if (this.fallenEl) this.fallenEl.hidden = true;
   }
 
@@ -331,6 +382,10 @@ export class DeathView {
     setText(this.flameEl, mode === 'flame' ? 'A kept flame burns for you at the chapel.' : mode === 'home' ? 'If you die, you will wake at home.' : 'No flame burns for you. If you die here, it ends.');
     this.callBtn.hidden = !!carrier;
     this.callBtn.disabled = performance.now() < this.callUntil;
+    const canRise = !!safe(() => g.prices?.lastStandArmed?.(), false);
+    if (this.riseBtn.hidden === canRise) this.riseBtn.hidden = !canRise;
+    this.fallenEl.classList.toggle('has-rise', canRise);
+    if (canRise) setText(this.riseBtn.lastChild, touch ? 'Hold to rise: one minute, then death' : 'Hold R to rise: one minute, then death');
     const crawlLeft = rec.crawled < CRAWL_BUDGET - 1;
     this.hintEl.hidden = !!carrier;
     setText(this.hintEl, crawlLeft ? (touch ? 'Drag to crawl a little.' : 'Move to crawl a little · E or H calls out') : 'You cannot drag yourself any further.');
@@ -354,13 +409,18 @@ export class DeathView {
       this.curtainWords(lines, { dark: true, hold: lines.length > 3 ? 7 : 5.6 });
     } else if (p?.mode === 'final') {
       const name = g.player?.name && g.player.name !== 'Traveler' ? g.player.name : 'The stranger';
-      this.curtainWords(
-        [
-          [`${name} did not wake.`, 'sv-big'],
-          ['No flame was kept for them.', ''],
-        ],
-        { dark: true, hold: Infinity },
-      );
+      const lines =
+        p.cause === 'laststand'
+          ? [
+              ['The fire goes out.', 'sv-ember'],
+              [`${name} gave the last of themselves to it.`, 'sv-big'],
+              ['There is nothing left to bring back.', ''],
+            ]
+          : [
+              [`${name} did not wake.`, 'sv-big'],
+              ['No flame was kept for them.', ''],
+            ];
+      this.curtainWords(lines, { dark: true, hold: Infinity });
       this.finalShown = false;
       this.finalTimer = setTimeout(() => this.showMemorial(), 4200);
     }

@@ -24,6 +24,7 @@ const PRICE_WEIGHT = {
   overdraw: { importance: 4, emotion: 'fear', feel: 0.1, rel: null },
   lastlight: { importance: 5, emotion: 'sadness', feel: 0.2, rel: null },
   oath: { importance: 7, emotion: 'surprise', feel: 0.4, rel: { affinity: 3, fear: 1 } },
+  laststand: { importance: 9, emotion: 'fear', feel: 0.7, rel: { fear: 6, trust: -2 } },
   default: { importance: 4, emotion: 'fear', feel: 0.15, rel: null },
 };
 

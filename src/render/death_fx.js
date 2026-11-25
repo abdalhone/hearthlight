@@ -12,6 +12,8 @@ export class DeathFx {
     this.close = 0; // 0..1 how far the vignette has closed
     this.bars = 0; // 0..1 letterbox
     this.flash = 0; // the white-out of the moment you fall
+    this.burn = 0; // 0..1 the last stand's fire round the edges (§25)
+    this._burnGrad = null;
     this._grad = null;
     this._gradCtx = null;
     this.was = false;
@@ -44,10 +46,56 @@ export class DeathFx {
     return g;
   }
 
+  // The last stand's minute (§25): fire at the edges of the screen, breathing faster as
+  // the minute runs out, white-hot in the last ten seconds.
+  drawBurn(ctx, renderer, dt, reduce) {
+    const g = this.game;
+    let left = null;
+    try {
+      left = g.prices?.lastStandLeft?.() ?? null;
+    } catch {
+      left = null;
+    }
+    this.burn += ((left != null ? 1 : 0) - this.burn) * Math.min(1, dt * 3);
+    if (this.burn < 0.005) return;
+    const W = renderer.canvas.width;
+    const H = renderer.canvas.height;
+    if (!this._burnGrad || this._burnCtx !== ctx) {
+      const gr = ctx.createRadialGradient(0, 0, 0.35, 0, 0, 1);
+      gr.addColorStop(0, 'rgba(255,90,20,0)');
+      gr.addColorStop(0.62, 'rgba(255,80,20,0)');
+      gr.addColorStop(0.86, 'rgba(255,72,16,0.38)');
+      gr.addColorStop(1, 'rgba(255,120,40,0.75)');
+      this._burnGrad = gr;
+      this._burnCtx = ctx;
+    }
+    const t = g.time || 0;
+    const L = left ?? 0;
+    const speed = 2.2 + (1 - Math.min(1, L / 60)) * 6;
+    const pulse = reduce ? 0.5 : 0.5 + 0.5 * Math.sin(t * speed);
+    ctx.save();
+    ctx.setTransform((W / 2) * 1.25, 0, 0, (H / 2) * 1.35, W / 2, H / 2);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = clamp01(this.burn * (0.45 + 0.35 * pulse));
+    ctx.fillStyle = this._burnGrad;
+    ctx.fillRect(-1, -1, 2, 2);
+    ctx.restore();
+    if (left != null && L < 10 && !reduce) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = clamp01((1 - L / 10) * 0.18 * pulse);
+      ctx.fillStyle = '#fff0d8';
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
+  }
+
   draw(ctx, renderer, dt) {
     const g = this.game;
     const s = g.survival?.fxState?.() || null;
     const reduce = !!g.settings?.reduceMotion;
+    this.drawBurn(ctx, renderer, dt, reduce);
     const k = Math.min(1, dt * 2.2);
     const wantDrain = s ? 0.62 + 0.36 * (1 - s.frac) : 0;
     const wantClose = s ? 0.32 + 0.6 * (1 - s.frac) : 0;
