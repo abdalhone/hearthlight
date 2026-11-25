@@ -24,6 +24,7 @@ import { itemName } from '../entities/items.js';
 import { normalizeArgs } from '../ai/brain/actions.js';
 import { gainText, frac, truncate } from './format.js';
 import { companionshipOf, companionshipLabel, companionshipReason, deedLabel, requestAnswer } from './lyra_view.js';
+import { applyUiZoom } from './ui_scale.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -139,6 +140,9 @@ export class UI {
 
     this.applyMotion();
     this.setTouch(isTouchDevice());
+    // Interface size with a mouse (ui_scale.js): again when the window or the setting changes.
+    applyUiZoom(this);
+    window.addEventListener('resize', () => applyUiZoom(this));
     this.bindDom();
     this.bindBus();
     this.village.bind();
@@ -512,6 +516,7 @@ export class UI {
     for (const ev of ['village_talk', 'rumor', 'bond_changed']) bus.on(ev, () => this.mind?.markDirty('people'));
     bus.on('settings_changed', ({ key }) => {
       if (key === 'reduceMotion') this.applyMotion();
+      if (key === 'uiSize') applyUiZoom(this);
       if (key === 'companionName' || key === 'brain') {
         this.chat.refreshHeader();
         this.title?.refreshMindLine();
@@ -550,6 +555,7 @@ export class UI {
     if (this.isTouch === !!on) return;
     this.isTouch = !!on;
     this.root.classList.toggle('is-touch', this.isTouch);
+    applyUiZoom(this);
   }
 
   applyMotion() {

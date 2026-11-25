@@ -6265,6 +6265,15 @@ input[type='range']::-moz-range-thumb {
   transition: opacity 0.35s ease-out;
 }
 
+/* ---------- Interface size with a mouse (src/ui/ui_scale.js; Settings → Display) ----------
+   The HUD, the chat and the panels are drawn at --uiz (1 with touch). Each layer fills the
+   screen, so a zoomed layer still fills it: what is pinned to an edge stays there. */
+.ui-zoomed > .layer-hud,
+.ui-zoomed > .layer-chat,
+.ui-zoomed > .layer-modal {
+  zoom: var(--uiz, 1);
+}
+
 /* ---------- the desktop hotbar ---------- */
 
 .hotbar {

@@ -753,6 +753,16 @@ Safe areas: HUD offsets use `env(safe-area-inset-*)`. Never use `alert/confirm/p
   claude.ai speed (quick/deeper), API key field (stored only in this browser, with a clear
   warning) and model, voice on/off + voice, music/sfx volume, text speed, thought bubbles,
   zoom, names (player, companion), cloud save, reduce motion, FPS, controls list, quit to title.
+- **Interface size** (r13; the author: "on pc i feel that the hud is a little small"):
+  with a mouse the HUD (cards, mission line, prompt, the weave bar), the chat and every
+  panel are drawn at a zoom (`src/ui/ui_scale.js` `uiZoom`, CSS `zoom: var(--uiz)` on the
+  HUD, chat and panel layers): Settings → Display → Interface size Small / Normal / Large
+  = 1 / 1.2 / 1.45, times the window next to 1280×720 (0.8–1.35, so the HUD keeps its
+  share of a big monitor), never wider than about a third of the window for the left
+  column. Normal (the default) is larger than before; Small is the old size at 1280×720.
+  Touch keeps 1 (Controls → Button size is the phone's; the row is greyed with touch and
+  says so). Toasts and the coach stay at 1: they are placed by measured boxes, and the
+  HUD's own measured layout divides by the zoom.
 - Pause (`Esc`): resume, settings, save, quit to title. Sets `game.paused`.
 - `ui.toast(text, kind = 'info'|'good'|'warn'|'quest'|'lyra')`, `ui.setInteractPrompt(label)`,
   `ui.isModalOpen()`, `ui.fadeOut(s) / fadeIn(s)` (promises), `ui.showDiary(entry)`,

@@ -460,6 +460,8 @@ export class Hud {
       setStyle(this.hbManaCost, 'left', `${((100 * Math.max(0, mana.cur - c)) / mana.max).toFixed(1)}%`);
       setText(this.hbManaText, `${Math.floor(mana.cur)} / ${Math.round(mana.max)}`);
     }
+    let filled = 0;
+    for (let i = 0; i < n; i++) if (w.weaveAt(i)) filled++;
     for (let i = 0; i < 6; i++) {
       const slot = this.hbSlots[i];
       const on = i < n;
@@ -470,7 +472,7 @@ export class Hud {
         slot.key = rec.key;
         paintSlot(slot, rec, i);
       }
-      const rmb = i === w.selected && n > 1;
+      const rmb = i === w.selected && filled > 1;
       if (slot.rmb.hidden === rmb) slot.rmb.hidden = !rmb;
       paintSlotState(slot, rec, w, i, t);
     }
@@ -587,9 +589,11 @@ export class Hud {
     const right = this.rightEl.getBoundingClientRect();
     if (!root.width || !right.width) return;
     const gap = 6;
-    const edgeL = cards.left - root.left;
-    const edgeR = right.right - root.left;
-    const top = Math.max(cards.bottom, right.bottom) - root.top + gap;
+    // Measured boxes are on-screen px; inside a zoomed HUD (ui_scale.js) a px is z of them.
+    const z = this.ui._uiz || 1;
+    const edgeL = (cards.left - root.left) / z;
+    const edgeR = (right.right - root.left) / z;
+    const top = (Math.max(cards.bottom, right.bottom) - root.top) / z + gap;
     st.top = `${Math.round(top)}px`;
     st.left = `${Math.round(edgeL)}px`;
     st.width = `${Math.round(edgeR - edgeL)}px`;
@@ -605,11 +609,12 @@ export class Hud {
     const right = this.rightEl.getBoundingClientRect();
     if (!root.width || !right.width || !cards.width) return;
     const gap = 10;
-    const left = cards.right - root.left + gap;
+    const z = this.ui._uiz || 1; // (see layoutTop)
+    const left = (cards.right - root.left) / z + gap;
     const st = this.center.style;
-    const width = right.left - root.left - gap - left;
+    const width = (right.left - root.left) / z - gap - left;
     st.left = `${Math.round(left)}px`;
-    st.top = `${Math.round(cards.top - root.top + Math.max(0, (Math.min(cards.height, 46) - 34) / 2))}px`;
+    st.top = `${Math.round((cards.top - root.top) / z + Math.max(0, (Math.min(cards.height / z, 46) - 34) / 2))}px`;
     st.width = `${Math.max(0, Math.round(width))}px`;
     st.transform = 'none';
     this.center.hidden = width < 70;

@@ -39,7 +39,7 @@ export const SETTINGS_LAYOUT = {
     { id: 'village', title: 'Villagers', keys: ['villageAi'] },
   ],
   display: [
-    { id: 'screen', title: 'Screen', keys: ['zoom', 'showQuestLine', 'reduceMotion', 'showFps'] },
+    { id: 'screen', title: 'Screen', keys: ['zoom', 'uiSize', 'showQuestLine', 'reduceMotion', 'showFps'] },
     { id: 'words', title: 'Words', keys: ['textSpeed', 'showThoughts'] },
   ],
 };
@@ -53,7 +53,7 @@ export const ACTION_ROWS = {
 };
 
 // Settings the touch and aim controls keep outside DEFAULT_SETTINGS (unset = default).
-export const EXTRA_SETTING_KEYS = ['touchScale', 'leftHanded', 'touchBuzz', 'aimGuides', 'showQuestLine'];
+export const EXTRA_SETTING_KEYS = ['touchScale', 'leftHanded', 'touchBuzz', 'aimGuides', 'showQuestLine', 'uiSize'];
 
 // Every key the panel shows, in order, with its tab: [{ key, tab, group }].
 export function settingKeysInLayout() {
@@ -122,6 +122,17 @@ export const SETTING_ROWS = {
       [1.25, 'Close'],
       [1.5, 'Closest'],
     ],
+  },
+  uiSize: {
+    kind: 'select',
+    label: 'Interface size',
+    note: 'The HUD, the weave bar and the panels, with a mouse. Phones keep theirs.',
+    options: [
+      ['small', 'Small'],
+      ['normal', 'Normal'],
+      ['large', 'Large'],
+    ],
+    fallback: 'normal',
   },
   showQuestLine: { kind: 'toggle', on: true, label: 'Mission line', note: 'The mission you follow, in one line at the top. Tap it for all your missions.' },
   reduceMotion: { kind: 'toggle', label: 'Reduce motion', note: 'Less shaking, flashing and drifting.' },
@@ -290,6 +301,8 @@ export class SettingsPanel {
         return s.brain === 'apikey' || s.brain === 'local' ? 'Used when her mind is Claude on claude.ai.' : null;
       case 'voiceVol':
         return s.voices === false ? 'Turn on spoken scenes first.' : null;
+      case 'uiSize':
+        return this.ui?.isTouch ? 'With touch, the sizes are set for your fingers: Controls → Button size.' : null;
       case 'deathMode':
         return safe(() => g.survival?.isFallen?.(g.player), false) ? 'Not while you lie bleeding. Ask again once you are on your feet.' : null;
       default:
