@@ -4,6 +4,7 @@
 // speaks only when she is near, awake, with the player and not in a fight.
 
 import { nonRaw, weaveOf, earnedPart } from './tracker.js';
+import { seesActor } from '../ai/sight.js';
 
 const SIGHT = 170;
 
@@ -78,7 +79,8 @@ export class LyraWatch {
     if (!l || !p || l.removed || l.downed || l.state === 'sleep') return false;
     const cs = l.mind?.companionship || 'together';
     if (cs === 'gone' || g.flags?.lyra_gone) return false;
-    return Math.hypot(l.x - p.x, l.y - p.y) <= SIGHT;
+    // The one rule for eyes (DESIGN §29.2): walls, light and distance, not distance alone.
+    return Math.hypot(l.x - p.x, l.y - p.y) <= SIGHT && seesActor(g, l, p);
   }
 
   onEvent(type, p) {

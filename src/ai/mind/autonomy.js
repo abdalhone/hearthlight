@@ -10,6 +10,7 @@ import { buildPlan, blockAt, blockIndexAt, weighGoals, sleepSpot, questStageInde
 import { RE, isApology, parseOffer, parsePromiseText, parseAskText } from './autonomy_words.js';
 import { weighWorth, WorthTracker, WORTH, worthLine, topCost } from './autonomy_worth.js';
 import { Outings } from './autonomy_outing.js';
+import { seesActor } from '../sight.js';
 import { openAgenda, chooseNext, agendaText } from './autonomy_open.js';
 
 // Lyra's own will (DESIGN §16). She lives for herself: she keeps her own day, her own
@@ -778,6 +779,8 @@ export class Autonomy {
       return;
     }
     if (!HARMLESS_SPECIES.has(species)) return;
+    // Only what she saw (DESIGN §29.2): not through a wall, not in the dark from afar.
+    if (!seesActor(this.game, this.lyra(), entity)) return;
     if (this.now() < this.huntOkUntil && !PET_SPECIES.has(species) && species !== 'chicken') {
       this.remember(`We took a ${what} for the pot. Quick and clean, and I said thank you to it.`, { importance: 2, tags: ['hunt'] });
       return;

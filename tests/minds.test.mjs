@@ -529,3 +529,147 @@ test('A5: asking Lyra to teach you: a lesson she can give is offered as one (a y
   g.actions.run('accept_mission', { value: 'first_spark' }, 'player');
   assert.equal(g.missions.status('first_spark'), 'active', 'and saying yes starts it');
 });
+
+// ------------------------------------------------------------------ A6: eyes and words
+
+import { Actor } from '../src/entities/entity.js';
+import { look } from '../src/murder/witness.js';
+import { px as tpx, put, holdLyra, downBy, villagers as villagersOf } from './murder_world.mjs';
+
+function quietAll(g, keep = []) {
+  for (const v of villagersOf(g)) {
+    if (keep.includes(v.id)) continue;
+    put(v, tpx(141) + Math.random() * 20, tpx(101));
+    v.think = () => {};
+  }
+  if (!keep.includes('lyra')) holdLyra(g, tpx(150), tpx(112));
+}
+
+// Two outdoor points either side of a building, both outside its walls.
+function aroundBuilding(g, id = 'ember_kettle') {
+  const b = g.locations.get(id).bounds;
+  const cy = (b.y + b.h / 2) * 16;
+  const west = { x: (b.x - 1.5) * 16, y: cy };
+  const east = { x: (b.x + b.w + 1.5) * 16, y: cy };
+  return { west, east, b };
+}
+
+test('A6: one rule for eyes — Lyra does not see a cat killed on the far side of a house; in the open she does', () => {
+  const g = makeVillage({ hour: 12 });
+  quietAll(g, ['lyra']);
+  const L = g.companion;
+  const a = L.mind.autonomy;
+  const { west, east } = aroundBuilding(g);
+  const kill = (at) => {
+    const cat = g.entities.add(new Actor(g, { id: `cat_${Math.round(at.x)}`, name: 'Cat', faction: 'animal', maxHp: 4, x: at.x, y: at.y }));
+    cat.species = 'cat';
+    put(g.player, at.x - 10, at.y);
+    g.combat.damage(g.player, cat, 999, { exact: true, crit: false });
+    return cat;
+  };
+  holdLyra(g, west.x, west.y);
+  assert.equal(look(g, L, east.x, east.y), null, 'the house is between them');
+  const before = a.ledger.length;
+  kill(east);
+  assert.equal(a.ledger.length, before, 'what she could not see is not on her ledger');
+  const sq = g.locations.get('town_square').center;
+  holdLyra(g, sq.x + 50, sq.y);
+  assert.ok(look(g, L, sq.x - 10, sq.y), 'in the open, she sees');
+  kill({ x: sq.x - 10, y: sq.y });
+  assert.ok(a.ledger.some((e) => e.deed === 'killed_harmless'), 'and what she sees, she keeps');
+});
+
+test('A6: villagers’ sightings and the "who saw it" of gossip use the same eyes: no seeing through a house', () => {
+  const g = makeVillage({ hour: 12 });
+  quietAll(g, ['elda', 'bram']);
+  const { west, east } = aroundBuilding(g);
+  const elda = g.entities.get('elda');
+  const bram = g.entities.get('bram');
+  put(elda, west.x, west.y);
+  put(bram, east.x, east.y);
+  assert.equal(g.villageLife.sight.canSee(elda, bram), false, 'a house between them');
+  assert.ok(!g.village.witnessesNear(east.x, east.y, 150, { sight: true }).includes('elda'));
+  put(elda, east.x, east.y + 50);
+  assert.equal(g.villageLife.sight.canSee(elda, bram), true);
+});
+
+test('A6: a killing seen travels only by meeting: the watch learns when the witness reaches them, not before', () => {
+  const g = makeVillage({ hour: 12 });
+  quietAll(g, ['bram', 'elda', 'wys', 'mira']);
+  const sq = g.locations.get('town_square').center;
+  const bram = g.entities.get('bram');
+  const elda = g.entities.get('elda');
+  const wys = g.entities.get('wys');
+  const mira = g.entities.get('mira');
+  for (const e of [bram, mira]) e.think = () => {};
+  put(bram, sq.x, sq.y);
+  put(g.player, sq.x - 14, sq.y);
+  put(elda, sq.x + 50, sq.y - 10);
+  // Mira far off across the village; Wys at the guardhouse.
+  put(mira, tpx(20), tpx(20));
+  const gh = g.locations.get('guardhouse').center;
+  put(wys, gh.x, gh.y);
+  wys.think = () => {};
+  downBy(g, bram);
+  const rec = g.murder.kill(bram, g.player);
+  const r = g.village.rumors.get(rec.rumor);
+  assert.deepEqual(r.heardBy.filter((x) => x !== 'bram').sort(), ['elda'], 'only the one who saw it knows');
+  assert.notEqual(g.player.crime?.kind, 'murder');
+  assert.ok(elda.fleeTo, 'Elda runs for the watch');
+  for (let i = 0; i < 40; i++) stepVillage(g, 0.5);
+  assert.ok(!r.heardBy.includes('mira'), 'Mira, far off, has heard nothing');
+  // Elda reaches Wys (we bring them together; her run takes her there in time).
+  put(elda, wys.x + 20, wys.y);
+  for (let i = 0; i < 60 && !rec.alarm?.raised; i++) stepVillage(g, 0.5);
+  assert.equal(rec.alarm.raised, true, 'she told the watch');
+  assert.equal(rec.alarm.by, 'wys');
+  assert.equal(g.player.crime?.kind, 'murder', 'now the stranger is wanted');
+});
+
+// ------------------------------------------------------------------ A7: witnesses are people
+
+test('A7: Elda watches the stranger kill: terrified, she runs and screams, will not talk; after several killings, never calm again', async () => {
+  const g = makeVillage({ hour: 12 });
+  quietAll(g, ['bram', 'elda', 'tobias', 'garrick']);
+  const sq = g.locations.get('town_square').center;
+  const elda = g.entities.get('elda');
+  for (const id of ['bram', 'tobias', 'garrick']) g.entities.get(id).think = () => {};
+  const killNear = (id, dx) => {
+    const v = g.entities.get(id);
+    put(v, sq.x + dx, sq.y);
+    put(g.player, sq.x + dx - 14, sq.y);
+    put(elda, sq.x + dx + 50, sq.y - 10);
+    downBy(g, v);
+    return g.murder.kill(v, g.player);
+  };
+  const rec = killNear('bram', 0);
+  assert.ok(rec.seen.some((s) => s.id === 'elda'));
+  assert.equal(g.murder.fearOf(elda), 'terror');
+  assert.equal(elda.mode, 'flee', 'she runs');
+  assert.ok(g.said.some((s) => s.who === 'elda'), 'screaming');
+  assert.match(g.village.refusesTalk(elda), /won't talk to you/, 'the chat closes on her');
+  const r1 = await g.village.playerSays(elda, 'WILL YOU TALK TO LYRA FOR ME');
+  assert.ok(!g.village.commitments.open('elda').length, 'no errands run for a killer');
+  assert.match(r1.lines[0], /Stay away|Don't|Go away|telling/i, `only fear: ${r1.lines[0]}`);
+  // A second killing before her eyes: dread, for good.
+  killNear('tobias', 80);
+  assert.equal(elda.dread, true);
+  g.clock.t += 2 * 900; // days later, the terror past
+  assert.equal(g.murder.fearOf(elda), 'dread');
+  assert.equal(g.village.refusesTalk(elda), null, 'she can be spoken to again…');
+  const v = g.village;
+  v.provider = () => ({ id: 'fake' });
+  let asked = 0;
+  v.askClaude = async () => {
+    asked++;
+    return { say: 'Oh, hello love, sit down.', mood: 'warm', opinion_delta: 1, learned: [], rumor_told: null, rumor: null, name: null, memory: null, asked: null, commit: null };
+  };
+  const r2 = await v.playerSays(elda, 'hello Elda, how are you?');
+  assert.equal(asked, 0, '…but never calmly: no warm Claude reply');
+  assert.match(r2.lines[0], /Stay away|Don't|Go away|telling/i, r2.lines[0]);
+  // And it survives a save.
+  const saved = JSON.parse(JSON.stringify(g.murder.serialize()));
+  elda.dread = false;
+  g.murder.deserialize(saved);
+  assert.equal(elda.dread, true);
+});

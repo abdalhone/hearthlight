@@ -800,6 +800,16 @@ export class Chat {
       if (this.dictState !== 'idle' && this.ownsDictation()) this.stopDictation();
       this.target = id;
       this.away = null;
+      if (id !== LYRA) {
+        const e = this.entity(id);
+        if (e && this.refusalStill(e)) {
+          this.applyTarget();
+          this.renderThread();
+          this.refusal(e);
+          this.refreshPeople(true);
+          return true;
+        }
+      }
       this.unreadBy.set(id, 0);
       this.applyTarget();
       this.renderThread();
@@ -822,7 +832,7 @@ export class Chat {
     this.sendBtn.disabled = gone || away;
     this.mic.disabled = gone || away;
     this.chips.hidden = gone || away;
-    this.field.placeholder = gone ? `${n} won't talk to you.` : away ? `${n} can't hear you now.` : `Say something to ${n}…`;
+    this.field.placeholder = gone || this.away === 'refuses' ? `${n} won't talk to you.` : away ? `${n} can't hear you now.` : `Say something to ${n}…`;
     this.field.setAttribute('aria-label', `Message to ${n}`);
     if (this.dictState === 'idle') this.mic.title = `Speak to ${n}`;
     this.log.setAttribute('aria-label', `Conversation with ${n}`);
@@ -943,7 +953,7 @@ export class Chat {
     const e = this.entity(id);
     const why = !e ? 'gone' : ids ? (ids.includes(id) ? null : whyNotHeard(this.game, e, EARSHOT_LOSE) || 'far') : whyNotHeard(this.game, e, EARSHOT_LOSE);
     if (!why) {
-      if (this.away) {
+      if (this.away && !(this.away === 'refuses' && e && this.refusalStill(e))) {
         // Back within earshot: the field opens again.
         this.away = null;
         this.applyTarget();
@@ -967,6 +977,14 @@ export class Chat {
       return;
     }
     this.applyTarget();
+  }
+
+  refusalStill(e) {
+    try {
+      return !!this.village()?.refusesTalk?.(e);
+    } catch {
+      return false;
+    }
   }
 
   sessionFor(e) {
@@ -993,10 +1011,13 @@ export class Chat {
       return;
     }
     if (this.target !== id) this.selectTarget(id);
-    if (!canHear(g, e, EARSHOT_LOSE)) {
+    if (!canHear(g, e, EARSHOT_LOSE) || this.away) {
       this.checkTarget();
       return;
     }
+    // Someone who just watched the stranger kill will not talk (DESIGN §29.3).
+    const refuses = this.refusal(e);
+    if (refuses) return;
     // The rest of their last answer is said before the player's next line, never after.
     this.flushUnsaid(id);
     this.pushVillager(id, { from: 'player', text: t });
@@ -1008,6 +1029,24 @@ export class Chat {
       return;
     }
     this.ask(e, t);
+  }
+
+  // A villager who will not talk with the player at all: the talk closes, with why.
+  refusal(e) {
+    let why = null;
+    try {
+      why = this.village()?.refusesTalk?.(e) || null;
+    } catch {
+      why = null;
+    }
+    if (!why) return null;
+    if (this.target === e.id && this.away !== 'refuses') {
+      const last = this.threadOf(e.id).slice(-1)[0];
+      if (!last || last.text !== why) this.pushVillager(e.id, { from: 'system', text: why });
+      this.away = 'refuses';
+      this.applyTarget();
+    }
+    return why;
   }
 
   ask(e, t) {
@@ -1059,6 +1098,9 @@ export class Chat {
     if (!e || !reply?.lines?.length) return;
     const g = this.game;
     const id = e.id;
+    // Gone on their way (or backed off in fear) before the answer came: they cannot answer
+    // you now (the author: "Elda has gone on her way… and she STILL replies").
+    if ((this.target === id && this.away) || !canHear(g, e, EARSHOT_LOSE)) return;
     if (reply.mood) this.moods.set(id, String(reply.mood).toLowerCase());
     if (!reply.ok) {
       // No words came: what the player sees them do instead.

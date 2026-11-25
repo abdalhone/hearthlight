@@ -6,6 +6,7 @@ import { now, rand, hostileTo, alive, walkLine, speak, pickLine } from './creatu
 import * as D from './npc_dialogue.js';
 import { NPC_PROFILES } from './npc_data.js';
 import { RESPONSE_LINES } from './npc_lines.js';
+import { look } from '../murder/witness.js';
 
 // Villagers of Hearthvale. Each one lives by the 24-hour schedule in its profile
 // (npc_data.js): walks there with the pathfinder (opening doors and closing them
@@ -1034,14 +1035,13 @@ export class NPC extends Actor {
     }
   }
 
-  // Same space: both outside, or both inside the same building.
+  // The one rule for eyes (DESIGN §29.2, murder/witness.js): the same space, range for
+  // the light, and no wall or house in the way.
   canSee(e) {
-    const map = this.game.map;
-    if (!map?.buildingAt) return true;
+    if (!e) return false;
+    if (!this.game.map?.buildingAt) return true;
     try {
-      const a = map.buildingAt(Math.floor(this.x / TILE), Math.floor(this.y / TILE));
-      const b = map.buildingAt(Math.floor(e.x / TILE), Math.floor(e.y / TILE));
-      return (a?.id ?? null) === (b?.id ?? null);
+      return !!look(this.game, this, e.x, e.y);
     } catch {
       return true;
     }
@@ -1067,7 +1067,9 @@ export class NPC extends Actor {
 
   // ------------------------------------------------------------ fleeing
 
-  startFlee(from, seconds, shout = 'flee') {
+  // opts.to: run to someone (a witness to a killing runs for the watch, DESIGN §29.3),
+  // not simply away; opts.quiet: no fresh cry (they are already screaming).
+  startFlee(from, seconds, shout = 'flee', opts = {}) {
     const g = this.game;
     if (this.help && this.help.role === 'shout') this.help = null;
     this.mode = 'flee';
@@ -1079,7 +1081,12 @@ export class NPC extends Actor {
     // Run home if home is not past the danger; otherwise just away.
     const home = this.locFor(this.profile.home);
     this.fleeHome = false;
-    if (home) {
+    this.fleeTo = null;
+    if (opts?.to && Number.isFinite(opts.to.x)) {
+      this.fleeTo = opts.to;
+      this.fleeHome = 'to';
+      this.walker.goTo(opts.to.x, opts.to.y);
+    } else if (home) {
       const hx = home.center.x - this.x;
       const hy = home.center.y - this.y;
       const fx = from.x - this.x;
@@ -1091,7 +1098,7 @@ export class NPC extends Actor {
         this.walker.goTo(home.center.x, home.center.y);
       }
     }
-    if (now(g) - this.shoutAt > 5) {
+    if (!opts?.quiet && now(g) - this.shoutAt > 5) {
       this.shoutAt = now(g);
       const list = shout === 'crime' ? this.profile.crime : this.profile.flee;
       this.say(pickLine(g, list) || 'Help!', { kind: 'shout', target: from });
@@ -1102,6 +1109,20 @@ export class NPC extends Actor {
   fleeStep(dt, tick) {
     const g = this.game;
     const from = this.fleeFrom;
+    // Running to someone (the watch): on until there, whoever is behind.
+    if (this.fleeHome === 'to' && this.fleeTo) {
+      this.speedMul = 1.75;
+      const to = this.fleeTo.entity && !this.fleeTo.entity.removed ? this.fleeTo.entity : this.fleeTo;
+      if (Math.hypot(to.x - this.x, to.y - this.y) < 40 || now(g) > this.fleeUntil) return this.endFlee();
+      if (tick && this.fleeTo.entity && Math.hypot(this.fleeTo.x - to.x, this.fleeTo.y - to.y) > 48) {
+        this.fleeTo = { x: to.x, y: to.y, entity: this.fleeTo.entity };
+        this.walker.goTo(to.x, to.y);
+      }
+      const res = this.walker.step(dt);
+      if (res === 'arrived' || res === 'idle') return this.endFlee();
+      if (res === 'stuck') this.fleeHome = false;
+      return;
+    }
     if (tick) {
       const gone = !from || !alive(from) || from.removed;
       const far = from ? this.distTo(from) > 130 : true;
@@ -1145,6 +1166,7 @@ export class NPC extends Actor {
     this.mode = 'routine';
     this.fleeFrom = null;
     this.fleeHome = false;
+    this.fleeTo = null;
     this.speedMul = 1;
     this.walker.stop();
     this.r.key = null; // replan from wherever we ran to

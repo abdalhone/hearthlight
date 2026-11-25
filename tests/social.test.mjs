@@ -293,6 +293,12 @@ test('rumors spread one listener at a time, grow in the telling and move opinion
   assert.ok(events.some((e) => e.type === 'rumor'));
   assert.ok(r.heardBy.includes('tansy'));
   const heard0 = r.heardBy.length;
+  // News travels by meeting (DESIGN §29.2): out by the player, Tansy tells nobody…
+  run(game, 60);
+  assert.equal(r.heardBy.length, heard0, 'nobody she has not met has heard');
+  // …back among her neighbours, she tells them, and they tell each other.
+  people.tansy.x = 100 + 16;
+  people.tansy.y = 100 + 16;
   run(game, 400);
   assert.ok(r.heardBy.length > heard0 + 3, `spread to ${r.heardBy.length}`);
   assert.ok(people.tobias.opinionOfPlayer > before, 'her father thinks better of the player');
@@ -329,6 +335,9 @@ test('attacking Lyra: fast word, cold village, shut shop, barred Kettle, slow am
   v.onEvent('deed', { deed: 'downed_lyra', severity: -10, text: 'Knocked me out cold.', victim: null });
   const r = v.rumors.list.find((x) => x.kind === 'downed_lyra');
   assert.ok(r && r.heardBy.includes('hess') && r.heardBy.includes('lyra'));
+  // Hess walks back to the market, where everyone is, and the word goes round face to face.
+  people.hess.x = 100 + 32;
+  people.hess.y = 100;
   run(game, 300);
   const heard = VILLAGERS.filter((id) => r.heardBy.includes(id));
   assert.ok(heard.length >= 14, `fast: ${heard.length} heard within a few hours`);

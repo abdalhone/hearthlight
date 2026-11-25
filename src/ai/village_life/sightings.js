@@ -10,6 +10,7 @@
 // (less at night, much less for nearly blind Wenna), and the seer awake and on their feet.
 
 import { TILE, DAY_SECONDS } from '../../core/constants.js';
+import { look, lineOfSight, lightAt, sightRange, RANGE } from '../../murder/witness.js';
 
 const NONE = -1;
 const OUT_RANGE = 150; // px outdoors by day
@@ -18,6 +19,15 @@ const ROOM_RANGE = 240; // px under the same roof: a room is seen whole
 const BLIND_RANGE = 44; // Wenna knows people by their step, close by
 const WITH_RANGE = 40; // px: two people this close are "together"
 const KEEP_DAYS = 4; // sightings older than this are not saved
+
+function safe01(fn) {
+  try {
+    const v = fn();
+    return Number.isFinite(v) ? v : 0;
+  } catch {
+    return 0;
+  }
+}
 
 export class Sightings {
   // ids: who sees and is seen (villagers, 'lyra', 'player').
@@ -44,6 +54,7 @@ export class Sightings {
     this._seen = new Uint8Array(this.n);
     this._with1 = new Int16Array(this.n);
     this._with2 = new Int16Array(this.n);
+    this._light = new Float32Array(this.n);
     this._bldIds = new Map();
     this.sweeps = 0;
     this.onBody = null; // (seerId, deadId, placeId) when someone comes on a body
@@ -115,6 +126,9 @@ export class Sightings {
         }
       }
       this._bld[i] = b;
+      // The light on them (DESIGN §29.2: one rule for eyes): a room is lit; outdoors, the day
+      // and any lamp or fire near them.
+      this._light[i] = b ? 1 : night || fog ? safe01(() => lightAt(g, e.x, e.y)) : 1;
       let li = NONE;
       if (locs?.at) {
         try {
@@ -162,10 +176,12 @@ export class Sightings {
         const e = this._ent[j];
         const same = this._bld[i] === this._bld[j];
         if (!same) continue;
-        const r = blind ? BLIND_RANGE : this._bld[i] ? ROOM_RANGE : outRange;
+        const r = blind ? BLIND_RANGE : this._bld[i] ? ROOM_RANGE : night || fog ? Math.max(outRange * 0.6, sightRange(g, a, this._light[j])) : outRange;
         const dx = e.x - a.x;
         const dy = e.y - a.y;
         if (dx * dx + dy * dy > r * r) continue;
+        // Outdoors, a wall or a house between them hides one from the other.
+        if (!this._bld[i] && !lineOfSight(g, a.x, a.y - 6, e.x, e.y - 6)) continue;
         if (this._seen[j] === 2) {
           if (this.onBody) this.onBody(this.ids[i], this.ids[j], this.places[this._loc[j]] || null);
           continue;
@@ -243,22 +259,15 @@ export class Sightings {
     return out;
   }
 
-  // Can a see b right now (same rule as the sweep)?
+  // Can a see b right now? The one rule for eyes (murder/witness.js look): the same space,
+  // range for the light, and no wall or house between them.
   canSee(a, b) {
-    const g = this.game;
     if (!a || !b || a === b) return false;
-    const night = !!g?.clock?.isNight;
-    let ba = null;
-    let bb = null;
     try {
-      ba = g?.map?.buildingAt?.(Math.floor(a.x / TILE), Math.floor(a.y / TILE)) || null;
-      bb = g?.map?.buildingAt?.(Math.floor(b.x / TILE), Math.floor(b.y / TILE)) || null;
+      return !!look(this.game, a, b.x, b.y);
     } catch {
-      ba = bb = null;
+      return false;
     }
-    if ((ba?.id ?? ba) !== (bb?.id ?? bb)) return false;
-    const r = this.blind.has(a.id) ? BLIND_RANGE : ba ? ROOM_RANGE : night ? NIGHT_RANGE : OUT_RANGE;
-    return Math.hypot(a.x - b.x, a.y - b.y) <= r;
   }
 
   serialize() {

@@ -19,6 +19,7 @@ import {
 } from './text.js';
 import { LYRA_PEOPLE, KNOWN_PLACES } from './soul.js';
 import { itemName, itemDef } from '../../entities/items.js';
+import { seesActor } from '../sight.js';
 
 // Perception: turns bus events (and what she can see) into feelings, memories and
 // opinions. Owned by the Mind; it subscribes to the bus in the Mind constructor.
@@ -321,8 +322,10 @@ export class Perception {
         if (this.game?.murder && !this.game.murder.saw('lyra', target)) return;
         this.playerHurtVillager(target, 'assault');
       }
-      else if (this.isCrueltyTarget(target) && !this.provoked(target)) this.cruelty(target, false);
-      else this.touchEncounter(target);
+      else if (this.isCrueltyTarget(target) && !this.provoked(target)) {
+        // Only what she saw (DESIGN §29.2).
+        if (seesActor(this.game, this.owner, target)) this.cruelty(target, false);
+      } else this.touchEncounter(target);
       return;
     }
     if (this.isSelf(source)) {
@@ -572,7 +575,9 @@ export class Perception {
     }
     const rel = m.relationships.get(entity.id);
     if (this.isPlayer(killer)) {
-      if (this.isCrueltyTarget(entity) && !this.provoked(entity)) this.cruelty(entity, true);
+      if (this.isCrueltyTarget(entity) && !this.provoked(entity)) {
+        if (seesActor(this.game, this.owner, entity)) this.cruelty(entity, true);
+      }
       else if (factionRelation('player', entity.faction) === 'hostile' && this.throttle('kill_respect', 20)) {
         m.relationships.adjust(PLAYER_ID, { respect: 0.6 }, '');
       }

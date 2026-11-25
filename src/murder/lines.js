@@ -133,6 +133,7 @@ export const LIFE = {
 // The watch's questions (DESIGN §29): the one who leads the investigation asks.
 export const WATCH = {
   rowan: {
+    alarm: ['{who}? Dead? And you saw who? Ring the bell. Now.', 'Ring the bell. The stranger killed {who}.'],
     open: ["We found {who}. I'm asking everyone the same questions. You first.", "{who} is dead. A blade. I'm asking questions, and you're going to answer them."],
     lastSeen: ['When did you last see {who}?'],
     near: ['{from} saw you {at}, {when}. What were you doing there?'],
@@ -146,6 +147,7 @@ export const WATCH = {
     arrest: ["You're coming to the guardhouse. The Moot will hear this.", "That's enough. You'll come with me. Now."],
   },
   wys: {
+    alarm: ['The stranger— {who}— Captain! CAPTAIN! The bell!'],
     open: ["Citizen. I— the captain would want me to ask. About {who}."],
     lastSeen: ['When did you— when did you last see {who}?'],
     near: ['{from} says you were {at}, {when}. Why?'],
@@ -159,6 +161,7 @@ export const WATCH = {
     arrest: ["You're coming with me. To the guardhouse. Now. I mean it."],
   },
   hess: {
+    alarm: ['{who}. Right. The bell.'],
     open: ['{who} is dead. You and I are going to talk.'],
     lastSeen: ['Last time you saw {who}. When.'],
     near: ['{from} saw you {at}, {when}. Why.'],

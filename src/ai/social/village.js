@@ -16,6 +16,8 @@ import { TO_YOU } from './voices_player.js';
 import { speakable } from './hidden.js';
 import { WEAVE_RUMORS } from '../../missions/rumors.js';
 import { Commitments } from './commitments.js';
+import { murderLine } from '../../murder/lines.js';
+import { seesPoint } from '../sight.js';
 import { VILLAGER_RULES, SAY_SCHEMA, LINES_SCHEMA, NIGHT_SCHEMA, buildSayTask, buildListenTask, buildNightTask, coerceSay, coerceLines, coerceNight, cleanLine } from './village_prompt.js';
 
 // What the village says about the stranger's weaving joins the rumor table (DESIGN §22.3).
@@ -31,6 +33,7 @@ const TALK_CAP = 6;
 const AMBIENT_CLAUDE_GAP = 45; // real seconds
 const CLAUDE_TIMEOUT_MS = 25000;
 const SIGHT = 150;
+const MEET = 88; // px: near enough to tell someone something, face to face (DESIGN §29.2)
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const round1 = (v) => Math.round(v * 10) / 10;
@@ -602,6 +605,12 @@ export class Village {
     return alive(e) && e.state !== 'sleep' && e.activity !== 'sleep' && (e.mode === undefined || e.mode === 'routine');
   }
 
+  // Awake and on their feet, whatever they are doing (running for the watch, fighting):
+  // enough to shout or hear grave news face to face.
+  conscious(e) {
+    return alive(e) && !e.downed && e.state !== 'sleep' && e.activity !== 'sleep';
+  }
+
   busyWithPlayer(e) {
     const t = this.now();
     return (e.talkingUntil ?? -Infinity) > t;
@@ -762,15 +771,20 @@ export class Village {
     if (!grave.length) return;
     const people = this.villagers().filter((e) => alive(e));
     for (const r of grave) {
-      const tellers = people.filter((e) => r.heardBy.includes(e.id) && this.awake(e));
+      const tellers = people.filter((e) => r.heardBy.includes(e.id) && this.conscious(e));
       if (r.heardBy.includes('lyra') && this.lyraFree({ passing: true })) tellers.push(this.game.companion);
-      const hearers = people.filter((e) => !r.heardBy.includes(e.id) && r.victim !== e.id && this.awake(e));
+      const hearers = people.filter((e) => !r.heardBy.includes(e.id) && r.victim !== e.id && this.conscious(e));
+      const L = this.game?.companion;
+      if (L && !r.heardBy.includes('lyra') && r.about !== 'lyra' && this.conscious(L)) hearers.push(L);
       if (!tellers.length || !hearers.length) continue;
-      // The teller who loves the hearer most passes it on.
+      // The teller who loves the hearer most passes it on: but only face to face. News
+      // travels by people meeting (DESIGN §29.2; the author: "he shouldn't be able to send
+      // off the information until he meets other people. And tell them, like literally").
       let best = null;
       let bw = -Infinity;
       for (const a of tellers) {
         for (const b of hearers) {
+          if (!this.meeting(a, b)) continue;
           const w = (this.bond(a.id, b.id)?.affinity ?? 0) + (this.isFamily(a.id, b.id) ? 60 : 0) - dist(a, b) / 40 + rnd(this.rng()) * 20;
           if (w > bw) {
             bw = w;
@@ -785,6 +799,30 @@ export class Village {
       else this.converse(a.id, b.id, { topic: 'rumor', onScreen: false });
       return; // one telling per beat
     }
+  }
+
+  // Can the stranger talk with this villager at all? A narration of why not, or null.
+  // A killing seen today: they back away and will not talk (DESIGN §29.3).
+  refusesTalk(npc) {
+    const e = typeof npc === 'string' ? this.entity(npc) : npc;
+    if (!e) return null;
+    const fear = safe(() => this.game?.murder?.fearOf?.(e), null);
+    if (fear !== 'terror') return null;
+    const n = this.name(e.id).replace(/^(Captain|Sister|Reeve)\s+/, '').split(' ')[0];
+    const she = ['hobb', 'bram', 'pip', 'rowan', 'tobias', 'garrick', 'alder', 'corran', 'wys'].includes(e.id) ? 'he' : 'she';
+    return `${n} backs away from you, white to the lips. ${she === 'he' ? 'He' : 'She'} won't talk to you.`;
+  }
+
+  // Two people near enough to tell each other something: side by side, under the same
+  // roof (or both outdoors), both awake.
+  meeting(a, b) {
+    if (!a || !b || a === b || !this.conscious(a) || !this.conscious(b)) return false;
+    if (dist(a, b) > MEET) return false;
+    const roof = (e) => safe(() => {
+      const bd = this.game?.map?.buildingAt?.(Math.floor(e.x / 16), Math.floor(e.y / 16));
+      return bd ? bd.id ?? bd : null;
+    }, null);
+    return roof(a) === roof(b);
   }
 
   // ------------------------------------------------------------------ gossip
@@ -808,9 +846,15 @@ export class Village {
     return r;
   }
 
-  witnessesNear(x, y, r = SIGHT) {
+  // Who is near enough: to hear (a cry, a word), or with `sight`, who actually SAW the
+  // point (DESIGN §29.2: the one rule for eyes — walls, light and distance).
+  witnessesNear(x, y, r = SIGHT, { sight = false } = {}) {
     const out = [];
-    for (const e of this.villagers()) if (alive(e) && Math.hypot(e.x - x, e.y - y) <= r && e.state !== 'sleep') out.push(e.id);
+    for (const e of this.villagers()) {
+      if (!alive(e) || Math.hypot(e.x - x, e.y - y) > r || e.state === 'sleep') continue;
+      if (sight && !seesPoint(this.game, e, x, y)) continue;
+      out.push(e.id);
+    }
     return out;
   }
 
@@ -957,10 +1001,10 @@ export class Village {
         if (!RUMOR_KINDS[kind]) return;
         const victimId = typeof p.victim === 'object' ? p.victim?.id : p.victim;
         const where = g?.player || g?.companion;
-        const witnesses = where ? this.witnessesNear(where.x, where.y) : [];
-        // Her own ledger knows it; she saw it only if she was there.
+        const witnesses = where ? this.witnessesNear(where.x, where.y, SIGHT, { sight: true }) : [];
+        // Her own ledger knows it; she saw it only if she could see it.
         const lyra = g?.companion;
-        const saw = lyra && where && dist(lyra, where) < SIGHT ? [...witnesses, 'lyra'] : [...witnesses];
+        const saw = lyra && where && seesPoint(g, lyra, where.x, where.y) ? [...witnesses, 'lyra'] : [...witnesses];
         witnesses.push('lyra');
         const victim = RUMOR_KINDS[kind].victim || victimId || null;
         this.addRumor(kind, { victim, witnesses, saw, source: 'lyra' });
@@ -971,9 +1015,9 @@ export class Village {
         // A killing (DESIGN §29) is told by game.murder, with its own witnesses.
         if (p.kind === 'murder' || p.kind === 'outside') return;
         const kind = p.kind === 'knockout' ? 'downed_villager' : 'attacked_villager';
-        const witnesses = this.witnessesNear(p.victim.x, p.victim.y);
+        const witnesses = this.witnessesNear(p.victim.x, p.victim.y, SIGHT, { sight: true });
         const lyra = g?.companion;
-        if (lyra && dist(lyra, p.victim) < SIGHT) witnesses.push('lyra');
+        if (lyra && seesPoint(g, lyra, p.victim.x, p.victim.y)) witnesses.push('lyra');
         this.addRumor(kind, { victim: p.victim.id, witnesses });
         return;
       }
@@ -1168,6 +1212,17 @@ export class Village {
       .slice(0, 300);
     if (!e || !e.profile) return { lines: ['...'], mood: null };
     if (!said) return { lines: [say(voiceOf(e.id)?.short, e.id, 'player', { rng: this.rng() }) || 'Hm?'], mood: null };
+    // They watched the stranger kill (DESIGN §29.3): no calm talk, no favours, no Claude
+    // wording it kindly. Only fear, in their own words.
+    const fear = safe(() => this.game?.murder?.fearOf?.(e), null);
+    if (fear) {
+      const line = safe(() => murderLine(e.id, 'afraid', { P: this.game?.settings?.playerName || 'you' }, this.rng()), null) || 'Stay away from me.';
+      safe(() => e.startFlee?.(this.game?.player, 6, 'crime', { quiet: true }));
+      const list = (this.talks[e.id] ||= []);
+      list.push({ t: Math.round(this.now()), day: this.day(), you: said.slice(0, 160), they: [line] });
+      if (list.length > TALK_CAP) list.splice(0, list.length - TALK_CAP);
+      return { lines: [line], mood: 'afraid', intent: 'afraid', source: 'local', name: null };
+    }
     const local = safe(() => localReply(this, e, said), null) || { lines: ['Hm.'], mood: null, delta: 0, intent: 'unknown', told: [], mentioned: [] };
     // An ask they can act on (go to Lyra, give, teach): what the game allows, and their
     // answer to it, decided before anyone words it (DESIGN §23.2).
