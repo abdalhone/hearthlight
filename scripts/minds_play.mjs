@@ -93,7 +93,13 @@ async function play(size) {
             ({ x, y }) => {
               const g = window.__game;
               const el = document.elementFromPoint(x, y);
-              return { open: g.ui.chat.isOpen(), target: g.ui.chat.target, el: el ? `${el.tagName}.${el.className}` : null, modal: !!g.ui.isModalOpen?.(), paused: g.paused, state: g.state };
+              const b = g.canvas.getBoundingClientRect();
+              const w = g.renderer.cssToWorld(x - b.left, y - b.top);
+              const near = g.entities
+                .all()
+                .filter((e) => (e.id === 'lyra' || e.profile) && Math.abs(e.x - w.x) < 30 && Math.abs(e.y - w.y) < 40)
+                .map((e) => `${e.id}@${Math.round(e.x)},${Math.round(e.y)}${e.z ? `z${Math.round(e.z)}` : ''}`);
+              return { open: g.ui.chat.isOpen(), target: g.ui.chat.target, el: el ? `${el.tagName}.${el.className}` : null, w: [Math.round(w.x), Math.round(w.y)], near };
             },
             { x: p.x, y: p.y },
           ),

@@ -1666,6 +1666,10 @@ Stop* (trust 72; its lesson waits while she is unsure: a talk step's `trust`) an
   of the player — on the player's action, with the local fallback. Villagers remember what
   the player said, talk about it to others, and it shapes their opinion; Lyra overhears
   when near. The villager dialog's own "Say something…" field stays as a shortcut.
+- A tap or click on someone talks to them, whatever the chat puts under the finger as it
+  opens: the browser's click from that same tap is swallowed (on phones it pressed a chip
+  of the "To" row and talked to a neighbour), and the release of a mouse click that opened
+  it is not a click outside it.
 
 ### 23.1 One memory of everything they say (`src/ai/said_today.js`, `game.saidToday`; the author: "Connect it and let it have like a shot of what it said in this day, even if it was pop up text")
 

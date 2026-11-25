@@ -1164,7 +1164,10 @@ export class Chat {
         return true;
       }
       this.selectTarget(LYRA);
-      if (!this._open) this.open(pointerType === 'mouse');
+      if (!this._open) {
+        this.open(pointerType === 'mouse');
+        if (pointerType !== 'mouse') this.swallowGhostClick();
+      }
       return true;
     }
     const why = whyNotHeard(g, e, this.target === e.id ? EARSHOT_LOSE : 10 * 16);
@@ -1173,10 +1176,30 @@ export class Chat {
       return true;
     }
     const wasOpen = this._open;
-    if (!wasOpen) this.open(false);
+    if (!wasOpen) {
+      this.open(false);
+      if (pointerType !== 'mouse') this.swallowGhostClick();
+    }
     this.selectTarget(e.id, { from: 'world' });
     if (pointerType === 'mouse') this.focusSoon();
     return true;
+  }
+
+  // A finger's tap that opened the chat must not also press what the chat has just put
+  // under that finger: the browser's click from the same tap lands on the "To" row and
+  // picked a neighbour (played on phones: a tap on Lyra talked to Pip, or to Wys).
+  swallowGhostClick(ms = 450) {
+    if (typeof window === 'undefined' || typeof performance === 'undefined') return;
+    const until = performance.now() + ms;
+    const eat = (ev) => {
+      window.removeEventListener('click', eat, true);
+      if (performance.now() > until) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.stopImmediatePropagation?.();
+    };
+    window.addEventListener('click', eat, true);
+    setTimeout(() => window.removeEventListener('click', eat, true), ms + 50);
   }
 }
 

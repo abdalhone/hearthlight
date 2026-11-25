@@ -587,6 +587,22 @@ test('browser: the chat talks to anyone within earshot (and screenshots)', { tim
         await page.touchscreen.tap(at.x, at.y);
         await page.waitForTimeout(250);
         assert.deepEqual(await page.evaluate(() => [window.__game.ui.chat.isOpen(), window.__game.ui.chat.target]), [true, 'pip'], `${view.label}: tapping Pip`);
+        // The click the browser makes from that same tap lands on whatever the chat just put
+        // under the finger (a chip of its "To" row): it must not pick someone else.
+        const ghost = await page.evaluate(() => {
+          const g = window.__game;
+          const c = g.ui.chat;
+          c.close();
+          const pip = g.entities.get('pip');
+          c.pickInWorld(pip.x, pip.y - 10, { pointerType: 'touch' });
+          const chip = document.querySelector('.chat-to-chip[data-id="lyra"]');
+          chip?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          return { chip: !!chip, target: c.target };
+        });
+        assert.deepEqual(ghost, { chip: true, target: 'pip' }, `${view.label}: the tap's own click does not pick a neighbour`);
+        await page.waitForTimeout(600);
+        await page.click('.chat-to-chip[data-id="lyra"]');
+        assert.equal(await page.evaluate(() => window.__game.ui.chat.target), 'lyra', 'a real tap on the chip later still picks');
       }
       assert.deepEqual(errors, [], `${view.label}: page errors`);
       await ctx.close();
