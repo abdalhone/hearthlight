@@ -155,17 +155,63 @@ function step(g, w, n = 1, dt = 1 / 60) {
   }
 }
 
-test('a number key casts that slot at once (auto-aim without a mouse) and selects it', () => {
+test('a number key starts that slot (charging) and a quick tap casts it on the release, uncharged', () => {
   const g = world();
   const w = new Weaving(g);
   const foe = g.addFoe(160, 100);
   g.input._onKeyDown({ code: 'Digit2', key: '2', target: null, preventDefault() {} });
   step(g, w);
-  const c = g.magic.calls.find((x) => x.fn === 'cast');
-  assert.ok(c, 'cast');
-  assert.equal(c.slot, 1);
-  assert.equal(c.aim.target, foe, 'aimed at the foe');
+  const s = g.magic.calls.find((x) => x.fn === 'castStart');
+  assert.ok(s, 'started on the press');
+  assert.equal(s.slot, 1);
+  assert.equal(s.opts.charge, true, 'every press may charge');
+  assert.equal(s.aim.target, foe, 'aimed at the foe');
   assert.equal(w.selected, 1);
+  assert.equal(g.magic.released.length, 0, 'nothing cast while the key is down');
+  step(g, w, 3);
+  g.input._onKeyUp({ code: 'Digit2', key: '2' });
+  step(g, w);
+  assert.equal(g.magic.released.length, 1, 'cast on the release');
+  assert.equal(g.magic.released[0].k, 0, 'a quick tap is not charged');
+  assert.equal(g.magic.released[0].aim.target, foe);
+  assert.ok(!g.magic.calls.some((x) => x.fn === 'cast'), 'never an instant cast');
+});
+
+test('holding a weave charges it: no preview in the dead zone, then the charge grows to full', () => {
+  const g = world();
+  const w = new Weaving(g);
+  g.addFoe(160, 100);
+  g.input._onKeyDown({ code: 'Digit1', key: '1', target: null, preventDefault() {} });
+  step(g, w, 5);
+  assert.equal(w.aims.length, 0, 'a tap-length press draws no preview');
+  step(g, w, 30);
+  assert.equal(w.aims.length, 1, 'past the dead zone the aim shows');
+  assert.ok(w.aims[0].charge > 0 && w.aims[0].charge < 1, `charging ${w.aims[0].charge}`);
+  step(g, w, 120);
+  assert.equal(w.aims[0].charge, 1, 'full');
+  g.input._onKeyUp({ code: 'Digit1', key: '1' });
+  step(g, w);
+  assert.equal(g.magic.released.length, 1);
+  assert.equal(g.magic.released[0].k, 1, 'cast at a full charge');
+});
+
+test('one charge at a time: a second weave pressed while one charges lets the first go', () => {
+  const g = world();
+  const w = new Weaving(g);
+  g.input._onKeyDown({ code: 'Digit1', key: '1', target: null, preventDefault() {} });
+  step(g, w, 40);
+  g.input._onKeyDown({ code: 'Digit2', key: '2', target: null, preventDefault() {} });
+  step(g, w);
+  assert.equal(g.magic.released.length, 1, 'the first was cast');
+  assert.equal(g.magic.released[0].slot, 0);
+  assert.ok(g.magic.released[0].k > 0, 'with the charge it had');
+  assert.equal(g.magic.holding?.slot, 1, 'the second charges now');
+  g.input._onKeyUp({ code: 'Digit1', key: '1' });
+  step(g, w);
+  assert.equal(g.magic.released.length, 1, 'letting go of the first key casts nothing more');
+  g.input._onKeyUp({ code: 'Digit2', key: '2' });
+  step(g, w);
+  assert.deepEqual(g.magic.released.map((r) => r.slot), [0, 1]);
 });
 
 test('held beams: key down starts, every step holds, key up releases', () => {
@@ -189,11 +235,13 @@ test('touch: a quick tap casts on release, auto-aimed at the nearest foe in rang
   g.addFoe(400, 100); // out of range
   w.touchStart(0, 7);
   step(g, w, 3);
-  assert.equal(g.magic.calls.length, 0, 'nothing until the finger lifts');
+  assert.equal(g.magic.calls[0].fn, 'castStart', 'the press starts it');
+  assert.equal(g.magic.released.length, 0, 'nothing cast until the finger lifts');
   w.touchEnd(7);
   step(g, w);
-  const c = g.magic.calls.find((x) => x.fn === 'cast');
+  const c = g.magic.released[0];
   assert.equal(c.slot, 0);
+  assert.equal(c.k, 0);
   assert.equal(c.aim.target, near);
 });
 
@@ -208,7 +256,7 @@ test('touch: a drag aims (the preview follows) and lifting casts toward the drag
   assert.ok(w.aims[0].x < g.player.x && w.aims[0].y < g.player.y);
   w.touchEnd(1);
   step(g, w);
-  const c = g.magic.calls.find((x) => x.fn === 'cast');
+  const c = g.magic.released[0];
   assert.ok(c.aim.x < 100 && c.aim.y < 100, 'cast up-left');
   assert.equal(w.aims.length, 0);
 });
@@ -225,7 +273,8 @@ test('touch: dragging back onto the button cancels', () => {
   assert.ok(w.aims[0].cancel, 'the preview shows the cancel');
   w.touchEnd(2);
   step(g, w);
-  assert.equal(g.magic.calls.filter((c) => c.fn === 'cast').length, 0);
+  assert.equal(g.magic.released.length, 0);
+  assert.equal(g.magic.calls[g.magic.calls.length - 1].fn, 'castCancel');
 });
 
 test('touch on a held weave: press starts, drag steers, back onto the button cancels it', () => {
@@ -257,7 +306,15 @@ test('mana and cooldowns: starved slots dim, failed casts shake, cooldown sweeps
   g.input._onKeyUp({ code: 'Digit1', key: '1' });
   g.input._onKeyDown({ code: 'Digit1', key: '1', target: null, preventDefault() {} });
   step(g, w);
+  g.input._onKeyUp({ code: 'Digit1', key: '1' });
+  step(g, w);
   assert.ok(w.cooldownFrac(0) > 0.5, 'just cast: cooling');
+  assert.ok(w.cooldownLeft(0) > 0.2, 'seconds left to show');
+  // Pressing it again while it cools: refused, and the button shakes with "cooldown".
+  g.input._onKeyDown({ code: 'Digit1', key: '1', target: null, preventDefault() {} });
+  step(g, w);
+  assert.equal(w.lastFail(0)?.reason, 'cooldown');
+  g.input._onKeyUp({ code: 'Digit1', key: '1' });
   step(g, w, 60);
   assert.equal(w.cooldownFrac(0), 0, 'ready again');
 });

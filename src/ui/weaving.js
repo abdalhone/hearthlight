@@ -1,6 +1,10 @@
 // The weave controller (DESIGN.md §22.4): every way of casting — a touch drag from a
 // weave button, a tap, the number keys toward the mouse, the right mouse button, a
 // gamepad trigger — ends here, and here alone talks to the runtime (game.magic, §22.2).
+// Every weave, on every device, starts on the press and is cast on the release: a quick
+// tap casts as it always did, a longer hold charges it (castStart {charge: true}; a beam
+// pours instead), and one charge builds at a time — a second weave pressed meanwhile
+// lets the first one go.
 // It runs once per fixed step (from the HUD), so pauses, menus and hit-stops are
 // respected, and it publishes what the aim preview should draw.
 //
@@ -313,6 +317,31 @@ export class Weaving {
     return Math.max(0, Math.min(1, 1 - ((this.game.time || 0) - at) / total));
   }
 
+  // Seconds before this slot can cast again (the button shows them while >= 1 s).
+  cooldownLeft(i) {
+    const m = this.magic;
+    const rec = this.slotInfo(i);
+    if (!rec.plan) return 0;
+    try {
+      const left = num(m?.cooldownLeft ? () => m.cooldownLeft(i) : null) ?? num(m?.cooldowns?.[i]);
+      if (left !== null) return Math.max(0, left);
+    } catch {
+      /* fall back to our own clock */
+    }
+    return this.cooldownFrac(i) * (rec.cooldown || 0);
+  }
+
+  // The charge building on this slot right now: { k (0..1), live (past the tap), capped
+  // (held back by the mana in hand), full } or null.
+  chargeOf(i) {
+    for (const c of this.casts.values()) {
+      if (c.slot !== i || !c.started || c.mode === 'hold' || !c.live) continue;
+      const k = Math.max(0, Math.min(1, Number(c.k) || 0));
+      return { k, live: true, capped: !!c.capped, full: k >= 0.999 };
+    }
+    return null;
+  }
+
   // Can this slot cast now? { ok, reason } — the runtime decides when it can say.
   canCast(i) {
     const m = this.magic;
@@ -461,7 +490,7 @@ export class Weaving {
       }
       if (input.pressed('cast')) this.begin('cast', this.selected, input.lastDevice === 'gamepad' ? 'pad' : 'mouse');
     }
-    // Touch: presses start held weaves at once; quick ones wait for the release.
+    // Touch: a press starts the weave (it charges while held), lifting casts it.
     for (const [id, t] of this.touches) {
       const src = `t${id}`;
       if (!t.started) {
@@ -481,14 +510,19 @@ export class Weaving {
     for (const [src, c] of this.casts) {
       const aim = this.aimFor(c);
       c.aim = aim;
-      if (c.started && c.mode !== 'quick') {
+      if (c.started) {
         const h = this.call('castHold', c.slot, aim, dt);
         if (h === null) c.started = false;
         else {
           c.held += dt;
           if (Number.isFinite(h?.k)) c.k = h.k;
+          c.live = h?.live !== undefined ? !!h.live : c.held >= 0.18;
+          c.capped = !!h?.capped;
         }
       }
+      // A key or a click still inside the tap's dead zone draws no preview yet (a quick
+      // tap would only flicker one); a finger on a button always shows its aim.
+      if (c.source !== 'touch' && c.mode !== 'hold' && !c.live) continue;
       const v = pool[poolI] || (pool[poolI] = {});
       poolI++;
       this.describeAim(v, c, aim);
@@ -505,7 +539,7 @@ export class Weaving {
     const t = g.time || 0;
     const recent = t - (this.lastActT ?? -9) < 2.5;
     const padAiming = !!(input?.padAim && (input.padAim.x || input.padAim.y));
-    if (!this.casts.size && (padAiming || ((this.foeNear || recent) && input?.mouseAiming?.(2.5)))) {
+    if (!this.aims.length && (padAiming || ((this.foeNear || recent) && input?.mouseAiming?.(2.5)))) {
       const rec = this.slotInfo(this.selected);
       if (rec.plan) {
         const c = this._hoverCast || (this._hoverCast = { slot: 0, source: 'mouse', mode: 'quick', touch: null, held: 0 });
@@ -529,21 +563,22 @@ export class Weaving {
       if (source !== 'touch') this.fail(slot, 'empty');
       return;
     }
-    const c = { slot, source, mode: rec.mode, started: false, held: 0, aim: null, touch: source === 'touch' ? this.touches.get(Number(src.slice(1))) : null };
+    this.lastActT = this.game.time || 0;
+    // One charge at a time: whatever is being held is let go (cast) first.
+    for (const [osrc, o] of this.casts) if (o.started) this.finish(osrc, false);
+    const c = { slot, source, mode: rec.mode, started: false, held: 0, k: 0, live: false, capped: false, aim: null, touch: source === 'touch' ? this.touches.get(Number(src.slice(1))) : null };
     this.casts.set(src, c);
-    // Keys, mouse and pad fire quick weaves at once; held weaves start now on any device.
-    if (c.mode === 'quick') {
-      if (source !== 'touch') {
-        this.fire(c);
-        this.casts.delete(src);
-      }
-      return;
-    }
     const aim = this.aimFor(c);
     const r = this.call('castStart', slot, aim);
     if (r && r.ok === false) {
       this.fail(slot, r.reason);
       this.casts.delete(src);
+      return;
+    }
+    // A runtime with no castStart cast it outright: nothing is held.
+    if (r?.instant) {
+      this.casts.delete(src);
+      this.dropHolds();
       return;
     }
     // The runtime holds one weave per caster: starting this one ended any other.
@@ -554,25 +589,24 @@ export class Weaving {
   // Held casts the runtime has let go of (another cast took over, mana ran out, a
   // status froze the hands) stop holding here too, so a late release frees nothing.
   dropHolds(except = null) {
-    for (const o of this.casts.values()) if (o !== except && o.mode !== 'quick' && o.started) o.started = false;
+    for (const o of this.casts.values()) if (o !== except && o.started) o.started = false;
   }
 
+  // The press ends: cast what was held (charged as far as it got), or let it go.
   finish(src, cancel) {
     const c = this.casts.get(src);
     if (!c) return;
     this.casts.delete(src);
-    const aim = this.aimFor(c);
-    if (c.mode === 'quick') {
-      if (!cancel) this.fire(c, aim);
-      return;
-    }
     if (!c.started) return;
+    const aim = this.aimFor(c);
     if (cancel) {
       if (typeof this.magic?.castCancel === 'function') this.call('castCancel', c.slot, aim);
       else this.call('castRelease', c.slot, aim, 0, true);
       return;
     }
-    this.call('castRelease', c.slot, aim);
+    this.lastActT = this.game.time || 0;
+    const r = this.call('castRelease', c.slot, aim);
+    if (r && r.ok === false && r.reason !== 'empty') this.fail(c.slot, r.reason);
   }
 
   stopAll() {
@@ -580,6 +614,7 @@ export class Weaving {
     this.casts.clear();
   }
 
+  // An instant cast (no hold): what a runtime without castStart gets.
   fire(c, aim = this.aimFor(c)) {
     this.lastActT = this.game.time || 0;
     const r = this.call('cast', c.slot, aim);
@@ -619,8 +654,14 @@ export class Weaving {
         r = typeof p.castWeave === 'function' ? p.castWeave(slot, aim) : m.cast(p, slot, aim);
         if (r?.ok !== false) this.castAt[slot] = g.time || 0;
       } else if (fn === 'castStart') {
-        r = typeof m.castStart === 'function' ? m.castStart(p, slot, aim) : m.cast?.(p, slot, aim);
-        if (r?.ok !== false) this.castAt[slot] = g.time || 0;
+        // Every weave charges while held (a beam pours): the press only starts it.
+        if (typeof m.castStart === 'function') r = m.castStart(p, slot, aim, { charge: true });
+        else {
+          r = typeof p.castWeave === 'function' ? p.castWeave(slot, aim) : m.cast?.(p, slot, aim);
+          if (r?.ok !== false) this.castAt[slot] = g.time || 0;
+          if (r && typeof r === 'object') r = { ...r, instant: true };
+          else if (r !== false) r = { ok: true, instant: true };
+        }
       } else if (fn === 'castHold') {
         // castHold(caster, aim) -> the hold's state, or null once it has ended.
         if (typeof m.castHold !== 'function') return {};
@@ -815,7 +856,8 @@ export class Weaving {
     v.target = aim.target || null;
     v.starved = this.starved(c.slot);
     v.faint = false;
-    v.charge = rec.mode === 'charge' ? (Number.isFinite(c.k) ? Math.max(0, Math.min(1, c.k)) : Math.min(1, (c.held || 0) / Math.max(0.3, Number(rec.plan?.chargeTime) || 1.2))) : 0;
+    v.charge = rec.mode !== 'hold' && c.live ? Math.max(0, Math.min(1, Number(c.k) || 0)) : 0;
+    v.capped = !!c.capped;
     return v;
   }
 }

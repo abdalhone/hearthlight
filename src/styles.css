@@ -6016,14 +6016,118 @@ input[type='range']::-moz-range-thumb {
   pointer-events: none;
   filter: drop-shadow(0 0 4px var(--wc));
 }
+/* The cooldown: a dark sweep that opens clockwise back to ready, with a bright edge
+   where it is opening, and the whole seconds left on top while there is one or more. */
 .wbtn-cd {
   position: absolute;
   inset: 0;
-  background: conic-gradient(rgba(6, 5, 18, 0.78) calc(var(--cd, 0) * 1turn), transparent 0);
+  background: conic-gradient(
+    rgba(6, 5, 18, 0.74) calc(var(--cd, 0) * 1turn),
+    rgba(255, 244, 214, 0.95) calc(var(--cd, 0) * 1turn) calc(var(--cd, 0) * 1turn + 6deg),
+    rgba(255, 244, 214, 0.18) calc(var(--cd, 0) * 1turn + 6deg) calc(var(--cd, 0) * 1turn + 14deg),
+    transparent 0
+  );
   pointer-events: none;
 }
 .wbtn:not(.cooling) .wbtn-cd {
   display: none;
+}
+.wbtn.cooling .wbtn-icon {
+  filter: grayscale(0.55) brightness(0.8) drop-shadow(0 0 2px var(--wc));
+}
+.wbtn-secs {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 1;
+  color: #fff4d6;
+  text-shadow:
+    0 2px 0 var(--outline),
+    2px 0 0 var(--outline),
+    -2px 0 0 var(--outline),
+    0 -2px 0 var(--outline);
+  pointer-events: none;
+}
+.wbtn-secs:empty {
+  display: none;
+}
+/* Back from a cooldown: the glyph flares and a ring flashes round the button. */
+.wbtn.ready .wbtn-icon {
+  animation: wbtn-ready 0.45s ease-out;
+}
+.wbtn.ready .wbtn-chg {
+  opacity: 1;
+  background: var(--wk);
+  animation: wbtn-ready-ring 0.45s ease-out forwards;
+}
+@keyframes wbtn-ready {
+  0% {
+    filter: brightness(2.2) drop-shadow(0 0 8px var(--wk));
+    transform: scale(1.18);
+  }
+  100% {
+    filter: drop-shadow(0 0 4px var(--wc));
+    transform: scale(1);
+  }
+}
+@keyframes wbtn-ready-ring {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+/* The charge: a ring filling round the button while it is held; full, it pulses; held
+   back by the mana in hand, it dims and the hollow mana drop shows. */
+.wbtn-chg {
+  position: absolute;
+  inset: -5px;
+  padding: 5px;
+  background: conic-gradient(var(--wk) calc(var(--charge, 0) * 1turn), rgba(255, 255, 255, 0.12) 0);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.wbtn.charging .wbtn-chg {
+  opacity: 1;
+}
+.wbtn.charging .wbtn-icon {
+  transform: scale(calc(1 + var(--charge, 0) * 0.12));
+  filter: drop-shadow(0 0 calc(4px + var(--charge, 0) * 6px) var(--wk));
+}
+.wbtn.charged .wbtn-chg {
+  background: #fffbe8;
+  box-shadow: 0 0 10px var(--wk);
+  animation: wbtn-charged 0.5s steps(2) infinite;
+}
+@keyframes wbtn-charged {
+  50% {
+    background: var(--wk);
+  }
+}
+.wbtn.capped .wbtn-chg {
+  background: conic-gradient(#9a7dff calc(var(--charge, 0) * 1turn), rgba(154, 125, 255, 0.18) 0);
+}
+.wbtn.capped::after {
+  content: '';
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 7px;
+  height: 9px;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  box-shadow: inset 0 0 0 2px #9a7dff;
+  pointer-events: none;
+}
+.reduce-motion .wbtn.charged .wbtn-chg {
+  animation: none;
 }
 .wbtn-plus {
   position: relative;
@@ -6124,6 +6228,10 @@ input[type='range']::-moz-range-thumb {
 }
 .wbtn.shake {
   animation: wbtn-shake 0.3s steps(6);
+}
+/* Pressed while still cooling: the shake, and the seconds flash red for a moment. */
+.wbtn.not-ready .wbtn-secs {
+  color: #ffb4a6;
 }
 @keyframes wbtn-shake {
   25% {
@@ -7132,7 +7240,8 @@ input[type='range']::-moz-range-thumb {
     0 5px 0 2px rgba(5, 3, 14, 0.38);
 }
 .tcluster .wbtn::before,
-.tcluster .wbtn-cd {
+.tcluster .wbtn-cd,
+.tcluster .wbtn-chg {
   border-radius: 50%;
 }
 .tcluster .tbtn.down,

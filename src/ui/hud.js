@@ -7,7 +7,7 @@
 // The Weave's pieces (DESIGN §22.4): the controller, the aim layer, the Spellbook.
 import { Weaving } from './weaving.js';
 import { AimPreview } from './aim_preview.js';
-import { paintSlot } from './touch.js';
+import { paintSlot, paintSlotState } from './touch.js';
 import { spellbookIconUrl, SPELLBOOK_ICON_SIZE } from './weave_icons.js';
 import { Spellbook } from './spellbook.js';
 import { h, icon, setIcon, setText, setStyle, toggleClass, meter, button, setAttr } from './dom.js';
@@ -332,11 +332,13 @@ export class Hud {
     for (let i = 0; i < 6; i++) {
       const img = h('img', { class: 'wbtn-icon', alt: '', draggable: 'false', 'aria-hidden': 'true' });
       const cd = h('span', { class: 'wbtn-cd', 'aria-hidden': 'true' });
+      const secs = h('span', { class: 'wbtn-secs num', 'aria-hidden': 'true' });
+      const chg = h('span', { class: 'wbtn-chg', 'aria-hidden': 'true' });
       const plus = h('span', { class: 'wbtn-plus', 'aria-hidden': 'true', text: '+' });
       const key = h('kbd', { class: 'keycap hb-key', text: String(i + 1) });
       const cost = h('span', { class: 'hb-cost num' });
-      const b = h('button', { type: 'button', class: 'wbtn hslot tbtn', hidden: true }, img, cd, plus, key, cost);
-      const slot = { i, b, img, cd, plus, cost, key: '' };
+      const b = h('button', { type: 'button', class: 'wbtn hslot tbtn', hidden: true }, chg, img, cd, secs, plus, key, cost);
+      const slot = { i, b, img, cd, secs, chg, plus, cost, key: '' };
       // A click selects the slot (the right button casts the selected one); an empty
       // slot opens the Spellbook on it.
       b.addEventListener('click', () => {
@@ -397,7 +399,7 @@ export class Hud {
       return;
     }
     this.hbTick += dt;
-    if (this.hbTick < 1 / 20) return;
+    if (this.hbTick < 1 / 30) return;
     this.hbTick = 0;
     const mana = w.mana();
     if (mana && mana.max > 0) {
@@ -433,12 +435,7 @@ export class Hud {
         paintSlot(slot, rec, i);
       }
       toggleClass(slot.b, 'selected', i === w.selected);
-      const cd = rec.plan ? w.cooldownFrac(i) : 0;
-      setStyle(slot.cd, '--cd', cd.toFixed(3));
-      toggleClass(slot.b, 'cooling', cd > 0.001);
-      toggleClass(slot.b, 'starved', w.starved(i));
-      const f = w.lastFail(i);
-      toggleClass(slot.b, 'shake', !!f && t - f.t < 0.35);
+      paintSlotState(slot, rec, w, i, t);
     }
     setText(this.hbName, sel.weave ? sel.name : '');
     this.hbVersion = ver;

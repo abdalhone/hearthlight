@@ -2,6 +2,9 @@
 // the battle layout on phones held sideways (844×390, 667×375) and upright (390×844),
 // real multi-touch (moving and aiming a weave at the same time, through CDP touch
 // points), the desktop hotbar with keys, mouse aim, wheel and clicks, and the Spellbook.
+// Every weave starts on the press and is cast on the release (DESIGN §22.4): a quick tap
+// casts uncharged, a long hold charges it (the button's ring fills, pulses when full),
+// and a cast weave cools with its seconds on the button; a press while cooling shakes.
 // When the build has no game.magic yet, a stub stands in (tests/helpers/magic_stub.mjs).
 // Fails on page errors, horizontal overflow, tap targets under 44 px, or a failed check.
 //   node scripts/controls_check.mjs [--dist] [--out DIR]
@@ -58,6 +61,7 @@ async function startGame(page) {
     if (!g.magic) {
       const { makeMagicStub } = await import(stubUrl);
       g.magic = makeMagicStub(g);
+      g.magic.fired = g.magic.released;
       window.__stubTimer = setInterval(() => g.magic.update?.(0.1), 100);
       stub = true;
     } else {
@@ -83,11 +87,26 @@ async function startGame(page) {
           return raw(caster, a, b, ...rest);
         };
       }
+      // What really left the hands: { slot, aim, k } for every cast (a release, a tap).
+      m.fired = [];
+      const fire = m._fire.bind(m);
+      m._fire = (caster, r, aim, opts = {}) => {
+        if (caster === g.player) m.fired.push({ slot: r.slot, aim: aim ? { x: aim.x, y: aim.y, target: aim.target || null } : null, k: opts.chargeK || 0 });
+        return fire(caster, r, aim, opts);
+      };
       window.__stubTimer = setInterval(() => {
         m.mana.cur = m.mana.max;
       }, 200);
     }
     g.ui.hud.weaving.invalidate();
+    // The magic lessons would cover the outer weave buttons: this check is not about them
+    // (phone_check walks through them).
+    const u = g.ui;
+    if (u.coach) {
+      for (const id of ['cast', 'book', 'found']) u.coach.done[id] = true;
+      u.coach.forced?.clear?.();
+      u.coach.stop?.();
+    }
     // Toasts from the start of the game cover the HUD in screenshots: clear them.
     try {
       g.ui.toasts?.clear?.();
@@ -192,29 +211,83 @@ async function phone(label, w, h) {
   await page.waitForTimeout(250);
   const after = await page.evaluate(() => ({ x: window.__game.player.x, calls: (window.__game.magic.calls || []).slice(-3).map((c) => ({ fn: c.fn, slot: c.slot, aim: c.aim && { x: c.aim.x, y: c.aim.y } })), move: { ...window.__game.input.touchVec } }));
   check(`${label}: the player walked`, after.x > before.x + 4, `${Math.round(before.x)} -> ${Math.round(after.x)}`);
-  const cast = after.calls.find((c) => c.fn === 'cast');
+  const cast = await page.evaluate(() => {
+    const f = window.__game.magic.fired.slice(-1)[0];
+    return f ? { slot: f.slot, k: f.k, aim: f.aim && { x: f.aim.x, y: f.aim.y } } : null;
+  });
   check(`${label}: release cast the weave toward the drag`, !!cast && cast.aim && cast.aim.x < before.x, JSON.stringify(cast || after.calls));
   check(`${label}: stick released`, after.move.x === 0 && after.move.y === 0);
 
-  // A quick tap auto-aims at the nearest foe.
+  // A quick tap auto-aims at the nearest foe, uncharged; the weave then cools with its
+  // seconds on the button (slot 4 is a nova: 3.5 s).
   if (info.foes) {
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(300);
+    await page.evaluate(() => window.__game.magic.resetCooldowns?.());
     const slot2 = await center(page, '.tcluster .wbtn:not([hidden])');
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: slot2.x, y: slot2.y, id: 3 }] });
     await page.waitForTimeout(60);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.waitForTimeout(150);
     const tap = await page.evaluate(() => {
-      const c = (window.__game.magic.calls || []).filter((x) => x.fn === 'cast').slice(-1)[0];
-      return c ? { fn: c.fn, aim: { target: !!c.aim?.target } } : null;
+      const f = window.__game.magic.fired.slice(-1)[0];
+      return f ? { slot: f.slot, k: f.k, target: !!f.aim?.target } : null;
     });
-    check(`${label}: a tap auto-aims at a foe`, tap?.fn === 'cast' && !!tap.aim?.target, JSON.stringify(tap && { fn: tap.fn, target: !!tap.aim?.target }));
+    check(`${label}: a tap auto-aims at a foe, uncharged`, tap && tap.slot === 0 && tap.target && tap.k === 0, JSON.stringify(tap));
+  }
+
+  // Hold a weave: its ring fills, pulses when full; letting go casts it fully charged.
+  {
+    await page.evaluate(() => window.__game.magic.resetCooldowns?.());
+    const s = await center(page, '.tcluster .wbtn[data-slot="1"]');
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: s.x, y: s.y, id: 5 }] });
+    await page.waitForTimeout(700);
+    const mid = await page.evaluate(() => {
+      const b = document.querySelector('.tcluster .wbtn[data-slot="1"]');
+      return { charging: b.classList.contains('charging'), k: Number(getComputedStyle(b.querySelector('.wbtn-chg')).getPropertyValue('--charge')) };
+    });
+    await page.screenshot({ path: `${OUT}/controls-${label}-charging.png` });
+    check(`${label}: holding a weave fills its charge ring`, mid.charging && mid.k > 0.2 && mid.k < 1, JSON.stringify(mid));
+    await page.waitForTimeout(1100);
+    const full = await page.evaluate(() => document.querySelector('.tcluster .wbtn[data-slot="1"]').classList.contains('charged'));
+    await page.screenshot({ path: `${OUT}/controls-${label}-charged.png` });
+    check(`${label}: full charge pulses`, full);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(90);
+    await page.screenshot({ path: `${OUT}/controls-${label}-release.png` });
+    const f = await page.evaluate(() => window.__game.magic.fired.slice(-1)[0] || null);
+    check(`${label}: letting go casts it fully charged`, f && f.slot === 1 && f.k >= 0.999, JSON.stringify(f && { slot: f.slot, k: f.k }));
+  }
+
+  // The nova cools: seconds on its button; pressed again it shakes and casts nothing.
+  if (!info.stub) {
+    await page.waitForTimeout(400);
+    await page.evaluate(() => window.__game.magic.resetCooldowns?.());
+    const s = await center(page, '.tcluster .wbtn[data-slot="3"]');
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: s.x, y: s.y, id: 6 }] });
+    await page.waitForTimeout(50);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(300);
+    const cool = await page.evaluate(() => {
+      const b = document.querySelector('.tcluster .wbtn[data-slot="3"]');
+      return { cooling: b.classList.contains('cooling'), secs: b.querySelector('.wbtn-secs')?.textContent || '' };
+    });
+    await page.screenshot({ path: `${OUT}/controls-${label}-cooldown.png` });
+    check(`${label}: a cast nova cools with its seconds on the button`, cool.cooling && Number(cool.secs) >= 2, JSON.stringify(cool));
+    const n0 = await page.evaluate(() => window.__game.magic.fired.length);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: s.x, y: s.y, id: 7 }] });
+    await page.waitForTimeout(60);
+    const shake = await page.evaluate(() => document.querySelector('.tcluster .wbtn[data-slot="3"]').classList.contains('not-ready'));
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(150);
+    const n1 = await page.evaluate(() => window.__game.magic.fired.length);
+    check(`${label}: pressing a cooling weave shakes and casts nothing`, shake && n1 === n0, `shake ${shake}, casts ${n0} -> ${n1}`);
   }
 
   // Drag out and back onto the button: cancelled, nothing cast.
   {
-    await page.waitForTimeout(600);
-    const n0 = await page.evaluate(() => (window.__game.magic.calls || []).filter((c) => c.fn === 'cast').length);
+    await page.waitForTimeout(300);
+    await page.evaluate(() => window.__game.magic.resetCooldowns?.());
+    const n0 = await page.evaluate(() => window.__game.magic.fired.length);
     const s = await center(page, '.tcluster .wbtn:not([hidden])');
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: s.x, y: s.y, id: 4 }] });
     for (const [dx, dy] of [
@@ -228,12 +301,12 @@ async function phone(label, w, h) {
     }
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.waitForTimeout(150);
-    const n1 = await page.evaluate(() => (window.__game.magic.calls || []).filter((c) => c.fn === 'cast').length);
+    const n1 = await page.evaluate(() => window.__game.magic.fired.length);
     check(`${label}: dragging back onto the button cancels`, n1 === n0, `${n0} -> ${n1}`);
   }
 
-  // Upright, once: "Turn your phone sideways for fights."
-  if (h > w) {
+  // Upright, once: "Turn your phone sideways for fights." (when the build has that tip)
+  if (h > w && (await page.evaluate(() => !!document.querySelector('.turn-tip')))) {
     const tip = await page.waitForFunction(() => !document.querySelector('.turn-tip')?.hidden, null, { timeout: 8000 }).then(
       () => true,
       () => false,
@@ -257,6 +330,12 @@ async function phone(label, w, h) {
   await layoutChecks(page, `${label} spellbook`, '.panel-spellbook button:not([disabled])');
   // Tap a locked essence: its hint shows.
   const hint = await page.evaluate(async () => {
+    // What is still to find folds into one "N more to find" tile: open it first.
+    const more = document.querySelector('.sb-sec-essences .sb-more[aria-expanded="false"]');
+    if (more) {
+      more.click();
+      await new Promise((r) => setTimeout(r, 60));
+    }
     const t = document.querySelector('.sb-sec-essences .sb-tile.locked');
     if (!t) return 'no locked tile';
     t.click();
@@ -282,16 +361,42 @@ async function desktop() {
   check('desktop: the reticle replaces the cursor over the world', hb.cursor === 'none');
   await page.screenshot({ path: `${OUT}/controls-desktop.png` });
 
-  // 2 casts slot 2 toward the mouse (right of the player).
+  // 2 casts slot 2 toward the mouse (right of the player), on the key's release.
   await page.keyboard.press('Digit2');
   await page.waitForTimeout(120);
   const k = await page.evaluate(() => {
     const g = window.__game;
-    const c = (g.magic.calls || []).filter((x) => x.fn === 'cast' || x.fn === 'castStart').slice(-1)[0];
-    return { c: c && { fn: c.fn, slot: c.slot, aim: { x: c.aim.x, y: c.aim.y } }, px: g.player.x, sel: g.ui.hud.weaving.selected };
+    const c = g.magic.fired.slice(-1)[0];
+    return { c: c && { slot: c.slot, k: c.k, aim: { x: c.aim.x, y: c.aim.y } }, px: g.player.x, sel: g.ui.hud.weaving.selected };
   });
-  check('desktop: number key casts that slot toward the mouse', k.c?.slot === 1 && k.c.aim.x > k.px, JSON.stringify(k));
+  check('desktop: number key casts that slot toward the mouse', k.c?.slot === 1 && k.c.aim.x > k.px && k.c.k === 0, JSON.stringify(k));
   check('desktop: number key selects the slot', k.sel === 1);
+
+  // Holding 1 charges the weave: the hotbar slot's ring fills; the release casts it charged.
+  await page.evaluate(() => window.__game.magic.resetCooldowns?.());
+  await page.keyboard.down('Digit1');
+  await page.waitForTimeout(800);
+  const hk = await page.evaluate(() => {
+    const b = document.querySelectorAll('.hslot')[0];
+    return { charging: b.classList.contains('charging'), k: Number(getComputedStyle(b.querySelector('.wbtn-chg')).getPropertyValue('--charge')) };
+  });
+  await page.screenshot({ path: `${OUT}/controls-desktop-charging.png` });
+  await page.waitForTimeout(900);
+  await page.keyboard.up('Digit1');
+  await page.waitForTimeout(80);
+  await page.screenshot({ path: `${OUT}/controls-desktop-release.png` });
+  const hf = await page.evaluate(() => window.__game.magic.fired.slice(-1)[0] || null);
+  check('desktop: holding a number key charges (the slot ring fills), the release casts it charged', hk.charging && hk.k > 0.2 && hf?.slot === 0 && hf.k >= 0.999, JSON.stringify({ hk, k: hf?.k }));
+  await page.waitForTimeout(200);
+  const hc = await page.evaluate(() => {
+    const b = document.querySelectorAll('.hslot')[0];
+    return { cooling: b.classList.contains('cooling') };
+  });
+  await page.screenshot({ path: `${OUT}/controls-desktop-cooldown.png` });
+  check('desktop: the cast slot shows its cooldown sweep', hc.cooling, JSON.stringify(hc));
+  await page.evaluate(() => window.__game.magic.resetCooldowns?.());
+  await page.keyboard.press('Digit2');
+  await page.waitForTimeout(100);
 
   // Holding 3 (a beam) channels until released.
   const c0 = await page.evaluate(() => (window.__game.magic.calls || []).length);
@@ -315,13 +420,15 @@ async function desktop() {
 
   // Right click casts the selected slot; left click swings toward the mouse.
   await page.waitForTimeout(500);
+  await page.evaluate(() => window.__game.magic.resetCooldowns?.());
   const n0 = await page.evaluate(() => (window.__game.magic.calls || []).length);
   await page.mouse.click(900, 300, { button: 'right' });
   await page.waitForTimeout(120);
-  const rc = await page.evaluate(() => {
-    const c = (window.__game.magic.calls || []).slice(-1)[0];
+  const rc = await page.evaluate((from) => {
+    // The press starts it (a beam pours from there; anything else is cast on the release).
+    const c = (window.__game.magic.calls || []).slice(from).find((x) => x.fn === 'castStart');
     return c && { fn: c.fn, slot: c.slot };
-  });
+  }, n0);
   check('desktop: right click casts the selected weave', rc && rc.slot === sel0, JSON.stringify(rc));
   await page.mouse.move(400, 360);
   await page.mouse.down();
@@ -332,7 +439,6 @@ async function desktop() {
   });
   await page.mouse.up();
   check('desktop: left click aims the sword at the mouse (left of the player)', swing.aim && swing.aim.x < 0, JSON.stringify(swing));
-  void n0;
 
   // Alt + 1 asks Lyra (Follow) — and casts nothing.
   await page.evaluate(() => {
@@ -345,7 +451,8 @@ async function desktop() {
   await page.keyboard.up('Alt');
   await page.waitForTimeout(400);
   const asked = await page.evaluate(() => ({ asked: window.__asked, casts: (window.__game.magic.calls || []).length - window.__castsBefore }));
-  check('desktop: Alt + 1 asks Lyra to follow, casting nothing', asked.asked.includes('follow') && asked.casts === 0, JSON.stringify(asked));
+  // (Follow when she is with you; rejoin when she has wandered off: the same request.)
+  check('desktop: Alt + 1 asks Lyra to follow, casting nothing', (asked.asked.includes('follow') || asked.asked.includes('rejoin')) && asked.casts === 0, JSON.stringify(asked));
 
   // B opens the Spellbook, B closes it.
   await page.mouse.move(900, 300);

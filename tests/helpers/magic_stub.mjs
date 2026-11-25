@@ -62,6 +62,7 @@ export function makeMagicStub(game = null, opts = {}) {
     mana: { cur: opts.mana ?? 40, max: 40 },
     cooldowns: [0, 0, 0, 0, 0, 0],
     holding: null,
+    released: [], // every weave a release cast: { slot, k, aim }
     compile(w) {
       if (!w || !w.shape) return { ok: false, reason: 'Pick a shape for this weave.' };
       const s = SHAPES[w.shape];
@@ -108,12 +109,12 @@ export function makeMagicStub(game = null, opts = {}) {
     cooldownLeft(i) {
       return m.cooldowns[i] || 0;
     },
-    spend(i) {
+    spend(i, k = 0) {
       const p = m.compile(m.slots[i]);
-      m.mana.cur -= p.cost;
+      m.mana.cur -= p.cost * (1 + k);
       m.cooldowns[i] = p.cooldown;
       game?.bus?.emit?.('mana_changed', { cur: m.mana.cur, max: m.mana.max });
-      game?.bus?.emit?.('spell_cast', { caster: game?.player, weave: m.slots[i], plan: p, slot: i });
+      game?.bus?.emit?.('spell_cast', { caster: game?.player, weave: m.slots[i], plan: p, slot: i, chargeK: k });
       return p;
     },
     cast(caster, slot, aim) {
@@ -123,26 +124,45 @@ export function makeMagicStub(game = null, opts = {}) {
       m.holding = null; // a cast ends a hold, as in the runtime
       return { ok: true, plan: m.spend(slot) };
     },
-    castStart(caster, slot, aim) {
-      calls.push({ fn: 'castStart', slot, aim: aim ? { x: aim.x, y: aim.y } : null });
+    // As the runtime (DESIGN §22.2): a press starts every weave; a beam pours (and pays)
+    // at once, anything else waits for the release — charging while held when opts.charge
+    // asks (k 0 for the first 0.18 s, full at 1.5 s), paying x(1 + k) then. A second
+    // start lets the first go.
+    castStart(caster, slot, aim, opts = {}) {
+      calls.push({ fn: 'castStart', slot, aim: aim ? { x: aim.x, y: aim.y, target: aim.target || null } : null, opts: { ...opts } });
+      if (m.holding) m.castRelease(caster);
       const c = m.canCast(slot);
       if (!c.ok) return { ok: false, reason: c.reason };
-      m.holding = { slot, t: 0 };
-      return { ok: true, plan: m.spend(slot) };
+      const p = m.compile(m.slots[slot]);
+      const mode = p.input === 'hold' ? 'hold' : p.input === 'charge' || opts.charge ? 'charge' : 'tap';
+      m.holding = { slot, t: 0, mode, k: 0, live: mode === 'hold', aim: aim ? { x: aim.x, y: aim.y, target: aim.target || null } : null };
+      if (mode === 'hold') m.spend(slot);
+      return { ok: true, plan: p, mode };
     },
     // Holds are per caster, like the runtime's: castHold(caster, aim) -> state | null.
     castHold(caster, aim) {
-      if (!m.holding) return null;
-      calls.push({ fn: 'castHold', slot: m.holding.slot, aim: aim ? { x: aim.x, y: aim.y } : null });
-      m.holding.t += 1 / 60;
-      return { mode: 'hold', t: m.holding.t, k: Math.min(1, m.holding.t) };
+      const h = m.holding;
+      if (!h) return null;
+      calls.push({ fn: 'castHold', slot: h.slot, aim: aim ? { x: aim.x, y: aim.y } : null });
+      h.t += 1 / 60;
+      if (aim) h.aim = { x: aim.x, y: aim.y, target: aim.target || null };
+      if (h.mode === 'charge') {
+        h.live = h.t >= 0.18;
+        h.k = Math.max(0, Math.min(1, (h.t - 0.18) / 1.32));
+      } else if (h.mode === 'hold') h.k = 1;
+      return { mode: h.mode, t: h.t, k: h.k, live: h.live, capped: false };
     },
     castRelease(caster, aim) {
-      const slot = m.holding?.slot ?? -1;
-      calls.push({ fn: 'castRelease', slot, aim: aim ? { x: aim.x, y: aim.y } : null });
-      if (!m.holding) return { ok: false, reason: 'empty' };
+      const h = m.holding;
+      calls.push({ fn: 'castRelease', slot: h?.slot ?? -1, aim: aim ? { x: aim.x, y: aim.y, target: aim.target || null } : null, k: h?.k ?? 0 });
+      if (!h) return { ok: false, reason: 'empty' };
       m.holding = null;
-      return { ok: true };
+      if (h.mode === 'hold') return { ok: true };
+      const c = m.canCast(h.slot);
+      if (!c.ok) return { ok: false, reason: c.reason };
+      const p = m.spend(h.slot, h.mode === 'charge' ? h.k : 0);
+      m.released.push({ slot: h.slot, k: h.mode === 'charge' ? h.k : 0, aim: aim ? { x: aim.x, y: aim.y, target: aim.target || null } : h.aim });
+      return { ok: true, plan: p };
     },
     castCancel(caster) {
       calls.push({ fn: 'castCancel', slot: m.holding?.slot ?? -1 });

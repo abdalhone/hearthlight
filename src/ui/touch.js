@@ -194,14 +194,16 @@ export class TouchControls {
   makeSlot(i) {
     const img = h('img', { class: 'wbtn-icon', alt: '', draggable: 'false', 'aria-hidden': 'true' });
     const cd = h('span', { class: 'wbtn-cd', 'aria-hidden': 'true' });
+    const secs = h('span', { class: 'wbtn-secs num', 'aria-hidden': 'true' });
+    const chg = h('span', { class: 'wbtn-chg', 'aria-hidden': 'true' });
     const knob = h('span', { class: 'wbtn-knob', 'aria-hidden': 'true' });
     const ring = h('span', { class: 'wbtn-ring', 'aria-hidden': 'true' });
     const plus = h('span', { class: 'wbtn-plus', 'aria-hidden': 'true', text: '+' });
     // What the button is: its name under the glyph and its mana on the corner.
     const name = h('span', { class: 'wbtn-name', 'aria-hidden': 'true' });
     const cost = h('span', { class: 'wbtn-mana num', 'aria-hidden': 'true' });
-    const b = h('button', { type: 'button', class: 'wbtn tbtn', 'aria-label': `Weave ${i + 1}`, 'data-slot': String(i) }, ring, img, cd, plus, knob, name, cost);
-    const slot = { i, b, img, cd, knob, ring, plus, name, cost, pid: null, x: 0, y: 0, key: '' };
+    const b = h('button', { type: 'button', class: 'wbtn tbtn', 'aria-label': `Weave ${i + 1}`, 'data-slot': String(i) }, ring, chg, img, cd, secs, plus, knob, name, cost);
+    const slot = { i, b, img, cd, secs, chg, knob, ring, plus, name, cost, pid: null, x: 0, y: 0, key: '' };
     b.addEventListener('pointerdown', (e) => this.slotDown(slot, e));
     b.addEventListener('pointermove', (e) => this.slotMove(slot, e));
     b.addEventListener('pointerup', (e) => this.slotUp(slot, e, false));
@@ -333,7 +335,7 @@ export class TouchControls {
   update(dt) {
     if (!this.el || !this.ui.isTouch) return;
     this.tick += dt;
-    if (this.tick < 1 / 20) return;
+    if (this.tick < 1 / 30) return;
     this.tick = 0;
     const w = this.weaving;
     const count = w?.available?.() ? w.slotCount() : 0;
@@ -348,12 +350,7 @@ export class TouchControls {
         slot.key = rec.key;
         paintSlot(slot, rec, i);
       }
-      const cd = rec.plan ? w.cooldownFrac(i) : 0;
-      setStyle(slot.cd, '--cd', cd.toFixed(3));
-      toggleClass(slot.b, 'cooling', cd > 0.001);
-      toggleClass(slot.b, 'starved', w.starved(i));
-      const f = w.lastFail(i);
-      toggleClass(slot.b, 'shake', !!f && t - f.t < 0.35);
+      paintSlotState(slot, rec, w, i, t);
     }
     this.version = ver;
   }
@@ -504,6 +501,40 @@ export function paintSlot(slot, rec, i) {
   setAttr(b, 'title', label);
   if (slot.name) setText(slot.name, empty ? 'New' : shortName(rec.name));
   if (slot.cost) setText(slot.cost, empty || !rec.cost ? '' : String(Math.round(rec.cost)));
+}
+
+// What a weave button shows from moment to moment (touch and the desktop hotbar alike):
+//   the cooldown — a dark sweep with a bright leading edge, and its whole seconds while
+//     one or more is left; a short flash when it comes back (.ready);
+//   the charge — a ring filling round the button while it is held (.charging, --charge),
+//     pulsing when full (.charged), dimmed with a hollow mana drop when the mana in hand
+//     stops it growing (.capped);
+//   starved (not enough mana) and a shake when a press was refused (.shake; .not-ready
+//     when it was still cooling).
+export function paintSlotState(slot, rec, w, i, t) {
+  const b = slot.b;
+  const cd = rec.plan ? w.cooldownFrac(i) : 0;
+  const cooling = cd > 0.001;
+  setStyle(slot.cd, '--cd', cd.toFixed(3));
+  toggleClass(b, 'cooling', cooling);
+  if (slot.secs) {
+    const left = cooling && typeof w.cooldownLeft === 'function' ? w.cooldownLeft(i) : 0;
+    setText(slot.secs, left >= 1 ? String(Math.ceil(left - 0.05)) : '');
+  }
+  // Back from a cooldown: a flash for a moment.
+  if (slot.wasCooling && !cooling && rec.plan) slot.readyAt = t;
+  slot.wasCooling = cooling;
+  toggleClass(b, 'ready', Number.isFinite(slot.readyAt) && t - slot.readyAt < 0.45);
+  const ch = typeof w.chargeOf === 'function' ? w.chargeOf(i) : null;
+  toggleClass(b, 'charging', !!ch);
+  if (slot.chg) setStyle(slot.chg, '--charge', ch ? ch.k.toFixed(3) : '0');
+  toggleClass(b, 'charged', !!ch?.full);
+  toggleClass(b, 'capped', !!ch?.capped);
+  toggleClass(b, 'starved', !ch && w.starved(i));
+  const f = w.lastFail(i);
+  const shaking = !!f && t - f.t < 0.35;
+  toggleClass(b, 'shake', shaking);
+  toggleClass(b, 'not-ready', shaking && f.reason === 'cooldown');
 }
 
 // The chat's unread count, on the touch Talk button too.
