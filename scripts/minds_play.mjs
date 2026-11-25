@@ -86,7 +86,39 @@ async function play(size) {
     if (!p) return false;
     await tap(p.x, p.y);
     await wait(350);
+    if (DEBUG)
+      console.log(
+        'tap',
+        id,
+        JSON.stringify(
+          await page.evaluate(
+            ({ x, y }) => {
+              const g = window.__game;
+              const el = document.elementFromPoint(x, y);
+              return { open: g.ui.chat.isOpen(), target: g.ui.chat.target, el: el ? `${el.tagName}.${el.className}` : null, modal: !!g.ui.isModalOpen?.(), paused: g.paused, state: g.state };
+            },
+            { x: p.x, y: p.y },
+          ),
+        ),
+      );
     return true;
+  };
+  // The person the player meant: if a tap in a crowd picked a neighbour, the player taps
+  // the one they meant in the chat's "To" row (the real way to put it right).
+  const talkTo = async (id) => {
+    await tapPerson(id);
+    await page.waitForFunction(() => window.__game.ui.chat.isOpen(), null, { timeout: 4000 }).catch(() => null);
+    const t = await page.evaluate(() => window.__game.ui.chat.target);
+    if (t === id) return true;
+    const chip = await page.evaluate((id) => {
+      const el = [...document.querySelectorAll('.chat [data-id], .chat [data-target]')].find((x) => (x.dataset.id || x.dataset.target) === id);
+      const r = el?.getBoundingClientRect();
+      return r && r.width ? [r.left + r.width / 2, r.top + r.height / 2] : null;
+    }, id);
+    console.log(`note  ${tag}: a tap on ${id} picked ${t}; tapping ${id} in the To row${chip ? '' : ' (no chip found)'}`);
+    if (chip) await tap(...chip);
+    await wait(300);
+    return (await page.evaluate(() => window.__game.ui.chat.target)) === id;
   };
   const say = async (text) => {
     const f = await page.$('.chat .chat-field');
@@ -176,9 +208,8 @@ async function play(size) {
     a._initiative();
   });
   await wait(700);
-  await tapPerson('lyra');
-  await page.waitForFunction(() => window.__game.ui.chat.isOpen(), null, { timeout: 4000 }).catch(() => null);
-  check(await page.evaluate(() => window.__game.ui.chat.isOpen()), `${tag}: tapping Lyra opens the chat`);
+  await talkTo('lyra');
+  check(await page.evaluate(() => window.__game.ui.chat.isOpen() && window.__game.ui.chat.target === 'lyra'), `${tag}: tapping Lyra opens the chat to her`);
   await say('lets go');
   await wait(800);
   await shot('01-chapel-lets-go');
@@ -241,8 +272,7 @@ async function play(size) {
   });
   await wait(600);
   await quiet();
-  await tapPerson('elda');
-  await page.waitForFunction(() => window.__game.ui.chat.isOpen() && window.__game.ui.chat.target === 'elda', null, { timeout: 4000 }).catch(() => null);
+  await talkTo('elda');
   check(await page.evaluate(() => window.__game.ui.chat.target === 'elda'), `${tag}: tapping Elda talks to her`);
   await say("please go to Lyra and tell her I'm sorry");
   await wait(1500);
@@ -288,8 +318,7 @@ async function play(size) {
   });
   await wait(600);
   await quiet();
-  await tapPerson('bram');
-  await page.waitForFunction(() => window.__game.ui.chat.target === 'bram', null, { timeout: 4000 }).catch(() => null);
+  await talkTo('bram');
   await say('can you teach me magic?');
   await wait(1200);
   await shot('08-bram-teach');

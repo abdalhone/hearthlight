@@ -568,6 +568,12 @@ test('browser: the chat talks to anyone within earshot (and screenshots)', { tim
         assert.equal(await page.evaluate(() => window.__game.ui.chat.target), 'pip');
         assert.equal(await page.getAttribute('.chat-field', 'placeholder'), 'Say something to Pip…');
         assert.equal(await page.evaluate(() => window.__game.player.crime ?? null), null, 'no sword stroke, no crime');
+        // With the chat shut, a click on someone opens it to them, and it stays open (the
+        // release of that same click is not a click outside the chat).
+        await page.evaluate(() => window.__game.ui.chat.close());
+        await page.mouse.click(at.x, at.y);
+        await page.waitForTimeout(250);
+        assert.deepEqual(await page.evaluate(() => [window.__game.ui.chat.isOpen(), window.__game.ui.chat.target]), [true, 'pip'], `${view.label}: clicking Pip opens the chat to him`);
       } else {
         // A tap on someone in the world (chat shut) opens it, talking to them.
         await page.evaluate(() => window.__game.ui.chat.close());

@@ -265,7 +265,9 @@ export class UI {
   }
 
   noteWorldDown(e) {
-    this.worldDown = this.chat.isOpen() && !this.stack.length && this.isWorldTarget(e.target) ? { id: e.pointerId, x: e.clientX, y: e.clientY, at: performance.now() } : null;
+    // A click that landed on someone (input's pick took it, and may have just opened the
+    // chat to them) is not a click outside the chat: on release it must not close it.
+    this.worldDown = !e.defaultPrevented && this.chat.isOpen() && !this.stack.length && this.isWorldTarget(e.target) ? { id: e.pointerId, x: e.clientX, y: e.clientY, at: performance.now() } : null;
   }
 
   noteWorldUp(e) {
