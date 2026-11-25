@@ -1287,6 +1287,17 @@ village. She should be able to ask help for other people. They can come and help
   (a plugin question; Claude gets the facts in its prompt and a `show_home` action) and
   from every villager (`player_talk.js` local reply; the Claude brief carries the same
   fact), and the game marks the way whoever words the answer.
+- **Sleep and sit** (r13; the author: "I can't sit anywhere, and I can't sleep";
+  `src/world/rest.js`). Your bed says "Sleep until morning" at **any hour** (no more
+  "from 6 PM"): you wake at 7 the next morning (the same morning before 7), healed, and the
+  game saves, as before. Not while a fight is near (`sleepBlocked`: a hostile within 10
+  tiles, a blow taken in the last 8 s, lying fallen, carrying someone): a toast says why.
+  **Every chair, stool, bench and pew is a seat** (`Seat` in objects.js): the use button
+  says "Sit"; you sit in the villagers' own sitting pose (a chair at a table faces it,
+  the rest face out), sharing their seats (`obj._sitters`: a full bench says so). Moving
+  stands you up and walks on; a swing, a roll or the use button ("Stand up") stands you up
+  and is spent doing it; a blow knocks you out of the seat. A bench with words says them
+  as you sit. Saved seated, you load standing where you sat down from.
 - **Ground reads true.** Anything drawn as raised (a terrace, a rock band, a cliff face, a
   retaining wall, a steep bank) is solid along its face and climbable only by stairs, steps
   or a ramp drawn as such; anything walkable must look walkable. No walking up walls.

@@ -175,7 +175,7 @@ export const HOW_TO_PLAY = [
     id: 'days',
     title: 'Days and nights',
     text:
-      'A day lasts about fifteen minutes. Wolves grow bolder at night and moonpetals only open after dark. Sleep in your bed after 6 PM to skip to morning; Lyra writes in her diary while you rest, and the game saves. She sleeps in the spare bed only while she trusts you; otherwise she keeps her old room at the Ember Kettle.',
+      'A day lasts about fifteen minutes. Wolves grow bolder at night and moonpetals only open after dark. Sleep in your bed (in the Wayhouse; Menu → Home shows the way) at any hour to wake the next morning healed, unless a fight is near; Lyra writes in her diary while you rest, and the game saves. Sit on any chair, stool or bench with the use button; move to stand up. She sleeps in the spare bed only while she trusts you; otherwise she keeps her old room at the Ember Kettle.',
   },
   {
     id: 'saving',

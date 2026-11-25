@@ -53,6 +53,7 @@ import { Survival } from '../survival/survival.js';
 import { installDeathView } from '../ui/death_view.js';
 import { Murder } from '../murder/murder.js';
 import { MurderView } from '../ui/murder_view.js';
+import { sleepBlocked, standUp } from '../world/rest.js';
 
 export const SAVE_VERSION = 1;
 
@@ -260,14 +261,16 @@ export class Game {
     return this.map.isSolidTile(tx, ty, actor) || this.objects.isBlockingTile(tx, ty, actor);
   }
 
-  // Sleep until morning (beds call this). Heals everyone, lets Lyra reflect on the day.
+  // Sleep until morning (beds call this), at any hour, unless a fight is near (r13,
+  // src/world/rest.js). Heals everyone, saves, lets Lyra reflect on the day.
   async sleep(bed = null) {
     if (this.state !== 'playing') return false;
-    const h = this.clock.hour;
-    if (h >= 6 && h < 18) {
-      this.ui.toast("It's too early to sleep. Beds work from 6 PM.", 'info');
+    const why = sleepBlocked(this, this.player);
+    if (why) {
+      this.ui.toast(why, 'warn');
       return false;
     }
+    standUp(this, this.player);
     this.state = 'sleeping';
     this.bus.emit('player_sleep', { bed });
     this.audio.play('sleep');
