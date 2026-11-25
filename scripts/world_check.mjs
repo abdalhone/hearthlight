@@ -352,9 +352,33 @@ async function beam(size, page, cdp) {
     window.__clean();
     return { x0: w.x };
   });
-  // Free: how far it runs in a second.
+  // A sampler in the page: where the deer is every 50 ms and whether a ray holds it.
+  const sample = () =>
+    page.evaluate(() => {
+      const g = window.__game;
+      const d = window.__deer;
+      window.__samp = [];
+      clearInterval(window.__sampT);
+      window.__sampT = setInterval(() => window.__samp.push({ x: d.x, y: d.y, t: g.clock.t, pin: !!g.magic.status.has(d, 'pinned') }), 50);
+    });
+  // Its speed (px per game second) over the samples that are (or are not) pinned.
+  const speed = (pinned) =>
+    page.evaluate((want) => {
+      clearInterval(window.__sampT);
+      const s = window.__samp;
+      let dist = 0;
+      let time = 0;
+      for (let i = 1; i < s.length; i++) {
+        if (s[i].pin !== want || s[i - 1].pin !== want) continue;
+        dist += Math.hypot(s[i].x - s[i - 1].x, s[i].y - s[i - 1].y);
+        time += s[i].t - s[i - 1].t;
+      }
+      return { v: time > 0 ? dist / time : 0, time };
+    }, pinned);
+  // Free: how fast it runs from you.
+  await sample();
   await page.waitForTimeout(1000);
-  const free = await page.evaluate((x0) => window.__deer.x - x0, r0.x0);
+  const free = await speed(false);
   // Back, and a held beam on it.
   await page.evaluate(() => {
     const g = window.__game;
@@ -362,10 +386,8 @@ async function beam(size, page, cdp) {
     window.__deer.y = g.player.y;
     window.__deer.provokedAt = g.clock.t;
   });
-  const start = await page.evaluate(() => window.__deer.x);
-  const at = await page.evaluate(() => ({ x: window.__deer.x + 30, y: window.__deer.y - 6 }));
+  await sample();
   let pinned = false;
-  const trace = [];
   if (size.phone) {
     const c = await page.evaluate(() => {
       const b = document.querySelector('.tcluster .wbtn[data-slot="2"]').getBoundingClientRect();
@@ -375,7 +397,7 @@ async function beam(size, page, cdp) {
     await page.waitForTimeout(500);
     pinned = await page.evaluate(() => !!window.__game.magic.status.has(window.__deer, 'pinned'));
     await page.screenshot({ path: `${OUT}/${size.name}-beam-pin.png` });
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(700);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   } else {
     // Keep the mouse on the deer, the way a player tracks it with the ray.
@@ -391,19 +413,15 @@ async function beam(size, page, cdp) {
     }
     pinned = await page.evaluate(() => !!window.__game.magic.status.has(window.__deer, 'pinned'));
     await page.screenshot({ path: `${OUT}/${size.name}-beam-pin.png` });
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 14; i++) {
       await page.waitForTimeout(50);
       await follow();
-      trace.push(await page.evaluate(() => ({ x: Math.round(window.__deer.x), mm: window.__deer.statusFlags?.moveMul, sp: Math.round(window.__deer.speed * (window.__deer.speedMul || 1)), st: window.__deer.ai?.state })));
     }
     await page.keyboard.up('Digit3');
   }
-  const held = await page.evaluate((x0) => window.__deer.x - x0, start);
-  // Then a second loose, still panicked from the burns: how far it gets without the ray.
-  const x1 = await page.evaluate(() => window.__deer.x);
-  await page.waitForTimeout(1000);
-  const after = await page.evaluate((x0) => Math.hypot(window.__deer.x - x0, 0), x1);
-  note(size.name, 'a beam pins a fleeing deer', pinned && held < after * 0.6, { free: Math.round(free), held: Math.round(held), loose: Math.round(after), pinned, trace });
+  const held = await speed(true);
+  const v = (x) => Math.round(x.v);
+  note(size.name, 'a beam pins a fleeing deer', pinned && held.time > 0.3 && held.v < free.v * 0.5, { free: v(free), pinned: v(held), pinnedFor: Math.round(held.time * 10) / 10 });
   await page.evaluate(() => window.__game.entities.remove(window.__deer));
 }
 
