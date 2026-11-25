@@ -131,6 +131,19 @@ export class PixelFxDirector {
       const e = p.entity;
       if (e && (e === g.player || e === g.companion)) playCollect(g, e.x, e.y, { gold: true, size: 1.2, height: Math.round(bodySize(g, e).h * 0.55) });
     });
+    // Stat points spent on the character sheet: a small burst at the player's chest, seen as
+    // the sheet closes (the world is paused under it). One burst however many were spent.
+    let unspent = null;
+    on('points_changed', (p) => {
+      const n = Number(p.unspent);
+      if (!Number.isFinite(n)) return;
+      const was = unspent;
+      unspent = n;
+      const pl = g.player;
+      if (was == null || n >= was || !pl) return;
+      this.host.stop('points');
+      this.host.play('collect', { x: pl.x, y: pl.y, height: Math.round(bodySize(g, pl).h * 0.55), size: 0.8, palette: RAMP.points, tag: 'points', seed: n + 3 });
+    });
     // Back on their feet (a potion, a hand up, the sickroom, the kept flame): life climbs
     // back up the body in gold.
     on('revived', (p) => {

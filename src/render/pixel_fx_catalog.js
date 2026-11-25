@@ -72,6 +72,7 @@ export const RAMP = {
   potion: ['#2a0a12', '#5c1424', '#a02a3c', '#e0505a', '#ff8a8a', '#ffc0c0', '#fff0f0', '#ffffff'],
   dust: ['#2a2440', '#5e5878', '#9a94b4', '#cdc8e0', '#f2f0fa', '#ffffff'],
   item: ['#241a2e', '#4a3a52', '#7a6a80', '#b0a2b0', '#ddd2d8', '#f4ecee', '#fffaf6', '#ffffff'],
+  points: ['#0e1430', '#1e2a66', '#3446a8', '#5a78e0', '#8cb0ff', '#c4dcff', '#eef6ff', '#ffffff'],
 };
 
 // ------------------------------------------------------------------ the catalog

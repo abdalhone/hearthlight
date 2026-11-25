@@ -1713,3 +1713,55 @@ notices and has opinions (berserk frightens her).
   goes home to her surviving parent. Events: `villager_killed`, `murder_witnessed`,
   `body_hidden`, `body_found`, `murder_case`, `questioned`, `arrested`, `moot_met`,
   `funeral`, `moot_verdict`. Saved in `save.murder`.
+
+## 30. pixelfx effects (the author: "download and use pixelfx if you see fit"; "the spells do not do any damage, and it's not clear")
+
+**Third-party.** pixelfx (patch-gg, MIT, commit 5294518) is vendored in `src/vendor/pixelfx/` with its
+LICENSE and NOTICE (Sprite Fusion by Hugo Duprez and Hollow Crown, both MIT). Only `core/*.js` and the
+effects the game plays are copied; not its gallery (its font is not MIT), docs, tools or records. See
+`THIRD_PARTY.md`.
+
+**The view.** pixelfx is drawn for a side view; Hearthlight is seen from above. Nothing uses the stock
+actor or acts. The effects we use were redrawn top-down where they needed it (each file says what changed
+at its top): rings, pools and shockwaves lie on the floor as 0.6–0.75 ellipses; sparks, chips, clods and
+drops scatter over the floor in x and y, hopping up the screen and landing near where they rose (a
+per-particle floor in `core/sim.js`); aimed effects take the blow's angle (`aim`) and were looked at in
+four to eight directions; statuses wrap the afflicted body's own sprite frame (`pixel_fx_bodies.js`).
+
+**The host** (`src/render/pixel_fx.js`, `game.pixelFx`): `play(id, { x, y | follow, dx, dy, angle,
+palette, tag, life, ...opts })` → handle, `stop(handle | tag)`, `playing()`, `clear()`.
+- Each live effect owns a pooled frame (color + light) sized to its bounds; each frame its color goes into
+  a reused ImageData and is drawn into the world buffer at its world spot minus (ox, oy); its light is
+  summed into one buffer the size of the world buffer and added with `'lighter'` after the night's lighting
+  (held back a little by day), so effects glow at night and never wash the day out.
+- Layers: `ground` (under everyone), `body` (y-sorted round its anchor: a back half behind the body, a
+  front half over it) and `top` (over actors and spells). Followers track their body and end with it.
+- Culling: one-shots far off screen are not started; nothing off the view is drawn. A cap on effects at
+  once (44 desktop, 24 phone; halved with reduced motion) drops the oldest least important first
+  (ambience 0 < flourishes 1 < statuses 2 < hits 3).
+- Time: stepped with the world's `wdt`, so effects freeze while paused, in a hit-stop or a cutscene, and
+  slow with `timeScale`.
+- Reduced motion: ambience is skipped; every effect plays its `calm` mode, 15% smaller, with half the glow
+  and no white pixels (drawn in its ramp's brightest color instead).
+
+**Where it plays** (`src/render/pixel_fx_play.js`, the catalog in `pixel_fx_catalog.js`):
+- Every blow: the hit spark at the target's chest, thrown along the blow, in the weave's palette for a
+  weave (replaces combat's streaks and the weave's debris spray, a pinch of the essence's own stuff stays);
+  a critical hit gets the starburst (replaces the old star). The Strike's fist: a real punch (a white-hot
+  blob, ink wedges, a ring of dust, clods over the floor), the fist's only spark.
+- Statuses on the body (the old tint and overlay step aside while it plays): burning, chilled, poisoned,
+  drained (cursed), stunned/staggered, dazzled (dazed); the fallen bleed; berserk's rage on the player.
+  The game's own ice crust stays for "frozen".
+- Bind: hands come up out of a pool round the bound one and hold on (replaces the spray). A blow on a
+  ward: a spark glancing off the shell (the dome is the ward's own).
+- Heals: Lyra's spell (green), potions (red), revival, the sickroom and the kept flame (gold).
+- Foe deaths: a cartoon poof that hides the fading body (replaces the old puff). Bosses arrive in a puff;
+  beaten for good, the soul lifts out of them.
+- Pickups, a chest's haul, level-ups, stat points spent: a burst of light with hoops at a slant and
+  twinkles over the ground, sized to the moment.
+- Ambience: a few butterflies over the meadows by day, bats at dusk (`pixel_fx_critters.js`, tiny,
+  seen from above with a shadow); fireflies and leaves stay `weather.js`'s. None indoors, in rain or under
+  reduced motion.
+
+Tests: `tests/pixel_fx.test.mjs`. Shots: `scripts/pixelfx_shots.mjs` (in the game, three screen sizes,
+day and night), `scripts/pixelfx_preview.mjs` (contact sheets from above, aimed several ways).
