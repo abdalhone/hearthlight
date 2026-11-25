@@ -1324,6 +1324,15 @@ me some lore." The lore must reach the player in the game, not only in a file.
   `wanted`), and after three failures in a row the scene carries on silently.
   `scripts/cutscene_check.mjs` taps the New Game prologue through on a phone (390×640 and
   844×340) with voices working, blocked and slow: about 14 s of fast taps.
+- **Never a bare caption over black** (r13; the author: "in the end of the first cutscene, I
+  have seen that [Lyra] talks, but there is no pictures"). Cause: a replay (Prologue on the
+  title screen or in the menu) plays the `world` block as its stand-in panel and kept only
+  the lines and sounds, so the block's own fade-in was skipped and the fade-out before it
+  left Lyra's last lines on black. Now a replay keeps the block's fades too (the
+  "Wayhouse, morning" panel is seen), and the player never speaks a line while a
+  fade-out still covers the screen (`fadedOut`: the picture comes back under the line,
+  not waited on, so the voice timing is unchanged). New Game plays the same lines on the
+  live map, inside the Wayhouse, with her portrait beside each.
 - **The prologue** (plays on New Game, skippable, replayable from the title screen and the
   menu): Halcyre and the broken Song, the Drift, the warded villages, Hearthvale and its
   Wellstone, Lyra's birth under the Brightfall to old Hobb and Wenna, Maren going into the
