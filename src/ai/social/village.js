@@ -1225,7 +1225,8 @@ export class Village {
     // answer to it, decided before anyone words it (DESIGN §23.2).
     const cm = this.commitments;
     const asleep = e.state === 'sleep' || e.activity === 'sleep';
-    const ask = !asleep && !local.intent?.match?.(/^(threat|insult)$/) ? safe(() => cm.detect(e, said), null) : null;
+    // ("Show me where my bed is" asks the way home, not for anything they would promise.)
+    const ask = !asleep && !local.intent?.match?.(/^(threat|insult|home)$/) ? safe(() => cm.detect(e, said), null) : null;
     const dec = ask ? safe(() => cm.decide(e, ask), null) : null;
     if (ask && dec?.line) local.lines = [dec.line];
     // A promise they broke: they say so first, once.
@@ -1272,6 +1273,8 @@ export class Village {
     // Something offered in what they said ("take a honey cake for the road") is handed over.
     if (!asleep) safe(() => cm.offersIn(e, reply.lines));
     reply.silent = silent && !reply.lines.length;
+    // They told the way home (r13, src/world/home.js): the way is marked on the screen.
+    if (local.intent === 'home' && !reply.silent) safe(() => g0(this)?.ui?.showHome?.(e.id));
     this.afterPlayerSays(e, said, local, reply);
     if (reply.silent) return this.silentReply(e, 'cold', { mood: reply.mood || 'cold', intent: local.intent, source: reply.source });
     return { lines: reply.lines, mood: reply.mood || null, intent: local.intent, source: reply.source, name: reply.name || null };

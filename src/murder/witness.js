@@ -4,12 +4,13 @@
 //
 //   lightAt(game, x, y)                    0..1, daylight plus lamps, fires and lanterns
 //   sightRange(game, seer, light)          px a seer can make things out at, for that light
-//   lineOfSight(game, ax, ay, bx, by)      walls block it; two trees in the way block it
+//   lineOfSight(game, ax, ay, bx, by)      walls and shut doors block it; two trees in the way block it
 //   look(game, seer, x, y)                 { sees, clarity: 'clear'|'glimpse', d } | null
 //   witnessesOf(game, x, y, { exclude })   everyone who saw a point right now, nearest first
 
 import { TILE } from '../core/constants.js';
 import { VILLAGERS } from '../ai/social/bonds_data.js';
+import { wallTile } from '../world/walls.js';
 
 export const RANGE = Object.freeze({
   day: 150, // px outdoors by full day (a villager's SIGHT)
@@ -52,10 +53,19 @@ export function lightAt(game, x, y) {
     if (k > l) l = k;
   };
   const objs = safe(() => game.objects?.inRadius?.(x, y, LIGHT_REACH), []) || [];
+  // A light under a roof stays inside (DESIGN §31.5): it lights its own room, never the
+  // street outside the wall (the chapel's altar does not light a killing in the square).
+  const outside = buildingKey(game, x, y) == null;
+  const takeOne = (L) => {
+    if (outside && L && underRoof(game, L.x, L.y)) return;
+    take(L);
+  };
   for (let i = 0; i < objs.length; i++) {
     const o = objs[i];
     if (o.removed || typeof o.getLight !== 'function') continue;
-    take(safe(() => o.getLight(t)));
+    const L = safe(() => o.getLight(t));
+    if (Array.isArray(L)) L.forEach(takeOne);
+    else takeOne(L);
   }
   const ents = safe(() => game.entities?.all?.(), []) || [];
   for (let i = 0; i < ents.length; i++) {
@@ -87,6 +97,15 @@ function buildingKey(game, x, y) {
   return b ? b.id ?? b : null;
 }
 
+// Under a building's roof (not its front wall, where windows and lamps hang to the street):
+// the same rule the renderer's roofs use (render/lighting.js roofSeen).
+function underRoof(game, x, y) {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  const ty = Math.floor(y / TILE);
+  const b = safe(() => game.map?.buildingAt?.(Math.floor(x / TILE), ty));
+  return !!b && !(ty > b.y + b.h - 3);
+}
+
 // Walls (and anything that stops an arrow) block the view; trees thin it, and two of them
 // in the way hide what is behind. The two end tiles never block (you see a door you lean on).
 export function lineOfSight(game, ax, ay, bx, by) {
@@ -111,12 +130,15 @@ export function lineOfSight(game, ax, ay, bx, by) {
     lastX = tx;
     lastY = ty;
     if ((tx === t0x && ty === t0y) || (tx === t1x && ty === t1y)) continue;
-    if (safe(() => map.blocksProjectile?.(tx, ty), false)) return false;
+    // The tiles that stop a blow stop the eye too (world/walls.js): walls, rock, and a door
+    // shut in the way.
+    if (safe(() => wallTile(game, tx, ty), false)) return false;
     const objs = safe(() => game.objects?.objectsAt?.(tx, ty), null);
     if (objs) {
       for (let k = 0; k < objs.length; k++) {
         const o = objs[k];
-        if (o.removed || o.hidden || o.objType !== 'tree') continue;
+        // A felled tree's stump hides nobody (world/breakables.js).
+        if (o.removed || o.hidden || o.objType !== 'tree' || o.state?.depleted) continue;
         if (typeof o.blocksTile === 'function' && !safe(() => o.blocksTile(tx, ty, null), true)) continue;
         trees++;
         if (trees >= 2) return false;

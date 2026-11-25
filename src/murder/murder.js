@@ -34,6 +34,7 @@ import { VILLAGERS } from '../ai/social/bonds_data.js';
 import { placeAt, placePhrase, pronoun } from '../ai/village_life/errands_data.js';
 import { whenPhrase } from '../ai/village_life/problems.js';
 import { witnessesOf, look, lightAt } from './witness.js';
+import { canReach } from '../world/walls.js';
 import { UNKILLABLE, FINISH_HOLD, FINISH_REACH, FINISH_CANCEL, MURDER_WANTED, HOUR, DAY, HIDE, hidingPlace, INVESTIGATORS, levelOf } from './data.js';
 import { gatherEvidence, suspicionOf, buildQuestions, judgeAnswer, WEIGHTS } from './investigation.js';
 import { murderLine, watchLine } from './lines.js';
@@ -358,6 +359,8 @@ export class Murder {
       const dy = e.y - player.y;
       const d = Math.hypot(dx, dy);
       if (d > FINISH_REACH) continue;
+      // Never through a wall (DESIGN §31.1): the same rule as every other blow.
+      if (!safe(() => canReach(this.game, player, e), true)) continue;
       const score = d - (d > 0 ? ((dx * fx + dy * fy) / d) * 10 : 10);
       if (score < bs) {
         bs = score;

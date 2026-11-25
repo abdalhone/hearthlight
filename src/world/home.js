@@ -89,9 +89,13 @@ export function wayHomeLine(game, from, who = 'lyra', seed = 0) {
   const f = homeFacts(game, from);
   if (!f.ok) return null;
   if (who === 'lyra') {
-    if (f.inside) return "You're standing in it. Yours is the bed on the left as you come in, by the chest. Mine's the far one, and I'd like it to stay mine.";
+    // "Our cottage" only while she sleeps there too: she may be lodging at the Ember Kettle
+    // (her own choice, mind.agenda.sleepAt; LORE §7).
+    const sleepAt = game?.companion?.mind?.agenda?.sleepAt;
+    const ours = !sleepAt || sleepAt === 'lyra_bed';
+    if (f.inside) return ours ? "You're standing in it. Yours is the bed on the left as you come in, by the chest. Mine's the far one, and I'd like it to stay mine." : "You're standing in it. Yours is the bed on the left as you come in, by the chest.";
     const pick = [
-      `Your bed? In the Wayhouse, our cottage: ${f.where}. The thatched one with Hobb's lamp by the door. Yours is on the left as you come in, by the chest. Follow the mark.`,
+      `Your bed? In the Wayhouse, ${ours ? 'our cottage' : 'your cottage'}: ${f.where}. The thatched one with Hobb's lamp by the door. Yours is on the left as you come in, by the chest. Follow the mark.`,
       `The Wayhouse, ${f.where}. Hobb's lamp hangs by the door. Your bed's the one on the left, chest beside it. Follow the mark if you lose the lane.`,
     ];
     return pick[Math.abs(seed | 0) % pick.length];

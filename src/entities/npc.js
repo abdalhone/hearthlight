@@ -80,6 +80,12 @@ export function crimeActive(game, actor = game?.player) {
 }
 
 // Lyra's companionship state ('together' | 'wary' | 'apart' | 'left' | 'gone').
+// The props of a place still standing: a fence or barrel the player smashed is rubble until
+// it is mended (world/breakables.js), so nobody leans on it or works at it meanwhile.
+function whole(list) {
+  return list.some((o) => o.state?.broken) ? list.filter((o) => !o.state?.broken) : list;
+}
+
 export function companionshipOf(game) {
   const m = game?.companion?.mind;
   const s = m?.companionship ?? m?.autonomy?.companionship;
@@ -509,7 +515,7 @@ export class NPC extends Actor {
     const salt = reroll ? Math.floor(rand(this.game) * 97) : 0;
     // A schedule entry may name what to stand at or sit on (npc_data_more.js `near`).
     if (e.near?.length && e.activity !== 'sleep') {
-      const objs = this.objectsIn(loc, e.near);
+      const objs = whole(this.objectsIn(loc, e.near));
       if (objs.length) {
         const o = objs[(Math.floor(this.jitter * 11) + salt) % objs.length];
         const sp = e.pose === 'sit' && SEATS.has(o.objType) ? this.seatOn(o) : this.besideObject(o, e.pose === 'sit');
@@ -543,7 +549,7 @@ export class NPC extends Actor {
       case 'farm': {
         const types = WORK_OBJECTS[id] || (e.activity === 'farm' ? ['crop'] : null);
         if (types) {
-          const objs = this.objectsIn(loc, types);
+          const objs = whole(this.objectsIn(loc, types));
           if (objs.length) {
             const o = objs[(Math.floor(this.jitter * 7) + salt + (e.activity === 'farm' ? Math.floor(rand(this.game) * objs.length) : 0)) % objs.length];
             // An object hemmed in on every side: work on the floor nearby, never "work"

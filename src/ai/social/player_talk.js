@@ -539,16 +539,10 @@ export function localReply(v, npc, text) {
     return { lines: [l], mood: 'sleepy', delta: 0, intent: 'asleep' };
   }
 
-  // "Where's my bed?" (r13): anyone in the village can say, and the way is marked.
+  // "Where's my bed?" (r13): anyone in the village can say. The way is marked once the
+  // answer is given (village.playerSays: not if they chose to say nothing).
   const home = !/\b(?:kill|hurt|burn)\b/i.test(text) && asksForHome(text) ? wayHomeLine(g, npc, id, v.day?.() || 0) : null;
-  if (home) {
-    try {
-      g?.ui?.showHome?.(id);
-    } catch {
-      /* the mark is a kindness, not the answer */
-    }
-    return { lines: [home], mood, delta: 0, intent: 'home', homeFact: homeFacts(g, npc).line, told: [], mentioned: [] };
-  }
+  if (home) return { lines: [home], mood, delta: 0, intent: 'home', homeFact: homeFacts(g, npc).line, told: [], mentioned: [] };
 
   // Their day (DESIGN §28): "what's wrong?", "have you seen Garrick?", an answer to their
   // own question — from what they really know.

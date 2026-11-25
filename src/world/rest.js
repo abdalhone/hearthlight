@@ -59,7 +59,7 @@ export function sleepBlocked(game, actor = game?.player) {
 
 // A free seat on a chair, stool, bench or pew: { i, x, y } (the sitter's feet), or null.
 export function seatFor(o, who = null) {
-  if (!o || !SEAT_TYPES.has(o.objType) || o.removed || o.broken) return null;
+  if (!o || !SEAT_TYPES.has(o.objType) || o.removed || o.broken || o.state?.broken) return null;
   const f = o.footprint || { x: o.tx ?? Math.floor(o.x / TILE), y: o.ty ?? Math.floor(o.y / TILE), w: 1, h: 1 };
   const sitters = o._sitters || [];
   const n = Math.max(1, f.w | 0);

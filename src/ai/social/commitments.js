@@ -38,6 +38,7 @@ const nameFirst = (n) => String(n || '').replace(/^(captain|sister|brother|old|r
 
 const DAY = 900;
 const GIVE_CAP = 2; // gifts a villager hands over in a day
+const SKIP_GAP = 30; // s of clock between two checks (about 1 s apart) that can only be a skip
 // What each villager has to give from their own trade (and how well they must think of the
 // player to give it). Never their coin, never what they live by selling dear.
 export const GIVES = {
@@ -91,7 +92,9 @@ const GIVE_RE = [
   /\b(?:spare|got)\s+(?:me\s+)?(?:a\s+|an\s+|some\s+|any\s+)(?<item>[a-z' -]{3,30}?)(?:\s+(?:please|for me))?[.!?]*$/i,
   /\bi(?:'d| would)\s+(?:like|love)\s+(?:a\s+|an\s+|some\s+)(?<item>[a-z' -]{3,30}?)(?:\s+please)?[.!?]*$/i,
 ];
-const TEACH_RE = /\b(?:teach|show)\s+me\b(?:.*\b(?:magic|spells?|weav\w*|essence|light|iron|frost|song|green|stone|storm|how to (?:weave|cast|use))\b)?|\b(?:teach|learn)\b.*\b(?:magic|spells?|weav\w*|essences?)\b/i;
+// "Teach me" is an ask for a lesson on its own; "show me" only with the weave in it ("show me
+// where my bed is" asks the way home, src/world/home.js, not for a lesson).
+const TEACH_RE = /\bteach\s+me\b|\bshow\s+me\b.*\b(?:magic|spells?|weav\w*|essence|light|iron|frost|song|green|stone|storm|how to (?:weave|cast|use))\b|\b(?:teach|learn)\b.*\b(?:magic|spells?|weav\w*|essences?)\b/i;
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const safe = (fn, fb = null) => {
@@ -404,6 +407,14 @@ export class Commitments {
     if (this._acc < 1) return;
     this._acc = 0;
     const t = this.now();
+    // The clock jumped (the player slept till morning, at any hour since r13): nobody could
+    // keep a promise in hours that were skipped, so an open one's day moves with the clock.
+    const last = this._lastT;
+    this._lastT = t;
+    if (last != null && t - last > SKIP_GAP) {
+      const skipped = t - last;
+      for (const c of this.list) if ((c.state === 'open' || c.state === 'doing') && c.due != null) c.due += skipped;
+    }
     for (const c of this.list) {
       if (c.state === 'kept' || c.state === 'broken') continue;
       if (c.kind === 'teach') {
@@ -528,6 +539,7 @@ export class Commitments {
   }
 
   deserialize(d) {
+    this._lastT = null; // a loaded clock is no skip
     if (!d || typeof d !== 'object') return;
     this.seq = Number(d.seq) || 0;
     this.list = Array.isArray(d.list) ? d.list.filter((c) => c && c.id && c.kind).map((c) => ({ ...c, state: c.state === 'doing' && c.kind === 'tell' ? 'open' : c.state })) : [];
