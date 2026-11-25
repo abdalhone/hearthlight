@@ -1510,9 +1510,12 @@ export class Window extends WorldObject {
     super(game, { ...o, objType: 'window', solid: false });
     this.sprite = `prop:window${this.variant ? ':' + this.variant : ''}`;
     this.lightDy = o.lightDy ?? null;
+    // Nobody lives behind it (Brindlecombe's empty houses): no lamp comes on at dusk.
+    this.unlit = !!o.unlit;
   }
 
   getLight(time) {
+    if (this.unlit) return null;
     const dark = this._darkness();
     if (dark < 0.25) return null;
     const f = 0.9 + 0.1 * Math.sin(time * 3 + this.phase * 20);
@@ -1529,7 +1532,7 @@ export class Window extends WorldObject {
     const sx = Math.round(this.x - ox);
     const sy = Math.round(this.y - oy);
     atlas.draw(ctx, this.sprite, 0, sx, sy) || atlas.draw(ctx, 'prop:window', 0, sx, sy);
-    const dark = this._darkness();
+    const dark = this.unlit ? 0 : this._darkness();
     if (dark > 0.25) {
       const lit = atlas.has(`${this.sprite}:lit`) ? `${this.sprite}:lit` : 'prop:window:lit';
       atlas.draw(ctx, lit, 0, sx, sy, { alpha: Math.min(1, (dark - 0.25) * 1.8) });

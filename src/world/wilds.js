@@ -573,7 +573,7 @@ const WILDS_METHODS = {
     );
 
     const dead = (spec) => {
-      const b = this.building({ ...spec, smoky: false, locked: false });
+      const b = this.building({ ...spec, smoky: false, locked: false, unlit: true });
       const door = this.objects.get(`door_${spec.id}`);
       if (door) {
         door.state.open = true;

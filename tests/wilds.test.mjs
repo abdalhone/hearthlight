@@ -132,6 +132,33 @@ test('Brindlecombe: doors open, a cold wardstone, houses to loot, graves', () =>
   assert.equal(world.locations.at(P.brindlecombe.x * TILE, (P.brindlecombe.y + 2) * TILE).id, 'brindlecombe');
 });
 
+// r14a verify: walked into Brindlecombe at night and every empty house had a lamp in its
+// window. Nobody lives there: its windows stay dark; the vale's still light up.
+test("Brindlecombe's empty houses show no lamp at night; the vale's windows do", () => {
+  const inBrindle = (o) => world.locations.at(o.x, o.y)?.id?.startsWith?.('brindle') || world.locations.at(o.x, o.y)?.parent === 'brindlecombe';
+  const windows = world.objects.list.filter((o) => o.objType === 'window');
+  const dead = windows.filter((o) => o.x < 0 && inBrindle(o));
+  const vale = windows.filter((o) => o.x >= 0 && o.y >= 0);
+  assert.ok(dead.length >= 6, `Brindlecombe has windows (${dead.length})`);
+  assert.ok(vale.length >= 10);
+  const night = { ...game.clock, hour: 23, daylight: 0, isNight: true };
+  const saved = game.clock;
+  game.clock = night;
+  try {
+    for (const w of dead) {
+      w._darkness = () => 1;
+      assert.equal(w.getLight(10), null, `${w.id} stays dark`);
+    }
+    const lit = vale.filter((w) => {
+      w._darkness = () => 1;
+      return !!w.getLight(10);
+    });
+    assert.ok(lit.length >= 10, 'the vale still lights its windows');
+  } finally {
+    game.clock = saved;
+  }
+});
+
 test('the Crown Ring: nine stones in the snow round a melted circle', () => {
   const stones = world.objects.list.filter((o) => /^crown_stone_/.test(o.id));
   assert.equal(stones.length, 9);

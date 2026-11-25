@@ -523,7 +523,7 @@ export class WorldBuilder {
       const c = door + off;
       if (c <= x || c >= x + w - 1) continue;
       if (spec.noWindow?.includes(c)) continue;
-      this.must({ objType: 'window', tx: c, ty: y + h - 1, variant: spec.windowStyle ?? null, name: 'Window' }, { allowSolidGround: true });
+      this.must({ objType: 'window', tx: c, ty: y + h - 1, variant: spec.windowStyle ?? null, name: 'Window', unlit: !!spec.unlit }, { allowSolidGround: true });
     }
     if (spec.sign) {
       const s = SIGNS[spec.sign];
