@@ -18,6 +18,7 @@
 
 import * as hitSpark from '../vendor/pixelfx/fx/impacts/hit-spark.js';
 import * as critHit from '../vendor/pixelfx/fx/impacts/crit-hit.js';
+import * as bluntHit from '../vendor/pixelfx/fx/impacts/blunt-hit.js';
 import * as burning from '../vendor/pixelfx/fx/status/burning.js';
 import * as frozen from '../vendor/pixelfx/fx/status/frozen.js';
 import * as poisoned from '../vendor/pixelfx/fx/status/poisoned.js';
@@ -26,6 +27,10 @@ import * as cursed from '../vendor/pixelfx/fx/status/cursed.js';
 import * as stunned from '../vendor/pixelfx/fx/status/stunned.js';
 import * as confused from '../vendor/pixelfx/fx/status/confused.js';
 import * as rage from '../vendor/pixelfx/fx/status/rage.js';
+import * as poof from '../vendor/pixelfx/fx/spawn/poof.js';
+import * as soulRise from '../vendor/pixelfx/fx/spawn/soul-rise.js';
+import * as heal from '../vendor/pixelfx/fx/holy/heal.js';
+import * as collectBurst from '../vendor/pixelfx/fx/pickups/collect-burst.js';
 
 // ------------------------------------------------------------------ colors
 
@@ -58,6 +63,15 @@ export function rampOf(pal) {
   return r;
 }
 
+// Ramps for things that are not a weave (dark to bright, 7 steps).
+export const RAMP = {
+  gold: ['#1e1206', '#4a2c08', '#86520c', '#c48412', '#f0b424', '#ffe066', '#fff6c4', '#ffffff'],
+  heal: ['#08201a', '#0f3f2c', '#17663e', '#24924e', '#3ec466', '#7ee88a', '#c8ffc4', '#ffffff'],
+  potion: ['#2a0a12', '#5c1424', '#a02a3c', '#e0505a', '#ff8a8a', '#ffc0c0', '#fff0f0', '#ffffff'],
+  dust: ['#2a2440', '#5e5878', '#9a94b4', '#cdc8e0', '#f2f0fa', '#ffffff'],
+  item: ['#241a2e', '#4a3a52', '#7a6a80', '#b0a2b0', '#ddd2d8', '#f4ecee', '#fffaf6', '#ffffff'],
+};
+
 // ------------------------------------------------------------------ the catalog
 
 // Room round a body for what wraps it (a 12x20 villager; bigger bodies pass their own).
@@ -84,6 +98,31 @@ export const PIXEL_FX = {
     opts: { size: 0.5, height: 10 },
     lightK: 0.8,
   },
+
+  // The Strike's punch (the fist shape): a white-hot lumpy blob at the knuckles, inked
+  // wedges jabbing out along the blow, a ring of dust puffs, clods knocked over the floor.
+  punch: {
+    mod: bluntHit,
+    layer: 'top',
+    priority: 3,
+    bounds: [-48, -46, 48, 34],
+    opts: { size: 0.75, height: 8 },
+    lightK: 0.8,
+  },
+
+  // ---------------------------------------------------------------- deaths, heals, pickups
+  // A creature goes: a cartoon poof of round smoke balls that hides the fading body, little
+  // stars spinning off, dust skidding out over the floor all round. Also a boss's arrival.
+  poof: { mod: poof, layer: 'top', priority: 1, bounds: [-40, -44, 40, 26], opts: { size: 0.55, height: 9 }, reduce: { opts: { calm: true } } },
+  // A boss beaten for good: a pale copy of its body lifts out of it and thins into light,
+  // a ring of light running out across the floor.
+  'soul-rise': { mod: soulRise, layer: 'body', actor: true, priority: 2, bounds: [-40, -90, 40, 24], opts: { height: 34, ring: 0.7 } },
+  // A heal: the body drains pale, petals of light open round its feet, a hoop rises up it
+  // restoring its colors, motes spiral up into tiny hearts. Recolored per source.
+  heal: { mod: heal, layer: 'body', actor: true, priority: 2, bounds: [-34, -64, 34, 20], opts: {} },
+  // A pickup, a chest's haul, a level-up: a flash and a cross of light, rings snapping out,
+  // twinkles flung on curving paths.
+  collect: { mod: collectBurst, layer: 'top', priority: 1, bounds: [-44, -60, 44, 24], opts: { height: 6 } },
 
   // ---------------------------------------------------------------- statuses on a body
   // Each wraps the afflicted body's own sprite frame (actor: true; pixel_fx_bodies.js),

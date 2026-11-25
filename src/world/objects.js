@@ -1,5 +1,6 @@
 import { TILE, WORLD_W, WORLD_H } from '../core/constants.js';
 import { Inventory, itemName } from '../entities/items.js';
+import { playCollect } from '../render/pixel_fx_play.js';
 
 // Interactive world objects: doors, trees, ore, herbs, crops, chests, beds, fires,
 // lamps, signs, windows, the journal, and the furniture that makes a house a home.
@@ -966,6 +967,8 @@ export class Chest extends WorldObject {
     if (!this.state.opened) {
       this.state.opened = true;
       this.markDirty();
+      // The first time it opens its haul glints out of it (pixelfx, DESIGN §30).
+      if (!this.inventory.isEmpty()) playCollect(g, this.x, this.y, { gold: true, size: 1, height: 8 });
     }
     this._sound('door_open', { pitch: 1.5 });
     if (isPlayer(g, actor)) {

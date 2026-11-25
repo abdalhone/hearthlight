@@ -2,6 +2,7 @@ import { planLook, essenceLook, reactionLook, statusLook } from './fx_styles.js'
 import { FX } from './fx_effects.js';
 import { silhouetteOf } from './fx_draw.js';
 import { TAU } from './fx_util.js';
+import { playPunch } from '../render/pixel_fx_play.js';
 
 // What happens on screen (and in the ears) when the runtime reports something (the
 // runtime calls game.magicFx.onEvent(type, payload, magic); types are listed in the
@@ -432,9 +433,13 @@ const H = {
     const x = p.x;
     const y = p.y;
     if (b.kind === 'strike') {
-      star(fx, x, y, 6, P.core, L.halo, 0.16, 8);
+      // The punch (pixelfx's blunt hit, top-down) carries the blow; the old star and
+      // spray only when it could not play.
+      if (!playPunch(fx.game, x, y, b.angle, P, Math.min(1.4, (p.r || 12) / 12))) {
+        star(fx, x, y, 6, P.core, L.halo, 0.16, 8);
+        burstStyles(fx, L.debris, x, y, 8, 8, 1.3, b.angle, 1.4);
+      }
       ring(fx, x, y, 2, (p.r || 12) * 1.6, P.core, P.glow, 0.25, 2, 4);
-      burstStyles(fx, L.debris, x, y, 8, 8, 1.3, b.angle, 1.4);
       fx.shake(1.2, 0.1);
       fx.flash(x, y - 8, 36, L.lightColor, 0.8, 0.14);
       return;

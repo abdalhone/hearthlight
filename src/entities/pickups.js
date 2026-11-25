@@ -1,6 +1,7 @@
 import { Entity } from './entity.js';
 import { itemDef } from './items.js';
 import { itemIconURL } from '../art/items_art.js';
+import { playCollect } from '../render/pixel_fx_play.js';
 
 // Items lying on the ground: loot, harvest, things dropped from the inventory.
 // They pop out with a little bounce, glint now and then, drift to the player when
@@ -139,7 +140,7 @@ export class Pickup extends Entity {
     g.bus?.emit('item_gained', { actor, itemId: this.itemId, qty: this.qty, from: 'pickup' });
     try {
       g.audio?.play?.(this.itemId === 'coin' ? 'coin' : 'pickup', { x: this.x, y: this.y, volume: 0.8 });
-      g.particles?.emit?.('sparkle', this.x, this.y - 6, { count: 4, color: '#ffe27a', speed: 18, life: 0.4 });
+      if (!playCollect(g, this.x, this.y, { gold: this.itemId === 'coin', size: 0.55, height: 5 })) g.particles?.emit?.('sparkle', this.x, this.y - 6, { count: 4, color: '#ffe27a', speed: 18, life: 0.4 });
     } catch {
       /* effects are optional */
     }

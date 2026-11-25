@@ -1,5 +1,5 @@
 import { PixelFx } from './pixel_fx.js';
-import { PIXEL_FX, rampOf } from './pixel_fx_catalog.js';
+import { PIXEL_FX, RAMP, rampOf } from './pixel_fx_catalog.js';
 import { actorOf, bodySize } from './pixel_fx_bodies.js';
 
 // Where the game plays its pixelfx effects (DESIGN §30): one small function per moment, so
@@ -32,6 +32,38 @@ export function playHit(game, target, { dx = 0, dy = 0, crit = false, pal = null
   return P.play('hit', { ...o, size: (heavy ? 0.7 : 0.6) * big });
 }
 
+// The Strike lands: a real punch at the knuckles, along the blow, in the weave's colors.
+export function playPunch(game, x, y, angle, pal, size = 1) {
+  const P = px(game);
+  if (!P) return null;
+  return P.play('punch', { x, y, angle, palette: rampOf(pal), size: 0.75 * size, seed: (Math.random() * 1e6) | 0 });
+}
+
+// A creature goes (its body fading under the cloud).
+export function playPoof(game, e, size = 1) {
+  const P = px(game);
+  if (!P || !e) return null;
+  const { h } = bodySize(game, e);
+  const k = Math.max(0.8, Math.min(1.8, h / 16)) * size;
+  return P.play('poof', { x: e.x, y: e.y, size: 0.55 * k, height: Math.round(h * 0.45) + 2, seed: (Math.random() * 1e6) | 0 });
+}
+
+// A heal on a body. kind: 'spell' (green), 'potion' (red), 'gold' (revival, the kept flame).
+export function playHeal(game, e, kind = 'spell') {
+  const P = px(game);
+  if (!P || !e || e.removed || e.hidden) return null;
+  const ramp = kind === 'potion' ? RAMP.potion : kind === 'gold' ? RAMP.gold : RAMP.heal;
+  P.stop(`heal:${e.uid ?? e.id}`);
+  return P.play('heal', { follow: e, palette: ramp, tag: `heal:${e.uid ?? e.id}`, seed: (Math.random() * 1e6) | 0 });
+}
+
+// Something picked up, a chest's haul, a level-up.
+export function playCollect(game, x, y, { gold = true, pal = null, size = 1, height = 6 } = {}) {
+  const P = px(game);
+  if (!P) return null;
+  return P.play('collect', { x, y, height, palette: pal ? rampOf(pal) : gold ? RAMP.gold : RAMP.item, size, seed: (Math.random() * 1e6) | 0 });
+}
+
 // ------------------------------------------------------------------ the director
 
 // Weave statuses that pixelfx shows on the body (the old tint and overlay step aside).
@@ -57,6 +89,55 @@ export class PixelFxDirector {
     this.live = new Map(); // body -> Map(fxId -> { handle, retry })
     this._want = new Map();
     this._t = 0;
+    this._listen();
+  }
+
+  // Moments the game announces on its bus.
+  _listen() {
+    const g = this.game;
+    const on = (ev, fn) => {
+      try {
+        g.bus?.on?.(ev, (p) => {
+          try {
+            fn(p || {});
+          } catch (err) {
+            this.host.warn(`on ${ev}`, err);
+          }
+        });
+      } catch {
+        /* no bus in some tests */
+      }
+    };
+    // A level gained: a burst of gold at the chest of whoever rose.
+    on('level_up', (p) => {
+      const e = p.entity;
+      if (e && (e === g.player || e === g.companion)) playCollect(g, e.x, e.y, { gold: true, size: 1.2, height: Math.round(bodySize(g, e).h * 0.55) });
+    });
+    // Back on their feet (a potion, a hand up, the sickroom, the kept flame): life climbs
+    // back up the body in gold.
+    on('revived', (p) => {
+      if (p.entity) playHeal(g, p.entity, 'gold');
+    });
+    // Laid in a cot at Mira's: her care starts with a heal.
+    on('delivered', (p) => {
+      if (p.entity) playHeal(g, p.entity, 'spell');
+    });
+    // A flame kept for the player at the chapel.
+    on('kept_flame', (p) => {
+      const pl = g.player;
+      if (p.lit && pl) playCollect(g, pl.x, pl.y, { gold: true, size: 1.1, height: 14 });
+    });
+    // Bosses: a puff of their own colors as they arrive; beaten for good, the soul lifts out.
+    on('boss_started', (p) => {
+      const b = p.boss;
+      if (b && !b.removed) playPoof(g, b, 1.3);
+    });
+    on('boss_defeated', (p) => {
+      const b = p.boss;
+      if (!b || b.removed) return;
+      if (p.yielded) playCollect(g, b.x, b.y, { gold: true, size: 1.3, height: Math.round(bodySize(g, b).h * 0.5) });
+      else this.host.play('soul-rise', { follow: b, height: Math.max(30, bodySize(g, b).h * 1.6), seed: 7 });
+    });
   }
 
   // Does pixelfx show this status on this body right now (so the old look steps aside)?

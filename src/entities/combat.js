@@ -3,7 +3,7 @@ import { PLAYER_ID, COMPANION_ID, DAY_SECONDS } from '../core/constants.js';
 import { itemDef, itemName } from './items.js';
 import { Projectile } from './projectiles.js';
 import { dropItem, updatePickupToasts } from './pickups.js';
-import { playHit } from '../render/pixel_fx_play.js';
+import { playHit, playPoof, playHeal } from '../render/pixel_fx_play.js';
 
 // Combat rules for every actor: melee arcs, projectiles, damage, healing, death,
 // knock-outs, crimes, items that heal, experience. Contract in DESIGN.md ("Combat", §16.7).
@@ -144,10 +144,12 @@ export class Combat {
       // Hold a beat at full opacity so the kill reads, then fade out.
       const k = (d.t - 0.2) / (DEATH_FADE - 0.2);
       e.deathAlpha = k <= 0 ? 1 : Math.max(0, 1 - k);
+      // The pixelfx poof (DESIGN §30) goes off as the fade starts and hides it.
+      if (!d.poofed && d.t >= 0.2 && !e.removed && !e.boss && !e.isBoss) d.poofed = !!playPoof(this.game, e);
       if (d.t >= DEATH_FADE || e.removed) {
         list.splice(i, 1);
         if (!e.removed) {
-          this._particles('poof', e.x, e.y - 6, { count: 8, color: '#d6d0e0', speed: 22, life: 0.6 });
+          if (!d.poofed) this._particles('poof', e.x, e.y - 6, { count: 8, color: '#d6d0e0', speed: 22, life: 0.6 });
           this.game.entities?.remove?.(e);
         }
       }
@@ -852,7 +854,7 @@ export class Combat {
     caster.stateTime = 0;
     caster.animTime = 0;
     this._particles('magic', caster.x, caster.y - 14, { count: 6, color: '#9ff0b8', speed: 24, life: 0.4 });
-    this._particles('heal', target.x, target.y - 10, { count: 16, color: '#58cf8f', speed: 26, life: 0.9 });
+    if (!playHeal(this.game, target, 'spell')) this._particles('heal', target.x, target.y - 10, { count: 16, color: '#58cf8f', speed: 26, life: 0.9 });
     this._flash({ x: target.x, y: target.y - 10, r: 60, color: '#58cf8f', intensity: 0.85, duration: 0.55 });
     this._sound('heal', target.x, target.y);
     return this.heal(caster, target, power);
@@ -874,8 +876,10 @@ export class Combat {
     const amount = Number(def.heal) || 0;
     if (def.type === 'potion') {
       this._sound('heal', actor.x, actor.y);
-      this._particles('heal', actor.x, actor.y - 10, { count: 14, color: '#ff8a8a', speed: 24, life: 0.8 });
-      this._particles('sparkle', actor.x, actor.y - 14, { count: 5, color: '#ffffff', speed: 18, life: 0.6 });
+      if (!playHeal(this.game, actor, 'potion')) {
+        this._particles('heal', actor.x, actor.y - 10, { count: 14, color: '#ff8a8a', speed: 24, life: 0.8 });
+        this._particles('sparkle', actor.x, actor.y - 14, { count: 5, color: '#ffffff', speed: 18, life: 0.6 });
+      }
       this._flash({ x: actor.x, y: actor.y - 10, r: 44, color: '#ff8a8a', intensity: 0.6, duration: 0.4 });
     } else {
       this._sound('eat', actor.x, actor.y);

@@ -547,7 +547,8 @@ export class Survival {
       player.inventory.remove('potion', 1);
       try {
         g.audio?.play?.('heal', { x: target.x, y: target.y });
-        g.particles?.emit?.('heal', target.x, target.y - 8, { count: 10, color: '#9ff0b8', speed: 24, life: 0.8 });
+        // (pixelfx plays the revival on the 'revived' event; the old shimmer only without it)
+        if (!g.pixelFx?.has?.('heal')) g.particles?.emit?.('heal', target.x, target.y - 8, { count: 10, color: '#9ff0b8', speed: 24, life: 0.8 });
       } catch {
         /* cosmetic */
       }
