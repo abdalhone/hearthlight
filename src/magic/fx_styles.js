@@ -157,6 +157,8 @@ export const STATUS_LOOKS = {
   // A bind's hold: a pale sheen; the ring itself (fx_wards.js) does the rest.
   bound: { tint: '#e6dcff', tintK: 0.14, pulse: 'slow' },
   lull: { tint: '#ffb8e6', tintK: 0.16, pulse: 'slow', parts: [['note', 1.4, 'head']] },
+  // A beam's pin (DESIGN §31.2): a hard white shimmer while the ray holds them.
+  pin: { tint: '#fff4d8', tintK: 0.3, pulse: 'strobe' },
   none: { tintK: 0 },
 };
 

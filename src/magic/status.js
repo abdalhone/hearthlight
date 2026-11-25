@@ -10,8 +10,9 @@ import { defineRegistry } from './registry.js';
 //   id: 'burning', name: 'Burning', tags: ['fire', 'hot'],
 //   color: '#ff9a3c', overlay: 'flame',   how fx / the fallback show it on the actor
 //   duration: 3,          seconds at potency 1 (potency scales it 0.6..1)
-//   stack: 'refresh' | 'add' | 'extend',   refresh = longest wins; add = +1 stack (to
-//   maxStacks: 1,                          maxStacks) and refresh; extend = add time
+//   stack: 'refresh' | 'add' | 'extend' | 'keep',   refresh = longest wins; add = +1 stack
+//   maxStacks: 1,                          (to maxStacks) and refresh; extend = add time;
+//                                          keep = a second landing changes nothing
 //   tick: 0.5, dot: 0.3,  damage per second = dot x the hit's damage x potency x stacks
 //   move: 1,              walk speed multiplier at full potency (0.6 = 40% slower)
 //   disable: false,       cannot move or act (stun, freeze, stagger)
@@ -21,6 +22,7 @@ import { defineRegistry } from './registry.js';
 //   cc: false,            hard control: shortened on bosses (superArmor / ccResist)
 //   immunity: 0,          seconds after it ends before it can land again
 //   chance: 1,            chance to land per hit
+//   quiet: false,         lands without a flourish or a status_applied event (a blow's flinch)
 //   cleanses: ['burning'],      statuses it washes off when it lands
 //   becomes: { at: 3, id: 'frozen' },   at N stacks it turns into another status
 //   onApply(sys, actor, inst), onTick(sys, actor, inst, dt), onExpire(sys, actor, inst)
@@ -189,6 +191,48 @@ export const STATUSES = {
     duration: 3,
     move: 0.5,
   },
+  // Hits stun (DESIGN §31.2). A blow's flinch: a heartbeat with no step and no swing. It
+  // never stacks or refreshes, and the short immunity after it gives the struck a moment
+  // to act between blows, so a flurry staggers a foe without holding it forever.
+  flinch: {
+    name: 'Flinching',
+    tags: ['flinch'],
+    color: '#ffffff',
+    overlay: 'none',
+    duration: 0.3,
+    stack: 'keep',
+    disable: true,
+    cc: true,
+    immunity: 0.22,
+    quiet: true,
+  },
+  // A heavy blow's stagger (the sword's finisher, a strike's fist, a bomb, a charged weave):
+  // longer than a flinch, stars at the head. Tagged apart from Stone's 'staggered' so a
+  // plain blow sets off no earth reactions.
+  reeling: {
+    name: 'Reeling',
+    tags: ['reel'],
+    color: '#e8c48a',
+    overlay: 'stars',
+    duration: 0.6,
+    stack: 'keep',
+    disable: true,
+    cc: true,
+    immunity: 1.1,
+    quiet: true,
+  },
+  // A beam's ray holds whoever it touches: slowed to a crawl while it is on them, free a
+  // moment after it leaves. Each tick of the beam renews it.
+  pinned: {
+    name: 'Pinned',
+    tags: ['pinned'],
+    color: '#fff4d8',
+    overlay: 'pin',
+    duration: 0.32,
+    move: 0.15,
+    cc: true,
+    quiet: true,
+  },
   // A bind's hold (DESIGN §22.5): rooted, no blows, no weaves. Not `cc`: bosses resist it
   // their own way (magic.holdTarget: a shorter hold, shorter again each time).
   bound: {
@@ -240,7 +284,7 @@ function fillStatus(raw, id) {
     color: raw.color || '#ffffff',
     overlay: raw.overlay || 'tint',
     duration: Number.isFinite(raw.duration) ? raw.duration : 2,
-    stack: raw.stack === 'add' || raw.stack === 'extend' ? raw.stack : 'refresh',
+    stack: raw.stack === 'add' || raw.stack === 'extend' || raw.stack === 'keep' ? raw.stack : 'refresh',
     maxStacks: Math.max(1, raw.maxStacks || 1),
     tick: Number.isFinite(raw.tick) ? raw.tick : 0.5,
     dot: Number.isFinite(raw.dot) ? raw.dot : 0,
@@ -255,6 +299,7 @@ function fillStatus(raw, id) {
     chance: Number.isFinite(raw.chance) ? raw.chance : 1,
     cleanses: Array.isArray(raw.cleanses) ? raw.cleanses : [],
     becomes: raw.becomes && raw.becomes.id ? raw.becomes : null,
+    quiet: !!raw.quiet,
   };
 }
 
@@ -577,6 +622,7 @@ export class StatusSystem {
     hookSpeed(a);
     let inst = this.get(a, id);
     const isNew = !inst;
+    if (inst && def.stack === 'keep') return inst;
     if (inst) {
       if (def.stack === 'add') {
         inst.stacks = Math.min(def.maxStacks, inst.stacks + 1);
@@ -615,8 +661,10 @@ export class StatusSystem {
         this.host.warn?.('status onApply', err);
       }
       this._refreshFlags(a);
-      this.game.bus?.emit('status_applied', { target: a, status: id, source: inst.src, potency: inst.potency, duration: inst.t });
-      this.host.fx?.('status', { target: a, status: id, def });
+      if (!def.quiet) {
+        this.game.bus?.emit('status_applied', { target: a, status: id, source: inst.src, potency: inst.potency, duration: inst.t });
+        this.host.fx?.('status', { target: a, status: id, def });
+      }
     } else this._refreshFlags(a);
     return inst;
   }

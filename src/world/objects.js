@@ -1,6 +1,7 @@
 import { TILE, WORLD_W, WORLD_H } from '../core/constants.js';
 import { Inventory, itemName } from '../entities/items.js';
 import { playCollect } from '../render/pixel_fx_play.js';
+import { drawDebris, drawFallingTree, mendTick, shakeX, swayOf, refreshAllFences, FALL_SECONDS } from './broken.js';
 
 // Interactive world objects: doors, trees, ore, herbs, crops, chests, beds, fires,
 // lamps, signs, windows, the journal, and the furniture that makes a house a home.
@@ -74,7 +75,7 @@ export class WorldObject {
   }
 
   blocksTile(tx, ty, actor) {
-    if (!this.solid) return false;
+    if (!this.solid || this.state.broken) return false; // broken props are rubble you walk over (§31.3)
     if (this.low && actor?.flying) return false;
     const f = this.footprint;
     if (f) return tx >= f.x && ty >= f.y && tx < f.x + f.w && ty < f.y + f.h;
@@ -97,7 +98,9 @@ export class WorldObject {
     }
   }
 
-  update(dt) {}
+  update(dt) {
+    if (this.state.broken) mendTick(this);
+  }
 
   spriteName() {
     return this.sprite;
@@ -105,9 +108,10 @@ export class WorldObject {
 
   draw(ctx, ox, oy, time) {
     if (this.hidden) return;
+    if (this.state.broken) return drawDebris(ctx, this, ox, oy);
     const atlas = this.game?.atlas;
     const name = this.spriteName(time);
-    if (atlas && atlas.draw(ctx, name, 0, Math.round(this.x - ox), Math.round(this.y - oy))) return;
+    if (atlas && atlas.draw(ctx, name, 0, Math.round(this.x - ox) + shakeX(this, time), Math.round(this.y - oy))) return;
     // Art missing: a modest stand-in so the object is still visible.
     ctx.fillStyle = '#7d5233';
     ctx.fillRect(Math.round(this.x - ox) - 6, Math.round(this.y - oy) - 10, 12, 10);
@@ -614,6 +618,33 @@ export class Tree extends Harvestable {
     return !!this.state.depleted;
   }
 
+  // Felled by a blow (DESIGN §31.3): the stump stays, the tree goes over away from the
+  // blow (dir -1 left, 1 right) and lands after FALL_SECONDS, when onLand(items) is called
+  // with what it yields (breakables.js drops them as logs). Returns false on a stump.
+  fell(dir = 1, onLand = null) {
+    if (this.state.depleted || this.removed) return false;
+    this._cancelSession?.();
+    const items = this._harvest(null);
+    this._fall = { k: 0, dir: dir < 0 ? -1 : 1, items, onLand };
+    return true;
+  }
+
+  update(dt) {
+    super.update(dt);
+    const f = this._fall;
+    if (!f) return;
+    f.k += dt / FALL_SECONDS;
+    if (f.k >= 1 && !f.landed) {
+      f.landed = true;
+      try {
+        f.onLand?.(f.items, this);
+      } catch (err) {
+        console.error('[objects] tree landing failed', err);
+      }
+    }
+    if (f.k >= 1.2) this._fall = null;
+  }
+
   blockedReason() {
     return this.state.depleted ? 'Only a stump is left. It will grow back in time.' : '';
   }
@@ -643,10 +674,12 @@ export class Tree extends Harvestable {
     if (!atlas) return;
     if (this.state.depleted) {
       atlas.draw(ctx, `prop:stump:${this.kind}`, 0, sx, sy) || atlas.draw(ctx, 'prop:stump', 0, sx, sy);
+      if (this._fall) drawFallingTree(ctx, atlas, this, sx, sy, this._fall.k);
       return;
     }
     const base = `prop:tree_${this.kind}`;
     const g = this.game;
+    const jolt = shakeX(this, time);
     const target = this._behind(g.player) || this._behind(g.companion) ? 0.42 : 1;
     const fdt = Math.min(0.1, Math.max(0, time - this._lastT));
     this._lastT = time;
@@ -658,7 +691,7 @@ export class Tree extends Harvestable {
     }
     atlas.draw(ctx, `${base}:trunk`, this.v, sx, sy);
     const wind = g.clock?.weather?.type === 'rain' ? 1.15 : 0.7;
-    const sway = Math.round(Math.sin(time * 1.3 + this.phase * TAU) * wind);
+    const sway = Math.round(Math.sin(time * 1.3 + this.phase * TAU) * wind) + jolt;
     atlas.draw(ctx, `${base}:canopy`, this.v, sx + sway, sy, this._fade < 0.99 ? { alpha: this._fade } : undefined);
   }
 }
@@ -727,7 +760,7 @@ export class Rock extends Harvestable {
       return;
     }
     if (this.objType === 'crystal') atlas.drawAnim(ctx, this.sprite, time + this.phase * 3, sx, sy);
-    else atlas.draw(ctx, this.sprite, this.v, sx, sy);
+    else atlas.draw(ctx, this.sprite, this.v, sx + shakeX(this, time), sy);
   }
 }
 
@@ -1411,7 +1444,7 @@ export class Lamp extends WorldObject {
   }
 
   canInteract(actor) {
-    return !!this.text && isPlayer(this.game, actor);
+    return !!this.text && isPlayer(this.game, actor) && !this.state.broken;
   }
 
   interactLabel() {
@@ -1452,7 +1485,7 @@ export class Sign extends WorldObject {
   }
 
   canInteract(actor) {
-    return isPlayer(this.game, actor);
+    return isPlayer(this.game, actor) && !this.state.broken;
   }
 
   interactLabel() {
@@ -1587,6 +1620,7 @@ export class Decor extends WorldObject {
   }
 
   update(dt) {
+    if (this.state.broken) mendTick(this);
     if (this.cooldown > 0) this.cooldown -= dt;
     if ((this.objType === 'forge' || this.objType === 'brazier') && this._inView(8)) {
       this._emberT = (this._emberT ?? this.phase) - dt;
@@ -1633,9 +1667,11 @@ export class Decor extends WorldObject {
 
   draw(ctx, ox, oy, time) {
     if (this.hidden) return;
+    if (this.state.broken) return drawDebris(ctx, this, ox, oy);
     const atlas = this.game?.atlas;
     if (!atlas) return;
-    const sx = Math.round(this.x - ox);
+    // Struck: a jolt (the training dummy rocks on its post).
+    const sx = Math.round(this.x - ox) + (this.objType === 'dummy' ? swayOf(this, time) : shakeX(this, time));
     const sy = Math.round(this.y - oy);
     if (this.animated) atlas.drawAnim(ctx, this.sprite, time + this.phase, sx, sy);
     else atlas.draw(ctx, this.sprite, 0, sx, sy);
@@ -1965,6 +2001,7 @@ export class ObjectManager {
       }
       if (o.objType === 'door') o.anim = o.state.open ? 1 : 0;
     }
+    refreshAllFences(this); // rails beside a broken fence (DESIGN §31.3)
     this.version++;
     try {
       this.game?.map?.invalidateAll?.();

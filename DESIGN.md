@@ -221,7 +221,7 @@ Object types (`objType`) and behavior:
 | objType | notes |
 |---|---|
 | `door` | `open(actor) → bool`, `close(actor)`, `isOpen`, `locked`, `state.keyId`. Unlocks if the actor carries the key. Emits `door`. |
-| `tree` | variants oak/pine. Work 3 s → 2–3 `wood`, becomes a stump, regrows after ~1 in-game day. |
+| `tree` | variants oak/pine. Work 3 s → 2–3 `wood`, becomes a stump, regrows after ~1 in-game day. The player's strike and heavy weaves fell it (`fell(dir, onLand)`, §31.3). |
 | `rock` | → `stone`. `ore` (iron) → `iron_ore`. `crystal` → `crystal` (ruins only). Regrow slowly. |
 | `herb` | → `herb`. `moonpetal` → `moonpetal`, only pickable at night (glows). `berry_bush` → `berries`. Regrow. |
 | `crop` | Tobias's field. stages 0–3; stage 3 harvest → `turnip` or `wheat`; replants to 0; grows over time. |
@@ -230,7 +230,7 @@ Object types (`objType`) and behavior:
 | `campfire` / `hearth` | light source; cooking spot. `inn_hearth`, `camp_campfire`, `lake_campfire`. |
 | `lamp` | light at night (auto-lit from dusk). Street lamps around the village. |
 | `sign` | interact shows its text (`game.ui.toast` or a small dialog). `notice_board` gives hints. |
-| `well`, `anvil`, `forge`, `table`, `chair`, `barrel`, `crate`, `fence`, `altar`, `shelf`, `tent`, `ruin_pillar`, `statue` | decor; some solid; forge/altar give light. |
+| `well`, `anvil`, `forge`, `table`, `chair`, `barrel`, `crate`, `fence`, `altar`, `shelf`, `tent`, `ruin_pillar`, `statue` | decor; some solid; forge/altar give light. Fences, barrels, crates, carts, signs, woodpiles, pots, sacks, hay and bushes break under the player's blows (`state.broken`, §31.3); `dummy` is the training dummy (§31.4). |
 | `journal` | `maren_journal` in the deepest ruins room. Interact → player gets item `maren_journal`; emits `item_gained` and sets `game.flags.journal_found = true`. |
 | `fishing_spot` | an invisible marker on the dock: preferred place for the `fish` job. |
 | `window` | glows warm at night (light source), on building walls. |
@@ -2059,3 +2059,84 @@ palette, tag, life, ...opts })` → handle, `stop(handle | tag)`, `playing()`, `
 
 Tests: `tests/pixel_fx.test.mjs`. Shots: `scripts/pixelfx_shots.mjs` (in the game, three screen sizes,
 day and night), `scripts/pixelfx_preview.mjs` (contact sheets from above, aimed several ways).
+
+## 31. Combat in a world with walls (round 13, the author: "Why am I able to hit through walls?"; "The spells do not have a stun"; "Skill magic like strike isn't able to destroy a tree"; "the dummies, I'm unable to hit them with the sword … no damage is shown … they do not gain XP"; "the church, the lights inside of it shows from the roof")
+
+### 31.1 Walls stop blows (`src/world/walls.js`)
+One rule for every attack, the tiles projectiles already stopped at: `map.blocksProjectile`
+(walls, rock, palisades, ruin walls, the edge) and closed doors.
+- `wallTile(game, tx, ty)`, `wallAt(game, x, y)`, `wallBetween(game, x0, y0, x1, y1)` (a grid
+  walk of every tile the segment crosses; the two end tiles do not count, so a body hugging a
+  wall stays in reach) and `canReach(game, a, b)` (feet lifted 3 px, where actors collide).
+- The sword and every creature's bite (`combat.melee`) skip anyone `canReach` says no to.
+- Weaves (`bodies.js` `reaches(rt, x, y, a)`, `magic.blocked(...)`): rings, bursts, cones, the
+  strike's fist (thrown into a wall it lands on the wall's face) and wave, beams (from the point
+  of the ray nearest the target), weave walls, trails, rune triggers, reactions' spread, and
+  every `nearestFoe` (aim assist, homing, chain, ricochet, familiars) need a clear line. A
+  missile that meets a wall ends at the wall's face (its burst stays this side); a lobbed bomb
+  meets a wall and bursts there; rain never falls past a wall from where it was called.
+
+### 31.2 Hits stun (`combat._hitStun`, statuses in `src/magic/status.js`)
+Every blow stuns for a moment, through the Weave's status system (so every controller obeys
+it: statuses hold `lockTime` and stop `moveIntent` each step, and break a held weave).
+- **Flinch** (`flinch`: 0.3 s, no step and no swing; `stack: 'keep'`, so a second blow neither
+  stacks nor renews it; 0.22 s immunity after): every sword hit and every weave hit that is not
+  a tick. A flurry stuns a foe for about half the time and leaves windows to act.
+- **Reel** (`reeling`: 0.6 s, stars at the head, 1.1 s immunity): heavy blows (the sword's
+  finisher, the strike's fist, a bomb, a rune, a heavy missile) and any weave charged past half.
+  Tagged apart from Stone's `staggered`, so a blow sets off no earth reactions.
+- **Pin** (`pinned`: a 0.15 walk while the ray is on them, renewed by each beam tick, gone a
+  third of a second after it leaves): `magic.hit` marks a beam tick `pin`.
+- Bosses and super-armored foes shrug off the flinch, reel for a third as long (control `cc`)
+  and are pinned half as hard. The player keeps the short hurt pose they always had; without the
+  Weave (tests of combat alone) everyone does.
+- `stack: 'keep'` and `quiet` (no flourish, no `status_applied`) are new status fields.
+
+### 31.3 Strike and heavy spells break things (`src/world/breakables.js`, `src/world/broken.js`)
+The player's blows land on the world's props as well as its people (everyone else's pass over
+props as before). Missiles and rays stop at the first intact prop they meet; bursts, rings,
+cones, the strike's fist and wave reach every prop in them (never through a wall); the sword's
+arc reaches the props in front of it.
+- **Damage builds up** on a prop (`o._dmg`, not saved): a blow counts its damage, x4 for a
+  strike's fist, x3.5 for a heavy blow (a bomb, a rune, a heavy missile), up to x2 more when
+  charged; a sword blow counts half and never fells a tree or cracks a rock (the work swing is
+  the axe and the pick). Small blows chip: the prop jolts a pixel, chips of its material fly, a
+  knock. Toughness (`BREAKABLE`): tree 56 (one Strike, a bomb, ~6 bolts, ~2.5 s of beam), rock
+  48, cart 40, woodpile 24, sign 20, fence 18, barrel 16, crate 14, bush 10, hay 10, sack 8,
+  berry bush 8, pot 6.
+- **Trees** fall away from the blow (`Tree.fell(dir, onLand)`, drawn turning about its foot
+  for `FALL_SECONDS`), leave their stump, and when they land a dust cloud and their logs (the
+  2–3 wood a chop gives) lie along the trunk to pick up. They grow back in a day, as a chopped
+  tree does. **Rocks** crack to rubble and give their stones; **berry bushes** are torn and
+  give their berries; both come back as they always did.
+- **Other props** (fences, barrels, crates, carts, signs, woodpiles, pots, sacks, hay, bushes)
+  burst into debris (`state.broken`: drawn as planks, shards, cloth or straw in the prop's own
+  colors; not solid, not interactable, no baked shadow), a pixelfx dust cloud in the material's
+  colors (`playDust`), chips, sometimes a little wood. A broken fence's neighbours lose the rail
+  to it. Mended two days on (`MEND`; bushes grow back in one) unless someone stands there.
+- **Never**: buildings (tiles), doors, windows, beds, chests, lamps, hearths, wells, anything you
+  can look at for its story (a decor with text), the notice board and signs hung on buildings.
+- Saved: `state.broken`/`mendAt` and the trees' and rocks' own `depleted`/`regrowAt` ride on each
+  object's state; a load redraws the fence rails. Bus: `prop_broken {object, by, kind}`,
+  `object_mended {object}`.
+
+### 31.4 Training dummies (`breakables.js` `trainOn`)
+The dummy by the guardhouse takes the sword and every weave: each blow shows its number (crits
+too, a beam's ticks pooled), a hit spark in the blow's colors, and the dummy rocks on its post.
+Each blow that lands teaches `TRAIN_XP` (1; a tick a quarter), shown as a rising "+N xp", up to
+`TRAIN_DAY` (40) a day per dummy; then it says it has taught all it can today. It never breaks.
+With nothing alive to fight, the sword turns toward a dummy or prop just in front
+(`Player._findProp`). Bus: `dummy_hit {object, by, amount, crit}`.
+
+### 31.5 Interior lights stay inside (`src/render/lighting.js` `roofSeen`)
+A light whose source stands under a roof (a building's tiles above its two front-wall rows)
+shows only as much as that roof lets through: `1 - roof._alpha`. Outside, the roof is opaque
+and the altar, candles, hearths and forges inside light nothing, so they never glow on the
+roof; walk in, the roof fades (`map.drawRoofs`) and they shine. Windows, lamps and signs on
+the front wall are outside the roof and glow to the street at night. It applies to every light
+the renderer collects (objects, actors, flashes), in all three passes (the light map, the
+night lift and the glow).
+
+Tests: `tests/walls.test.mjs`, `tests/hit_stun.test.mjs`, `tests/breakables.test.mjs`,
+`tests/interior_lights.test.mjs`. In the browser: `node scripts/world_check.mjs` (each scene by
+touch sideways and upright, and on a desktop; screenshots in `screenshots/world`).

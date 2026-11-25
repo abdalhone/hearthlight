@@ -4,6 +4,8 @@ import { itemDef, itemName } from './items.js';
 import { Projectile } from './projectiles.js';
 import { dropItem, updatePickupToasts } from './pickups.js';
 import { playHit, playPoof, playHeal, playLevelUp } from '../render/pixel_fx_play.js';
+import { canReach } from '../world/walls.js';
+import { swingAtProps } from '../world/breakables.js';
 
 // Combat rules for every actor: melee arcs, projectiles, damage, healing, death,
 // knock-outs, crimes, items that heal, experience. Contract in DESIGN.md ("Combat", §16.7).
@@ -338,6 +340,8 @@ export class Combat {
       if (d > range + (e.radius ?? 5)) continue;
       if (d > 6 && (dx * fx + dy * fy) / d < minCos) continue;
       if (!this.canHarm(attacker, e, e === target)) continue;
+      // Walls and closed doors stop the blade (DESIGN §31.1): nobody is hit through a house.
+      if (!canReach(g, attacker, e)) continue;
       const inv = d > 0.001 ? 1 / d : 0;
       const dealt = this.damage(attacker, e, power, {
         kind,
@@ -350,6 +354,15 @@ export class Combat {
       if (dealt > 0) hits++;
     }
     this.lastMeleeHits = hits;
+    // The player's blade also lands on what stands in the arc: the training dummy, a
+    // barrel, a fence (DESIGN §31.3–31.4).
+    if (this.isPlayer(attacker)) {
+      try {
+        this.lastPropHits = swingAtProps(g, attacker, { fx, fy, minCos, range, power, heavy: !!opts.heavy });
+      } catch (err) {
+        this._warn('props', err);
+      }
+    }
     return true;
   }
 
@@ -513,13 +526,8 @@ export class Combat {
     }
     if (opts.launch > 0 && !target.flying) this._launch(target, opts.launch / mass);
 
-    // Brief hit-stun (bosses with superArmor shrug it off; status ticks never stun; berserk's
-    // poise holds the player up).
-    if (!target.superArmor && target.hp > 0 && !opts.noStagger && !opts.dot && !(S && st(target, 'poise', 0) >= 1)) {
-      target.setState('hurt', isPlayer ? 0.16 : 0.22);
-      target.stateTime = 0;
-      target.animTime = 0;
-    }
+    // Hits stun (status ticks never do; berserk's poise holds the player up).
+    if (target.hp > 0 && !opts.dot && !(S && st(target, 'poise', 0) >= 1)) this._hitStun(target, source, opts, isPlayer);
 
     if (source && target.species) this._provoke(target, source);
     try {
@@ -551,6 +559,41 @@ export class Combat {
     }
     if (crime) this._reportCrime(attacker, target, crime);
     return dealt;
+  }
+
+  // Hits stun (DESIGN §31.2). Every blow makes its target flinch: a heartbeat with no step
+  // and no swing. A heavy blow (the sword's finisher, a strike's fist, a bomb, a weave
+  // charged past half) makes it reel for longer. A beam's ray pins whoever it touches,
+  // slowing them to a crawl while it is on them. Bosses and super-armored foes shrug off
+  // the flinch, are pinned less and reel for a third as long, and every stun leaves a
+  // short immunity behind it, so nobody is held forever. The player keeps the short
+  // flinch they always had. Without the Weave's status system: the old brief hurt pose.
+  _hitStun(target, source, opts, isPlayer) {
+    const status = this.game.magic?.status;
+    const tough = !!(target.superArmor || target.boss || target.isBoss);
+    const src = source && source.type === 'actor' ? source : null;
+    if (opts.pin) {
+      status?.apply?.(target, 'pinned', { src, potency: tough ? 0.5 : 1 });
+      return;
+    }
+    if (opts.noStagger) return;
+    if (isPlayer || !status?.apply) {
+      if (tough) return;
+      target.setState('hurt', isPlayer ? 0.16 : 0.22);
+      target.stateTime = 0;
+      target.animTime = 0;
+      return;
+    }
+    const charge = Math.max(0, Math.min(1, Number(opts.charge) || 0));
+    let held = null;
+    if (opts.heavy || charge >= 0.5) held = status.apply(target, 'reeling', { src, potency: 1 + charge * 0.5 });
+    if (!held && !tough) held = status.apply(target, 'flinch', { src });
+    // The pose: held while the stun lasts; a blow inside the immunity only jolts the sprite.
+    if (!tough) {
+      target.setState('hurt', held ? 0.05 : 0);
+      target.stateTime = 0;
+      target.animTime = 0;
+    }
   }
 
   // A blow a ward took whole: no wound, no stagger, no number; the shield's own look and

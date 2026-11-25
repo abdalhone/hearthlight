@@ -138,6 +138,7 @@ export class Body {
     this.wardSeen = 0;
     this.fxState = null;
     this.why = '';
+    this.prop = null; // a ray's: the prop it ends on (DESIGN §31.3)
     this.hits.clear();
     for (const k in this.procs) this.procs[k] = 0;
     for (const k in this.procAt) this.procAt[k] = -1e9;
@@ -191,6 +192,14 @@ export const HIT_BITE = Object.freeze({ tick: true, dot: true }); // a bind's ri
 
 const alive = (a) => !a.removed && !a.dead && a.isAlive();
 
+// Walls stop every blow (DESIGN §31.1): a body reaches only those it has a clear line to,
+// from where its force comes (a blast's centre, a beam's ray, a fist's caster), measured
+// a little above the feet like the projectiles' own wall test.
+const LIFT = 3;
+export function reaches(rt, x, y, a) {
+  return !rt.blocked?.(x, y - LIFT, a.x, a.y - LIFT);
+}
+
 // Hit every candidate the cast may affect inside a circle (once per body unless `again`
 // seconds have passed since that target's last hit from it). Returns targets hit.
 export function hitCircle(rt, b, x, y, r, mul, flags, again = 0) {
@@ -204,12 +213,14 @@ export function hitCircle(rt, b, x, y, r, mul, flags, again = 0) {
     if (dx > rr || dx < -rr || dy > rr || dy < -rr || dx * dx + dy * dy > rr * rr) continue;
     const last = b.hits.get(a);
     if (last !== undefined && (again <= 0 || b.age - last < again)) continue;
-    if (!alive(a) || !rt.canAffect(b.cast, a)) continue;
+    if (!alive(a) || !rt.canAffect(b.cast, a) || !reaches(rt, x, y, a)) continue;
     b.hits.set(a, b.age);
     rt.hit(b, a, mul, flags);
     n++;
     if (!b.active) break;
   }
+  // The player's weaves land on the props in it too (DESIGN §31.3).
+  if (b.active && rt.hitProps) n += rt.hitProps(b, x, y, r, mul, flags, again);
   return n;
 }
 
@@ -314,10 +325,30 @@ function updateMissile(rt, b, dt) {
         rt.fx('bounce', { body: b, x: b.x, y: b.y });
         break;
       }
+      // End at the wall's face, not inside it: whatever it bursts into stays this side.
+      b.bx = pbx;
+      b.by = pby;
+      b.x = pbx;
+      b.y = pby;
       rt.end(b, 'wall');
       return;
     }
     if (b.noHit) continue;
+    // A prop in the way (the player's weaves): it takes the blow and stops the missile.
+    if (b.mode !== 'arc' && rt.propAt) {
+      const prop = rt.propAt(b, b.x, b.y);
+      if (prop && !b.hits.has(prop)) {
+        b.hits.set(prop, b.age);
+        rt.hitProp(b, prop, 1, b.heavy ? HIT_HEAVY : HIT);
+        if (!b.active || b.ending) return;
+        if (b.pierceLeft > 0) {
+          b.pierceLeft--;
+          continue;
+        }
+        rt.end(b, 'hit');
+        return;
+      }
+    }
     if (b.mode === 'arc') {
       const t = b.target;
       const rr = b.r + (t.radius ?? 5) + 2;
@@ -339,7 +370,7 @@ function updateMissile(rt, b, dt) {
       const dx = a.x - b.x;
       const dy = a.y - b.y;
       if (dx > rr || dx < -rr || dy > rr || dy < -rr || dx * dx + dy * dy > rr * rr) continue;
-      if (b.hits.has(a) || !alive(a) || !rt.canAffect(b.cast, a)) continue;
+      if (b.hits.has(a) || !alive(a) || !rt.canAffect(b.cast, a) || !reaches(rt, b.x, b.y, a)) continue;
       b.hits.set(a, b.age);
       rt.hit(b, a, 1, b.heavy ? HIT_HEAVY : HIT);
       if (!b.active || b.ending) return;
@@ -382,9 +413,18 @@ function updateMissile(rt, b, dt) {
 
 // A lobbed bomb: arcs to its spot, bursts, maybe hops on (bounce).
 function updateLob(rt, b, dt) {
-  const k = b.flight > 0 ? Math.min(1, (b.age - b.tickT) / b.flight) : 1;
+  let k = b.flight > 0 ? Math.min(1, (b.age - b.tickT) / b.flight) : 1;
+  const px = b.x;
+  const py = b.y;
   b.x = b.ox + (b.tx - b.ox) * k;
   b.y = b.oy + (b.ty - b.oy) * k;
+  // A bomb does not sail through a house (DESIGN §31.1): it meets the wall and bursts
+  // at its face, this side.
+  if (rt.wallAt?.(b.x, b.y)) {
+    b.x = px;
+    b.y = py;
+    k = 1;
+  }
   b.z = Math.sin(k * Math.PI) * b.peak + 6 * (1 - k);
   b.angle += dt * 9;
   if (k < 1) return;
@@ -493,6 +533,9 @@ function updateArea(rt, b, dt) {
           px = b.x + Math.cos(ang) * rr;
           py = b.y + Math.sin(ang) * rr * 0.8;
         }
+        // Rain falls on the open ground it was called down on, never through a roof or
+        // over a wall onto the far side.
+        if (rt.wallAt?.(px, py) || rt.blocked?.(b.x, b.y - LIFT, px, py - LIFT)) continue;
         rt.spawnFrom(b, b.plan, 'projectile', { mode: 'fall', x: px, y: py, z: 90 + rt.random() * 30, vz: 320, r: 2 + b.plan.size, r1: b.dropR, dmg: b.dmg, life: 2 });
       }
       break;
@@ -517,20 +560,31 @@ function hitCone(rt, b, x, y, ang, arc, r, mul, flags) {
       const slack = Math.atan2(a.radius ?? 5, d);
       if (Math.abs(angleDiff(Math.atan2(dy, dx), ang)) > arc + slack) continue;
     }
-    if (!alive(a) || !rt.canAffect(b.cast, a)) continue;
+    if (!alive(a) || !rt.canAffect(b.cast, a) || !reaches(rt, x, y, a)) continue;
     b.hits.set(a, b.age);
     rt.hit(b, a, mul, flags);
     if (!b.active) return;
   }
+  if (rt.hitProps) {
+    CONE.ang = ang;
+    CONE.arc = arc;
+    rt.hitProps(b, x, y, r, mul, flags, 0, CONE);
+  }
 }
+const CONE = { ang: 0, arc: 0 };
 
 // A punch: the fist lands first (heavy), then an impact wave rolls out in a cone.
 function updateStrike(rt, b, dt) {
   if (b.follow) followOwner(b);
   if (!b.armed) {
     b.armed = true;
-    const fx = b.x + Math.cos(b.angle) * b.r * 1.1;
-    const fy = b.y + Math.sin(b.angle) * b.r * 1.1;
+    let fx = b.x + Math.cos(b.angle) * b.r * 1.1;
+    let fy = b.y + Math.sin(b.angle) * b.r * 1.1;
+    // A fist thrown into a wall lands on the wall's face (and breaks nothing beyond it).
+    if (rt.blocked?.(b.x, b.y - LIFT, fx, fy - LIFT) || rt.wallAt?.(fx, fy)) {
+      fx = b.x + Math.cos(b.angle) * 4;
+      fy = b.y + Math.sin(b.angle) * 4;
+    }
     hitCircle(rt, b, fx, fy, b.r, 1, HIT_PUNCH);
     if (!b.active) return;
     rt.fx('impact', { body: b, x: fx, y: fy, r: b.r });
@@ -553,9 +607,18 @@ function traceBeam(rt, b, x, y, ang, range, bounces) {
   let cx = x;
   let cy = y;
   const step = 3;
+  b.prop = null;
   while (left > 0 && n < pts.length - 2) {
     const nx = cx + dx * step;
     const ny = cy + dy * step;
+    // The player's ray ends on the first prop it meets, and burns at it (DESIGN §31.3).
+    const prop = rt.propAt ? rt.propAt(b, nx, ny) : null;
+    if (prop) {
+      b.prop = prop;
+      cx = nx;
+      cy = ny;
+      break;
+    }
     if (rt.wallAt(nx, ny)) {
       if (bounces > 0) {
         bounces--;
@@ -606,6 +669,10 @@ function updateBeam(rt, b, dt) {
   b.tickT -= dt;
   if (b.tickT > 0) return;
   b.tickT += b.tick;
+  if (b.prop && rt.hitProp) {
+    rt.hitProp(b, b.prop, 1, HIT_TICK);
+    if (!b.active) return;
+  }
   const list = rt.cands;
   const pts = b.pts;
   for (let i = 0; i < list.length; i++) {
@@ -618,7 +685,8 @@ function updateBeam(rt, b, dt) {
       const x2 = pts[s * 2 + 2];
       const y2 = pts[s * 2 + 3];
       if (a.x < Math.min(x1, x2) - reach || a.x > Math.max(x1, x2) + reach || a.y < Math.min(y1, y2) - reach || a.y > Math.max(y1, y2) + reach) continue;
-      if (segDist(a.x, a.y, x1, y1, x2, y2) <= reach) hit = true;
+      // Touching the ray from where it passes, not from across a wall it ran along.
+      if (segDist(a.x, a.y, x1, y1, x2, y2) <= reach && reaches(rt, SEG.x, SEG.y, a)) hit = true;
     }
     if (!hit || !alive(a) || !rt.canAffect(b.cast, a)) continue;
     b.hits.set(a, b.age);
@@ -709,7 +777,7 @@ function updateRune(rt, b, dt) {
     const rr = b.trigR + (a.radius ?? 5);
     const dx = a.x - b.x;
     const dy = a.y - b.y;
-    if (dx * dx + dy * dy > rr * rr || !alive(a) || !rt.canAffect(b.cast, a)) continue;
+    if (dx * dx + dy * dy > rr * rr || !alive(a) || !rt.canAffect(b.cast, a) || !reaches(rt, b.x, b.y, a)) continue;
     rt.explode(b, b.x, b.y, b.burstR, 1, 'trigger', true);
     if (!b.active) return;
     if (b.bounceLeft > 0) {
@@ -750,7 +818,7 @@ function updateWall(rt, b, dt) {
     const reach = reachW + (a.radius ?? 5);
     if (a.x < Math.min(b.ox, b.x2) - reach || a.x > Math.max(b.ox, b.x2) + reach || a.y < Math.min(b.oy, b.y2) - reach || a.y > Math.max(b.oy, b.y2) + reach) continue;
     const d = segDist(a.x, a.y, b.ox, b.oy, b.x2, b.y2);
-    if (d >= reach || !alive(a) || !rt.canAffect(b.cast, a)) continue;
+    if (d >= reach || !alive(a) || !rt.canAffect(b.cast, a) || !reaches(rt, SEG.x, SEG.y, a)) continue;
     // Shove the foe out of the wall, then let it burn (or freeze, or…) on contact.
     let nx = a.x - SEG.x;
     let ny = a.y - SEG.y;
@@ -789,7 +857,7 @@ function updateTrail(rt, b, dt) {
     const a = list[i];
     const reach = b.r + (a.radius ?? 5);
     if (a.x < Math.min(b.x, b.x2) - reach || a.x > Math.max(b.x, b.x2) + reach || a.y < Math.min(b.y, b.y2) - reach || a.y > Math.max(b.y, b.y2) + reach) continue;
-    if (segDist(a.x, a.y, b.x, b.y, b.x2, b.y2) > reach) continue;
+    if (segDist(a.x, a.y, b.x, b.y, b.x2, b.y2) > reach || !reaches(rt, SEG.x, SEG.y, a)) continue;
     const last = b.hits.get(a);
     if (last !== undefined && b.age - last < b.tick) continue;
     if (!alive(a) || !rt.canAffect(b.cast, a)) continue;

@@ -6,6 +6,7 @@ import { SHADOW } from '../art/palette.js';
 import { itemDef } from './items.js';
 import { dropItem } from './pickups.js';
 import { xpToNext, LEVEL_ATK } from './combat.js';
+import { propsInCircle } from '../world/breakables.js';
 import { slashSprite, SLASH_FRAMES } from './combat_fx.js';
 
 // The player: 8-way movement with a touch of momentum, a three-hit sword combo,
@@ -424,7 +425,13 @@ export class Player extends Actor {
       const obj = this._findWorkTarget();
       if (obj) return this._workSwing(obj);
     }
-    return this._swordSwing(foe || this._findFoe(reach, false));
+    const target = foe || this._findFoe(reach, false);
+    // Nothing alive to fight: turn the blade toward a training dummy or a prop just in front.
+    if (!target) {
+      const prop = this._findProp(reach);
+      if (prop) this.faceToward(prop.x, prop.y - 8);
+    }
+    return this._swordSwing(target);
   }
 
   _swordSwing(target) {
@@ -516,6 +523,35 @@ export class Player extends Actor {
       const score = d - front * 10;
       if (score < bestScore) {
         best = e;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  // The training dummy (or a breakable prop) nearest in front, within reach (DESIGN §31.4).
+  _findProp(reach) {
+    let list;
+    try {
+      list = propsInCircle(this.game, this.x, this.y, reach + 6);
+    } catch {
+      return null;
+    }
+    const fx = this.facing.x;
+    const fy = this.facing.y;
+    let best = null;
+    let bestScore = Infinity;
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+      if (o.objType === 'tree' || o.objType === 'rock') continue; // the axe and the pick
+      const dx = o.x - this.x;
+      const dy = o.y - 8 - this.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const front = d < 8 ? 1 : (dx * fx + dy * fy) / d;
+      if (front < 0.2) continue;
+      const score = d - front * 10 - (o.objType === 'dummy' ? 12 : 0);
+      if (score < bestScore) {
+        best = o;
         bestScore = score;
       }
     }
