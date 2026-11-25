@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { actionForKey, KEYMAP, GAMEPAD_BUTTONS, slotOfAction, wheelSteps, cycleSlot, followBase, Input, WEAVE_SLOTS } from '../src/core/input.js';
 import { Weaving, dragAim, pickTarget, TOUCH_AIM_START, TOUCH_DRAG_MAX } from '../src/ui/weaving.js';
-import { clusterLayout } from '../src/ui/touch.js';
+import { clusterLayout, paintSlotState } from '../src/ui/touch.js';
 import { coneAngle } from '../src/ui/aim_preview.js';
 import { previewOf, aimsAtSpot, castModeOf, cleanWeave, weavePalette, fallbackName, componentInfo, paletteOf, BOSS_HINTS, SHAPE_IDS, ESSENCE_IDS, TWIST_IDS, normKind } from '../src/ui/weave_meta.js';
 import { SHAPE_GLYPHS, TWIST_GLYPHS, ESSENCE_SYMBOLS, shapeIconUrl, essenceIconUrl, twistIconUrl, silhouetteUrl, essenceGrid } from '../src/ui/weave_icons.js';
@@ -317,6 +317,66 @@ test('mana and cooldowns: starved slots dim, failed casts shake, cooldown sweeps
   g.input._onKeyUp({ code: 'Digit1', key: '1' });
   step(g, w, 60);
   assert.equal(w.cooldownFrac(0), 0, 'ready again');
+});
+
+// A weave button's moving parts without a browser: just enough of an element.
+function fakeEl() {
+  const classes = new Set();
+  const style = new Map();
+  return {
+    classes,
+    style: { setProperty: (k, v) => style.set(k, v), get: (k) => style.get(k) },
+    classList: { toggle: (c, on) => (on ? classes.add(c) : classes.delete(c)) },
+    textContent: '',
+  };
+}
+
+test('the button: a sweep with its seconds while one or more is left, a flash when ready, the charge ring, not-ready shake', () => {
+  const slot = { b: fakeEl(), cd: fakeEl(), secs: fakeEl(), chg: fakeEl() };
+  const rec = { plan: { ok: true }, cooldown: 3.5 };
+  const st = { frac: 0, left: 0, charge: null, fail: null, starved: false };
+  const w = {
+    cooldownFrac: () => st.frac,
+    cooldownLeft: () => st.left,
+    chargeOf: () => st.charge,
+    starved: () => st.starved,
+    lastFail: () => st.fail,
+  };
+  const paint = (t) => paintSlotState(slot, rec, w, 0, t);
+  Object.assign(st, { frac: 0.75, left: 2.6 });
+  paint(1);
+  assert.ok(slot.b.classes.has('cooling'));
+  assert.equal(slot.cd.style.get('--cd'), '0.750');
+  assert.equal(slot.secs.textContent, '3', 'whole seconds, rounded up');
+  Object.assign(st, { frac: 0.2, left: 0.7 });
+  paint(2);
+  assert.equal(slot.secs.textContent, '', 'under a second: the sweep alone');
+  // Pressed while cooling: the shake, marked not-ready.
+  st.fail = { reason: 'cooldown', t: 2 };
+  paint(2.1);
+  assert.ok(slot.b.classes.has('shake') && slot.b.classes.has('not-ready'));
+  Object.assign(st, { frac: 0, left: 0 });
+  paint(2.5);
+  assert.ok(!slot.b.classes.has('cooling'));
+  assert.ok(slot.b.classes.has('ready'), 'it flashes as it comes back');
+  paint(3.2);
+  assert.ok(!slot.b.classes.has('ready'), 'for a moment only');
+  assert.ok(!slot.b.classes.has('shake'));
+  // Charging: the ring fills; full, it pulses; held back by mana, it says so.
+  st.charge = { k: 0.4, live: true, capped: false, full: false };
+  paint(4);
+  assert.ok(slot.b.classes.has('charging') && !slot.b.classes.has('charged'));
+  assert.equal(slot.chg.style.get('--charge'), '0.400');
+  st.charge = { k: 1, live: true, capped: false, full: true };
+  paint(4.5);
+  assert.ok(slot.b.classes.has('charged'));
+  st.charge = { k: 0.3, live: true, capped: true, full: false };
+  st.starved = true;
+  paint(5);
+  assert.ok(slot.b.classes.has('capped') && !slot.b.classes.has('starved'), 'capped, not starved, while it charges');
+  st.charge = null;
+  paint(5.5);
+  assert.ok(!slot.b.classes.has('charging') && slot.b.classes.has('starved'));
 });
 
 test('no casting while paused, in a menu, typing, downed or in a scene', () => {
