@@ -490,6 +490,28 @@ function screeTexture(rng) {
   return buf;
 }
 
+// A ford: clear, ankle-deep water over a bed of rounded stones, a few bright ripples.
+const SHALLOWS_LUT = lut(['#1d3a48', '#295163', '#356a7d', '#4a8395', '#629cab', '#84b7c2', '#b3d6dc']);
+function shallowsTexture(rng) {
+  const buf = new PixelBuf(TEX, TEX);
+  const cells = tileCells(TEX, 6, rng);
+  const n1 = tileNoise(TEX, 4, rng, 2);
+  const n2 = tileNoise(TEX, 16, rng, 2);
+  const tones = new Float32Array(cells.count).map(() => 0.4 + rng.next() * 0.28);
+  for (let i = 0; i < TEX * TEX; i++) {
+    const x = i & M;
+    const y = i >> 6;
+    const e = cells.edge[i];
+    // Stones are lighter and lit from the upper left; the gaps between them sink dark.
+    let t = e < 0.62 ? 0.26 + n1[i] * 0.1 : tones[cells.id[i]] + (-cells.dx[i] - cells.dy[i]) * 0.07;
+    // Long soft ripples running across the current.
+    const r = Math.sin((x * 0.35 + y * 0.9 + n2[i] * 6) * 0.9);
+    if (r > 0.86) t += 0.2;
+    buf.data[i] = toneAt(SHALLOWS_LUT, t + (n1[i] - 0.5) * 0.06, x, y, 0.03);
+  }
+  return buf;
+}
+
 // The full set, plus a mid-tone per texture for quick fallbacks.
 export function buildTextures(rng) {
   const t = {
@@ -515,6 +537,7 @@ export function buildTextures(rng) {
     heath: [heathTexture(rng.fork(151)), grassTexture(rng.fork(152), { L: HEATH_LUT, base: 0.46, clumps: 70, blades: 260 })],
     deadgrass: [grassTexture(rng.fork(161), { L: DEAD_LUT, base: 0.5, blades: 200, bladeLen: [2, 5] }), grassTexture(rng.fork(162), { L: DEAD_LUT, base: 0.45, clumps: 60, blades: 120 })],
     scree: [screeTexture(rng.fork(171))],
+    shallows: [shallowsTexture(rng.fork(181))],
     bridge: [plankTexture(rng.fork(121), { L: lut(['#2a1a12', '#41291b', '#5a3a25', '#734c30', '#8c603e', '#a6774f']), h: 4 })],
   };
   return t;

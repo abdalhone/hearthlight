@@ -1737,13 +1737,17 @@ const WORD_ALIASES = {
 };
 
 export class ObjectManager {
-  // (x0, y0): the first tile, as in TileMap: tileIndex shares the map's indexing.
-  constructor(game, w = WORLD_W, h = WORLD_H, x0 = WORLD_X0, y0 = WORLD_Y0) {
+  // (x0, y0): the first tile, as in TileMap: tileIndex shares the map's indexing. With no
+  // size given it covers the whole world (constants.js); a given size starts at 0, 0.
+  constructor(game, w, h, x0, y0) {
     this.game = game;
-    this.w = w;
-    this.h = h;
-    this.x0 = x0 | 0;
-    this.y0 = y0 | 0;
+    const whole = w == null;
+    this.w = whole ? WORLD_W : w;
+    this.h = whole ? WORLD_H : h;
+    this.x0 = (x0 ?? (whole ? WORLD_X0 : 0)) | 0;
+    this.y0 = (y0 ?? (whole ? WORLD_Y0 : 0)) | 0;
+    w = this.w;
+    h = this.h;
     this.list = [];
     this.byId = new Map();
     this.tileIndex = new Array(w * h); // per tile (map.idx order): array of objects covering it

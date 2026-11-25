@@ -54,6 +54,7 @@ const isWater = (m) => m === T.WATER || m === T.DEEP_WATER;
     [T.HEATH]: ['heath', 4.2, 1],
     [T.DEAD_GRASS]: ['deadgrass', 4, 1],
     [T.SCREE]: ['scree', 2.4, 0.8],
+    [T.SHALLOWS]: ['shallows', 2.2, 0.6],
     [T.WATER]: [null, 0, 1],
     [T.DEEP_WATER]: [null, 0, 1],
   };

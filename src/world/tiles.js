@@ -41,6 +41,7 @@ export const T = {
   DEAD_GRASS: 25, // grey, forgotten grass where the grey lingers (Brindlecombe)
   SCREE: 26, // broken stone on the foothills
   THICKET: 27, // wood too thick to walk: the wild's walls (deep Whisperwood, the road's margins)
+  SHALLOWS: 28, // a ford: ankle-deep water over stones, walkable (and loud underfoot)
 };
 
 const D = (name, o) => ({
@@ -88,6 +89,7 @@ DEFS[T.DEAD_GRASS] = D('grey grass', { color: '#7d8270', cost: 1.15, blend: 'dea
 DEFS[T.SCREE] = D('scree', { color: '#8a8794', cost: 1.2, blend: 'scree', prio: 2 });
 // A wall of trunks and crowns: blocks feet, arrows and sight like a cliff does.
 DEFS[T.THICKET] = D('thicket', { solid: true, wall: true, color: '#1c2f22', tall: true, raised: true, cost: 0 });
+DEFS[T.SHALLOWS] = D('ford', { color: '#5b93a8', cost: 1.6, blend: 'shallows', prio: 1 });
 
 for (let i = 0; i < DEFS.length; i++) if (DEFS[i]) DEFS[i].id = i;
 
