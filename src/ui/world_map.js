@@ -409,6 +409,12 @@ function drawMark(ctx, mk, x, y, t, s) {
       ctx.beginPath();
       ctx.ellipse(x, y, 7, 4, 0, 0, Math.PI * 2);
       ctx.stroke();
+      // Named like a boss: the one thing on the chart you must walk back to.
+      if (mk.label && s >= 1) {
+        ctx.font = '600 11px system-ui, sans-serif';
+        ctx.textBaseline = 'bottom';
+        outlineText(ctx, mk.label, x, y - 7);
+      }
       break;
     case 'place':
       ctx.fillStyle = '#f3e7c9';
