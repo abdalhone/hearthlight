@@ -723,7 +723,16 @@ async function run([W, H]) {
   await wait(400);
   const shown = await page.evaluate(() => [...document.querySelectorAll('.toast:not(.queued):not(.leaving)')].filter((t) => getComputedStyle(t).display !== 'none').length);
   check(shown === 1, `${tag}: one notice at a time on a phone (${shown})`);
-  const t1 = await box('.toast:not(.queued):not(.leaving)');
+  // The stack keeps clear of moving bubbles and people (re-placed ten times a second): tap
+  // the notice where it has come to rest, as a thumb would, not where it was a moment ago.
+  let t1 = await box('.toast:not(.queued):not(.leaving)');
+  for (let i = 0; i < 20 && t1; i++) {
+    await wait(150);
+    const again = await box('.toast:not(.queued):not(.leaving)');
+    const still = again && Math.abs(again.cx - t1.cx) < 1 && Math.abs(again.cy - t1.cy) < 1;
+    t1 = again;
+    if (still) break;
+  }
   if (t1) {
     const before = await page.evaluate(([x, y]) => {
       const at = document.elementFromPoint(x, y);
