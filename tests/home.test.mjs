@@ -98,3 +98,23 @@ test('Menu → Home: one place in the menu, toggling the mark; the edge arrow si
   const n = edgePoint({ x: 400, y: -900 }, 800, 600, 40);
   assert.equal(Math.round(n.y), 40);
 });
+
+test('the bed wears its tag inside the Wayhouse even before Menu → Home was ever used', async () => {
+  const { HomePointer } = await import('../src/ui/home_pointer.js');
+  const g = makeGame({ hour: 12 });
+  const bed = homeBed(g);
+  const built = [];
+  const hp = new HomePointer(g, { root: null });
+  hp.build = function () {
+    built.push(1);
+  };
+  g.player.x = bed.x + 30;
+  g.player.y = bed.y + 40;
+  hp.update();
+  assert.equal(built.length, 1, 'standing in the Wayhouse, the tag layer is built');
+  g.player.x = 10;
+  g.player.y = 10;
+  const n = built.length;
+  hp.update();
+  assert.equal(built.length, n, 'far away with no mark asked for, nothing is built');
+});

@@ -132,7 +132,8 @@ export class HomePointer {
   // Each frame (ui.update).
   update() {
     const g = this.game;
-    const bed = this.active || this.built ? homeBed(g) : null;
+    if (g.state !== 'playing') return;
+    const bed = homeBed(g);
     const p = g.player;
     // Reached it: the mark has done its work.
     if (this.active && bed && p && Math.hypot(p.x - bed.x, p.y - (bed.y - 8)) < 30) this.hide();
