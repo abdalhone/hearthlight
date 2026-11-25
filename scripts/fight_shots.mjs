@@ -115,7 +115,7 @@ async function hits(size) {
   await page.screenshot({ path: `${out}/${label}-1-spark.png` });
   await page.evaluate(() => {
     const g = window.__game;
-    g.magic.cooldowns?.fill?.(0);
+    g.magic.resetCooldowns?.();
     g.magic.mana.cur = g.magic.mana.max;
     g.magic.cast(g.player, 0, { x: window.__slime.x, y: window.__slime.y - 7, target: window.__slime });
   });
@@ -133,7 +133,7 @@ async function hits(size) {
     const l = g.companion;
     window.__slime.hp = 0;
     window.__slime.dead = true;
-    g.magic.cooldowns?.fill?.(0);
+    g.magic.resetCooldowns?.();
     g.magic.mana.cur = g.magic.mana.max;
     // Villagers who came to look at the slime stand back (a weave hits whoever is in its
     // way: this scene is about Lyra), and she stands where she was put.

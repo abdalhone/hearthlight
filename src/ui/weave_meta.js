@@ -62,7 +62,7 @@ export const TWIST_INFO = {
   volley: { name: 'Volley', desc: 'Three in quick succession.' },
   spiral: { name: 'Spiral', desc: 'A weaving path.' },
   leech: { name: 'Leech', desc: 'Heals you a little.' },
-  charge: { name: 'Charge', desc: 'Hold to power it up.' },
+  charge: { name: 'Charge', desc: 'Charges twice as fast, hits harder at full.' },
 };
 
 export const INFO = { shapes: SHAPE_INFO, essences: ESSENCE_INFO, twists: TWIST_INFO };
@@ -189,13 +189,16 @@ export function aimsAtSpot(preview) {
   return t === 'circle' || t === 'point' || t === 'wall' || t === 'bind' || t === 'shield';
 }
 
-// How a weave is cast: 'hold' (channelled while held: beams), 'charge' (hold to power
-// up, release to fire) or 'quick' (fires at once).
+// How a weave is cast: 'hold' (channelled while held: beams), 'charge' (the charge
+// twist: charges fast, release to fire) or 'quick' (a tap casts at once; held, it
+// charges too: every weave but a beam does). The plan's own input wins: a beam with the
+// charge twist charges and is let go, it does not pour.
 export function castModeOf(plan, weave) {
   if (!plan && !weave) return 'quick';
   const twists = (weave?.twists || plan?.twists || []).map((t) => (typeof t === 'string' ? t : t?.id));
+  if (plan?.input === 'charge' || plan?.mode === 'charge') return 'charge';
   if (plan?.input === 'hold' || plan?.mode === 'hold' || plan?.held === true || plan?.channel) return 'hold';
-  if (plan?.input === 'charge' || plan?.mode === 'charge' || twists.includes('charge')) return 'charge';
+  if (twists.includes('charge')) return 'charge';
   if (plan?.input === 'tap') return 'quick';
   if ((weave?.shape || plan?.shape) === 'beam') return 'hold';
   return 'quick';

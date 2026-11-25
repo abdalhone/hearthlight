@@ -151,12 +151,23 @@ const H = {
       }
     }
     if (echo) ghostOf(fx, caster, P.glow, 0.45, 0, 0.5);
+    // A charged release (hold to charge): a burst at the hands that grows with the charge;
+    // a full one throws a star and a wider ring, and kicks the camera a little.
+    const ck = !echo && !volley && cast?.plan === plan ? Math.max(0, Math.min(1, cast?.chargeK || 0)) : 0;
+    if (ck > 0.05) {
+      ring(fx, hx, hy, 3, 8 + 16 * ck, P.core, P.glow, 0.22 + 0.12 * ck, ck >= 0.999 ? 2 : 1, 10);
+      fx.parts.burst('twinkle', P, hx, hy, 10, Math.round(3 + 9 * ck), 0.9 + 0.8 * ck);
+      if (ck >= 0.999) {
+        star(fx, hx, hy, 14, '#ffffff', L.halo, 0.2, 10);
+        fx.shake(1.1, 0.1);
+      }
+    }
     if (volley) {
       const n = (volleys.get(cast) || 0) + 1;
       volleys.set(cast, n);
       ring(fx, hx, hy, 2, 9, P.core, P.glow, 0.18, 1, 10);
     }
-    fx.flash(hx, hy - 10, 26 + (plan.size || 1) * 10, L.lightColor, echo ? 0.35 : 0.6, 0.14);
+    fx.flash(hx, hy - 10, (26 + (plan.size || 1) * 10) * (1 + 0.6 * ck), L.lightColor, echo ? 0.35 : 0.6 + 0.3 * ck, 0.14 + 0.08 * ck);
     // A dash cast: afterimages along the path in the weave's colors.
     const d = fx._pendingDash;
     if (d && d.caster === caster) {
@@ -692,10 +703,10 @@ const H = {
     const c = p.caster;
     if (!c || !p.plan) return;
     const L = planLook(p.plan);
-    if (p.start) fx.sound.startLoop(`ch:${c.id}`, p.plan, c.x, c.y, 'charge');
+    if (p.start) fx.sound.startLoop(`ch:${c.id}`, p.plan, c.x, c.y, 'charge', p.rise);
     else if (p.cancel) {
       fx.sound.stopLoop(`ch:${c.id}`);
-      fx.parts.burst('dust', L.pal, c.x, c.y, 10, 4, 0.6);
+      if (!p.quiet) fx.parts.burst('dust', L.pal, c.x, c.y, 10, 4, 0.6);
     } else if (p.full) {
       star(fx, c.x, c.y, 12, '#ffffff', L.halo, 0.25, 10);
       ring(fx, c.x, c.y, 14, 3, L.pal.core, L.pal.glow, 0.3, 1, 10);
@@ -842,14 +853,31 @@ const H = {
     }
   },
 
+  // A refused cast: out of mana puffs grey dust; still cooling says "not ready" (a soft
+  // muted knock; the button shakes and shows its seconds).
   fizzle(fx, p) {
     const c = p.caster;
-    if (!c || p.reason !== 'mana') return;
+    if (!c || (p.reason !== 'mana' && p.reason !== 'cooldown')) return;
     const now = fx.game.time || 0;
     if (now - (fx._fizzleAt || 0) < 0.25) return;
     fx._fizzleAt = now;
+    if (p.reason === 'cooldown') {
+      fx.sound.cue('not_ready', c.x, c.y);
+      return;
+    }
     fx.parts.burst('dust', { core: '#c9c6cf', spark: '#c9c6cf', glow: '#8e8a95', deep: '#5f5a69' }, c.x + (c.facing?.x || 0) * 6, c.y, 10, 5, 0.7);
     fx.sound.cue('fizzle', c.x, c.y);
+  },
+
+  // A weave's cooldown ran out: a soft tick for a long one (a Spark's short wait stays
+  // quiet), and a glint at the hands in its colors.
+  ready(fx, p) {
+    const c = p.caster;
+    if (!c || !p.plan) return;
+    if (!(p.total >= 1.2)) return;
+    const L = planLook(p.plan);
+    fx.parts.burst('twinkle', L.pal, c.x, c.y, 12, 3, 0.6);
+    fx.sound.cue('ready', c.x, c.y);
   },
 };
 

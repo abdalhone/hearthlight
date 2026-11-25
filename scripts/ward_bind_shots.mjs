@@ -159,7 +159,7 @@ await page.evaluate(() => {
     g.magicFx?.effects?.clear?.();
     g.bubbles?.clearAll?.();
     m.mana.cur = m.mana.max;
-    m.cooldowns.fill(0);
+    m.resetCooldowns();
   };
   S.bindGrid = (twists = []) => {
     for (const cell of S.cells) g.magic.cast(cell.c, { shape: 'bind', essences: [cell.ess], twists }, { x: cell.d.x, y: cell.d.y, target: cell.d }, { free: true });

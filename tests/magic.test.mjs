@@ -203,7 +203,7 @@ test('a fire bolt hits a foe, burns it, and the burn is credited to the caster',
   assert.equal(dmg.payload.damageType, 'fire');
   assert.equal(dmg.payload.source, g.player);
   for (let i = 0; i < 6 && !foe.dead; i++) {
-    m.cooldowns.fill(0);
+    m.resetCooldowns();
     m.mana.cur = 40;
     m.cast(g.player, { shape: 'bolt', essences: ['fire'] }, { x: foe.x, y: foe.y });
     run(g, 0.7);
@@ -446,9 +446,9 @@ test('held beam drains mana while held and stops on release; charge grows with t
   m.castRelease(g.player);
   run(g, 0.3);
   assert.equal(m.bodies.filter((b) => b.kind === 'beam').length, 0);
-  assert.ok(m.cooldowns[1] > 0);
+  assert.ok(m.cooldownLeft(1) > 0, 'the beam cools once let go');
   // Out of mana: the beam lets go by itself.
-  m.cooldowns.fill(0);
+  m.resetCooldowns();
   m.mana.cur = 8;
   m.castStart(g.player, 1, { x: foe.x, y: foe.y });
   run(g, 2);
@@ -519,7 +519,7 @@ test('walls stop foes and their arrows; dash blinks with i-frames and leaves a t
   assert.ok(trail && Math.hypot(trail.x2 - trail.x, trail.y2 - trail.y) > 40);
   // Dashing into the outer wall stops at it.
   resetArena(g);
-  m.cooldowns.fill(0);
+  m.resetCooldowns();
   g.player.x = 2 * TILE;
   m.cast(g.player, { shape: 'dash', essences: ['raw'] }, { x: -200, y: g.player.y });
   run(g, 0.5);

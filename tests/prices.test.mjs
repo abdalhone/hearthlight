@@ -157,7 +157,7 @@ test('overdraw: weaves cost no mana for 10 s, then no mana comes back for 30 s',
   assert.ok(m.cast(P, weave('overdraw'), AIM).ok);
   assert.equal(m.costOf(P, plan), 0);
   const cur = m.mana.cur;
-  m.cooldowns.fill(0);
+  m.resetCooldowns();
   m.cast(P, { shape: 'bolt', essences: ['raw'] }, AIM);
   assert.equal(m.mana.cur, cur, 'a free weave');
   step(g, 10.2);

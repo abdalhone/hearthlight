@@ -344,7 +344,9 @@ export function numberStyle(color, text, opts = {}) {
   }
   const base = NUMBER_STYLES[kind];
   const custom = typeof color === 'string' && !NUMBER_STYLES[color] && /^(#|rgb|hsl)/i.test(color);
-  return { kind, fill: custom && kind !== 'crit' ? color : base.fill, scale: base.scale };
+  // opts.scale: a bigger number (a fully charged weave's blow).
+  const grow = Number.isFinite(opts.scale) && opts.scale > 0 ? Math.min(2, opts.scale) : 1;
+  return { kind, fill: custom && kind !== 'crit' ? color : base.fill, scale: base.scale * grow };
 }
 
 // ---------------------------------------------------------------------------

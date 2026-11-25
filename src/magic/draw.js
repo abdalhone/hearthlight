@@ -631,7 +631,7 @@ function drawStatus(ctx, s, x, y, time, i, a) {
 function drawHolds(magic, ctx, ox, oy, time) {
   if (!magic.holds.size) return;
   for (const [c, h] of magic.holds) {
-    if (!c || c.removed || h.mode === 'tap') continue;
+    if (!c || c.removed || h.mode === 'tap' || h.live === false) continue;
     const p = h.plan.palette;
     const x = c.x - ox;
     const y = c.y - oy;

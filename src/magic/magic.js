@@ -17,18 +17,24 @@ import { T as TILE_IDS } from '../world/tiles.js';
 //
 //   cast(caster, slotOrWeave, aim {x, y, target?}, opts?) -> { ok, reason?, message?, plan }
 //       a full quick cast. aim may be omitted (auto-aims at the nearest foe, else ahead).
-//       opts: { free (no mana / cooldown), chargeK (0..1) }
-//   castStart(caster, slot, aim) -> { ok, reason?, plan, mode: 'tap'|'hold'|'charge' }
-//   castHold(caster, aim) -> { mode, t, k (charge 0..1), plan } | null    (call while held)
+//       opts: { free (no mana / cooldown), chargeK (0..1: pays x(1 + k) mana) }
+//   castStart(caster, slot, aim, opts?) -> { ok, reason?, plan, mode: 'tap'|'hold'|'charge' }
+//       opts.charge: a tap weave charges while held (the controls ask this for every press)
+//   castHold(caster, aim) -> { mode, t, k (charge 0..1), live, capped, plan } | null
 //   castRelease(caster, aim?) -> { ok, reason?, plan }                   (casts / ends a beam)
 //   castCancel(caster)                                                    (drag back to cancel)
 //       Held flow for every shape: Start on press, Hold while dragging, Release to cast.
-//       'tap' casts on release; 'charge' (charge twist) grows while held and casts on release;
-//       'hold' (beam) pours from Start until Release, draining plan.drain mana per second.
+//       'tap' casts on release; 'charge' grows while held (past a CHARGE_DEAD tap, see
+//       balance.js) and casts on release at charge k, paying x(1 + k) mana then, never more
+//       than the mana there is; 'hold' (beam) pours from Start until Release, draining
+//       plan.drain mana per second. One hold per caster: a second Start lets the first go.
 //   canCast(slot, caster = player) -> { ok, reason, message, cooldown, cost, plan }
 //       reasons: 'empty' 'locked_slot' 'invalid' 'cooldown' 'mana' 'down' 'disabled' 'busy'
 //   slots[0..5] (weaves or null), slotCount, essenceSlots, twistSlots, setSlot(i, weave),
-//   slotPlan(i), cooldownLeft(i), cooldownFraction(i)
+//   slotPlan(i), cooldownLeft(i), cooldownFraction(i), cooldownTotal(i), resetCooldowns()
+//       a weave's cooldown follows the weave (its plan.key), not the slot it sits in
+//   startTrial() / endTrial() / trial: "Try all magic" (Settings): every part open until it
+//       ends; the real unlocks, slots and weaves come back, rewards earned meanwhile kept
 //   mana { cur, max }, addMaxMana(n), restoreMana(n)
 //   unlocked { shapes, essences, twists } (Sets), unlock(kind, id, source), isUnlocked(kind, id),
 //   unlockSlot(), unlockEssenceSlot(), unlockTwistSlot(), unlockAll() (developer helper)
@@ -42,6 +48,7 @@ import { T as TILE_IDS } from '../world/tiles.js';
 // essences, caster, plan}, status_applied {target, status, source, potency, duration},
 // reaction {id, name, x, y, target, source}, magic_unlocked {kind, id, source},
 // mana_changed {cur, max}, weave_slots {slot, weave} (a slot was set or cleared),
+// weave_ready {key, plan} (a weave's cooldown ran out), magic_trial {on},
 // bind {source, target, seconds, plan, resisted} (a bind closed on someone),
 // ward {caster, bearer, shield, plan} (a ward rose) and ward_broken {bearer, caster, plan}.
 //
@@ -54,7 +61,8 @@ import { T as TILE_IDS } from '../world/tiles.js';
 // optional:
 //   onEvent(type, payload, magic)   types: cast spawn launch hit end explode bounce pulse
 //       impact armed patch block status reaction familiar dash charge beam_start beam_end
-//       link (a reaction arcing from one target to another) fizzle (a refused cast)
+//       link (a reaction arcing from one target to another) fizzle (a refused cast:
+//       reason 'mana' | 'cooldown' | …) ready (a weave's cooldown ran out {caster, plan, total})
 //       bind (a hold closed) unbind (it let go) bind_resist (a boss shrugged it off)
 //       ward_hit (a ward took a blow) ward_block (it stopped a missile: how 'block' |
 //       'reflect' | 'deflect') ward_thicken ward_break
@@ -171,9 +179,10 @@ export class Magic {
     this.twistSlots = BAL.TWIST_SLOTS_START;
     this.slots = new Array(BAL.SLOTS_MAX).fill(null);
     this.slots[0] = { ...STARTER_WEAVE, essences: ['raw'], twists: [] };
-    this.cooldowns = new Array(BAL.SLOTS_MAX).fill(0);
-    this.cooldownTotals = new Array(BAL.SLOTS_MAX).fill(0);
-    this.weaveReady = new Map(); // weave key -> magic time it is ready again (casts not from a slot)
+    // Cooldowns follow the weave: plan.key -> { until (magic time), total (seconds), plan }.
+    this.weaveReady = new Map();
+    this.trial = null; // "Try all magic" (Settings): the real state, kept while it runs
+    this.trialDrafts = []; // weaves made in a trial that left their slot when it ended
     this.manaBonus = 0;
     this.mana = { cur: BAL.MANA_START, max: BAL.MANA_START };
     this._manaShown = -1;
@@ -513,9 +522,12 @@ export class Magic {
     b.palette = plan.palette;
     b.index = index;
     b.seed = this.rng.next();
+    // A charged cast (balance.js: hold to charge) hits harder, grows and flies faster.
     const k = emitting ? cast?.chargeK || 0 : 0;
-    const sizeK = 1 + 0.45 * k;
-    b.dmg = Number.isFinite(init.dmg) ? init.dmg : plan.dmg * (emitting ? this._emitMul : 1) * (1 + 1.6 * k);
+    const sizeK = 1 + BAL.CHARGE_SIZE * k;
+    const power = Number.isFinite(cast?.chargePower) ? cast.chargePower : BAL.CHARGE_POWER;
+    b.charge = k;
+    b.dmg = Number.isFinite(init.dmg) ? init.dmg : plan.dmg * (emitting ? this._emitMul : 1) * (1 + power * k);
     b.x = Number.isFinite(init.x) ? init.x : o ? o.x : 0;
     b.y = Number.isFinite(init.y) ? init.y : o ? o.y : 0;
     b.bx = b.x;
@@ -523,7 +535,7 @@ export class Magic {
     b.ox = b.x;
     b.oy = b.y;
     b.angle = Number.isFinite(init.angle) ? init.angle : cast?.angle ?? 0;
-    b.speed = (Number.isFinite(init.speed) ? init.speed : plan.speed) * (1 + 0.25 * k);
+    b.speed = (Number.isFinite(init.speed) ? init.speed : plan.speed) * (1 + BAL.CHARGE_SPEED * k);
     b.vx = Math.cos(b.angle) * b.speed;
     b.vy = Math.sin(b.angle) * b.speed;
     b.r = (Number.isFinite(init.r) ? init.r : plan.radius) * sizeK;
@@ -808,6 +820,7 @@ export class Magic {
     o.weave = plan;
     o.essences = plan.essences;
     o.magic = true;
+    o.charge = tick ? 0 : b.charge || 0; // a charged blow lands bigger (spark, number)
     const amt = accident ? amount * ACCIDENT_MUL : amount;
     let dealt = 0;
     try {
@@ -1539,7 +1552,7 @@ export class Magic {
     if (opts.free) return { ok: true };
     if (this.isPlayer(caster)) {
       if ((g.state && g.state !== 'playing') || g.paused) return { ok: false, reason: 'busy', message: 'Not now.' };
-      const left = r.slot >= 0 ? this.cooldowns[r.slot] : Math.max(0, (this.weaveReady.get(r.key) ?? 0) - this.t);
+      const left = this.cooldownOfPlan(r.plan);
       if (left > 0.001) return { ok: false, reason: 'cooldown', message: 'Not ready yet.', cooldown: left };
       const cost = this.costOf(caster, r.plan);
       const need = r.plan.input === 'hold' ? Math.min(cost, Math.max(2, cost * 0.35)) : cost;
@@ -1552,7 +1565,7 @@ export class Magic {
     const r = this._resolve(caster, slot);
     if (!r.ok) return { ok: false, reason: r.reason, message: r.message, plan: r.plan || null, cooldown: 0, cost: 0 };
     const c = this._check(caster, r);
-    return { ok: c.ok, reason: c.reason || null, message: c.message || '', plan: r.plan, cooldown: r.slot >= 0 ? this.cooldowns[r.slot] : 0, cost: this.costOf(caster, r.plan) };
+    return { ok: c.ok, reason: c.reason || null, message: c.message || '', plan: r.plan, cooldown: this.isPlayer(caster) ? this.cooldownOfPlan(r.plan) : 0, cost: this.costOf(caster, r.plan) };
   }
 
   // The stat pipeline (DESIGN §26, game.stats) shapes what a weave asks of its weaver:
@@ -1578,14 +1591,64 @@ export class Magic {
     return Math.max(BAL.COOLDOWN_MIN * 0.75, base * k);
   }
 
+  // A cast pays when it leaves the hands: its mana, x(1 + k) for a charge of k, and its
+  // cooldown starts.
   _pay(caster, r, cost, opts) {
     if (opts.free || !this.isPlayer(caster)) return;
-    this.spendMana(this.costOf(caster, r.plan));
-    const cd = this.cooldownOf(caster, r.plan);
-    if (r.slot >= 0) {
-      this.cooldowns[r.slot] = cd;
-      this.cooldownTotals[r.slot] = cd;
-    } else this.weaveReady.set(r.key, this.t + cd);
+    const k = Math.max(0, Math.min(1, Number(opts.chargeK) || 0));
+    this.spendMana(this.costOf(caster, r.plan) * (1 + BAL.CHARGE_MANA * k));
+    this._startCooldown(caster, r.plan);
+  }
+
+  // ---------------------------------------------------------------- cooldowns
+  // A weave's cooldown follows the weave (plan.key: its parts), never its slot: moving
+  // it to another slot or setting it again neither dodges nor hands on a timer.
+
+  _startCooldown(caster, plan) {
+    if (!plan?.key || !this.isPlayer(caster)) return;
+    const cd = this.cooldownOf(caster, plan);
+    if (cd > 0) this.weaveReady.set(plan.key, { until: this.t + cd, total: cd, plan });
+  }
+
+  // Seconds before a plan (a slot's or any weave's) can be cast again.
+  cooldownOfPlan(plan) {
+    const e = plan?.key ? this.weaveReady.get(plan.key) : null;
+    return e ? Math.max(0, e.until - this.t) : 0;
+  }
+
+  cooldownLeft(i) {
+    const plan = Number.isInteger(i) && this.slots[i] ? this.slotPlan(i) : null;
+    return plan?.ok ? this.cooldownOfPlan(plan) : 0;
+  }
+
+  cooldownTotal(i) {
+    const plan = Number.isInteger(i) && this.slots[i] ? this.slotPlan(i) : null;
+    const e = plan?.ok && plan.key ? this.weaveReady.get(plan.key) : null;
+    return e && e.until > this.t ? e.total : 0;
+  }
+
+  // 1 = just cast, 0 = ready.
+  cooldownFraction(i) {
+    const total = this.cooldownTotal(i);
+    return total > 0 ? Math.max(0, Math.min(1, this.cooldownLeft(i) / total)) : 0;
+  }
+
+  resetCooldowns() {
+    this.weaveReady.clear();
+  }
+
+  // Timers that ran out leave the map; a long one says so (the button's "ready" tick).
+  _tickCooldowns() {
+    if (!this.weaveReady.size) return;
+    for (const [key, e] of this.weaveReady) {
+      if (e.until > this.t) continue;
+      this.weaveReady.delete(key);
+      const P = this.game.player;
+      if (P && e.plan) {
+        this.fx('ready', { caster: P, plan: e.plan, total: e.total });
+        this.game.bus?.emit('weave_ready', { key, plan: e.plan, total: e.total });
+      }
+    }
   }
 
   // Who and where a cast is aimed at. A friend counts as aimed at when the aim names
@@ -1673,6 +1736,7 @@ export class Magic {
       aimY: ay,
       angle: Math.atan2(ay - caster.y, ax - caster.x) || 0,
       chargeK: Math.max(0, Math.min(1, o.chargeK || 0)),
+      chargePower: Number.isFinite(plan.chargePower) ? plan.chargePower : BAL.CHARGE_POWER,
       held: !!o.held,
       slot: o.slot ?? -1,
       live: 0,
@@ -1791,7 +1855,9 @@ export class Magic {
       return { ok: false, reason: c.reason, message: c.message, plan: r.plan };
     }
     this.castCancel(caster);
-    return this._fire(caster, r, aim, opts);
+    let k = Math.max(0, Math.min(1, Number(opts.chargeK) || 0));
+    if (k > 0 && !opts.free && this.isPlayer(caster)) k = Math.min(k, BAL.affordableK(this.mana.cur, this.costOf(caster, r.plan)));
+    return this._fire(caster, r, aim, { ...opts, chargeK: k });
   }
 
   _fire(caster, r, aim, opts = {}) {
@@ -1803,20 +1869,26 @@ export class Magic {
     return { ok: true, plan, cast };
   }
 
+  // Press: a beam starts pouring; anything else waits for the release, charging while it
+  // is held (a charge-twist weave always, a tap weave when opts.charge asks: the controls
+  // ask it for every press). Whatever this caster was already holding is let go first
+  // (it fires), so one charge builds at a time.
   castStart(caster, slotOrWeave, aim, opts = {}) {
     const r = this._resolve(caster, slotOrWeave);
     if (!r.ok) return { ok: false, reason: r.reason, message: r.message, plan: r.plan || null };
+    if (this.holds.has(caster)) this.castRelease(caster);
     const c = this._check(caster, r, opts);
     if (!c.ok) {
       this.fx('fizzle', { caster, reason: c.reason, plan: r.plan });
-      return { ok: false, reason: c.reason, message: c.message, plan: r.plan };
+      return { ok: false, reason: c.reason, message: c.message, plan: r.plan, cooldown: c.cooldown || 0 };
     }
-    this.castCancel(caster);
     const plan = r.plan;
-    const mode = plan.input;
-    const hold = { caster, r, plan, mode, t: 0, aim: { x: aim?.x, y: aim?.y, target: aim?.target || null }, cast: null, opts, k: 0 };
+    let mode = plan.input;
+    if (mode === 'tap' && opts.charge) mode = 'charge';
+    const hold = { caster, r, plan, mode, t: 0, aim: { x: aim?.x, y: aim?.y, target: aim?.target || null }, cast: null, opts, k: 0, live: false, capped: false };
     this.holds.set(caster, hold);
     if (mode === 'hold') {
+      hold.live = true;
       const full = this.costOf(caster, plan);
       const first = Math.min(full, Math.max(2, full * 0.35));
       if (!opts.free && this.isPlayer(caster) && first > 0) this.spendMana(first);
@@ -1825,10 +1897,8 @@ export class Magic {
       this._emit(hold.cast, plan, 1);
       this.game.bus?.emit('spell_cast', { caster, weave: plan.weave, plan, slot: r.slot, held: true, target: hold.cast.target });
       this.fx('beam_start', { cast: hold.cast, caster });
-    } else if (mode === 'charge') {
-      this.fx('charge', { caster, plan, k: 0, start: true });
+      caster.castMoveMul = BAL.CHARGE_MOVE;
     }
-    if (mode !== 'tap') caster.castMoveMul = 0.62;
     return { ok: true, plan, mode };
   }
 
@@ -1845,7 +1915,7 @@ export class Magic {
         h.cast.trackTarget = false;
       }
     }
-    return { mode: h.mode, t: h.t, k: h.k, plan: h.plan };
+    return { mode: h.mode, t: h.t, k: h.k, live: h.live, capped: h.capped, plan: h.plan };
   }
 
   castRelease(caster, aim) {
@@ -1856,25 +1926,24 @@ export class Magic {
     caster.castMoveMul = 1;
     if (h.mode === 'hold') {
       this._endHeld(h);
-      if (!h.opts.free && this.isPlayer(caster)) {
-        const cd = this.cooldownOf(caster, h.plan);
-        if (h.r.slot >= 0) {
-          this.cooldowns[h.r.slot] = cd;
-          this.cooldownTotals[h.r.slot] = cd;
-        } else this.weaveReady.set(h.r.key, this.t + cd);
-      }
+      if (!h.opts.free) this._startCooldown(caster, h.plan);
       return { ok: true, plan: h.plan };
     }
     const c = this._check(caster, h.r, h.opts);
     if (!c.ok) {
       this.fx('fizzle', { caster, reason: c.reason, plan: h.plan });
+      // The charge's swell stops with it.
+      this.fx('charge', { caster, plan: h.plan, k: 0, cancel: true });
       return { ok: false, reason: c.reason, message: c.message, plan: h.plan };
     }
+    let k = h.mode === 'charge' ? h.k : 0;
+    if (k > 0 && !h.opts.free && this.isPlayer(caster)) k = Math.min(k, BAL.affordableK(this.mana.cur, this.costOf(caster, h.plan)));
     const a = h.aim;
-    const res = this._fire(caster, h.r, { x: a.x, y: a.y, target: a.target }, { ...h.opts, chargeK: h.mode === 'charge' ? h.k : 0 });
-    return res;
+    return this._fire(caster, h.r, { x: a.x, y: a.y, target: a.target }, { ...h.opts, chargeK: k });
   }
 
+  // Let go without casting: a charge costs nothing; a beam already poured keeps its
+  // cooldown (as long as letting it go would).
   castCancel(caster) {
     const h = this.holds.get(caster);
     if (!h) return false;
@@ -1882,12 +1951,9 @@ export class Magic {
     if (caster) caster.castMoveMul = 1;
     if (h.mode === 'hold') {
       this._endHeld(h);
-      if (!h.opts.free && this.isPlayer(caster) && h.r.slot >= 0) {
-        this.cooldowns[h.r.slot] = h.plan.cooldown;
-        this.cooldownTotals[h.r.slot] = h.plan.cooldown;
-      }
+      if (!h.opts.free) this._startCooldown(caster, h.plan);
     }
-    this.fx('charge', { caster, plan: h.plan, k: 0, cancel: true });
+    this.fx('charge', { caster, plan: h.plan, k: 0, cancel: true, quiet: !h.live });
     return true;
   }
 
@@ -1898,7 +1964,7 @@ export class Magic {
 
   holdOf(caster) {
     const h = this.holds.get(caster);
-    return h ? { mode: h.mode, t: h.t, k: h.k, plan: h.plan, aim: h.aim } : null;
+    return h ? { mode: h.mode, t: h.t, k: h.k, live: h.live, capped: h.capped, plan: h.plan, aim: h.aim } : null;
   }
 
   _endHeld(h) {
@@ -1920,7 +1986,25 @@ export class Magic {
         continue;
       }
       if (h.mode === 'charge') {
-        const k = Math.min(1, (h.t * (this.isPlayer(caster) ? this._stat(caster, 'castSpeed', 1) : 1)) / Math.max(0.1, h.plan.charge || BAL.CHARGE_TIME));
+        // A tap until CHARGE_DEAD; then it gathers (the walk slows, the swell starts) to a
+        // full charge, never past what the mana in hand can pay for when it is let go.
+        const player = this.isPlayer(caster);
+        const cs = player ? this._stat(caster, 'castSpeed', 1) : 1;
+        const time = h.plan.charge || BAL.CHARGE_TIME;
+        let k = BAL.chargeK(h.t, time, cs);
+        if (!h.live && h.t >= BAL.CHARGE_DEAD) {
+          h.live = true;
+          caster.castMoveMul = BAL.CHARGE_MOVE;
+          this.fx('charge', { caster, plan: h.plan, k: 0, start: true, rise: Math.max(0.1, (time - BAL.CHARGE_DEAD) / Math.max(0.3, cs)) });
+        }
+        h.capped = false;
+        if (player && !h.opts.free) {
+          const most = BAL.affordableK(this.mana.cur, this.costOf(caster, h.plan));
+          if (k > most + 1e-4) {
+            k = most;
+            h.capped = true;
+          }
+        }
         if (k >= 1 && h.k < 1) this.fx('charge', { caster, plan: h.plan, k: 1, full: true });
         h.k = k;
       } else if (h.mode === 'hold') {
@@ -2037,15 +2121,6 @@ export class Magic {
     this._planCache.delete(i);
     this.game.bus?.emit('weave_slots', { slot: i, weave: this.slots[i] });
     return { ok: true, plan: this.slotPlan(i) };
-  }
-
-  cooldownLeft(i) {
-    return this.cooldowns[i] || 0;
-  }
-
-  cooldownFraction(i) {
-    const t = this.cooldownTotals[i];
-    return t > 0 ? Math.max(0, Math.min(1, (this.cooldowns[i] || 0) / t)) : 0;
   }
 
   isUnlocked(kind, id) {
@@ -2182,7 +2257,7 @@ export class Magic {
 
   _stepInner(dt) {
     this.t += dt;
-    for (let i = 0; i < this.cooldowns.length; i++) if (this.cooldowns[i] > 0) this.cooldowns[i] = Math.max(0, this.cooldowns[i] - dt);
+    this._tickCooldowns();
     this._regen(dt);
     this._buildCandidates();
     if (this._retaliate.length) this._answerBlows();
@@ -2386,7 +2461,7 @@ export class Magic {
     this._unlockStamp = (this._unlockStamp || 0) + 1;
     this._recomputeMax();
     if (Number.isFinite(d.mana?.cur)) this.mana.cur = Math.max(0, Math.min(this.mana.max, d.mana.cur));
-    this.cooldowns.fill(0);
+    this.weaveReady.clear();
     this._manaEvent(true);
   }
 }

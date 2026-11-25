@@ -510,7 +510,8 @@ export class MagicFx {
     }
     if (magic?.holds?.size) {
       for (const [caster, h] of magic.holds) {
-        if (!caster || caster.removed || h.mode === 'tap' || !h.plan) continue;
+        // (A press still inside the tap's dead zone shows nothing yet: h.live.)
+        if (!caster || caster.removed || h.mode === 'tap' || h.live === false || !h.plan) continue;
         const L = planLook(h.plan);
         try {
           drawCharge(R, caster, h, L.pal, L.halo);
@@ -626,7 +627,7 @@ export class MagicFx {
     }
     if (magic?.holds?.size) {
       for (const [c, h] of magic.holds) {
-        if (!c || c.removed || h.mode === 'tap' || !h.plan) continue;
+        if (!c || c.removed || h.mode === 'tap' || h.live === false || !h.plan) continue;
         const kk = h.mode === 'charge' ? Math.min(1, h.k) : 0.6;
         push(c.x, c.y - 10, 20 + 30 * kk, planLook(h.plan).lightColor, 0.3 + 0.5 * kk, 0.2);
       }

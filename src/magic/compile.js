@@ -15,7 +15,10 @@ import {
   SIZE_MAX,
   SPEED_MIN,
   SPEED_MAX,
+  CHARGE_POWER,
   applyBudget,
+  cooldownScale,
+  cooldownBuy,
   clamp,
 } from './balance.js';
 
@@ -202,7 +205,8 @@ function build(w, twists, gen, key, prices = []) {
     chain: 0,
     homing: 0,
     orbit: 0,
-    charge: 0,
+    charge: 0, // seconds to a full charge (0: the usual CHARGE_TIME)
+    chargePower: CHARGE_POWER, // damage x(1 + chargePower k) at charge k
     aimAssist: false,
   };
   // Shape extras (arc, length, tick, drops, arm, atkCd…) ride along unscaled, except sizes.
@@ -276,10 +280,12 @@ function build(w, twists, gen, key, prices = []) {
   }
   plan.count = clamp(Math.round(plan.count) || 1, 1, 9);
 
-  // Power budget: never free, never useless.
+  // Power budget: never free, never useless. The shape's cooldown scale (balance.js:
+  // cooldowns you can feel) stretches the wait and buys back a little damage.
+  const cdScale = cooldownScale(w.shape);
   plan.value = plan.dmg * shapeDef.hits * value;
-  applyBudget(plan, s.dmg * shapeDef.hits * 1.1, s.cost);
-  plan.cooldown = clamp(plan.cooldown, COOLDOWN_MIN, COOLDOWN_MAX);
+  applyBudget(plan, s.dmg * shapeDef.hits * 1.1, s.cost, cooldownBuy(cdScale));
+  plan.cooldown = clamp(plan.cooldown * cdScale, COOLDOWN_MIN, COOLDOWN_MAX);
   plan.cost = Math.round(plan.cost * 10) / 10;
   plan.dmg = Math.max(1, Math.round(plan.dmg * 10) / 10);
   if (plan.input === 'hold') plan.drain = plan.cost; // mana per second while a beam is held

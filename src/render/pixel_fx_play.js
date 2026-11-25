@@ -20,12 +20,12 @@ export function installPixelFx(game) {
 
 // A blow lands (a blade, a fist, a weave): the hit spark at the target's chest, thrown along
 // the blow; a critical hit gets the starburst. pal: a Weave palette to recolor it.
-export function playHit(game, target, { dx = 0, dy = 0, crit = false, pal = null, heavy = false } = {}) {
+export function playHit(game, target, { dx = 0, dy = 0, crit = false, pal = null, heavy = false, scale = 1 } = {}) {
   const P = px(game);
   if (!P || !target) return null;
   const { h } = bodySize(game, target);
   const height = Math.max(6, Math.round(h * 0.5)) + Math.round(target.z || 0);
-  const big = Math.min(1.6, Math.max(1, h / 22));
+  const big = Math.min(1.6, Math.max(1, h / 22)) * Math.max(1, Math.min(1.8, Number(scale) || 1));
   const angle = dx || dy ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2;
   const o = { x: target.x, y: target.y, angle, height, seed: (Math.random() * 1e6) | 0 };
   if (pal) o.palette = rampOf(pal);

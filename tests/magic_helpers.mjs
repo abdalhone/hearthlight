@@ -121,8 +121,7 @@ export function resetArena(game) {
     game.villager.y = 17 * TILE;
   }
   m.mana.cur = m.mana.max;
-  m.cooldowns.fill(0);
-  m.weaveReady.clear();
+  m.resetCooldowns();
   game.combat.dying.length = 0;
 }
 

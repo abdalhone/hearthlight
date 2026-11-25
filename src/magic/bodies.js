@@ -41,6 +41,7 @@ export class Body {
     this.active = false;
     this.ending = false;
     this.uid = 0;
+    this.charge = 0; // the charge k it was cast with (0: a tap, a child, an echo)
     this.kind = 'projectile';
     this.mode = 'fly';
     this.x = 0;

@@ -173,7 +173,7 @@ await page.evaluate(() => {
     g.magicFx?.effects?.clear?.();
     g.bubbles?.clearAll?.();
     m.mana.cur = m.mana.max;
-    m.cooldowns.fill(0);
+    m.resetCooldowns();
   };
   S.showCells = (on) => {
     for (const cell of S.cells) {

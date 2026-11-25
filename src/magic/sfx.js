@@ -486,6 +486,14 @@ export class MagicSfx {
           S.noise(t, { dur: 0.1, gain: 0.12, filter: { type: 'lowpass', freq: 600 } });
           S.tone(t, { type: 'triangle', freq: 220 * p, to: 140 * p, dur: 0.1, gain: 0.06 });
           break;
+        case 'not_ready':
+          // A muted wooden knock: not a failure, just "wait".
+          S.tone(t, { type: 'triangle', freq: 330 * p, to: 300 * p, dur: 0.06, gain: 0.05 });
+          S.tone(t + 0.07, { type: 'triangle', freq: 262 * p, to: 240 * p, dur: 0.07, gain: 0.04 });
+          break;
+        case 'ready':
+          S.tone(t, { type: 'sine', freq: 1568 * p, dur: 0.07, gain: 0.035, out: S.wet });
+          break;
         case 'charged':
           S.fm(t, { freq: 2093 * p, ratio: 2, index: 1, dur: 0.4, gain: 0.09, out: S.wet });
           S.tone(t, { type: 'sine', freq: 1046.5 * p, dur: 0.3, gain: 0.05 });
@@ -551,7 +559,8 @@ export class MagicSfx {
   // ------------------------------------------------------------------ loops
 
   // A held sound (a pouring beam's drone, a charge swelling) until stopLoop(key).
-  startLoop(key, plan, x, y, kind = 'beam') {
+  // rise: seconds the charge's tone climbs (default the plan's charge time).
+  startLoop(key, plan, x, y, kind = 'beam', rise = 0) {
     if (!this.ready || this.loops.has(key) || this.loops.size >= MAX_LOOPS || !plan) return;
     const A = this.game.audio;
     const ctx = A.ctx;
@@ -572,7 +581,7 @@ export class MagicSfx {
       osc.type = kind === 'charge' ? 'sine' : type;
       if (kind === 'charge') {
         osc.frequency.setValueAtTime(200, now);
-        osc.frequency.exponentialRampToValueAtTime(720, now + (plan.charge || 1.1));
+        osc.frequency.exponentialRampToValueAtTime(720, now + (rise > 0 ? rise : plan.charge || 1.3));
       } else osc.frequency.setValueAtTime(f0, now);
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass';

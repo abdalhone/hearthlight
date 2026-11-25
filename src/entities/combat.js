@@ -654,7 +654,9 @@ export class Combat {
     // The Strike's fist is carried by its own punch (played on the weave's impact), so the
     // fist's blow draws no second spark; the wave rolling on after it does.
     const fist = !!(o?.magic && o.heavy && o.weave?.shape === 'strike');
-    const played = fist || (!o?.dot && playHit(this.game, target, { dx, dy, crit, heavy, pal: o?.magic ? o.weave?.palette : null }));
+    // A charged weave (hold to charge) lands bigger: its spark and its number grow with it.
+    const ck = o?.magic && !o.dot ? Math.max(0, Math.min(1, Number(o.charge) || 0)) : 0;
+    const played = fist || (!o?.dot && playHit(this.game, target, { dx, dy, crit, heavy, pal: o?.magic ? o.weave?.palette : null, scale: 1 + 0.6 * ck }));
     if (!played) {
       this._particles('hit', x, y, { count: crit ? 10 : 6, color, dir: { x: dx, y: dy }, spread: 1.1, speed: crit ? 90 : 65, life: 0.35 });
       if (crit) this._particles('spark', x, y, { count: 6, color: '#ffe27a', speed: 70, life: 0.3 });
@@ -663,6 +665,7 @@ export class Combat {
     this._number(target.x, target.y - 22 - (target.z || 0), text, isFriend ? COLORS.dmgFriend : crit ? COLORS.crit : COLORS.dmg, {
       crit: !!crit,
       kind: crit ? 'crit' : isFriend ? 'hurt' : 'damage',
+      scale: ck > 0 ? 1 + 0.2 * ck + (ck >= 0.999 ? 0.3 : 0) : undefined,
     });
     const sound = isFriend ? 'hurt' : kind === 'bolt' || kind === 'magic' ? 'bolt_hit' : 'hit';
     if (!silent) this._sound(sound, target.x, target.y, { pitch: crit ? 1.2 : 0.9 + this.random() * 0.2 });

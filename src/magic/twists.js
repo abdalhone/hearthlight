@@ -1,5 +1,5 @@
 import { defineRegistry } from './registry.js';
-import { CHILD_SPEED, CHARGE_TIME } from './balance.js';
+import { CHILD_SPEED, CHARGE_TIME, CHARGE_TWIST_TIME, CHARGE_TWIST_POWER } from './balance.js';
 
 // TWISTS: how a weave behaves (DESIGN §22.1). A twist is a bag of hooks plus number
 // multipliers; it never knows which shape or essence it rides on. Children a twist makes
@@ -329,16 +329,19 @@ export const TWISTS = {
     },
   },
 
+  // Every weave but a beam charges while held (DESIGN §22.4); this twist makes it a
+  // charging weave even on a beam, charges twice as fast and reaches a harder hit.
   charge: {
     name: 'Charge',
     adj: 'Charged',
     clause: null,
-    sentence: 'Hold to charge it up.',
+    sentence: 'It charges twice as fast and hits harder at full.',
     input: 'charge',
     mods: { cost: 1.15 },
     value: 1.25,
     onPlan(plan) {
-      plan.charge = CHARGE_TIME;
+      plan.charge = CHARGE_TIME * CHARGE_TWIST_TIME;
+      plan.chargePower = CHARGE_TWIST_POWER;
     },
   },
 };
