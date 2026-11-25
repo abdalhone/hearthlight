@@ -1874,3 +1874,19 @@ One rule for every attack, the tiles projectiles already stopped at: `map.blocks
   every `nearestFoe` (aim assist, homing, chain, ricochet, familiars) need a clear line. A
   missile that meets a wall ends at the wall's face (its burst stays this side); a lobbed bomb
   meets a wall and bursts there; rain never falls past a wall from where it was called.
+
+### 31.2 Hits stun (`combat._hitStun`, statuses in `src/magic/status.js`)
+Every blow stuns for a moment, through the Weave's status system (so every controller obeys
+it: statuses hold `lockTime` and stop `moveIntent` each step, and break a held weave).
+- **Flinch** (`flinch`: 0.3 s, no step and no swing; `stack: 'keep'`, so a second blow neither
+  stacks nor renews it; 0.22 s immunity after): every sword hit and every weave hit that is not
+  a tick. A flurry stuns a foe for about half the time and leaves windows to act.
+- **Reel** (`reeling`: 0.6 s, stars at the head, 1.1 s immunity): heavy blows (the sword's
+  finisher, the strike's fist, a bomb, a rune, a heavy missile) and any weave charged past half.
+  Tagged apart from Stone's `staggered`, so a blow sets off no earth reactions.
+- **Pin** (`pinned`: a 0.15 walk while the ray is on them, renewed by each beam tick, gone a
+  third of a second after it leaves): `magic.hit` marks a beam tick `pin`.
+- Bosses and super-armored foes shrug off the flinch, reel for a third as long (control `cc`)
+  and are pinned half as hard. The player keeps the short hurt pose they always had; without the
+  Weave (tests of combat alone) everyone does.
+- `stack: 'keep'` and `quiet` (no flourish, no `status_applied`) are new status fields.

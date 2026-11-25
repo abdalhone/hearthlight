@@ -831,6 +831,7 @@ export class Magic {
     o.heavy = !!flags.heavy;
     o.noHitStop = !flags.heavy;
     o.noStagger = tick;
+    o.pin = tick && b.kind === 'beam'; // a beam's ray pins whoever it touches (DESIGN §31.2)
     o.dot = !!flags.dot; // a bite like a status tick: soft flash, through i-frames
     o.quiet = pooled;
     o.silent = !!(g.magicFx?.sfx || g.magicSfx);

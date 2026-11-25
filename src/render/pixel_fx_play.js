@@ -98,6 +98,7 @@ const STATUS_FX = {
   drained: 'st-cursed',
   stunned: 'st-stun',
   staggered: 'st-stun',
+  reeling: 'st-stun',
   dazzled: 'st-dazed',
 };
 export const PIXEL_STATUSES = Object.keys(STATUS_FX);

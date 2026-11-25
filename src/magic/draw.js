@@ -623,6 +623,11 @@ function drawStatus(ctx, s, x, y, time, i, a) {
     case 'gust':
       ring(ctx, x, y - 6, 5 + ((time * 30) % 4), c, 0.6 * fade, 1, 0.5);
       break;
+    case 'none':
+      break;
+    case 'pin':
+      ring(ctx, x, y, 5 + ((time * 40) % 3), c, 0.7 * fade, 1, 0.5);
+      break;
     default:
       ring(ctx, x, y, 6, c, 0.6 * fade);
   }
