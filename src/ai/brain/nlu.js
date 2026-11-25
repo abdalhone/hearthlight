@@ -516,7 +516,8 @@ export const BUILTIN_INTENTS = [
   },
   {
     id: 'cmd.stay_place', kind: 'command', command: true, confidence: 0.86,
-    patterns: [/^(?:stay|wait|remain|stand|camp|hold position) (?:for me )?(?:at|in|by|near|inside|outside|beside|next to) (?<place>.+)$/],
+    // "wait here at the Kettle for me" too: "here" before the place is the same ask.
+    patterns: [/^(?:stay|wait|remain|stand|camp|hold position)(?: (?:here|there|right here|right there))? (?:for me )?(?:at|in|by|near|inside|outside|beside|next to) (?<place>.+?)(?: for me)?$/],
     slots: (m) => (/\bmode\b|\bline\b|\bformation\b|\bcharacter\b/.test(m.groups.place) ? null : { place: cleanRef(m.groups.place) }),
     acts: (s) => [act('stay', s.place)],
   },

@@ -258,3 +258,13 @@ test('Lyra proposes no outing while the player lies downed or is carried', async
   assert.match(JSON.stringify(a.pendingRequest?.spec || {}), /chapel/, 'on their feet, she asks');
   back();
 });
+
+// Replayed: "wait here at the Kettle for me" got only "I hear you." and she followed the
+// player out; "here" before the place now reads as the same ask as "stay at the Kettle".
+test('"wait here at the Kettle for me" asks her to stay at the Kettle', async () => {
+  const { parseMessage } = await import('../src/ai/brain/nlu.js');
+  for (const t of ['wait here at the Kettle for me', 'stay here in the chapel', 'wait for me at the chapel']) {
+    const c = parseMessage(t, { has: () => true }).clauses[0];
+    assert.equal(c.intent?.id, 'cmd.stay_place', t);
+  }
+});
