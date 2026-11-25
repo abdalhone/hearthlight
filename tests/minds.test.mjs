@@ -1049,3 +1049,12 @@ test('silence, Lyra with Claude: cut off, she hears every word and may answer wi
   assert.notEqual(r2.silent, true);
   assert.ok(r2.say, 'words');
 });
+
+test('A3: away from the player (left her, cut off), her fight cry is never said to them ("Stay behind me!")', async () => {
+  const { say } = await import('../src/ai/behavior/lines.js');
+  const toThem = /behind me|Watch out/;
+  for (let i = 0; i < 40; i++) assert.doesNotMatch(say.combatStart('Wolf', { apart: true }), toThem);
+  const together = new Set();
+  for (let i = 0; i < 80; i++) together.add(say.combatStart('Wolf'));
+  assert.ok([...together].some((l) => toThem.test(l)), 'beside them, she may still say it');
+});

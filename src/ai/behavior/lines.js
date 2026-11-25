@@ -327,7 +327,9 @@ export const say = {
   },
 
   // --- combat and support barks ---
-  combatStart(name) {
+  // apart: not at the player's side (apart, left, gone), so nothing said to them.
+  combatStart(name, { apart = false } = {}) {
+    if (apart) return line('c.start.own', ['Here they come!', `${cap(name)}! I see it.`, 'Steady now.', 'Not today.']);
     return line('c.start', ['Stay behind me!', 'Here they come!', `${cap(name)}! I see it.`, 'Steady now.', `Watch out — ${name}!`]);
   },
   healPlayer() {
