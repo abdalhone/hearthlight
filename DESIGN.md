@@ -1621,7 +1621,8 @@ Stop* (trust 72; its lesson waits while she is unsure: a talk step's `trust`) an
     still cost what they say (Berserk's end can still end the story). Saved with the game
     (the save holds the real state and the trial's own slots; loading it keeps the trial
     on). Lent parts raise no "found" toast, Lyra line, lesson, book dot or Spellbook "new"
-    mark.
+    mark; a weave made of them counts for no mission objective and spends none of Lyra's
+    first-sight lines (`earnedPart` / `weaveEarned` in `src/missions/tracker.js`).
 
 ## 25. Prices: power with a cost (the author: "side effects, where I can choose… for 15 seconds my attack power +20%, but my HP goes down 40% for 2 minutes… or Berserk: strength 200%, speed, but I die at the end")
 

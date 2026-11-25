@@ -3,7 +3,7 @@
 // about dark, which feels to her like the ruins' gravelight), and remembers it. She
 // speaks only when she is near, awake, with the player and not in a fight.
 
-import { nonRaw, weaveOf } from './tracker.js';
+import { nonRaw, weaveOf, earnedPart } from './tracker.js';
 
 const SIGHT = 170;
 
@@ -168,14 +168,15 @@ export class LyraWatch {
       safe(() => mind?.learn?.(this.playerName(), 'They can weave: make light out of the air with marks in it, like Lanternwright glyphs. Not lumencraft.', { kind: 'fact', source: 'observed', about: ['player'] }));
       return; // the first time is the story scene's moment, not a quip's
     }
+    // (Parts only lent by "Try all magic" do not spend her first-sight line.)
     for (const e of nonRaw(w.essences)) {
-      if (this.seenEssences.includes(e)) continue;
+      if (this.seenEssences.includes(e) || !earnedPart(this.game, 'essence', e)) continue;
       this.seenEssences.push(e);
       this.comment(ESSENCE_LINES[e], e);
       this.rememberEssence(e);
       return;
     }
-    if (w.shape && !this.seenShapes.includes(w.shape)) {
+    if (w.shape && !this.seenShapes.includes(w.shape) && earnedPart(this.game, 'shape', w.shape)) {
       this.seenShapes.push(w.shape);
       if (SHAPE_LINES[w.shape]) this.comment(SHAPE_LINES[w.shape]);
     }

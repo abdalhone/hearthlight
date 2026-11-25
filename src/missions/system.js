@@ -17,7 +17,7 @@
 
 import { MISSIONS, GIVERS, missionById } from './data.js';
 import { componentLabel, componentWords, bossFor, BOSS_NAMES, BOSS_PLACES, isComponent } from './components.js';
-import { whenOk, whenLabel, inPlace, nearPoint, pointPx, weaveOf, weaveMatches, aimOf, nonRaw, speciesMatches, isBossTarget, progressText, objectiveGoal } from './tracker.js';
+import { whenOk, whenLabel, inPlace, nearPoint, pointPx, weaveOf, weaveMatches, weaveEarned, aimOf, nonRaw, speciesMatches, isBossTarget, progressText, objectiveGoal } from './tracker.js';
 import { TILE } from '../core/constants.js';
 
 const POLL = 0.25;
@@ -504,6 +504,8 @@ export class MissionSystem {
     }
     const w = weaveOf(p);
     const aim = aimOf(p, pl);
+    // A weave of parts only lent by "Try all magic" does not count for an objective.
+    if (!weaveEarned(g, w)) return;
     this.forCurrent('weave', (id, o, s) => {
       if (!weaveMatches(o, w)) return;
       if (!whenOk(o.when, g.clock)) return;

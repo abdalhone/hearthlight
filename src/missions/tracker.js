@@ -81,6 +81,22 @@ export function weaveOf(p) {
   return { shape, essences, twists };
 }
 
+// While "Try all magic" (Settings) runs, a weave may be made of borrowed parts: they
+// count for nothing (no objective, no first-sight line). Outside a trial, all is earned.
+export function earnedPart(game, kind, id) {
+  const m = game?.magic;
+  if (!m?.trial || typeof m.isEarned !== 'function') return true;
+  return m.isEarned(kind, id);
+}
+
+export function weaveEarned(game, w) {
+  if (!w) return true;
+  if (w.shape && !earnedPart(game, 'shape', w.shape)) return false;
+  for (const e of w.essences || []) if (e !== 'raw' && !earnedPart(game, 'essence', e)) return false;
+  for (const t of w.twists || []) if (!earnedPart(game, 'twist', t)) return false;
+  return true;
+}
+
 export function nonRaw(essences) {
   return [...new Set((essences || []).filter((e) => e && e !== 'raw'))];
 }

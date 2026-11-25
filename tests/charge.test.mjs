@@ -423,3 +423,18 @@ test('Try all magic: a save through saveProgression/loadProgression and the magi
   assert.equal(g2.progression.points.focus, 1);
   assert.equal(g2.progression.resetPoints().points, 1);
 });
+
+test('Try all magic: a weave of borrowed parts counts for no mission objective and no first-sight line', async () => {
+  const { weaveEarned, earnedPart } = await import('../src/missions/tracker.js');
+  const g = world();
+  const m = g.magic;
+  m.unlock('essence', 'fire', 'mission:x');
+  assert.equal(weaveEarned(g, { shape: 'nova', essences: ['frost'], twists: [] }), true, 'no trial: nothing is checked');
+  m.startTrial();
+  assert.equal(weaveEarned(g, { shape: 'bolt', essences: ['fire', 'raw'], twists: [] }), true);
+  assert.equal(weaveEarned(g, { shape: 'nova', essences: ['fire'], twists: [] }), false, 'a borrowed shape');
+  assert.equal(weaveEarned(g, { shape: 'bolt', essences: ['frost'], twists: [] }), false, 'a borrowed essence');
+  assert.equal(weaveEarned(g, { shape: 'bolt', essences: ['raw'], twists: ['split'] }), false, 'a borrowed twist');
+  assert.equal(earnedPart(g, 'essence', 'fire'), true);
+  m.endTrial();
+});
