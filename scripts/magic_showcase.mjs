@@ -9,6 +9,7 @@
 //   node scripts/magic_showcase.mjs --only bolt,nova --day   just those shapes, by day
 //   node scripts/magic_showcase.mjs --perf          frame times with a screen full of weaves
 //   --out <dir>  where screenshots go (default screenshots/magic)
+//   --throttle N slow the CPU N times (Chromium emulation, e.g. 4 for a mid phone)
 import { createRequire } from 'node:module';
 import { mkdir } from 'node:fs/promises';
 import { startServer } from './serve.mjs';
@@ -40,6 +41,7 @@ const url = `http://localhost:${port}/${flag('--src') ? 'index.html' : 'dist/ind
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
 const page = await context.newPage();
+const throttle = Number(opt('--throttle', '0'));
 const errors = [];
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}\n${e.stack || ''}`));
 page.on('console', (m) => {
@@ -353,6 +355,8 @@ if (!perfOnly) {
 
 // ------------------------------------------------------------------ performance
 if (perfOnly || flag('--with-perf')) {
+  // Throttled only for the measurement, so loading and setting up stay quick.
+  if (throttle > 1) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle });
   await ev(() => {
     window.__show.reset();
     window.__show.showCells(true);
@@ -416,9 +420,10 @@ if (perfOnly || flag('--with-perf')) {
       peakBodies: peak,
       avgParticles: Math.round(parts / samples),
       loopFps: g.loop?.fps,
+      pixelFx: g.pixelFx ? { live: g.pixelFx.count, cap: g.pixelFx.cap } : null,
     };
   });
-  console.log(`[perf ${tag}]`, JSON.stringify(result));
+  console.log(`[perf ${tag}${throttle > 1 ? ` cpu/${throttle}` : ''}]`, JSON.stringify(result));
   await shot('perf-night');
 }
 

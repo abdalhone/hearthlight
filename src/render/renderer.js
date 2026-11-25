@@ -279,6 +279,16 @@ export class Renderer {
       ctx.globalAlpha = 1;
       ctx.imageSmoothingEnabled = false;
     }
+    // pixelfx light: every effect's glow, added crisp after the night's lighting.
+    if (g.pixelFx) {
+      try {
+        g.pixelFx.drawGlow(ctx, this);
+      } catch (err) {
+        this._report('pixelFx glow', err);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+    }
 
     // 4. Weather overlay.
     const W = g.weather;
@@ -383,6 +393,14 @@ export class Renderer {
     }
     const carried = g.survival?.drawables?.() || EMPTY;
     for (let i = 0; i < carried.length; i++) list.push(carried[i]);
+    // pixelfx effects (pixel_fx.js): ground ones first, body ones round their anchor, top ones last.
+    if (g.pixelFx) {
+      try {
+        g.pixelFx.collect(list, ox, oy, ox + bw, oy + bh);
+      } catch (err) {
+        this._report('pixelFx.collect', err);
+      }
+    }
     list.sort(bySortY);
     return list;
   }

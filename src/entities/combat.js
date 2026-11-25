@@ -3,6 +3,7 @@ import { PLAYER_ID, COMPANION_ID, DAY_SECONDS } from '../core/constants.js';
 import { itemDef, itemName } from './items.js';
 import { Projectile } from './projectiles.js';
 import { dropItem, updatePickupToasts } from './pickups.js';
+import { playHit } from '../render/pixel_fx_play.js';
 
 // Combat rules for every actor: melee arcs, projectiles, damage, healing, death,
 // knock-outs, crimes, items that heal, experience. Contract in DESIGN.md ("Combat", §16.7).
@@ -528,7 +529,7 @@ export class Combat {
     const heavy = !!(opts.heavy || crit || isPlayer || target.hp <= 0);
     if (heavy && !opts.noHitStop) g.hitStop = Math.max(g.hitStop || 0, HIT_STOP);
     // People (the party, villagers, guards) bleed coral numbers and cry out; creatures thud.
-    if (!opts.quiet) this._hitFx(target, dealt, crit, kind, dx, dy, isFriend || this.isLawful(target), isPlayer, heavy && !opts.noHitStop, !!opts.silent);
+    if (!opts.quiet) this._hitFx(target, dealt, crit, kind, dx, dy, isFriend || this.isLawful(target), isPlayer, heavy && !opts.noHitStop, !!opts.silent, opts);
 
     const ev = { source: source || null, target, amount: dealt, kind, crit: !!crit };
     if (warded > 0) ev.absorbed = warded;
@@ -642,12 +643,17 @@ export class Combat {
     return Number.isFinite(res[type]) ? res[type] : 1;
   }
 
-  _hitFx(target, dealt, crit, kind, dx, dy, isFriend, isPlayer, heavy, silent = false) {
+  _hitFx(target, dealt, crit, kind, dx, dy, isFriend, isPlayer, heavy, silent = false, o = null) {
     const x = target.x;
     const y = target.y - 10 - (target.z || 0);
     const color = HIT_COLORS[target.species] || '#ffffff';
-    this._particles('hit', x, y, { count: crit ? 10 : 6, color, dir: { x: dx, y: dy }, spread: 1.1, speed: crit ? 90 : 65, life: 0.35 });
-    if (crit) this._particles('spark', x, y, { count: 6, color: '#ffe27a', speed: 70, life: 0.3 });
+    // The hit spark (pixelfx, DESIGN §30), in the weave's colors for a weave; the old
+    // streaks only when it could not play. Status ticks keep the small streaks.
+    const played = !o?.dot && playHit(this.game, target, { dx, dy, crit, heavy, pal: o?.magic ? o.weave?.palette : null });
+    if (!played) {
+      this._particles('hit', x, y, { count: crit ? 10 : 6, color, dir: { x: dx, y: dy }, spread: 1.1, speed: crit ? 90 : 65, life: 0.35 });
+      if (crit) this._particles('spark', x, y, { count: 6, color: '#ffe27a', speed: 70, life: 0.3 });
+    }
     const text = crit ? `${dealt}!` : String(dealt);
     this._number(target.x, target.y - 22 - (target.z || 0), text, isFriend ? COLORS.dmgFriend : crit ? COLORS.crit : COLORS.dmg, {
       crit: !!crit,

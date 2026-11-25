@@ -12,6 +12,9 @@ const isMissile = (b) => b.kind === 'projectile' && (b.mode === 'fly' || b.mode 
 
 const volleys = new WeakMap(); // cast -> volley shots so far (rising pitch)
 
+// Hits land with pixelfx's hit spark (src/render/pixel_fx_play.js, played by combat).
+const pixelHits = (fx) => !!fx.game?.pixelFx?.has?.('hit');
+
 function burstStyles(fx, list, x, y, z, n, speed = 1, ang = NaN, spread = TAU) {
   if (!list || !list.length) return;
   const per = Math.max(1, Math.round(n / list.length));
@@ -225,7 +228,10 @@ const H = {
       if (Math.random() < 0.5) burstStyles(fx, L.debris, x, y, z, 1, 0.6);
     } else {
       const dir = b.kind === 'projectile' && (b.vx || b.vy) ? Math.atan2(b.vy, b.vx) : Math.atan2(y - b.y, x - b.x);
-      burstStyles(fx, L.debris, x, y, z, Math.round(6 * big), 1, dir, 1.8);
+      // The pixelfx hit spark (combat played it, in this weave's colors) is the impact now;
+      // a pinch of the essence's own stuff stays for its flavor.
+      if (pixelHits(fx)) burstStyles(fx, L.debris, x, y, z, 2, 0.7, dir, 1.4);
+      else burstStyles(fx, L.debris, x, y, z, Math.round(6 * big), 1, dir, 1.8);
       fx.flash(x, y - 8, 22 + 8 * big, L.lightColor, 0.5, 0.1);
       // The number combat just floated over the target, tinted by the essence.
       const n = g.bubbles?.lastNumber;
@@ -234,8 +240,10 @@ const H = {
     const last = fx._lastDamage;
     const crit = !p.tick && last && last.target === target && last.crit;
     if (crit) {
-      star(fx, x, y, 11, '#ffffff', L.halo, 0.22, z);
-      fx.parts.burst('spark', P, x, y, z, 6, 1.3);
+      if (!pixelHits(fx)) {
+        star(fx, x, y, 11, '#ffffff', L.halo, 0.22, z);
+        fx.parts.burst('spark', P, x, y, z, 6, 1.3);
+      }
       fx.sound.cue('crit', x, y);
       fx.hitStop(0.035);
     }
