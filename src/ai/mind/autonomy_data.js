@@ -30,7 +30,7 @@ export const DEEDS = {
   // DESIGN §29: a finishing blow on someone lying helpless.
   murdered_villager: { severity: -10, kind: 'violence', violent: true, grave: true, text: 'Killed one of the villagers.' },
   attacked_guard: { severity: -2, kind: 'violence', violent: true, text: 'Attacked one of the guard.' },
-  stole: { severity: -2, kind: 'dishonesty', text: 'Stole.' },
+  stole: { severity: -2, kind: 'dishonesty', text: 'Took what belonged to someone else.' },
   lied: { severity: -2, kind: 'dishonesty', text: 'Lied to me.' },
 };
 

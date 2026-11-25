@@ -48,6 +48,8 @@ import { ClaudeRuntime } from '../platform/claude_runtime.js';
 import { UI } from '../ui/ui.js';
 import { StoryDirector } from '../story/director.js';
 import { missionsPlugin, ensureMissions } from '../missions/plugin.js';
+import { travelPlugin } from '../world/travel.js';
+import { calendarPlugin } from '../world/calendar.js';
 import { BossManager } from '../bosses/manager.js';
 import { Survival } from '../survival/survival.js';
 import { installDeathView } from '../ui/death_view.js';
@@ -107,6 +109,8 @@ export class Game {
     this.plugins = new PluginRegistry(this);
     for (const p of BUILTIN_PLUGINS) this.plugins.register(p);
     this.plugins.register(missionsPlugin); // missions (DESIGN §22.3); saved with the plugins
+    this.plugins.register(travelPlugin); // the wider world: map fog, places reached, bosses heard of (§32)
+    this.plugins.register(calendarPlugin); // the year goes round: birthdays, everyone older (§32.10)
     ensureMissions(this); // game.missions
     this.brain = new Brain(this);
     this.save = new SaveManager(this);
@@ -114,7 +118,7 @@ export class Game {
     this.story = new StoryDirector(this); // cutscenes, the prologue, story scenes, the Book of Halcyre
     this.bosses = new BossManager(this); // the five bosses, their arenas, fights and glyph-shards (§22.3)
     this.survival = new Survival(this); // falling, rescue, the sickroom, the kept flame, death (DESIGN §27)
-    installDeathView(this); // its screens: the heartbeat line, Call for help, the memorial
+    installDeathView(this); // its screens: the countdown ring, Call for help, the memorial
 
     // World pieces, created by buildWorld().
     this.map = null;

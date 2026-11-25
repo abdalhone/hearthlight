@@ -205,10 +205,14 @@ export function castModeOf(plan, weave) {
 }
 
 // A weave as plain data, trimmed to the limits (shape required for a castable weave).
-export function cleanWeave(w, maxEss = 2, maxTw = 2) {
+export function cleanWeave(w, maxEss = 2, maxTw = 2, maxPr = 2) {
   if (!w || typeof w !== 'object') return null;
   const uniq = (a, max) => [...new Set((Array.isArray(a) ? a : []).filter((x) => typeof x === 'string' && x))].slice(0, Math.max(0, max));
   const out = { shape: typeof w.shape === 'string' ? w.shape : null, essences: uniq(w.essences, maxEss), twists: uniq(w.twists, maxTw) };
+  // A price (DESIGN §25) rides with its weave: without this the Spellbook's choice never
+  // reached the slot (r14a: the Last Stand could not be taken up from the Spellbook).
+  // The runtime's compile still checks each one is earned and fits.
+  if (Array.isArray(w.prices)) out.prices = uniq(w.prices, maxPr);
   if (typeof w.id === 'string') out.id = w.id;
   if (typeof w.name === 'string' && w.name.trim()) out.name = w.name.trim().slice(0, 32);
   return out;

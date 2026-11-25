@@ -34,6 +34,7 @@ const TYPE_DEFS = {
   hit: { count: 7, colors: ['#ffffff', '#fff4c0', '#ffe08a'], speed: [60, 130], life: [0.1, 0.22], drag: 10, shape: STREAK, glow: true, z: [4, 10] },
   spark: { count: 8, colors: ['#fff4c0', '#ffe08a', '#ffb047', '#ee7f2d'], speed: [40, 110], vz: [10, 60], life: [0.25, 0.55], gravity: 200, drag: 1.5, bounce: 0.4, shape: PX, glow: true, z: [2, 7] },
   leaf: { count: 1, colors: ['#6fa34c', '#9cc463', '#4a8240', '#e4b83d', '#cf6a48', '#ad7a48'], speed: [3, 10], vz: [-9, -5], life: [4, 7], sway: 5, swayFreq: [1.1, 2.1], shape: LEAF, settle: true, z: [18, 44], fadeIn: 0.5 },
+  snowflake: { count: 1, colors: ['#ffffff', '#eef3fa', '#d3deec'], speed: [2, 7], vz: [-10, -6], life: [4, 7], sway: 4, swayFreq: [0.7, 1.5], shape: PX, settle: true, z: [26, 60], fadeIn: 0.6 },
   wood_chip: { count: 6, colors: ['#cf9f66', '#ad7a48', '#8c5a35', '#6b412a'], speed: [20, 55], vz: [40, 90], life: [0.7, 1.2], gravity: 260, drag: 1, bounce: 0.3, shape: CHIP, settle: true, z: [4, 10] },
   stone_chip: { count: 6, colors: ['#bdbccb', '#9593a6', '#727085', '#545266'], speed: [20, 55], vz: [40, 90], life: [0.7, 1.2], gravity: 280, drag: 1, bounce: 0.25, shape: CHIP, settle: true, z: [3, 8] },
   magic: { count: 7, colors: ['#ddd2ff', '#a995ff', '#7a64e0', '#ffffff'], speed: [6, 26], vz: [4, 16], life: [0.4, 0.9], drag: 2.5, shape: TWINKLE, glow: true, halo: 4, z: [4, 12] },

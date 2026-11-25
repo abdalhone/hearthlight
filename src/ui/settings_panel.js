@@ -78,7 +78,7 @@ export const SETTING_ROWS = {
   deathMode: {
     kind: 'select',
     label: 'When you die',
-    note: 'Ends: with no rescue and no flame kept for you at the chapel, this save closes for good. Home: you lose a little coin.',
+    note: 'Ends: with no rescue and no kept flame, this save closes for good. Home: you wake in bed; your coins wait where you fell.',
     options: [
       ['final', 'Your story ends'],
       ['home', 'Wake at home'],

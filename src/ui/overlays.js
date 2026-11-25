@@ -50,6 +50,7 @@ export function pauseItems(game, ui) {
   if (spellbookReady(game, ui)) items.push({ id: 'spellbook', group: 'go', label: 'Spellbook', hint: 'Make your weaves', key: 'B', run: () => ui.openSpellbook() });
   if (typeof ui?.openInventory === 'function') items.push({ id: 'inventory', group: 'go', label: 'Bag', hint: 'What you carry', key: 'I', run: () => ui.openInventory() });
   if (typeof ui?.openMissions === 'function') items.push({ id: 'missions', group: 'go', label: 'Missions', hint: 'What you took on', key: '', run: () => ui.openMissions('active') });
+  if (typeof ui?.openMap === 'function' && game?.map) items.push({ id: 'map', group: 'go', label: 'Map', hint: 'Where you have walked', key: 'N', run: () => ui.openMap() });
   items.push({ id: 'lyra', group: 'go', label: name, hint: 'Her mind; ask her', key: 'Tab', run: () => ui.openMind?.(ui.mind?.tab || 'now') });
   const character = characterOpener(ui);
   if (character) items.push({ id: 'character', group: 'go', label: 'Character', hint: 'Stats and gear', key: 'C', run: character });

@@ -881,6 +881,9 @@ export function registerFurniture(add) {
   add('prop:desk', [desk()], { ox: 8, oy: 21 });
   add('prop:desk:lyra', [desk()], { ox: 8, oy: 21 });
   add('prop:trunk', [trunk()], { ox: 8, oy: 15 });
+  // A trunk that is a real container (src/world/containers.js) draws as itself.
+  add('prop:chest:closed:trunk', [trunk()], { ox: 8, oy: 15 });
+  add('prop:chest:open:trunk', [trunk()], { ox: 8, oy: 15 });
   add('prop:journal', journalFrames(), { ox: 7, oy: 11, fps: 4 });
 }
 

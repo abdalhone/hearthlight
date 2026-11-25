@@ -2,6 +2,7 @@ import { registerNature } from './props_nature.js';
 import { registerFurniture } from './props_furniture.js';
 import { registerVillage } from './props_village.js';
 import { registerPlaces } from './props_places.js';
+import { registerWilds } from './props_wilds.js';
 
 // Every world prop sprite (DESIGN §5: `prop:<objType>[:variant]`). Sprites are painted
 // into PixelBufs at boot and turned into canvases once. Anchors (ox, oy) sit at the
@@ -24,6 +25,7 @@ export function registerPropArt(atlas, rng) {
     ['furniture', () => registerFurniture(add, rng.fork(2))],
     ['village', () => registerVillage(add, rng.fork(3))],
     ['places', () => registerPlaces(add, rng.fork(4))],
+    ['wilds', () => registerWilds(add)],
   ];
   for (const [label, fn] of steps) {
     try {

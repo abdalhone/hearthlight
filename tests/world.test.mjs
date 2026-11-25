@@ -71,13 +71,12 @@ function reachable(game, from, { hasKey = false } = {}) {
   const seen = new Uint8Array(map.w * map.h);
   const q = [];
   const s = tileOf(from);
-  seen[s.ty * map.w + s.tx] = 1;
-  q.push(s.ty * map.w + s.tx);
+  seen[map.idx(s.tx, s.ty)] = 1;
+  q.push(map.idx(s.tx, s.ty));
   const actor = { inventory: new Inventory(hasKey ? { ruins_key: 1 } : null) };
   while (q.length) {
     const i = q.pop();
-    const x = i % map.w;
-    const y = (i / map.w) | 0;
+    const { tx: x, ty: y } = map.tileOf(i);
     for (const [dx, dy] of [
       [1, 0],
       [-1, 0],
@@ -87,7 +86,7 @@ function reachable(game, from, { hasKey = false } = {}) {
       const nx = x + dx;
       const ny = y + dy;
       if (!map.inBounds(nx, ny)) continue;
-      const ni = ny * map.w + nx;
+      const ni = map.idx(nx, ny);
       if (seen[ni]) continue;
       if (map.isSolidTile(nx, ny)) continue;
       const door = objects.doorAt(nx, ny);
@@ -100,7 +99,7 @@ function reachable(game, from, { hasKey = false } = {}) {
   }
   return (p) => {
     const t = tileOf(p);
-    return !!seen[t.ty * map.w + t.tx];
+    return map.inBounds(t.tx, t.ty) && !!seen[map.idx(t.tx, t.ty)];
   };
 }
 
@@ -203,7 +202,9 @@ test('spawns stand on walkable tiles', () => {
   assert.deepEqual(S.npcs.map((n) => n.id).sort(), [...NPC_IDS].sort());
   for (const n of S.npcs) assert.ok(walkable(G, n), `npc ${n.id}`);
   for (const c of S.creatures) assert.ok(walkable(G, c), `creature ${c.species} at ${tileOf(c).tx},${tileOf(c).ty}`);
-  const count = (s) => S.creatures.filter((c) => c.species === s).length;
+  // The vale's own creatures (the wilds keep a few of their own: wilds.test.mjs).
+  const inVale = (c) => c.x >= 0 && c.y >= 0 && c.x < 160 * TILE && c.y < 120 * TILE;
+  const count = (s) => S.creatures.filter((c) => c.species === s && inVale(c)).length;
   assert.equal(count('wolf'), 2);
   assert.equal(count('bandit'), 4);
   assert.equal(count('bandit_archer'), 1);
@@ -620,10 +621,13 @@ test('tiles, collision and the object index agree', () => {
   assert.equal(tileDef(T.BRIDGE).solid, false);
   // Flyers cross water but not walls.
   let water = null;
-  for (let i = 0; i < map.w * map.h && !water; i++) if (map.isWater(i % map.w, (i / map.w) | 0)) water = [i % map.w, (i / map.w) | 0];
+  for (let i = 0; i < map.w * map.h && !water; i++) {
+    const { tx, ty } = map.tileOf(i);
+    if (map.isWater(tx, ty)) water = [tx, ty];
+  }
   assert.equal(map.isSolidTile(water[0], water[1], null), true);
   assert.equal(map.isSolidTile(water[0], water[1], { flying: true }), false);
-  assert.equal(map.isSolidTile(-1, 5), true);
+  assert.equal(map.isSolidTile(map.x0 - 1, 5), true, 'past the world edge');
   const wall = map.buildings[0];
   assert.equal(map.blocksProjectile(wall.x, wall.y), true);
   // The King's Road crosses the stream on a bridge.
@@ -697,28 +701,27 @@ test("Lyra's rented room at the Ember Kettle is hers (DESIGN §16.1)", () => {
   assert.deepEqual(slept, ['lyra_bed']);
 });
 
-test("the King's Road runs off both edges of the map on walkable tiles", () => {
+test("the King's Road runs on past both edges of the vale, into the wider world", () => {
   const { map } = WORLD;
   const start = WORLD.spawns.player;
   const noKey = reachable(G, start);
   const exits = WORLD.spawns.exits;
   assert.ok(exits && exits.east && exits.west, 'spawns.exits');
   assert.deepEqual(map.exits, exits);
+  // The world's ends are the wilds' road ends: the Greyford west, the oil track east.
   for (const side of ['east', 'west']) {
     const e = exits[side];
     const t = tileOf(e);
-    assert.ok(t.tx === 0 || t.tx === map.w - 1, `${side} exit on the map edge`);
+    assert.ok(side === 'west' ? t.tx < -200 : t.tx > 200, `${side} exit far out in the wilds`);
     assert.ok(walkable(G, e), `${side} exit walkable`);
     assert.ok(noKey(e), `${side} exit reachable from the start`);
-    assert.equal(WORLD.locations.at(e.x, e.y).id, 'kings_road');
-    const p = G.pathfinder.find(start.x, start.y, e.x, e.y, { maxNodes: 40000 });
-    assert.ok(p && p.length, `path to the ${side} edge`);
   }
-  // Every row of the road is open at both edges.
+  // Every row of the road is open across the vale's edges.
   for (let y = 83; y < 86; y++) {
-    assert.equal(G.isBlockedTile(0, y, null), false);
-    assert.equal(G.isBlockedTile(map.w - 1, y, null), false);
+    for (const x of [-2, -1, 0, 159, 160, 161]) assert.equal(G.isBlockedTile(x, y, null), false, `road open at ${x},${y}`);
   }
+  assert.equal(WORLD.locations.at(5 * TILE, 84 * TILE).id, 'kings_road');
+  assert.equal(WORLD.locations.at(-20 * TILE, 84 * TILE).id, 'kings_road_west');
 });
 
 // ---------------------------------------------------------------------------
@@ -737,14 +740,18 @@ function chunkOf(tx, ty) {
 test('the ground paints every chunk in Node, fast and deterministically', () => {
   const { map } = WORLD;
   const times = [];
-  for (let cy = 0; cy < Math.ceil(map.h / CHUNK); cy++) {
-    for (let cx = 0; cx < map.w / CHUNK; cx++) {
+  // Every chunk of the vale, and every third chunk of the wider world.
+  const R = map._chunkRange();
+  for (let cy = R.cy0; cy <= R.cy1; cy++) {
+    for (let cx = R.cx0; cx <= R.cx1; cx++) {
+      const vale = cx >= 0 && cy >= 0 && cx < 10 && cy < 8;
+      if (!vale && (cx + cy * 7) % 3) continue;
       const t0 = performance.now();
       const r = paintChunkBuf(ART, map, cx, cy, map._shadowCasters(cx, cy));
       times.push(performance.now() - t0);
       assert.equal(r.buf.w, CHUNK * TILE);
       // Inside the map every pixel is painted (opaque land or translucent water).
-      const rows = Math.min(CHUNK, map.h - cy * CHUNK) * TILE;
+      const rows = Math.min(CHUNK, map.y0 + map.h - cy * CHUNK) * TILE;
       for (let i = 0; i < rows * r.buf.w; i += 97) assert.ok(A(r.buf.data[i]) > 0, `chunk ${cx},${cy} pixel ${i} painted`);
     }
   }

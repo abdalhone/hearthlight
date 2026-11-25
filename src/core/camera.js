@@ -82,10 +82,13 @@ export class Camera {
   clampToMap() {
     const m = this.game?.map;
     if (!m) return;
+    // The map may start west and north of the origin (the wider world: m.x0, m.y0 < 0).
+    const mx = (m.x0 || 0) * TILE;
+    const my = (m.y0 || 0) * TILE;
     const mw = m.w * TILE;
     const mh = m.h * TILE;
-    this.x = mw > this.vw ? clamp(this.x, 0, mw - this.vw) : (mw - this.vw) / 2;
-    this.y = mh > this.vh ? clamp(this.y, 0, mh - this.vh) : (mh - this.vh) / 2;
+    this.x = mw > this.vw ? clamp(this.x, mx, mx + mw - this.vw) : mx + (mw - this.vw) / 2;
+    this.y = mh > this.vh ? clamp(this.y, my, my + mh - this.vh) : my + (mh - this.vh) / 2;
   }
 
   update(dt) {

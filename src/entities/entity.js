@@ -1,3 +1,4 @@
+import { otherStep } from '../world/footsteps.js';
 import { TILE, FACTION } from '../core/constants.js';
 import { dirFromVec, vecFromDir, norm } from '../core/math.js';
 import { Inventory } from './items.js';
@@ -214,6 +215,7 @@ export class Actor extends Entity {
     if (this.isAlive() && this.lockTime <= 0) {
       if (moving && this.moved > 0.01) {
         if (this.state !== 'walk') this.setState('walk');
+        if (this.type === 'actor' || this.species) otherStep(this.game, this); // quieter footfalls near you
       } else if (this.state === 'walk' || this.state === 'attack' || this.state === 'cast' || this.state === 'hurt') {
         this.setState('idle');
       }
@@ -236,10 +238,13 @@ export class Actor extends Entity {
       ctx.ellipse(sx, sy, this.radius + 1, 2.5, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    drawCharacter(ctx, this.game.atlas, this.spriteKey, animForState(this.state), this.dir, this.animTime, sx, sy - Math.round(this.z), {
+    // A fallen body dragging itself along (game.survival sets crawlPose, DESIGN §27).
+    const crawl = this.downed ? this.crawlPose : null;
+    drawCharacter(ctx, this.game.atlas, this.spriteKey, crawl ? 'crawl' : animForState(this.state), this.dir, this.animTime, sx, sy - Math.round(this.z), {
       flash: this.flash,
       alpha: this.invuln > 0 && !this.downed ? (Math.floor(this.invuln * 20) % 2 ? 0.55 : 1) : 1,
       state: this.state,
+      frame: crawl ? crawl.frame : undefined,
     });
   }
 

@@ -1,3 +1,4 @@
+import { hasRumor, rumorFor } from '../world/boss_trails.js';
 import { ASK_TOPICS } from './npc_data.js';
 import { factTellable } from './npc_data_more.js';
 import { GONE_STAYS } from './npc_lines.js';
@@ -123,6 +124,8 @@ export function mainOptions(npc, player, tone = dialogueTone(npc, player)) {
     opts.push(...mo);
   }
   opts.push({ id: 'ask', label: 'Ask about…' });
+  // What is out there (DESIGN §32.4): a boss they know of goes on your map, else the roads.
+  if (hasRumor(p.id) && tone !== 'wronged' && tone !== 'cold') opts.push({ id: 'rumor', label: 'Heard anything out there?' });
   opts.push({ id: 'gift', label: 'Give a gift' });
   if (p.shop && (p.shop.sells?.length || Object.keys(p.shop.buys || {}).length)) opts.push({ id: 'shop', label: p.id === 'elda' ? 'Food and drink' : 'Trade' });
   // The kept flame (DESIGN §27): Sister Aveline relights the stranger's family flame.
@@ -282,6 +285,10 @@ export function chooseOption(npc, id, player) {
   if (key === 'gift') {
     if (tone === 'wronged') return { lines: [line(npc, p.wronged, "I don't want anything from you.")], options: opts };
     return { lines: [p.id === 'pip' ? 'For me? Is it a treasure?' : tone === 'cold' ? "...What is it?" : 'Oh? For me?'], open: 'gift', options: opts };
+  }
+  if (key === 'rumor') {
+    const r = rumorFor(g, p.id);
+    return { lines: r?.lines?.length ? r.lines : ['Nothing new. Ask me again in a day or two.'], options: opts };
   }
   if (key === 'flame' || key.startsWith('flame:')) return flameRite(npc, key, player, opts);
   if (key === 'pay_mira') return payMira(npc, player, opts);

@@ -73,6 +73,13 @@ export class MissionSystem {
     return this.game.clock?.t ?? this.playT;
   }
 
+  // The stranger's level (progression), for scaling what missions put in the way.
+  level() {
+    const g = this.game;
+    const lv = safe(() => g.progression?.level?.(), null) ?? g.player?.level ?? 1;
+    return Math.max(1, Math.floor(Number(lv) || 1));
+  }
+
   day() {
     return this.game.clock?.day ?? 1;
   }
@@ -725,7 +732,11 @@ export class MissionSystem {
     if (at && !inPlace(g, at, pl.x, pl.y)) return;
     s.spawned = true;
     s.spawnIds = [];
-    const n = sp.count || 1;
+    // Harder as you grow (DESIGN §22.3, round 14: "I go through missions easily"): one
+    // more foe every three levels, each tougher, and a pack of three or more has a leader.
+    const lv = this.level();
+    const extra = sp.species && !sp.fixed ? Math.min(3, Math.floor((lv - 1) / 3)) : 0;
+    const n = (sp.count || 1) + extra;
     for (let i = 0; i < n; i++) {
       const spot = this.spawnSpot(at, sp.item ? 50 : 130, sp.item ? 150 : 200, i, n);
       if (!spot) continue;
@@ -736,6 +747,7 @@ export class MissionSystem {
         const c = safe(() => spawnFoe(g, sp.species, spot.x, spot.y), null);
         if (c) {
           c.missionId = id;
+          toughen(c, lv, i === 0 && n >= 3);
           s.spawnIds.push(c.uid ?? c.id);
         }
       }
@@ -1249,6 +1261,26 @@ export function setSpawners({ foe, drop } = {}) {
   if (foe) SPAWN_FOE = foe;
   if (drop) DROP = drop;
 }
+// A mission's foes grow with the stranger: more health and bite per level, and the
+// first of a pack of three or more leads it (tougher, quicker, and named for it).
+export function toughen(c, level, leader = false) {
+  if (!c) return c;
+  const lv = Math.max(1, level || 1);
+  const hp = Math.min(2.2, 1 + 0.12 * (lv - 1)) * (leader ? 1.6 : 1);
+  const atk = Math.min(1.6, 1 + 0.06 * (lv - 1)) * (leader ? 1.2 : 1);
+  if (Number.isFinite(c.maxHp)) {
+    c.maxHp = Math.round(c.maxHp * hp);
+    c.hp = c.maxHp;
+  }
+  if (Number.isFinite(c.atk)) c.atk = Math.max(1, Math.round(c.atk * atk));
+  if (leader) {
+    c.leader = true;
+    if (Number.isFinite(c.speed)) c.speed *= 1.08;
+    if (c.name && !/^Scarred /.test(c.name)) c.name = `Scarred ${String(c.name).toLowerCase()}`;
+  }
+  return c;
+}
+
 function spawnFoe(g, species, x, y) {
   return SPAWN_FOE ? SPAWN_FOE(g, species, x, y, { missionSpawn: true }) : null;
 }

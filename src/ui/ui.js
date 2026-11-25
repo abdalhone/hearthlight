@@ -16,6 +16,7 @@ import { TitleScreen } from './title.js';
 import { TouchControls } from './touch.js';
 import { VillageUI } from './village_ui.js';
 import { VillageLifePanel } from './village_life_view.js';
+import { WorldMap } from './world_map.js';
 import { buildPause, buildSign, buildDiary, Fader, Vignette } from './overlays.js';
 import { makeConfirm } from './modal.js';
 import { COMMANDS, JOBS, REJOIN, pickAck } from './content.js';
@@ -194,6 +195,15 @@ export class UI {
         if (e.code === 'KeyL' && !isTextTarget(t) && this.village.handleKey(e)) {
           e.preventDefault();
           e.stopPropagation();
+        }
+        // N: the map of the world (§32.3).
+        if (e.code === 'KeyN' && !e.ctrlKey && !e.metaKey && !e.altKey && !isTextTarget(t) && this.game.state === 'playing') {
+          const top = this.top();
+          if (!top || top === this.worldMap?.panel) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.openMap();
+          }
         }
         // V: Hearthvale today, the village's day and its troubles (§28).
         if (e.code === 'KeyV' && !e.ctrlKey && !e.metaKey && !e.altKey && !isTextTarget(t) && this.game.state === 'playing') {
@@ -572,6 +582,16 @@ export class UI {
 
   top() {
     return this.stack[this.stack.length - 1] || null;
+  }
+
+  // The map of the world: what you have walked, places, bosses heard of (§32.3).
+  openMap() {
+    try {
+      if (!this.worldMap) this.worldMap = new WorldMap(this);
+      this.worldMap.toggle();
+    } catch (err) {
+      console.warn('[ui] the map failed', err);
+    }
   }
 
   // Hearthvale today: who is missing, who has a problem, everyone's errands (§28).

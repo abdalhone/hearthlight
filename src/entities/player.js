@@ -1,3 +1,4 @@
+import { playerStep } from '../world/footsteps.js';
 import { Actor, animForState } from './entity.js';
 import { FACTION, PLAYER_ID } from '../core/constants.js';
 import { dirFromVec } from '../core/math.js';
@@ -337,7 +338,7 @@ export class Player extends Actor {
   }
 
   _accelerate(dt, mx, my) {
-    const max = this.speed * (this.speedMul || 1) * (this.castMoveMul || 1) * (this.game.survival?.speedFactor?.(this) ?? 1);
+    const max = this.speed * (this.speedMul || 1) * (this.castMoveMul || 1) * (this.game.survival?.speedFactor?.(this) ?? 1) * (this.game.map?.speedAt?.(this.x, this.y) ?? 1);
     const v = this.vel;
     let tx = 0;
     let ty = 0;
@@ -403,8 +404,9 @@ export class Player extends Actor {
   _footstep() {
     const g = this.game;
     try {
-      g.audio?.play?.('step', { x: this.x, y: this.y, volume: 0.35, pitch: 0.9 + Math.random() * 0.2 });
-      if (this.stepIndex % 2 === 0) {
+      // The sound of the ground underfoot (world/footsteps.js); dust on dry ground.
+      const surface = playerStep(g, this, this.stepIndex);
+      if (this.stepIndex % 2 === 0 && surface !== 'water' && surface !== 'snow' && surface !== 'wood' && surface !== 'rug') {
         g.particles?.emit?.('dust', this.x, this.y, { count: 2, speed: 10, life: 0.35, dir: { x: -this.facing.x, y: -this.facing.y } });
       }
     } catch {
@@ -1089,12 +1091,15 @@ export class Player extends Actor {
     if (slashBehind) this._drawSlash(ctx, sx, sy - hz);
     const blink = this.hurtBlink > 0 && !this.rolling && !this.downed;
     const casting = this.castPoseT > 0 && !this.rolling && !this.downed && (this.state === 'idle' || this.state === 'walk' || this.state === 'cast');
-    const anim = casting ? 'cast' : animForState(this.state);
+    // Dragging yourself along the ground while down (game.survival sets crawlPose, §27).
+    const crawl = this.downed ? this.crawlPose : null;
+    const anim = crawl ? 'crawl' : casting ? 'cast' : animForState(this.state);
     const animT = casting ? this._castAnimT : this.rolling ? this.animTime * 2.2 : this.animTime;
     drawCharacter(ctx, atlas, this.spriteKey, anim, this.dir, animT, sx, sy - hz, {
       flash: this.flash,
       alpha: blink ? (Math.floor(this.hurtBlink * 20) % 2 ? 0.5 : 1) : 1,
       state: this.state,
+      frame: crawl ? crawl.frame : undefined,
     });
     if (sw && !slashBehind) this._drawSlash(ctx, sx, sy - hz);
     if (bound) this._drawBinding(ctx, sx, sy, time, true);

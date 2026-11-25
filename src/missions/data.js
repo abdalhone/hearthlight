@@ -191,7 +191,11 @@ export const MISSIONS = [
     accept: ['Good. Take Lyra if she\'ll go. Don\'t take Tilly. She\'ll go.'],
     decline: ['Hmph. It\'ll still be there.'],
     progress: ['The deep pool. Watch where it spits.'],
-    objectives: [{ type: 'defeat', target: 'boss:mother_of_slimes', count: 1, label: 'Put down the Mother of Slimes in the quarry pools', where: 'stonecut_quarry' }],
+    objectives: [
+      { type: 'reach', point: { tx: 26, ty: 34, r: 3 }, label: 'Follow the slime trail up the quarry path', where: 'stonecut_quarry' },
+      { type: 'defeat', target: 'slime', count: 3, at: 'stonecut_quarry', spawn: { species: 'slime', count: 3 }, label: 'Clear the slimes she sends out of the shallows' },
+      { type: 'defeat', target: 'boss:mother_of_slimes', count: 1, label: 'Put down the Mother of Slimes in the quarry pools', where: 'stonecut_quarry' },
+    ],
     turnin: ['Hmph. Quarry\'s quiet.', 'The pools\'ll fill again with the rain. Still. One less. Good.'],
     rewards: [{ maxMana: 15 }, { coins: 25 }, { xp: 60 }],
     lyra: { accept: "Slimes I can do. Big ones too. I've done big ones.", done: 'That was the size of a cart. A cart.' },
@@ -282,6 +286,36 @@ export const MISSIONS = [
   },
 
   {
+    id: 'the_count',
+    giver: 'hobb',
+    title: 'The Count',
+    summary: "Brindlecombe's chapel kept a flame-book: every household, every name, every flame on its altar. Hobb wants it brought home. He will not say why, only that he needs to count again.",
+    hint: 'Hobb has been counting the flames again, and getting a different answer.',
+    requires: { missions: ['lamp_round'], done: 4 },
+    danger: 'brindlecombe',
+    offer: [
+      'Well now. Sit a moment. These knees.',
+      "Brindlecombe's chapel kept a flame-book. Every household, every name. It's still there, I'd wager; nobody went back for anything.",
+      "A day and a half west, past the Long Mile and the fork, up the old lane. Bring it to me. I need to count again. Don't ask me why. I'm not sure I know.",
+    ],
+    accept: ["Well now. Go by day. Keep to the road, sleep under the Long Mile if you must. And don't linger in the grey. It makes you forget why you came."],
+    decline: ["No. No, of course. It's a long way to carry an old man's worry."],
+    progress: ["West, past the fork, up the Brindle lane. The chapel's on the north side of their square. The book will be by the altar."],
+    objectives: [
+      { type: 'reach', at: 'brindlecombe', label: 'Walk west to Brindlecombe, past the Long Mile and the fork', where: 'brindlecombe' },
+      { type: 'collect', item: 'flame_book', count: 1, at: 'brindle_chapel', spawn: { item: 'flame_book', at: 'brindle_chapel' }, label: "Find the flame-book in Brindlecombe's chapel" },
+      { type: 'bring', item: 'flame_book', count: 1, label: 'Bring the flame-book home to Hobb' },
+    ],
+    turnin: [
+      'Well now. Give it here. Gently.',
+      "...Sixty-one names. Sixty-one. I've carried fourteen for nineteen years, and I can't remember the night I counted it.",
+      "Thank you. Go on, now. I'll be a while with this. And take this. A lamplighter pays his debts, even the ones he can't remember making.",
+    ],
+    rewards: [{ coins: 40 }, { xp: 90 }, { points: 1 }],
+    lyra: { accept: "Brindlecombe. Sabeth's... I'll come. I'll want to see it. I won't want to.", done: "Da counted it again, didn't he. He counts everything twice. He never counted that twice." },
+  },
+
+  {
     id: 'bee_song',
     giver: 'wenna',
     title: 'The Bee-Song',
@@ -353,14 +387,16 @@ export const MISSIONS = [
     progress: ['Dusk, citizen. The road, where the wood comes down to it.'],
     objectives: [
       { type: 'reach', at: 'kings_road', when: 'evening', label: "Go to the King's Road at dusk" },
-      { type: 'defeat', target: 'wolf', count: 3, when: 'evening', spawn: { species: 'wolf', count: 3 }, label: 'Hold the line: drive off three wolves' },
+      { type: 'protect', at: 'kings_road', seconds: 40, when: 'evening', spawn: { species: 'wolf', count: 3 }, label: 'Hold the road against the first wolves (40 seconds)' },
+      { type: 'defeat', target: 'wolf', count: 4, when: 'evening', spawn: { species: 'wolf', count: 4 }, label: 'The pack comes in behind them: drive off four wolves' },
     ],
     turnin: [
-      'Report. Three. Good. Nobody hurt? Good.',
+      'Report. The road held, and the pack behind it. Good. Nobody hurt? Good.',
       'A line holds because it goes through, not around. Put your light through them, not at them.',
       'And a line is a wall when it needs to be. Here, and not past here. Drill it.',
+      "Here. The watch's footlocker key. Anyone who holds the line with me can take what they need from it.",
     ],
-    rewards: [M('twist', 'pierce'), M('shape', 'wall'), { coins: 15 }, { xp: 30 }],
+    rewards: [M('twist', 'pierce'), M('shape', 'wall'), { coins: 15 }, { xp: 40 }, { items: [['guard_key', 1]] }],
     lyra: { accept: 'The road at dusk. Last time we did that, you stood next to me. Do it again.', done: 'You stood next to me again. I noticed.' },
   },
 
@@ -380,7 +416,11 @@ export const MISSIONS = [
     accept: ['Take Lyra, if she\'ll go. Don\'t take Hess. She\'ll want it done her way.'],
     decline: ["Noted. It's not a small thing to ask."],
     progress: ['The camp above the fork. Archers on the rise. Come at it from below.'],
-    objectives: [{ type: 'defeat', target: 'boss:varek', count: 1, label: 'Bring down Varek One-Eye at the bandit camp', where: 'bandit_camp' }],
+    objectives: [
+      { type: 'reach', at: 'bandit_lookout', label: "Scout the bandits' lookout above the Cinderwick fork, east round the lake", where: 'bandit_lookout' },
+      { type: 'defeat', target: 'bandit', count: 2, at: 'bandit_lookout', spawn: { species: 'bandit', count: 2 }, label: 'Take the lookout, so the camp gets no warning' },
+      { type: 'defeat', target: 'boss:varek', count: 1, label: 'Bring down Varek One-Eye at the bandit camp', where: 'bandit_camp' },
+    ],
     turnin: [
       "It's done, then. And none of ours buried for it.",
       "Two paid watchmen and a proper rota, I told the Moot. You'll do for one of them, if you ever want it. You won't. That was a joke, citizen.",
@@ -505,7 +545,11 @@ export const MISSIONS = [
     accept: ['Mm. Dusk.'],
     decline: ['Mm. It\'ll still be there. That\'s the problem.'],
     progress: ['Deep in the wood. It circles. Don\'t chase. Make it come to you.'],
-    objectives: [{ type: 'defeat', target: 'boss:greyjaw', count: 1, label: 'Bring down Greyjaw in deep Whisperwood', where: 'whisperwood' }],
+    objectives: [
+      { type: 'reach', point: { tx: 100, ty: 12, r: 3 }, when: 'evening', label: 'Follow the scored trunks north of Berry Hollow after dusk', where: 'whisperwood' },
+      { type: 'defeat', target: 'wolf', count: 3, when: 'evening', spawn: { species: 'wolf', count: 3 }, label: 'Its pack meets you first: drive off three wolves' },
+      { type: 'defeat', target: 'boss:greyjaw', count: 1, label: 'Bring down Greyjaw in deep Whisperwood', where: 'whisperwood' },
+    ],
     turnin: ['Mm. Good.', 'The pack\'ll scatter now. Fewer at the hem by winter.', 'Here. A wardrunner\'s knots. You\'ll find room for another twist in your weaving. Don\'t ask me how I know that. I don\'t.'],
     rewards: [{ slot: 'twist' }, { items: [['venison', 2]] }, { coins: 25 }, { xp: 70 }],
     lyra: { accept: "Deep wood at dusk. I'll come. If it turns bad, we leave first. The deep pays the one who leaves first.", done: 'Hess will drink to that at the Kettle tonight. More than she should.' },

@@ -11,6 +11,10 @@ This document is the contract between modules. **If you own a module, implement 
 interface described here.** Other modules are being written at the same time against the same
 text, so a renamed method or a changed payload breaks someone else's code.
 
+**Every change walks [docs/IMPACT.md](docs/IMPACT.md)**: the axes a change can ripple across
+(builds, terrain, places, characters, states, devices, weather, Claude on or off, saves,
+story branches) and the systems that must react to each. Say which axes a change touches.
+
 ---
 
 ## 0. Quality bar
@@ -1903,6 +1907,25 @@ is a **gain** and a **cost**, both timed modifiers on the shared stat pipeline (
 - `lastlight` — when the player would fall, heal fully once; max HP −50% until the next
   sleep.
 - `oath` — +30% to everything while Lyra is near; if she is hurt, the player is too.
+- `laststand` — the Last Stand (round 14: "if I die, maybe I come back for 1 minute and
+  kill anybody, but it will not let me live anymore"). Carried by the Bone Warden (a
+  second glyph-shard beside overdraw's, `BOSS_SECOND_PRICES`), never at the start, never
+  lent by "Try all magic". Casting a weave that carries it asks first, in the game's own
+  dialog with the danger style and "Not this" focused, the price in full ("you die for
+  good… no kept flame, nobody can carry you to Mira, waking at home does not save you:
+  your story ends and this save closes"); only a yes holds it (a ☠ mark on the HUD; a tap
+  puts it out while it is only held). When you would die it rises you instead: whole, for
+  60 s, strength ×2.5, weaves ×2, +35% speed, faster swings and casts, no stagger, damage
+  taken ×0.4, and nothing can put you down (preventFall holds you at 1). While down with
+  it held you may also choose to rise at once: a Rise button under the countdown that
+  must be held for a second (R on a keyboard). The minute shows as embers off the body,
+  the rage aura, fire at the screen's edges breathing faster as it runs out and white-hot
+  in the last ten seconds, and the HUD timer. When it ends you die for good
+  (`survival.burnOut`): the final death whatever flame burns or Settings say, its own
+  curtain ("The fire goes out.") and memorial words, and Lyra's last entry says what she
+  saw. Order with the others: lastlight catches the fall first (the last stand stays
+  held); berserk's end cannot fell you while you burn, and the burn ends it. Saved as
+  held or as the seconds left, so closing the page does not escape the minute.
 Prices are earned like other components (missions, bosses, a few found), shown with their
 cost in red in the Spellbook and on the hotbar button, and their timers on the HUD. Lyra
 notices and has opinions (berserk frightens her).
@@ -1931,8 +1954,30 @@ notices and has opinions (berserk frightens her).
 - **Falling.** At 0 HP the player falls and lies on the ground, alive, with a **bleed-out
   timer** (75 s; Resolve lengthens it; berserk's end gives 30 s). The scene turns
   cinematic: a beat of slow motion, the color drains, a heartbeat, muffled sound, a
-  closing vignette, the timer as a fading heartbeat line. The player can crawl a little and
-  **call for help** (a button; the shout reaches whoever is in earshot).
+  closing vignette. The player can crawl a little and **call for help** (a button; the
+  shout reaches whoever is in earshot).
+- **The countdown** (round 14: "there isn't a clear countdown to me dying";
+  `src/ui/death_view.js`, numbers from `survival.countdown()`). Under the body, one row:
+  a ring that drains clockwise with the seconds left, the number big in its middle (red in
+  the last quarter), and beside it what is happening. The ring kicks on every heartbeat,
+  and the heart (`HEART_BPM`) goes from a resting 66 to a racing 158 as the window
+  closes, then falters in the last 12% (weaker, uneven, some beats missing); the sound's
+  lub-dub closes up as it races. Why it drains faster or slower is said (crawling, cold
+  water, someone pressing on the wound, held on someone's shoulders). Whoever is saving
+  you fills an inner gold ring and a bar: dressing the wound, lending warmth, lifting you,
+  and the carry with its time to the cot (red if it is longer than the seconds you have).
+  Phone sideways the ring is 88 px, upright 96 px, a computer 136 px; it stays clear of the
+  stick, the hotbar and the buttons.
+- **Crawling** (round 14: "the crawling has no animation"). A fallen body drags itself
+  face down: a four-frame crawl in every direction (`paintCrawl` in
+  `art/characters_humanoid.js`: one arm reaching past the head, the other hauling, the
+  opposite knee driving; laid along the ground for left and right, flattened for up and
+  down), painted only for whoever falls (`ensureCrawl`, off the boot path). The frame is
+  picked by distance dragged (2.5 px a frame), so hands never slide. 11 px/s (walking is
+  60), 88 px in all, and it drains the window 1.6× while you move. A pool of blood where
+  someone falls and a smear behind them (`survival/trail.js`, cosmetic, capped, not saved,
+  fading over 2.5 min; water takes it). Villagers and Lyra on the ground drag themselves
+  away from whoever stands over them (0.8× the player's pace).
 - **Rescue.** Lyra comes for the player whatever their quarrel (LORE: she never leaves a
   living person to die when she could carry them; how she speaks to them while doing it
   depends on everything between them), and so do villagers in earshot (the watch, Hess,
@@ -1951,11 +1996,30 @@ notices and has opinions (berserk frightens her).
 - **Death.** If the window closes, the player dies. **A kept flame brings them back**: at
   the chapel, Sister Aveline can relight the stranger's family flame for them (a rite, a
   price; one at a time). Dying with a kept flame: they wake at the chapel at dawn, the flame
-  spent, coin lost, *flame-thin* (weaker) for a day, and the village knows. Dying without
+  spent, *flame-thin* (weaker) for a day, and the village knows. Dying without
   one ends the story: a memorial (Lyra's last diary entry about them, what the village
   says), and that save can never be continued — it moves to *Past lives* on the title
   screen. New Game explains this clearly. A setting (Game tab) can soften it to "wake at
   home" for players who want that; it is off by default, as the author wants.
+- **The ember-ring: death costs everything you carry** (round 14: "I lose all my coins,
+  and the place I died in would have this Elden Ring thing… click E to regain my coins…
+  if I die before going there, I lose it"). Coming back from a death (the kept flame, or
+  waking at home) leaves every coin where you fell (`survival.dropRing`,
+  `survival/ember_ring.js`): a ring of embers on the ground with the coins in its heart,
+  sparks rising, lit at night. Walk back and take it (E, or the hand button: "Take back
+  your 57 coins"). Die again before you reach it and it goes out, coins and all (the
+  waking words say so); die with an empty purse and there is no new ring. One at a time,
+  saved with the game (`survival.serialize().ring`, a few dozen bytes). A tag floats over
+  it while it is in view and an ember arrow at the screen's edge points the way with the
+  paces to it (`ui/ember_ring_view.js`, clear of the HUD, the hotbar and the thumbs); maps
+  read `survival.mapMarks()`. Lyra knows (her prompt). A rescue is not a death: carried
+  to the sickroom you keep your purse (less Mira's bill). The final death leaves no ring.
+  Only coins: items stay with you. (The watch's fine when it hauls you in stays 10%.)
+- **Checked** by `tests/death_heavier.test.mjs` (the crawl frames, the drag, the
+  countdown's numbers and the heart, the ember-ring's life, the Last Stand's rules) and
+  `scripts/death_check.mjs`, which plays all of it by touch on a phone both ways and by
+  keys on a computer (countdown in view and clear of the stick and hotbar, crawl, the
+  rescue bar, the ring and its arrow, taking it back, the confirm, the held Rise, the end).
 
 ## 28. Errands, problems, and the missing (the author: "everyone has a job… he needs to go to the ironsmith today… he doesn't find the ironsmith… he is not able to continue his day… Claude thinks: why am I not able to continue my job? The shopkeeper isn't there. Where is he? He will ask other villagers… if they don't know, they will search… ask more people… and at the end they might just say that he's missing, and they will have no idea why")
 
@@ -2258,3 +2322,122 @@ night lift and the glow).
 Tests: `tests/walls.test.mjs`, `tests/hit_stun.test.mjs`, `tests/breakables.test.mjs`,
 `tests/interior_lights.test.mjs`. In the browser: `node scripts/world_check.mjs` (each scene by
 touch sideways and upright, and on a desktop; screenshots in `screenshots/world`).
+
+---
+
+## 32. The wider world, on foot (round 14: "the map is really small. If you are going to add other places that I can go, do not make it teleportation. Make me walk there and expand the map into the lore.")
+
+### 32.1 One map around the vale
+
+The world is one tile map from x −384 to 255 and y −288 to 119 (`WORLD_X0`, `WORLD_Y0`,
+`WORLD_W`, `WORLD_H` in `src/core/constants.js`; edges on 16-tile chunk lines). The vale
+keeps tiles 0..159 × 0..119, so every save, mission point and object id keeps its meaning
+(ids are positional). `TileMap` and `ObjectManager` take an origin (`x0`, `y0`) and index
+through `map.idx(tx, ty)`; queries take world tiles, which go negative west and north of
+the vale. The camera, renderer, pathfinder, ground painter and spawner all respect it.
+
+`worldgen.js` lays out the vale as before (its builder never writes outside 0..159 ×
+0..119) and then calls `buildWilds` (`src/world/wilds.js`), which borrows the vale
+builder's tools with world bounds. The layout is data (`src/world/wilds_layout.js`):
+roads (`ROADS`), the walkable land as corridors along them and open places (`LAND`, with
+half-widths), regions (`regionAt`: heath, grey, wood, pine, foothill, snow, east), waters
+(pools, rivers, fords) and the named places (`P`). Inside a corridor is open country,
+then five tiles of thick walkable wood, then the wilds' wall (thicket, or cliff on the
+mountain), roughened so no edge runs straight. The vale's ring of edge trees is left out
+only at three seams (`SEAMS`), where the roads walk on.
+
+### 32.2 What is out there, and how far
+
+- **West**, the King's Road across the western heath: the dead waystone (Lyra's, a mile
+  out), Bracken Ford, the Long Mile (a lit waystone: rest and safety), the west fork,
+  the Saltmere road to the Greyford (the bridge is gone), and up the Brindle lane,
+  **Brindlecombe**: open doors, a cold wardstone with new candle stubs, a chapel, five
+  houses to loot, graves, the grey over it all.
+- **North**, the old Crown path from the heart of Whisperwood: the deep Whisperwood, a
+  Lanternwright marker stone, a mountain stream, the treeline camp (Hess's lean-to, a
+  wardrunner's cache), the switchbacks of the Hollowcrown, and the **Crown Ring**: nine
+  stones in snow round the green circle where the stranger lay.
+- **East**, round the far shore of Mirror Lake: the **Cinderwick fork** with its burning
+  waystone and a carter's cart, the bandits' lookout above it, the oil track buried under
+  a slide, the Owlsend track closed by fallen pines.
+
+Walking from the square at full pace (paths measured by `tests/wilds.test.mjs`): the
+dead waystone ~30 s, the Long Mile ~55 s, Brindlecombe ~90 s, the Greyford ~100 s, the
+treeline camp ~50 s, the Crown Ring ~80 s (more in snow), the Cinderwick fork ~40 s. Snow
+(0.8), fords (0.7), scree (0.88) and heather (0.94) slow your feet (`tiles.js` `speed`);
+the vale walks as it always did.
+
+### 32.3 The map
+
+`src/ui/world_map.js`, opened with **N** or Menu → Map: the world one pixel a tile, what
+you have not walked under a dark wash (`game.travel` keeps 8×8-tile fog cells as a
+bitset: the save grows by about a kilobyte), names of places you reached, lit waystones,
+you, Lyra, home, the mission objective, the ember-ring where your coins lie (any entity
+of type `ember_ring`, or any entity with `mapMark()`), and the bosses you have heard of.
+Drag, pinch, wheel or +/− to zoom, "Me" to come back; the tools sit over the chart so a
+phone held sideways keeps its height.
+
+### 32.4 Bosses you can find
+
+`src/world/boss_trails.js`. Every boss has a trail: the villagers who would know tell
+you when asked "Heard anything out there?" (and then talk of the roads beyond); the
+notice board warns of the quarry pools, the camp and the ruins from the first morning;
+signs stand on the way (slime smears up the quarry trail, claw-scored trunks to Greyjaw's
+den, the toll board on the shore trail, the humming dock end, bones at the ruins gate)
+and looking at one marks its boss; seeing an arena marks it; a boss mission marks its
+boss; after the first lesson the village talks of the Mother of Slimes (the first boss,
+pointed to on day one). Marked bosses show on the map with their names. Events:
+`boss_heard { id, from }`, `place_reached { id, name, first }`.
+
+### 32.5 Living with a bigger world
+
+- **Spawns**: a wilds zone (`near` in tiles) fills only while you are near and lets its
+  creatures go when you are far; nothing turned spawns in a lit waystone's light
+  (`map.safeSpots`).
+- **Objects**: those within 40 tiles of you update every step; the rest take turns (an
+  eighth a step, with eight steps' time), so far timers still run.
+- **Paths**: journeys out in the wilds route along the roads (`map.roadGraph`, short
+  searches per leg); the vale's own paths keep their single search.
+- **Weather**: the grey over Brindlecombe is one flat wash; snow falls on the
+  Hollowcrown (`weather.localFog`, `weather.localSnow`, set by `travel.js`).
+- **Knowledge**: every place has a location entry, a lore page (the Book's "The Roads
+  Beyond" chapter) and road talk; `travelPlugin.promptContext` tells Claude where you are.
+
+### 32.6 Chests you can open
+
+`src/world/containers.js`. Chests have locks: a key (`keyId`), a keeper (`keeper`), an
+owner. No key: the keeper may open it (Lyra opens her own trunk for someone she trusts),
+or you may force the lock. Forcing or emptying someone's chest is theft (`crime`, kind
+`theft`, `owner`). Rowan gives the watch's footlocker key for Hold the Line. Loot
+(bandits', Brindlecombe's) is free.
+
+### 32.7 Footsteps by ground
+
+`src/world/footsteps.js`: `surfaceAt` (grass, dirt, stone, wood, water, sand, snow) picks
+`step_<surface>` (code-made in `src/ui/sfx.js`). Your own steps are the loudest; anyone
+walking near you treads softer and fades with distance; splashes in fords, puffs in snow.
+
+### 32.8 Harder missions
+
+Mission foes scale with your level (`toughen` in `src/missions/system.js`: one more every
+three levels, more health and bite, a scarred leader for a pack of three or more). Boss
+missions now ask you to follow the trail, clear the brood or the pack, or take the
+lookout first; Hold the Line is a line to hold; The Count sends you to Brindlecombe.
+
+### 32.9 A shop that buys what you carry (the author: "a shop to sell my stuff")
+
+Gale's Goods buys anything worth anything: Garrick's own prices for what he names
+(`shop.buys`), and half its worth for any other item of value (`shop.buysAll: 0.5`; not
+keys, quest items or coin). The shop's sign says so. The full selling shop of round 14b
+can build on `buysAll`.
+
+### 32.10 People grow older (the author: "make people age as well")
+
+`src/world/calendar.js` (`game.calendar`, saved by `calendarPlugin`). Hearthvale's year
+turns every 12 days. Everyone has a birthday (a day of the year fixed by their name); on
+it they turn a year older: the profile's `age` (which every prompt and line reads) and
+Lyra's soul age change, a `birthday { id, name, age, day }` event goes out and the village
+hears of it. Children grow up with the rest; they stay unkillable by their build (child or
+teen), not by a number. The stranger does not know their own age. Old age does not kill
+anyone (yet), and sprites do not change with age (yet).
+

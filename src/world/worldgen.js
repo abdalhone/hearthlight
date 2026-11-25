@@ -1,10 +1,14 @@
-import { TILE, WORLD_W, WORLD_H } from '../core/constants.js';
+import { TILE, VALE_W, VALE_H, WORLD_W, WORLD_H, WORLD_X0, WORLD_Y0 } from '../core/constants.js';
 import { RNG, hash2, fbm } from '../core/rng.js';
 import { TileMap } from './map.js';
 import { T, DECO, SOLID, WATERY } from './tiles.js';
 import { ObjectManager, makeObject } from './objects.js';
 import { LocationIndex } from './locations.js';
 import { LOCATION_INFO, NOTICE_BOARD, SIGNS, LOOKS, BED_TEXT } from './world_content.js';
+import { buildWilds } from './wilds.js';
+import { inSeam } from './wilds_layout.js';
+import { trailSigns } from './boss_trails.js';
+import { CONTAINERS } from './containers.js';
 
 // Places of healing (DESIGN §27).
 const SICKBED_TEXT = "A sickroom cot: clean linen, a basin, a bundle of silverleaf hung to dry above it. Mira keeps two of these for whoever the village carries in.";
@@ -25,8 +29,12 @@ const CELL_TEXT = "The guardhouse cell: a straw-stuffed cot behind a door that h
 //   at y 83–85 (bridge over the stream), South Meadow lies south, the Sunken Ruins
 //   southwest.
 
-const W = WORLD_W;
-const H = WORLD_H;
+// The vale: this builder lays out tiles 0..W-1 by 0..H-1 by hand and never writes outside
+// them (inb). Its scratch arrays are vale-sized (index y * W + x); the map itself is the
+// whole world (constants.js), so map arrays are indexed through map.idx(x, y). The wider
+// world beyond the vale is src/world/wilds.js.
+const W = VALE_W;
+const H = VALE_H;
 const px = (t) => t * TILE + TILE / 2; // tile -> pixel center
 const smooth = (a, b, v) => {
   const t = Math.max(0, Math.min(1, (v - a) / (b - a)));
@@ -34,15 +42,18 @@ const smooth = (a, b, v) => {
 };
 
 export const HEART = { x: 74, y: 14 };
+
+// Where the vale opens onto the wider world: SEAMS in wilds_layout.js.
+export { SEAMS } from './wilds_layout.js';
 export const KINGS_ROAD_Y = 83; // first of three rows
 
-class WorldBuilder {
+export class WorldBuilder {
   constructor(game, seed) {
     this.game = game;
     this.seed = seed >>> 0;
     this.rng = new RNG((this.seed ^ 0x9e3779b9) >>> 0 || 1);
-    this.map = new TileMap(W, H, game);
-    this.objects = new ObjectManager(game, W, H);
+    this.map = new TileMap(WORLD_W, WORLD_H, game, WORLD_X0, WORLD_Y0);
+    this.objects = new ObjectManager(game, WORLD_W, WORLD_H, WORLD_X0, WORLD_Y0);
     this.clear = new Uint8Array(W * H); // keep free of scattered trees and rocks
     this.occ = new Uint8Array(W * H); // an object stands here
     this.trunk = new Uint8Array(W * H); // tree or bush trunk (spacing rule)
@@ -202,6 +213,7 @@ class WorldBuilder {
     this.dyeCottage();
     this.forestLandmarks();
     this.bossArenas();
+    this.bossTrails();
     this.wennaHives();
     this.scatter();
     this.decorate();
@@ -226,12 +238,13 @@ class WorldBuilder {
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         const i = y * W + x;
+        const mi = m.idx(x, y);
         const d = this.forestDepth(x, y);
         this.forestD[i] = d;
-        if (d > 2.4 + (this.noise(x, y, 0.3, 11) - 0.5) * 2.5) m.ground[i] = T.FOREST;
-        else if (d > -2 && d < 2.6 && this.noise(x, y, 0.22, 12) > 0.5) m.ground[i] = T.TALL_GRASS;
-        else if (x > 48 && x < 126 && y > 87 && this.noise(x, y, 0.12, 21) > 0.55) m.ground[i] = T.TALL_GRASS;
-        else if (d <= 0 && this.noise(x, y, 0.1, 23) > 0.7) m.ground[i] = T.TALL_GRASS;
+        if (d > 2.4 + (this.noise(x, y, 0.3, 11) - 0.5) * 2.5) m.ground[mi] = T.FOREST;
+        else if (d > -2 && d < 2.6 && this.noise(x, y, 0.22, 12) > 0.5) m.ground[mi] = T.TALL_GRASS;
+        else if (x > 48 && x < 126 && y > 87 && this.noise(x, y, 0.12, 21) > 0.55) m.ground[mi] = T.TALL_GRASS;
+        else if (d <= 0 && this.noise(x, y, 0.1, 23) > 0.7) m.ground[mi] = T.TALL_GRASS;
       }
     }
     // The north edge of the world is old forest too.
@@ -281,7 +294,13 @@ class WorldBuilder {
     }
     // Deep water away from the shore.
     const depth = this.map.waterDepth();
-    for (let i = 0; i < W * H; i++) if (this.map.ground[i] === T.WATER && depth[i] >= 3) this.map.ground[i] = T.DEEP_WATER;
+    const mg = this.map.ground;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const mi = this.map.idx(x, y);
+        if (mg[mi] === T.WATER && depth[mi] >= 3) mg[mi] = T.DEEP_WATER;
+      }
+    }
     this.map.version++;
     this.map._depth = null;
     // Keep scattered trees off the shores.
@@ -433,6 +452,17 @@ class WorldBuilder {
       ],
       3,
     );
+    // The old Crown path: on from the heart of Whisperwood to the vale's north edge, and
+    // up through the deep wood to the Hollowcrown (src/world/wilds.js carries it on).
+    this.path(
+      [
+        [74.5, 17],
+        [74, 11],
+        [72.5, 5],
+        [73.5, 0],
+      ],
+      2,
+    );
     // Meadow path.
     this.path(
       [
@@ -493,7 +523,7 @@ class WorldBuilder {
       const c = door + off;
       if (c <= x || c >= x + w - 1) continue;
       if (spec.noWindow?.includes(c)) continue;
-      this.must({ objType: 'window', tx: c, ty: y + h - 1, variant: spec.windowStyle ?? null, name: 'Window' }, { allowSolidGround: true });
+      this.must({ objType: 'window', tx: c, ty: y + h - 1, variant: spec.windowStyle ?? null, name: 'Window', unlit: !!spec.unlit }, { allowSolidGround: true });
     }
     if (spec.sign) {
       const s = SIGNS[spec.sign];
@@ -566,6 +596,12 @@ class WorldBuilder {
     this.villageLamps();
   }
 
+  // A real container with a lock and an owner (DESIGN §32.6, src/world/containers.js).
+  container(id) {
+    const C = CONTAINERS[id];
+    return this.must({ objType: 'chest', id, tx: C.tx, ty: C.ty, name: C.name, variant: C.variant, owner: C.owner, keeper: C.keeper ?? null, locked: !!C.locked, keyId: C.keyId ?? null, lockedText: C.lockedText ?? null, items: C.items, words: [C.name.toLowerCase(), 'trunk'] });
+  }
+
   // A villager's own bed (DESIGN §19.8): `owner` sleeps in it, in their own home.
   bed(owner, x, y, extra = {}) {
     const B = BED_TEXT[owner] || {};
@@ -632,7 +668,7 @@ class WorldBuilder {
       words: ['inn bed', 'her room', 'rented room', 'room at the inn', "lyra's room"],
     });
     this.look('desk', 73, 40, 'lyraDesk', { name: "Lyra's desk", variant: 'lyra' });
-    this.look('trunk', 75, 44, 'lyraTrunk', { name: "Lyra's trunk" });
+    this.container('lyra_trunk'); // her trunk: locked, and she keeps the key (containers.js)
     this.rug(73, 42, 2, 2);
     this.decor('pot', 74, 40, { variant: 'plant' });
     // Taproom.
@@ -753,7 +789,7 @@ class WorldBuilder {
     this.partition(this.col(62, 64, 68), [[62, 68]]);
     this.bed('rowan', 63, 64);
     this.bed('wys', 64, 64);
-    this.decor('trunk', 64, 67, { name: 'Footlocker' });
+    this.container('guard_footlocker'); // the watch's spare kit: Rowan's key
     this.decor('rack', 57, 64, { name: 'Weapon rack' });
     this.decor('rack', 58, 64, { name: 'Weapon rack' });
     this.look('table', 0, 0, 'mapTable', { footprint: { x: 59, y: 66, w: 2, h: 1 }, variant: 'map' });
@@ -975,7 +1011,7 @@ class WorldBuilder {
     this.must({ objType: 'hearth', id: 'farm_hearth', footprint: { x: 21, y: 49, w: 2, h: 1 }, name: 'Farmhouse hearth' });
     this.bed('tobias', 27, 49);
     this.bed('tansy', 29, 49);
-    this.decor('trunk', 28, 49, { name: 'Linen chest' });
+    this.container('reed_linen_chest'); // the Reeds' own: open, but theirs
     this.decor('shelf', 25, 49, { variant: 'goods' });
     this.decor('table', 0, 0, { footprint: { x: 23, y: 51, w: 2, h: 1 } });
     this.decor('chair', 22, 51, { variant: 'right' });
@@ -1309,7 +1345,7 @@ class WorldBuilder {
       for (let i = R.x0; i <= R.x1; i++) {
         if (!this.map.isWater(i, j) || this.get(i, j) === T.BRIDGE) continue;
         const k = this.hash(i, j, 97);
-        if (k < 0.75 - Math.max(0, j - R.y0 - 6) * 0.03) this.map.deco[j * W + i] = DECO.DYE;
+        if (k < 0.75 - Math.max(0, j - R.y0 - 6) * 0.03) this.map.deco[this.map.idx(i, j)] = DECO.DYE;
       }
     }
   }
@@ -1516,11 +1552,24 @@ class WorldBuilder {
     }
   }
 
+  // Signs of the bosses along the ways to them (DESIGN §32.4, boss_trails.js): slime up
+  // the quarry trail, claw-scored trunks to the den, the toll board, the humming dock end,
+  // bones at the ruins gate. Looking at one puts its boss on the map.
+  bossTrails() {
+    for (const s of trailSigns()) {
+      const hum = s.objType === 'trail_hum';
+      const desc = { objType: s.objType, id: s.id, tx: s.tx, ty: s.ty, name: s.name, title: s.name, text: s.text, label: 'Look', trailBoss: s.boss, solid: s.objType === 'trail_claws' || s.objType === 'sign', low: true };
+      if (s.objType === 'sign') desc.variant = null;
+      if (hum) Object.assign(desc, { solid: false, sprite: 'prop:trail_hum', animated: true });
+      if (!(hum ? this.put(desc, { allowSolidGround: true }) : this.near(desc, s.tx, s.ty, 3))) this.problems.push(`no room for ${s.id}`);
+    }
+  }
+
   // Ground details the arenas want after the general pass (bones in the den, reeds).
   bossDecor() {
     for (const [x, y, d] of this.bossDeco || []) {
       if (!this.inb(x, y) || this.occ[y * W + x]) continue;
-      this.map.deco[y * W + x] = d;
+      this.map.deco[this.map.idx(x, y)] = d;
     }
   }
 
@@ -1548,7 +1597,7 @@ class WorldBuilder {
       if (hd < 17) p += 0.22 * (1 - hd / 17);
     } else if (d > -3) p = 0.07;
     const edge = Math.min(x, y, W - 1 - x, H - 1 - y);
-    if (edge < 3) p = Math.max(p, 0.55);
+    if (edge < 3 && !inSeam(x, y)) p = Math.max(p, 0.55);
     if (x < 35 && y < 36) p = Math.max(p, 0.14); // pines around the quarry
     if (x > 133 && y > 70) p = Math.max(p, 0.05); // the far fields
     if (x > 48 && x < 126 && y > 87) p = Math.min(p, 0.015); // open meadow
@@ -1635,8 +1684,9 @@ class WorldBuilder {
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         const i = y * W + x;
+        const mi = m.idx(x, y);
         if (this.occ[i]) continue;
-        const g = m.ground[i];
+        const g = m.ground[mi];
         const h = this.hash(x, y, 81);
         const n = this.noise(x, y, 0.09, 82);
         const meadow = x > 48 && x < 126 && y > 87;
@@ -1679,7 +1729,7 @@ class WorldBuilder {
             break;
           case T.WATER:
           case T.DEEP_WATER: {
-            const dp = depth[i];
+            const dp = depth[mi];
             const lake = x > 112 && y > 34 && y < 70;
             if (dp === 1 && y < 46 && lake && h < 0.35) d = DECO.REEDS;
             else if (dp === 1 && !lake && h < 0.2) d = DECO.REEDS;
@@ -1693,7 +1743,7 @@ class WorldBuilder {
         // Around camp fires the ground is scorched.
         if (g === T.DIRT && this.nearFire(x, y)) d = h < 0.5 ? DECO.ASH : d;
         if ((g === T.DIRT || g === T.GRASS) && this.inCamp(x, y) && h > 0.9) d = DECO.STRAW;
-        if (d) m.deco[i] = d;
+        if (d) m.deco[mi] = d;
       }
     }
   }
@@ -1778,6 +1828,8 @@ class WorldBuilder {
     this.loc('south_meadow', { x: 48, y: 88, w: 78, h: 31 }, [86, 100]);
     // One row of verge on each side: the painted road wanders a little past its tiles.
     this.loc('kings_road', { x: 0, y: KINGS_ROAD_Y - 1, w: W, h: 5 }, [70, KINGS_ROAD_Y + 1]);
+    // The open land of the vale (where people wander when they go "out"); the wider
+    // world beyond it is wilds.js's own places, under 'wider_world'.
     this.loc('wilds', { x: 0, y: 0, w: W, h: H }, [140, 100]);
   }
 
@@ -1899,6 +1951,10 @@ class WorldBuilder {
 export function generateWorld(game, seed = 1) {
   const b = new WorldBuilder(game, seed);
   b.build();
+  // The wider world around the vale, joined to it on foot (src/world/wilds.js).
+  buildWilds(b, WorldBuilder);
+  b.map._depth = null;
+  b.map.version++;
   b.map.waterDepth();
   const locations = new LocationIndex(b.locs);
   return { map: b.map, objects: b.objects, locations, spawns: b.spawns, problems: b.problems };

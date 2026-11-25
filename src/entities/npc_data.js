@@ -702,7 +702,7 @@ export const NPC_PROFILES = [
       { from: 21, to: 24, activity: 'sleep', at: 'general_store' },
     ],
     facts: [
-      { id: 'garrick_shop', text: "Gale's Goods sells potions, bread, lanterns and berries, and Garrick buys pelts, gel, bone and ore from adventurers.", minFamiliarity: 0, topic: 'work' },
+      { id: 'garrick_shop', text: "Gale's Goods sells potions, bread, lanterns and berries, and Garrick buys anything worth anything: pelts, gel, bone and ore from adventurers at his own prices, and whatever else you carry in at half what it's worth.", minFamiliarity: 0, topic: 'work' },
       { id: 'garrick_maren_oil', text: 'Garrick sold Maren a flask of lamp oil and sixty feet of rope the day before she vanished. She paid without haggling, which worried him.', minFamiliarity: 0, topic: 'maren' },
       { id: 'garrick_maren_lantern', text: 'Maren also bought a hooded lantern, the kind miners use "where the air goes strange".', minFamiliarity: 15, topic: 'maren' },
       { id: 'garrick_roads', text: "Garrick knows the King's Road from the coast to the mountains. North of Hearthvale it is barely a road at all.", minFamiliarity: 0, topic: 'village' },
@@ -758,6 +758,8 @@ export const NPC_PROFILES = [
         { id: 'raw_fish', price: 6 },
       ],
       buys: { wolf_pelt: 8, slime_gel: 2, bone: 2, iron_ore: 4, crystal: 10, moonpetal: 5, herb: 2, berries: 1, wood: 1, raw_fish: 3, turnip: 2, wheat: 1 },
+      // Garrick buys anything worth anything (DESIGN §32.9): half what it is worth.
+      buysAll: 0.5,
     },
   },
 ];

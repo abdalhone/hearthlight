@@ -175,8 +175,8 @@ export class TitleScreen {
     // Death is dangerous (§27): say so before the journey starts, every time.
     const soft = this.game.settings?.deathMode === 'home';
     const death = soft
-      ? 'If you fall, someone may carry you to Mira in time. If not, you wake at home, a little poorer (you chose this in Settings).'
-      : 'If you fall, you lie bleeding: call for help, and Lyra or the village may carry you to Mira in time. If nobody does, you die — and unless Sister Aveline keeps a flame for you at the chapel, your story ends for good: this save closes and moves to Past lives. You can soften this in Settings.';
+      ? 'If you fall, someone may carry you to Mira in time. If not, you wake at home, and every coin you carried stays where you fell until you walk back for it (you chose this in Settings).'
+      : 'If you fall, you lie bleeding: call for help, and Lyra or the village may carry you to Mira in time. If nobody does, you die — and unless Sister Aveline keeps a flame for you at the chapel, your story ends for good: this save closes and moves to Past lives. If the flame brings you back, every coin you carried stays where you fell. You can soften this in Settings.';
     const text = this.hasSave ? `${death} Your saved game will be replaced the next time this new one saves; Lyra will not remember the old one.` : death;
     this.ui.confirm({ title: this.hasSave ? 'Start a new journey?' : 'Death is dangerous here', text, yes: this.hasSave ? 'Start fresh' : 'Begin', no: 'Go back', danger: this.hasSave }).then((yes) => yes && start());
   }

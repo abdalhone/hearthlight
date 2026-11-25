@@ -1260,6 +1260,15 @@ So "mending the Song" would mean finding willing singers for every verse, which 
 - **South Meadow** — South of the village: flowers, rabbits, and puddle-slimes after drift-weather. This is where Wenna stood in the brightfall. The hem runs through its far side, and it is the best place in the valley to watch the ruins' lights, which is why Pip and Tansy go there.
 - **King's Road** — It runs along the village's southern edge from west to east, crosses the stream at the old bridge, and then splits: the Bright Road goes south-east, and the King's Road bends north to the fork. One waystone in three is still lit. Wolves run at dusk where the road passes under the edge of the wood, and that is where Lyra and the stranger stood together.
 
+### The roads beyond the vale (on the map since round fourteen)
+
+The vale is no longer the whole map. Its three roads walk on into the wider world, on foot, with no teleporting and no loading screens (DESIGN §32). Distances are squeezed for play, not skipped: a minute and a half's walk from the square to Brindlecombe or to the Crown Ring stands for the day and a half the villagers mean.
+
+- **West, the King's Road** — Past the edge of Reed Farm the road crosses the **western heath**: heather, gorse, turned boars by day and wolves at dusk. A mile out stands **the dead waystone** Lyra made burn for one night last spring. Further on the road fords the **Bracken Water** (ankle-deep, nobody ever built a bridge) and reaches **the Long Mile**, a waystone that still burns: its light is a small ward, and carters sleep under it and nowhere else. At **the west fork** a fingerpost points south-west to Saltmere, twelve days by the coast, and north-west up the old **Brindle lane**. The Saltmere road runs on to **the Greyford**, where the spring floods took the bridge over the river Grey; the road goes on beyond it and this year nobody from the vale can follow.
+- **Brindlecombe** — Up the Brindle lane, the village the Greywinter emptied. Its doors still stand open, the grey has never quite lifted from its lanes (the colour drains as you walk in), and its wardstone is cold. Its chapel's altar holds empty flame-holders bearded with old wax. The Coll house has two children's heights cut in the door frame, S. and V.; Jory Fallow's house has his coat on its peg; the mill ledger is open at the last day of trading. Someone has tidied one grave, laid a bright lamp-penny on the Colls', and left new candle stubs and a grey wool knot at the foot of the wardstone: Varek's men have been trying to wake it. The restless dead walk its graveyard after dark.
+- **North, the Crown path** — From the heart of Whisperwood the old path climbs through **the deep Whisperwood**, close and uncoppiced, past a mossy Lanternwright **marker stone** where moonpetals grow (the stranger can read one word on it: "up"), over a cold mountain stream, to **the treeline camp** by a tarn, where Hess's lean-to still stands and Lyra and Hess slept the night before they found the stranger. Above it the path switchbacks up the scree of **the Hollowcrown** into snow, and on the shoulder stands **the Crown Ring**: nine stones, three broken, deep in snow at midsummer, with a circle in the middle that has stayed green since the snow melted round a sleeping stranger.
+- **East, round the lake** — Past the bridge the King's Road bends north round the far shore of Mirror Lake to **the Cinderwick fork**, where its waystone burns red in Cinderwick oil and a carter's cracked cart waits with its barrels. Above it on the hill is **the bandits' lookout** (a stake fence, a brazier, a red fist banner with a grey wool knot under it), which watches both roads. The **oil track** east is buried under a slide of black shale; the Carters' Hall's notice says the carts come round by Brightwater till it is cleared. North of the fork the **Owlsend track** climbs into the pines until the snow's fallen trees close it. Nobody has come down it since midsummer.
+
 ### Homes for the people the game does not have yet
 
 The ten new villagers need homes and places to spend their days. Where an existing location fits, it is named by its id.
@@ -1285,13 +1294,11 @@ The ten new villagers need homes and places to spend their days. Where an existi
 
 ### Beyond the map
 
-- **The Hollowcrown and the Crown Ring** — A day and a half north. Nine stones, snow at midsummer, and a circle where the snow once melted.
+The Hollowcrown and the Crown Ring, the Cinderwick fork, the dead waystone and Brindlecombe are on the map now (above). Still beyond it:
+
 - **The Weeping Cut** — The small dungeon behind the quarry's north face, sealed with forgesung iron five years ago.
-- **The Cinderwick fork** — Where the King's Road meets the oil track, below the bandits' hill. Its waystone still burns.
-- **The dead waystone toward Saltmere** — A mile down the road. Lyra made it burn for one night last spring.
-- **Brindlecombe** — A day and a half west, its doors still open and a dead wardstone in its square.
-- **Owlsend** — Three days north up the track. Its lamps went dark at midsummer.
-- **Brightwater**, **Saltmere**, **Cinderwick**, **the Glasswater Isles** and **the Pale Reach** — See Section 1.
+- **Owlsend** — Three days north up the track, past the fallen pines. Its lamps went dark at midsummer.
+- **Brightwater**, **Saltmere**, **Cinderwick**, **the Glasswater Isles** and **the Pale Reach** — See Section 1. The Bright Road south-east, the Saltmere road past the Greyford and the oil track past the slide all lead toward them, and all three are closed for now.
 
 ---
 

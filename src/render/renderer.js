@@ -196,10 +196,12 @@ export class Renderer {
     // Where to draw from: the camera plus shake, kept inside the map.
     let vx = cam.x + (cam.offX || 0);
     let vy = cam.y + (cam.offY || 0);
+    const mx = (map.x0 || 0) * TILE;
+    const my = (map.y0 || 0) * TILE;
     const mw = map.w * TILE;
     const mh = map.h * TILE;
-    vx = mw > this.vw ? Math.min(Math.max(vx, 0), mw - this.vw) : (mw - this.vw) / 2;
-    vy = mh > this.vh ? Math.min(Math.max(vy, 0), mh - this.vh) : (mh - this.vh) / 2;
+    vx = mw > this.vw ? Math.min(Math.max(vx, mx), mx + mw - this.vw) : mx + (mw - this.vw) / 2;
+    vy = mh > this.vh ? Math.min(Math.max(vy, my), my + mh - this.vh) : my + (mh - this.vh) / 2;
     const ox = Math.floor(vx);
     const oy = Math.floor(vy);
     this.viewX = vx;
