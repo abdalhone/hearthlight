@@ -5,7 +5,7 @@
 //   - Settings: every setting key exactly once in the page, five tabs that fit without
 //     sideways scrolling, every pane without sideways overflow;
 //   - the in-game menu: Resume, the places (Spellbook, Bag, Missions, Lyra, Character,
-//     Village, Book + Prologue), Settings, Save, Quit; its items unique, none of them a
+//     Village, Home, Book + Prologue), Settings, Save, Quit; its items unique, none of them a
 //     second copy of a button the HUD shows (Talk, Menu), all on screen without scrolling;
 //     a ✕ closes it as it closes every panel (the phone pass); each place opens on top of
 //     the menu and Esc (or a tap on ‹ Menu) comes back to it; touch taps; arrow keys walk the
@@ -343,8 +343,8 @@ async function run(v) {
     return { id: p?.id, paused: window.__game.paused, items: items.map((b) => b.dataset.item), labels: items.map((b) => b.querySelector('.menu-label').textContent), close: x && getComputedStyle(x).display !== 'none' && xr.width >= 40 && xr.height >= 40, hud };
   });
   check(`[${L}] menu: opens and pauses`, menu.id === 'pause' && menu.paused, JSON.stringify(menu.id));
-  const want = ['resume', 'spellbook', 'inventory', 'missions', 'lyra', 'character', 'village', 'book', 'prologue', 'settings', 'save', 'quit'];
-  check(`[${L}] menu: Resume, Spellbook, Bag, Missions, Lyra, Character, Village, Book (+ Prologue), Settings, Save, Quit`, menu.items.join() === want.join(), menu.items.join());
+  const want = ['resume', 'spellbook', 'inventory', 'missions', 'lyra', 'character', 'village', 'home', 'book', 'prologue', 'settings', 'save', 'quit'];
+  check(`[${L}] menu: Resume, Spellbook, Bag, Missions, Lyra, Character, Village, Home, Book (+ Prologue), Settings, Save, Quit`, menu.items.join() === want.join(), menu.items.join());
   check(`[${L}] menu: every item once`, new Set(menu.items).size === menu.items.length && new Set(menu.labels).size === menu.labels.length, menu.labels.join('|'));
   // The Bag's home is the menu now (the HUD keeps only what play needs every second);
   // nothing in it may repeat a button the HUD shows, and the chat lives on the HUD.

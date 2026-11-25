@@ -1666,8 +1666,8 @@ Stop* (trust 72; its lesson waits while she is unsure: a talk step's `trust`) an
 ## 24. One clean menu (the author: "the settings [are] so multiplied… when I press the menu I see all the things that I see in the HUD")
 
 - The pause menu never repeats what the HUD already gives one tap away. One menu: Resume,
-  Spellbook, Missions, Lyra (her Mind panel), The Book of Halcyre, Settings, Save, Quit to
-  title. Settings are grouped into a few tabs (Game, Controls, Sound & voices, Minds
+  Spellbook, Missions, Lyra (her Mind panel), Home (r13: marks the way to your bed, §19.8),
+  The Book of Halcyre, Settings, Save, Quit to title. Settings are grouped into a few tabs (Game, Controls, Sound & voices, Minds
   (Claude), Display), each option exactly once, with short plain explanations; nothing
   duplicated between the settings, the menu and the HUD.
 - **Game → Practice** (r12; the author: "can you add in the settings a thing that will
