@@ -1,6 +1,10 @@
 // Finds what an actor can interact with (NPCs, Lyra, doors, chests, trees...) and
 // runs the interaction. Entities and world objects opt in by implementing
 // canInteract(actor), interactLabel(actor) and interact(actor).
+// Never through a wall (DESIGN §31.1, the same rule as a blow): a bed, a chest or a
+// shopkeeper on the far side of a house wall is out of reach from the street.
+
+import { wallBetween } from '../world/walls.js';
 
 export class Interactions {
   constructor(game) {
@@ -26,6 +30,11 @@ export class Interactions {
       const dy = ty - actor.y;
       const d = Math.hypot(dx, dy);
       if (d > this.range + extra) return;
+      try {
+        if (wallBetween(g, actor.x, actor.y - 3, tx, ty - 3)) return;
+      } catch {
+        /* no map yet: nothing stands between */
+      }
       // Prefer things in front of the actor.
       const facingBonus = d > 0 ? (dx * fx + dy * fy) / d : 1;
       out.push({ target, score: d - facingBonus * 10 });

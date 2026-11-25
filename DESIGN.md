@@ -2177,6 +2177,10 @@ One rule for every attack, the tiles projectiles already stopped at: `map.blocks
   wall stays in reach) and `canReach(game, a, b)` (feet lifted 3 px, where actors collide).
 - The sword and every creature's bite (`combat.melee`) skip anyone `canReach` says no to,
   and so does the finishing blow on someone fallen (§29.1 `murder.finishTarget`).
+- So does the use button (`core/interact.js` `candidates`): a bed, a chest or a shopkeeper
+  on the far side of a house wall is out of reach from the street (replayed: "Garrick's bed"
+  was offered through the general store's east wall). Doors, windows and signs on a wall
+  stand on its tile, an end tile, so they are used as before.
 - Weaves (`bodies.js` `reaches(rt, x, y, a)`, `magic.blocked(...)`): rings, bursts, cones, the
   strike's fist (thrown into a wall it lands on the wall's face) and wave, beams (from the point
   of the ray nearest the target), weave walls, trails, rune triggers, reactions' spread, and

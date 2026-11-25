@@ -324,3 +324,34 @@ test('a notice under a finger stays put until the tap is over', async () => {
     globalThis.Node = saved.Node;
   }
 });
+
+// Replayed at the general store's east wall: "Garrick's bed" was offered to the player in the
+// street, through the wall. Reaching for something follows the wall rule of every blow.
+test('nothing is used through a wall: a chest inside a house is out of reach from the street', async () => {
+  const { makeGame: makeSurvival } = await import('./survival_world.mjs');
+  const { makeObject } = await import('../src/world/objects.js');
+  const g = makeSurvival({ hour: 12 });
+  const map = g.map;
+  let spot = null;
+  for (let ty = 4; ty < map.h - 4 && !spot; ty++)
+    for (let tx = 4; tx < map.w - 4 && !spot; tx++) {
+      if (!map.blocksProjectile(tx, ty) || !map.buildingAt(tx, ty)) continue;
+      // A one-tile wall, the street to its east and floor to its west.
+      if (map.blocksProjectile(tx + 1, ty) || map.blocksProjectile(tx - 1, ty) || g.isBlockedTile(tx + 1, ty, null) || g.isBlockedTile(tx - 1, ty, null)) continue;
+      if (map.buildingAt(tx + 1, ty) || g.objects.objectsAt?.(tx - 1, ty)?.length) continue;
+      spot = { tx, ty };
+    }
+  assert.ok(spot, 'a house wall with floor inside and street outside');
+  const chest = g.objects.add(makeObject(g, { objType: 'chest', id: 'test_chest', tx: spot.tx - 1, ty: spot.ty }));
+  const P = g.player;
+  P.x = (spot.tx + 1) * 16 + 1;
+  P.y = spot.ty * 16 + 14;
+  P.faceDir?.('left');
+  assert.ok(Math.hypot(chest.x - P.x, chest.y - P.y) <= g.interactions.range, 'within reach as the crow flies');
+  assert.notEqual(g.interactions.best(P)?.target, chest, 'not through the wall');
+  // The same reach with no wall between: it is there to use.
+  const open = g.objects.add(makeObject(g, { objType: 'chest', id: 'test_chest2', tx: spot.tx + 2, ty: spot.ty }));
+  P.x = (spot.tx + 3) * 16 + 9;
+  P.faceDir?.('left');
+  assert.equal(g.interactions.best(P)?.target, open);
+});
