@@ -117,7 +117,7 @@ export class Game {
     this.story = new StoryDirector(this); // cutscenes, the prologue, story scenes, the Book of Halcyre
     this.bosses = new BossManager(this); // the five bosses, their arenas, fights and glyph-shards (§22.3)
     this.survival = new Survival(this); // falling, rescue, the sickroom, the kept flame, death (DESIGN §27)
-    installDeathView(this); // its screens: the heartbeat line, Call for help, the memorial
+    installDeathView(this); // its screens: the countdown ring, Call for help, the memorial
 
     // World pieces, created by buildWorld().
     this.map = null;

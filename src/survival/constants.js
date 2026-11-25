@@ -16,8 +16,10 @@ export const RATE = Object.freeze({
   water: 1.8, // cold water steals warmth fast
 });
 
-export const CRAWL_SPEED = 9; // px per second
-export const CRAWL_BUDGET = 72; // px: "a little" (four and a half tiles)
+export const CRAWL_SPEED = 11; // px per second (walking is 60): dragging yourself, slowly
+export const CRAWL_BUDGET = 88; // px: "a little" (five and a half tiles)
+export const NPC_CRAWL = 0.8; // a fallen villager drags themselves away from danger this much slower
+export const SMEAR_EVERY = 2.5; // px dragged between blood marks
 export const CALL_COOLDOWN = 3; // seconds between shouts
 export const CALL_RADIUS = 360; // px a shout for help carries
 export const SEE_RADIUS = 160; // px within which people see someone fall
@@ -25,6 +27,10 @@ export const LYRA_HEARS = 1000; // px: she keeps an eye on the stranger she trav
 export const LYRA_HEARS_APART = 480; // px: once she has cut them off, only her ears
 export const GUARD_HEARS_WANTED = 1400; // px: the watch is already looking for them
 export const ASLEEP_EAR = 0.35; // a sleeper hears a shout this much less far
+
+// The heart while you bleed (§27, r14): it races as the window closes (the body fighting
+// for blood), then falters in the last stretch before it stops.
+export const HEART_BPM = Object.freeze({ start: 66, end: 158, falter: 0.12 });
 
 // Slow motion when the player falls (real seconds).
 export const SLOWMO_SCALE = 0.22;
@@ -69,8 +75,9 @@ export const OUT_FOR_A_DAY = 900; // game seconds: nobody came in time
 
 // Death.
 export const FLAME_PRICE = 60;
-export const FLAME_COIN_LOSS = 0.4;
-export const HOME_COIN_LOSS = 0.1;
+// Dying and coming back costs every coin you carry: they stay where you fell, in an
+// ember-ring, until you walk back for them or die again (survival/ember_ring.js).
+export const ARREST_FINE = 0.1; // the watch keeps this much of your coin when it hauls you in
 export const HOME_WAKE_HP = 0.5;
 export const FLAME_WAKE_HP = 0.5;
 export const PAST_LIVES_KEY = 'hearthlight.pastlives.v1';

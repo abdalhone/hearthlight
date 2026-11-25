@@ -9,6 +9,9 @@ import { applyGearLook } from '../gear/looks.js';
 // Prices the bosses carry (DESIGN §25: "earned like other components"): a glyph-shard
 // of each lies where the boss fell, beside its own.
 export const BOSS_PRICES = Object.freeze({ varek: 'berserk', greyjaw: 'bloodprice', lakes_hum: 'glass', bone_warden: 'overdraw' });
+// A second shard some bosses carry, under its own key (so taking one never marks the other):
+// the Bone Warden stood long after it should have fallen, and the last stand is in it.
+export const BOSS_SECOND_PRICES = Object.freeze({ bone_warden_laststand: { boss: 'bone_warden', id: 'laststand' } });
 
 // One call wires DESIGN §25–26 into a game: the stat pipeline (game.stats), levels and
 // points (game.progression), equipment and the forge (game.gear) and the prices'
@@ -66,7 +69,8 @@ export function installProgression(game) {
     // A shard left on the ground when the game was saved is not lost: it comes to you.
     bus?.on?.('game_start', (p) => {
       if (!p?.loaded || !game.flags) return;
-      for (const [boss, id] of Object.entries(BOSS_PRICES)) {
+      const all = [...Object.entries(BOSS_PRICES), ...Object.entries(BOSS_SECOND_PRICES).map(([key, v]) => [key, v.id])];
+      for (const [boss, id] of all) {
         if (game.flags[`price_shard_${boss}`] !== 'dropped') continue;
         game.flags[`price_shard_${boss}`] = 'taken';
         grantGlyph(game, 'price', id, `boss:${boss}`);
@@ -131,8 +135,11 @@ function cap(t) {
 }
 
 function dropBossPrice(game, p) {
-  const boss = p?.id;
-  const id = BOSS_PRICES[boss];
+  for (const [key, v] of Object.entries(BOSS_SECOND_PRICES)) if (v.boss === p?.id) dropShard(game, p, key, v.id, 34);
+  dropShard(game, p, p?.id, BOSS_PRICES[p?.id], 0);
+}
+
+function dropShard(game, p, boss, id, dx = 0) {
   if (!id || !game.flags || game.flags[`price_shard_${boss}`]) return;
   // (While "Try all magic" runs every price is open: the real set says if it is earned.)
   const known = game.magic?.realUnlocked || game.magic?.unlocked;
@@ -142,7 +149,7 @@ function dropBossPrice(game, p) {
   const y = Number.isFinite(b?.y) ? b.y : game.player?.y ?? 0;
   game.flags[`price_shard_${boss}`] = 'dropped';
   try {
-    if (game.entities?.add) dropGlyphShard(game, 'price', id, x, y + 18, { source: `boss:${boss}`, boss, rise: true, vx: 0, vy: 18 });
+    if (game.entities?.add) dropGlyphShard(game, 'price', id, x + dx, y + 18, { source: `boss:${boss}`, boss, rise: true, vx: 0, vy: 18 });
     else grantGlyph(game, 'price', id, `boss:${boss}`);
   } catch {
     game.flags[`price_shard_${boss}`] = 'taken';

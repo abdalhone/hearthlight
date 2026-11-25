@@ -232,7 +232,7 @@ export class PixelFxDirector {
     }
     // Berserk's price on the player: seething until it runs out.
     const p = g.player;
-    if (p && !p.removed && g.prices?.state?.berserk && !p.downed) add(p, 'st-rage');
+    if (p && !p.removed && (g.prices?.state?.berserk || g.prices?.burning?.()) && !p.downed) add(p, 'st-rage');
     this._sync(want);
     this._ambience(dt);
   }

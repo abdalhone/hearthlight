@@ -244,7 +244,8 @@ export class Audio {
   }
 
   // A heartbeat (DESIGN §27): lub-dub, low and close, under the muffled world.
-  heartbeat(strength = 0.7) {
+  // `bpm` (optional) brings the dub closer to the lub as the heart races.
+  heartbeat(strength = 0.7, bpm = 60) {
     if (!this.ctx || this.ctx.state === 'closed') return;
     const ctx = this.ctx;
     const t = ctx.currentTime + 0.01;
@@ -256,7 +257,8 @@ export class Audio {
     try {
       tone(ctx, out, t, { type: 'sine', freq: 64, to: 44, dur: 0.16, a: 0.006, gain: 0.85 });
       tone(ctx, out, t, { type: 'triangle', freq: 120, to: 60, dur: 0.07, gain: 0.25, filter: { type: 'lowpass', freq: 400 } });
-      tone(ctx, out, t + 0.2, { type: 'sine', freq: 56, to: 40, dur: 0.18, a: 0.006, gain: 0.6 });
+      const gap = Math.max(0.11, Math.min(0.2, (60 / Math.max(30, bpm)) * 0.34));
+      tone(ctx, out, t + gap, { type: 'sine', freq: 56, to: 40, dur: 0.18, a: 0.006, gain: 0.6 });
     } catch {
       /* sound is optional */
     }

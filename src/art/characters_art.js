@@ -10,7 +10,7 @@
 //   portrait(atlas, key, expression = 'neutral') -> 48x48 canvas (cached)
 
 import { makeCanvas } from './pixel.js';
-import { paintHumanoid, HUMANOID_ANIMS, DIRECTIONS, ANCHOR_X, ANCHOR_Y, FRAME } from './characters_humanoid.js';
+import { paintHumanoid, HUMANOID_ANIMS, CRAWL_ANIM, DIRECTIONS, ANCHOR_X, ANCHOR_Y, FRAME } from './characters_humanoid.js';
 import { paintCreature, CREATURE_ANIMS, CREATURE_SPRITES } from './creatures_art.js';
 import { paintPortrait, EXPRESSIONS, PORTRAIT_SIZE } from './characters_portrait.js';
 import { normalizeAppearance, PRESET_APPEARANCES } from './characters_appearance.js';
@@ -21,7 +21,7 @@ export const CHARACTER_ANIMS = Object.keys(HUMANOID_ANIMS);
 export const CHARACTER_DIRS = DIRECTIONS;
 
 // Anims a creature may not have: what to show instead.
-const ANIM_FALLBACK = { cast: 'attack', work: 'idle', sit: 'idle', sleep: 'down', bed: 'sleep', run: 'walk', attack: 'idle' };
+const ANIM_FALLBACK = { cast: 'attack', work: 'idle', sit: 'idle', sleep: 'down', bed: 'sleep', run: 'walk', attack: 'idle', crawl: 'down' };
 
 const appearances = new Map(); // key -> normalized appearance (for portraits)
 const portraitCache = new Map();
@@ -58,7 +58,7 @@ function registerFrames(atlas, key, table, painter, kind) {
     anims[anim] = { names, frames: spec.frames, fps: spec.fps, loop: spec.loop };
   }
   // Resolve fallbacks once so drawing never builds strings.
-  for (const anim of [...CHARACTER_ANIMS, 'run']) {
+  for (const anim of [...CHARACTER_ANIMS, 'run', 'crawl']) {
     if (anims[anim]) continue;
     anims[anim] = anims[ANIM_FALLBACK[anim]] || anims.idle;
   }
@@ -79,6 +79,41 @@ export function ensureCharacter(atlas, key, appearance = {}) {
     return true;
   } catch (err) {
     console.error('[characters] could not build', key, err);
+    return false;
+  }
+}
+
+// The crawl (DESIGN §27) is painted only for someone who has fallen: 16 frames per
+// character would cost every boot a few hundred milliseconds on a phone for a pose most
+// villagers never need. Until then 'crawl' falls back to the lying frame. Idempotent.
+export function ensureCrawl(atlas, key) {
+  const meta = atlas?.getMeta?.(`char:${key}`);
+  if (!meta) return false;
+  if (meta.crawlBuilt) return true;
+  if (meta.kind !== 'humanoid') return false;
+  let a = appearances.get(key);
+  if (!a) {
+    const preset = PRESET_APPEARANCES[key] || NPC_PROFILES.find((p) => p.id === key)?.appearance;
+    if (!preset) return false;
+    a = normalizeAppearance({ ...preset, key });
+  }
+  try {
+    const names = {};
+    for (const dir of DIRECTIONS) {
+      const name = `char:${key}:crawl:${dir}`;
+      const frames = [];
+      for (let f = 0; f < CRAWL_ANIM.frames; f++) {
+        const sp = paintHumanoid(a, 'crawl', dir, f);
+        frames.push(toCanvas(sp.render(), sp.w, sp.h));
+      }
+      atlas.add(name, frames, { ox: ANCHOR_X, oy: ANCHOR_Y, fps: CRAWL_ANIM.fps });
+      names[dir] = name;
+    }
+    meta.anims.crawl = { names, frames: CRAWL_ANIM.frames, fps: CRAWL_ANIM.fps, loop: true };
+    meta.crawlBuilt = true;
+    return true;
+  } catch (err) {
+    console.error('[characters] could not build the crawl', key, err);
     return false;
   }
 }
