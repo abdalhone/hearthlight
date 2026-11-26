@@ -2646,6 +2646,52 @@ it (`game.party?.weighJoin?.(e)`), so any workstream may land first.
   learns of it from those who heard her words clearly (`hears`, `LOUD.talk`) and then by
   meeting, never all at once.
 
+### 33.4 Every place a talk could lock, and why it no longer does (talk, T-A0)
+
+The audit of round 14b (grep of `src/` for lock wording, and every `return` in the chat's
+send, sendToVillager, selectTarget and applyTarget). Each row is fixed, a spoken line (their
+own words, allowed), or a physical reason. `tests/talk_gates.test.mjs` keeps it so: a matrix
+of feelings (terror, dread, wanted near, mourning, wronged, cold, opinion 0, asleep, a
+"Butcher" title, Lyra left and gone) in which the words are always kept and an answer or a
+shown act always comes; only dead, downed, far, walls and a cutscene give a reason; and a
+static grep for "won't talk to you", "will not talk", "beyond a word", "can't talk",
+"catch that", `refusesTalk`, `'refuses'`.
+
+| Where | Was | Now |
+|---|---|---|
+| `chat_target.whyNotHeard` | 'gone', 'downed', 'far', 'walls' (distance and roof) | only `dead`, `downed` (or unconscious), `cutscene`, `far`, `walls`; words carry by the hearing rule (`hears`) as well as the roof; asleep is never a reason; `notHeardText` words each as a body, never a feeling |
+| `village.playerSays`, terror and dread | an early return with a local fear line: no Claude, no `afterPlayerSays` | `heard()` first (their talk row, and a note when asleep), then their own mind: Claude is told "you are terrified of them…" / "never at ease"; a warm line in a frightened mouth falls back to their fear; offline the fear banks; `afterPlayerSays` always; the flee is their `action` |
+| `TalkSession` | "X doesn't seem to catch that." / "seems lost in thought" | silence is an answer (`ok`, `silent`, the act as the line); a fault or a timeout reads "X hears you, and takes a moment over it without a word" / "…is a long while finding an answer"; the words were already theirs |
+| `chat.send` (Lyra) | "Lyra didn't catch that. Try again in a moment." | the brain records the words before anything else; a fault shows her hearing it (`silenceAct` kind 'heard') |
+| chat toasts and `partingLine` | "is hurt and can't talk" | "is down and can't hear you now", "is dead", "can't hear you through the walls" |
+| `brain._unreachable` | 'gone' for a removed Lyra | `dead` ("Lyra is dead."), `far`, `downed`, `cutscene`; gone hears within 16 tiles (D9); `reflect` keeps no diary for a dead Lyra |
+| `autonomy_consent` gone veto | above the talk pass-through: promises and notes to a gone Lyra were refused | words between them land first; requests still get her `no_gone` |
+| `npc_dialogue.mainOptions` afraid | `[Back away]` only | `Say something` (focuses the free field), `Give yourself up` (wanted, at the watch; or hunted, anywhere), `Back away` |
+| `npc.interact` on someone fleeing you | a shout, nothing else | `ui.talkTo(id)`: the chat opens to them; they answer in fear as they run, until out of earshot |
+| `murder/lines.js` mournGreet | "I can't talk. Not today." | "{who}… we buried {him} {when}. What is it?" |
+| `village_view.canTalkTo` | unused feature test | deleted |
+| `voices.js` Hobb | "Didn't catch that. This is my bad ear." | "Say it into this ear, the other one's gone to wax." |
+| Spoken refusals (allowed) | Mira wronged: "I can't… I can't talk to you."; Pip grave; `left_reply` | their own words, an answer, not a lock |
+| `ui.js` STATE_LINES gone, `lyra_view` blurb, `hud.js` farewell, `mind_panel` | "has cut you out of her life" | descriptions, not locks (party owns the HUD and the People view; the words say she still hears you) |
+
+Silence (§23.3) now also has **actions**: a reply may carry `action` (turn_away, walk_off,
+flee, glare, cry, shove_past); an empty say with an action is a silence shown as that action
+("Bram hears you. He says nothing, and walks off without looking back."), done in the world
+(`village.doAction`); with words, the action is a narration row after them. An empty say
+with no action is no answer: their own words instead. A silence is remembered by them ("you
+said … to me, and I gave you nothing back").
+
+**Lyra cut off (gone), the way back** (T-A2, item 4): she hears within 16 tiles (she keeps
+12 away, so walking up is always heard); `gone_reply` (mostly silence, "No.", "Go.", "I
+heard you.") offline; her gone bark is never a reply (only when the player has not spoken
+in 10 s). An apology is weighed harder than a companion's (`_goneApology`: never believed
+within two days of the last blow); a believed apology, two days, and a good deed she sees
+(any positive ledger entry since) move gone to **left** (`goneWayBack`, the one step
+`setCompanionship` allows out of gone: `flags.lyra_gone` is cleared and her words stay in
+`flags.lyra_farewell`); from there the old amends path applies. She never rejoins on her
+own while gone. `answerGone(game)` (her_state.js) gives her spoken no for asks made while
+she is gone or left. An old save's `lyra_gone.farewell` moves to `lyra_farewell`.
+
 ## 34. Party and People (workstream party; the author: "I want to be able to take anyone as my companion")
 
 ### 34.1 The companion role (`src/core/party.js`, `game.party`)

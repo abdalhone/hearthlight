@@ -11,6 +11,7 @@ import { RE, isApology, parseOffer, parsePromiseText, parseAskText } from './aut
 import { weighWorth, WorthTracker, WORTH, worthLine, topCost } from './autonomy_worth.js';
 import { Outings } from './autonomy_outing.js';
 import { seesActor } from '../sight.js';
+import { isSilenced } from '../hearing.js';
 import { openAgenda, chooseNext, agendaText } from './autonomy_open.js';
 
 // Lyra's own will (DESIGN §16). She lives for herself: she keeps her own day, her own
@@ -43,6 +44,8 @@ const LEFT_TILES = 10; // how far she keeps from the player once she has left th
 const WARY_TENSE = { fear: 25, affinity: -30 };
 const WARY_EASED = { fear: 15, affinity: -20 };
 const GONE_TILES = 12; // gone: further still, and she crosses the lane to keep it
+const GONE_APOLOGY_DAYS = 2; // gone: no apology is believed sooner after the last blow
+const GONE_BELIEF = 0.55; // gone: how much belief an apology needs (a companion's is 0.5)
 const HELP_GAP = 8; // seconds between calls for help, unless things get worse
 const ACCIDENT_GAP = 30; // stray clips within this count as one (a fight's worth)
 // What she shouts when she calls someone (LORE §7, "Lyra's people").
@@ -83,6 +86,8 @@ const CAUSES = {
   recovered: { reason: 'I chose to travel with you, and I still do.', memo: 'I’ve decided {P} is all right after all. I’m done keeping my distance.' },
   invited: { reason: 'You asked me to come along, and I wanted to.' },
   rejoined: { reason: 'You made amends, and I chose to travel with you again.', memo: 'I chose to travel with {P} again. One more chance.' },
+  // Round 14b (T-A2): from cut off to broken off, by her own weighing.
+  gone_back: { reason: 'You said sorry and meant it, and I saw you do right by me since. I still won’t walk with you. But I’ll hear you out.', memo: 'I let {P} back a little way. Not into my life. Just within hearing.' },
   back: { reason: 'My errands are done; I chose your company again.' },
   chose: { reason: '{why}' },
 };
@@ -1437,6 +1442,9 @@ export class Autonomy {
   callForHelp(attacker = null, { reason = 'attacked', severity = 1, run = false, silent = false } = {}) {
     const l = this.lyra();
     if (!l) return null;
+    // Held silent (the Unkindling's hold, a silent killing; DESIGN §37.2): no cry at all,
+    // and no "cries out" toast either.
+    if (isSilenced(this.game, l)) return null;
     const now = this.now();
     const sev = clamp(Math.round(num(severity, 1)), 1, 3);
     const awake = !l.downed && l.state !== 'sleep';
@@ -1661,7 +1669,14 @@ export class Autonomy {
   setCompanionship(state, why = '', opts = {}) {
     if (!STATES.includes(state)) return false;
     const previous = this.companionship;
-    if (previous === 'gone' || previous === state) return false;
+    // Gone is for good, but for one step: the way back (round 14b T-A2, item 4) moves her
+    // from gone to left, never further at once.
+    if (previous === state) return false;
+    if (previous === 'gone' && !(opts.fromGone && state === 'left')) return false;
+    if (previous === 'gone' && this.game?.flags) {
+      delete this.game.flags.lyra_gone;
+      this.game.flags.lyra_back_from_gone = { day: this.day() };
+    }
     const cause = CAUSES[opts.cause] || null;
     const vars = { target: opts.vars?.target || 'them', why: why || '', ...(opts.vars || {}) };
     const reason = cause ? fillText(cause.reason, vars) : String(why || '').trim() || this.reason;
@@ -1786,6 +1801,9 @@ export class Autonomy {
       g.flags = g.flags || {};
       // The HUD keeps showing these words, whatever she writes in her diary later.
       g.flags.lyra_gone = { day: this.day(), reason: this.reason, home: home.at, farewell: text };
+      // Her farewell, kept on its own (round 14b T-A2): it outlives the gone flag if she
+      // ever comes partway back, and the letter and People page read it.
+      g.flags.lyra_farewell = { text, day: this.day(), reason: this.reason };
     }
     this.remember(`I cut ${P} out of my life, for good. ${this.reason}`, { importance: 10, tags: ['farewell', 'companionship', 'gone'], about: [PLAYER_ID], type: 'event' });
     const diary = this.mind?.diary;
@@ -1873,7 +1891,10 @@ export class Autonomy {
   // while (hysteresis): together <-> wary, -> left, and back on her own terms.
   reconsider(reason = '') {
     const st = this.companionship;
-    if (st === 'gone') return st;
+    if (st === 'gone') {
+      this._goneWayBack();
+      return this.companionship;
+    }
     // Knocked out by the player: nothing is decided until she comes to.
     if (this.downed?.byPlayer && this.lyra()?.downed) return st;
     const s = this.stats();
@@ -1928,7 +1949,7 @@ export class Autonomy {
   amendsStatus() {
     const s = this.stats();
     const out = { ok: false, missing: null, reason: '' };
-    if (this.companionship === 'gone') return { ok: false, missing: 'gone', reason: 'she has cut you out of her life' };
+    if (this.companionship === 'gone') return { ok: false, missing: 'gone', reason: 'she has cut you off; only an apology she believes, time and a good deed move her' };
     const since = this.companionship === 'left' ? this.stateSince : this._leftSince ?? this.stateSince;
     if (!this.apology?.believed || this.apology.t < since) return { ...out, missing: 'apology', reason: 'she has not heard an apology she believes' };
     if (s.trust < T.amendsTrust) return { ...out, missing: 'trust', reason: `she doesn’t trust you enough yet (${Math.round(s.trust)})` };
@@ -2892,7 +2913,7 @@ export class Autonomy {
 
   receiveApology(text) {
     const st = this.companionship;
-    if (st === 'gone') return { believed: false, gone: true };
+    if (st === 'gone') return this._goneApology(text);
     const now = this.now();
     const span = 3 * this.daySeconds();
     const bad = this.ledger.filter((e) => e.severity < 0 && now - e.t < span);
@@ -2921,6 +2942,50 @@ export class Autonomy {
     }
     this.reconsider('apology');
     return { believed, nothing: false };
+  }
+
+  // Cut off, she still hears an apology (round 14b T-A2, item 4): weighed harder than a
+  // companion's, and never believed in the first two days after the last blow.
+  _goneApology(text) {
+    const now = this.now();
+    const s = this.stats();
+    const P = this.personality();
+    const days = (now - this.lastViolentT) / this.daySeconds();
+    let belief = 0.3 + P.agreeableness * 0.2 + (s.trust / 100) * 0.3 - (s.fear / 100) * 0.4 - this.brokenApologies * 0.2;
+    if (RE.specifics.test(text)) belief += 0.15;
+    if (String(text).length > 30) belief += 0.08;
+    if (this.apology && now - this.apology.t < 120) belief -= 0.15;
+    const believed = days >= GONE_APOLOGY_DAYS && belief >= GONE_BELIEF;
+    this.apology = { t: now, day: this.day(), believed, count: (this.apology?.count || 0) + 1, gone: true };
+    const name = this.playerName();
+    if (believed) {
+      this.adjustPlayer({ trust: 2, fear: -3 }, 'Apologized, after all this time, and meant it');
+      this.remember(`${name} came and said sorry. I think, this time, they meant it. It changes nothing yet.`, { importance: 6, tags: ['apology', 'gone'], about: [PLAYER_ID] });
+    } else {
+      this.remember(`${name} came and said sorry. I don’t believe it. Not yet.`, { importance: 3, tags: ['apology', 'gone'], about: [PLAYER_ID] });
+    }
+    this._goneWayBack();
+    return { believed, gone: this.companionship === 'gone', nothing: false };
+  }
+
+  // The way back from gone (round 14b T-A2): an apology she believed since she cut them
+  // off, two days and more since the last blow, and a good deed since (a gift she liked,
+  // help when she was down, a kept promise…). Then gone becomes left, and the old way back
+  // from left (amends) applies. She never rejoins on her own from here.
+  goneWayBack() {
+    if (this.companionship !== 'gone') return { ok: false, missing: 'not_gone' };
+    const since = this.stateSince;
+    const now = this.now();
+    if (!(this.apology?.gone && this.apology.believed && this.apology.t >= since)) return { ok: false, missing: 'apology', reason: 'she has not heard an apology she believes' };
+    if ((now - this.lastViolentT) / this.daySeconds() < GONE_APOLOGY_DAYS) return { ok: false, missing: 'time', reason: 'it is too soon' };
+    const good = this.ledger.some((e) => e.t >= since && e.severity > 0);
+    if (!good) return { ok: false, missing: 'deed', reason: 'words are not enough; she needs to see it' };
+    return { ok: true, missing: null, reason: 'an apology she believed, time, and a good deed' };
+  }
+
+  _goneWayBack() {
+    if (!this.goneWayBack().ok) return false;
+    return this.setCompanionship('left', '', { cause: 'gone_back', fromGone: true, line: '', silent: true, noReplan: false });
   }
 
   playerPromise(text) {
@@ -3317,7 +3382,9 @@ export class Autonomy {
       const dist = p ? Math.hypot(p.x - l.x, p.y - l.y) : Infinity;
       if (!this._relieved && dist > (tiles + 4) * TILE) this._feelSafeAgain();
       // Gone, and the player walks right up to her anyway: a word at most, and she turns away.
-      if (st === 'gone' && dist < 3 * TILE && this.now() - this._goneWordT > 25 && !(this.now() - this.lastSpokeT < 4)) {
+      // (Never a reply: only when the player has not spoken to her in the last 10 s.)
+      const spokeTo = this._heard && this.now() - this._heard.t < 10;
+      if (st === 'gone' && dist < 3 * TILE && !spokeTo && this.now() - this._goneWordT > 25 && !(this.now() - this.lastSpokeT < 4)) {
         this._goneWordT = this.now();
         this.say(this.line('gone_word'), { force: true, chat: false });
       }
@@ -3542,6 +3609,13 @@ export class Autonomy {
     if (st === 'gone' && this.game) {
       this.game.flags = this.game.flags || {};
       if (!this.game.flags.lyra_gone) this.game.flags.lyra_gone = { day: this.stateDay, reason: this.reason };
+    }
+    // An older save kept her farewell inside the gone flag (round 14b T-A2): it gets its own.
+    const fl = this.game?.flags;
+    if (fl?.lyra_gone?.farewell && !fl.lyra_farewell) fl.lyra_farewell = { text: fl.lyra_gone.farewell, day: fl.lyra_gone.day ?? this.stateDay, reason: fl.lyra_gone.reason || this.reason };
+    if (fl?.lyra_gone && this.companionship !== 'gone') {
+      this.companionship = 'gone';
+      this._direct('gone', null);
     }
   }
 }

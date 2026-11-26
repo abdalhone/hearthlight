@@ -232,6 +232,9 @@ export const WILL_LINES = {
     { t: 'Go away, {player}.', minFear: 30 },
     'Whatever it is, the answer is no.',
   ],
+  // Cut off (gone): she hears it. Mostly she says nothing (shown as an act), else a word
+  // (round 14b T-A2; the author: "they get it and decide to not answer").
+  gone_reply: ['…', '…', '…', 'No.', "Don't.", 'Go.', 'I heard you.', { t: 'I heard you, {player}.', maxFear: 30 }],
   left_greet: ["Don't.", '...', "What do you want?", "I'm not ready to talk to you."],
   apart_greet: [
     'Oh — hello! Fancy meeting you here.',

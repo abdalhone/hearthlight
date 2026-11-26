@@ -122,3 +122,18 @@ export function distanceTiles(game) {
   if (!a || !b || !Number.isFinite(a.x) || !Number.isFinite(b.x)) return 0;
   return Math.hypot(a.x - b.x, a.y - b.y) / 16;
 }
+
+// Asked for something while she has cut the player off (round 14b T-A2): her "no", spoken,
+// never a silent nothing. For ui.ask/askBack and the People page's request buttons.
+export function answerGone(game) {
+  const st = companionshipOf(game);
+  if (st !== 'gone' && st !== 'left') return null;
+  const a = mindOf(game)?.autonomy;
+  let line = null;
+  try {
+    line = a?.line?.(st === 'gone' ? 'no_gone' : 'no_left') || null;
+  } catch {
+    line = null;
+  }
+  return line || 'No.';
+}

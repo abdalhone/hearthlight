@@ -38,7 +38,7 @@ export const VOICES = {
     howAreYou: ['Creaking, thank you. Every wick wants trimming. Yours looks fine.'],
     askHow: ["How's the wick, {n}?", 'Keeping your flame, {n}?'],
     yes: ['Well now. Just so.', "Mm. That's about the size of it.", "Can't argue. Won't, anyway."],
-    no: ["Well now. I'd not say that.", "Hm? Didn't catch that. This is my bad ear.", "Maybe. Maybe not. Lamps don't care either way."],
+    no: ["Well now. I'd not say that.", "Hm? Say it into this ear, the other one's gone to wax.", "Maybe. Maybe not. Lamps don't care either way."],
     tease: ["You'll burn down to the stub, carrying on like that.", 'Well now. Listen to you.'],
     warm: ["You're a good flame, {n}. Keep it.", 'Glad of you. Always have been.'],
     short: ['Well now.', 'Mm.', 'Just so.'],

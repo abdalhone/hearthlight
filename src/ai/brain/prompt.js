@@ -391,7 +391,7 @@ const STATE_TEXT = {
   wary: 'wary: still together, but guarded. You keep your distance, refuse risky requests and watch them.',
   apart: 'apart: you are living your own life for now; friendly, and you may rejoin when you want to.',
   left: 'left: you broke off after they hurt or betrayed you. You avoid them; you still hear every word, and answer coldly, or not at all (an empty say: they see you heard and said nothing). You come back only after real amends: an apology you believe, trust back above 35, fear below 30, and time.',
-  gone: 'gone: you have cut them out of your life. You live with your parents in Hearthvale and keep out of their way. They can still speak to you and you hear every word; you answer as you feel: a word, a cold line, or nothing at all (an empty say). You help them with nothing.',
+  gone: 'gone: you have cut them out of your life. You live with your parents in Hearthvale and keep out of their way. They can still speak to you and you hear every word; you answer as you feel: a word, a cold line, or nothing at all (an empty say, with keep_distance if you step away: they see you heard and said nothing). You help them with nothing, follow them nowhere and confide nothing. The way back is yours to weigh: an apology you believe, two days and more since the last blow, and a good deed you see; even then only as far as hearing them out.',
 };
 
 function hourText(h) {
@@ -538,6 +538,12 @@ export function buildContext(game, { message = '', executed = [], requests = [],
   head.push(`Carrying: ${inventoryText(me?.inventory)}.`);
   const plan = planSection(g);
   if (plan) head.push(plan);
+  // Lines other workstreams add, feature-detected (DESIGN §33.3): the date and her age,
+  // and what the village fears of the Hollow.
+  const cal = safeCall(() => g.calendar?.briefLine?.('lyra'), '');
+  if (cal) head.push(clip(String(cal), 200));
+  const unk = safeCall(() => g.unkindle?.briefLine?.('lyra'), '');
+  if (unk) head.push(clip(String(unk), 220));
 
   head.push(`\n# You and ${playerName} (the player, id "player")`);
   head.push(willSection(g, playerName));

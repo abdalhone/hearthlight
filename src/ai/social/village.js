@@ -1327,11 +1327,13 @@ export class Village {
     this.afterPlayerSays(e, said, local, reply);
     const action = normalizeAction(reply.action);
     if (reply.silent) {
+      // What they kept of it: the words, and that they chose to give nothing back.
+      safe(() => addNote(this, e.id, `you said "${said.slice(0, 50)}" to me, and I gave you nothing back`, 2));
       const out = this.silentReply(e, silentKind, { mood: reply.mood || (fear ? 'afraid' : 'cold'), intent: local.intent, source: reply.source, action });
       return { ...out, acted: actsOut?.narration || null };
     }
     const name = this.name(e.id).replace(/^(Captain|Sister|Reeve)\s+/, '').split(' ')[0];
-    const narration = action ? actionText(e.id, name, action, { n: this.rng()() * 10 }) : '';
+    const narration = action ? actionText(e.id, name, action, { n: Math.floor(rnd(this.rng()) * 10) }) : '';
     if (action) safe(() => this.doAction(e, action));
     return { lines: reply.lines, mood: reply.mood || null, intent: local.intent, source: reply.source, name: reply.name || null, action, narration: narration || null, acted: actsOut?.narration || null, join: join ? { decision: join.decision } : null };
   }
