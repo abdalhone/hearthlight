@@ -27,6 +27,7 @@ const AH = 9;
 const CYCLE = 2.6; // seconds between casts
 const LONG = new Set(['summon', 'rain', 'rune', 'wall', 'ward', 'bind']);
 const HP = 1e6;
+const DRAIN_RUN = 0.7; // seconds a leech's motes take to run home
 
 function solid(tx, ty) {
   return tx < 1 || ty < 1 || tx > AW - 2 || ty > AH - 2;
@@ -87,13 +88,32 @@ export class SandboxPreview extends WeavePreview {
     this.wctx = this.world?.getContext?.('2d') || null;
     this.sg.renderer.canvas = this.world;
     this.release = -1;
+    // Leech (round 14b): life drawn out of the dummy runs home to the caster as a stream of
+    // green motes along an arc, and the caster glows as it lands, so a leeching weave never
+    // looks like a plain one (the real fx thread is a hair's width at the preview's size).
+    this.drains = [];
+    this.glow = 0;
     this.sg.bus.on('damage', (p) => {
       const i = this.sg.dummies.indexOf(p?.target);
       if (i >= 0) {
         this.dummies[i].hit = 1;
         this.dummies[i].wob = (this.dummies[i].wob || 0) + 1;
+        if (p.amount > 0 && this.leeching()) this.drain(i);
       }
     });
+  }
+
+  leeching() {
+    const tw = this.plan?.twists || this.weave?.twists || [];
+    return Array.isArray(tw) && tw.includes('leech');
+  }
+
+  // One draw of life from dummy i (a beam's ticks and a burst's many hits share one stream).
+  drain(i) {
+    const last = this.drains[this.drains.length - 1];
+    if (last && last.t < 0.22) return;
+    if (this.drains.length >= 5) this.drains.shift();
+    this.drains.push({ i, t: 0, landed: false });
   }
 
   set(weave, plan, palette) {
@@ -120,6 +140,8 @@ export class SandboxPreview extends WeavePreview {
     g.entities.list = g.entities.list.filter((e) => !e.removed);
     g.nums.length = 0;
     this.release = -1;
+    if (this.drains) this.drains.length = 0;
+    this.glow = 0;
     this.reset();
   }
 
@@ -182,6 +204,16 @@ export class SandboxPreview extends WeavePreview {
 
   update(dt) {
     this.t += dt;
+    for (let i = this.drains.length - 1; i >= 0; i--) {
+      const d = this.drains[i];
+      d.t += dt;
+      if (!d.landed && d.t >= DRAIN_RUN) {
+        d.landed = true;
+        this.glow = 1;
+      }
+      if (d.t > DRAIN_RUN + 0.45) this.drains.splice(i, 1);
+    }
+    this.glow = Math.max(0, this.glow - dt * 1.6);
     for (const d of this.dummies) {
       d.hit = Math.max(0, d.hit - dt * 4);
       d.wob *= Math.pow(0.02, dt);
@@ -325,6 +357,8 @@ export class SandboxPreview extends WeavePreview {
     const dx = Math.round((cw - vw * s) / 2);
     const dy = Math.round((ch - vh * s) / 2);
     ctx.drawImage(wc, 0, 0, vw, vh, dx, dy, vw * s, vh * s);
+    // Life coming home (leech), crisp, at full resolution.
+    if (this.drains.length || this.glow > 0) this.drawDrains(ctx, (x) => dx + (x + ex) * s, (y) => dy + (y + ey) * s, s);
     // Numbers at full resolution.
     const fs = Math.max(10, Math.round(s * 4.2));
     ctx.font = `600 ${fs}px "Pixelify Sans", ui-rounded, system-ui, sans-serif`;
@@ -340,6 +374,67 @@ export class SandboxPreview extends WeavePreview {
       ctx.strokeText(n.text, x, y);
       ctx.fillStyle = n.heal ? '#7dffb0' : pal.spark === '#ffffff' ? pal.core : pal.spark;
       ctx.fillText(n.text, x, y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // The leech's stream: from the struck dummy up and over to the caster's chest, eight
+  // motes (pixel squares with a halo) running home one after another, a red wisp torn off
+  // the dummy as it starts, and a green glow round the caster as it lands. sx/sy map scene
+  // px to the canvas; s is the scene's scale.
+  drawDrains(ctx, sx, sy, s) {
+    const toX = this.casterX + 8;
+    const toY = (this.casterY ?? GROUND) - 11;
+    const sq = (x, y, r, color, a) => {
+      ctx.globalAlpha = a;
+      ctx.fillStyle = color;
+      const w = Math.max(1, Math.round(r * 2));
+      ctx.fillRect(Math.round(x - w / 2), Math.round(y - w / 2), w, w);
+    };
+    for (const d of this.drains) {
+      const D = this.dummies[d.i] || this.dummies[0];
+      const fx = D.x + (D.dx || 0);
+      const fy = D.y + (D.dy || 0) - 10;
+      const mx = (fx + toX) / 2;
+      const my = Math.min(fy, toY) - 14 - Math.abs(toX - fx) * 0.1;
+      const at = (q) => {
+        const u = 1 - q;
+        return [sx(u * u * fx + 2 * u * q * mx + q * q * toX), sy(u * u * fy + 2 * u * q * my + q * q * toY)];
+      };
+      const fade = d.t > DRAIN_RUN ? Math.max(0, 1 - (d.t - DRAIN_RUN) / 0.45) : 1;
+      // The thread itself: a faint dotted arc while life runs along it.
+      for (let k = 1; k < 18; k++) {
+        const [x, y] = at(k / 18);
+        sq(x, y, s * 0.5, '#5fe08a', 0.28 * fade);
+      }
+      // A red wisp torn from the dummy.
+      if (d.t < 0.3) {
+        const k = d.t / 0.3;
+        for (let j = 0; j < 4; j++) sq(sx(fx + (j - 1.5) * 3), sy(fy - 2 - k * 8 - j), s * 0.9, '#ff6a5c', (1 - k) * 0.9);
+      }
+      // The motes, one after another.
+      for (let j = 0; j < 8; j++) {
+        const q = (d.t - j * 0.05) / DRAIN_RUN;
+        if (q <= 0 || q >= 1) continue;
+        const e = q * q * (3 - 2 * q);
+        const [x, y] = at(e);
+        sq(x, y, s * 2.1, '#5fe08a', 0.4 * fade);
+        sq(x, y, s * 1.1, '#c8ffd8', fade);
+      }
+    }
+    if (this.glow > 0) {
+      const x = sx(toX);
+      const y = sy(toY);
+      const r = s * (10 + 6 * (1 - this.glow));
+      const gr = ctx.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, 'rgba(160,255,190,0.55)');
+      gr.addColorStop(0.5, 'rgba(95,224,138,0.3)');
+      gr.addColorStop(1, 'rgba(95,224,138,0)');
+      ctx.globalAlpha = this.glow;
+      ctx.fillStyle = gr;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      // A few sparks rising off the caster.
+      for (let j = 0; j < 3; j++) sq(x + (j - 1) * s * 5, y - s * (4 + (1 - this.glow) * 10 + j * 2), s * 0.8, '#c8ffd8', this.glow);
     }
     ctx.globalAlpha = 1;
   }
