@@ -174,17 +174,13 @@ export class DeathView {
     if (!this.mounted) return;
     this.visible = true;
     this.fallenEl.hidden = false;
-    // The ring's canvas at the pixels it is shown at (88-136 CSS px, times the screen's density).
-    const px = Math.max(96, Math.min(320, Math.round((this.ring.clientWidth || 112) * (window.devicePixelRatio || 1))));
-    if (this.ring.width !== px) {
-      this.ring.width = px;
-      this.ring.height = px;
-    }
+    this.rootClass(true);
     this._ringKey = '';
     this.shownLeft = null;
     this.helpShown = 0;
     this.lastBeats = this.game.survival?.heart?.beats || 0;
     this.refresh();
+    this.place();
     if (!this.raf) this.loop();
   }
 
@@ -192,6 +188,66 @@ export class DeathView {
     this.visible = false;
     this._riseKeys?.stop();
     if (this.fallenEl) this.fallenEl.hidden = true;
+    this.rootClass(false);
+  }
+
+  // While you lie bleeding the UI root carries `sv-down` (src/styles/polish.css: the weave
+  // bar steps aside on a computer; on an upright phone the mission line and the toasts make
+  // way for the countdown) and `sv-lefty` when the move stick is on the right.
+  rootClass(on) {
+    const root = this.game.uiRoot || this.game.ui?.root;
+    if (!root?.classList) return;
+    root.classList.toggle('sv-down', !!on);
+    const lefty = !!this.game.ui?.touch?.el?.classList?.contains?.('lefty');
+    root.classList.toggle('sv-lefty', !!on && lefty);
+    if (!on) root.style?.removeProperty?.('--sv-below');
+  }
+
+  // Interface size (round 13, ui_scale.js) on a computer: the countdown is drawn at the
+  // HUD's zoom too, as large as fits between the body and the bottom of the screen (with
+  // the help bar and the Rise button it can be tall). Phones keep 1 (their own sizes). The
+  // ring's canvas follows the pixels it is shown at; on an upright phone the toasts go
+  // below the countdown (--sv-below). Called on show and four times a second.
+  place() {
+    const g = this.game;
+    const el = this.fallenEl;
+    if (!el || typeof window === 'undefined') return;
+    const ui = g.ui;
+    const want = ui?.isTouch ? 1 : Math.max(1, Number(ui?._uiz) || 1);
+    const cur = this._zoom || 1;
+    let z = want;
+    if (want > 1) {
+      const r = el.getBoundingClientRect();
+      const H = window.innerHeight || 720;
+      const W = window.innerWidth || 1280;
+      if (r.height > 0) {
+        const natH = r.height / cur;
+        const natW = r.width / cur;
+        const off = (r.top - H / 2) / cur; // the block's top below the middle, unzoomed
+        const room = H - 12 - H / 2;
+        if (off + natH > 0) z = Math.min(z, room / (off + natH));
+        if (natW > 0) z = Math.min(z, (W - 24) / natW);
+      }
+      z = Math.max(1, Math.round(z * 100) / 100);
+    }
+    if (Math.abs(z - cur) > 0.009) {
+      this._zoom = z;
+      this.layer.style.zoom = z === 1 ? '' : String(z);
+    }
+    // The ring's canvas at the pixels it is shown at (88-136 CSS px, the zoom, the density).
+    const rr = this.ring.getBoundingClientRect?.();
+    const css = rr && rr.width > 0 ? rr.width : this.ring.clientWidth || 112;
+    const px = Math.max(96, Math.min(400, Math.round(css * (window.devicePixelRatio || 1))));
+    if (this.ring.width !== px) {
+      this.ring.width = px;
+      this.ring.height = px;
+      this._ringKey = '';
+    }
+    const root = g.uiRoot || ui?.root;
+    if (root?.style && ui?.isTouch) {
+      const b = el.getBoundingClientRect();
+      if (b.height > 0) root.style.setProperty('--sv-below', `${Math.round(b.bottom + 8)}px`);
+    }
   }
 
   loop() {
@@ -204,6 +260,7 @@ export class DeathView {
       if (this.refreshT <= 0) {
         this.refreshT = 0.25;
         this.refresh();
+        this.place();
       }
       this.drawRing(dt);
       this.loop();
