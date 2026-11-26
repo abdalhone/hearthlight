@@ -12,6 +12,7 @@ import { placeAt } from '../ai/village_life/errands_data.js';
 import { HEIRS, UNDONE, STAND_INS, OFFICIANTS, MOOT_CHAIR, MOOT_HEADS, MAREN_KEEPERS, GRAVE_SPOTS, HIDE, HOUR, DAY, OUTSIDE_DAYS } from './data.js';
 import { murderLine, mootLines, lyraLine, FUNERAL, MOOT } from './lines.js';
 import { profileById } from '../entities/npc_data.js';
+import { isMinor } from '../core/people.js';
 import * as Lyra from './lyra.js';
 import { funeralScript, trialScripts, playScript } from './scenes.js';
 
@@ -80,7 +81,8 @@ export function onFound(m, rec) {
     if (!cur || cur.until < day + days || cur.about === rec.id) life.mourning[id] = { about: rec.id, until: day + days, kind: 'grief', kin: fam || undefined };
   }
   planFuneral(m, rec);
-  planMoot(m, rec, 'death');
+  // A death nobody did (old age, murder.die) has no Moot: there is nothing to judge (§36.3).
+  if (!rec.natural) planMoot(m, rec, 'death');
   applyHeirs(m);
 }
 
@@ -150,7 +152,8 @@ export function epitaph(m, id) {
   const rec = m.dead[id];
   const p = profileById(id);
   const role = p?.role ? `, ${String(p.role).toLowerCase()}` : '';
-  return `${m.entity(id)?.name || m.name(id)}${role}. Buried on day ${rec?.buriedDay ?? m.day()}. Hearthvale keeps your flame a while longer.`;
+  const age = rec?.natural && rec.cause === 'age' ? ' Died of old age, in their sleep.' : '';
+  return `${m.entity(id)?.name || m.name(id)}${role}.${age} Buried on day ${rec?.buriedDay ?? m.day()}. Hearthvale keeps your flame a while longer.`;
 }
 
 // ------------------------------------------------------------------ the funeral
@@ -636,7 +639,7 @@ export function toneFor(m, npc) {
     if (!rec.turned && !m.cases[rec.id]?.verdict) continue;
     const guilty = rec.known === 'witnessed' || m.cases[rec.id]?.verdict === 'guilty';
     if (!guilty) continue;
-    if (kin(npc.id, rec.id) || (rec.seen || []).some((s) => s.id === npc.id) || npc.id === 'pip' || npc.id === 'tansy' || npc.id === 'wenna' || npc.id === 'petra') return 'afraid';
+    if (kin(npc.id, rec.id) || (rec.seen || []).some((s) => s.id === npc.id) || isMinor(m.game, npc) || npc.id === 'wenna' || npc.id === 'petra') return 'afraid';
     return 'wronged';
   }
   return null;

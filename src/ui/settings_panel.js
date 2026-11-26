@@ -23,6 +23,7 @@ export const SETTINGS_LAYOUT = {
   game: [
     { id: 'names', title: 'Names', keys: ['playerName', 'companionName'] },
     { id: 'journey', title: 'Your journey', keys: ['deathMode', 'cloudSave'] },
+    { id: 'years', title: 'The years', keys: ['yearDays', 'oldAge'] },
     { id: 'practice', title: 'Practice', keys: [], actions: ['resetPoints', 'freePoints', 'trialMagic'] },
   ],
   controls: [
@@ -85,6 +86,19 @@ export const SETTING_ROWS = {
     ],
   },
   cloudSave: { kind: 'toggle', label: 'Copy in my claude.ai account', note: 'Your journey follows you to your other devices.' },
+  yearDays: {
+    kind: 'select',
+    label: 'A year lasts',
+    note: 'People turn a year older on their birthdays. Ages stay as they are when you change it.',
+    options: [
+      [12, '12 days'],
+      [24, '24 days'],
+      [48, '48 days'],
+      [96, '96 days'],
+    ],
+    fallback: 12,
+  },
+  oldAge: { kind: 'toggle', label: 'People die of old age', note: 'The very old may die in their sleep, in time. Never in your first year, never a child.' },
   touchScale: {
     kind: 'select',
     label: 'Button size',

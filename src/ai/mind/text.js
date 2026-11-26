@@ -261,10 +261,14 @@ export function isPerson(e) {
   return !!e && (!!e.profile || (e.kind === 'human' && !e.species && e.type === 'actor'));
 }
 
+// A child by age first (round 14b, D1: the calendar keeps each profile's age; under 16 is a
+// minor, people.js MINOR_UNDER), so Pip and Tansy grow up; the role or name only when no age
+// is known.
 export function isChild(e, rel = null) {
+  const age = e?.profile?.age ?? rel?.age ?? null;
+  if (typeof age === 'number') return age < 16;
   const role = String(e?.role || e?.profile?.role || rel?.role || '').toLowerCase();
-  const age = e?.profile?.age ?? null;
-  return /child|orphan|kid|boy|girl/.test(role) || (typeof age === 'number' && age < 14) || e?.id === 'pip' || rel?.id === 'pip';
+  return /child|orphan|kid|boy|girl/.test(role) || e?.id === 'pip' || rel?.id === 'pip';
 }
 
 // ---------- time ----------

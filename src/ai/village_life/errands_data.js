@@ -574,7 +574,17 @@ export const WATCH = ['rowan', 'wys'];
 // Who searches well (trackers) and who never goes out searching (the frail, the young at night).
 export const TRACKERS = new Set(['hess', 'tansy', 'rowan', 'wys']);
 export const NO_SEARCH = new Set(['wenna', 'petra', 'elda']);
-export const CHILDREN = new Set(['pip', 'tansy']);
+// Children by age (round 14b, D1): each profile's age, which the calendar keeps current,
+// under 16 (people.js MINOR_UNDER). Set-shaped: CHILDREN.has(id). Pip and Tansy at first;
+// Tansy from her sixteenth birthday searches at night like any grown wardrunner.
+const CHILD_START = new Set(['pip', 'tansy']);
+export const CHILDREN = {
+  ageOf: null, // (id) => age; wired by the calendar (src/world/calendar.js) when it loads
+  has(id) {
+    const a = typeof this.ageOf === 'function' ? this.ageOf(id) : null;
+    return typeof a === 'number' ? a < 16 : CHILD_START.has(id);
+  },
+};
 
 // Hearthvale's weekday: the clock's day 7, 14, … is a Sunday.
 export function isSunday(day) {

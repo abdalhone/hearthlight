@@ -29,6 +29,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
   // When I die (DESIGN §27): 'final' — the story ends unless a kept flame burns at the chapel
   // (the save closes and moves to Past lives); 'home' — wake at home, a little poorer.
   deathMode: 'final',
+  // The years (round 14b, DESIGN §36.3): how many days a year lasts (12 / 24 / 48 / 96; ages
+  // stay steady when it changes), and whether the very old may die of age in their sleep.
+  yearDays: 12,
+  oldAge: true,
 });
 
 export function loadSettings() {

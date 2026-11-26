@@ -12,5 +12,6 @@
 //     life, murder and party exist and before a save is applied.
 import { reputationPlugin } from '../../society/reputation.js';
 import { villainPlugin, installVillainHooks } from '../../story/villain.js';
+import { agingPlugin, installAging } from '../../world/aging.js';
 
-export default [reputationPlugin, villainPlugin, installVillainHooks];
+export default [reputationPlugin, villainPlugin, agingPlugin, installVillainHooks, installAging];

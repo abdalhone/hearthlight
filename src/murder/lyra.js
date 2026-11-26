@@ -323,6 +323,11 @@ export function promptContext(m) {
     const st = m.lyra[rec.id];
     if (!st && rec.foundAt == null) continue; // she does not know (nobody does)
     const V = m.name(rec.id);
+    // A death nobody did (old age): a loss, never a question of who (round 14b, §36.3).
+    if (rec.natural) {
+      bits.push(`${V} died${rec.cause === 'age' ? ' of old age, in their sleep' : ''}${rec.foundAt != null ? `, ${whenPhrase(rec.foundAt, t)}` : ''}.`);
+      continue;
+    }
     const how = st?.how === 'saw' ? `You watched ${m.playerName()} kill ${V}.` : rec.foundAt != null ? `${V} is dead: murdered, found ${placeAt(rec.foundPlace, m.placeName(rec.foundPlace))} ${whenPhrase(rec.foundAt, t)}.` : `${V} is dead.`;
     const belief = st?.belief === 'knows' ? 'You know the stranger did it.' : st?.belief === 'believes' ? 'You believe the stranger did it.' : st?.belief === 'fears' ? 'You fear the stranger had something to do with it; you have asked them.' : st?.belief === 'doubts' ? 'The watch has questions about the stranger; you do not believe it.' : '';
     bits.push(`${how} ${belief}`.trim());

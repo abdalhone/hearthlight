@@ -1542,7 +1542,7 @@ export class Autonomy {
   protectWorth(victim) {
     const rel = this.relOf(victim?.id);
     const aff = num(rel?.affinity, 0);
-    const child = !!victim && (victim.child || victim.profile?.child || /\b(pip|tansy)\b/i.test(String(victim.id || '')) || num(victim.profile?.age, 30) < 16 || (rel?.tags || []).includes('child'));
+    const child = !!victim && (victim.child || victim.profile?.child || (Number.isFinite(victim.profile?.age) ? victim.profile.age < 16 : /\b(pip|tansy)\b/i.test(String(victim.id || ''))) || (rel?.tags || []).includes('child'));
     let value = 1.2 + (aff >= 50 ? 1.3 : aff >= 30 ? 0.8 : 0) + (child ? 1.5 : 0) + ((rel?.tags || []).includes('family') ? 2 : 0);
     if (victim && this.isGuard(victim)) value -= 0.5;
     const l = this.lyra();
