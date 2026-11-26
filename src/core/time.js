@@ -110,15 +110,32 @@ export class GameClock {
     this.game?.bus.emit('weather', { type });
   }
 
-  // Advance to the next time the clock reads `hour` (used when sleeping).
+  // Advance to the next time the clock reads `hour` (used when sleeping). A night slept
+  // through midnight is a new day like any other: every 'new_day' listener (the calendar's
+  // aging, the village, the quests, the murder's morning) hears it once per day crossed,
+  // before the 'time_skip' (round 14b leftover: sleep never sent new_day).
   skipTo(hour) {
     const now = this.hour;
     let delta = hour - now;
     if (delta <= 0) delta += 24;
-    this.t += delta * this.secondsPerHour;
+    this.advance(delta);
+  }
+
+  // Jump whole days ahead at the same hour (debugging, the aging checks): each day crossed
+  // is a 'new_day', once.
+  skipDays(n = 1) {
+    const days = Math.max(0, Math.floor(n));
+    if (days) this.advance(days * 24);
+  }
+
+  advance(hours) {
+    const from = this.day;
+    this.t += hours * this.secondsPerHour;
     this._phase = this.phase;
-    this._day = this.day;
-    this.game?.bus.emit('time_skip', { hours: delta, day: this.day, hour: this.hour });
+    const to = this.day;
+    this._day = to;
+    for (let d = from + 1; d <= to; d++) this.game?.bus.emit('new_day', { day: d, skipped: true });
+    this.game?.bus.emit('time_skip', { hours, day: this.day, hour: this.hour });
   }
 
   serialize() {

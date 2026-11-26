@@ -92,7 +92,11 @@ never companions; intimate acts only from 18, `canBeIntimate`),
 the Bone Warden), **creatures** (wolves, boars, deer, rabbits, slimes, bats, skeletons,
 bandits), **companions** (anyone adult, `game.party`: the role is `game.party.holder`, Lyra
 at a new game, nobody when you walk alone; `game.companion`/`game.lyra` stay Lyra the
-person); *future*: travellers, Owlsend's survivors, new villagers.
+person); **merchants** (Garrick, Bram, Mira, Elda: tastes, a daily stock, a purse, a haggle a
+day; `src/world/trade.js`); **visitors** (round 14b: the tempter Isembard, `profile.visitor`:
+talkable, never one of the eighteen, never in the Moot, errands or markGone); **the Moot's
+jurors** (the chair and the living heads, at most 7); *future*: travellers, Owlsend's
+survivors, new villagers.
 
 | System | What must react | Where |
 |---|---|---|
@@ -108,8 +112,9 @@ person); *future*: travellers, Owlsend's survivors, new villagers.
 | Combat and AI | Fight back, flee, stun, finishers per body size; creatures notice and wind up only with a sight line and a blow that can land (round 14b); bosses stagger then are proof a while; mission leaders resist part of a stun | `src/entities/*`, `src/bosses/*` |
 | Footsteps and crawling | Others' steps near you; the downed crawl for anyone | `src/world/footsteps.js`, `src/survival/*` |
 | Missions | Givers, turn-ins, foes that scale with your level (`toughen`) | `src/missions/*` |
-| Age | Everyone grows a year older on their birthday (`game.calendar`); who is a child is decided by age (`isMinor`, under 16; the build only when the age is unknown); a new character needs a base age | `src/world/calendar.js`, `src/core/people.js` |
-| Trade | Who buys and sells what (`shop.buys`, `shop.buysAll`) | `src/entities/npc_data*.js`, `src/ui/dialog.js` |
+| Age | Everyone grows a year older on their birthday (`game.calendar`, at the pace of Settings → "A year lasts"); who is a child is decided by age (`isMinor`, under 16; the build only when the age is unknown): `text.isChild`, Lyra's `protectWorth`, the errands' `CHILDREN`, grief's `toneFor` all go by age; looks follow the years (`src/art/age_look.js`: greying, lines, a stoop, a child's build grown; painted once per stage as `id~key`, portraits follow `spriteKey`); a grown child gets a grown body; the dead stop aging; the very old may die of age (`src/world/aging.js` → `murder.die`); a new character needs a base age and an appearance | `src/world/calendar.js`, `src/core/people.js`, `src/art/age_look.js`, `src/world/aging.js` |
+| Trade | Who buys what and at what share (`TASTES`), their extra wares and daily stock (`WARES`, `DAILY`, the village's errand stock where it names the item), their purse (`PURSE`), haggling (`TASTES.haggle`), stolen goods (`provenance`), one graded refusal (`stance`: kin never, fresh blood not for three days, then a blood price, the Butcher none but Garrick's fence). A new merchant gets a row in each table, never a profile edit | `src/world/trade.js`, `src/ui/dialog.js`, `src/entities/npc_dialogue.js` |
+| Reputation (round 14b) | What each person calls the stranger, from what they know (`reputation.titles({ knownTo })`): killings known, an Unkindling only once known, thefts seen, lies caught, oaths, rescues; titles spread as rumours by meeting and reach the road after two days. A new kind of deed says who knows it | `src/society/reputation.js` |
 | The map | The holder's dot (`kind: 'companion'`, Lyra only while she walks with you), none alone; opens on you, zoomed out until the ember-ring or the objective shows; bosses once heard of | `src/ui/world_map.js` |
 
 ## 5. States
@@ -127,7 +132,10 @@ Ask bar, no badge, no map dot), **waiting** / **fighting beside you** (a village
 you a while), **hiding** (a child at home from a known killer), **taken away** (a child of
 an emptied house: `absent.cause 'taken_away'`), **searched** (a body), **burned** (a store),
 **claimed** (a house), **hunted** (a posse searching from where you were last seen), **news
-waiting** (a body found but not yet known to the village).
+waiting** (a body found but not yet known to the village). Society: **failing** (abed at home before a death of age),
+**deliberating** (the Moot weighing a defence: `case.trial.state`, saved), **mercy** (a lighter
+sentence: one day outside), **haggled** and **sold out** (a merchant's day), **pact** (sealed
+before or after; betrayed), **fighting the tempter**.
 
 | System | What must react | Where |
 |---|---|---|
@@ -166,7 +174,8 @@ on the Hollowcrown).
 
 | System | What must react | Where |
 |---|---|---|
-| Spawns | Night-only and day-only zones; bosses that only come out at night | `src/entities/spawner.js`, `src/bosses/*` |
+| Spawns | Night-only and day-only zones; bosses that only come out at night; the tempter at the ruins gate from 20:30 to 05:00 | `src/entities/spawner.js`, `src/bosses/*`, `src/story/villain.js` |
+| Days and seasons (round 14b) | A night slept through midnight is a `new_day` like any other (once per day crossed: `clock.skipTo`, `skipDays`); the year is four seasons, each early, mid and late (`calendar.season()`, `dateLabel()`), day 1 early autumn; the morning restocks the shops and tops up purses; old age comes in the small hours | `src/core/time.js`, `src/world/calendar.js`, `src/world/trade.js`, `src/world/aging.js` |
 | Light | Lamps, waystones, windows, fires; darkness | `src/render/lighting.js`, `src/world/objects.js` |
 | Missions | `when` windows (evening, night) | `src/missions/*` |
 | Footsteps and ground | Wet ground after rain | `src/world/map.js` |
@@ -180,8 +189,9 @@ Values: Claude (in the claude.ai Artifact or with a key), the offline mind.
 |---|---|---|
 | Every mind and line | Works offline with local lines; online gets the same facts in its prompt | `src/ai/*`, `src/platform/claude_runtime.js` |
 | Prompt context | Plugins' `promptContext` (missions, travel: where you are in the wider world) | `src/ai/plugins/*`, `src/world/travel.js` |
-| Trials and judgement | Round 14b: villagers weigh your words with Claude; offline they still decide | `src/murder/*` |
+| Trials and judgement | Round 14b: one quick Claude call per juror (at most 7, in parallel, one 25 s budget), each with only their own brief (`jury.jurorBrief`); late or offline jurors weigh it by local rules (`localJuror`, deterministic); a caught lie counts only if that juror knows the fact (`checkClaim().knownBy`). The tempter speaks through his own rules online, his own lines offline; the pact is the game's decision | `src/murder/jury.js`, `src/murder/defence.js`, `src/story/villain.js` |
 | Talk (round 14b) | Fear, silence and acts reach Claude in the brief (terror, dread, "They do: *…*", cut ties, uneasy, the other workstreams' `briefLine`s); offline every one has its own lines (fear banks, `gone_reply`, act reactions, more shrugs). Saying aloud is ONE batched quick call for up to four, else local; her farewell waits 15 s for Claude, else her own words | `src/ai/social/village_prompt.js`, `src/ai/social/acts_effects.js`, `src/ai/brain/prompt.js`, `src/ai/mind/autonomy_parting.js` |
+| Dates, ages and names in prompts | `calendar.briefLine(id)` (the date, their age, a birthday) and `reputation.titles({ knownTo })` reach every villager's task (talk's `sayBrief`) and Lyra's; a death of age reads "died of old age", never "murdered" | `src/world/calendar.js`, `src/society/reputation.js`, `src/murder/lyra.js` |
 | Death causes in prompts (round 14b) | A death's `cause` reaches the minds as people know it: `'killed'`, `'age'`, and `'unkindled'` (soul's stub: "no mark on him… like the hollow wind", the village's fear of "the Hollow" through `game.unkindle.briefLine(id)`); offline lines say the same | `src/murder/*`, `src/ai/social/village_prompt.js`, `src/ai/brain/prompt.js` |
 
 ## 9. Saves and permadeath
@@ -198,6 +208,7 @@ final death, Settings resets.
 | Round 14b blocks | `party` (`{ holderId }`, restored last; old saves derive it from Lyra), `plugins.provenance` (old saves start empty), murder records' `by`, `cause` (old: `'killed'`), `provoked` (old: unknown), `silent`, `unmarked`, `natural`; soul's `unkindle` (`learned`, `tally`) | `src/core/party.js`, `src/world/provenance.js`, `src/murder/murder.js` |
 | Death causes | `'killed'`, `'age'` (`murder.die`), `'unkindled'` (soul): each saved on the record and the body (`absent.cause`); a new cause says who owns its discovery (`onFound`) and whether it is a killing (`villager_killed`) or not (`villager_died`) | `src/murder/murder.js` |
 | Blood's blocks (round 14b) | `murder.hunt` (last seen, posse, reports, state), records' `loot`, `searched`, `finisher`, `newsWaits`/`caseWaits`/`mournedBy`, `lyraSawCarry`; a dead Lyra's record (her body re-laid after the companion's own load); what each body carries in its own inventory; plugin `occupation` (burns, claims, children taken, the fallen village); chests' `missingSince`; villagers' `uneasy`, `missingGoods`, `hideUntil` (the day's only); `flags.finisherWarnedLyra`; Settings `finishers`. The lock is not saved | `src/murder/*`, `src/world/occupation.js`, `src/world/containers.js`, `src/entities/npc.js` |
+| Society blocks (round 14b) | `plugins.calendar` gains `yearDays`, `anchors`, `player` (an old save reads at twelve days, no anchors); `plugins.aging` (`failing`, `toFind`); `plugins.trade` (the day's haggles, stock, paid); `plugins.reputation` (oaths, heroes, when titles were first known); `plugins.villain` (the pact, kills, warned, ending); `case.trial` (defence, claims, votes, sentence) and `trialPending.deliberating` (a reload resumes the Moot without asking again). The villain ending closes the life (`save.closeLife`, an end page); the hero ending continues it | `src/world/*.js`, `src/society/reputation.js`, `src/story/villain.js`, `src/murder/grief.js` |
 
 ## 10. Story branches
 
@@ -213,3 +224,6 @@ not, Owlsend's arrival.
 | The world | Places that change (a relit wardstone, a lit waystone, an empty house; round 14b: a burned store, a claimed house, the fallen village `occupation.emptied()`) | `src/world/*`, `src/world/occupation.js` |
 | The law (round 14b) | Wanted is per knower (a guard fights or arrests only if he knows); the hunt goes to where you were last seen; a found body is the village's news by meeting, or the bell within the hour | `src/entities/combat.js` `knowsCrime`, `src/survival/rescue.js`, `src/murder/hunt.js`, `src/murder/murder.js` |
 | Map and markers | What you know is marked; what is gone is greyed | `src/ui/world_map.js` |
+| The villain path (round 14b) | The tempter waits at the ruins gate at night once a boss falls or a killing is known; the pact (`pact_sealed { gifts: [..., 'unkindle'] }`, `villain.hasPact()`) before (everything now, a debt) or after (the Unkindling now, the rest when the village is empty); kills count from `villager_killed` only, once known as killings; children never counted or required; endings: villain (the village's adults gone: `occupation.emptied()` when blood provides it; the life closes) or hero (warn the watch, fight him: he comes apart; Oathbreaker if a pact was broken; the save goes on) | `src/story/villain.js`, `src/story/tempter_data.js` |
+| The trial | A verdict emerges from the jurors' votes (guilty, not proven, mercy: a lighter sentence); the reasons are spoken; `moot_verdict` carries the votes; Lyra's `onVerdict` gets them | `src/murder/grief.js`, `src/murder/jury.js`, `src/murder/scenes.js` |
+| Reputation | Titles (the Butcher of Hearthvale, the Unkindler, Oathbreaker, thief, liar, the one who kept the ward) shape merchants (`trade.stance`), villagers' prompts and the road's word | `src/society/reputation.js` |

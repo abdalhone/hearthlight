@@ -7,6 +7,7 @@ import { itemName } from './items.js';
 import { pickLine, now, rand } from './creature_util.js';
 import { hasKeptFlame, flamePrice, lightKeptFlame } from '../survival/kept_flame.js';
 import { lyraOf } from '../core/people.js';
+import { isMerchant, stance as tradeStance } from '../world/trade.js';
 
 // Villager dialogue: what they say when the player walks up, the options they offer,
 // what they answer, how they take gifts. Pure functions over an NPC (npc.js wires
@@ -143,7 +144,9 @@ export function mainOptions(npc, player, tone = dialogueTone(npc, player)) {
   // What is out there (DESIGN §32.4): a boss they know of goes on your map, else the roads.
   if (hasRumor(p.id) && tone !== 'wronged' && tone !== 'cold') opts.push({ id: 'rumor', label: 'Heard anything out there?' });
   opts.push({ id: 'gift', label: 'Give a gift' });
-  if (p.shop && (p.shop.sells?.length || Object.keys(p.shop.buys || {}).length)) opts.push({ id: 'shop', label: p.id === 'elda' ? 'Food and drink' : 'Trade' });
+  // The four merchants and any shop (round 14b, S-17: src/world/trade.js); a refusal is said
+  // when it is chosen, never a missing option.
+  if (isMerchant(npc)) opts.push({ id: 'shop', label: p.id === 'elda' ? 'Food and drink' : 'Trade' });
   // The kept flame (DESIGN §27): Sister Aveline relights the stranger's family flame.
   if (p.id === 'aveline' && tone !== 'wronged') opts.push({ id: 'flame', label: hasKeptFlame(npc.game) ? 'Your flame on the altar' : 'Ask about a kept flame' });
   const owed = Number(npc.game?.flags?.miraOwed) || 0;
@@ -334,11 +337,23 @@ export function chooseOption(npc, id, player) {
   }
   if (key === 'respec' || key === 'respec:yes') return quietHour(npc, key, player, opts);
   if (key === 'shop') {
-    if (!p.shop) return { lines: ["I've nothing to sell, I'm afraid."], options: opts };
-    if (refusesTrade(npc, player)) return { lines: [line(npc, p.refuse?.length ? p.refuse : p.cold, 'Not today.')], options: opts.filter((o) => o.id !== 'shop') };
+    if (!isMerchant(npc)) return { lines: ["I've nothing to sell, I'm afraid."], options: opts };
+    if (refusesTrade(npc, player)) return { lines: [refuseLine(npc)], options: opts };
     return { lines: [shopLine(npc, tone)], open: 'shop', options: opts };
   }
   return { lines: ['…'], options: opts };
+}
+
+// Their refusal, in their own words, by why (round 14b: a refusal is always their line).
+function refuseLine(npc) {
+  const g = npc.game;
+  const p = npc.profile;
+  const why = tradeStance(g, npc).why;
+  if (why === 'kin') return 'You killed one of mine. You will never buy so much as a crust from me. Get out.';
+  if (why === 'butcher') return pickLine(g, ['I know what they call you. No. Not for any coin.', 'Butcher. Get out of my door.']) || 'No.';
+  if (why === 'suspect') return 'Not while the watch is asking about you. Not today.';
+  if (why === 'fresh') return pickLine(g, ['With blood still on your hands? Not today. Maybe not ever.', 'I know what you did. Get out of my shop.']) || 'No.';
+  return line(npc, p.refuse?.length ? p.refuse : p.cold, 'Not today.');
 }
 
 function shopLine(npc, tone) {
@@ -459,9 +474,11 @@ export function answerTopic(npc, topicId, player) {
 export function refusesTrade(npc, player) {
   const g = npc.game;
   const day = g.clock?.day ?? 1;
-  if (!npc.profile.shop) return true;
-  // Not to a known killer; not to someone the family believes did it (DESIGN §29).
-  if (g.murder?.refusesTrade?.(npc)) return true;
+  if (!isMerchant(npc)) return true;
+  // What they know of the stranger's killings, graded (round 14b, S-19: src/world/trade.js
+  // stance): kin refuse, others charge a blood price, after the Butcher all refuse but a
+  // fence. Not to someone the family believes did it (DESIGN §29).
+  if (tradeStance(g, npc).refuse) return true;
   // Only what this shopkeeper knows: a wanted stranger, a crime today they saw or were told
   // of (DESIGN §29.4: the news travels by meeting, not on the wind).
   const knows = npc.knowsWanted ? npc.knowsWanted(player) : npc.crimeActive?.();

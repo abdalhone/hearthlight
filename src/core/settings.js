@@ -32,6 +32,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
   // The finishing blow's scene (round 14b, DESIGN §35.4): 'full' | 'brief' | 'off' (the same
   // outcome, no scene). Reduce motion plays it brief.
   finishers: 'full',
+  // The years (round 14b, DESIGN §36.3): how many days a year lasts (12 / 24 / 48 / 96; ages
+  // stay steady when it changes), and whether the very old may die of age in their sleep.
+  yearDays: 12,
+  oldAge: true,
 });
 
 export function loadSettings() {

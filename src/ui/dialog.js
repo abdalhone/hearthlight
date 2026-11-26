@@ -10,6 +10,7 @@ import { itemDef, itemName } from '../entities/items.js';
 import { fmtInt, isGiftable, sortItems, voicePitch, capitalize } from './format.js';
 import { TalkSession, villageOf, firstName, SAY_MAX } from './village_view.js';
 import { FieldDictation } from './dictation.js';
+import { shopOf, priceFor, stance, moodOf } from '../world/trade.js';
 
 const CHARS_PER_SECOND = 52;
 
@@ -405,59 +406,105 @@ export class DialogPanel {
   }
 
   // ---------- shop ----------
+  // Round 14b (S-17, DESIGN §36.2): one stock that runs out and comes back in the morning,
+  // prices by taste and by how they feel about you, a haggle a day, a stolen mark on what
+  // the provenance ledger says was taken, an inline "are you sure" before selling gear, a
+  // rare thing or your last one, and a tap on a row for what it is (no tooltips on touch).
 
   renderShop() {
     clear(this.extraEl);
     const g = this.game;
     const npc = this.npc;
     const p = g.player;
-    const shop = npc?.profile?.shop || npc?.shop || { sells: [], buys: {} };
+    const T = g.trade;
+    T?.ensureDay?.();
+    const shop = shopOf(g, npc);
+    const st = stance(g, npc);
     const coins = h('span', { class: 'num', text: fmtInt(p?.inventory?.count('coin') || 0) });
     const buyList = h('div', { class: 'shop-list' });
     const sellList = h('div', { class: 'shop-list' });
+    const badge = h('span', { class: 'shop-mood' });
+    const haggleBtn = button('Haggle', { cls: 'btn-small btn-ghost shop-haggle' });
+    const first = firstName(npc.name) || 'They';
+    haggleBtn.addEventListener('click', () => {
+      const r = T?.haggle?.(npc);
+      if (!r) return;
+      g.audio?.play(r.won ? 'coin' : 'error', { volume: 0.6 });
+      this.play([r.line], this.options);
+      this.mode = 'shop';
+      this.showWords();
+      redraw();
+    });
     const redraw = () => {
       setText(coins, fmtInt(p.inventory.count('coin')));
+      const mood = moodOf(npc);
+      const won = !!T?.haggled?.(npc.id);
+      const bits = [];
+      if (st.markup > 1) bits.push(`blood price ×${st.markup.toFixed(2).replace(/0$/, '')}`);
+      else if (mood === 'dear' || mood === 'warm') bits.push('a friend\'s price');
+      else if (mood === 'low' || mood === 'cold') bits.push('a cold price');
+      if (won) bits.push('haggled: a tenth off');
+      if (st.fence) bits.push("he doesn't ask");
+      setText(badge, bits.join(' · '));
+      badge.hidden = !bits.length;
+      haggleBtn.disabled = !!T?.haggles?.[npc.id] && T.haggles[npc.id].day === T.today?.();
       clear(buyList);
       clear(sellList);
-      const sells = Array.isArray(shop.sells) ? shop.sells : [];
+      const sells = shop.sells || [];
       if (!sells.length) buyList.append(h('p', { class: 'empty', text: 'Nothing for sale today.' }));
       for (const s of sells) {
         const def = itemDef(s.id);
-        const price = Math.max(0, Math.round(Number(s.price) || def?.value || 1));
-        const afford = p.inventory.count('coin') >= price;
-        const b = button('Buy', { cls: 'btn-small btn-ember', disabled: !afford });
-        b.addEventListener('click', () => {
-          this.trade(s.id, price, true);
+        const price = priceFor(g, npc, s.id, 'buy', { markup: st.markup });
+        if (price == null) continue;
+        const left = T ? T.stockLeft(npc, s.id) : Infinity;
+        const out = left <= 0;
+        let qty = 1;
+        const qEl = h('span', { class: 'shop-step-n num', text: '1' });
+        const minus = button('−', { cls: 'btn-small btn-ghost shop-step', title: 'One fewer' });
+        const plus = button('+', { cls: 'btn-small btn-ghost shop-step', title: 'One more' });
+        const b = button(out ? 'Sold out' : 'Buy', { cls: 'btn-small btn-ember', disabled: out || p.inventory.count('coin') < price });
+        const setQ = (n) => {
+          const max = Math.max(1, Math.min(Number.isFinite(left) ? left : 9, Math.floor(p.inventory.count('coin') / Math.max(1, price)) || 1, 9));
+          qty = Math.max(1, Math.min(max, n));
+          setText(qEl, String(qty));
+          b.disabled = out || p.inventory.count('coin') < price * qty;
+          setText(b, out ? 'Sold out' : qty > 1 ? `Buy ${qty}` : 'Buy');
+        };
+        minus.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          setQ(qty - 1);
+        });
+        plus.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          setQ(qty + 1);
+        });
+        b.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          this.buyFrom(s.id, qty);
           redraw();
         });
-        buyList.append(this.shopRow(s.id, def, `${price}`, b, !afford));
+        const note = out ? 'Sold out, back tomorrow' : Number.isFinite(left) ? `${left} left` : '';
+        const row = this.shopRow(s.id, def, `${price}`, h('span', { class: 'shop-step-box' }, minus, qEl, plus, b), out, null, { note, worth: def?.value });
+        buyList.append(row);
       }
-      const buys = shop.buys && typeof shop.buys === 'object' ? shop.buys : {};
-      // A shop that buys anything (round 14: "a shop to sell my stuff"): what it names at
-      // its own price, anything else of value at a share of what it is worth.
-      const anyPrice = (it) => {
-        if (buys[it.id] != null) return Number(buys[it.id]) || 0;
-        const def = it.def || itemDef(it.id);
-        if (!shop.buysAll || !def || !(def.value > 0) || def.type === 'quest' || def.type === 'key' || def.type === 'currency') return null;
-        return Math.max(1, Math.round(def.value * shop.buysAll));
-      };
-      const mine = sortItems(p.inventory.list()).filter((it) => it.id !== 'coin' && anyPrice(it) != null);
-      if (!mine.length) sellList.append(h('p', { class: 'empty', text: `${npc.name?.split(' ')[0] || 'They'} isn't buying anything you carry.` }));
+      const mine = sortItems(p.inventory.list()).filter((it) => it.id !== 'coin' && priceFor(g, npc, it.id, 'sell', { markup: st.markup }) != null);
+      if (!mine.length) sellList.append(h('p', { class: 'empty', text: `${first} isn't buying anything you carry.` }));
       for (const it of mine) {
-        const price = Math.max(0, Math.round(anyPrice(it) || 0));
-        const b = button('Sell', { cls: 'btn-small' });
-        b.addEventListener('click', () => {
-          this.trade(it.id, price, false);
-          redraw();
+        const price = priceFor(g, npc, it.id, 'sell', { markup: st.markup });
+        const stolen = (g.provenance?.qtyOf?.(it.id) ?? 0) > 0 && (T?.stolenOf?.(it.id, 1)?.length ?? 0) > 0;
+        const b = button('Sell 1', { cls: 'btn-small' });
+        b.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          this.askSell(row, it, 1, price, redraw);
         });
-        const row = this.shopRow(it.id, it.def, `${price}`, b, false, it.qty);
+        const row = this.shopRow(it.id, it.def, `${price}`, b, false, it.qty, { stolen, worth: (it.def || itemDef(it.id))?.value });
         if (it.qty > 1) {
           const all = button(`All ${it.qty}`, { cls: 'btn-small btn-ghost' });
-          all.addEventListener('click', () => {
-            this.trade(it.id, price, false, it.qty);
-            redraw();
+          all.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            this.askSell(row, it, it.qty, price, redraw);
           });
-          row.lastChild.append(all);
+          row.querySelector('.shop-btns').append(all);
         }
         sellList.append(row);
       }
@@ -476,50 +523,121 @@ export class DialogPanel {
       });
       tabs.append(b);
     }
-    const shopEl = h('div', { class: 'shop' }, h('div', { class: 'shop-head' }, tabs, h('span', { class: 'purse' }, h('img', { class: 'item-img', alt: '', src: itemIconUrl(g, 'coin') }), coins)), h('div', { class: 'shop-panes' }, buyPane, sellPane), button('Done trading', { cls: 'btn-ghost btn-small', onClick: () => this.choose('__back') }));
+    const shopEl = h(
+      'div',
+      { class: 'shop' },
+      h('div', { class: 'shop-head' }, tabs, h('span', { class: 'purse' }, h('img', { class: 'item-img', alt: '', src: itemIconUrl(g, 'coin') }), coins)),
+      h('div', { class: 'shop-bar' }, badge, haggleBtn),
+      h('div', { class: 'shop-panes' }, buyPane, sellPane),
+      button('Done trading', { cls: 'btn-ghost btn-small', onClick: () => this.choose('__back') }),
+    );
     this.extraEl.append(shopEl);
     redraw();
   }
 
-  shopRow(id, def, price, btn, dim, qty) {
-    return h(
+  // A row: icon, name (and how many), a note (stock), the stolen mark, the price against what it
+  // is worth, the buttons. A tap on the row shows what it is, inline.
+  shopRow(id, def, price, btn, dim, qty, { note = '', stolen = false, worth = null } = {}) {
+    const detail = h('p', { class: 'shop-detail', hidden: true, text: def?.desc || '' });
+    const worthTxt = Number.isFinite(worth) && String(worth) !== String(price) ? h('span', { class: 'shop-worth', text: `worth ${worth}` }) : null;
+    const row = h(
       'div',
-      { class: `shop-row ${dim ? 'dim' : ''}`.trim(), title: def?.desc || '' },
+      { class: `shop-row ${dim ? 'dim' : ''} ${stolen ? 'is-stolen' : ''}`.trim() },
       h('img', { class: 'item-img', alt: '', src: itemIconUrl(this.game, id) }),
-      h('span', { class: 'shop-name' }, h('span', { text: def?.name || id }), qty ? h('span', { class: 'shop-qty num', text: `×${qty}` }) : null),
-      h('span', { class: 'price num' }, h('img', { class: 'item-img tiny', alt: '', src: itemIconUrl(this.game, 'coin') }), price),
+      h(
+        'span',
+        { class: 'shop-name' },
+        h('span', { text: def?.name || id }),
+        qty ? h('span', { class: 'shop-qty num', text: `×${qty}` }) : null,
+        note ? h('span', { class: `shop-stock ${dim ? 'is-out' : ''}`.trim(), text: note }) : null,
+        stolen ? h('span', { class: 'shop-stolen', text: 'stolen' }) : null,
+      ),
+      h('span', { class: 'price num' }, h('img', { class: 'item-img tiny', alt: '', src: itemIconUrl(this.game, 'coin') }), price, worthTxt),
       h('span', { class: 'shop-btns' }, btn),
+      detail,
     );
+    row.addEventListener('click', () => {
+      detail.hidden = !detail.hidden || !detail.textContent;
+    });
+    return row;
   }
 
-  trade(itemId, price, buying, qty = 1) {
-    const g = this.game;
-    const p = g.player;
-    const npc = this.npc;
-    if (!p || !npc) return;
-    if (buying) {
-      if (p.inventory.count('coin') < price) {
-        g.audio?.play('error');
-        return;
-      }
-      p.inventory.remove('coin', price);
-      p.inventory.add(itemId, 1);
-      g.bus.emit('item_gained', { actor: p, itemId, qty: 1, from: 'trade' });
-      g.bus.emit('trade', { npc, itemId, qty: 1, price, bought: true });
-      g.audio?.play('coin');
-      this.ui.toast(`Bought ${itemName(itemId)} for ${price} coins.`, 'item', { iconUrl: itemIconUrl(g, itemId) });
-    } else {
-      const n = p.inventory.remove(itemId, qty);
-      if (!n) return;
-      const total = price * n;
-      if (total > 0) {
-        p.inventory.add('coin', total);
-        g.bus.emit('item_gained', { actor: p, itemId: 'coin', qty: total, from: 'trade' });
-      }
-      g.bus.emit('trade', { npc, itemId, qty: n, price: total, bought: false });
-      g.audio?.play('coin');
-      this.ui.toast(`Sold ${itemName(itemId, n)} for ${total} coins.`, 'item', { iconUrl: itemIconUrl(g, 'coin') });
+  // Selling gear, a rare thing or your last one asks first, inline (never a browser confirm).
+  askSell(row, it, qty, price, redraw) {
+    const def = it.def || itemDef(it.id);
+    const rare = ['rare', 'epic', 'legendary'].includes(def?.rarity) || def?.type === 'gear' || def?.type === 'weapon';
+    const last = qty >= (it.qty || 1);
+    if (!rare && !(last && (def?.value || 0) >= 10)) {
+      this.sellTo(it.id, qty);
+      redraw();
+      return;
     }
+    const box = row.querySelector('.shop-btns');
+    clear(box);
+    const yes = button(`Sell for ${price * qty}`, { cls: 'btn-small btn-ember' });
+    const no = button('Keep it', { cls: 'btn-small btn-ghost' });
+    yes.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      this.sellTo(it.id, qty);
+      redraw();
+    });
+    no.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      redraw();
+    });
+    box.append(h('span', { class: 'shop-ask', text: last ? 'Your last one. Sure?' : 'Sure?' }), yes, no);
+  }
+
+  buyFrom(itemId, qty = 1) {
+    const g = this.game;
+    const r = g.trade?.buy?.(this.npc, itemId, qty) || { ok: false };
+    if (!r.ok) {
+      g.audio?.play('error');
+      if (r.line) this.play([r.line], this.options);
+      this.mode = 'shop';
+      this.showWords();
+      return r;
+    }
+    g.audio?.play('coin');
+    this.ui.toast(`Bought ${itemName(itemId, r.qty)} for ${r.total} coins.`, 'item', { iconUrl: itemIconUrl(g, itemId) });
+    return r;
+  }
+
+  sellTo(itemId, qty = 1) {
+    const g = this.game;
+    const r = g.trade?.sell?.(this.npc, itemId, qty) || { ok: false };
+    if (!r.ok) {
+      g.audio?.play('error');
+      if (r.line) {
+        this.setExpression(r.reason === 'stolen' ? 'angry' : 'neutral');
+        this.play([r.line], this.options);
+        this.mode = 'shop';
+        this.showWords();
+      }
+      return r;
+    }
+    g.audio?.play('coin');
+    if (r.line) {
+      this.play([r.line], this.options);
+      this.showWords();
+    }
+    this.mode = 'shop';
+    this.ui.toast(`Sold ${itemName(itemId, r.qty)} for ${r.total} coins.`, 'item', { iconUrl: itemIconUrl(g, 'coin') });
+    return r;
+  }
+
+  // Their words in view when they answer (the shop may have scrolled them away).
+  showWords() {
+    try {
+      this.textEl?.scrollIntoView?.({ block: 'nearest' });
+    } catch {
+      /* cosmetic */
+    }
+  }
+
+  // (Kept for callers of the old shop: one item at a price, through the day's trade.)
+  trade(itemId, price, buying, qty = 1) {
+    return buying ? this.buyFrom(itemId, qty) : this.sellTo(itemId, qty);
   }
 
   // Typewriter, with a soft voice blip every few letters.
