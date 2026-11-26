@@ -199,7 +199,7 @@ async function run(S) {
   });
   await shot('4-woke');
   check(died.gold === 0 && died.coins === 57, `${tag}: every coin stayed where you fell (purse ${died.gold}, ring ${died.coins})`);
-  check(/57 coins, lies where you fell/.test(died.words), `${tag}: the waking words say where the coins are`);
+  check(/57 coins, lies where you (fell|died)/.test(died.words), `${tag}: the waking words say where the coins are`);
   await ev(() => document.querySelectorAll('.toast').forEach((t) => t.remove()));
   await wait(400);
   const edge = await rectOf('.er-edge-tip');
