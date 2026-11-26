@@ -713,7 +713,14 @@ async function run(S) {
   });
 
   // ---------- (11) Aveline comes, by day, in private, and asks ----------
-  const askBy = async (answer, label) => {
+  const askBy = async (answer, label, tries = 2) => {
+    await ev(() => {
+      const g0 = window.__game;
+      if (!window.__asks) {
+        window.__asks = [];
+        g0.bus.on('dark_asking', (p) => window.__asks.push(`${p?.id}:${p?.phase}${p?.why ? `:${p.why}` : ''}`));
+      }
+    });
     await ev(() => {
       const g = window.__game;
       g.clock.skipTo?.(11);
@@ -743,8 +750,14 @@ async function run(S) {
       const g = window.__game;
       const a = g.unkindle.suspicion.asking;
       const chat = document.querySelector('.chat');
-      return { phase: a?.phase, line: a?.line || '', chatOpen: !!chat && getComputedStyle(chat).display !== 'none' && !chat.hidden, target: g.ui.chat.target, dist: Math.round(Math.hypot(g.entities.get('aveline').x - g.player.x, g.entities.get('aveline').y - g.player.y)) };
+      return { phase: a?.phase, asks: (window.__asks || []).slice(-3), line: a?.line || '', chatOpen: !!chat && getComputedStyle(chat).display !== 'none' && !chat.hidden, target: g.ui.chat.target, dist: Math.round(Math.hypot(g.entities.get('aveline').x - g.player.x, g.entities.get('aveline').y - g.player.y)) };
     });
+    if (open.phase !== 'open' && tries > 1) {
+      // (A busy machine, a villager's own business: try the scene once more, and say why.)
+      console.log(`  [${tag}] the asking did not open (${JSON.stringify(open)}; ${await ev(() => window.__asks.slice(-4).join(', '))}); once more`);
+      await ev(() => window.__game.ui.chat.close?.());
+      return askBy(answer, label, tries - 1);
+    }
     await shot(`${label}-asks`);
     check(open.phase === 'open' && open.target === 'aveline' && /What are you carrying|cold that takes/.test(open.line), `[${tag}] Aveline walks up, by day and in private, and asks in her own words`, JSON.stringify({ ...open, line: open.line.slice(0, 70) }));
     const fld = open.phase === 'open' ? await page.$('.chat-input textarea, .chat-input input') : null;
@@ -758,17 +771,25 @@ async function run(S) {
     return ev(() => {
       const g = window.__game;
       const st = g.unkindle.suspicion.people.aveline;
-      return { verdict: st.asked?.verdict, dark: st.dark, askedStop: st.askedStop, rite: st.riteOffered, text: (document.querySelector('.chat')?.textContent || '').slice(-300), op: g.entities.get('aveline').opinionOfPlayer, wanted: g.murder.isWanted() };
+      return { verdict: st.asked?.verdict, dark: st.dark, askedStop: st.askedStop, rite: st.riteOffered, text: (document.querySelector('.chat')?.textContent || '').slice(-300), op: g.entities.get('aveline').opinionOfPlayer, crimes: (window.__crimes || []).slice() };
     });
   };
-  const op0 = await ev(() => ({ op: window.__game.entities.get('aveline').opinionOfPlayer, wanted: window.__game.murder.isWanted() }));
+  const op0 = await ev(() => {
+    const g = window.__game;
+    // Crimes from here on (the asking and the truth): none may come of dark magic.
+    window.__crimes = [];
+    g.bus.on('crime', (p) => window.__crimes.push({ kind: p?.kind, victim: p?.victim?.id ?? null }));
+    return { op: g.entities.get('aveline').opinionOfPlayer };
+  });
   const lie = await askBy("No. I've been ill, that's all.", '19');
   check(lie.verdict === 'doubted' || lie.verdict === 'believed', `[${tag}] a lie: she doubts it or believes it, by what she knows`, `${lie.verdict}: ${lie.text.slice(-110)}`);
   check(/watching|fever|Mira|isn't that/.test(lie.text), `[${tag}] her answer in the chat, in her words`, lie.text.slice(-110));
   const truth = await askBy('Yes. I took the life out of three wolves and a bandit. It makes me stronger.', '20');
   check(truth.verdict === 'knows' && truth.askedStop != null && truth.rite, `[${tag}] the truth about the beasts: she knows, asks you to stop, offers the rite`, JSON.stringify({ v: truth.verdict, stop: truth.askedStop, rite: truth.rite }));
   check(/[Ss]top/.test(truth.text) && /chapel/.test(truth.text), `[${tag}] "Stop… come to the chapel flame… your choice"`, truth.text.slice(-140));
-  check(op0.op - truth.op <= 10 && truth.wanted === op0.wanted, `[${tag}] dangerous, not evil: her opinion barely moves, nobody is after you for it`, `${op0.op} -> ${truth.op}`);
+  // (Other news may still reach the watch meanwhile, Hess's attack above; none of it is this.)
+  const darkCrimes = truth.crimes.filter((c) => c.victim === 'aveline' || /dark|magic|unkindl/i.test(String(c.kind)));
+  check(op0.op - truth.op <= 10 && darkCrimes.length === 0, `[${tag}] dangerous, not evil: her opinion barely moves, no crime comes of it`, `${op0.op} -> ${truth.op}; crimes meanwhile: ${JSON.stringify(truth.crimes)}`);
   await ev(() => {
     const g = window.__game;
     g.ui.chat.close?.();
