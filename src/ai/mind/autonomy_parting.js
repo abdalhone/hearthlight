@@ -18,6 +18,7 @@
 import { TILE } from '../../core/constants.js';
 import { DEEDS } from './autonomy_data.js';
 import { dropItem } from '../../entities/pickups.js';
+import { buildRules } from '../brain/prompt.js';
 
 const NEAR = 2 * TILE; // she stops this close and faces them
 const WALKED_OFF = 8 * TILE; // the player this far from her: the scene ends
@@ -154,7 +155,7 @@ export class Parting {
       timer = setTimeout(() => r(null), ONLINE_WAIT);
     });
     st.online = 'asking';
-    Promise.race([Promise.resolve().then(() => provider.complete({ rules: safe(() => g.brain.promptRules?.(), '') || '', task, schema: { type: 'object', properties: { lines: { type: 'array', items: { type: 'string' } } }, required: ['lines'], additionalProperties: false }, tier: 'quick', maxTokens: 400 })), late])
+    Promise.race([Promise.resolve().then(() => provider.complete({ rules: safe(() => buildRules(g), '') || '', task, schema: { type: 'object', properties: { lines: { type: 'array', items: { type: 'string' } } }, required: ['lines'], additionalProperties: false }, tier: 'quick', maxTokens: 400 })), late])
       .then((raw) => {
         clearTimeout(timer);
         const list = Array.isArray(raw?.lines) ? raw.lines.map((l) => String(l || '').replace(/\s+/g, ' ').trim()).filter((l) => l && l.length <= 220 && !/[{}<>]/.test(l)) : [];

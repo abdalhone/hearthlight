@@ -457,3 +457,42 @@ test('mourning keeps the talk open: "we buried … What is it?"', async () => {
   void holdLyra;
   void px;
 });
+
+test('leftovers: a terrified villager gets no friendly quick replies; they hear and answer in fear', async () => {
+  const { villagerChips } = await import('../src/ui/chat_target.js');
+  const g = makeGame({ hour: 12 });
+  clearScene(g, ['bram', 'elda']);
+  assert.ok(villagerChips(g, 'elda').includes('Hello! How are you?'));
+  STATES.terror(g);
+  const chips = villagerChips(g, 'elda');
+  assert.ok(!chips.some((c) => /Hello|news|yourself/.test(c)), chips.join(' | '));
+  assert.ok(chips.some((c) => /Please/.test(c)) && chips.some((c) => /backs away/.test(c)) && chips.some((c) => /Not a word/.test(c)));
+});
+
+test('leftovers: "uneasy" (a scream heard, never seen) reaches their own answer offline, of a place and never a person', async () => {
+  const g = makeGame({ hour: 12 });
+  clearScene(g, ['bram']);
+  const bram = g.entities.get('bram');
+  beside(g, bram);
+  bram.uneasy = { day: g.clock.day, place: 'ember_kettle' };
+  let got = '';
+  for (let i = 0; i < 8 && !/scream|hear that|heard it/i.test(got); i++) got = (await g.village.playerSays(bram, 'how are you?')).lines.join(' ');
+  assert.match(got, /scream|hear that|heard it/i);
+  assert.doesNotMatch(got, /\b(you|stranger|Ash)\b did/i);
+});
+
+test('leftovers: more offline shrugs, never the same one twice in a day while another is unsaid', async () => {
+  const g = makeGame({ hour: 12 });
+  clearScene(g, ['bram']);
+  const bram = g.entities.get('bram');
+  beside(g, bram);
+  const seen = new Set();
+  for (const q of ['what is the meaning of the moon', 'do fish dream', 'why is the sky grey', 'who built the wall']) {
+    const r = await g.village.playerSays(bram, q);
+    for (const l of r.lines) {
+      assert.ok(!seen.has(l), `not twice: ${l}`);
+      seen.add(l);
+      bram.say?.(l, { kind: 'say' });
+    }
+  }
+});

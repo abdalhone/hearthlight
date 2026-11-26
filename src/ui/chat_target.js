@@ -300,6 +300,12 @@ export function partingLine(e, why, who = 'they') {
 // Quick replies for a villager: the everyday openers, and "I'm <name>." while they do not
 // know it (only when the player has a name of their own set).
 export function villagerChips(game, id, knows = false) {
+  // Someone in terror or dread of the player (they watched them kill): no friendly openers.
+  // What a person says to someone afraid of them: beg, plead, back away, or threaten (round
+  // 14b, the leftovers). Each is only words (and an act): they hear it and answer in fear.
+  const e = safe(() => game?.entities?.get?.(id), null);
+  const fear = e ? safe(() => game?.murder?.fearOf?.(e), null) : null;
+  if (fear) return ["Please, I won't hurt you.", 'Just listen to me. Please.', "I'm sorry. I'm so sorry.", '*backs away*', 'Not a word of this to anyone.'];
   const out = ['Hello! How are you?', "What's the news?", 'What do you think of me?', 'Tell me about yourself.'];
   const name = String(game?.settings?.playerName || '').trim();
   if (!knows && name && !/^travell?er$/i.test(name)) out.splice(1, 0, `I'm ${name}.`);
