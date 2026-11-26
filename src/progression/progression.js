@@ -20,8 +20,9 @@ import { STATS } from '../core/stats.js';
 
 const own = Object.prototype.hasOwnProperty;
 
-// While Free stat points is on, one attribute can hold at most this many (the curve keeps
-// what they add under each effect's soft cap, and the pipeline clamps the rest).
+// While Free stat points is on, one attribute can hold at most this many (speeds and
+// chances bend under their ceilings, the rest keep growing; the pipeline's clamps are the
+// only wall).
 export const FREE_MAX = 999;
 
 function emptyPoints() {
@@ -113,9 +114,9 @@ export class Progression {
     return rule ? scaled(rule, lv - 1) : null;
   }
 
-  // The points as they stand, each attribute on its curve (attributes.js: the first point
-  // gives what it always gave, each later one a little less). Only the counts are kept and
-  // saved, so an old save's points simply follow the curve when it loads.
+  // The points as they stand, each effect on its own curve (attributes.js: speeds bend
+  // hard, chances toward their clamps, everything else gently and without end). Only the
+  // counts are kept and saved, so an old save's points simply follow the curves when it loads.
   pointsContribution(a) {
     if (!this.isPlayer(a)) return null;
     const out = { add: {}, pct: {} };
@@ -171,7 +172,7 @@ export class Progression {
   // What the next point in this attribute would add: the curve's own step (attributes.js
   // nextPoint: `d`, `first`), and what it really does to the numbers the sheet shows
   // (`before`, `after`, `real`), read from the pipeline with one point more, as the gear
-  // compare does, so the speed knee, the clamps, gear and whatever runs now all count.
+  // compare does, so the clamps, gear and whatever runs now all count.
   // `limit`: the stat already sits at its clamp, so the point adds nothing to it.
   // The character sheet's "Next:" line.
   nextGain(attr) {

@@ -103,8 +103,8 @@ export class CharacterView {
       minus.hidden = true;
       ten.hidden = true;
       const ctl = h('span', { class: 'chs-ctl' }, minus, plus, ten);
-      // What one more point adds (round 14b: each counts a little less than the last), with
-      // a small meter of how much of the first point's worth it still carries.
+      // What one more point adds (round 14b), with a small meter of how much of the first
+      // point's worth it still carries (a speed's far points little, the rest a good share).
       const meter = h('i');
       const nextText = h('span', { class: 'chs-next-text' });
       const next = h('div', { class: 'chs-attr-next' }, h('span', { class: 'chs-next-meter', 'aria-hidden': 'true' }, meter), nextText);
@@ -113,7 +113,8 @@ export class CharacterView {
       this.attrRows[id] = { row, n, plus, minus, ten, next, nextText, meter };
       this.attrsEl.append(row);
     }
-    this.curveEl = h('p', { class: 'chs-curve-note', text: 'Each point in the same attribute counts a little less than the last.' });
+    // How the points add up (round 14b, attributes.js EFFECT_KIND), said plainly.
+    this.curveEl = h('p', { class: 'chs-curve-note', text: 'Speed and cooldowns slow down as they climb; strength, magic, health and mana keep growing.' });
     this.respecEl = h('p', { class: 'chs-respec' });
     const left = h('section', { class: 'chs-box' }, hero, this.attrsEl, this.curveEl, this.respecEl);
 
@@ -181,7 +182,7 @@ export class CharacterView {
       r.ten.disabled = !free || !pr.canSpend(id);
       this.renderNext(id, r);
     }
-    if (free) setText(this.respecEl, 'Free stat points is on: raise anything as far as you like (up to 999 a stat; the curve still bends). Turning it off in Settings → Game → Practice puts back the points you really spent.');
+    if (free) setText(this.respecEl, 'Free stat points is on: raise anything as far as you like (up to 999 a stat). Turning it off in Settings → Game → Practice puts back the points you really spent.');
     else setText(this.respecEl, pr.spent() ? `Want them back? Settings → Game → Reset stat points gives them all back, free. Or Sister Aveline can give you a quiet hour in the chapel to start over (${pr.respecCost()} coins).` : 'Spend points as you level. Settings (Reset stat points) can give them back for free; Sister Aveline at the chapel, for a price.');
     this.renderSlots();
     this.renderPick();
@@ -358,7 +359,7 @@ function smallNum(a) {
 const SHOWN_ROUNDED = new Set(['maxHp', 'maxMana', 'atk', 'def']);
 
 // m: one entry of progression.nextGain. Where the pipeline's own answer is there (`real`),
-// the words say that: what the sheet's number will do (the speed knee, the clamps, gear and
+// the words say that: what the sheet's number will do (the clamps, gear and
 // hastes counted); speed, a share of a pace, as a share of the pace you walk at now.
 export function gainWords(m) {
   const s = STATS[m.stat] || {};

@@ -1,11 +1,11 @@
 // The one stat pipeline (DESIGN §26). Every actor's derived numbers are
 //
-//     value = clamp( knee( (base + Σ add) × (1 + Σ pct) ) × Π mul )
+//     value = clamp( (base + Σ add) × (1 + Σ pct) × Π mul )
 //
-// knee() only touches a stat with a `knee` (speed, round 14b): past it every extra bit
-// counts less and less, creeping up on the stat's max and never reaching it, so hastes
-// stacked together stay playable and each still adds a little. Slows (survival's
-// weaknesses, ×mul < 1) act after it, in full.
+// A percentage is a share of the base and the flat adds: "+40% speed" is 40% of your
+// normal pace, whatever else runs, and percentages simply add up (round 14b: "40% should
+// always give 40%, no matter what"). The clamps are safety limits no real build reaches,
+// except the chances (dodge, crit, resistance), which cannot pass what they say.
 //
 // summed over the sources in a fixed order: base → level → points → gear → modifiers
 // (timed: prices, potions, food, surges; live: survival's weaknesses, magic statuses).
@@ -28,15 +28,19 @@
 export const STATS = Object.freeze({
   maxHp: { label: 'Health', short: 'HP', fmt: 'int', min: 1, max: 9999 },
   hpRegen: { label: 'Health regen', short: 'Regen', fmt: 'rate', min: 0, max: 40 },
-  maxMana: { label: 'Mana', short: 'MP', fmt: 'int', min: 5, max: 400 },
+  // Mana and weave power have no wall a build meets (round 14b: points in Focus and Weave
+  // keep growing); the clamps only keep the numbers sane.
+  maxMana: { label: 'Mana', short: 'MP', fmt: 'int', min: 5, max: 9999 },
   manaRegen: { label: 'Mana regen', fmt: 'mul', min: 0, max: 5 },
   atk: { label: 'Sword', short: 'ATK', fmt: 'int', min: 1, max: 999 },
-  spellPower: { label: 'Weave power', fmt: 'mul', min: 0.1, max: 10 },
+  spellPower: { label: 'Weave power', fmt: 'mul', min: 0.1, max: 50 },
   def: { label: 'Armor', short: 'DEF', fmt: 'int', min: 0, max: 99 },
-  // Speed's ceiling (round 14b): 999 Grace points walk at ~129 px/s, under the knee; gear,
-  // a Swiftfoot Draught, a wind surge, Berserk, the Last Stand and Oath on top of that
-  // (~226 by plain sums) come to ~158, a pace a phone stick still steers through a door.
-  speed: { label: 'Speed', fmt: 'int', min: 10, max: 170, knee: 130 },
+  // Speed (round 14b): 999 Grace points walk at ~129 px/s (the points' own curve,
+  // progression/attributes.js); every haste adds its full share on top. 260 is a safety
+  // clamp only: everything stacked at once (999 Grace, the fastest boots and cloak, a
+  // Swiftfoot Draught, a wind surge, Berserk, the Last Stand and Oath) is ~227 px/s, and
+  // movement is split into 4 px steps, so nothing walks through a wall at any pace.
+  speed: { label: 'Speed', fmt: 'int', min: 10, max: 260 },
   crit: { label: 'Critical chance', fmt: 'pct', min: 0, max: 0.6 },
   critMul: { label: 'Critical damage', fmt: 'mul', min: 1, max: 4 },
   dodge: { label: 'Dodge chance', fmt: 'pct', min: 0, max: 0.4 },
@@ -50,7 +54,7 @@ export const STATS = Object.freeze({
   bleedout: { label: 'Bleed-out window', fmt: 'sec', min: 10, max: 300 },
   carrySpeed: { label: 'Carrying pace', fmt: 'mul', min: 0.3, max: 3 },
   poise: { label: 'Unshakable', fmt: 'flag', min: 0, max: 1 },
-  strike: { label: 'Strike weaves', fmt: 'mul', min: 0.1, max: 10 },
+  strike: { label: 'Strike weaves', fmt: 'mul', min: 0.1, max: 50 },
 });
 
 export const STAT_IDS = Object.freeze(Object.keys(STATS));
@@ -91,19 +95,6 @@ let modSeq = 0;
 
 function num(v, d = 0) {
   return typeof v === 'number' && Number.isFinite(v) ? v : d;
-}
-
-// Past `knee`, the rest of v bends toward `max` (slope 1 at the knee, never reaching max).
-export function soften(v, knee, max) {
-  if (!(v > knee) || !(max > knee)) return v;
-  const over = v - knee;
-  const room = max - knee;
-  return knee + (room * over) / (over + room);
-}
-
-function kneed(id, v) {
-  const s = STATS[id];
-  return s && s.knee != null ? soften(v, s.knee, s.max) : v;
 }
 
 function clampStat(id, v) {
@@ -315,7 +306,7 @@ export class Stats {
     }
     for (const m of this.modifiers(actor)) fold(acc, m);
     const v = {};
-    for (const id of STAT_IDS) v[id] = clampStat(id, kneed(id, acc.add[id] * Math.max(0, 1 + acc.pct[id])) * acc.mul[id]);
+    for (const id of STAT_IDS) v[id] = clampStat(id, acc.add[id] * Math.max(0, 1 + acc.pct[id]) * acc.mul[id]);
     v.maxHp = Math.max(1, Math.round(v.maxHp));
     v.maxMana = Math.round(v.maxMana);
     v.atk = Math.round(v.atk * 10) / 10;
@@ -371,20 +362,6 @@ export class Stats {
       push(s.id, s.label, c);
     }
     for (const m of this.modifiers(actor)) push(m.source, m.label || m.source, m);
-    // A stat past its knee says how much the ceiling held back, so the parts still
-    // multiply out to the number shown.
-    const s = STATS[stat];
-    if (s && s.knee != null) {
-      let add = 0;
-      let pct = 0;
-      for (const b of out) {
-        add += b.add;
-        pct += b.pct;
-      }
-      const raw = add * Math.max(0, 1 + pct);
-      const soft = soften(raw, s.knee, s.max);
-      if (raw > 0 && soft < raw) out.push({ source: 'ceiling', label: `${s.label} ceiling`, add: 0, pct: 0, mul: soft / raw });
-    }
     return out;
   }
 
@@ -408,7 +385,7 @@ export class Stats {
     if (before !== actor.maxHp) this._lastMax.set(actor, actor.maxHp);
     if (this.isPlayer(actor)) {
       const m = this.game.magic;
-      if (m && m.mana && m.mana.max !== Math.round(Math.min(400, Math.max(5, v.maxMana))) && typeof m._recomputeMax === 'function') m._recomputeMax(0, false);
+      if (m && m.mana && m.mana.max !== Math.round(Math.min(STATS.maxMana.max, Math.max(5, v.maxMana))) && typeof m._recomputeMax === 'function') m._recomputeMax(0, false);
     }
   }
 

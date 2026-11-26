@@ -20,7 +20,9 @@
 //      steps or rolls out of every telegraphed marker, by level and points; and whether the
 //      boss dropped it, and how much health it lost.
 //
-//   node scripts/stats_sim.mjs [--json FILE] [--only stats,foes,boss-hits,mana,bosses] [--variants old,first,new]
+//   6. far out (50, 100, 200 points) beside Varek: your health, sword cuts and Sparks to beat him.
+//
+//   node scripts/stats_sim.mjs [--json FILE] [--only stats,foes,boss-hits,mana,reach,bosses] [--variants old,first,new] [--seeds 3]
 import { writeFileSync } from 'node:fs';
 import { EventBus } from '../src/core/events.js';
 import { RNG } from '../src/core/rng.js';
@@ -536,6 +538,18 @@ const FIGHTS = [
   { level: 20, main: [30, 57] },
 ];
 
+// A boss fight is chaotic (the brain picks its moves, the bot dodges what it sees), so each
+// cell is played with SEEDS combat streams and reads the median: seconds when every one
+// was won, else how many were won.
+const SEEDS = Number(opt('--seeds')) || 3;
+export function fights(id, o, seeds = SEEDS) {
+  const list = [];
+  for (let s = 1; s <= seeds; s++) list.push(fight(id, { ...o, seed: s }));
+  const won = list.filter((f) => f.won);
+  const secs = list.map((f) => (f.won ? f.seconds : Infinity)).sort((x, y) => x - y);
+  return { won: won.length, of: seeds, median: secs[Math.floor(seeds / 2)], fell: list.filter((f) => f.dropped).length, lowest: Math.min(...list.map((f) => f.lowest)), hp: list[0].hp };
+}
+
 function bossTable() {
   const out = [];
   for (const build of ['sword', 'weave']) {
@@ -544,17 +558,41 @@ function bossTable() {
         const row = { build, level, main: n };
         for (const rule of VARIANTS) {
           row[rule] = {};
-          for (const id of BOSS_LIST) row[rule][id] = fight(id, { rule, build, level, main: n });
+          for (const id of BOSS_LIST) row[rule][id] = fights(id, { rule, build, level, main: n });
         }
         out.push(row);
-        console.error(`  ${build} L${level} ${n}: ${VARIANTS.map((r) => `${r} ${BOSS_LIST.map((id) => fmtFight(row[r][id])).join(' ')}`).join(' | ')}`);
+        console.log(`  ${build} L${level} ${n}: ${VARIANTS.map((r) => `${r} ${BOSS_LIST.map((id) => fmtFight(row[r][id])).join(' ')}`).join(' | ')}`);
       }
     }
   }
   return out;
 }
 
-const fmtFight = (f) => (f.won ? `${f.seconds}s` : f.dropped ? `fell@${f.seconds}` : `>${f.seconds}`);
+const fmtFight = (f) => (f.won === f.of ? `${Math.round(f.median)}s` : `${f.won}/${f.of}${Number.isFinite(f.median) ? `~${Math.round(f.median)}s` : ''}${f.fell ? ` (fell ${f.fell})` : ''}`);
+
+// ---------------------------------------------------------------- 6. a boss's power
+
+// Far out (Free stat points, or a long life): what 50, 100 and 200 points in one attribute
+// make of you beside Varek (520 health, hits for 11): your health; sword cuts (the combo's
+// average, armor taken off) and Sparks to bring him down.
+function reachTable() {
+  const out = [];
+  const V = BOSSES.varek;
+  for (const n of [0, 10, 30, 50, 100, 200]) {
+    const row = { n };
+    for (const rule of VARIANTS) {
+      const hp = makeGame({ rule, level: 15, points: { vitality: n }, bosses: false }).player.maxHp;
+      const gm = makeGame({ rule, level: 15, points: { might: n }, bosses: false });
+      const atk = gm.stats.get(gm.player, 'atk');
+      const cut = COMBO.reduce((t, c) => t + Math.max(atk * c.mul - V.def, atk * c.mul * 0.35), 0) / COMBO.length;
+      const gw = makeGame({ rule, level: 15, points: { weave: n }, bosses: false });
+      const spark = weaveHit(gw, SPARK).dmg;
+      row[rule] = { hp, cuts: Math.ceil(V.hp / cut), sparks: Math.ceil(V.hp / Math.max(spark - V.def, spark * 0.35)), atk: Math.round(atk * 10) / 10, spark: Math.round(spark * 10) / 10 };
+    }
+    out.push(row);
+  }
+  return out;
+}
 
 // ---------------------------------------------------------------- run
 
@@ -579,6 +617,11 @@ if (MAIN && want('mana')) {
   report.mana = manaTable();
   console.log('\n== mana: pool, sparks, novas, regen/s, nova cooldown');
   for (const r of report.mana) console.log(`L${r.level} focus ${r.n}: ${VARIANTS.map((v) => `${v} ${r[v].mana} ${r[v].sparks} ${r[v].novas} ${r[v].regen}/s ${r[v].cd}s`).join(' | ')}`);
+}
+if (MAIN && want('reach')) {
+  report.reach = reachTable();
+  console.log('\n== level 15, n points in one attribute beside Varek (520 health): health / sword cuts / Sparks to beat him');
+  for (const r of report.reach) console.log(`${r.n}: ${VARIANTS.map((v) => `${v} ${r[v].hp} hp, ${r[v].cuts} cuts (atk ${r[v].atk}), ${r[v].sparks} sparks (${r[v].spark})`).join(' | ')}`);
 }
 if (MAIN && want('bosses')) {
   console.log('\n== boss fights (varek greyjaw lake warden), seconds to beat');

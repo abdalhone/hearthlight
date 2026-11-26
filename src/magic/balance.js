@@ -19,7 +19,9 @@ export const MANA_REGEN = 5; // per second, plus a share of the max
 export const MANA_REGEN_SHARE = 0.025; // of max per second
 export const MANA_REGEN_DELAY = 0.4; // seconds after spending before regen resumes
 export const MANA_PER_LEVEL = 4;
-export const MANA_CAP = 400;
+// No wall a build meets (round 14b: Focus points keep growing the pool); the stat
+// pipeline's maxMana clamp (src/core/stats.js) is the same number.
+export const MANA_CAP = 9999;
 // Weaves grow with the weaver: +7% damage a level (the sword grows by attack).
 export const POWER_PER_LEVEL = 0.07;
 
