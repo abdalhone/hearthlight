@@ -13,6 +13,7 @@ import { HEIRS, UNDONE, STAND_INS, OFFICIANTS, MOOT_CHAIR, MOOT_HEADS, MAREN_KEE
 import { murderLine, mootLines, lyraLine, FUNERAL, MOOT } from './lines.js';
 import { profileById } from '../entities/npc_data.js';
 import { isMinor } from '../core/people.js';
+import { stance as tradeStance } from '../world/trade.js';
 import * as Lyra from './lyra.js';
 import { funeralScript, trialScripts, playScript } from './scenes.js';
 
@@ -645,15 +646,12 @@ export function toneFor(m, npc) {
   return null;
 }
 
+// Round 14b (S-19): one graded rule for every shop, src/world/trade.js stance(): kin of
+// someone they know the stranger killed refuse; others charge a blood price; after the
+// Butcher all refuse but a fence; a case they believe of about one of theirs. Deaths
+// nobody did never count.
 export function refusesTrade(m, npc) {
-  for (const rec of Object.values(m.dead)) {
-    // Only once they know (they saw it, were told, or heard the bell): §29.2.
-    const guilty = (typeof m.knowsKiller === 'function' ? m.knowsKiller(rec, npc.id) : rec.known === 'witnessed') || m.cases[rec.id]?.verdict === 'guilty';
-    if (guilty) return true;
-    const c = m.cases[rec.id];
-    if (c && c.suspicion >= 0.6 && (kin(npc.id, rec.id) || care(m, npc.id, rec.id) >= 0.6)) return true;
-  }
-  return false;
+  return !!tradeStance(m.game, npc).refuse;
 }
 
 // A grieving villager's first words are about their grief.

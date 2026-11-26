@@ -215,6 +215,11 @@ export class Reputation {
       .map((id) => ({ id, title: TITLES[id].title, bad: TITLES[id].bad, why: whyOf(id, c) }));
   }
 
+  // Does this person know the stranger did this death? (The per-knower rule, for merchants.)
+  knows(rec, id) {
+    return knowsDeed(this.murder, rec, id);
+  }
+
   of(id) {
     const counts = this.counts({ knownTo: id });
     const titles = this.titles({ knownTo: id });

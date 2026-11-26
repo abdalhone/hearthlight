@@ -13,5 +13,6 @@
 import { reputationPlugin } from '../../society/reputation.js';
 import { villainPlugin, installVillainHooks } from '../../story/villain.js';
 import { agingPlugin, installAging } from '../../world/aging.js';
+import { tradePlugin } from '../../world/trade.js';
 
-export default [reputationPlugin, villainPlugin, agingPlugin, installVillainHooks, installAging];
+export default [reputationPlugin, villainPlugin, agingPlugin, tradePlugin, installVillainHooks, installAging];
