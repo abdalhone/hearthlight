@@ -357,3 +357,15 @@ test('a price named and never answered is off the table the next night: he stand
   assert.equal(V.state.returnOffer, null, 'no longer on the table');
   assert.equal(V.state.fighting, true);
 });
+
+test('he does not go at dawn while a line of yours waits its turn in the chat: every message is delivered first', () => {
+  const { g, V } = gate();
+  g.ui.chat.waiting = new Set();
+  g.ui.chat.queued = new Map([[TEMPTER_ID, "I'm done."]]);
+  g.clock.skipTo(9);
+  step(g, 2);
+  assert.ok(V.tempter, 'he stays to hear it');
+  g.ui.chat.queued.clear();
+  step(g, 2);
+  assert.equal(V.tempter, null, 'then he is gone at dawn');
+});

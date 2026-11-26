@@ -220,16 +220,21 @@ async function phone(label, w, h) {
   const mid = await page.evaluate(() => {
     const g = window.__game;
     const wv = g.ui.hud.weaving;
-    return { move: { ...g.input.touchVec }, aims: wv.aims.length, aim: wv.aims[0] ? { x: wv.aims[0].x - g.player.x, y: wv.aims[0].y - g.player.y } : null, px: g.player.x };
+    return { move: { ...g.input.touchVec }, aims: wv.aims.length, aim: wv.aims[0] ? { x: wv.aims[0].x - g.player.x, y: wv.aims[0].y - g.player.y } : null, px: g.player.x, dir: g.player.dir };
   });
   await page.screenshot({ path: `${OUT}/controls-${label}-aiming.png` });
-  check(`${label}: moving while aiming (two fingers)`, mid.move.x > 0.3 && mid.aims === 1, JSON.stringify(mid));
+  check(`${label}: the stick still reads while aiming (two fingers)`, mid.move.x > 0.3 && mid.aims === 1, JSON.stringify(mid));
   check(`${label}: the drag aims up-left`, mid.aim && mid.aim.x < 0 && mid.aim.y < 0, JSON.stringify(mid.aim));
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [{ x: stick.x + 48, y: stick.y, id: 1 }] });
+  // Casting stops you (round 14b follow-up, plan §14): while the weave is held the stick only
+  // turns you; let the weave go and, after its short plant, the same stick walks you on.
+  check(`${label}: while a weave is held the stick turns you, you do not walk`, Math.abs(mid.px - before.x) < 2 && mid.dir === 'right', `${Math.round(before.x)} -> ${Math.round(mid.px)}, facing ${mid.dir}`);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [{ x: slot.x - 72, y: slot.y - 42, id: 2 }] });
+  await page.waitForTimeout(700);
+  const walked = await page.evaluate(() => window.__game.player.x);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await page.waitForTimeout(250);
   const after = await page.evaluate(() => ({ x: window.__game.player.x, calls: (window.__game.magic.calls || []).slice(-3).map((c) => ({ fn: c.fn, slot: c.slot, aim: c.aim && { x: c.aim.x, y: c.aim.y } })), move: { ...window.__game.input.touchVec } }));
-  check(`${label}: the player walked`, after.x > before.x + 4, `${Math.round(before.x)} -> ${Math.round(after.x)}`);
+  check(`${label}: the weave let go, the player walks on`, walked > mid.px + 4, `${Math.round(mid.px)} -> ${Math.round(walked)}`);
   const cast = await page.evaluate(() => {
     const f = window.__game.magic.fired.slice(-1)[0];
     return f ? { slot: f.slot, k: f.k, aim: f.aim && { x: f.aim.x, y: f.aim.y } } : null;

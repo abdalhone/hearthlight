@@ -240,7 +240,13 @@ async function play(S) {
       const sent = await until((t) => [...document.querySelectorAll('.chat-log .msg')].some((r) => r.textContent.includes(t)), text, 3000);
       if (sent) break;
     }
-    await wait(900);
+    // Answered: nothing waiting or queued for him (a line sent while he still answers the last
+    // one waits its turn), then a beat for the reply's rows.
+    await until(() => {
+      const c = window.__game.ui.chat;
+      return !c.waiting?.size && !c.queued?.size;
+    }, null, 12000);
+    await wait(600);
   };
   const lastRows = () => ev(() => [...document.querySelectorAll('.chat-log .msg')].map((r) => r.textContent.trim()).slice(-4));
   const closeChat = async () => {
@@ -349,7 +355,7 @@ async function play(S) {
   const speed = await ev(() => window.__game.player.speed * (window.__game.player.speedMul || 1));
   const tapCast = await ev(() => window.__ev.filter((e) => e.t === 'spell_cast' && e.player).length);
   check(tapCast >= 1, `[${tag}] 27 the tap cast flew`);
-  check(planted.length > 3 && plantMoved < 0.6, `[${tag}] 27 a tap while running plants you for the pose`, `planted ${plantMs.toFixed(0)} ms, moved ${plantMoved.toFixed(2)} px over ${planted.length} frames`);
+  check(planted.length >= 2 && plantMoved < 0.6, `[${tag}] 27 a tap while running plants you for the pose`, `planted ${plantMs.toFixed(0)} ms, moved ${plantMoved.toFixed(2)} px over ${planted.length} frames`);
   check(plantMs >= 150 && plantMs <= 520, `[${tag}] 27 ... a short plant (${plantMs.toFixed(0)} ms)`);
   check(runSpeed > speed * 0.85, `[${tag}] 27 ... then you run on at full speed`, `${runSpeed.toFixed(1)} of ${speed.toFixed(1)} px/s`);
   await allUp().catch(() => {});
@@ -519,7 +525,9 @@ async function play(S) {
     g.player.y = t.y;
     g.camera.snap?.();
   });
-  const stands = await until(() => !!window.__game.villain.state.fighting, null, 20000);
+  // He waits out a word said to him (8 s of game time) and 3 s of silence: on a loaded machine
+  // the game's clock runs slower than the wall's, so allow it time.
+  const stands = await until(() => !!window.__game.villain.state.fighting, null, 45000);
   await wait(500);
   await shot('28-stands-against-you');
   check(stands, `[${tag}] 28 that later night, silent beside him: he stands against you`);

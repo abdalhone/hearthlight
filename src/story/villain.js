@@ -727,6 +727,13 @@ export class Villain {
     safe(() => this.game.entities.remove(t));
   }
 
+  // Still answering, or a line of yours waiting its turn in the chat: he does not go at dawn
+  // with your words unheard (every message is delivered first).
+  hearing() {
+    const c = this.game?.ui?.chat;
+    return !!(c && (c.waiting?.has?.(TEMPTER_ID) || c.queued?.has?.(TEMPTER_ID)));
+  }
+
   // How he stands with you (the chat's header reads it): cold once the word is broken.
   mood() {
     const t = this.tempter;
@@ -754,7 +761,7 @@ export class Villain {
     this.settleKills();
     const s = this.state;
     if (this.wanted()) this.spawn();
-    else if (this.tempter && !s.fighting && !safe(() => g.ui?.isModalOpen?.(), false)) this.vanish();
+    else if (this.tempter && !s.fighting && !safe(() => g.ui?.isModalOpen?.(), false) && !this.hearing()) this.vanish();
     const t = this.tempter;
     if (t && s.fighting && (t.downed || t.hp <= 0)) this.defeat();
     this.standAgainst(CHECK_EVERY);

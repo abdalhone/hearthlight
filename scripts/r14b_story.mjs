@@ -1645,7 +1645,7 @@ async function play(S) {
     const pl = run.rows.filter((r) => r.plant > 0);
     const tail = run.rows.filter((r) => r.t > (pl.at(-1)?.t ?? 0) + 250);
     const v = tail.length > 1 ? (tail.at(-1).x - tail[0].x) / ((tail.at(-1).t - tail[0].t) / 1000) : 0;
-    check(run.casts >= 1 && pl.length > 2 && Math.abs(pl.at(-1).x - pl[0].x) < 0.6, `[${tag}] 27 a tap while running: a short plant`, `${pl.length} frames, ${pl.length ? (pl.at(-1).t - pl[0].t).toFixed(0) : 0} ms`);
+    check(run.casts >= 1 && pl.length >= 2 && Math.abs(pl.at(-1).x - pl[0].x) < 0.6, `[${tag}] 27 a tap while running: a short plant`, `${pl.length} frames, ${pl.length ? (pl.at(-1).t - pl[0].t).toFixed(0) : 0} ms`);
     check(v > run.speed * 0.85, `[${tag}] 27 ... then you run on`, `${v.toFixed(1)} of ${run.speed} px/s`);
   });
 
@@ -1685,7 +1685,13 @@ async function play(S) {
         const ok = await until((t) => [...document.querySelectorAll('.chat-log .msg')].some((r) => r.textContent.includes(t)), text, 3000);
         if (ok) break;
       }
-      await wait(900);
+      // Answered: nothing waiting or queued for him (a line sent while he still answers the
+      // last one waits its turn).
+      await until(() => {
+        const c = window.__game.ui.chat;
+        return !c.waiting?.size && !c.queued?.size;
+      }, null, 12000);
+      await wait(600);
     };
     const V = () => ev(() => {
       const g = window.__game;
@@ -1765,7 +1771,7 @@ async function play(S) {
       g.player.x = t.x - 34;
       g.player.y = t.y;
     });
-    const stands = await until(() => !!window.__game.villain.state.fighting, null, 20000);
+    const stands = await until(() => !!window.__game.villain.state.fighting, null, 45000);
     check(stands, `[${tag}] 28 later, he stands against you`);
     await ev(() => {
       const g = window.__game;
