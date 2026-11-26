@@ -1575,7 +1575,8 @@ registry entry, and it works with every other entry automatically.
   and cast speed shorten it (`magic.cooldownOf`).
 - **Hold to charge** (r12; the author: "if I hold it it gets stronger"). Every weave but a
   beam charges while it is held and is cast on the release. A press shorter than 0.18 s
-  is a tap (k = 0, exactly as before); past it the walk slows (×0.62) and the charge k
+  is a tap (k = 0, exactly as before); past it (round 14b follow-up, §38.6: from the press)
+  you stand still, the stick only turning you, and the charge k
   grows to 1 at 1.5 s after the press (cast speed shortens it; the charge twist halves
   it). At charge k a weave hits ×(1 + 1.5k) (×2.5 full; the twist ×(1 + 2k), ×3), is up
   to ×1.45 bigger and flies up to ×1.25 faster; binds hold, wards shield and surges last
@@ -3205,6 +3206,9 @@ the provenance ledger's `seenBy`, the trial's caught lies, and a short list of o
   light: the ward holds, the save continues, a hero's name; beating him after a pact, or
   warning after it, is Oathbreaker (`reputation.oath('tempter')`, `pact_broken`).
 - Saved in `plugins.villain`; he is never saved as a villager (`serialize()` → null).
+- **The dark path you can leave** (the round 14b follow-up, plan §13c): end the pact any
+  time, go back at a higher price, his single asks one at a time, what is done stays done.
+  Contracts in §38.7.
 
 ### 36.5 The trial (`src/murder/defence.js`, `src/murder/jury.js`, `grief.trial`; UI `murder_view.js`)
 
@@ -3570,10 +3574,9 @@ a child, never the player, never through a wall.
   touches nothing here: `game.unkindle.learned` stays true (you keep what you learned), the
   bar ebbs and the mark fades on their own, and the faithful's suspicion and known dark magic
   stay what people know. Society may listen to `coldfire`, `dark_verdict` and `dark_rite`.
-- **For §14 (casting stops you, the follow-up):** the Unkindling's hold already plants the
-  caster (lockTime each frame, velocity zeroed, a roll breaks it); when §14 brings
-  `castMoveMul 0` for every channel, the Unkindling can set it too (`P.castMoveMul = 0` while
-  `channel` is in `pull`/`tear`/`sag`/`drawn`) without changing what the player feels.
+- **For §14 (casting stops you, the follow-up, built: §38.6):** the Unkindling's hold plants
+  the caster (lockTime each frame, velocity zeroed, a roll breaks it), the same rule as
+  `castMoveMul 0` for every other channel; nothing in it needed to change.
 
 ## Polish (r14b)
 
@@ -3651,5 +3654,83 @@ all three screens):
   only after `killing_known`.
 - **Not built by anyone, left open**: D3's forgiven first swing at a calm person (talk left it
   to combat, blood did not build it); a merchant companion's shop while they walk with you
-  (party's open note); casting that plants you for every weave (plan §14, the follow-up
-  stage; only the Unkindling's hold plants you now).
+  (party's open note). Casting that plants you for every weave was built by the follow-up
+  stage (§38.6), and the dark path you can leave too (§38.7).
+
+### 38.6 Casting stops you (the follow-up stage, plan §14; the author: "I can move while I'm doing spells; it should stop me")
+
+The rule is fixed; the numbers are what play tunes (`src/magic/balance.js`).
+- **You stand to weave.** From the press of a weave (`magic.castStart`), and for as long as a
+  charge builds or a beam pours, the caster's walk is `castMoveMul = CHARGE_MOVE = 0`
+  (`magic._holdStill`, refreshed every frame of `_updateHolds`): no step and no drift
+  (velocity zeroed). The move stick or WASD only turns you, and with it every aim that follows
+  your facing (a tap's auto-aim, a key with the mouse away); with the stick at rest you face
+  the weave's own aim (the mouse, a drag, the lock). The hands stay up while it gathers.
+- **A cast plants you for the pose.** When a weave leaves the hands (`magic._emit`, once per
+  cast: an echo or a volley a moment later turns the hands again but never re-plants), the
+  caster is planted for `plantFor(plan, castSpeed)`: the shape's weight (`PLANT_SHAPE`: the
+  Spark 0.24 s, strike 0.26, blast and throw 0.3, bind 0.32, summon, nova and wall 0.36, rain
+  0.4; a dash 0, it moves you itself), +0.03 s for each price, +0.004 s per mana past 12, held
+  in 0.24 to 0.4 s, then divided by cast speed (never under 0.16 s). The player plants through
+  `Player.castPlant(s)` (`castPlantT`; `player.planted`); anyone else through `lockTime`,
+  which every walker and steering already honours.
+- **The way out is the roll** (`Player.tryDodge` → `magic.breakCast(caster, 'roll')`): a charge
+  breaks and costs nothing, a beam already poured keeps its cooldown (`castCancel`), the
+  plant ends; bus `cast_broken {caster, why, held}`. A knock-down or a freeze breaks it as
+  before (`interruptHold`, a downed caster's hold is cancelled).
+- **Every weaver.** Lyra, a companion and enemy casters cast their bolts, heals and binds
+  through `combat.shoot`/`castHeal`/her bind with a state lock (`setState('cast', lock)`), so
+  they already stood; anyone who casts through `game.magic` is planted by the pose and held by
+  a charge or a beam (tests/cast_plant.test.mjs: no NPC weaver glides). The Unkindling's
+  channel holds you by its own lock each frame (§37.13), the same rule in effect.
+- **Said once.** The coach's hold step and, the first time the stick pushes against a stance
+  (`cast_stand`, once: `flags.standHintShown`), a toast: "You stand still to weave. Roll to
+  break off." The Spellbook says it under the weave's numbers; CONTROLS and How to play too.
+- **Tuning by play** (a weaver bot over wolves, a bandit camp and Varek, rule on and off, at
+  1280x720 and on a sideways phone; `scripts/followup_check.mjs` for the feel): with the
+  numbers above the fights take about as long and cost about as much health as walking while
+  casting did, so neither the plant nor CHARGE_TIME (1.5 s) changed.
+
+### 38.7 The dark path you can leave (the follow-up stage, plan §13c; the author: "when I want, I can stop and say no")
+
+`src/story/villain.js`, `src/story/tempter_data.js`, `src/story/stays_done.js`.
+- **Say no at any time** (`villain.endPact(how)`): in your own words in the chat (`END_RE`:
+  "I'm done", "the pact is over", "I won't kill for you anymore"…, read before anything is
+  worded) or the option "I'm done. The pact is over." The pact ends without warning anyone;
+  you keep what you learned (`game.unkindle.learned` and any essence or price stay); he turns
+  cold (`state.hostile`, his opinion of you drops: the chat's header says so) and is your
+  enemy: on a later night, come within `STAND_RANGE` (84 px) and say nothing for
+  `STAND_AFTER` (3 s) and he stands against you (`fight()`; a word to him holds him off for 8
+  s). The hero ending stays open (downed, he comes apart). The broken word is Oathbreaker to
+  whoever knows (`breakWord`: only he, unless you tell someone; warning someone afterwards
+  teaches them). Warning the watch with a pact ends it the same way (`how: 'warned'`). Bus
+  `pact_ended {how, kept, again}`.
+- **Go back later at a higher price** (`offerReturn` → `acceptReturn`/`declineReturn`):
+  "I want the pact back", "take me back"… He names the price: a named adult first (the toll),
+  one more for each time you come back. Yes restores the pact with the toll as accepted asks;
+  refusing a toll is refusing the pact (it ends again). Bus `tempter_return`.
+- **His single asks, one at a time** (`offerAsk`, at most one a night, never the night of the
+  pact; `acceptAsk`, `refuseAsk`): the game picks (`pickAsk`, in turn a person, a soul, a
+  flame) and his persona or his lines word it. A person (`ASK_PEOPLE`, with his reasons: the
+  captain, the huntress, the chapel keeper…; never a child, never Lyra, never whoever walks
+  with you): done when they die by your hand (`villager_killed` by the player; he feels that
+  flame go out), void if they die otherwise. A soul brought: the next soul you take (soul's
+  `unkindled`) is carried for him and handed over when you next speak with him (the coldfire
+  bar gives back what it gave). A flame put out: while agreed, the chapel altar's use is "Put
+  out a flame" (an instance wrapper); seen (`sight.js`) it is a `flame_snuffed` rumour by
+  meeting and opinion drops with whoever saw; unseen, Aveline (or Petra) finds it dark at dawn
+  (`flame_found_out`, nobody knows who). Refusing one never ends the pact. Done is paid: an
+  "after" pact's wages early (dark, then the blood price), else a weave part. Bus
+  `tempter_ask {state, ask, gift}`.
+- **What is done stays done** (`stays_done.js`): the dead stay dead, pact or no pact. The
+  systems already pass things on (missions: `murder.standIn`; work and shops: `HEIRS`; the
+  Moot chair and the heads: `chairOf`, the living heads; juries: `jurorsOf`); this module says
+  it in one place, for what the village KNOWS (`murder.knownDead`): `staysDone(game, id)` →
+  their missions (passed on, or ended), their work and shop, their Moot seat and the chair,
+  the rites, who mourns, their story lines, and his ask. The Missions journal shows it: a note
+  on every card whose giver is gone ("Captain Rowan is dead. Wys sees it done now."), a "What
+  is done stays done" section under Active, closed missions under Done; `missions` toasts a
+  pass-on once (`flags.passed_<id>`) and emits `mission_passed`.
+- **Saved** in `plugins.villain`: `ended, endedDay, endedNight, endedHow, oathBroken,
+  oathKnownBy, hostile, returns, returnOffer, asks, askNight, soulHeld, flamesOut`; an older
+  save reads with none of it.
