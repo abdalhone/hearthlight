@@ -608,12 +608,18 @@ async function play(S) {
       await ev(() => window.__game.story?.player?.skip?.());
       await wait(300);
     }
+    await page.waitForSelector('.panel-defence .defence-field', { timeout: 8000 }).catch(() => {});
+    await wait(700); // the panel settles before a finger lands on it
     const field = await rectOf('.panel-defence .defence-field');
     check(!!field, `[${tag}] 15 a field to speak for yourself`);
-    if (field) {
-      if (S.phone) await page.touchscreen.tap(field.x + 20, field.y + 10);
-      else await page.mouse.click(field.x + 20, field.y + 10);
-      await page.keyboard.type('He struck me first with his hammer. I had no choice.', { delay: 3 });
+    const words = 'He struck me first with his hammer. I had no choice.';
+    for (let i = 0; field && i < 3; i++) {
+      const f = await rectOf('.panel-defence .defence-field');
+      if (S.phone) await page.touchscreen.tap(f.x + 20, f.y + 10);
+      else await page.mouse.click(f.x + 20, f.y + 10);
+      await wait(200);
+      await page.keyboard.type(words, { delay: 3 });
+      if (await ev(() => (document.querySelector('.panel-defence .defence-field')?.value || '').length > 20)) break;
     }
     await shot('15-defence');
     await press('.panel-defence .defence-send');
