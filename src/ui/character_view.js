@@ -103,13 +103,19 @@ export class CharacterView {
       minus.hidden = true;
       ten.hidden = true;
       const ctl = h('span', { class: 'chs-ctl' }, minus, plus, ten);
-      const row = h('div', { class: 'chs-attr' }, h('span', { class: 'chs-attr-bar' }), h('div', null, h('div', { class: 'chs-attr-name', text: a.name }), h('div', { class: 'chs-attr-line', text: a.line })), n, ctl);
+      // What one more point adds (round 14b: each counts a little less than the last), with
+      // a small meter of how much of the first point's worth it still carries.
+      const meter = h('i');
+      const nextText = h('span', { class: 'chs-next-text' });
+      const next = h('div', { class: 'chs-attr-next' }, h('span', { class: 'chs-next-meter', 'aria-hidden': 'true' }, meter), nextText);
+      const row = h('div', { class: 'chs-attr' }, h('span', { class: 'chs-attr-bar' }), h('div', { class: 'chs-attr-main' }, h('div', { class: 'chs-attr-name', text: a.name }), h('div', { class: 'chs-attr-line', text: a.line }), next), n, ctl);
       row.style.setProperty('--ac', a.color);
-      this.attrRows[id] = { row, n, plus, minus, ten };
+      this.attrRows[id] = { row, n, plus, minus, ten, next, nextText, meter };
       this.attrsEl.append(row);
     }
+    this.curveEl = h('p', { class: 'chs-curve-note', text: 'Each point in the same attribute counts a little less than the last.' });
     this.respecEl = h('p', { class: 'chs-respec' });
-    const left = h('section', { class: 'chs-box' }, hero, this.attrsEl, this.respecEl);
+    const left = h('section', { class: 'chs-box' }, hero, this.attrsEl, this.curveEl, this.respecEl);
 
     this.slotsEl = h('div', { class: 'chs-slots' });
     this.slotBtns = {};
@@ -173,13 +179,29 @@ export class CharacterView {
       if (r.ten.hidden === free) r.ten.hidden = !free;
       r.minus.disabled = !free || v <= 0;
       r.ten.disabled = !free || !pr.canSpend(id);
+      this.renderNext(id, r);
     }
-    if (free) setText(this.respecEl, 'Free stat points is on: every stat goes as high as you like. Turning it off in Settings → Game → Practice puts back the points you really spent.');
+    if (free) setText(this.respecEl, 'Free stat points is on: raise anything as far as you like (up to 999 a stat; the curve still bends). Turning it off in Settings → Game → Practice puts back the points you really spent.');
     else setText(this.respecEl, pr.spent() ? `Want them back? Settings → Game → Reset stat points gives them all back, free. Or Sister Aveline can give you a quiet hour in the chapel to start over (${pr.respecCost()} coins).` : 'Spend points as you level. Settings (Reset stat points) can give them back for free; Sister Aveline at the chapel, for a price.');
     this.renderSlots();
     this.renderPick();
     this.renderStats();
     this.renderEffects();
+  }
+
+  // "Next: +1.1% speed": the attribute's main effect for one more point; every effect in
+  // the tooltip. Small gains look small (dimmed, a short meter).
+  renderNext(id, r) {
+    const pr = this.game.progression;
+    const list = safe(() => pr.nextGain?.(id), []) || [];
+    const m = list[0];
+    r.next.hidden = !m;
+    if (!m) return;
+    const share = m.first ? Math.max(0, Math.min(1, Math.abs(m.d / m.first))) : 0;
+    setText(r.nextText, `Next: ${gainWords(m)}`);
+    r.meter.style.width = `${Math.max(2, Math.round(share * 100))}%`;
+    toggleClass(r.next, 'small', share < 0.34);
+    r.next.title = `One more point: ${list.map(gainWords).join(', ')} (${Math.round(share * 100)}% of what the first point gave)`;
   }
 
   renderSlots() {
@@ -315,6 +337,28 @@ export class CharacterView {
     this.t = 0;
     this.renderEffects();
   }
+}
+
+// Short words for what a point gives ("+2.7 health", "+0.4% speed", "−0.2% cooldowns").
+const GAIN_WORD = { maxHp: 'health', hpRegen: 'regen', atk: 'sword', strike: 'strike weaves', spellPower: 'weave power', maxMana: 'mana', manaRegen: 'mana regen', cooldown: 'cooldowns', speed: 'speed', dodge: 'dodge', crit: 'crit', resist: 'status resist', bleedout: 'bleed-out', carrySpeed: 'carrying pace' };
+
+// A small number as it reads: 2.7, 0.4, 0.04, or <0.01 when it is almost nothing.
+function smallNum(a) {
+  if (a >= 9.95) return String(Math.round(a));
+  if (a >= 0.095) return String(Math.round(a * 10) / 10);
+  if (a >= 0.0095) return String(Math.round(a * 100) / 100);
+  return '<0.01';
+}
+
+export function gainWords(m) {
+  const s = STATS[m.stat] || {};
+  const word = GAIN_WORD[m.stat] || (s.label || m.stat).toLowerCase();
+  const sign = m.d < 0 ? '−' : '+';
+  const a = Math.abs(m.d);
+  if (m.part === 'pct' || s.fmt === 'pct' || s.fmt === 'mul') return `${sign}${smallNum(a * 100)}% ${word}`;
+  if (s.fmt === 'rate') return `${sign}${smallNum(a)}/s ${word}`;
+  if (s.fmt === 'sec') return `${sign}${smallNum(a)} s ${word}`;
+  return `${sign}${smallNum(a)} ${word}`;
 }
 
 // Where each kind of piece comes from (for an empty list).
