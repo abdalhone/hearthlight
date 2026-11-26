@@ -2042,7 +2042,10 @@ notices and has opinions (berserk frightens her).
   and a chance's own +% reads "+30% of it", a share of the chance, never more points of it),
   and any number a clamp holds says "At its limit" there (a dodge build in dodge gear meets
   the 40% clamp). Health, mana and the sword, shown whole, read
-  the curve's step ("+10 health", at 80 Might "+0.9 sword"); a number at its clamp says so
+  the exact step of the sheet's number before it is rounded (`exact`: the curve's step
+  through every percentage and multiplier running: "+10 health", at 80 Might "+0.9 sword";
+  with Berserk's ×2 "+1.7 sword", with Lastlight's −50% health "+5 health", as weave power
+  already counted the Last Stand's +100%); a number at its clamp says so
   ("bleed-out at its limit"), and Free stat points at 999 says "As high as it goes". A small
   meter shows how much of the first point's worth the next still carries (speed at 80 Grace
   13%, dimmed past a third; Might at 80, 71%), and one line: "Speed and cooldowns slow down

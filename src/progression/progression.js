@@ -11,8 +11,9 @@ import { STATS } from '../core/stats.js';
 //                                                   points come back)
 //   points (the spent ones, by attribute)           xpFor(kind) (fights are combat's)
 //   nextGain(attr) -> [{ stat, part, d, first,      what one more point adds: the curve's step
-//     before, after, real, of, limit }]             (d) and what it really does (the pipeline;
-//                                                   `of`: what a percentage is a share of)
+//     before, after, real, exact, of, limit }]      (d) and what it really does (the pipeline;
+//                                                   `exact`: before rounding; `of`: what a
+//                                                   percentage is a share of)
 //   serialize() / deserialize(d)
 //
 // The pipeline's 'level' and 'points' sources live here, so a level or a point is
@@ -202,12 +203,26 @@ export class Progression {
       m.before = before[m.stat];
       m.after = after[m.stat];
       m.real = m.after - m.before;
-      // A percentage is a share of the number before any percentage ((base + Σadd) × Πmul):
-      // "+40% speed" is 40% of the normal pace whatever else runs, and so is a point (`of`).
-      if (m.part === 'pct' && typeof S.breakdown === 'function') {
+      if (typeof S.breakdown === 'function') {
         try {
           const parts = S.breakdown(P, m.stat);
-          m.of = parts.reduce((t, b) => t + b.add, 0) * parts.reduce((k, b) => k * b.mul, 1);
+          const add = parts.reduce((t, b) => t + b.add, 0);
+          const pct = parts.reduce((t, b) => t + b.pct, 0);
+          const mul = parts.reduce((k, b) => k * b.mul, 1);
+          // A percentage is a share of the number before any percentage ((base + Σadd) ×
+          // Πmul): "+40% speed" is 40% of the normal pace whatever else runs, and so is a
+          // point (`of`).
+          if (m.part === 'pct') m.of = add * mul;
+          // The sheet's number moves by exactly this before it is rounded to show (health,
+          // mana and the sword are whole or to a tenth): the point's step through every
+          // percentage and multiplier running (Berserk's ×2 sword, Lastlight's −50% health,
+          // coldfire's +30%), then the clamp.
+          if (s) {
+            const clamp = (x) => Math.min(s.max, Math.max(s.min, x));
+            const was = clamp(add * Math.max(0, 1 + pct) * mul);
+            const will = m.part === 'pct' ? clamp(add * Math.max(0, 1 + pct + m.d) * mul) : clamp((add + m.d) * Math.max(0, 1 + pct) * mul);
+            m.exact = will - was;
+          }
         } catch {
           /* words fall back to the number as it stands */
         }

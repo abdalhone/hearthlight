@@ -355,7 +355,8 @@ function smallNum(a) {
 }
 
 // Health, mana and the sword are shown whole (or to a tenth): one point's share of them is
-// the curve's own step, not the rounded difference.
+// the sheet's number's exact step (`exact`: through every percentage and multiplier
+// running, before rounding), not the rounded difference.
 const SHOWN_ROUNDED = new Set(['maxHp', 'maxMana', 'atk', 'def']);
 
 // m: one entry of progression.nextGain. Where the pipeline's own answer is there (`real`),
@@ -373,7 +374,7 @@ export function gainWords(m) {
     const share = m.real / (m.of > 0 ? m.of : m.before);
     return `${share < 0 ? '−' : '+'}${smallNum(Math.abs(share) * 100)}% ${word}`;
   }
-  const d = known && !SHOWN_ROUNDED.has(m.stat) ? m.real : m.d;
+  const d = SHOWN_ROUNDED.has(m.stat) ? (Number.isFinite(m.exact) ? m.exact : m.d) : known ? m.real : m.d;
   const sign = d < 0 || (d === 0 && m.d < 0) ? '−' : '+';
   const a = Math.abs(d);
   if (m.part === 'pct' || s.fmt === 'pct' || s.fmt === 'mul') return `${sign}${smallNum(a * 100)}% ${word}`;

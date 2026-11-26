@@ -717,6 +717,60 @@ test('every effect\'s words agree with the pipeline at 0, 7, 30 and 200 points, 
   assert.equal(pr.canSpend('grace'), false);
 });
 
+test('health, mana and the sword\'s "Next:" words are what the sheet\'s number will do with a multiplier running (Berserk\'s ×2, Lastlight\'s −50% health, coldfire\'s +30%), as weave power\'s are', async () => {
+  // The sheet's Sword, Health and Mana are the pipeline's, multipliers and all; a point's
+  // words must not show the bare step beside them (weave power's words already count them).
+  const { gainWords } = await import('../src/ui/character_view.js');
+  const g = arena();
+  const P = g.player;
+  const S = g.stats;
+  const pr = g.progression;
+  P.level = 12;
+  pr.startFree();
+  pr.points.might = 10;
+  pr.points.vitality = 8;
+  pr.points.focus = 6;
+  pr.points.weave = 4;
+  pr.changed();
+  // The exact step of the sheet's number: the pipeline unrounded, one point more.
+  const exact = (id, stat) => {
+    const raw = () => {
+      const parts = S.breakdown(P, stat);
+      const add = parts.reduce((t, b) => t + b.add, 0);
+      const pct = parts.reduce((t, b) => t + b.pct, 0);
+      const mul = parts.reduce((k, b) => k * b.mul, 1);
+      return Math.min(STATS[stat].max, Math.max(STATS[stat].min, add * Math.max(0, 1 + pct) * mul));
+    };
+    const a = raw();
+    pr.points[id] += 1;
+    S.touch();
+    const b = raw();
+    pr.points[id] -= 1;
+    S.touch();
+    return b - a;
+  };
+  const words = (id, stat) => gainWords(pr.nextGain(id).find((m) => m.stat === stat));
+  const num = (t) => Number((String(t).match(/([0-9.]+)/) || [])[1]);
+  const cases = [
+    ['bare', () => {}],
+    ['Berserk (sword ×2)', () => S.addModifier(P, BERSERK)],
+    ['Lastlight spent (health ×0.5)', () => S.addModifier(P, { id: 'price:lastlight:cost', source: 'price:lastlight', label: PRICES.lastlight.cost.label, kind: 'cost', ...PRICES.lastlight.cost, t: null })],
+    ['coldfire (+30% sword and weaves)', () => S.addModifier(P, { id: 'coldfire', source: 'coldfire', label: 'Coldfire', kind: 'gain', pct: { atk: 0.3, spellPower: 0.3 }, t: 60 })],
+    ['a gear-style +10% mana', () => S.addModifier(P, { id: 'manaplus', source: 'manaplus', label: 'Mana charm', kind: 'buff', pct: { maxMana: 0.1 }, t: 60 })],
+  ];
+  for (const [label, on] of cases) {
+    on();
+    S.refresh(P);
+    for (const [id, stat] of [['might', 'atk'], ['vitality', 'maxHp'], ['focus', 'maxMana'], ['weave', 'spellPower']]) {
+      const want = exact(id, stat) * (stat === 'spellPower' ? 100 : 1);
+      const said = words(id, stat);
+      assert.ok(Math.abs(num(said) - want) <= Math.max(0.051, want * 0.051), `${label}: ${id} says "${said}" but the sheet's ${stat} moves ${want.toFixed(3)}`);
+    }
+    for (const id of ['price:berserk:gain', 'price:lastlight:cost', 'coldfire', 'manaplus']) S.removeModifier(P, id);
+    S.refresh(P);
+  }
+});
+
 test('the old straight line, for the record: scaled() still multiplies (levels grow by it)', () => {
   assert.deepEqual(scaled({ add: { maxHp: 5 } }, 3), { add: { maxHp: 15 } });
   assert.equal(scaled({ add: { maxHp: 5 } }, 0), null);
