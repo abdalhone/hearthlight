@@ -148,7 +148,7 @@ const BLOOD = ['#5c0f17', '#7a1420', '#3d0910'];
 
 function slash(ctx, sx, sy, k, dir = 1) {
   // A bright arc crossing the body's neck, then fading.
-  const a = clamp01(k * 2.2);
+  const a = 0.25 + 0.75 * clamp01(k * 2.2);
   const fade = k < 0.5 ? 1 : clamp01(1 - (k - 0.5) * 2);
   ctx.save();
   ctx.globalAlpha *= fade;

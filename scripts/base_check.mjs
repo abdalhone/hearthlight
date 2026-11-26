@@ -281,9 +281,16 @@ async function run(S) {
   });
   await wait(500);
   const label = await ev(() => window.__game.ui.lastPrompt || '');
-  check(/Lift Bram/.test(label), `[${tag}] the use button offers to lift the unmarked body`, label);
+  check(/lift Bram/i.test(label), `[${tag}] the use button offers to lift the unmarked body`, label);
   await shot('2-lift-prompt');
   await use();
+  // Round 14b (blood): a body offers Search or Lift; choose Lift (a tap or a click).
+  const liftBtn = await rectOf('.panel-body-choice [data-choice="lift"]');
+  if (liftBtn) {
+    if (S.phone) await page.touchscreen.tap(liftBtn.x + liftBtn.w / 2, liftBtn.y + liftBtn.h / 2);
+    else await page.mouse.click(liftBtn.x + liftBtn.w / 2, liftBtn.y + liftBtn.h / 2);
+    await wait(400);
+  }
   const lifted = await ev(() => window.__game.player.carrying?.id ?? null);
   check(lifted === 'bram', `[${tag}] ${S.phone ? 'a tap' : 'E'} lifts him`, String(lifted));
   await shot('3-carrying');
