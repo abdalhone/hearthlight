@@ -346,10 +346,13 @@ class Journal {
       }
       if (c.status === 'ready') list.append(h('li', { class: 'current' }, h('span', { class: 'mj-check', text: '◆' }), h('span', { text: c.turnTo ? `Return to ${c.turnTo}` : 'Done' })));
       el.append(list);
-      if (c.lyra && c.lyra !== 'unasked') {
-        const nm = ms.giverName('lyra');
-        const t = c.lyra === 'coming' ? `${nm} is coming with you.` : c.lyra === 'conditions' ? `${nm} will come, on her terms${c.lyraWhy ? `: ${c.lyraWhy}` : '.'}` : c.lyra === 'declined' ? `${nm} won't come on this one${c.lyraWhy ? `: "${c.lyraWhy}"` : '.'}` : `${nm} isn't with you.`;
-        el.append(h('p', { class: `mj-lyra mj-lyra-${c.lyra}`, text: t }));
+      // Who was asked along (round 14b: whoever walked with you then, or nobody).
+      const cc = c.companion;
+      if (cc && cc.id && cc.answer !== 'unasked' && cc.answer !== 'alone') {
+        const nm = cc.id === 'lyra' ? ms.giverName('lyra') : ms.giverName(cc.id);
+        const her = cc.id === 'lyra' ? 'her' : 'their';
+        const t = cc.answer === 'coming' ? `${nm} is coming with you.` : cc.answer === 'conditions' ? `${nm} will come, on ${her} terms${cc.why ? `: ${cc.why}` : '.'}` : cc.answer === 'declined' ? `${nm} won't come on this one${cc.why ? `: "${cc.why}"` : '.'}` : `${nm} isn't with you.`;
+        el.append(h('p', { class: `mj-lyra mj-companion mj-lyra-${cc.answer}`, text: t }));
       }
     } else if (offer && !c.canAccept) {
       el.append(h('p', { class: 'mj-where', text: c.hint || `Find ${c.giverName}.` }));

@@ -6,7 +6,8 @@ import { itemIconUrl } from './art.js';
 import { itemDef, itemName } from '../entities/items.js';
 import { sortItems, isUsable, fmtInt, capitalize } from './format.js';
 import { dropItem } from '../entities/pickups.js';
-import { handReach, reachNote, companionshipOf } from './lyra_view.js';
+import { handReach, reachNote, companionshipOf, HAND_REACH_TILES } from './lyra_view.js';
+import { holderOf, isLyra as isLyraPerson } from '../core/party.js';
 import { gearDef, gearStats, RARITY } from '../gear/gear_data.js';
 import { describeContribution, STATS } from '../core/stats.js';
 import { ensureStatsStyle } from './stats_style.js';
@@ -56,7 +57,7 @@ export class InventoryPanel {
 
   open() {
     if (this.isOpen()) return;
-    const panel = makePanel({ id: 'inventory', title: 'Bag', subtitle: 'What you carry, and what Lyra carries', iconName: 'bag', cls: 'panel-wide' });
+    const panel = makePanel({ id: 'inventory', title: 'Bag', subtitle: 'What you carry, and what your companion carries', iconName: 'bag', cls: 'panel-wide' });
     this.panel = panel;
     panel.onClose = () => (this.panel = null);
     this.mine = h('div', { class: 'item-grid' });
@@ -112,9 +113,17 @@ export class InventoryPanel {
     if (!this.isOpen()) return;
     const g = this.game;
     const p = g.player;
+    // The right column is whoever walks with you (round 14b, DESIGN §34.4): Lyra's pack while
+    // she is the one; a villager carries their own things and takes gifts; alone, nobody.
+    const mate = holderOf(g);
+    if (!mate || !isLyraPerson(g, mate)) {
+      this.renderOther(mate);
+      return;
+    }
     const c = g.companion;
     const lyraName = g.settings?.companionName || c?.name || 'Lyra';
     const coins = p?.inventory?.count('coin') || 0;
+    this.payBtns?.forEach((b) => (b.hidden = false));
     const reach = handReach(g);
     this.reach = reach;
     for (const [i, b] of (this.payBtns || []).entries()) b.disabled = !c || !reach.ok || coins < (i === 0 ? 5 : 10);
@@ -139,6 +148,53 @@ export class InventoryPanel {
     if (!herList.length) this.hers.append(h('p', { class: 'empty', text: gone ? `${lyraName} keeps her pack to herself now.` : `${lyraName} carries nothing but her focus and a dagger.` }));
     for (const it of herList) this.hers.append(slot(g, it, this.selected?.owner === 'lyra' && this.selected.id === it.id, () => this.select('lyra', it.id)));
     this.renderDetail();
+  }
+
+  // The right column when Lyra is not the one beside you: a villager companion (gifts go to
+  // them from your pack), or nobody at all.
+  renderOther(mate) {
+    const g = this.game;
+    const p = g.player;
+    const name = mate ? String(mate.name || mate.id).split(' ')[0] : '';
+    this.payBtns?.forEach((b) => (b.hidden = true));
+    setText(this.herPurse, '');
+    this.reachEl.hidden = true;
+    setText(this.coinEl, fmtInt(p?.inventory?.count('coin') || 0));
+    setText(this.lyraTitle, mate ? name : 'Walking alone');
+    clear(this.mine);
+    clear(this.hers);
+    const mineList = sortItems(p?.inventory?.list() || []).filter((it) => it.id !== 'coin');
+    if (this.selected && (this.selected.owner !== 'player' || !p?.inventory?.has(this.selected.id))) this.selected = null;
+    if (!this.selected && mineList.length) this.selected = { owner: 'player', id: mineList[0].id };
+    if (!mineList.length) this.mine.append(h('p', { class: 'empty', text: 'Your pack is empty. Gather, loot and trade to fill it.' }));
+    for (const it of mineList) this.mine.append(slot(g, it, this.selected?.owner === 'player' && this.selected.id === it.id, () => this.select('player', it.id)));
+    this.hers.append(h('p', { class: 'empty', text: mate ? `${name} walks with you and keeps their own things. Pick something from your pack to give it to ${name}.` : 'Nobody walks with you. Ask anyone grown in Hearthvale to travel with you, and they decide.' }));
+    this.renderDetail();
+  }
+
+  // A villager companion within a short walk (as for handing anything across).
+  mateReach(mate) {
+    const p = this.game.player;
+    if (!mate || !p || mate.downed) return false;
+    return Math.hypot(mate.x - p.x, mate.y - p.y) <= HAND_REACH_TILES * 16;
+  }
+
+  giveMate(mate, id) {
+    const g = this.game;
+    const p = g.player;
+    if (!mate || !p?.inventory?.has(id) || !this.mateReach(mate)) {
+      g.audio?.play('error');
+      return;
+    }
+    const n = p.inventory.remove(id, 1);
+    if (!n) return;
+    const r = safe(() => mate.receiveGift(id, p), null);
+    g.bus.emit('item_given', { from: p, to: mate, itemId: id, qty: 1 });
+    g.audio?.play('pickup');
+    const line = r?.lines?.[0];
+    if (line) safe(() => this.ui.personSays?.(mate, line));
+    this.ui.toast(`You gave ${String(mate.name || mate.id).split(' ')[0]} ${itemName(id, 1)}.`, 'item', { iconUrl: itemIconUrl(g, id) });
+    this.render();
   }
 
   select(owner, id) {
@@ -197,8 +253,13 @@ export class InventoryPanel {
         if (cmp.length) facts.push(`If worn: ${cmp.slice(0, 5).map((c) => `${c.delta > 0 ? '+' : '−'}${fmtDelta(c)} ${STATS[c.stat].short || STATS[c.stat].label}`).join(', ')}`);
         actions.append(button('Wear', { cls: 'btn-ember', onClick: () => this.wear(sel.id) }));
       }
+      const mate = holderOf(g);
       const reach = this.reach || handReach(g);
-      if (c && reach.why !== 'gone') {
+      if (mate && !isLyraPerson(g, mate)) {
+        const nm = String(mate.name || mate.id).split(' ')[0];
+        const near = this.mateReach(mate);
+        actions.append(button(`Give to ${nm}`, { icon: 'heart', disabled: !near, title: near ? null : `${nm} is too far away. Walk over first.`, onClick: () => this.giveMate(mate, sel.id) }));
+      } else if (c && mate && reach.why !== 'gone') {
         actions.append(button(`Give to ${lyraName}`, { icon: 'heart_arcane', disabled: !reach.ok, title: reachNote(reach, lyraName) || null, onClick: () => this.give(sel.id, 1) }));
         if (qty > 1) actions.append(button(`Give all ${qty}`, { cls: 'btn-ghost', disabled: !reach.ok, onClick: () => this.give(sel.id, qty) }));
       }

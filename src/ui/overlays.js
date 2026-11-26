@@ -45,13 +45,13 @@ function spellbookReady(game, ui) {
 // `run(ctx)`: ctx.close() closes the menu, ctx.save() saves; a panel opened from here
 // stacks on top of it, so closing that panel (Esc, ✕) comes back to the menu.
 export function pauseItems(game, ui) {
-  const name = game?.settings?.companionName || game?.companion?.name || 'Lyra';
   const items = [{ id: 'resume', group: 'main', label: 'Resume', hint: '', key: 'Esc', run: (ctx) => ctx.close() }];
   if (spellbookReady(game, ui)) items.push({ id: 'spellbook', group: 'go', label: 'Spellbook', hint: 'Make your weaves', key: 'B', run: () => ui.openSpellbook() });
   if (typeof ui?.openInventory === 'function') items.push({ id: 'inventory', group: 'go', label: 'Bag', hint: 'What you carry', key: 'I', run: () => ui.openInventory() });
   if (typeof ui?.openMissions === 'function') items.push({ id: 'missions', group: 'go', label: 'Missions', hint: 'What you took on', key: '', run: () => ui.openMissions('active') });
   if (typeof ui?.openMap === 'function' && game?.map) items.push({ id: 'map', group: 'go', label: 'Map', hint: 'Where you have walked', key: 'N', run: () => ui.openMap() });
-  items.push({ id: 'lyra', group: 'go', label: name, hint: 'Her mind; ask her', key: 'Tab', run: () => ui.openMind?.(ui.mind?.tab || 'now') });
+  // People (round 14b, DESIGN §34.5): you and everyone you know, Lyra one of them.
+  items.push({ id: 'people', group: 'go', label: 'People', hint: 'Everyone you know', key: 'Tab', run: () => (typeof ui.openPeople === 'function' ? ui.openPeople() : ui.openMind?.(ui.mind?.tab || 'now')) });
   const character = characterOpener(ui);
   if (character) items.push({ id: 'character', group: 'go', label: 'Character', hint: 'Stats and gear', key: 'C', run: character });
   if (game?.villageLife && typeof ui?.openVillageLife === 'function') items.push({ id: 'village', group: 'go', label: 'Village', hint: 'Hearthvale today', key: 'V', run: () => ui.openVillageLife() });

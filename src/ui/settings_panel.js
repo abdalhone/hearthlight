@@ -34,7 +34,7 @@ export const SETTINGS_LAYOUT = {
     { id: 'voices', title: 'Voices in the cutscenes', note: 'The story scenes are spoken. Everywhere else, words are text.', keys: ['voices', 'voiceVol'] },
   ],
   minds: [
-    { id: 'lyra', title: "Lyra's mind", keys: ['brain', 'modelTier'] },
+    { id: 'lyra', title: 'Minds', keys: ['brain', 'modelTier'] },
     { id: 'apikey', title: 'Your own API key', keys: ['apiModel'] },
     { id: 'village', title: 'Villagers', keys: ['villageAi'] },
   ],
@@ -74,7 +74,7 @@ const BRAIN_CHOICES = [
 // by their own methods.
 export const SETTING_ROWS = {
   playerName: { kind: 'text', label: 'Your name', note: 'What the people of Hearthvale call you.', max: 20 },
-  companionName: { kind: 'text', label: 'Her name', note: 'The name your companion answers to.', max: 20 },
+  companionName: { kind: 'text', label: "Lyra's name", note: 'The name Lyra answers to, if you would rather call her something else.', max: 20 },
   deathMode: {
     kind: 'select',
     label: 'When you die',

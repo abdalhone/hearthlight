@@ -23,6 +23,8 @@ import { clearHazards } from './hazards.js';
 import { SCRIPTS } from '../story/scripts.js';
 import { registerBossScripts, BOSS_INTRO, LYRA_BOSS_LINES } from '../story/scripts_bosses.js';
 import { alive } from '../entities/creature_util.js';
+import { holderOf, lyraDead } from '../core/party.js';
+import { fightAbility } from '../entities/npc_companion.js';
 
 const CHECK_EVERY = 0.2;
 const LEAVE_MARGIN = 96; // px past the arena's edge before walking away counts
@@ -346,7 +348,7 @@ export class BossManager {
     } catch (err) {
       console.error('[bosses] start failed', err);
     }
-    this.active.lyra = this.lyraJoins(b);
+    this.active.lyra = this.companionJoins(b);
     g.bus?.emit?.('boss_started', { id, boss: b, name: b.info.name });
     this.sfx.sting('intro', id);
     try {
@@ -534,12 +536,36 @@ export class BossManager {
 
   // ------------------------------------------------------------ Lyra
 
+  // Whoever walks with you (round 14b, DESIGN §34.4): Lyra by her own verdict (lyraJoins);
+  // a villager by their nerve, health and whether they can fight at all. -> 'joined' |
+  // 'declined' | 'absent'
+  companionJoins(b) {
+    const g = this.game;
+    const h = holderOf(g);
+    if (!h) return 'absent';
+    if (h.id === 'lyra') return this.lyraJoins(b);
+    if (h.removed || h.downed || !alive(h)) return 'absent';
+    const a = b.arena;
+    if (Math.hypot(h.x - a.x, h.y - a.y) > a.r + 170) return 'absent';
+    const able = fightAbility(g, h) >= 1 && h.hp >= h.maxHp * 0.5;
+    const name = String(h.name || '').split(' ')[0];
+    try {
+      if (able) h.duty?.request?.(fightAbility(g, h) >= 2 ? 'attack' : 'defend');
+      else h.duty?.request?.('stay');
+      g.ui?.personSays?.(h, able ? `${b.info?.name ? `${b.info.name}. ` : ''}I'm with you. Don't let it get behind us.` : `I can't fight that. I'll keep back here.`);
+    } catch {
+      /* they decide anyway */
+    }
+    if (!able) g.bus?.emit?.('boss_companion_declined', { id: b.bossId, who: h.id, name });
+    return able ? 'joined' : 'declined';
+  }
+
   // Did she come, and does she want this fight? Her own judgment (DESIGN §16.4): we ask
   // her mind as she would ask herself, then her dread of this particular thing.
   lyraJoins(b) {
     const g = this.game;
     const l = g.companion;
-    if (!l || l.removed || l.downed || !alive(l)) return 'absent';
+    if (!l || l.removed || l.downed || !alive(l) || lyraDead(g)) return 'absent';
     const a = b.arena;
     if (Math.hypot(l.x - a.x, l.y - a.y) > a.r + 170) return 'absent';
     if (g.flags?.lyra_gone) return 'absent';
@@ -580,6 +606,11 @@ export class BossManager {
   releaseLyra(A) {
     if (!A || A.lyra !== 'declined') return;
     const g = this.game;
+    const h = holderOf(g);
+    if (h && h.id !== 'lyra') {
+      h.duty?.request?.('follow');
+      return;
+    }
     try {
       g.actions?.run?.('follow', { target: 'player' }, 'self');
     } catch {
