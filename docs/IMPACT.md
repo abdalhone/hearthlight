@@ -26,7 +26,7 @@ dark spell from the tempter's pact, DESIGN §37).
 | System | What must react | Where |
 |---|---|---|
 | Finishing blows / kill scenes | Sword build beheads with the blade; magic build ends it with a weave to the head; hybrid uses both; a new weapon brings its own finisher (`registerFinisher`, DESIGN §35.2); never on a child (`isMinor`) | `src/murder/*` (round 14b: adaptive finishers) |
-| The Unkindling (`'unkindle'`, round 14b soul; stub) | Learned only from the pact (`pact_sealed`), saved; touch range; loudness 0 (`hearing.js` `silence`/`voiceOf`); witnesses by the sight rule; never a child, never through a wall; a dark button on the phone, a held key on desktop; its price shows in the Character panel | `src/magic/unkindle.js`, `src/render/unkindle_fx.js`, `src/murder/unkindled.js` (soul) |
+| The Unkindling (`'unkindle'`, round 14b soul) | Learned only from the pact (`pact_sealed`; a magic trial lends it for dummies only), saved; touch range (26 px), the lock first; strength (`powerOf` vs `strengthOf`: easy, close, breaks free; bosses and the tempter always break free) — a new build or stat that makes you stronger feeds `powerOf`, a new kind of character says its `kindOf` (person, boss, undead, beast, dummy); loudness 0 (`hearing.js` `silence`/`voiceOf`); witnesses by the sight rule; never a child (`isMinor`), never through a wall, never the undead; F held on desktop, a dark hand on the phone, no pad button yet; the price is that it shows (`mark`, §37.9), never health | `src/magic/unkindle.js`, `src/render/unkindle_fx.js`, `src/murder/unkindled.js`, `src/ui/unkindle_view.js` (soul) |
 | Combat damage and stun | Damage sources (sword arc, weave bodies, beams, future arrows) all go through the hit pipeline; walls stop each | `src/entities/combat.js`, `src/magic/*` |
 | Stats, gear, prices | Stat points, gear slots and prices favour the build; a new class needs its stat, its gear and its prices | `src/progression/*`, `src/gear/*`, `src/magic/prices.js` |
 | Mission objectives | An objective that asks for a weave must have a sword-friendly way, and the reverse (or say why not) | `src/missions/data.js` |
@@ -122,6 +122,7 @@ all), **unkindling** (the player channelling the Unkindling; the target held and
 | Input and HUD | Which buttons show; panels pause; no fight buttons while down | `src/ui/*` |
 | Senses | Asleep: a third of a cry's reach (the loudest, 0.6) and no eyes; down, carried or dead: neither; held silent (unkindling, a silent killing): their every cry and blow is loudness 0 (`voiceOf`), while eyes still see them | `src/ai/hearing.js`, `src/murder/witness.js` |
 | Death states (round 14b) | `unkindled` and `dead of age` lie unmarked (no blood: `rec.unmarked`, `drawBody`); a found body's discovery belongs to the cause's owner (`murder.onFound`) | `src/murder/murder.js`, `src/murder/draw.js` |
+| The Unkindling's hold (round 14b) | `unkindling`: the target held (no walking, no wind-up, silent, facing you), the player standing with a raised hand; any of a hit, a fall, a shove, distance, a wall, a panel or letting go ends it (known past 15%); a save never keeps it; reduce motion draws the still version. A new state that moves or hides an actor (carried, hidden, a cutscene) must end a hold on them | `src/magic/unkindle.js`, `src/render/unkindle_fx.js` |
 | Footsteps and pace | Steps only while walking; crawling is slower and smears | `src/entities/player.js`, `src/survival/*` |
 | Spawns and AI | Creatures do not spawn in view; foes leave the fallen to the bleed-out | `src/entities/spawner.js` |
 | Travel | Places are reached and the map's fog lifts only while you move about | `src/world/travel.js` |
@@ -143,6 +144,7 @@ slow phones (test at 4× CPU throttle).
 | Interface size | Desktop panels and HUD are drawn at `--uiz` (1.2 Normal, 1.45 Large); anything that reads pointer positions inside them must divide by its own zoom | `src/ui/ui_scale.js` |
 | Performance | Chunk painting, fog/overlays (one flat wash, not full-screen textures), object updates | `src/render/*`, `src/world/*` |
 | Text | Toasts and signs readable at phone size | `src/ui/toast.js` |
+| The Unkindling's control (round 14b) | Desktop: F held, a dark hint above the hotbar while someone is in reach; phone: a dark hand in the right-thumb cluster (44 px, left of the dodge, mirrored for a left hand), only while it is known and someone it may take is in reach; a new cluster button must keep clear of it (`handSpot`); its fx at 4× CPU is measured by `scripts/soul_check.mjs` | `src/ui/unkindle_view.js`, `src/styles/soul.css` |
 
 ## 7. Time, day and night, weather
 
@@ -157,6 +159,7 @@ on the Hollowcrown).
 | Missions | `when` windows (evening, night) | `src/missions/*` |
 | Footsteps and ground | Wet ground after rain | `src/world/map.js` |
 | Lines | People speak of the weather and the hour | `src/ai/*` |
+| The Hollow (round 14b) | With two no-mark deaths found the grown keep home after 20:30 and the watch walks the night (Rowan to midnight, Wys after); the Unkindling's drain and guttering lamps read at night and by day; Aveline learns a death's hour at her next rite in the chapel | `src/murder/unkindled.js` (`entryFor`), `src/render/unkindle_fx.js` |
 
 ## 8. Claude online or offline
 
@@ -167,7 +170,7 @@ Values: Claude (in the claude.ai Artifact or with a key), the offline mind.
 | Every mind and line | Works offline with local lines; online gets the same facts in its prompt | `src/ai/*`, `src/platform/claude_runtime.js` |
 | Prompt context | Plugins' `promptContext` (missions, travel: where you are in the wider world) | `src/ai/plugins/*`, `src/world/travel.js` |
 | Trials and judgement | Round 14b: villagers weigh your words with Claude; offline they still decide | `src/murder/*` |
-| Death causes in prompts (round 14b) | A death's `cause` reaches the minds as people know it: `'killed'`, `'age'`, and `'unkindled'` (soul's stub: "no mark on him… like the hollow wind", the village's fear of "the Hollow" through `game.unkindle.briefLine(id)`); offline lines say the same | `src/murder/*`, `src/ai/social/village_prompt.js`, `src/ai/brain/prompt.js` |
+| Death causes in prompts (round 14b) | A death's `cause` reaches the minds as people know it: `'killed'`, `'age'`, and `'unkindled'` (`game.unkindle.briefLine(id)`: only what that person saw, was told or can feel — one, two ("the Hollow"), three ("the Moot is frightened") no-mark deaths they know of; the stranger as the Unkindler only once they saw it or heard it from one who did; the cold beside you); offline the finder, Mira, Aveline and the frightened say it in their own barks | `src/murder/unkindled.js`, `src/ai/social/village_prompt.js`, `src/ai/brain/prompt.js` |
 
 ## 9. Saves and permadeath
 
@@ -180,7 +183,7 @@ final death, Settings resets.
 | Old saves | Missing fields default; ids stay stable (object ids are positional, so the vale keeps its coordinates) | everywhere `deserialize` |
 | Death modes | The ember-ring, the flame, the end | `src/survival/*` |
 | Generated world | Same seed, same world: never move vale objects (saves refer to them by position) | `src/world/worldgen.js` |
-| Round 14b blocks | `party` (`{ holderId }`, restored last; old saves derive it from Lyra), `plugins.provenance` (old saves start empty), murder records' `by`, `cause` (old: `'killed'`), `provoked` (old: unknown), `silent`, `unmarked`, `natural`; soul's `unkindle` (`learned`, `tally`) | `src/core/party.js`, `src/world/provenance.js`, `src/murder/murder.js` |
+| Round 14b blocks | `party` (`{ holderId }`, restored last; old saves derive it from Lyra), `plugins.provenance` (old saves start empty), murder records' `by`, `cause` (old: `'killed'`), `provoked` (old: unknown), `silent`, `unmarked`, `natural`; soul's `plugins.unkindle` (`learned`, `learnedFrom`, `tally`, `deaths`, `attempts`, `mark`, the village's `knowers`, the Hollow's rumour; a hold is never saved; old saves: nothing learned) and its fields on the murder record (`flame`, `mystery`, `miraSaw`, `seenSoul`, `soulRumor`, `linked`, `knownKilling`, `knownBy`) | `src/core/party.js`, `src/world/provenance.js`, `src/murder/murder.js` |
 | Death causes | `'killed'`, `'age'` (`murder.die`), `'unkindled'` (soul): each saved on the record and the body (`absent.cause`); a new cause says who owns its discovery (`onFound`) and whether it is a killing (`villager_killed`) or not (`villager_died`) | `src/murder/murder.js` |
 
 ## 10. Story branches
@@ -196,3 +199,4 @@ not, Owlsend's arrival.
 | Missions | Some close, some open with the branch | `src/missions/*` |
 | The world | Places that change (a relit wardstone, a lit waystone, an empty house) | `src/world/*` |
 | Map and markers | What you know is marked; what is gone is greyed | `src/ui/world_map.js` |
+| The Unkindling (round 14b) | The pact's gift; an unseen Unkindling is a mystery (no case, the Hollow), counted for the tempter and reputation only once linked (`killing_known`, `rec.knownBy`); one seen links every death by meeting and reopens their cases (the trial's counts); a failed one is known by the victim, who fights or tells | `src/murder/unkindled.js`, `src/magic/unkindle.js` |

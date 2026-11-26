@@ -31,10 +31,10 @@ export const RAMP = ['#060a16', '#121f3a', '#1f3a66', '#3a6a9c', '#6ea2cf', '#b2
 const HOLLOW = hex('#0a0e1c');
 const SMOKE = hex('#2a3550');
 const ALTAR = { x: 88.5 * 16, y: 42 * 16 + 4 }; // the chapel altar's flames (worldgen: tiles 87..89, row 42)
-const LAMP_REACH = 170; // world px round the target in which lamps gutter
-const DRAIN_R = 60; // world px of the colour drain at its least
+const LAMP_REACH = 200; // world px round the target in which lamps gutter
+const DRAIN_R = 70; // world px of the colour drain at its least
 const TAIL = 1.4; // s the drain and the lamps take to come back
-const HOLE = 0.3; // share of the wash's radius left in colour round the two of them
+const HOLE = 0.24; // share of the wash's radius left in colour round the two of them
 
 const s01 = (t, d) => clamp(t / d);
 
@@ -548,12 +548,12 @@ export class UnkindleFx {
     if (ch?.fx && Number.isFinite(ch.fx.px)) {
       this.mid.x = (ch.fx.x + ch.fx.px) / 2;
       this.mid.y = (ch.fx.y + ch.fx.py) / 2;
-      this.clear = Math.hypot(ch.fx.x - ch.fx.px, ch.fx.y - ch.fx.py) / 2 + 16;
+      this.clear = Math.hypot(ch.fx.x - ch.fx.px, ch.fx.y - ch.fx.py) / 2 + 13;
     }
     const sc = renderer.scale || 3;
     const c = renderer.worldToDevice(this.mid.x, this.mid.y - 10);
     // big enough that its clear middle holds the two of them
-    const R = Math.max((DRAIN_R + 48 * k) * sc, ((this.clear + 4) * sc) / HOLE);
+    const R = Math.max((DRAIN_R + 50 * k) * sc, ((this.clear + 4) * sc) / HOLE);
     const pulse = this.reduce ? 0 : 0.05 * Math.sin((this.game?.time || 0) * 5.3);
     const W = renderer.canvas.width;
     const H = renderer.canvas.height;
@@ -580,9 +580,15 @@ export class UnkindleFx {
     if (!tex) return;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalCompositeOperation = this.canColor ? 'color' : 'multiply';
-    ctx.globalAlpha = clamp((this.canColor ? 0.95 : 0.45) * (k + pulse + this.tear * 0.08));
     ctx.imageSmoothingEnabled = true;
+    if (this.canColor) {
+      ctx.globalCompositeOperation = 'color';
+      ctx.globalAlpha = clamp(0.95 * (k + pulse + this.tear * 0.08));
+      ctx.drawImage(tex, c.x - R, c.y - R, 2 * R, 2 * R);
+    }
+    // ...and the light goes out of it: a cold darkening, deepest at the tear.
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.globalAlpha = clamp(0.55 * k + 0.35 * this.tear);
     ctx.drawImage(tex, c.x - R, c.y - R, 2 * R, 2 * R);
     ctx.restore();
   }
@@ -599,7 +605,7 @@ export class UnkindleFx {
     c.height = N;
     const x = c.getContext('2d');
     const gr = x.createRadialGradient(N / 2, N / 2, 0, N / 2, N / 2, N / 2);
-    const col = color ? '112,128,170' : '120,135,185';
+    const col = color ? '104,118,160' : '112,126,176';
     gr.addColorStop(0, `rgba(${col},0)`);
     gr.addColorStop(HOLE * 0.7, `rgba(${col},0)`);
     gr.addColorStop(HOLE + 0.12, `rgba(${col},1)`);
@@ -629,9 +635,9 @@ export class UnkindleFx {
       if (k > 0.01) {
         const d = Math.hypot(l.x - this.at.x, l.y - this.at.y);
         if (d < LAMP_REACH) {
-          const near = 1 - d / LAMP_REACH;
+          const near = Math.sqrt(1 - d / LAMP_REACH);
           const sp = rm ? 0.5 : 0.5 + 0.5 * Math.sin(time * 23 + i * 2.7) * Math.sin(time * 7.1 + i);
-          mul *= 1 - near * k * (0.3 + 0.45 * sp) - near * this.tear * 0.6;
+          mul *= 1 - near * k * (0.45 + 0.5 * sp) - near * this.tear * 0.7;
           n++;
         }
       }

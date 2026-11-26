@@ -2818,17 +2818,58 @@ for the day and reaches the juror's prompt.
 
 ## 37. Soul (workstream soul; the author: "I kill him with no sound, with nothing… even if they find him, they will be shocked how is he dead")
 
-The Unkindling: a dark spell from the tempter's pact that puts out a person's flame from the
-inside. This section is the contract the base laid; soul builds it.
+The Unkindling (working name kept; LORE §2, "The Unkindling — the cold that takes"): a dark
+spell from the tempter's pact that puts out a person's flame from the inside. Built by soul as
+below (S20-1 to S20-6; §13b's bar, signs in the world and the faithful's asking are the next
+soul round: §37.9).
 
 ### 37.1 `game.unkindle` (`src/magic/unkindle.js`, registered through `src/core/plugins/soul.js`)
 
-- `learned` (bool, saved), `learn()` (called on `pact_sealed`; never available otherwise,
-  but Settings → Practice → "Try all magic" lets it work on training dummies only),
-  `tally` (the count of unkindled deaths, saved), `briefLine(id)` (a line for that person's
-  Claude prompt when the village fears "the Hollow": feature-detected by talk).
-- Never on a child (`isMinor`: "No. Not a child."), never through a wall (`canReach`), never
-  on the player.
+- **The slot** (`src/core/plugins/soul.js`): `unkindlePlugin` (a plugin object: `game.unkindle`,
+  stepped with the world, saved as `plugins.unkindle`) and `installSoul` (an installer run at
+  the end of `buildWorld`: the village side, and in a browser the look and the controls).
+  `installUnkindle(game, { fx, view })` does the same on any game (tests).
+- **State, saved:** `learned`, `learnedFrom` (`'pact'`), `learnedDay`, `tally` (every unkindled
+  death: the truth), `deaths [{ id, t, day, hour, seen }]`, `attempts [{ id, t, day, outcome:
+  'broken' | 'resisted', knows, why }]`, `mark` (§37.9), `lastTakenDay`, and the village's
+  `village` block (§37.8). A hold in progress is never saved: whoever was held is free on load.
+  An old save has none of it: nothing learned.
+- **The gift:** `learn(from)`, called on `pact_sealed` when its `gifts` include `'unkindle'` (or
+  carry no list). Never otherwise. `available()`: learned, or a magic trial (Settings → Practice
+  → "Try all magic", `magic.trial`), which lends it for **training dummies only**.
+- **Targets:** `kindOf(e)` → `'person'` (a villager, Lyra, whoever walks with you, any actor with
+  a profile), `'tempter'`, `'boss'`, `'undead'`, `'beast'`, `'dummy'`, `'self'`. `check(e)` →
+  null or `{ reason, line }`: `'child'` (`isMinor`: "No. Not a child."), `'self'`, `'wall'`
+  (`walls.canReach`), `'far'` (`REACH` 26 px: close enough to touch), `'undead'` ("Nothing in
+  there to take."), `'beast'` (not this round: §13b S20-11), `'dead'`, `'carried'`, `'dummy'` (a
+  trial lends it for straw only). `targetInReach()` → `{ target, refusal }`: `game.lock.target`
+  first (blood, feature-detected), else the nearest in front within touch.
+- **Strength:** `powerOf(P)` (max health, attack, the weave in you (`spellPower`), `resist`, level,
+  times how whole you are now) against `strengthOf(e)` (max health, attack, defence, the watch or
+  the hunt, a will in their traits, Lyra's weave and level; times how whole they are; asleep
+  ×0.6, downed ×0.45). `verdict(e)` → `{ ratio, kind, dur, peak, struggle }`:
+  `'easy'` (ratio < 1: a 2.5–3.5 s pull), `'close'` (1–1.6: 3.5–5 s, harder jerks that win back
+  ground, more time to be broken), `'resists'` (≥ 1.6, every boss and the tempter, and anyone
+  `murder.canKill` refuses: it comes only so far, then snaps back). At level 1 Elda and Bram are
+  easy, Wys awake is close (asleep, easy), Hess and Rowan break free; a hurt stranger is weaker.
+- **The hold:** `begin(target?)` → `{ ok, reason, line }`, `release(why)`, `channel` (read by the
+  look and the controls), `update(dt)`. While it lasts the target is **held and silent**:
+  `silence(game, e, 0.6)` refreshed each frame (loudness 0), `lockTime`/`rootTime`, no wind-up,
+  no walking, facing you; you stand with a raised hand (`P.castPose`, `lockTime`). Phases:
+  `pull` (k 0→1, with jerks), `tear` (0.22 s), `sag` (0.55 s: the kill falls at its end),
+  `drawn` (0.45 s), or `snap` (0.4 s, a stronger soul) or `slip` (0.32 s, a broken hold). It
+  breaks on: a hit on you (`damage` with an amount), you down, the target gone, carried or moved
+  more than `HOLD_SLIP` (10 px) from where it was held, out of reach (`REACH + 14`), a wall
+  between, a panel opened, or letting go. A hold broken past `KNOW_AT` (15% of the pull) is felt:
+  they know what you tried (§37.8); before it, only a chill. `COOLDOWN` 2.5 s between holds.
+- **The death:** at the end of the sag, `murder.kill(v, player, { cause: 'unkindled', silent:
+  true, unmarked: true })` (no record, no death: the soul goes back). `tally++`, `deaths`, `mark`.
+- **Bus out:** `unkindle_learned`, `unkindle_begin { id, kind }`, `unkindle_end { id, outcome:
+  'taken' | 'resisted' | 'broken' }`, `unkindled { id, seen }`, `unkindle_resisted { id, kind }`
+  (the tempter's amusement: society may listen), `unkindle_attempt { id, knows, outcome }`,
+  `killing_known { id, cause, knownBy }` (§37.8).
+- **`briefLine(id)`** (≤ 220 chars, feature-detected by talk's `sayBrief` and Lyra's prompt):
+  only what that person saw, was told or can feel (§37.8).
 
 ### 37.2 Silent and unmarked killings (the base)
 
@@ -2867,24 +2908,129 @@ the Moot follow. A handler that declines (or throws) leaves the default; with no
 
 ### 37.4 The pact
 
-Society emits `bus 'pact_sealed' { gifts }` and exposes `game.villain?.hasPact?.()`; soul
-listens and calls `game.unkindle.learn()`.
+Society emits `bus 'pact_sealed' { gifts }` and exposes `game.villain?.hasPact?.()`; soul listens
+and calls `game.unkindle.learn('pact')`. "Before" or "after", the Unkindling comes with the pact.
+A failed hold emits `unkindle_resisted`; a resisting tempter is only amused ("Ha. Not me, little
+flame. Never me.").
 
-### 37.5 Sound and sight in the Unkindling
+### 37.5 Sound and sight in the Unkindling (Version 11's hearing rule)
 
-- The channel (about 2.5–3.5 s, touch range) is at loudness 0 (§37.2); only the player hears
-  its faint local sound; no SFX goes to the world.
-- Unseen: a mysterious death (no suspect, no wanted, no alarm), found through `onFound`
-  (cause `'unkindled'`); it counts for the tempter and reputation only once it is known as a
-  killing.
-- Seen (the sight rule: `look`/`witnessesOf`): the witness saw the soul pulled out. Their
-  account travels only by meeting; whoever hears it links every earlier unkindled death to the
-  stranger, and the case reopens with every count.
-- A much stronger target breaks free and KNOWS (the victim saw it): an attempted killing
-  seen by the victim; they fight if a fighter (§35.3's defenders, `knowsWanted`) or run and
-  tell face to face. A companion or Lyra who SEES it reacts with horror in their own words.
-- IMPACT: a new ability (§1), the states `'unkindling'` and `'unkindled'` (§5), the death
-  cause `'unkindled'` (§8, §9).
+- **Loudness 0.** The held one makes no sound for any ear (`hearing.js`: `silence` → `voiceOf` 0
+  for `say`, `callForHelp`, a blow's cry, a scream); `murder.kill`'s `silent` keeps them so. A
+  sleeper a tile away, who would hear any scream from there, sleeps on. The spell's own sound is
+  the player's alone: `audio.play` with no position and no bus event (§37.7).
+- **Seen, by the sight rule only.** Who saw it is `murder.kill`'s `witnessesOf` at the moment of
+  death; who saw a failed hold is `sight.js` `watchersOf` from the victim and from you. Never a
+  bare distance.
+- **Unseen:** a mysterious death (no suspect, no wanted, no alarm, no case), found through
+  `onFound` (§37.8). It counts for the tempter and reputation only once known as a killing
+  (`rec.linked`, `rec.knownKilling`, `rec.knownBy`, `killing_known`).
+- **Seen:** the witness saw the soul pulled out: their own words over the generic alarm, the
+  `'unkindled_seen'` rumour (by meeting), and every earlier death is linked by whoever has it.
+- **Breaking free:** the victim KNOWS; they fight (the watch, Hess, anyone with combat) or run
+  for the watch; their account (`'unkindle_attempt'`) travels by meeting; the attack is a crime by
+  sight or by their telling (`combat.assault` when talk's wrapper is there, else the same steps).
+
+### 37.6 How it looks (`src/render/unkindle_fx.js`)
+
+- **The soul** is a pixelfx effect (`'unkindle'`, layer `top`, defined on the host at install): a
+  pale, cold-blue, dithered translucent copy of the target's own sprite frame (`actorOf`: the
+  pose they stand in), each pixel a step of a cold ramp by its own brightness, the rim palest. It
+  rises out of the body and leans toward the raised hand, the crown leading, the legs thinning to
+  a tail still held in the body, swelling a little, smeared behind, shivering. Thin wisps run
+  from crown, chest, both sides and waist of the body to the soul: slack while it is drawn, taut
+  and bright when it **jerks back** (the channel's `jerk`); the body's rim flares as it does.
+  The body darkens as its light goes out. At the tear the wisps snap and curl back; the soul
+  flares paler, then **gutters like a snuffed candle** (shrinking, flickering, its top leaning
+  and licking, shedding smoke) and is **drawn into the hand**, which gathers cold light, flares
+  and goes out. A stronger soul **snaps back** with a cold ring at the chest.
+- **The body** (a draw wrapper on the target for the hold only): trembles and rises onto its toes,
+  jolts at the tear, **sags at the knees** (squashed, sideways from you) until the death lays it
+  down (`murder.layBody`: lying, unmarked, no blood). A stronger one staggers back (knocked).
+- **Nearby** (wrappers on the renderer's last pass and on the lighting's composite): the colours
+  drain and go cold round the two of them (one 'color' blend and one cold multiply of a ring
+  texture painted once; the two of them and the soul keep their colours), deepest at the tear;
+  every lamp, window and hearth within 200 px gutters and sputters (this frame's `_seen` share
+  only, never a light itself), and dips at the tear; the household's flame on the chapel altar
+  gutters at the moment of death (`gutterAltar`).
+- **Reduce motion:** the still version: no shiver, jerk, flicker or ring; the soul eases out and
+  back; the drain is gentler and steady; the host draws it smaller with half the glow and no
+  white pixels.
+- **Cost:** one 88×88 effect painted at 30 fps under the host's paint budget (about 1 ms a frame
+  at 4× CPU), two stretched blits, one pass over the frame's lights. `scripts/soul_check.mjs`
+  measures the throttled phone holding it.
+
+### 37.7 Controls and sound (`src/ui/unkindle_view.js`, `src/styles/soul.css`)
+
+- **Desktop:** hold **F** (no other binding uses it; letting go before the tear lets it slip back).
+  A small dark hint above the hotbar ("F Hold Bram") while someone it may take is in reach;
+  pressing F at a child, a wall or the undead says why in a toast ("No. Not a child.").
+- **Phone:** a dark hand in the right-thumb cluster (appended to `touch.anchor`, placed by the
+  cluster's own geometry left of the dodge, mirrored for a left hand, at least 44 px, named for
+  the target), only while the spell is known and someone it may take is in reach; held, it holds
+  the spell; lifted, it lets go. It hides with the touch layer under any panel.
+- **No pad binding this round** (seam: a free pad button, L3, would be blood's `input.js`).
+- **Sound:** recipes added to `SFX` (`unkindle_drone`, `_jerk`, `_tear`, `_gutter`, `_snap`):
+  a faint cold drone with a slow beat while it is held, a catch at each jerk, a breath drawn in
+  at the tear, a snuffed wick as it gutters, a thump when it snaps back. Played with no position:
+  only the player hears them, and nothing in the world does.
+
+### 37.8 What the village comes to know (`src/murder/unkindled.js`, `game.unkindle.village`)
+
+- **The discovery** (`murder.onFound`, cause `'unkindled'`). Unseen: `rec.mystery`; no case, no
+  wanted, no alarm; the finder is shocked in their own voice ("…No mark on him. Not a scratch.
+  And he is cold as stone."); the note and the toast say no mark, no blood, cold as stone (never
+  a blade); Lyra learns as anyone does (`defaults.lyra`); within the hour **Mira** looks him over
+  ("No mark on him. Cold as stone… like the hollow wind took him, but there's been no wind.");
+  grief and a funeral as for any death. Seen: the case opens with the witness's word, as a murder.
+- **The flame's hour.** At the death `rec.flame = { hour, day, house }` ("the Ironhand flame",
+  "Aveline's flame"); the first time **Aveline** is awake in the chapel after it she finds it
+  guttered and knows the hour (an event), and once the body is found she says it ("The Ironhand
+  flame guttered just before midnight. That is when he went.").
+- **The pattern** (`fearLevel()`: unkindled bodies found). At **2**: the `'hollow'` rumour (by
+  meeting), "doors barred after dark": a wrapper on `villageLife.entryFor` sends the grown home
+  after 20:30 (`'rest'` at home), and the watch walks the night (Rowan to midnight, Wys after);
+  barks in their own voices near you, offline. At **3**: the Moot meets afraid (an event); the
+  briefs say so.
+- **Linking.** Knowers (`knowers`, saved) are those who saw an Unkindling (`rec.seen`), who heard
+  a witness's account (`'unkindled_seen'` rumour's `heardBy`) or a failed attempt's
+  (`'unkindle_attempt'`), and its victim. A knower links every unkindled death they know of
+  (found, or seen) to the stranger: `rec.knownBy`, `rec.linked`, `rec.knownKilling` (society's
+  reputation and the tempter read them; `killing_known` once per record); a found mystery's case
+  reopens with the count (`rec.answers` gains `'linked'`, weight 0.85). Lyra, a knower, keeps it in
+  her memory and her belief.
+- **Horror.** Lyra seeing it: her own words (her mind's `horrorLine` if talk or party give one,
+  else ours), a memory, fear. Whoever walks with you (`party.holder`): `party.horrorLine` or
+  `village.horrorLine` if given, else ours. Lines never threaten the player.
+- **A failed attempt:** `attempted(e, { knows })`: unknown, a chill; known: the crime, the
+  rumour, opinion −45, their words ("Your hand— you were pulling me OUT of myself!"), and they
+  fight or flee for the watch.
+- **`briefLine(id)`**: a knower: "You SAW the stranger draw Wys's life out…", or "heard it from
+  one who saw…", with the names of the dead they now attribute; a victim who broke free: "you
+  broke free. You know what they are."; otherwise, by the deaths they know of: one ("found dead
+  with no mark… nobody can say what took him"), two ("whisper of the Hollow; you bar your door"),
+  three ("The Moot is frightened"). Never "souls" unless they know it.
+
+### 37.9 The price is that it shows (S20-6 as replaced by §13b)
+
+No health is lost. `mark` (+1 a soul taken, at most 12; after 3 days without taking it fades 0.2 a
+day) gives `signTier()` 0–3. This round shows tier 1 and 2 only to one beside you who sees you
+(touch distance): their brief carries "a cold coming off them, like well-stone" / "their hands
+are cold as well-stone". The bar (coldfire), the signs drawn in the world, the faithful who read
+them and Aveline's asking (§13b, S20-7 to S20-11) are the next soul round; `mark`, `signTier`,
+`briefLine` and `attempts` are where they plug in.
+
+### 37.10 Seams
+
+- Read, feature-detected: `pact_sealed` / `villain.hasPact` / `villain.tempter` (society),
+  `game.lock.target` (blood), `murder.kill` options, `onFound`, `canKill`, `isPerson` (base and
+  blood), `combat.assault` (talk), `party.holder` / `party.horrorLine` (party),
+  `lyra.mind.horrorLine` (talk), `magic.trial`.
+- Wrapped at install, on instances (no file edited): `renderer.deathFx.draw` (the drain),
+  `lighting.composite` (the guttering lamps), `villageLife.entryFor` (the night), a held
+  target's `draw` (tremble and sag, restored after).
+- Society reads `rec.linked`, `rec.knownKilling`, `rec.knownBy` and `killing_known` (its
+  reputation and the tempter); talk reads `briefLine`.
 
 ## Polish (r14b)
 

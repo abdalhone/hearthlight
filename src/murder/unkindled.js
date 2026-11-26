@@ -201,6 +201,11 @@ export class Hollow {
       return;
     }
     safe(() => (typeof e.say === 'function' ? e.say(text, { kind }) : this.game?.bubbles?.say?.(e, text, { kind })));
+    // Let it be heard out: the village's small talk and murmurs wait a little (village life
+    // keeps quiet for a few seconds after anyone speaks up).
+    const g = this.game;
+    if (g) g._npcSayAt = this.now();
+    if ('ambientAt' in e) e.ambientAt = this.now();
   }
 
   event(kind, text, extra = {}) {
