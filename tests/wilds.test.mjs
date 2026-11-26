@@ -279,30 +279,28 @@ test('every chest has a way in: a key someone has, its keeper, or a forced lock'
   locker.interact(g.player);
   assert.equal(locker.state.locked, false);
   assert.deepEqual(opened, ['guard_footlocker']);
-  // Without a key: the lock can be forced, and Lyra's trunk forced is theft from Lyra.
+  // Without a key: the lock can be forced. Theft only if seen (round 14b, decision D10;
+  // tests/loot.test.mjs plays the seen cases): forced with nobody looking, no crime.
   const crimes = [];
-  const lyra = { id: 'lyra', x: 0, y: 0 };
+  const lyra = { id: 'lyra', x: 0, y: 0, hidden: true };
   const g2 = { ...game, companion: lyra, bus: { emit: (t, p) => t === 'crime' && crimes.push(p) }, ui: { toast() {}, confirm: async () => true, openChest() {} }, player: { id: 'player', inventory: new Inventory() } };
   trunk.game = g2;
   trunk.interact(g2.player);
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(trunk.state.locked, false);
   assert.equal(trunk.state.forced, true);
-  assert.equal(crimes.length, 1);
-  assert.equal(crimes[0].kind, 'theft');
-  assert.equal(crimes[0].victim, lyra);
-  // Taking from the Reeds' open linen chest is theft too, once a day.
+  assert.equal(crimes.length, 0, 'nobody saw it: no crime');
+  // Taking from the Reeds' open linen chest unseen: no crime; Tobias will find it short.
   const c2 = [];
-  const g3 = { ...game, entities: { get: (id) => ({ id }) }, bus: { emit: (t, p) => t === 'crime' && c2.push(p) }, clock: { day: 3 } };
+  const g3 = { ...game, entities: { get: (id) => ({ id, hidden: true }) }, bus: { emit: (t, p) => t === 'crime' && c2.push(p) }, clock: { day: 3 }, player: { id: 'player', x: linen.x, y: linen.y + 14, inventory: new Inventory() } };
   linen.game = g3;
   onContainerEvent(g3, 'item_gained', { actor: g3.player, itemId: 'wheat', qty: 1, from: 'chest', chest: linen });
-  onContainerEvent(g3, 'item_gained', { actor: g3.player, itemId: 'wheat', qty: 1, from: 'chest', chest: linen });
-  assert.equal(c2.length, 1);
-  assert.equal(c2[0].owner, 'tobias');
+  assert.equal(c2.length, 0);
+  assert.equal(linen.state.missingSince, 3, 'he will find it short');
   // Loot is free: Brindlecombe's chests are nobody's now.
   const vestry = world.objects.get('chest_brindle_chapel');
   onContainerEvent(g3, 'item_gained', { from: 'chest', chest: vestry });
-  assert.equal(c2.length, 1);
+  assert.equal(c2.length, 0);
   assert.ok(Object.keys(CONTAINERS).length >= 3);
 });
 

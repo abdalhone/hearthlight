@@ -533,6 +533,16 @@ export class Magic {
 
   hitProps(b, x, y, r, mul = 1, flags = HIT, again = 0, cone = null) {
     if (!this._breaks(b)) return 0;
+    // A locked chest in the blow (round 14b): a Strike or a heavy weave forces its hasp;
+    // a lighter one gets a word (world/containers.js, through game.chestBlow).
+    if (!b._chestBlow) {
+      b._chestBlow = true;
+      try {
+        this.game.chestBlow?.(x, y, r, { source: b.owner, heavy: !!flags.heavy || b.kind === 'strike', punch: (flags.knock || 0) >= 2 });
+      } catch (err) {
+        this.warn('chests', err);
+      }
+    }
     const list = propsInCircle(this.game, x, y, r, cone).slice();
     let n = 0;
     for (let i = 0; i < list.length && b.active; i++) {

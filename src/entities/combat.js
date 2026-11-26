@@ -376,6 +376,12 @@ export class Combat {
     if (this.isPlayer(attacker)) {
       try {
         this.lastPropHits = swingAtProps(g, attacker, { fx, fy, minCos, range, power, heavy: !!opts.heavy });
+        // A locked chest in front of the blade: a word, not nothing (round 14b, containers.js).
+        try {
+          g.chestBlow?.(attacker.x + fx * range * 0.5, attacker.y + fy * range * 0.5, range * 0.6, { source: attacker, heavy: !!opts.heavy });
+        } catch {
+          /* chests are optional */
+        }
       } catch (err) {
         this._warn('props', err);
       }

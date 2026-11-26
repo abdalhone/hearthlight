@@ -10,4 +10,27 @@
 //     'game_start' event); or
 //   - an installer function (game) => void, run at the end of game.buildWorld, after village
 //     life, murder and party exist and before a save is applied.
-export default [];
+
+import { blowAtChests, ownersNotice } from '../../world/containers.js';
+
+// Blows on locked chests (a Strike or a heavy weave forces the hasp; lighter blows get a
+// word), and owners who find their chest short (theft unseen, D10).
+function installChests(game) {
+  game.chestBlow = (x, y, r, blow) => blowAtChests(game, x, y, r, blow);
+}
+
+const chestsPlugin = {
+  id: 'blood_chests',
+  name: 'Theft unseen, found later',
+  description: 'An owner who finds goods missing from their chest is uneasy (round 14b, D10).',
+  _t: 0,
+  update(dt, ctx) {
+    this._t -= dt;
+    if (this._t > 0) return;
+    this._t = 1.5;
+    const g = ctx?.game;
+    if (g) ownersNotice(g);
+  },
+};
+
+export default [installChests, chestsPlugin];

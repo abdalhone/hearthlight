@@ -26,6 +26,7 @@ export const WEIGHTS = Object.freeze({
   threat: 0.18, // threatened the dead
   confession: 1, // said it
   lyra_told: 0.85, // Lyra told the watch what the stranger told her
+  searched: 0.45, // seen going through the dead's pockets (round 14b)
 });
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -72,6 +73,7 @@ export function gatherEvidence(m, rec) {
   for (const c of rec.clues || []) {
     if (c.kind === 'carry') add(c.clarity === 'clear' ? 'caught_body' : 'carry_glimpse', c.by, { place: c.place, t: c.t, text: c.clarity === 'clear' ? `${m.name(c.by)} saw ${P} carrying ${V}'s body.` : `${m.name(c.by)} saw ${P} carrying something heavy ${where(m, c.place)}, ${whenPhrase(c.t, t)}.` });
     else if (c.kind === 'over_body') add('over_body', c.by, { place: c.place, t: c.t, text: `${m.name(c.by)} found ${P} standing over ${V}'s body.` });
+    else if (c.kind === 'searched') add('searched', c.by, { place: c.place, t: c.t, text: `${m.name(c.by)} saw ${P} going through ${V}'s pockets as ${m.pronoun(rec.id, 'he')} lay dead.` });
   }
   // The dead's last day: who saw them last, and with whom.
   const window = 2 * HOUR;

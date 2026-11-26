@@ -49,6 +49,8 @@ import { drawBody, MurderLayer, Grave } from './draw.js';
 import * as Grief from './grief.js';
 import * as Lyra from './lyra.js';
 import * as Hunt from './hunt.js';
+import * as Loot from './loot.js';
+import { openBodyChoice } from '../ui/body_view.js';
 
 const TICK = 0.5;
 const SLOW = 1;
@@ -637,6 +639,8 @@ export class Murder {
     const cause = typeof opts.cause === 'string' && opts.cause ? opts.cause : 'killed';
     const rec = this.record(v, { t, place, seen, cause, by, provoked, silent, unmarked });
     this.dead[v.id] = rec;
+    // What they carried is on them still (round 14b: their pockets can be searched).
+    safe(() => Loot.rollLoot(this, v, rec));
     // Out of the village's life (errands, problems, conversations), the body left where it fell.
     safe(() => this.life?.markGone?.(v.id, { cause, seen: seen.map((s) => s.id), at: { place }, keepBody: true }));
     // Unmarked: whatever blood lay where they stood is gone with the wound that never was.
@@ -1113,10 +1117,22 @@ export class Murder {
     if (!rec) return '';
     if (rec.state === 'laid_out' || rec.covered) return `Kneel by ${n}`;
     if (this.game?.player?.carrying) return '';
-    return `Lift ${n}`;
+    // Round 14b: their pockets too (a two-choice prompt, finger-sized: ui/body_view.js).
+    return this.canChoose() ? `Search or lift ${n}` : `Lift ${n}`;
   }
 
-  bodyInteract(v, actor) {
+  // A browser is up to show the two choices (tests without one lift, as before).
+  canChoose() {
+    return typeof this.game?.ui?.openModal === 'function' && this.game?.ui?.inited !== false;
+  }
+
+  // Search their pockets (round 14b, loot.js): the chest panel on what they carried.
+  search(v, actor = this.game?.player) {
+    return Loot.search(this, this.entity(v), actor);
+  }
+
+  // choice: 'search' | 'lift' | null (ask, when a browser is up; else lift).
+  bodyInteract(v, actor, choice = null) {
     const rec = this.dead[v.id];
     if (!rec) return;
     const g = this.game;
@@ -1127,6 +1143,22 @@ export class Murder {
       return;
     }
     if (actor.carrying) return;
+    if (choice === 'search') return this.search(v, actor);
+    if (choice !== 'lift' && this.canChoose()) {
+      const n = v.name?.split(' ')[0] || this.name(v.id);
+      const him = pronoun(v.id, 'him');
+      const shown = safe(() =>
+        openBodyChoice(g, {
+          title: n,
+          text: `${n} lies still. ${cap(pronoun(v.id, 'he'))} will not get up again.`,
+          choices: [
+            { id: 'search', label: this.isLyra(v) ? 'Search her pack' : `Search ${pronoun(v.id, 'his')} pockets`, run: () => this.bodyInteract(v, actor, 'search') },
+            { id: 'lift', label: `Lift ${him}`, cls: 'btn-ember', run: () => this.bodyInteract(v, actor, 'lift') },
+          ],
+        }),
+      );
+      if (shown) return;
+    }
     const sv = g.survival;
     if (!sv?.startCarry) return;
     const c = safe(() => sv.startCarry(actor, v, null));
