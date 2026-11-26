@@ -14,6 +14,7 @@
 import { createRequire } from 'node:module';
 import { mkdir } from 'node:fs/promises';
 import { startServer } from './serve.mjs';
+import { CHAPEL_PLACE_LINE } from './place_lines.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -963,7 +964,9 @@ async function play(S) {
       g.brain?.barks?.visited?.delete?.('chapel');
     });
     await wait(4500);
-    const b = await ev(() => window.__said.filter((x) => x.who === 'lyra' && /chapel|Chapel|Flame/.test(x.text)));
+    // Her place lines for the chapel (scripts/place_lines.mjs), not every line with "Flame".
+    const said = await ev(() => window.__said.filter((x) => x.who === 'lyra'));
+    const b = said.filter((x) => CHAPEL_PLACE_LINE.test(x.text));
     check(b.length === 0, `[${tag}] L2 Lyra enters the chapel far from you: no place line to you`, JSON.stringify(b.slice(0, 2)));
     // (c) Her ear: Elda cries out inside the Kettle; Lyra outside with you: she turns and asks.
     const c0 = await ev(() => {
