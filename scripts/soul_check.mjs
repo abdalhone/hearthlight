@@ -920,17 +920,37 @@ async function run(S) {
             requestAnimationFrame(tick);
           }),
       );
-    const idle = await fpsOf();
-    await holdDown();
-    await until(() => (window.__game.unkindle.channel?.k ?? 0) > 0.05);
-    const during = await fpsOf();
-    await shot('10-throttled');
-    await until(() => !window.__game.unkindle.channel, null, 60000);
-    await holdUp();
+    // Two samples of each (a hold on Corran, then on Petra), averaged: one 2-second sample on
+    // a throttled page swings by a fifth on its own.
+    const idles = [];
+    const durings = [];
+    for (const who of ['corran', 'petra']) {
+      idles.push(await fpsOf());
+      await holdDown();
+      await until(() => (window.__game.unkindle.channel?.k ?? 0) > 0.05);
+      durings.push(await fpsOf());
+      if (who === 'corran') await shot('10-throttled');
+      await until(() => !window.__game.unkindle.channel, null, 60000);
+      await holdUp();
+      if (who === 'corran')
+        await ev(() => {
+          const g = window.__game;
+          const P = g.player;
+          window.__at(P, 91, 60);
+          P.faceDir?.('right');
+          window.__at(g.entities.get('petra'), 92, 60, 4, 10);
+          g.camera.snap?.();
+          g.unkindle.cooldownUntil = -Infinity;
+          window.__clean();
+        });
+      await wait(600);
+    }
+    const idle = Math.round((idles[0] + idles[1]) / 2);
+    const during = Math.round((durings[0] + durings[1]) / 2);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
     // (Absolute numbers depend on the machine's load: another build may share it. The hold
     // must cost the slow phone no more than a fifth of its frames, and never drop below 15.)
-    check(during >= 15 && during >= idle * 0.8, `[${tag}] at ${S.throttle}x CPU the hold runs at ${during} fps (${idle} without)`, `${during}/${idle}`);
+    check(during >= 15 && during >= idle * 0.8, `[${tag}] at ${S.throttle}x CPU the hold runs at ${during} fps (${idle} without)`, `${durings.join('+')} / ${idles.join('+')}`);
   }
 
   const scroll = await ev(() => document.documentElement.scrollWidth > window.innerWidth + 1);
