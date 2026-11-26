@@ -188,6 +188,20 @@ export class Toasts {
     for (const t of [...this.items]) this._leave(t);
   }
 
+  // Put away the running notice under `key` (it no longer holds: the one it named is up, or
+  // dead). A key ending in '*' puts away every notice whose key starts with the rest.
+  dismiss(key) {
+    if (!key) return false;
+    const prefix = key.endsWith('*') ? key.slice(0, -1) : null;
+    let any = false;
+    for (const t of [...this.items]) {
+      if (t.leaving || !t.key || (prefix != null ? !t.key.startsWith(prefix) : t.key !== key)) continue;
+      this._leave(t);
+      any = true;
+    }
+    return any;
+  }
+
   // Is a press on the stack under way (or just over, its click still to come)?
   held() {
     return this.pressed || now() - this.releasedAt < HOLD_AFTER_PRESS;
