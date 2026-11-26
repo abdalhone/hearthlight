@@ -132,6 +132,11 @@ export class Tempter extends NPC {
     this.duty = { step: (npc) => villain.stand(npc) };
   }
 
+  // He is not one of the village: he never answers its cries, comes to see its dead or runs
+  // from its killers (perception drives flee and help for villagers; he only waits, and
+  // fights when struck: villain.fight).
+  perceive() {}
+
   getDialogue(player) {
     return this.villain.dialogue(player);
   }
@@ -746,6 +751,7 @@ export class Villain {
     const P = this.game?.player;
     npc.moveIntent.x = 0;
     npc.moveIntent.y = 0;
+    safe(() => npc.walker?.stop?.());
     if (P && Math.hypot(P.x - npc.x, P.y - npc.y) < 120) safe(() => npc.faceToward(P.x, P.y));
     return true;
   }
@@ -764,6 +770,11 @@ export class Villain {
     else if (this.tempter && !s.fighting && !safe(() => g.ui?.isModalOpen?.(), false) && !this.hearing()) this.vanish();
     const t = this.tempter;
     if (t && s.fighting && (t.downed || t.hp <= 0)) this.defeat();
+    // Never drawn off by the village's alarms (a villager's flee or help): he keeps his post.
+    if (t && !s.fighting && (t.mode === 'flee' || t.mode === 'help')) {
+      t.mode = 'routine';
+      safe(() => t.walker?.stop?.());
+    }
     this.standAgainst(CHECK_EVERY);
     if (s.flamesOut.length) this.dawnFlames();
     if (this.hasPact() && !s.ending && this.emptied()) this.villainEnding();

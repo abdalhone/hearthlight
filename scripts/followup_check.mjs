@@ -227,6 +227,13 @@ async function play(S) {
   };
   // Type into the chat field and send; make sure it went (a row with the words), else once more.
   const say = async (text) => {
+    if (process.env.FOLLOWUP_DEBUG)
+      console.log(`  [before ${tag}] "${text}"`, JSON.stringify(await ev(() => {
+        const g = window.__game;
+        const c = g.ui.chat;
+        const t = g.villain.tempter;
+        return { away: c.away, target: c.target, d: t ? Math.round(Math.hypot(t.x - g.player.x, t.y - g.player.y)) : null, removed: t?.removed, hour: Math.round(g.clock.hour * 10) / 10, field: document.querySelector('.chat-field')?.disabled, ph: document.querySelector('.chat-field')?.placeholder, t: t && [Math.round(t.x), Math.round(t.y)], p: [Math.round(g.player.x), Math.round(g.player.y)] };
+      })));
     for (let tries = 0; tries < 2; tries++) {
       await press('.chat-field');
       const focused = await ev(() => document.activeElement?.classList?.contains('chat-field'));
@@ -239,14 +246,28 @@ async function play(S) {
       await page.keyboard.press('Enter');
       const sent = await until((t) => [...document.querySelectorAll('.chat-log .msg')].some((r) => r.textContent.includes(t)), text, 3000);
       if (sent) break;
+      // Not taken: say why (the chat's own state), then stand beside him and Talk again.
+      console.log(`  [${tag}] the line was not taken; trying once more`, JSON.stringify(await ev(() => {
+        const g = window.__game;
+        const c = g.ui.chat;
+        const t = g.villain.tempter;
+        return { away: c.away, target: c.target, open: c.isOpen?.(), d: t ? Math.round(Math.hypot(t.x - g.player.x, t.y - g.player.y)) : null, state: g.state, same: t === window.__tObj, t: t && [Math.round(t.x), Math.round(t.y), t.removed, t.mode, !!t.duty], p: [Math.round(g.player.x), Math.round(g.player.y), g.player.downed, g.player.carriedBy?.id || null, g.player.seat ? 'seat' : null], fighting: g.villain.state.fighting, hour: g.clock.hour, mv: g.input.moveVector?.(), tv: g.input.touchVec, held: [...(g.input.held || g.input._held || [])].slice(0, 6), vel: [Math.round(g.player.vel.x), Math.round(g.player.vel.y)] };
+      })));
+      await talk();
     }
     // Answered: nothing waiting or queued for him (a line sent while he still answers the last
     // one waits its turn), then a beat for the reply's rows.
-    await until(() => {
+    const settled = await until(() => {
       const c = window.__game.ui.chat;
       return !c.waiting?.size && !c.queued?.size;
     }, null, 12000);
     await wait(600);
+    if (process.env.FOLLOWUP_DEBUG)
+      console.log(`  [say ${tag}] "${text}" settled=${settled}`, JSON.stringify(await ev(() => {
+        const g = window.__game;
+        const c = g.ui.chat;
+        return { target: c.target, open: c.isOpen?.(), waiting: [...(c.waiting || [])], queued: [...(c.queued?.keys?.() || [])], said: g.villain.state.said.slice(-2).map((x) => x.text), ended: g.villain.state.ended, t: !!g.villain.tempter, rows: [...document.querySelectorAll('.chat-log .msg')].slice(-3).map((r) => r.textContent.slice(0, 60)) };
+      })));
   };
   const lastRows = () => ev(() => [...document.querySelectorAll('.chat-log .msg')].map((r) => r.textContent.trim()).slice(-4));
   const closeChat = async () => {
@@ -375,6 +396,7 @@ async function play(S) {
       P.dir = 'right';
       g.camera.snap?.();
       window.__game.ui.chat.target = '@near';
+      window.__tObj = t;
     });
     await wait(300);
     return true;

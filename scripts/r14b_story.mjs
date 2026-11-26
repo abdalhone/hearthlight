@@ -1684,6 +1684,10 @@ async function play(S) {
         await say(text);
         const ok = await until((t) => [...document.querySelectorAll('.chat-log .msg')].some((r) => r.textContent.includes(t)), text, 3000);
         if (ok) break;
+        // Not taken: stand beside him again and Talk, then once more.
+        console.log(`  [${tag}] the line was not taken; trying once more`, JSON.stringify(await ev(() => ({ away: window.__game.ui.chat.away, target: window.__game.ui.chat.target, state: window.__game.state }))));
+        await gate();
+        await talk();
       }
       // Answered: nothing waiting or queued for him (a line sent while he still answers the
       // last one waits its turn).

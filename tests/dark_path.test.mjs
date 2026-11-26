@@ -369,3 +369,20 @@ test('he does not go at dawn while a line of yours waits its turn in the chat: e
   step(g, 2);
   assert.equal(V.tempter, null, 'then he is gone at dawn');
 });
+
+test('he keeps his post: the village\'s alarm (a killing seen) never sends him running or coming to see', () => {
+  const { g, V, t } = gate();
+  const post = { x: t.x, y: t.y };
+  // A killing the whole village knows (the bell): villagers flee or come; he does not.
+  const wys = g.entities.get('wys');
+  g.murder.kill(wys);
+  const rec = g.murder.dead.wys;
+  rec.known = 'witnessed';
+  if (rec.alarm) rec.alarm.raised = true;
+  g.bus.emit('murder_witnessed', { id: 'wys', witnesses: ['hess'] });
+  t.mode = 'flee'; // even if something else set it
+  step(g, 4);
+  assert.ok(V.tempter === t);
+  assert.notEqual(t.mode, 'flee');
+  assert.ok(Math.hypot(t.x - post.x, t.y - post.y) < 4, `still at the gate (${Math.round(t.x - post.x)}, ${Math.round(t.y - post.y)})`);
+});
