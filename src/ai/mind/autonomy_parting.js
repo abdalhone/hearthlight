@@ -193,10 +193,12 @@ export class Parting {
       this.end('interrupted');
       return;
     }
-    // Struck while she says it, or fighting back now (verify-b): no standing to talk. The
-    // letter is left on the table.
+    // Struck while she says it, or fighting you back now (verify-b): no standing to talk. The
+    // letter is left on the table. A beast she fends off on her way to you is not that (the
+    // merge: a slime in the meadow ended the scene before a word of it).
     const b = this.a.behavior?.();
-    const fighting = !!(b?.currentTarget && !b.currentTarget.removed && !b.currentTarget.dead);
+    const tgt = b?.currentTarget;
+    const fighting = !!(tgt && !tgt.removed && !tgt.dead && (tgt === p || !!safe(() => b.fightingBack?.(p), false)));
     const struck = (this.a.ledger || []).some((e) => e && STRUCK.includes(e.deed) && e.t > (st.since ?? Infinity));
     if (fighting || struck) {
       this.end('interrupted');

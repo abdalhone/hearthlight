@@ -3794,8 +3794,9 @@ has a test (`tests/verify_b.test.mjs`, the trial and dark-path tests) or a brows
   stranger close behind her in any of those ways (moving away, fast, within 8 tiles), and
   winded is a stat modifier (`winded`, speed ×0.55, not saved, gone after 10 s at rest).
 - **Her parting never takes your keys mid-fight** (item 11 × T-5). A blow while she says it,
-  or her fighting back, ends the scene (the letter on the table, as a walk-off); the chat the
-  scene opens gives the keyboard back to someone walking or swinging (T, Enter or a tap take it).
+  or her fighting you back, ends the scene (the letter on the table, as a walk-off); the chat
+  the scene opens gives the keyboard back to someone walking or swinging (T, Enter or a tap
+  take it). A beast she fends off on her way to you does not end it (§38.10).
 - **No stale notices over a body.** "X is down! Reach them…" is keyed `down:<id>` and put away
   when they are up or dead; Lyra's death puts away her running notices about you
   (`companionship`, `deed:*`). `Toasts.dismiss(key | 'prefix*')`.
@@ -3821,3 +3822,17 @@ has a test (`tests/verify_b.test.mjs`, the trial and dark-path tests) or a brows
   guards right now" from the watch's record (`prompt.js willSection`: she has no `knowsWanted`
   of her own); Lyra narrates a place where she is, from far off (talk's leftover); a juror who
   votes not proven after hearing the eyewitness may still say "A fight, then".
+
+### 38.10 The final merge (verifier A + verifier B)
+
+- **Her parting scene and a beast nearby** (item 9 × §38.9). Verifier B ended the scene when
+  she is "fighting back now", read as any fight (`behavior.currentTarget`): in the meadow a
+  slime or a wolf is often near, she turned on it, and the scene ended before a word of it,
+  the letter left on the table (r14b_story item 9 failed on all three screens). Now only a
+  fight with you ends it (her target is you, or `fightingBack(player)`); a beast she fends off
+  does not (`tests/r14b_merge.test.mjs`).
+- **The plant, measured on a slow phone** (item 27). followup_check read the tap-cast plant
+  from the first to the last planted frame; at 4x CPU one drawn frame runs several fixed steps,
+  so that only bounds it from below ("100 ms over 2 frames"). `scripts/plant_span.mjs`
+  brackets it with the frames either side, and the check also reads the plant the cast asked
+  for (`Player.castPlant`). The game did not change; the feet moved 0.00 px throughout.
