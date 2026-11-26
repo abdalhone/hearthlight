@@ -1,6 +1,7 @@
 import { defineRegistry } from './registry.js';
 import { Shapes } from './shapes.js';
 import { STATUS_POTENCY } from './balance.js';
+import { holderOf } from '../core/party.js';
 
 // PRICES: power with a cost (DESIGN §25) — the Weave's fourth family. A price rides on
 // any weave exactly like a twist (registry entries, compiled into the plan, hooks
@@ -119,11 +120,11 @@ export const PRICES = {
     name: 'Oath',
     adj: 'Oathbound',
     color: '#c9a6ff',
-    gain: { label: 'Oath: +30% to everything near Lyra', seconds: 45 },
-    cost: { label: 'When Lyra is hurt, so are you', seconds: 45 },
-    gainText: '+30% to everything while Lyra is near (45 s)',
-    costText: 'whatever hurts Lyra hurts you too',
-    sentence: 'Sworn to her: stronger at her side, and her wounds are yours.',
+    gain: { label: 'Oath: +30% to everything near your companion', seconds: 45 },
+    cost: { label: 'When your companion is hurt, so are you', seconds: 45 },
+    gainText: '+30% to everything while your companion is near (45 s)',
+    costText: 'whatever hurts your companion hurts you too',
+    sentence: 'Sworn to whoever walks with you: stronger at their side, and their wounds are yours.',
     lyra: "I felt that. Like a thread pulled tight between us. ...Don't make me regret it.",
     refresh: true,
   },
@@ -570,7 +571,8 @@ export class PriceRuntime {
   onDamage(p) {
     const g = this.game;
     const P = g.player;
-    if (!this.state.oath || !P || !p?.target || p.target !== g.companion || p.kind === 'oath') return;
+    // (Round 14b: the oath binds you to whoever walks with you, Lyra or anyone.)
+    if (!this.state.oath || !P || !p?.target || p.target !== holderOf(g) || p.kind === 'oath') return;
     if (!(p.amount > 0) || !P.isAlive?.()) return;
     // Her wounds are yours.
     safe(() => g.combat?.damage?.(null, P, p.amount, { kind: 'oath', exact: true, crit: false, penetration: 99, noHitStop: true, knockback: 0, invuln: 0 }));
@@ -579,7 +581,7 @@ export class PriceRuntime {
   oathActive() {
     const g = this.game;
     const P = g.player;
-    const L = g.companion;
+    const L = holderOf(g);
     if (!this.state.oath || !P || !L || L.removed || L.downed || L.dead) return false;
     return Math.hypot(P.x - L.x, P.y - L.y) <= OATH_NEAR;
   }

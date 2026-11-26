@@ -8,7 +8,10 @@ import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { SaveManager } from './save.js';
 import { Interactions } from './interact.js';
-import { COMPANION_ID } from './constants.js';
+import { COMPANION_ID, TILE } from './constants.js';
+
+// A companion this close when you lie down slept under your roof and wakes beside you.
+const SLEEP_NEAR_TILES = 20;
 
 import { Atlas } from '../art/atlas.js';
 import { registerTileArt } from '../art/tiles_art.js';
@@ -58,7 +61,7 @@ import { Murder } from '../murder/murder.js';
 import { MurderView } from '../ui/murder_view.js';
 import { sleepBlocked, standUp } from '../world/rest.js';
 import { provenancePlugin } from '../world/provenance.js';
-import { installParty } from './party.js';
+import { installParty, holderOf, lyraDead } from './party.js';
 // Round 14b plugin slots (DESIGN §33, F10): one file per workstream, registered in one loop.
 import TALK from './plugins/talk.js';
 import PARTY from './plugins/party.js';
@@ -324,15 +327,26 @@ export class Game {
     } catch (err) {
       console.error('[game] the calendar could not turn', err);
     }
-    for (const a of [this.player, this.companion]) {
-      if (!a) continue;
+    // Whoever walks with you (round 14b: the holder of the companion role, Lyra or anyone)
+    // wakes beside you only if they came to bed with you; one far behind is not carried
+    // across the world in the night: they slept where they were, or at home (leftover:
+    // "waking teleports Lyra beside you").
+    const mate = holderOf(this);
+    const near = !!mate && !mate.removed && Math.hypot(mate.x - this.player.x, mate.y - this.player.y) <= SLEEP_NEAR_TILES * TILE;
+    for (const a of new Set([this.player, this.companion, mate])) {
+      if (!a || a.removed || (a !== this.player && lyraDead(this) && a === this.companion)) continue;
+      if (a.dead && !a.downed) continue;
       a.hp = a.maxHp;
       a.downed = false;
       if (a.state === 'downed') a.setState('idle');
     }
-    if (this.companion && bed) {
-      this.companion.x = this.player.x + 14;
-      this.companion.y = this.player.y + 4;
+    if (mate && bed && near) {
+      mate.x = this.player.x + 14;
+      mate.y = this.player.y + 4;
+      mate.walker?.stop?.();
+    } else if (mate && mate === this.companion && !near && !lyraDead(this)) {
+      // Lyra far behind: she slept at home (her parents' chandlery, or her room).
+      mate.comeHome?.();
     }
     let reflection = null;
     try {

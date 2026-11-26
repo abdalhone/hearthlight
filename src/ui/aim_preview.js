@@ -4,6 +4,7 @@
 // weave lands, the ring around you, a strike's arc — in the weave's own colours, plus
 // a subtle reticle under the mouse. The renderer calls game.aimPreview.draw(ctx, r).
 
+import { isParty } from '../core/party.js';
 const TAU = Math.PI * 2;
 
 function rgba(hex, a) {
@@ -241,7 +242,7 @@ export class AimPreview {
   friendly(e) {
     const g = this.game;
     if (!e || e.type !== 'actor' || e.removed || e.dead) return false;
-    if (e === g.player || e === g.companion || e.id === 'lyra') return true;
+    if (e === g.player || e === g.companion || e.id === 'lyra' || isParty(g, e)) return true;
     try {
       return !!(g.combat?.isLawful?.(e) || g.combat?.isProtected?.(e));
     } catch {

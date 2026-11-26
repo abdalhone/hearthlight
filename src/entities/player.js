@@ -10,6 +10,7 @@ import { xpToNext, LEVEL_ATK } from './combat.js';
 import { propsInCircle } from '../world/breakables.js';
 import { slashSprite, SLASH_FRAMES } from './combat_fx.js';
 import { keepSeated } from '../world/rest.js';
+import { holderOf, lyraDead } from '../core/party.js';
 
 // The player: 8-way movement with a touch of momentum, a three-hit sword combo,
 // a dodge roll, interaction, harvesting with the sword, and waking up at home
@@ -932,9 +933,10 @@ export class Player extends Actor {
     this.hurtBlink = 0;
     g.combat?.downedAt?.delete?.(this);
 
-    // Lyra comes home too, if she is still traveling with you and was there: she carried
-    // you, or a patrol carried you both. She does not carry someone she was fighting off.
-    const lyra = g.companion;
+    // Whoever walks with you comes home too, if they were there (round 14b: the holder of the
+    // companion role, Lyra or anyone): they carried you, or a patrol carried you both. Nobody
+    // carries someone they were fighting off.
+    const lyra = holderOf(g);
     let carrier = null;
     let bothDown = false;
     if (this._lyraWouldCarry(lyra, d.by)) {
@@ -943,7 +945,7 @@ export class Player extends Actor {
         try {
           g.combat?.revive?.(lyra, null, WAKE_HP);
         } catch (err) {
-          console.warn('[player] could not revive Lyra', err);
+          console.warn('[player] could not revive your companion', err);
         }
       } else {
         carrier = lyra;
@@ -956,9 +958,11 @@ export class Player extends Actor {
         lyra.knock.y = 0;
       }
       lyra.faceToward?.(this.x, this.y);
-      // The fight she was in is miles away now.
+      lyra.walker?.stop?.();
+      // The fight they were in is miles away now.
       try {
         lyra.behavior?.clearFocus?.();
+        if (lyra.mode === 'fight') lyra.endFight?.(lyra.fightTarget);
       } catch {
         /* behavior is optional */
       }
@@ -987,12 +991,14 @@ export class Player extends Actor {
     }
   }
 
-  // Lyra only carries you home while she still travels with you (§16.3), was close enough
-  // to see you fall, and was not the one you were fighting.
+  // Your companion only carries you home while they still walk with you (§16.3, §34.1: the
+  // holder of the role), were close enough to see you fall, and were not the one you were
+  // fighting.
   _lyraWouldCarry(lyra, downedBy) {
     const g = this.game;
     if (!lyra || lyra.removed || lyra.dead || lyra === downedBy) return false;
-    if (g.flags?.lyra_gone) return false;
+    if (lyra.id !== 'lyra') return !lyra.absent && Math.hypot(lyra.x - this.x, lyra.y - this.y) < 480;
+    if (g.flags?.lyra_gone || lyraDead(g)) return false;
     let state = 'together';
     try {
       state = lyra.mind?.companionship ?? lyra.mind?.autonomy?.companionship ?? 'together';

@@ -3,6 +3,7 @@ import { Inventory, itemName } from '../entities/items.js';
 import { playCollect } from '../render/pixel_fx_play.js';
 import { drawDebris, drawFallingTree, mendTick, shakeX, swayOf, refreshAllFences, FALL_SECONDS } from './broken.js';
 import { seatFor, sitDown, SEAT_TYPES } from './rest.js';
+import { holderOf } from '../core/party.js';
 
 // Interactive world objects: doors, trees, ore, herbs, crops, chests, beds, fires,
 // lamps, signs, windows, the journal, and the furniture that makes a house a home.
@@ -688,7 +689,7 @@ export class Tree extends Harvestable {
     const base = `prop:tree_${this.kind}`;
     const g = this.game;
     const jolt = shakeX(this, time);
-    const target = this._behind(g.player) || this._behind(g.companion) ? 0.42 : 1;
+    const target = this._behind(g.player) || this._behind(holderOf(g)) ? 0.42 : 1;
     const fdt = Math.min(0.1, Math.max(0, time - this._lastT));
     this._lastT = time;
     this._fade += (target - this._fade) * Math.min(1, fdt * 8);

@@ -11,6 +11,8 @@
 //   bars.draw(ctx, renderer, dt)
 //   bars.shown()              [{ actor, frac, alpha }] (tests, screenshots)
 
+import { isParty } from '../core/party.js';
+
 const HOLD = 3.2; // seconds a bar stays after the last hit
 const FADE = 0.6;
 const LAG_WAIT = 0.35; // the pale "just lost" stretch waits this long, then drains
@@ -22,7 +24,7 @@ const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 // Is this someone on the player's side (a quieter bar)?
 function friendly(game, a) {
   if (!a) return false;
-  if (a === game.companion || a.id === 'lyra') return true;
+  if (a === game.companion || a.id === 'lyra' || isParty(game, a)) return true;
   if (a.profile || a.faction === 'village' || a.faction === 'guard') return true;
   try {
     return !!game.combat?.isLawful?.(a);

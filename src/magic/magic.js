@@ -14,6 +14,7 @@ import { factionRelation } from '../entities/entity.js';
 import { T as TILE_IDS } from '../world/tiles.js';
 import { wallAt as wallAtPoint, wallBetween } from '../world/walls.js';
 import { propAt as propAtPoint, propsInCircle, strikeProp } from '../world/breakables.js';
+import { isParty } from '../core/party.js';
 
 // The Weave runtime: game.magic (DESIGN §22.2).
 //
@@ -303,7 +304,7 @@ export class Magic {
   isFriendOfPlayer(a) {
     const g = this.game;
     if (!a) return false;
-    if (a === g.companion || a.id === 'lyra' || this.isPlayer(a)) return true;
+    if (a === g.companion || a.id === 'lyra' || this.isPlayer(a) || isParty(g, a)) return true;
     const c = g.combat;
     try {
       if (c?.isLawful?.(a) || c?.isProtected?.(a)) return true;
@@ -885,7 +886,7 @@ export class Magic {
         dy = Math.sin(b.angle);
       }
     }
-    const party = target === g.player || target === g.companion || target.id === 'player' || target.id === 'lyra';
+    const party = target === g.player || target === g.companion || target.id === 'player' || target.id === 'lyra' || isParty(g, target);
     // A friend the player's weave touched: aimed at them (deliberate), caught in a weave
     // aimed at another friend (no accident either: the player chose to loose it on
     // friends), or caught in a weave aimed elsewhere (an accident).
@@ -977,7 +978,7 @@ export class Magic {
   statusDamage(src, target, amount, type, extra) {
     if (!(amount > 0) || !target || target.dead || target.removed) return 0;
     const g = this.game;
-    const party = target === g.player || target === g.companion;
+    const party = target === g.player || target === g.companion || isParty(g, target);
     const o = {
       kind: 'magic',
       damageType: type,

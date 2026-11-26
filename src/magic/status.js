@@ -1,4 +1,5 @@
 import { defineRegistry } from './registry.js';
+import { isParty } from '../core/party.js';
 
 // Statuses and reactions (DESIGN §22.1). Any actor can carry statuses: the player, Lyra,
 // villagers, creatures, bosses. A status is data plus optional hooks; a reaction fires
@@ -674,7 +675,7 @@ export class StatusSystem {
     if (!src || a === src) return false;
     const g = this.game;
     if (a === g.player || a.id === 'player' || a.boss || a.superArmor || a.profile || a.essential) return false;
-    if (a === g.companion || a.id === 'lyra') return false;
+    if (a === g.companion || a.id === 'lyra' || isParty(g, a)) return false;
     try {
       if (g.combat?.isLawful?.(a)) return false;
     } catch {

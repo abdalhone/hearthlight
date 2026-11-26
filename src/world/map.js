@@ -2,6 +2,7 @@ import { TILE } from '../core/constants.js';
 import { tileDef, SOLID, WATERY, WALLISH, SPEED, T } from './tiles.js';
 import { paintChunk, bakeReflections, CHUNK } from '../art/tiles_art.js';
 import { paintRoof, roofGeometry } from '../art/world_buildings.js';
+import { holderOf } from '../core/party.js';
 
 // The tile map: ground, decorations, buildings, collision queries and the cached
 // ground renderer.
@@ -523,6 +524,8 @@ export class TileMap {
     if (g.locations) {
       this._track(g.player, dt);
       this._track(g.companion, dt);
+      const mate = holderOf(g); // a villager walking with you leaves tracks too
+      if (mate && mate !== g.companion) this._track(mate, dt);
     }
     this._updateWetness(dt);
     this._chimneys(dt);
