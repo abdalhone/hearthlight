@@ -66,6 +66,7 @@ export class DeathView {
     });
     bus.on('game_start', () => {
       if (safe(() => game.survival?.isFallen?.(game.player), false)) this.show();
+      else this.hide(); // (a new game or a load never starts with the last one's countdown)
     });
     this._onKey = (e) => {
       if (!this.visible || e.repeat) return;
@@ -200,7 +201,10 @@ export class DeathView {
     root.classList.toggle('sv-down', !!on);
     const lefty = !!this.game.ui?.touch?.el?.classList?.contains?.('lefty');
     root.classList.toggle('sv-lefty', !!on && lefty);
-    if (!on) root.style?.removeProperty?.('--sv-below');
+    if (!on) {
+      root.style?.removeProperty?.('--sv-below');
+      root.style?.removeProperty?.('--sv-top');
+    }
   }
 
   // Interface size (round 13, ui_scale.js) on a computer: the countdown is drawn at the
@@ -245,6 +249,15 @@ export class DeathView {
     }
     const root = g.uiRoot || ui?.root;
     if (root?.style && ui?.isTouch) {
+      // (upright: the countdown sits just under the top strip, however tall the cards have
+      // grown with price chips; the toasts just under the countdown)
+      let top = 0;
+      for (const sel of ['.hud-cards', '.hud-right']) {
+        const e = root.querySelector?.(sel);
+        const r = e && !e.hidden ? e.getBoundingClientRect() : null;
+        if (r && r.height > 0 && r.top < 200) top = Math.max(top, r.bottom);
+      }
+      if (top > 0) root.style.setProperty('--sv-top', `${Math.round(top + 8)}px`);
       const b = el.getBoundingClientRect();
       if (b.height > 0) root.style.setProperty('--sv-below', `${Math.round(b.bottom + 8)}px`);
     }

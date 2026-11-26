@@ -46,10 +46,11 @@
 /* An upright phone: the floating stick may start anywhere in the lower half (its zone), so
    the countdown and Call for help go above the body, under the top strip, never where a
    thumb lands to crawl. The mission line makes way while you are down; toasts come below
-   the countdown (--sv-below, set by death_view.js). */
+   the countdown (--sv-top under the cards, --sv-below under the countdown: death_view.js
+   measures both). */
 @media (max-width: 640px) and (min-height: 521px) {
   .ui .sv-fallen {
-    top: calc(var(--sa-t) + 64px);
+    top: var(--sv-top, calc(var(--sa-t) + 64px));
     bottom: auto;
   }
   .ui.sv-down .hud-center {

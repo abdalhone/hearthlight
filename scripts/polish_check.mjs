@@ -434,6 +434,26 @@ async function run(S) {
     });
     M.overdrawRecast = dry;
     check(!(dry.gain > 0) && dry.regen === 0, `${tag} F: overdraw's drought holds when it is cast again (${JSON.stringify(dry)})`);
+    // Down while the prices still run: the chips have grown the top cards to two rows, and
+    // the countdown still sits under them (upright), never over them.
+    await ev(() => {
+      const g = window.__game;
+      // (lastlight, chosen above, holds the first wound shut: the second fall is the one)
+      for (let i = 0; i < 2 && !g.survival.isFallen(g.player); i++) {
+        g.player.downed = false;
+        g.player.fall({ cause: 'test' });
+      }
+    });
+    await wait(1800);
+    const cards = await rectOf('.hud-cards');
+    const fallen = await rectOf('.sv-fallen');
+    const zoneF = S.phone ? await rectOf('.stick-zone') : null;
+    await shot('F2-down-with-prices');
+    M.downWithPrices = { cards, fallen };
+    check(inside(fallen) && !overlap(cards, fallen), `${tag} F: down with prices running, the countdown clears the grown cards (${cards && Math.round(cards.b)} / ${fallen && Math.round(fallen.y)})`);
+    if (zoneF) check(!overlap(zoneF, fallen), `${tag} F: and still clears the stick zone`);
+    await getUp();
+    await wait(300);
     await ev(() => {
       const g = window.__game;
       g.prices.endRunning?.(null, 'test');
