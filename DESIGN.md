@@ -3927,3 +3927,69 @@ has a test (`tests/verify_b.test.mjs`, the trial and dark-path tests) or a brows
   so that only bounds it from below ("100 ms over 2 frames"). `scripts/plant_span.mjs`
   brackets it with the frames either side, and the check also reads the plant the cast asked
   for (`Player.castPlant`). The game did not change; the feet moved 0.00 px throughout.
+
+## 39. Version 12 join: stats x round 14b
+
+Round 14b (§33–§38.10) joined with the stat points second pass (§26: points on three curves,
+a percentage a whole share of the number before any percentage). Each seam below was read on
+both sides and proven in play or in a test (`tests/v12_seams.test.mjs`, a guard for each;
+`scripts/v12_ui_check.mjs` and `scripts/v12_saves_check.mjs` in the browser on three screens).
+Only seam 8 needed a change; the rest hold by the rules named.
+
+1. **Fight back, the hunt, the arrest.** No blow kills a person: at 0 health a villager, a
+   guard, Lyra or a child is downed (`combat.isDownable`), and a blow on someone downed lands
+   nothing (they are not `isAlive`); only the held finisher (`murder.onAttackPress`, 1.5 s)
+   kills. So a 999-Might sword (581) downs Bram in one blow, the knockout Rowan saw is the
+   crime he answers, and the plea, the downed bar and the finisher stay. Guards do not scale
+   with your level; a level-15 stranger with all 42 points in Vitality (504 health, the old
+   line 382) still falls to a watch that knows in tens of blows (63 of Rowan's against 48),
+   and it is an arrest (`rescue.knowsWantedFallen`). Free stat points at 999 Vitality is
+   practice: it was as far out of reach on the old line (6 a point to 9999).
+2. **Finishers.** The finisher is a hold, never a damage threshold, so overkill cannot skip
+   it. Its pose reads the point counts (`buildOf`: Might against Weave and Focus), which the
+   curves do not touch: 999 Might is the sword's, 999 Weave the weave's.
+3. **Killable Lyra, never a child.** Lyra at full health struck by a 581 sword goes down,
+   never vanishes; the held blow kills her, the slot empties and Hobb and Wenna mourn. A
+   child is only ever knocked down: "No. Not a child.", `murder.kill` and the Unkindling
+   (`check`: 'child') refuse whatever the damage.
+4. **Companions.** Nothing in `party.js` or `npc_companion.js` reads your points or
+   `effectOf`; Lyra's level growth is her own (`LEVEL_GROWTH.lyra`, the points source is the
+   player's only). A companion runs up to 2.3x their pace and catches up out of sight
+   (`CATCH_UP_TILES` 30): Bram behind a 226 px/s run is never more than 30 tiles back and
+   beside you about four seconds after you stop.
+5. **The Unkindling.** It costs no health and no mana (§37: "the price is that it shows"),
+   a fraction or an absolute alike: nothing to scale. At 4853 health or at 1 a take leaves
+   both untouched and cannot kill you. The soul bar fills by the soul's strength, not yours;
+   its +30% Sword and Weave power is a whole share (`pct`), like every haste. Your power in
+   the strength check (`powerOf`) grows with the gentle curves, so a grown stranger takes
+   stronger souls: the design's own reading ("Lyra grown into her power" resists a weak hand).
+6. **Casting stops you.** `castMoveMul` and the plant act after the pipeline (`_accelerate`:
+   the pipeline's speed x `castMoveMul` x ground; `planted` zeroes the walk), so the sheet's
+   Speed and "40% = 40%" stay true while you stand. With 999 Grace and every haste (about
+   200 px/s in the test, 226 with Oath and the wind) a cast plants you for `plantFor(plan,
+   castSpeed)`; Focus's cooldowns never enter it (the same plant at 0 and 999 Focus); full
+   pace after.
+7. **Oath and the dark path.** Round 14b did not touch `prices.js`; the stats pass changed
+   Oath's words only, and they name each share the provider gives (+30% sword, weaves,
+   armor, crit; +10% speed and casting). +10% speed is 7.6 px/s at 0 or 999 Grace. The pact,
+   its wages and leaving it (§38.7) read no stat.
+8. **Gear words and the shop (changed).** The sheet said what a percentage is a share of;
+   gear in the bag, the forge and the shop did not. Every percentage in words now goes
+   through `stats.pctWords`: speed "+8% Speed (of your normal pace)"; a chance's own +%
+   "+30% of your critical chance"; a number points and gear add to "+5% of your weave
+   power"; a x1 multiplier nothing adds to stays "+8% Cast speed". The shop's ware detail (a
+   tap) and its hover title carry `gear.wareWords` (rarity, slot and stats, or a draught's
+   buff and minutes). Loot rolls and prices are untouched.
+9. **Death, heavier.** The bleed-out window follows Resolve on the gentle curve to its 300 s
+   clamp at 52 points; the countdown shows "300" inside its ring on every screen. The Last
+   Stand's +35% speed is 26.6 px/s at 0, 50 or 999 Grace; Lastlight halves even 4853 health.
+10. **Saves.** Real saves from Version 11 (2634ca5) and round 14b (aee713c) load onto the
+    new numbers (health 202 → 245, sword 35.4 → 42, mana 132 → 159) with the wound (141) and
+    the mana fill (30) exact, Bram walking with you, the pact, the soul bar, Garrick's
+    record and every age kept; Reset, the chapel respec and Free on/off are exact
+    (`tests/fixtures/save_{2634ca5,aee713c}.json.gz`).
+11. **The HUD and panels.** With 999 Vitality, Focus and Might the HUD fits with Lyra, with
+    Bram and with nobody; People, the Character sheet (its Next lines and the curve note),
+    the shop and the trial fit and close with 44 px controls, upright, sideways and on a
+    computer.
+12. **Every round 14b script** runs on the new numbers (the checks of the V12 report).
