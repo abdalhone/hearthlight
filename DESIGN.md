@@ -2540,9 +2540,356 @@ can build on `buysAll`.
 turns every 12 days. Everyone has a birthday (a day of the year fixed by their name); on
 it they turn a year older: the profile's `age` (which every prompt and line reads) and
 Lyra's soul age change, a `birthday { id, name, age, day }` event goes out and the village
-hears of it. Children grow up with the rest; they stay unkillable by their build (child or
-teen), not by a number. The stranger does not know their own age. Old age does not kill
+hears of it. Children grow up with the rest; who is a child is decided by age (round 14b,
+§34.2: `isMinor`, under 16), so a child stops being one on the birthday that makes them 16. The stranger does not know their own age. Old age does not kill
 anyone (yet), and sprites do not change with age (yet). Sleep (§19.8) jumps the clock at
 most one morning ahead: the calendar is turned in `game.sleep` before its save, so a
 birthday is never skipped by a reload and never had twice.
 
+
+---
+
+Round 14b (§33–§37): talking, freedom, the society, and the dark spell. The base (branch
+`r14b/base`) laid the shared ground below; six workstreams build on it, each in its own
+files: **talk** (§33.3), **party** (§34), **blood** (§35), **society** (§36), **soul** (§37)
+and **polish** (the note after §37). Every caller of another workstream's API feature-detects
+it (`game.party?.weighJoin?.(e)`), so any workstream may land first.
+
+## 33. Round 14b's shared ground, and Talk (the author: "even if somebody really hates me, make me able to talk to them")
+
+### 33.1 Plugin slots and sheets (the base)
+
+- **Plugin slots** (`src/core/plugins/{talk,party,blood,society,soul,polish}.js`, each
+  `export default []`, owned by its workstream alone). `game.js` registers every slot once,
+  in one loop (`for (const p of [...TALK, ...PARTY, ...BLOOD, ...SOCIETY, ...SOUL, ...POLISH])`),
+  so nobody edits `game.js` to add a plugin. An entry is either:
+  - a **plugin object** (the `src/ai/plugins/registry.js` shape: `id`, `install(ctx)`,
+    `update`, `onEvent`, `promptContext`, `serialize`/`deserialize`, `actions`, `intents`),
+    registered when the Game is built and installed with the world (before village life,
+    murder and party exist: reach those lazily or on `game_start`). It may carry
+    **`order`** (a number, default 0, lower restores first); party honours it in game.js
+    deserialize (blood's body re-lay before Lyra's companion state); or
+  - an **installer function** `(game) => void`, run at the end of `game.buildWorld`, after
+    village life, murder and party exist and before a save is applied (`game.slotInstallers`).
+  The base's own plugins register beside the built-ins: missions, travel, the calendar and
+  `provenance` (§35.4).
+- **Sheets** (`src/styles/{talk,party,blood,society,soul,polish}.css`, a header comment each).
+  `scripts/build.mjs` inlines `src/styles.css` and then every `src/styles/*.css` in sorted
+  order; `index.html` links them in the same order; `tests/styles.test.mjs` and
+  `tests/css_whole.test.mjs` check each sheet on its own (no conflict markers, braces balance,
+  no spliced declarations). Each workstream adds CSS only to its own sheet; only party edits
+  `src/styles.css` (the `.lyra-*` rename).
+
+### 33.2 The rules every workstream keeps
+
+- **Lyra the person, the companion role.** `game.companion` and `game.lyra` (a getter, and
+  `lyraOf(game)` in `src/core/people.js` for code that may run on a test game) mean **Lyra
+  herself**: her mind, her trunk, her parents. The ROLE is `game.party.holder` (§34.1), which
+  may be Lyra, any adult, or nobody. Never read the holder where Lyra's own mind is meant, and
+  never `game.companion` where "whoever walks with you" is meant. The rename of
+  `game.companion` across the code waits until after this round.
+- **Children** (`isMinor`, §34.2: under 16 by age) are never killable, never companions,
+  never the Unkindling's target, never hurt when a village is emptied. Intimate acts need
+  `canBeIntimate` (18 and over). Every workstream that touches killing tests it.
+- **Sound and sight (Version 11).** Every new sound goes through the one rule for ears,
+  `hears(game, listener, x, y, loudness)` → `'clear' | 'muffled' | null` (`src/ai/hearing.js`,
+  §29.4: walls and shut doors muffle; hearing tells **what and where, never who**). Every
+  new witness goes through the one rule for eyes (`src/ai/sight.js` over `murder/witness.js`
+  `look`/`witnessesOf`, with `src/world/walls.js`, §29.2). Villagers act only on what they
+  themselves know (`npc.knowsWanted`: saw it, came and saw, the victim told them, told face to
+  face, or the bell); news travels only by meeting. Never a bare distance check for who hears
+  or who knows. A person held silent (§37.2) makes loudness 0 through `voiceOf`.
+- **Silence is shown, never a lock** (§23.3, decision D8). Every message is delivered and
+  remembered first (memory, conversation, the said-today log, the Claude prompt or local
+  rules); then they decide; silence is a visible act row ("Elda hears you. She says nothing
+  and turns away."). Hate, fear, terror, grief, a murder, being hunted and cut ties never lock
+  the chat; only death, being unconscious or downed, being out of earshot (`hears`) or a
+  cutscene playing keep words from someone.
+- No `alert()` or `confirm()`; every panel closable with a ✕ of at least 44 px; Lyra lives for
+  herself and her lines never threaten.
+
+### 33.3 Talk (workstream talk): the contracts
+
+- **Talking to whoever is in front of you**: `ui.talkToNearest()` (nearest person in front,
+  facing first, within earshot by `hears`) and `ui.talkTo(id)`. Party's HUD buttons call
+  `this.ui.talkToNearest?.() ?? this.ui.chat.open(true)`. A tap or click on a person never
+  opens talk (decision D3).
+- **What a reply carries** (SAY_SCHEMA): `action` (null | turn_away | walk_off | flee | glare |
+  cry | shove_past) and `act` (null | join | leave | follow | wait | fight | hold_back).
+  `afterPlayerSays` calls `game.party?.onVillagerAct?.(e, act, reply)`.
+- **The invite is decided before it is worded** (as `commitments.detect`/`decide`, §23.2).
+  `playerSays` detects an invite (come with me, travel with me, join me) before any Claude
+  call and asks `game.party?.weighJoin?.(e)`. Online the verdict goes into the task ("You
+  have decided: you will come / you will not, because {why}. Say it your way."); offline its
+  `.line` is spoken. On accept, `afterPlayerSays` calls `party.take(e)`. An `act: 'join'` with
+  no detected invite is re-weighed by `weighJoin`: Claude never says yes while the game says
+  no. `act: 'leave'` goes to `party.release`.
+- **Personas**: a profile may carry `mind: { rules, brief(game, said), local(game, said) }`;
+  `playerSays` uses it in place of VILLAGER_RULES and `sayBrief` (society's tempter).
+- **Cited memories**: `chat.attachMemories` emits `memories_shared { who: 'lyra', ids }`;
+  party keeps them in `mind.shared`.
+- **Lines other workstreams add**, feature-detected in talk's prompts: `game.calendar?.
+  briefLine?.(id)` (§36.3), `game.reputation?.titles?.({ knownTo })` (§36.1),
+  `game.unkindle?.briefLine?.(id)` (§37.1).
+- **Say aloud** (sound): who hears is `heardFrom(game, P.x, P.y, LOUD.talk, people)` by the
+  hearing rule. Those who hear it `'clear'` get the words (memory, said-today, one batched
+  Claude call for them all); `'muffled'` is a voice over there (what and where, never the
+  words or who). A cry of "HELP!" said aloud is a cry for help: `cryLoudness(severity)` through
+  `hears()`, telling what and where, and who only to those who see the caller.
+- ***Acts* between asterisks**: `parseActs`; the game decides consent and outcome, the minds
+  only word the reaction (D6). Intimate verbs need `canBeIntimate(game, target)` or the game
+  refuses ("You don't."). A text act never kills and deals at most 1–3 hp. An assault act goes
+  through `combat.assault(attacker, target, kind)` (a wrapper on `_recordCrime`): known only to
+  those who see it (the sight rule, `murder.screenCrime`), its cry heard by the hearing rule.
+- **Cut ties and the parting scene**: words still reach a gone Lyra within 16 tiles (D9) and
+  she answers as she feels; her leaving is a scene with her reasons and a letter; the village
+  learns of it from those who heard her words clearly (`hears`, `LOUD.talk`) and then by
+  meeting, never all at once.
+
+## 34. Party and People (workstream party; the author: "I want to be able to take anyone as my companion")
+
+### 34.1 The companion role (`src/core/party.js`, `game.party`)
+
+Built in `game.buildWorld` after the people exist (`installParty`), saved as `party` and
+restored last in `game.deserialize`.
+
+- **Now (the base):** `holder` (the entity holding the role, or null when you walk alone),
+  `holderId`, `isCompanion(e)` (entity or id), `canHold(e)` (a person, Lyra or one of the
+  eighteen; alive, present, not absent or dead, an adult by `isMinor`, not the player),
+  `set(id, why, by)` (the one place the holder changes), `serialize()` → `{ v, holderId }`,
+  `deserialize(d)` (no block: an old save; the holder is Lyra while her companionship is
+  together or wary, else nobody; a saved holder who can no longer hold it is dropped).
+- **Bus:** out `companion_changed { from, to, why, by }` (ids or null). In:
+  `companionship_changed` (Lyra together or wary takes the role when it is free; apart, left
+  or gone releases it when she holds it; she never takes it from someone else),
+  `villager_killed` and `villager_died` (the holder's death releases it, why `'died'`).
+- **Party adds** (contract, feature-detected by everyone): `invite(e, { text, by })` (their own
+  mind decides: Lyra by `mind.evaluateRequest({ action: 'rejoin' })`, a villager by
+  `weighJoin`), `take(e, { why, by })` (one at a time; the previous holder released with
+  `'replaced'`), `release(why)` (dismissed, left, gone, died, downed, night, fear, replaced),
+  `ask(cmdId, args)`, `weighJoin(e)` → `{ decision: accept | accept_conditional | refuse,
+  line, terms }`, `onVillagerAct(e, act, reply)`, `canTake(lyra)` (talk's autonomy asks it
+  before she returns to together). A companion's senses are the village's: they react to a
+  cry they hear (`onCallForHelp`, `hears`) and leave over an assault or a killing they SEE
+  (the sight rule), never over one they could only have known by distance.
+- **NPC hooks** (`src/entities/npc.js`, the only lines party needs there):
+  - `npc.duty` (null, or `{ step(npc, dt, tick) }`): `think()` runs
+    `if (this.duty?.step?.(this, dt, tick) !== undefined) return;` before the day's routine
+    and social life (after flee, fight and help, and after standing still for a talk).
+  - `startFight(target, { anchor, leash })`: `fightAnchor` (a point or an entity that moves,
+    like the player a companion guards) and `fightLeash` (px) replace the post and
+    `GUARD_LEASH` for that fight; `fightStep` measures the leash from `fightAnchor ?? post`.
+  - `endFight()` returns to mode `'duty'` when `this.duty` is set, else `'routine'`; mode
+    `'duty'` makes village life and pair talk leave them be, as any busy mode does.
+
+### 34.2 Who is a minor (`src/core/people.js`, decision D1)
+
+- `ageOf(game, who)`: the calendar's age (`game.calendar.ageOf`), else the profile's, else
+  Lyra's base age; null for the stranger, who does not know their own. (An actor's own `age`
+  field is seconds alive, for its animations, and is never read.)
+- `stageOfAge(age)` / `lifeStage(game, who)`: `'child'` under 13, `'teen'` 13–15, `'adult'`
+  16–64, `'elder'` 65–79, `'frail'` 80 and over.
+- `isMinor(game, who)`: age under `MINOR_UNDER` (16). Build `'child'` or `'teen'` counts only
+  while the age is unknown, so Tansy (build `'teen'`) is a minor at 15 and an adult at 16.
+  `npc.isChild` (helpRole's "children run", `nearestChild`) calls it; murder's `canKill` and
+  the finishing blow's refusal read it; party's `canHold` reads it.
+- `isAdult(game, who)`: a person who is not a minor (the player is one).
+- `canBeIntimate(game, who)`: `INTIMATE_FROM` (18) and over: Tansy at 16 and 17 and Tilly at
+  17 are adults to every system but this one.
+- Each cut-off is one constant: raise `MINOR_UNDER` to 18 and every rule follows.
+
+### 34.3 What party shows
+
+The HUD's companion slot shows `game.party.holder` (name, portrait, health, where they stand
+with you) or nothing when you walk alone; nothing of Lyra's is pinned when she is not with
+you. The People view (Tab/M) replaces the Mind panel: you, Lyra first while she matters
+most, and each villager; private memories are counted, not shown; no soul editing. The
+clock reads `game.calendar?.dateLabel?.()` (§36.3). A dead Lyra: every reader of her mind
+feature-detects `game.murder?.isDead?.('lyra')`.
+
+## 35. Violence (workstream blood; the author: "the people should fight me, not just let me kill their whole village")
+
+### 35.1 The record of a death (`src/murder/murder.js`, the base)
+
+- `kill(v, killer = player, opts)` or `kill(v, opts)` (opts with `killer` to name another).
+  `opts.cause` (default `'killed'`), `opts.silent` and `opts.unmarked` (§37.2), `opts.by` (an
+  id when no killer entity is given). Returns the record, or null.
+- `canKill(v)`: a villager, not dead, **not a minor** (`isMinor`) and not on the old
+  `UNKILLABLE` list (which blood replaces with `isMinor` and a killable Lyra, V-7).
+- The record (`murder.dead[id]`) gains `by` (`'player'`, the killer's id, or null), `cause`,
+  `provoked` (true when the victim fought or hit the killer in the last 20 s: their
+  `fightTarget` and mode, the killer's `lastAttacker`, combat's record of who hurt whom that
+  self-defense reads), `silent`, `unmarked` and `natural` (die()). `layBody` and
+  `deserialize` set `v.absent.cause = rec.cause`. An old save's record reads as cause
+  `'killed'`, `by` and `provoked` unknown (null), not silent, marked.
+- **Events:** `villager_killed { id, entity, killer, by, cause, provoked, silent, unmarked,
+  witnesses, place, x, y }` for a killing, Lyra and companions included; `villager_died
+  { id, entity, cause, place, x, y }` for a death nobody did (§36.3). Grief, the funeral and
+  heirs listen to both; the tempter (§36.4), reputation (§36.1) and the hunt (§35.3) listen
+  only to `villager_killed`.
+- **Witnesses** are those who SEE it (`witnessesOf`, the sight rule); the victim's cry is
+  heard by the hearing rule (`murder.heardBy`, `npc.onCallForHelp`); a witness's scream
+  carries its words 96 px, clear only. Unchanged from §29; blood builds on it.
+
+### 35.2 Finishers (`src/murder/finishers.js`, `registerFinisher`)
+
+A killing blow on a person plays a short pixel finisher chosen by your build (sword, magic,
+hybrid; a future bow or class registers its own). Settings → Game → "Finishers": full
+(default), brief, off; reduce motion plays brief. Never through a wall (`canReach`); never on
+a child. Its sound is the blow and the victim's cry through `hears()` (none when silent);
+who saw it is the sight rule's.
+
+### 35.3 The village fights back; a known killer is hunted
+
+Defenders (the watch, Hess, able-bodied villagers) act only on what they themselves know:
+`knowsWanted` (saw it by the sight rule, came and saw, the victim told them, told face to
+face, or the bell). A cry heard (`hears`: what and where) brings them to look, never to fight
+a who; a carer who only heard stops at the door until they see. The hunt is per knower: only
+a watch that knows arrests you; `player.crime` is read per knower, not as one shared record.
+
+### 35.4 Loot, theft if seen, and where goods came from (`src/world/provenance.js`)
+
+- **Theft is a crime only if seen** (D10), for bodies and chests alike: witnesses by the sight
+  rule at the moment of taking (`witnessesOf`), never by distance; it is news by meeting (the
+  `'stole'` rumour), not assault. An owner who later finds goods missing grows suspicious; no
+  crime toast.
+- **`game.provenance`** (the base; saved with the plugins; old saves start empty):
+  `add(itemId, qty, { owner, how: 'chest' | 'forced' | 'body', day, seenBy })`, `take(itemId,
+  qty)` (first in, first out; returns the entries taken), `of(itemId)`, `qtyOf(itemId)`,
+  `all()`, `settle(itemId?)`. The player's pack reports every removal (lost, eaten, given,
+  sold, fined) and the ledger never holds more than the pack: a caller that must know which
+  entries leave (the shop) calls `take()` before removing the item. `seenBy` holds only those
+  the sight rule says saw it. Bus: `provenance_added`, `provenance_taken`. Blood feeds it;
+  society reads it.
+
+### 35.5 Lock-on and the fallen village
+
+- `game.lock` (`src/core/lock_on.js`): the target a middle click (or a pad button) locks,
+  the wheel cycles; weaves and the sword aim at it; soul prefers it. No sound, no witness.
+- `game.occupation.{ burned(buildingId), claimed(houseId), emptied() }`: a burning store is
+  seen by the sight rule and its "Fire!" cry heard by `hears()`; children hide and are taken
+  away, never hurt (`isMinor`); society's endings read it.
+- Nothing hits through walls: creatures, bosses and rubble go through `canReach`/`wallTile`
+  (§31.1).
+
+## 36. Society (workstream society; the author: "should they forgive me?")
+
+### 36.1 Reputation (`src/society/reputation.js`)
+
+`game.reputation.of(id)` and `game.reputation.titles({ knownTo })` (the Butcher of
+Hearthvale, Oathbreaker, the Unkindler). Only deeds someone knows count, as they know them:
+seen (the sight rule), told face to face, the bell, the road's word carried by travellers who
+meet; never what nobody saw. It listens to `villager_killed`, never `villager_died`. Guards and
+children read it, and talk's prompts (`titles`).
+
+### 36.2 The shop
+
+Buy and sell at Garrick, Bram, Fennick and Elda by taste, stock and haggling. Selling reads
+`game.provenance.of(itemId)`: stolen goods to someone who knows the owner are risky; the shop
+`take()`s the entries it sells before removing the items (§35.4).
+
+### 36.3 Ages and deaths nobody did
+
+- `murder.die(v, { cause })` (the base, decision D13): the record and body of a killing with
+  none of its consequences: `natural: true`, no witnesses, alarm, case or wanted, no
+  `seenMurder`; `markGone` with the cause; unmarked and silent by default; emits
+  `villager_died { id, cause }` and never `villager_killed`. A minor never dies of age
+  (`cause: 'age'`). Found later (`found()`): grief and a funeral, no case and no blade
+  ("No mark on him: his time had come"); society may own its lines through `onFound` (§37.3).
+  Every reader of `Object.values(murder.dead)` that means a killing skips `rec.natural`.
+- `calendar.dateLabel()` ("Day 9, early autumn, year 1") and `calendar.briefLine(id)`, read by
+  party's HUD and People and by talk's prompts. Settings: `yearDays` (12 / 24 / 48 / 96), `oldAge`.
+  `isMinor` follows the calendar, so a child grows into an adult the game treats as one.
+
+### 36.4 The villain path (`src/story/villain.js`)
+
+- `game.villain.hasPact()`; society emits `bus 'pact_sealed' { gifts: [...] }` when the pact
+  is made (soul listens, §37.4). The tempter speaks through a persona (§33.3) and counts the
+  village's dead from `villager_killed` only. The endings read `game.occupation`.
+
+### 36.5 The trial
+
+A free-text defence; one Claude call per juror, in parallel (at most 7), each with only its
+own brief: what that juror saw (the sight rule), heard (the hearing rule: what and where,
+never who) or was told face to face. A lie counts as caught only if
+`checkClaim(...).knownBy` includes that juror. The heard-today unease (`npc.uneasy`) is saved
+for the day and reaches the juror's prompt.
+
+## 37. Soul (workstream soul; the author: "I kill him with no sound, with nothing… even if they find him, they will be shocked how is he dead")
+
+The Unkindling: a dark spell from the tempter's pact that puts out a person's flame from the
+inside. This section is the contract the base laid; soul builds it.
+
+### 37.1 `game.unkindle` (`src/magic/unkindle.js`, registered through `src/core/plugins/soul.js`)
+
+- `learned` (bool, saved), `learn()` (called on `pact_sealed`; never available otherwise,
+  but Settings → Practice → "Try all magic" lets it work on training dummies only),
+  `tally` (the count of unkindled deaths, saved), `briefLine(id)` (a line for that person's
+  Claude prompt when the village fears "the Hollow": feature-detected by talk).
+- Never on a child (`isMinor`: "No. Not a child."), never through a wall (`canReach`), never
+  on the player.
+
+### 37.2 Silent and unmarked killings (the base)
+
+- `murder.kill(v, { cause: 'unkindled', silent: true, unmarked: true })`.
+- **silent**: no cry, no call for help, no scream. `src/ai/hearing.js` `silence(game, e,
+  seconds)` (Infinity: for good), `isSilenced(game, e)`, `voiceOf(game, e, loud)` (0 while
+  silenced). The channel holds its target with `silence(game, v, seconds)`; a silent killing
+  silences the victim for good (restored from the save). Routed through it: `npc.say` (no word
+  at all), `npc.callForHelp` (no `call_for_help` event), the accident yelp, `npc.onCrime`'s
+  blow (loudness 0), `npc.onCallForHelp` (a cry at loudness 0), `npc.knowsWho` (no words from
+  the hurt), the village's alarm for Lyra (`installVillageHooks`), `murder.heardBy` (false),
+  and a fallen victim's telling (`murder.tick`). So `hears()` hears nothing a tile away
+  behind nothing. **Eyes are not ears**: a witness who SEES it is a witness (the sight rule;
+  `witnessesOf` is untouched), and `seenMurder` runs for them as for any killing seen (their
+  own scream carries by the hearing rule). Lyra's own cry lives in talk's autonomy
+  (`autonomy.callForHelp`): talk adds the same guard there (return at once while
+  `isSilenced(game, lyra)`); until then her cry is already heard by nobody, since every
+  listener hears it at `voiceOf(…)` 0.
+- **unmarked**: no blood, smear or wound on the body. The record keeps it (saved); `layBody`
+  sets `v.unmarked`; the blood trail under the body is cleared (`trail.clearNear`);
+  `drawBody` draws a dried stain under a marked killing and none under an unmarked one or a
+  natural death; any finisher or wound art reads `rec.unmarked`.
+
+### 37.3 Who owns a discovery (`murder.onFound(handler)` → `off()`)
+
+`handler(rec, ctx)`, `ctx = { finder, finderEntity, body, place, witnessed, lake, cause,
+murder, defaults }`. When a body is found, handlers run in order; the first that returns
+true owns it and takes over the discovery lines (the finder's cry, the event note, the
+toast), the case and Lyra's learning; `ctx.defaults` (`cry`, `note`, `openCase`, `lyra`,
+`toast`, `grief`) lets it reuse any of them. Either way the record is marked found, the
+village life's news of the body runs (`onBodyFound`: the `found_dead` rumour, by meeting),
+`body_found { id, finder, place, murder, cause, owned }` goes out, and grief, the funeral and
+the Moot follow. A handler that declines (or throws) leaves the default; with no handler,
+`found()` is unchanged. A finder's cry is their own voice (the hearing rule); Lyra learns as
+§29.4 says unless the owner says otherwise.
+
+### 37.4 The pact
+
+Society emits `bus 'pact_sealed' { gifts }` and exposes `game.villain?.hasPact?.()`; soul
+listens and calls `game.unkindle.learn()`.
+
+### 37.5 Sound and sight in the Unkindling
+
+- The channel (about 2.5–3.5 s, touch range) is at loudness 0 (§37.2); only the player hears
+  its faint local sound; no SFX goes to the world.
+- Unseen: a mysterious death (no suspect, no wanted, no alarm), found through `onFound`
+  (cause `'unkindled'`); it counts for the tempter and reputation only once it is known as a
+  killing.
+- Seen (the sight rule: `look`/`witnessesOf`): the witness saw the soul pulled out. Their
+  account travels only by meeting; whoever hears it links every earlier unkindled death to the
+  stranger, and the case reopens with every count.
+- A much stronger target breaks free and KNOWS (the victim saw it): an attempted killing
+  seen by the victim; they fight if a fighter (§35.3's defenders, `knowsWanted`) or run and
+  tell face to face. A companion or Lyra who SEES it reacts with horror in their own words.
+- IMPACT: a new ability (§1), the states `'unkindling'` and `'unkindled'` (§5), the death
+  cause `'unkindled'` (§8, §9).
+
+## Polish (r14b)
+
+Workstream polish takes the small things the checks left: broken props mend only where
+someone lives (empty Brindlecombe and the wilds stay broken), the countdown and ember-ring
+layers follow Interface size (`death_view.js`), prompts and speech bubbles never overlap at
+844×390, and the hearing rule may learn trees and props (only if cheap). Its CSS goes in
+`src/styles/polish.css`, its plugins in `src/core/plugins/polish.js`. Any new sound or
+witness it touches keeps §33.2.

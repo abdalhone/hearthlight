@@ -19,11 +19,14 @@ The source of truth for the canon is `docs/LORE.md`; for contracts, `DESIGN.md`.
 ## 1. Player builds and classes
 
 Values: **sword** (Might-heavy), **magic** (Wits/Spirit-heavy, weaves), **hybrid**,
-*future*: bow and arrows, other classes and weapons.
+*future*: bow and arrows, other classes and weapons. Abilities beside a build (round 14b):
+**finisher per build** (blood: `registerFinisher`), **the Unkindling** (`'unkindle'`: soul, a
+dark spell from the tempter's pact, DESIGN §37).
 
 | System | What must react | Where |
 |---|---|---|
-| Finishing blows / kill scenes | Sword build beheads with the blade; magic build ends it with a weave to the head; hybrid uses both; a new weapon brings its own finisher | `src/murder/*` (round 14b: adaptive finishers) |
+| Finishing blows / kill scenes | Sword build beheads with the blade; magic build ends it with a weave to the head; hybrid uses both; a new weapon brings its own finisher (`registerFinisher`, DESIGN §35.2); never on a child (`isMinor`) | `src/murder/*` (round 14b: adaptive finishers) |
+| The Unkindling (`'unkindle'`, round 14b soul; stub) | Learned only from the pact (`pact_sealed`), saved; touch range; loudness 0 (`hearing.js` `silence`/`voiceOf`); witnesses by the sight rule; never a child, never through a wall; a dark button on the phone, a held key on desktop; its price shows in the Character panel | `src/magic/unkindle.js`, `src/render/unkindle_fx.js`, `src/murder/unkindled.js` (soul) |
 | Combat damage and stun | Damage sources (sword arc, weave bodies, beams, future arrows) all go through the hit pipeline; walls stop each | `src/entities/combat.js`, `src/magic/*` |
 | Stats, gear, prices | Stat points, gear slots and prices favour the build; a new class needs its stat, its gear and its prices | `src/progression/*`, `src/gear/*`, `src/magic/prices.js` |
 | Mission objectives | An objective that asks for a weave must have a sword-friendly way, and the reverse (or say why not) | `src/missions/data.js` |
@@ -79,23 +82,27 @@ indoors and out; *future*: dungeons (the Weeping Cut), other villages, other flo
 
 ## 4. Characters
 
-Values: **Lyra**, the **eighteen villagers**, **children** (Pip, Tansy; unkillable),
+Values: **Lyra**, the **eighteen villagers**, **children** (minors by age: `isMinor`, under
+16, `src/core/people.js`; Pip 9 and Tansy 15 today, Tansy an adult at 16; never killable,
+never companions; intimate acts only from 18, `canBeIntimate`),
 **guards** (Rowan, Wys), **bosses** (Varek, Greyjaw, the Mother of Slimes, the Lake's Hum,
 the Bone Warden), **creatures** (wolves, boars, deer, rabbits, slimes, bats, skeletons,
-bandits), **companions** (Lyra today; round 14b: anyone); *future*: travellers, Owlsend's
-survivors, new villagers.
+bandits), **companions** (anyone adult, `game.party`: the role is `game.party.holder`, Lyra
+at a new game, nobody when you walk alone; `game.companion`/`game.lyra` stay Lyra the
+person); *future*: travellers, Owlsend's survivors, new villagers.
 
 | System | What must react | Where |
 |---|---|---|
 | Lines and voice | Every character's own words for a new event (barks, dialogue, Claude persona) | `src/ai/social/*`, `src/entities/npc_data*.js` |
 | Knowledge and rumors | What they know of places and bosses (`TRAILS.tellers`, `ROAD_TALK`, facts) | `src/world/boss_trails.js`, `src/entities/npc_data*.js` |
-| Killability and crimes | Adults can be killed, children cannot; theft and assault are crimes others learn of by eyes or by meeting someone who knows | `src/murder/*`, `src/world/containers.js` |
+| Killability and crimes | Adults can be killed, children (`isMinor`) cannot; theft and assault are crimes others learn of by eyes or by meeting someone who knows; every death records `by`, `cause`, `provoked` (DESIGN §35.1); a death nobody did goes through `murder.die` (no case, no alarm) | `src/murder/*`, `src/world/containers.js`, `src/core/people.js` |
+| The companion role (round 14b) | Any adult may hold it (`party.canHold`); the HUD slot, the Ask bar, missions that count "with you", follow on foot, stand-ins when they die; a new kind of person says whether they can hold it | `src/core/party.js`, `src/entities/npc.js` (`duty`, `startFight` anchor and leash) |
 | Senses | Every eye and ear goes through one rule each: sight (`src/ai/sight.js`) and hearing (`src/ai/hearing.js`: walls muffle, a cry tells what and where, never who; a beast's snarl is a what, a person a who). A new kind of character (a deaf one, a hound) gets its exception there, as Wenna's blindness does in `witness.js` | `src/ai/sight.js`, `src/ai/hearing.js`, `src/entities/npc.js` |
 | Ownership | Their beds, chests and keys (`owner`, `keeper`, `keyId`) | `src/world/containers.js`, `src/world/objects.js` |
 | Combat and AI | Fight back, flee, stun, finishers per body size | `src/entities/*`, `src/bosses/*` |
 | Footsteps and crawling | Others' steps near you; the downed crawl for anyone | `src/world/footsteps.js`, `src/survival/*` |
 | Missions | Givers, turn-ins, foes that scale with your level (`toughen`) | `src/missions/*` |
-| Age | Everyone grows a year older on their birthday (`game.calendar`); a child stays a child by build; a new character needs a base age | `src/world/calendar.js` |
+| Age | Everyone grows a year older on their birthday (`game.calendar`); who is a child is decided by age (`isMinor`, under 16; the build only when the age is unknown); a new character needs a base age | `src/world/calendar.js`, `src/core/people.js` |
 | Trade | Who buys and sells what (`shop.buys`, `shop.buysAll`) | `src/entities/npc_data*.js`, `src/ui/dialog.js` |
 | The map | Lyra's dot; future companions; bosses once heard of | `src/ui/world_map.js` |
 
@@ -103,12 +110,18 @@ survivors, new villagers.
 
 Values: walking, running, rolling, fighting, casting/charging, fallen (down, crawling,
 bleeding out), carried, sitting, sleeping, dead (kept flame, home waking, final), last
-stand (round 14 D4), talking (a panel open), in a cutscene, trading.
+stand (round 14 D4), talking (a panel open), in a cutscene, trading. Round 14b: **locked
+on** (blood), **saying aloud** (talk), **parting scene** (talk), **on duty** (an NPC holding
+the companion role: mode `'duty'`), **held silent** (`hearing.js` `silence`: no sound at
+all), **unkindling** (the player channelling the Unkindling; the target held and silent),
+**unkindled** (a body with no mark: dead, silent, unmarked; soul's stub), **dead of age**
+(`murder.die`: natural, no case).
 
 | System | What must react | Where |
 |---|---|---|
 | Input and HUD | Which buttons show; panels pause; no fight buttons while down | `src/ui/*` |
-| Senses | Asleep: a third of a cry's reach (the loudest, 0.6) and no eyes; down, carried or dead: neither | `src/ai/hearing.js`, `src/murder/witness.js` |
+| Senses | Asleep: a third of a cry's reach (the loudest, 0.6) and no eyes; down, carried or dead: neither; held silent (unkindling, a silent killing): their every cry and blow is loudness 0 (`voiceOf`), while eyes still see them | `src/ai/hearing.js`, `src/murder/witness.js` |
+| Death states (round 14b) | `unkindled` and `dead of age` lie unmarked (no blood: `rec.unmarked`, `drawBody`); a found body's discovery belongs to the cause's owner (`murder.onFound`) | `src/murder/murder.js`, `src/murder/draw.js` |
 | Footsteps and pace | Steps only while walking; crawling is slower and smears | `src/entities/player.js`, `src/survival/*` |
 | Spawns and AI | Creatures do not spawn in view; foes leave the fallen to the bleed-out | `src/entities/spawner.js` |
 | Travel | Places are reached and the map's fog lifts only while you move about | `src/world/travel.js` |
@@ -154,6 +167,7 @@ Values: Claude (in the claude.ai Artifact or with a key), the offline mind.
 | Every mind and line | Works offline with local lines; online gets the same facts in its prompt | `src/ai/*`, `src/platform/claude_runtime.js` |
 | Prompt context | Plugins' `promptContext` (missions, travel: where you are in the wider world) | `src/ai/plugins/*`, `src/world/travel.js` |
 | Trials and judgement | Round 14b: villagers weigh your words with Claude; offline they still decide | `src/murder/*` |
+| Death causes in prompts (round 14b) | A death's `cause` reaches the minds as people know it: `'killed'`, `'age'`, and `'unkindled'` (soul's stub: "no mark on him… like the hollow wind", the village's fear of "the Hollow" through `game.unkindle.briefLine(id)`); offline lines say the same | `src/murder/*`, `src/ai/social/village_prompt.js`, `src/ai/brain/prompt.js` |
 
 ## 9. Saves and permadeath
 
@@ -166,11 +180,15 @@ final death, Settings resets.
 | Old saves | Missing fields default; ids stay stable (object ids are positional, so the vale keeps its coordinates) | everywhere `deserialize` |
 | Death modes | The ember-ring, the flame, the end | `src/survival/*` |
 | Generated world | Same seed, same world: never move vale objects (saves refer to them by position) | `src/world/worldgen.js` |
+| Round 14b blocks | `party` (`{ holderId }`, restored last; old saves derive it from Lyra), `plugins.provenance` (old saves start empty), murder records' `by`, `cause` (old: `'killed'`), `provoked` (old: unknown), `silent`, `unmarked`, `natural`; soul's `unkindle` (`learned`, `tally`) | `src/core/party.js`, `src/world/provenance.js`, `src/murder/murder.js` |
+| Death causes | `'killed'`, `'age'` (`murder.die`), `'unkindled'` (soul): each saved on the record and the body (`absent.cause`); a new cause says who owns its discovery (`onFound`) and whether it is a killing (`villager_killed`) or not (`villager_died`) | `src/murder/murder.js` |
 
 ## 10. Story branches
 
-Values: hero, villain (round 14b: the stranger who offers power for the village), Lyra
-with you or gone, villagers alive or dead, bosses beaten or not, Owlsend's arrival.
+Values: hero, villain (round 14b: the stranger who offers power for the village; the pact,
+`pact_sealed`, `game.villain.hasPact()`), Lyra with you or gone (or dead), who walks with you
+(`game.party.holder`), villagers alive or dead (killed, of age, unkindled), bosses beaten or
+not, Owlsend's arrival.
 
 | System | What must react | Where |
 |---|---|---|
