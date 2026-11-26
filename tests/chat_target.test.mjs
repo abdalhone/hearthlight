@@ -521,7 +521,9 @@ test('browser: the chat talks to anyone within earshot (and screenshots)', { tim
       });
       await page.waitForTimeout(400);
       const chips = await page.$$eval('.chat-to-chip', (els) => els.map((e) => e.dataset.id));
-      assert.equal(chips[0], 'lyra', `${view.label}: Lyra first`);
+      // Round 14b: "Everyone nearby" first (say it aloud), then the companion (Lyra here).
+      assert.equal(chips[0], '@near', `${view.label}: Everyone nearby first`);
+      assert.equal(chips[1], 'lyra', `${view.label}: then whoever walks with you`);
       assert.ok(chips.includes('elda') && chips.includes('pip'), `${view.label}: people in earshot ${chips}`);
       // Pick Elda: the field, the history and the header follow.
       await page.click('.chat-to-chip[data-id="elda"]');
@@ -657,69 +659,58 @@ test('browser: the chat talks to anyone within earshot (and screenshots)', { tim
         e.x += 400;
         g.ui.chat.checkTarget();
       });
-      // Click someone in the world (desktop): the chat turns to them.
+      // Round 14b (decision D3): a tap or click on someone never opens talk. T (desktop) or
+      // the "Talk to Pip" button (phones) talks to whoever is in front of you.
+      await page.evaluate(() => window.__game.ui.chat.close());
+      await page.waitForFunction(
+        () => {
+          const c = window.__game.camera;
+          const prev = window.__camY;
+          window.__camY = c.y;
+          return prev != null && Math.abs(c.y - prev) < 0.25;
+        },
+        null,
+        { polling: 120, timeout: 10000 },
+      );
+      const at = await page.evaluate(() => {
+        const g = window.__game;
+        const pip = g.entities.get('pip');
+        // Out of sword reach, so the click is only a click.
+        pip.x = g.player.x - 60;
+        pip.y = g.player.y;
+        const p = g.renderer.worldToCss(pip.x, pip.y - 10);
+        const r = g.canvas.getBoundingClientRect();
+        return { x: r.left + p.x, y: r.top + p.y };
+      });
+      if (!view.touch) await page.mouse.click(at.x, at.y);
+      else await page.touchscreen.tap(at.x, at.y);
+      await page.waitForTimeout(300);
+      assert.equal(await page.evaluate(() => window.__game.ui.chat.isOpen()), false, `${view.label}: a click or tap on Pip opens nothing`);
+      // Beside Pip, facing him.
+      await page.evaluate(() => {
+        const g = window.__game;
+        const pip = g.entities.get('pip');
+        g.player.x = pip.x + 16;
+        g.player.y = pip.y;
+        g.player.facing = { x: -1, y: 0 };
+        g.companion.x = g.player.x + 40;
+        g.companion.y = g.player.y + 30;
+      });
+      await page.waitForTimeout(350);
       if (!view.touch) {
-        const at = await page.evaluate(() => {
-          const g = window.__game;
-          const pip = g.entities.get('pip');
-          const p = g.renderer.worldToCss(pip.x, pip.y - 10);
-          const r = g.canvas.getBoundingClientRect();
-          return { x: r.left + p.x, y: r.top + p.y };
-        });
-        await page.mouse.click(at.x, at.y);
-        await page.waitForTimeout(200);
-        assert.equal(await page.evaluate(() => window.__game.ui.chat.target), 'pip');
-        assert.equal(await page.getAttribute('.chat-field', 'placeholder'), 'Say something to Pip…');
-        assert.equal(await page.evaluate(() => window.__game.player.crime ?? null), null, 'no sword stroke, no crime');
-        // With the chat shut, a click on someone opens it to them, and it stays open (the
-        // release of that same click is not a click outside the chat).
-        await page.evaluate(() => window.__game.ui.chat.close());
-        await page.mouse.click(at.x, at.y);
+        await page.keyboard.press('t');
         await page.waitForTimeout(250);
-        assert.deepEqual(await page.evaluate(() => [window.__game.ui.chat.isOpen(), window.__game.ui.chat.target]), [true, 'pip'], `${view.label}: clicking Pip opens the chat to him`);
       } else {
-        // A tap on someone in the world (chat shut) opens it, talking to them.
-        await page.evaluate(() => window.__game.ui.chat.close());
-        // On a phone held upright the open chat had the camera look lower (chat.frameWorld);
-        // shut, it eases back. Tap Pip where he is drawn once the view has come to rest
-        // (a tap aimed at where he was drawn a moment before lands above his head).
-        await page.waitForFunction(
-          () => {
-            const c = window.__game.camera;
-            const prev = window.__camY;
-            window.__camY = c.y;
-            return prev != null && Math.abs(c.y - prev) < 0.25;
-          },
-          null,
-          { polling: 120, timeout: 10000 },
-        );
-        const at = await page.evaluate(() => {
-          const g = window.__game;
-          const pip = g.entities.get('pip');
-          const p = g.renderer.worldToCss(pip.x, pip.y - 10);
-          const r = g.canvas.getBoundingClientRect();
-          return { x: r.left + p.x, y: r.top + p.y };
+        await page.waitForFunction(() => /Talk to Pip/.test(document.querySelector('.tbtn-interact')?.getAttribute('aria-label') || ''), null, { timeout: 5000 });
+        const b = await page.evaluate(() => {
+          const r = document.querySelector('.tbtn-interact').getBoundingClientRect();
+          return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
         });
-        await page.touchscreen.tap(at.x, at.y);
-        await page.waitForTimeout(250);
-        assert.deepEqual(await page.evaluate(() => [window.__game.ui.chat.isOpen(), window.__game.ui.chat.target]), [true, 'pip'], `${view.label}: tapping Pip`);
-        // The click the browser makes from that same tap lands on whatever the chat just put
-        // under the finger (a chip of its "To" row): it must not pick someone else.
-        const ghost = await page.evaluate(() => {
-          const g = window.__game;
-          const c = g.ui.chat;
-          c.close();
-          const pip = g.entities.get('pip');
-          c.pickInWorld(pip.x, pip.y - 10, { pointerType: 'touch' });
-          const chip = document.querySelector('.chat-to-chip[data-id="lyra"]');
-          chip?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-          return { chip: !!chip, target: c.target };
-        });
-        assert.deepEqual(ghost, { chip: true, target: 'pip' }, `${view.label}: the tap's own click does not pick a neighbour`);
-        await page.waitForTimeout(600);
-        await page.click('.chat-to-chip[data-id="lyra"]');
-        assert.equal(await page.evaluate(() => window.__game.ui.chat.target), 'lyra', 'a real tap on the chip later still picks');
+        await page.touchscreen.tap(b.x, b.y);
+        await page.waitForTimeout(300);
       }
+      assert.deepEqual(await page.evaluate(() => [window.__game.ui.chat.isOpen(), window.__game.ui.chat.target]), [true, 'pip'], `${view.label}: Talk beside Pip talks to Pip`);
+      assert.equal(await page.getAttribute('.chat-field', 'placeholder'), 'Say something to Pip…');
       assert.deepEqual(errors, [], `${view.label}: page errors`);
       await ctx.close();
     }
@@ -727,4 +718,41 @@ test('browser: the chat talks to anyone within earshot (and screenshots)', { tim
     await browser.close();
     server.close();
   }
+});
+
+// ------------------------------------------------------------------ round 14b: who T talks to
+
+test('nearestTalkTarget: facing beats distance; the companion counts; another roof does not; asleep counts, downed does not', async () => {
+  const { nearestTalkTarget, NEAR } = await import('../src/ui/chat_target.js');
+  assert.equal(NEAR, '@near');
+  const { game, add } = earWorld();
+  game.companion.x = 400; // Lyra well away
+  game.player.facing = { x: 1, y: 0 };
+  const behind = add('bram', 200 - 16, 200); // closer, but behind
+  const front = add('elda', 200 + 24, 200); // a little farther, in front
+  assert.equal(nearestTalkTarget(game)?.id, 'elda', 'the one in front, facing first');
+  game.player.facing = { x: -1, y: 0 };
+  assert.equal(nearestTalkTarget(game)?.id, 'bram', 'turn round: the one now in front');
+  // Asleep still counts (they hear it, as far as words reach a sleeper); downed does not.
+  behind.state = 'sleep';
+  assert.equal(nearestTalkTarget(game)?.id, 'bram');
+  behind.downed = true;
+  assert.equal(nearestTalkTarget(game)?.id, 'elda', 'downed: not someone to talk to');
+  // Another roof: not in reach of words.
+  front.x = 22 * 16;
+  front.y = 22 * 16;
+  assert.equal(nearestTalkTarget(game), null, 'nobody in reach: the caller says it aloud to everyone');
+  // The companion (party.holder), whoever it is, counts like anyone.
+  const hess = add('hess', 200 + 20, 204);
+  game.party = { holder: hess };
+  game.player.facing = { x: 1, y: 0 };
+  assert.equal(nearestTalkTarget(game)?.id, 'hess');
+  // Nobody within 3 tiles: the nearest within earshot, in front.
+  hess.x = 200 + 90;
+  assert.equal(nearestTalkTarget(game)?.id, 'hess');
+  game.player.facing = { x: -1, y: 0 };
+  assert.equal(nearestTalkTarget(game), null, 'behind you, farther than arm\'s reach: say it aloud instead');
+  game.player.facing = { x: 1, y: 0 };
+  hess.x = 200 + 400;
+  assert.equal(nearestTalkTarget(game), null);
 });

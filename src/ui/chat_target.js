@@ -8,8 +8,10 @@
 import { h, setText, toggleClass } from './dom.js';
 import { portraitUrl } from './art.js';
 import { firstName, moodExpression } from './village_view.js';
+import { hears } from '../ai/hearing.js';
 
 export const LYRA = 'lyra';
+export const NEAR = '@near'; // the "Everyone nearby" thread: saying it aloud (round 14b T-2)
 const TILE = 16;
 export const EARSHOT = 7.5 * TILE; // px: near enough to talk
 export const EARSHOT_LOSE = 10.5 * TILE; // px: a conversation holds until they are this far
@@ -43,19 +45,60 @@ function awake(e) {
 }
 
 function downed(e) {
-  return !!e.downed || e.state === 'downed' || e.mode === 'downed' || e.dead || (typeof e.isAlive === 'function' && !safe(() => e.isAlive(), true));
+  return !!e.downed || e.state === 'downed' || e.mode === 'downed' || !!e.unconscious || e.state === 'unconscious';
 }
 
-// Why someone cannot hear the player right now: null when they can.
-//   'gone' (no longer in the world), 'downed', 'far', 'walls' (inside while the player is
-//   not, or the other way round)
+// Dead: no longer in the world, killed, or dead of age (round 14b: anyone may die).
+export function isDeadPerson(game, e) {
+  if (!e || e.removed || e.dead) return true;
+  return !!safe(() => game?.murder?.isDead?.(e.id), false);
+}
+
+// Why someone cannot hear the player right now: null when they can. Only the body keeps
+// words from someone (DESIGN §33.2, §33.4; the author: "even if somebody really hates me,
+// make me able to talk to them"). Hate, fear, terror, grief, a murder, being hunted, cut
+// ties and sleep are never a reason: they hear it, and answer as they feel.
+//   'dead'      dead, or no longer in the world
+//   'downed'    downed or unconscious
+//   'cutscene'  a scene is playing
+//   'far'       out of earshot
+//   'walls'     a wall between (another roof, or the hearing rule says only a muffled voice
+//               gets through, src/ai/hearing.js): a kind of out of earshot, never a feeling
 export function whyNotHeard(game, e, radius = EARSHOT) {
   const p = game?.player;
-  if (!e || e.removed || !p) return 'gone';
+  if (!p) return 'far';
+  if (isDeadPerson(game, e)) return 'dead';
   if (downed(e)) return 'downed';
+  if (game?.state === 'cutscene') return 'cutscene';
+  if (e.absent || e.carriedBy) return 'far';
   if (Math.hypot(e.x - p.x, e.y - p.y) > radius) return 'far';
   if (roofOf(game, e) !== roofOf(game, p)) return 'walls';
+  // Words carry by the one rule for ears: a wall or a shut door between them leaves only a
+  // voice. (Asked of where they stand, not of how they sleep: a sleeper still gets the words,
+  // mumbles, and keeps them.)
+  if (game?.map) {
+    const how = safe(() => hears(game, { x: e.x, y: e.y }, p.x, p.y, radius + 16), 'clear');
+    if (how === 'muffled') return 'walls';
+    if (!how) return 'far';
+  }
   return null;
+}
+
+// What the player is told when someone cannot hear them: a body, never a feeling.
+export function notHeardText(game, e, why) {
+  const n = firstName(e?.name) || 'They';
+  switch (why) {
+    case 'dead':
+      return `${n} is dead.`;
+    case 'downed':
+      return `${n} is down and can't hear you now.`;
+    case 'cutscene':
+      return `${n} can't hear you just now.`;
+    case 'walls':
+      return `${n} can't hear you through the walls.`;
+    default:
+      return `${n} is too far away to hear you.`;
+  }
 }
 
 export function canHear(game, e, radius = EARSHOT) {
@@ -77,6 +120,73 @@ export function earshotPeople(game, { keep = null, max = 8 } = {}) {
   }
   out.sort((a, b) => a[0] - b[0]);
   return out.slice(0, max).map((x) => x[1]);
+}
+
+// Lyra's own earshot (her brain's, by how things stand: brain.js EARSHOT): with you, she
+// hears the chat wherever she is; apart, left or cut off, within 30 / 18 / 16 tiles.
+const LYRA_EARSHOT = { apart: 30, left: 18, gone: 16 };
+export function lyraHears(game) {
+  const L = game?.companion;
+  const p = game?.player;
+  if (!L || !p || isDeadPerson(game, L) || downed(L)) return false;
+  let st = 'together';
+  try {
+    st = game.flags?.lyra_gone ? 'gone' : L.mind?.companionship || L.mind?.autonomy?.companionship || 'together';
+  } catch {
+    st = 'together';
+  }
+  const far = LYRA_EARSHOT[st];
+  return !far || Math.hypot(L.x - p.x, L.y - p.y) <= far * TILE;
+}
+
+// A person the player can talk to: Lyra, or one of the villagers; alive, not downed.
+function talkable(game, e) {
+  if (!e || e.id === 'player' || isDeadPerson(game, e) || downed(e)) return false;
+  return e.id === LYRA || isVillager(e);
+}
+
+// Who T (or the Talk button) talks to (round 14b T-1, decision D4): the nearest person in
+// front of the player, facing first (like Interactions: distance − facing·10), within
+// `radius`; else the nearest within earshot (the hearing rule, whyNotHeard) roughly in
+// front of them; else null (the caller says it aloud to everyone nearby).
+// The companion (party.holder), Lyra and the villagers all count; asleep counts (they hear
+// it, as far as words reach a sleeper); downed, dead and another roof do not.
+export function nearestTalkTarget(game, { radius = 3 * TILE, earshot = EARSHOT } = {}) {
+  const p = game?.player;
+  if (!p) return null;
+  const ents = safe(() => game.entities.all(), []) || [];
+  const cands = new Set();
+  const holder = safe(() => game.party?.holder, null);
+  if (holder) cands.add(holder);
+  if (game.companion) cands.add(game.companion);
+  for (const e of ents) if (isVillager(e)) cands.add(e);
+  const fx = p.facing?.x ?? 0;
+  const fy = p.facing?.y ?? 1;
+  let best = null;
+  let bestS = Infinity;
+  let near = null;
+  let nearD = Infinity;
+  // Beyond arm's reach, only someone roughly in front counts (facing them, a step or two
+  // off); nobody there, and the caller says it aloud to everyone.
+  for (const e of cands) {
+    if (!talkable(game, e) || !Number.isFinite(e.x)) continue;
+    if (whyNotHeard(game, e, earshot)) continue;
+    const dx = e.x - p.x;
+    const dy = e.y - p.y;
+    const d = Math.hypot(dx, dy);
+    const facing = d > 0 ? (dx * fx + dy * fy) / d : 1;
+    if (facing >= 0.35 && d < nearD) {
+      nearD = d;
+      near = e;
+    }
+    if (d > radius) continue;
+    const score = d - facing * 10;
+    if (score < bestS) {
+      bestS = score;
+      best = e;
+    }
+  }
+  return best || near || null;
 }
 
 // Is the player in a fight (a hostile creature close by)? Then a click is a sword stroke.
@@ -183,8 +293,9 @@ export function pronoun(id, kind = 'his') {
 export function partingLine(e, why, who = 'they') {
   const n = firstName(e?.name) || 'They';
   const his = pronoun(e?.id, 'his');
-  if (why === 'downed') return `${n} is hurt and can't talk now.`;
-  if (why === 'gone') return `${n} has gone.`;
+  if (why === 'downed') return `${n} is down and can't hear you now.`;
+  if (why === 'dead' || why === 'gone') return `${n} is gone.`;
+  if (why === 'cutscene') return `${n} turns to what is happening.`;
   if (who === 'you') return `You walk on, and leave ${n} to ${his} day.`;
   return `${n} has gone on ${his} way.`;
 }
@@ -192,6 +303,12 @@ export function partingLine(e, why, who = 'they') {
 // Quick replies for a villager: the everyday openers, and "I'm <name>." while they do not
 // know it (only when the player has a name of their own set).
 export function villagerChips(game, id, knows = false) {
+  // Someone in terror or dread of the player (they watched them kill): no friendly openers.
+  // What a person says to someone afraid of them: beg, plead, back away, or threaten (round
+  // 14b, the leftovers). Each is only words (and an act): they hear it and answer in fear.
+  const e = safe(() => game?.entities?.get?.(id), null);
+  const fear = e ? safe(() => game?.murder?.fearOf?.(e), null) : null;
+  if (fear) return ["Please, I won't hurt you.", 'Just listen to me. Please.', "I'm sorry. I'm so sorry.", '*backs away*', 'Not a word of this to anyone.'];
   const out = ['Hello! How are you?', "What's the news?", 'What do you think of me?', 'Tell me about yourself.'];
   const name = String(game?.settings?.playerName || '').trim();
   if (!knows && name && !/^travell?er$/i.test(name)) out.splice(1, 0, `I'm ${name}.`);

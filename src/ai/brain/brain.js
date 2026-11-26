@@ -27,6 +27,8 @@ import { companionshipOf, distanceTiles, previewVerdict, isRefusal } from './her
 import { DAY_SECONDS } from '../../core/constants.js';
 import { saidToday } from '../said_today.js';
 import { silenceAct, turnAway } from '../silence.js';
+import { parseActs } from '../social/acts.js';
+import { decideActs } from '../social/acts_effects.js';
 
 const REFLECT_WAIT = 20; // seconds the wake-up waits for Claude's diary before using her own
 const ICON_EVERY = 2.2;
@@ -36,7 +38,7 @@ const REFUSAL_MEMORY = 120; // "why not?" refers to a refusal this recent
 const OFFER_WINDOW = 60; // a bare coin offer sweetens a refusal this recent
 const COUNTER_WINDOW = 90; // "deal" accepts a counter-offer this recent
 const ASK_WINDOW = 120; // "yes" to something she asked of the player this recent becomes their promise
-const EARSHOT = { left: 18, apart: 30, gone: 12 };
+const EARSHOT = { left: 18, apart: 30, gone: 16 }; // tiles; gone: she keeps 12 away, so walking up to her is always heard (D9)
 // "Let's go", "lead the way", "sure, let's go", "ok I'll come": yes to going along with her.
 const GO_ALONG = /^(?:(?:yes|yeah|yep|sure|ok|okay|alright|all right|of course|absolutely|fine|right|aye|great|good|deal)\s*)?(?:let'?s go|lets go|let us go|lead the way|lead on|after you|i'?ll come|i will come|i'?m coming|i'?m in|come on|go on then|show me|take me there|let'?s do it|lets do it|i'?ll go with you|i'?ll walk with you|count me in|with you|sure thing|okay let'?s go)(?:\s+(?:then|now|lyra|together))?(?:\s*(?:yes|sure|ok|okay))?$/; // tiles: beyond this she cannot hear the chat
 const KNOWLEDGE_SOURCE = { fact: 'player', rumor: 'told', lore: 'lore', theory: 'inferred' };
@@ -139,6 +141,18 @@ export class Brain {
     return this.game?.time ?? 0;
   }
 
+  // Lyra killed (round 14b: anyone adult may die): no answers, no diary, no initiative.
+  isDead() {
+    const g = this.game;
+    try {
+      if (g?.murder?.isDead?.('lyra')) return true;
+    } catch {
+      /* no murder yet */
+    }
+    const L = g?.companion;
+    return !!L && !!L.dead;
+  }
+
   llmAvailable() {
     return !!this.providers.current();
   }
@@ -218,10 +232,27 @@ export class Brain {
     g.bus?.emit('player_message', { text: clean });
     logConversation(g, 'player', clean);
     this._faceThePlayer();
+    // *Acts* between asterisks (round 14b T-3): the game decides what the hands did, then
+    // she words her reaction knowing it. A refused act (an intimate act the game will not
+    // allow) goes no further: no mind is asked.
+    let acts = null;
+    try {
+      const pa = parseActs(clean, { names: g.village?.actNames?.() || { lyra: ['lyra'] } });
+      if (pa.acts.length) acts = { ...decideActs(g, g.companion, pa.acts, { village: g.village || null }), words: pa.words };
+    } catch (err) {
+      console.warn('[brain] acts failed', err);
+      acts = null;
+    }
+    if (acts?.refused) {
+      this._system(acts.refused, 'act');
+      return { say: '', thought: null, actions: [], provider: 'local', refused: true };
+    }
+    if (acts?.narration) this._system(acts.narration, 'act');
+    const heardText = acts ? acts.words : clean;
 
     let parsed;
     try {
-      parsed = parseMessage(clean, nluEnv(g));
+      parsed = parseMessage(heardText || '…', nluEnv(g));
     } catch (err) {
       console.error('[brain] understanding failed', err);
       parsed = { text: clean, clauses: [], commands: [], offer: null };
@@ -231,16 +262,17 @@ export class Brain {
     const provider = this.providers.current();
     if (provider) {
       if (executed.length) this._ackBubble(parsed);
-      const turn = { text: clean, parsed, executed };
+      const turn = { text: clean, parsed, executed, acts };
       if (this.busy) return this._enqueue(turn);
       return this._claudeTurn(turn);
     }
-    return this._localTurn({ text: clean, parsed, executed });
+    return this._localTurn({ text: clean, parsed, executed, acts });
   }
 
-  // When she cannot hear at all: not there, knocked out, or out of earshot. Nothing else:
-  // hate, fear and having cut the player off never lock her chat (the author: "even if
-  // somebody really hates me, make me able to talk to them"); her answer is her own.
+  // When she cannot hear at all: dead, not there, knocked out, a scene playing, or out of
+  // earshot. Nothing else: hate, fear and having cut the player off never lock her chat (the
+  // author: "even if somebody really hates me, make me able to talk to them"); her answer is
+  // her own (DESIGN §33.4).
   _unreachable() {
     const g = this.game;
     const lyra = g.companion;
@@ -250,7 +282,9 @@ export class Brain {
       this._system(text);
       return { say: '', thought: null, actions: [], provider: 'local', unreachable: why };
     };
-    if (!lyra || lyra.removed) return out(`${name} isn't here.`, 'gone');
+    if (this.isDead()) return out(`${name} is dead.`, 'dead');
+    if (!lyra || lyra.removed) return out(`${name} isn't here.`, 'far');
+    if (g.state === 'cutscene') return out(`${name} can't hear you just now.`, 'cutscene');
     if (state === 'gone' && !lyra.downed && lyra.state !== 'downed' && distanceTiles(g) > EARSHOT.gone) {
       // DESIGN §19.7: she still lives in Hearthvale, and keeps out of the player's way.
       const phrase = lyra.mind?.autonomy?.goneHome?.().phrase || 'in Hearthvale';
@@ -422,7 +456,7 @@ export class Brain {
     }
   }
 
-  async _localTurn({ parsed, executed = [] }) {
+  async _localTurn({ parsed, executed = [], acts = null }) {
     const g = this.game;
     // Offline, nobody else will weigh lower-confidence requests: put them to her now.
     const more = this._runClauses(parsed.clauses.filter((c) => c.intent && c.intent.actions.length && !c.results));
@@ -443,6 +477,9 @@ export class Brain {
     } finally {
       recalled = index?.endTrace?.() || [];
     }
+    // Her reaction to what the player's hands did comes first; only an act, it is all she says.
+    const actLine = acts?.local?.lines?.[0];
+    if (actLine) reply.say = acts.words ? `${actLine} ${reply.say || ''}`.trim() : actLine;
     reply.chips = this._localChips(reply, recalled, since);
     for (const a of reply.actions || []) {
       if (all.length >= MAX_ACTIONS + 2) break;
@@ -505,7 +542,7 @@ export class Brain {
     let result;
     try {
       const requests = this._previewRequests(turn.parsed);
-      const { rules, context, recall } = buildChatPrompt(g, turn.text, turn.executed, { requests, offer: turn.parsed.offer || null });
+      const { rules, context, recall } = buildChatPrompt(g, turn.text, turn.executed, { requests, offer: turn.parsed.offer || null, does: turn.acts?.brief || null });
       const call = { items: new Map((recall?.items || []).map((x) => [x.id, x.label])) };
       let toolMax = 0;
       try {
@@ -819,9 +856,9 @@ export class Brain {
     }
   }
 
-  _system(text) {
+  _system(text, kind = null) {
     try {
-      this.game.ui?.chat?.addMessage?.({ from: 'system', text });
+      this.game.ui?.chat?.addMessage?.({ from: 'system', text, ...(kind ? { kind } : {}) });
     } catch {
       /* ignore */
     }
@@ -885,7 +922,8 @@ export class Brain {
     const g = this.game;
     const mind = g.companion?.mind;
     // Gone, she still keeps her diary: her life goes on without the player (DESIGN §19.7).
-    if (!mind) return null;
+    // Dead, she keeps none.
+    if (!mind || this.isDead()) return null;
     const day = this._sleepT != null ? Math.floor(this._sleepT / DAY_SECONDS) + 1 : g.clock?.day ?? 1;
     const memories = this._dayMemories(day);
     const offline = composeDiary(g, memories, { day });

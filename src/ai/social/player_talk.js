@@ -19,6 +19,8 @@ import { TO_YOU, FALLBACK_TO_YOU } from './voices_player.js';
 import { WEEK_TOPICS } from './talk.js';
 import { speakable } from './hidden.js';
 import { asksForHome, wayHomeLine, homeFacts } from '../../world/home.js';
+import { UNEASY_LINES } from '../../entities/npc_lines.js';
+import { PLACE_PHRASE } from '../village_life/errands_data.js';
 
 export const CHAT_CAP = 40; // messages kept per villager
 const NOTE_CAP = 8;
@@ -238,7 +240,7 @@ const RE = {
   howare: /\bhow(?:'s| is| are|'re)? (?:you|ya|it going|things|life|are things|have you been|you been|do you do|you doing|goes it|fare you|are you keeping|is your day|was your day)\b|\bhow (?:you|ya) doin(?:g|')?\b|\bhow goes\b|\bwhat'?s up\b|\bare you (?:well|ok(?:ay)?|alright|all right)\b|\byou (?:ok(?:ay)?|alright|all right|well)\?/i,
   thanks: /\b(thanks|thank you|thank ye|thankyou|cheers|much obliged|grateful|appreciate it)\b/i,
   apology: /\b(sorry|apologi[sz]e|apology|forgive me|my fault|i was wrong|i didn'?t mean|i regret|i shouldn'?t have|make (?:it )?(?:up|amends))\b/i,
-  threat: /\b(i(?:'ll| will| am going to|'m going to|'m gonna| gonna| shall) (?:kill|hurt|hit|stab|burn|beat|end|smash|rob|cut|break|get) you|kill you|you(?:'re| are) dead|watch your back|or else|i'?ll burn (?:this|your)|i'?ll make you pay)\b/i,
+  threat: /\b(i(?:'ll| will| am going to|'m going to|'m gonna| gonna| shall) (?:kill|hurt|hit|stab|burn|beat|end|smash|rob|cut|break|get) (?:you|every one of you|everyone of you|all of you|the lot of you|everyone|every last one)|kill you|kill (?:you all|all of you|every one of you|everyone)|you(?:'re| are) dead|watch your back|or else|i'?ll burn (?:this|your)|i'?ll make you pay)\b/i,
   insult: /\b(idiot|stupid|fool(?:ish)?|ugly|hate you|shut up|useless|pathetic|dumb|moron|loser|old (?:hag|crow|fool|goat)|you stink|you smell|worthless|bastard|damn you|get lost|annoying|boring|coward|liar|cheat|fraud|crook)\b/i,
   compliment: /\b(you(?:'re| are) (?:so |very |really |such )?(?:a |an )?(?:great|amazing|kind|lovely|wonderful|beautiful|pretty|handsome|clever|smart|brave|the best|cool|nice|funny|wise|strong|talented|sweet|awesome|brilliant|good (?:person|man|woman|friend|cook|smith|captain|healer|farmer|soul))|i (?:like|love|admire) (?:you|your|it here|this place)|love your|(?:nice|lovely|beautiful|fine|wonderful|great|cosy|cozy|pretty|amazing|excellent|good|best) (?:hat|shop|forge|place|inn|kettle|chapel|work|hair|cakes?|honey ?cakes?|bread|stew|honey|bees|hives|lamps?|garden|hens|chickens|boat|dock|farm|turnips?|sword|blades?|potions?|herbs|candles|smile|voice|cloak|eyes|smith(?:ing)?|cooking)|(?:this|your) (?:shop|inn|forge|place|stew|bread|cake|honey|farm|chapel) is (?:so |very |really )?(?:lovely|great|wonderful|nice|amazing|the best|beautiful|cosy|cozy|excellent|perfect)|good (?:job|work)|well done|you look (?:nice|well|great|lovely|good|wonderful)|best (?:cakes?|smith|bread|honey|stew|cook))\b/i,
   flirt: /\b(marry me|kiss me|kiss you|go out with me|date me|you(?:'re| are) (?:cute|hot|gorgeous|beautiful)|be mine|i fancy you|i love you|sweetheart|darling)\b/i,
@@ -648,6 +650,10 @@ export function localReply(v, npc, text) {
       if (hello && !/\bhow (?:are|is)\b|\byou\?/i.test(hello) && !overlaps(hello, how)) lines.push(hello);
     }
     lines.push(how);
+    // They heard a scream today and never saw what it was (DESIGN §29.4; npc.uneasy, saved by
+    // blood): it is on their mind. Of a place, never a person.
+    const ue = uneasyNow(v, npc, rng);
+    if (ue && lines.length < 3) lines.push(ue);
   } else if (u.intents.has('aboutme')) {
     intent = 'aboutme';
     lines.push(opinionOfYou(v, npc, P, voice, toYou, st));
@@ -706,7 +712,7 @@ export function localReply(v, npc, text) {
     // the same shrug twice in a day while they have another (DESIGN §23.1).
     const recent = v.recentPlayerLines(id);
     let l = null;
-    for (const pool of [voice.reply?.unknown, voice.short, voice.yes]) {
+    for (const pool of [voice.reply?.unknown, SHRUGS_MORE[id], voice.short, voice.yes, SHRUGS_ANY]) {
       const c = Array.isArray(pool) ? P(pool) : null;
       if (c && !recent.has(c)) {
         l = c;
@@ -825,6 +831,42 @@ export function applyTurn(v, id, local, { source = 'local', asked = null } = {})
 }
 
 const SNORES = ['Zzz…', 'Mmh… zzz…', '…'];
+
+// More ways of not knowing (round 14b, the leftovers: villagers shrugged the same way too
+// often offline). Each in their own voice; then anyone's.
+const SHRUGS_MORE = {
+  hobb: ["Couldn't tell you. My lamps know more than I do some nights.", "Hm. That one's past me, I'm afraid."],
+  wenna: ["The bees don't gossip about that. Neither do I.", "No. And don't make that face."],
+  elda: ["Not a clue, love. Want tea while you wonder?", "You've stumped me, and that takes doing."],
+  bram: ['No.', "Hmph. Wouldn't know."],
+  pip: ["I don't know! Is it a secret? I'm good at secrets.", 'Huh? Ask me something about owls.'],
+  rowan: ['Not something I can speak to.', "I'd be guessing, and the watch doesn't guess."],
+  mira: ['I really don\'t know. Sorry. Is it — sorry.', "I couldn't tell you. I'd only worry."],
+  tobias: ["Couldn't say. Ground doesn't tell me that sort of thing.", "Can't help you there, I'm afraid."],
+  aveline: ['Some questions are better carried than answered, child.', 'I do not know. I am at peace with that.'],
+  garrick: ["Haven't heard. And I hear most things, eventually.", "Not my trade. Yet."],
+  hess: ['No.', "Not in the woods, so I don't know it."],
+  sabeth: ["Couldn't tell you, dear. Ask me about wool.", 'No idea. Mind your hem.'],
+  alder: ['I could not say.', 'That is not recorded anywhere I keep.'],
+  petra: ["No idea, and I've lived longer than most.", "Pfah. Couldn't say."],
+  tilly: ["No clue! Ask me about the forge.", "Dunno, honestly."],
+  tansy: ["Dunno. Ask the chickens.", 'No idea.'],
+  corran: ["Hm. The lake doesn't say.", "Couldn't tell you. Hm-hmm."],
+  wys: ["I'd have to ask the Captain.", "Not sure, citizen. Honestly."],
+};
+const SHRUGS_ANY = ["I'd only be guessing.", 'No idea, truly.', 'Ask me something easier.', "That's beyond me.", 'Hm. No.'];
+
+// The scream they heard today, of a place and never a person (DESIGN §29.4), or null.
+function uneasyNow(v, npc, rng) {
+  const u = npc?.uneasy;
+  const g = v?.game;
+  if (!u || (u.day != null && u.day !== (g?.clock?.day ?? v?.day?.()))) return null;
+  const name = u.place ? g?.locations?.get?.(u.place)?.name || '' : '';
+  const phrase = u.place ? PLACE_PHRASE?.[u.place] || (name ? `the ${name.replace(/^the\s+/i, '')}` : '') : '';
+  const list = phrase ? UNEASY_LINES.place : UNEASY_LINES.nowhere;
+  const l = list[Math.floor(rnd(rng) * list.length)] || list[0];
+  return l.replace(/\{place\}/g, phrase.replace(/^(?:at|in|by|on) /, ''));
+}
 
 // A question back to the player, or null. Their name first (once they have talked a little),
 // then the villager's own questions, each asked once.

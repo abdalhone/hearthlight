@@ -1769,13 +1769,21 @@ Stop* (trust 72; its lesson waits while she is unsure: a talk step's `trust`) an
   The only reasons not to be heard are physical: dead, unconscious or downed, out of
   earshot, or a cutscene. "Has gone on her way" ends that conversation: an answer still on
   its way is never given, and catching up with her starts a new one.
-- A tap or click on someone talks to them, whatever the chat puts under the finger as it
-  opens: the browser's click from that same tap is swallowed (on phones it pressed a chip
-  of the "To" row and talked to a neighbour), and the release of a mouse click that opened
-  it is not a click outside it. Someone walking away is still a tap away: where they were
-  a moment ago counts too (0.4 s for a finger, 0.15 s for a mouse; `pickActorAt` `lag`),
-  never ahead of them, and someone standing where the tap lands wins (played on a phone: a
-  Lyra keeping away at a run could not be tapped at all).
+- **Talking to whoever is in front of you** (round 14b, decision D3 and D4; the author:
+  "Sometimes I click on them and try to talk to them. Stop this"): a tap or click on a
+  person never opens talk (a click is the sword wherever it lands; the coach says once per
+  life, at the first blow on a calm person, how talking works now). T, Enter, pad Y, the
+  Talk buttons and the phone's idle Talk call `ui.talkToNearest()`: the nearest person in
+  front of the player, facing first (`chat_target.nearestTalkTarget`: the companion, Lyra
+  and every villager; asleep counts, downed and another roof do not), else the nearest in
+  earshot, else **Everyone nearby** (say it aloud, §33.5). Beside someone, the phone's round
+  button reads "Talk to Bram" and opens the chat to Bram (`ui.talkTo(id)`); Help and Search
+  stay what they are for the downed and the dead. E on a person still opens their dialog
+  (shop, gifts, missions); in the chat, a villager within reach has a "Trade · Give · Work"
+  button (44 px) for it, farther off the header says "walk up to Bram to trade". The chat's
+  default target is the nearest, else the companion (`party.holder`), else everyone
+  nearby; Lyra, when she is not with you, is a person like anyone else: her chip shows
+  while she can hear the chat (her own earshot: 30 / 18 / 16 tiles apart, left, gone).
 
 ### 23.1 One memory of everything they say (`src/ai/said_today.js`, `game.saidToday`; the author: "Connect it and let it have like a shot of what it said in this day, even if it was pop up text")
 
@@ -2639,12 +2647,110 @@ it (`game.party?.weighJoin?.(e)`), so any workstream may land first.
 - ***Acts* between asterisks**: `parseActs`; the game decides consent and outcome, the minds
   only word the reaction (D6). Intimate verbs need `canBeIntimate(game, target)` or the game
   refuses ("You don't."). A text act never kills and deals at most 1–3 hp. An assault act goes
-  through `combat.assault(attacker, target, kind)` (a wrapper on `_recordCrime`): known only to
-  those who see it (the sight rule, `murder.screenCrime`), its cry heard by the hearing rule.
+  through `combat.assault(attacker, target, kind, { amount })` (a wrapper on `_recordCrime`):
+  known only to those who see it (the sight rule, `murder.screenCrime`), its cry heard by the
+  hearing rule.
 - **Cut ties and the parting scene**: words still reach a gone Lyra within 16 tiles (D9) and
   she answers as she feels; her leaving is a scene with her reasons and a letter; the village
   learns of it from those who heard her words clearly (`hears`, `LOUD.talk`) and then by
   meeting, never all at once.
+
+### 33.4 Every place a talk could lock, and why it no longer does (talk, T-A0)
+
+The audit of round 14b (grep of `src/` for lock wording, and every `return` in the chat's
+send, sendToVillager, selectTarget and applyTarget). Each row is fixed, a spoken line (their
+own words, allowed), or a physical reason. `tests/talk_gates.test.mjs` keeps it so: a matrix
+of feelings (terror, dread, wanted near, mourning, wronged, cold, opinion 0, asleep, a
+"Butcher" title, Lyra left and gone) in which the words are always kept and an answer or a
+shown act always comes; only dead, downed, far, walls and a cutscene give a reason; and a
+static grep for "won't talk to you", "will not talk", "beyond a word", "can't talk",
+"catch that", `refusesTalk`, `'refuses'`.
+
+| Where | Was | Now |
+|---|---|---|
+| `chat_target.whyNotHeard` | 'gone', 'downed', 'far', 'walls' (distance and roof) | only `dead`, `downed` (or unconscious), `cutscene`, `far`, `walls`; words carry by the hearing rule (`hears`) as well as the roof; asleep is never a reason; `notHeardText` words each as a body, never a feeling |
+| `village.playerSays`, terror and dread | an early return with a local fear line: no Claude, no `afterPlayerSays` | `heard()` first (their talk row, and a note when asleep), then their own mind: Claude is told "you are terrified of them…" / "never at ease"; a warm line in a frightened mouth falls back to their fear; offline the fear banks; `afterPlayerSays` always; the flee is their `action` |
+| `TalkSession` | "X doesn't seem to catch that." / "seems lost in thought" | silence is an answer (`ok`, `silent`, the act as the line); a fault or a timeout reads "X hears you, and takes a moment over it without a word" / "…is a long while finding an answer"; the words were already theirs |
+| `chat.send` (Lyra) | "Lyra didn't catch that. Try again in a moment." | the brain records the words before anything else; a fault shows her hearing it (`silenceAct` kind 'heard') |
+| chat toasts and `partingLine` | "is hurt and can't talk" | "is down and can't hear you now", "is dead", "can't hear you through the walls" |
+| `brain._unreachable` | 'gone' for a removed Lyra | `dead` ("Lyra is dead."), `far`, `downed`, `cutscene`; gone hears within 16 tiles (D9); `reflect` keeps no diary for a dead Lyra |
+| `autonomy_consent` gone veto | above the talk pass-through: promises and notes to a gone Lyra were refused | words between them land first; requests still get her `no_gone` |
+| `npc_dialogue.mainOptions` afraid | `[Back away]` only | `Say something` (focuses the free field), `Give yourself up` (wanted, at the watch; or hunted, anywhere), `Back away` |
+| `npc.interact` on someone fleeing you | a shout, nothing else | `ui.talkTo(id)`: the chat opens to them; they answer in fear as they run, until out of earshot |
+| `murder/lines.js` mournGreet | "I can't talk. Not today." | "{who}… we buried {him} {when}. What is it?" |
+| `village_view.canTalkTo` | unused feature test | deleted |
+| `voices.js` Hobb | "Didn't catch that. This is my bad ear." | "Say it into this ear, the other one's gone to wax." |
+| Spoken refusals (allowed) | Mira wronged: "I can't… I can't talk to you."; Pip grave; `left_reply` | their own words, an answer, not a lock |
+| `ui.js` STATE_LINES gone, `lyra_view` blurb, `hud.js` farewell, `mind_panel` | "has cut you out of her life" | descriptions, not locks (party owns the HUD and the People view; the words say she still hears you) |
+
+Silence (§23.3) now also has **actions**: a reply may carry `action` (turn_away, walk_off,
+flee, glare, cry, shove_past); an empty say with an action is a silence shown as that action
+("Bram hears you. He says nothing, and walks off without looking back."), done in the world
+(`village.doAction`); with words, the action is a narration row after them. An empty say
+with no action is no answer: their own words instead. A silence is remembered by them ("you
+said … to me, and I gave you nothing back").
+
+**Lyra cut off (gone), the way back** (T-A2, item 4): she hears within 16 tiles (she keeps
+12 away, so walking up is always heard); `gone_reply` (mostly silence, "No.", "Go.", "I
+heard you.") offline; her gone bark is never a reply (only when the player has not spoken
+in 10 s). An apology is weighed harder than a companion's (`_goneApology`: never believed
+within two days of the last blow); a believed apology, two days, and a good deed she sees
+(any positive ledger entry since) move gone to **left** (`goneWayBack`, the one step
+`setCompanionship` allows out of gone: `flags.lyra_gone` is cleared and her words stay in
+`flags.lyra_farewell`); from there the old amends path applies. She never rejoins on her
+own while gone. `answerGone(game)` (her_state.js) gives her spoken no for asks made while
+she is gone or left. An old save's `lyra_gone.farewell` moves to `lyra_farewell`.
+
+### 33.5 What talk built (round 14b)
+
+- **Say aloud** (item 2; `village.sayAloud`, the chat's "Everyone (n)" chip, `'@near'`):
+  who hears is the hearing rule (`heardFrom` at 120 px in the open, a shout, all capitals
+  or "!", twice that; a wall leaves a voice, never the words, and a shout heard that way
+  leaves them uneasy of a place). Everyone who heard it clearly keeps it (their talk, a
+  note "you said aloud…", an opinion move for a threat, an insult or a kindness; a threat
+  said aloud is a `threat` rumour with every hearer a witness). At most four answer, chosen
+  named first, then the strongest feeling, then the nearest, in ONE batched quick call
+  (`buildAloudTask`, `ALOUD_SCHEMA`, `coerceAloud`; at most every 6 s and 60 a session), else
+  their own rules; the one named answers as if spoken to (commitments apply). Lyra hears
+  through her mind and answers once, through her brain, when named or your companion.
+  "HELP!" shouted is `call_for_help { victim: 'player', attacker: null }` through
+  `npc.onCallForHelp` and `hears()`: what and where, never who.
+- ***Acts*** (item 3; `src/ai/social/acts.js` `parseActs`, `acts_effects.js` `decideActs`):
+  kinds affection, intimate, respect, offence, assault, threat, neutral. The game decides
+  consent (villagers by opinion, familiarity and fear; Lyra by trust and affinity, and only
+  together) and outcome before any mind words it; the brief says "They do (an act, not
+  words): *…*. It was unwelcome to you."; Lyra's context has "# {player} does". Intimate acts
+  need `canBeIntimate` (18+): below it, "You don't." and no mind is asked. Every assault by
+  hand goes through `combat.assault(attacker, target, kind, { amount, knockback })`: 1–3 hp,
+  never the last of it (no one is ever downed by a text act, a child least of all), the
+  'damage' event so they react as hit (their own onHurt), and the crime known only to those
+  who see it (`murder.screenCrime`), blood's rules either way. A lethal verb is only a threat. Rumours by sight:
+  `unwelcome`, `spat_at`, `slapped_lyra`, `threat`. Lyra's deeds: `affection_welcome`,
+  `kissed_unwelcome`, `touched_unwelcome`, `slapped_lyra`, `shoved_lyra`, `bowed`. The chat
+  shows an italic act row and an act bubble over the player (bubbles kind `'act'`).
+- **Cut ties, for anyone** (item 4): `village.noteCutTies(id, why)` (party calls it when a
+  villager companion leaves in anger) makes them cold (standing) and says so in their brief;
+  they still hear every word. `amend`: an apology, then help or a gift, mends it. Saved as
+  `village.cutTies`.
+- **The parting scene and the letter** (item 5; `src/ai/mind/autonomy_parting.js`): on a
+  move to left or gone she walks up (follow close, then stays), says 2–4 lines with her
+  real reasons (her ledger, her reason; Claude's within 15 s, else hers), the chat opens to
+  her for 25 s (`ui.talkTo('lyra')`), the player's answer reaches her mind and changes her
+  last line, never the decision; then `lyra_letter` (a `'letter'` item, unsellable; text in
+  `flags.lyra_letter`) into the bag, and she goes home. Afraid, in a fight, downed, or the
+  player far off: the letter on the Wayhouse table. Walking 8 tiles off ends it; a save
+  mid-scene ends it on load; a killed Lyra has neither. The bag's "Read" opens
+  `letter_view.js` (a paper panel, the panel's 48 px close). It runs only in a world with
+  the player's screen (`ui.talkTo`) or with `settings.partingScene` (tests).
+- **Lyra's voice follows sight and hearing**: a place line only when the player is there
+  with her and hears her clearly (`barks.withYouAt`); quiet while the player lies downed
+  unless she sees them or is coming for them; a sound she hears and did not see (a cry, a
+  blow) turns her and she says so (`heard_sound`, `heard_muffled`), never who.
+- **Lines from other workstreams**, feature-detected in talk's prompts: the calendar's and
+  the Unkindling's `briefLine(id)` (villagers and Lyra), `reputation.titles({ knownTo })`
+  (villagers), and `npc.uneasy` (blood saves it): "Earlier today you heard a scream from
+  the Ember Kettle, and never saw what it was… You do not know who.", and in their own
+  offline answer to "how are you?".
 
 ## 34. Party and People (workstream party; the author: "I want to be able to take anyone as my companion")
 

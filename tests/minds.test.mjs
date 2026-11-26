@@ -904,14 +904,18 @@ test('A7: Elda watches the stranger kill: terrified, she runs and screams, answe
   assert.match(g.village.fearNote(elda) || '', /keeps (her|his) distance/, 'she can be spoken to, as ever…');
   const v = g.village;
   v.provider = () => ({ id: 'fake' });
-  let asked = 0;
-  v.askClaude = async () => {
-    asked++;
+  const tasks = [];
+  v.askClaude = async (p, rules, task) => {
+    tasks.push(task);
     return { say: 'Oh, hello love, sit down.', mood: 'warm', opinion_delta: 1, learned: [], rumor_told: null, rumor: null, name: null, memory: null, asked: null, commit: null };
   };
   const r2 = await v.playerSays(elda, 'hello Elda, how are you?');
-  assert.equal(asked, 0, '…but never calmly: no warm Claude reply');
-  assert.match(r2.lines[0], /Stay away|Don't|Go away|telling/i, r2.lines[0]);
+  // Round 14b (T-A1): her own mind is asked (fear goes through Claude too), told she is
+  // never at ease with them; a warm line in a frightened mouth falls back to her fear.
+  assert.equal(tasks.length, 1, 'Claude is asked, with the dread in the brief');
+  assert.match(tasks[0], /never at ease with them/);
+  assert.match(r2.lines[0], /Stay away|Don't|Go away|telling|Please|help/i, `…but never calmly: ${r2.lines[0]}`);
+  assert.doesNotMatch(r2.lines[0], /love, sit down/);
   // And it survives a save.
   const saved = JSON.parse(JSON.stringify(g.murder.serialize()));
   elda.dread = false;
@@ -947,7 +951,7 @@ test('silence, terrified: pressed on and on, Elda answers in terror, begs, screa
   assert.match(got[1].lines[0], /Please/, `she begs: ${got[1].lines[0]}`);
   assert.match(got[2].lines[0], /help/i, `she screams for help: ${got[2].lines[0]}`);
   assert.equal(got[3].silent, true, 'then silence, her choice');
-  assert.equal(got[3].ok, false);
+  assert.equal(got[3].ok, true, 'silence is an answer (round 14b), shown as an act');
   assert.match(got[3].lines[0], /^Elda (hears you|stares at you).*(says nothing|without a word)/, `a visible act: ${got[3].lines[0]}`);
   assert.doesNotMatch(got[3].lines[0], /catch that|can't hear|won't talk/);
   // Every word reached her: in the talk she keeps, and in what she remembers of the player.

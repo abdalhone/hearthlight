@@ -27,6 +27,8 @@ import { gainText, frac, truncate } from './format.js';
 import { companionshipOf, companionshipLabel, companionshipReason, deedLabel, requestAnswer } from './lyra_view.js';
 import { applyUiZoom } from './ui_scale.js';
 import { HomePointer } from './home_pointer.js';
+import { nearestTalkTarget, NEAR, LYRA as LYRA_ID } from './chat_target.js';
+import { buildLetterPanel } from './letter_view.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -54,7 +56,7 @@ const STATE_LINES = {
   wary: (n) => `${n} is wary of you now.`,
   apart: (n) => `${n} is going her own way for now.`,
   left: (n) => `${n} has left you.`,
-  gone: (n) => `${n} has cut you out of her life. She is home with her own people now.`,
+  gone: (n) => `${n} has cut you off. She is home with her own people now; near her, she still hears you.`,
 };
 
 export class UI {
@@ -710,6 +712,49 @@ export class UI {
     });
   }
 
+  // ---------- talking (round 14b T-1, DESIGN §33.3; decision D4) ----------
+
+  // T, Enter, pad Y and the Talk buttons: the chat, to whoever is nearest in front of you
+  // (facing first), or to everyone nearby (saying it aloud) when nobody is. Never to Lyra
+  // by default when she is not the one in front of you.
+  talkToNearest() {
+    if (!this.inited || !this.chat?.mounted) return false;
+    const g = this.game;
+    let e = null;
+    try {
+      e = nearestTalkTarget(g);
+    } catch {
+      e = null;
+    }
+    const id = e ? (e === g.companion ? LYRA_ID : e.id) : NEAR;
+    if (!this.chat.selectTarget(id, { from: 'talk' })) this.chat.selectTarget(NEAR, { from: 'talk' });
+    this.chat.open(!this.isTouch);
+    this.game.bus?.emit?.('talk_opened', { to: this.chat.target, how: 'nearest' });
+    return true;
+  }
+
+  // The chat, to one person by id ('lyra' for Lyra): the dialog, the People view, the phone's
+  // "Talk to Bram" button, E on someone running from you. False when they cannot hear you
+  // (the reason is said as a toast: a body, never a feeling).
+  talkTo(id) {
+    if (!this.inited || !this.chat?.mounted || !id) return false;
+    if (!this.chat.selectTarget(id, { from: 'talk' })) return false;
+    if (this.dialog?.isOpen?.()) this.dialog.close();
+    this.chat.open(!this.isTouch);
+    this.game.bus?.emit?.('talk_opened', { to: this.chat.target, how: 'person' });
+    return true;
+  }
+
+  // A letter from the bag (round 14b T-5): a paper panel, closable.
+  openLetter(itemId = 'lyra_letter') {
+    if (!this.inited) return false;
+    const panel = buildLetterPanel(this.game, itemId);
+    if (!panel) return false;
+    this.openModal(panel);
+    this.game.bus?.emit?.('letter_read', { itemId });
+    return true;
+  }
+
   openDialog(npc) {
     if (!this.inited || !npc) return;
     this.chat.close();
@@ -859,7 +904,7 @@ export class UI {
   // Every button on the bar is a request: it passes her consent gate and she answers.
   runCommand(id) {
     if (id === 'talk') {
-      this.chat.open(true);
+      this.talkToNearest();
       return;
     }
     if (id === 'jobs') {
@@ -1102,7 +1147,7 @@ export class UI {
     if (top) return;
     if (inp.uiPressed('talk')) {
       inp.consume('talk');
-      this.chat.open(true);
+      this.talkToNearest();
       return;
     }
     // Number keys ask only while she travels with you; apart, she is not yours to direct.

@@ -2408,7 +2408,18 @@ export class NPC extends Actor {
       }
       return this.helpUp(actor);
     }
+    // Running from the player: never a shout-only lock (round 14b T-A4). The chat opens to
+    // them; they hear it and answer in fear as they run (village.playerSays), until they
+    // are out of earshot.
     if (this.mode === 'flee' && this.fleeFrom === actor) {
+      if (actor === g.player && typeof g.ui?.talkTo === 'function') {
+        try {
+          g.ui.talkTo(this.id);
+          return;
+        } catch {
+          /* fall through to the shout */
+        }
+      }
       this.say(pickLine(g, this.profile.crime) || 'Stay back!', { kind: 'shout', target: actor });
       return;
     }

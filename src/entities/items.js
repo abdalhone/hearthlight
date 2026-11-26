@@ -29,6 +29,8 @@ export const ITEMS = {
   flame_book: { name: 'The Flame-Book', type: 'quest', value: 0, desc: "Brindlecombe's chapel book: every household, every name, every flame. Water-stained, the ink gone brown." },
   guard_key: { name: "Rowan's Key", type: 'key', value: 0, desc: "The watch's footlocker key, off Captain Rowan's belt. He gave it to you." },
   lyra_trunk_key: { name: "Lyra's Key", type: 'key', value: 0, desc: "The key to Lyra's old trunk. She does not give it lightly." },
+  // Round 14b (T-5): what she wrote when she left you. The words are in game.flags.lyra_letter.
+  lyra_letter: { name: "Lyra's Letter", type: 'letter', value: 0, unsellable: true, desc: 'Folded twice, in her small slanted hand. Read it from your bag.' },
   maren_journal: { name: "Maren's Journal", type: 'quest', value: 0, desc: "Lyra's mentor's journal, water-stained." },
   lantern: { name: 'Lantern', type: 'tool', value: 15, desc: 'Lights the dark.' },
   // Creature drops (added by the combat module). Ids and names avoid common short words as

@@ -216,6 +216,11 @@ export const LINES = {
     'Stronger every day. I noticed.',
   ],
 
+  // ----------------------------------------------------------------- sounds (round 14b)
+  // Heard, not seen: a sound and a place, never a who (DESIGN §29.4).
+  heard_sound: ['What was that?', 'Did you hear that?', 'Something over there. Shh.', { t: 'That was a scream. Where did it come from?', mood: ['tense', 'low'] }, "That didn't sound good."],
+  heard_muffled: ['Did you hear something? Behind the walls…', 'Something, somewhere over there. I can\'t make it out.', 'Hush. I heard something.'],
+
   // ----------------------------------------------------------------- places
   place_new: [
     '{place}. {desc}',

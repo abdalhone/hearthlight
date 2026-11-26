@@ -122,7 +122,10 @@ function nearLyraLine(npc) {
 
 export function mainOptions(npc, player, tone = dialogueTone(npc, player)) {
   const p = npc.profile;
-  if (tone === 'afraid') return [{ id: 'bye', label: 'Back away' }];
+  // Afraid of the player is never a lock (round 14b T-A4, DESIGN §33.4): they can be spoken
+  // to (the free field: they answer in fear), the player may give themselves up to the
+  // watch, or back away.
+  if (tone === 'afraid') return afraidOptions(npc, player);
   const opts = [{ id: 'talk', label: tone === 'sleepy' ? "Sorry, I'll let you sleep" : 'Chat' }];
   if (tone === 'sleepy') return [opts[0], { id: 'bye', label: 'Goodbye' }];
   // Missions (DESIGN §22.3): "Need a hand?", a talk step, a turn-in. Not from someone the
@@ -150,6 +153,24 @@ export function mainOptions(npc, player, tone = dialogueTone(npc, player)) {
   if (p.id === 'aveline' && npc.game?.progression?.spent?.() > 0 && tone !== 'wronged') opts.push({ id: 'respec', label: 'Ask to start over' });
   opts.push({ id: 'bye', label: 'Goodbye' });
   return opts;
+}
+
+const WATCH = new Set(['rowan', 'wys', 'alder']);
+
+export function afraidOptions(npc, player) {
+  const g = npc.game;
+  const out = [{ id: 'talk', label: 'Say something' }];
+  let wanted = false;
+  let hunted = false;
+  try {
+    wanted = !!g?.murder?.isWanted?.();
+    hunted = !!(g?.murder?.isHunted?.() || g?.hunt?.isHunted?.(player));
+  } catch {
+    /* optional */
+  }
+  if ((wanted && WATCH.has(npc.profile?.id)) || hunted) out.push({ id: 'murder:surrender', label: 'Give yourself up' });
+  out.push({ id: 'bye', label: 'Back away' });
+  return out;
 }
 
 // Aveline's rite: what a kept flame is, its price, and lighting it. One at a time.
@@ -285,7 +306,9 @@ export function chooseOption(npc, id, player) {
     }
     return { lines: r?.lines?.length ? r.lines : ['…'], options: r?.options || mainOptions(npc, player, dialogueTone(npc, player)) };
   }
-  if (tone === 'afraid') return { lines: [line(npc, p.crime, 'Get away from me!')], options: opts };
+  // In fear: their words are fear, and "Say something" opens the free field, where what
+  // the player says reaches them and they answer in fear, through their own mind (T-A1).
+  if (tone === 'afraid') return { lines: [line(npc, p.crime, 'Get away from me!')], options: opts, focusSay: key === 'talk' };
   if (key === 'talk') return { lines: talkLines(npc, player, tone), options: opts };
   if (key === 'ask') {
     if (tone === 'wronged' || tone === 'sleepy') return { lines: [greetingFor(npc, player, tone)], options: opts };

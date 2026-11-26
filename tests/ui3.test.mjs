@@ -10,7 +10,6 @@ import {
   normalizeReply,
   quietReply,
   moodExpression,
-  canTalkTo,
   villagerRoster,
   closestToHer,
   villageFeeling,
@@ -87,8 +86,6 @@ test("the dialog's say field calls village.playerSays(npc, text) and shows the r
     },
   };
   const elda = npc('elda', 'Elda Thornbury', 'innkeeper');
-  assert.equal(canTalkTo({ village }), true);
-  assert.equal(canTalkTo({}), false);
   const talk = new TalkSession({ village, npc: elda });
   const r = await talk.send('  How are   you?  ');
   assert.deepEqual(calls, [{ who: 'elda', text: 'How are you?' }]);
@@ -120,7 +117,8 @@ test('one line at a time; a slow or failing village still gets an answer from th
   const r = await p;
   assert.equal(r.ok, false);
   assert.equal(r.why, 'timeout');
-  assert.match(r.lines[0], /^Bram seems lost in thought/);
+  assert.match(r.lines[0], /^Bram hears you, and is a long while/);
+  assert.doesNotMatch(r.lines[0], /catch that/);
   assert.equal(talk.pending, false);
   // The answer that comes after all is still shown.
   resolve({ lines: ['Hm. It does the job.'] });
@@ -142,7 +140,10 @@ test('one line at a time; a slow or failing village still gets an answer from th
   });
   assert.equal((await throws.send('Hi')).ok, false);
   const empty = new TalkSession({ village: { playerSays: async () => ({ lines: [] }) }, npc: bram });
-  assert.match((await empty.send('Hi')).lines[0], /catch that/);
+  // Never "didn't catch that" (round 14b, DESIGN §33.4): a person who heard it, shown.
+  const none = (await empty.send('Hi')).lines[0];
+  assert.match(none, /^Bram hears you/);
+  assert.doesNotMatch(none, /catch that/);
 });
 
 test('replies in any shape become clean lines; moods become portrait expressions', () => {

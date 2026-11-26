@@ -103,9 +103,9 @@ export const CONTROLS = [
   { id: 'weave', what: 'Cast a weave', keys: '1 – 6 toward the mouse, or a click on its slot (at the nearest foe; hold and drag out to aim): tap to cast, hold to charge it stronger and let go (a beam pours while held)', pad: 'RT, aimed with the right stick: tap, or hold to charge', touch: 'Tap a weave button to cast at the nearest foe; hold it to charge it stronger; drag from it to aim, let go to cast, drag back onto it to cancel' },
   { id: 'choose', what: 'Choose a weave', keys: 'Right click casts the weave with the small mouse on its slot; the mouse wheel or Q / R moves it (a number key moves it too)', pad: 'LT / RB', touch: 'No choosing: every round button is one weave (its name on it, its mana on its corner)' },
   { id: 'spellbook', what: 'Spellbook', keys: 'B', pad: 'Start, then Spellbook', touch: 'Menu → Spellbook, or the + New weave button' },
-  { id: 'interact', what: 'Talk to someone, open, pick up', keys: 'E', pad: 'X', touch: 'The round button above the sword: it says what it does (Talk, Open…)' },
+  { id: 'interact', what: 'Use, open, trade (E)', keys: 'E', pad: 'X', touch: 'The round button above the sword: it says what it does (Talk to Bram, Open…)' },
   { id: 'listen', what: 'Listen in', keys: 'L', pad: null, touch: 'Tap “Listen in” when two villagers talk nearby' },
-  { id: 'talk', what: 'Chat with Lyra or anyone near', keys: 'T or Enter', pad: 'Y', touch: 'The Talk button above the sword, when nothing else is near' },
+  { id: 'talk', what: 'Talk to whoever is nearest in front of you: T or Enter · pad Y · the Talk button (nobody near: say it aloud to everyone)', keys: 'T or Enter', pad: 'Y', touch: 'The round button above the sword: "Talk to Bram" beside someone, Talk when nobody is near' },
   { id: 'ask', what: 'Ask Lyra for help', keys: 'Alt + 1 – 5, or Ask in her Mind', pad: null, touch: 'Tap her portrait: the Ask row is at the top' },
   { id: 'mind', what: "Lyra's mind", keys: 'Tab or M, or a click on her portrait', pad: 'Back', touch: 'Tap her portrait' },
   { id: 'inventory', what: 'Bag', keys: 'I', pad: 'LB', touch: 'Menu → Bag' },
@@ -140,7 +140,7 @@ export const HOW_TO_PLAY = [
     id: 'talking',
     title: 'Talking',
     text:
-      'Open the chat and say anything: ask how she feels, what she thinks of someone, what she remembers. Ask for help in plain words, like "would you chop some wood?" or "stay here and keep watch", and offer her a fair share if you want a yes. The "To:" row at the top of the chat lets you speak to any villager within earshot the same way; tap someone in the world to pick them. Small tags under her replies show what she remembered while she answered.',
+      'Open the chat and say anything: ask how she feels, what she thinks of someone, what she remembers. Ask for help in plain words, like "would you chop some wood?" or "stay here and keep watch", and offer her a fair share if you want a yes. The "To:" row at the top of the chat lets you speak to anyone within earshot the same way, or to Everyone nearby at once (say it aloud; a shout carries farther). T, or the Talk button, talks to whoever is in front of you; a tap or click on someone never opens talk. Put an act between asterisks (*bows*, *hugs her*) and they see you do it. Whatever someone feels about you, they always hear you, and answer as they feel: even silence is an answer. Small tags under her replies show what she remembered while she answered.',
   },
   {
     id: 'asking',

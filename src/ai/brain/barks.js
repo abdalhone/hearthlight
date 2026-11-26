@@ -12,7 +12,8 @@ import { ITEMS } from '../../entities/items.js';
 import { soulOf } from './soul_fallback.js';
 import { jobLabel, firstName } from './local_brain.js';
 import { companionshipOf, distanceTiles, isRefusal } from './her_state.js';
-import { sawTheBlow } from '../sight.js';
+import { sawTheBlow, seesActor, seesPoint } from '../sight.js';
+import { hears, cryLoudness, LOUD, voiceOf } from '../hearing.js';
 
 export const BARK_GAP = 20; // seconds between ordinary barks
 const URGENT_GAP = 2.5;
@@ -148,6 +149,10 @@ export class Barker {
       else if (this.isPlayer(p.entity)) this.queue('player_level_up', { level: p.level }, { priority: 4, cooldown: 10 });
     });
     on('enter_location', (p) => this.onEnter(p));
+    // A sound she hears and did not see (round 14b, the leftovers: "What was that?"): a cry
+    // for help, a blow and a cry of pain. The one rule for ears: what and where, never who.
+    on('call_for_help', (p) => this.onSound(p, cryLoudness(p.severity || 1), p.victimEntity || p.victim));
+    on('crime', (p) => this.onSound({ x: p.victim?.x, y: p.victim?.y }, LOUD.blow, p.victim, p.actor));
     on('time_of_day', (p) => {
       if (p.phase === 'night') this.queue('night_falls', {}, { priority: 1.2, cooldown: 300 });
       else if (p.phase === 'dusk') this.queue('dusk', {}, { priority: 0.8, cooldown: 300, chance: 0.7 });
@@ -276,12 +281,59 @@ export class Barker {
     }
   }
 
+  // ------------------------------------------------------------- sounds
+
+  // A sound at (x, y): she hears it by the hearing rule; if she did not see it, she turns
+  // toward it and says so, when she is free (not fighting, not asleep or down, not mid-talk).
+  onSound(p, loud, source = null, actor = null) {
+    const g = this.game;
+    const lyra = this.lyra;
+    if (!g || !lyra || lyra.removed || lyra.downed || lyra.dead || lyra.state === 'sleep') return;
+    const src = source && typeof source === 'object' ? source : null;
+    if (src === lyra || this.isLyra(actor)) return;
+    const x = Number.isFinite(p?.x) ? p.x : src?.x;
+    const y = Number.isFinite(p?.y) ? p.y : src?.y;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const how = hears(g, lyra, x, y, voiceOf(g, src, loud));
+    if (!how) return;
+    // Seen, it is not a sound to wonder at: her sight already tells her (barks, perception).
+    if (how === 'clear' && seesPoint(g, lyra, x, y)) return;
+    const now = this.now();
+    if (this.combatUntil >= now || this.brain.busy) return;
+    if (lyra.mind?.autonomy?.parting?.active) return;
+    try {
+      lyra.faceToward?.(x, y);
+    } catch {
+      /* cosmetic */
+    }
+    this.queue(how === 'clear' ? 'heard_sound' : 'heard_muffled', {}, { priority: 2.2, cooldown: 30, ttl: 4 });
+  }
+
   // ------------------------------------------------------------- places
+
+  // Where she is, said only when the player is there with her and near enough to hear her
+  // (round 14b, the leftovers: never "King's Road…" from Brindlecombe, never "The treeline
+  // camp…" from the screen's edge while the player lies at home).
+  withYouAt(locId) {
+    const g = this.game;
+    const lyra = this.lyra;
+    const p = g?.player;
+    if (!lyra || !p || p.downed) return false;
+    let here = null;
+    try {
+      here = g.locations?.at?.(p.x, p.y)?.id || null;
+    } catch {
+      here = null;
+    }
+    if (here !== locId) return false;
+    return hears(g, p, lyra.x, lyra.y, LOUD.talk) === 'clear';
+  }
 
   onEnter(p) {
     if (!this.isLyra(p.actor)) return;
     const loc = p.location;
     if (!loc?.id) return;
+    if (!this.withYouAt(loc.id)) return;
     const now = this.now();
     const first = !this.visited.has(loc.id);
     this.visited.add(loc.id);
@@ -419,10 +471,24 @@ export class Barker {
     const brain = this.brain;
     if (c.urgent) return now - this.lastBarkAt >= URGENT_GAP;
     if (lyra.downed || lyra.state === 'sleep' || lyra.dead) return false;
+    // The player down and bleeding: no chatter, unless she can see them or is the one
+    // coming for them (round 14b, the leftovers).
+    const p = this.game.player;
+    if (p?.downed && !this.mayTalkWhileDown(lyra, p)) return false;
     if (brain.busy) return false;
     if (now - (brain.lastReplyAt ?? -1e9) < AFTER_REPLY) return false;
     if (now - this.lastLyraSpeechAt < 4) return false;
     return now - this.lastBarkAt >= BARK_GAP;
+  }
+
+  mayTalkWhileDown(lyra, p) {
+    const g = this.game;
+    try {
+      if (g.survival?.jobs?.has?.(lyra) || lyra.carrying === p) return true;
+      return seesActor(g, lyra, p);
+    } catch {
+      return false;
+    }
   }
 
   update(dt) {
@@ -485,6 +551,8 @@ export class Barker {
     if (!text && c.fallback) text = this.brain.speech.line(c.fallback, c.vars, ctx);
     if (!text) return false;
     if (PLAYER_CENTRIC.has(c.situation) && distanceTiles(g) > NEAR_TILES) return false;
+    // A place line still needs the player there with her, in earshot, when it is said.
+    if (c.vars?.place && /^place_/.test(c.situation) && !this.withYouAt(this.game.locations?.at?.(lyra.x, lyra.y)?.id)) return false;
     const now = this.now();
     this.lastBarkAt = now;
     this.cooldowns.set(c.situation, now);

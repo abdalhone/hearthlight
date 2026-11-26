@@ -230,7 +230,7 @@ export class LocalBrain {
   goneWord() {
     let w = null;
     try {
-      w = this.mind?.autonomy?.line?.('gone_word') || null;
+      w = this.line('gone_reply') || this.mind?.autonomy?.line?.('gone_word') || null;
     } catch {
       w = null;
     }

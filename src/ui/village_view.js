@@ -36,10 +36,6 @@ export function villageOf(game) {
   return v && typeof v === 'object' ? v : null;
 }
 
-export function canTalkTo(game) {
-  return typeof villageOf(game)?.playerSays === 'function';
-}
-
 // ---------- talking to anyone (§19.3 playerSays) ----------
 
 export const SAY_MAX = 300;
@@ -95,15 +91,16 @@ export function normalizeReply(r) {
   return { lines: out, mood: mood == null ? null : String(typeof mood === 'object' ? mood.name || mood.label || '' : mood) || null, expr: moodExpression(mood), options };
 }
 
-// When the village cannot answer (an error, or no answer in time), the villager still
-// reacts: narration, never words put in their mouth.
+// When no words come (silence chosen, no answer in time, or a fault on the way), the
+// villager still reacts: narration of a person who HEARD it, never words put in their mouth,
+// never "didn't catch that" (DESIGN §23.3, §33.4: the words always reach them first).
 export function quietReply(npc, why = 'error') {
   const who = firstName(npc?.name) || 'They';
-  if (why === 'timeout') return [`${who} seems lost in thought, and does not answer.`];
-  if (why === 'asleep') return [`${who} is fast asleep.`];
+  if (why === 'timeout') return [`${who} hears you, and is a long while finding an answer.`];
+  if (why === 'asleep') return [`${who} is fast asleep. Some of it reaches ${who === 'They' ? 'them' : 'them'} all the same.`];
   // They heard it, and chose to say nothing (DESIGN §23.3): the act, never a failure.
   if (why === 'silent') return [`${who} hears you, and says nothing.`];
-  return [`${who} doesn't seem to catch that.`];
+  return [`${who} hears you, and takes a moment over it without a word.`];
 }
 
 // One conversation with one villager through the dialog's "Say something…" field.
@@ -157,12 +154,18 @@ export class TalkSession {
       call.then(
         (r) => {
           const reply = normalizeReply(r);
-          // Heard, and they chose silence: what the player sees them do (DESIGN §23.3).
-          const silent = !!(r && typeof r === 'object' && r.silent);
-          const ok = !silent && reply.lines.length > 0;
-          const act = silent ? normalizeReply(r.act ? [r.act] : []).lines[0] || quietReply(this.npc, 'silent')[0] : null;
-          const out = silent ? { ok: false, why: 'silent', silent: true, ...reply, lines: [act] } : ok ? { ok, ...reply } : { ok: false, why: 'empty', ...reply, lines: quietReply(this.npc) };
-          if (ok) for (const l of reply.lines) this.history.push({ from: 'npc', text: l });
+          const obj = r && typeof r === 'object' && !Array.isArray(r) ? r : {};
+          // Heard, and they chose silence: what the player sees them do (DESIGN §23.3). An
+          // answer like any other (ok), shown as an act row.
+          const silent = !!obj.silent;
+          const narr = normalizeReply(obj.narration || obj.act ? [obj.narration || obj.act] : []).lines[0] || '';
+          const extra = { action: obj.action || null, narration: narr || null, acted: obj.acted || null, refused: !!obj.refused };
+          const ok = silent || reply.lines.length > 0 || !!narr;
+          const act = silent ? narr || quietReply(this.npc, 'silent')[0] : null;
+          // Only an act, no words (an act the game refused: "You don't."): shown as narration.
+          const only = !silent && !reply.lines.length && !!narr;
+          const out = silent ? { ok: true, why: 'silent', silent: true, ...reply, ...extra, narration: act, lines: [act] } : only ? { ok: true, narrationOnly: true, ...reply, ...extra, lines: [narr] } : ok ? { ok, ...reply, ...extra } : { ok: false, why: 'empty', ...reply, ...extra, lines: quietReply(this.npc) };
+          if (ok && !silent && !only) for (const l of reply.lines) this.history.push({ from: 'npc', text: l });
           if (settled) {
             // Too late for its turn: still worth showing if nothing newer was said.
             if ((ok || silent) && id === this.seq && typeof this.onLate === 'function') this.onLate(out);

@@ -134,19 +134,20 @@ export function analyzeRequest(a, req = {}) {
     out.veto = { decision, key, reason, ...extra };
   };
 
-  // Gone and left: she is no longer anyone's to ask.
-  if (v.state === 'gone') {
-    veto('refuse', 'no_gone', 'she has cut you out of her life');
-    return finish(a, out, v, worst);
-  }
-  if (v.state === 'left' && action !== 'rejoin' && category !== 'talk') {
-    veto('refuse', 'no_left', 'she broke off with you and takes no requests from you now');
-    return finish(a, out, v, worst);
-  }
-  // Words between them (a promise, a note, a feeling): never an imposition.
+  // Words between them (a promise, a note, a feeling): never an imposition, and never
+  // locked, even when she has cut the player off (round 14b T-A2): the words land.
   if (category === 'talk') {
     out.score = 1;
     out.quiet = true; // nothing to agree to out loud: the words themselves are the answer
+    return finish(a, out, v, worst);
+  }
+  // Gone and left: she is no longer anyone's to ask (requests, not words).
+  if (v.state === 'gone') {
+    veto('refuse', 'no_gone', 'she has cut you off, and takes no requests from you');
+    return finish(a, out, v, worst);
+  }
+  if (v.state === 'left' && action !== 'rejoin') {
+    veto('refuse', 'no_left', 'she broke off with you and takes no requests from you now');
     return finish(a, out, v, worst);
   }
 

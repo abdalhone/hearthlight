@@ -121,6 +121,11 @@ function speakerStyle(entity, kind) {
     s.edge = isLyra ? '#7a64e0' : '#7d7787';
     s.text = UI.textDim;
   }
+  // An act, not words (round 14b T-3: "*bows*"): italic, a warm edge.
+  if (kind === 'act') {
+    s.edge = '#c9a46a';
+    s.text = '#e8dcc4';
+  }
   return s;
 }
 
@@ -369,6 +374,7 @@ export class Bubbles {
       shout: `700 ${fontPx}px ${FAMILY}`,
       whisper: `400 ${fontPx}px ${FAMILY}`,
       thought: `italic 400 ${fontPx}px ${FAMILY}`,
+      act: `italic 500 ${fontPx}px ${FAMILY}`,
       label: `600 ${this.labelPx}px ${FAMILY}`,
       number: `700 ${Math.round(fontPx * 1.05)}px ${FAMILY}`,
     };

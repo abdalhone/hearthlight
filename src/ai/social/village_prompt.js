@@ -20,7 +20,8 @@ export const VILLAGER_RULES = [
   'Stay exactly in the character you are given: their age, their voice, their verbal habits and the sample lines. Short, spoken, natural: one to three sentences, no narration, no stage directions, no quotation marks around the whole line, no emoji.',
   'Speak only from what the brief says this person knows. Never invent secrets, family history, deaths, romances or plot. If asked about something they do not know, they say so in their own way. Never claim to know what happened to Maren, where the stranger came from, who the bandit chief is, or anything about the ward’s numbers.',
   'They react to the player as their opinion says: warm when they like them, short and guarded when they do not, cold or angry when the player has hurt someone they love. Kindness, thanks and apologies soften them slowly; insults and threats harden them.',
-  'They always hear what the player says, and remember it. Someone cold, wronged or angry may answer with a word, a cold line, or not at all: to say nothing, set "silent" to true and "say" to "" (the game shows that they heard and turned away). Never silent with someone they like.',
+  'They always hear what the player says, and remember it. Refusing is still an answer: one cold line, an insult, begging, or silence. Someone cold, wronged, angry or afraid may answer with a word, a cold line, or not at all: to say nothing, set "silent" to true, "say" to "" and an "action" (the game shows that they heard, and what they did). Never silent with someone they like.',
+  'What they do may go with the words or stand in for them: "action" is one of turn_away, walk_off, flee, glare, cry, shove_past, or null. "act" is only for walking with the player: join (they agreed to come along, and only when the brief says they decided to), leave, follow, wait, fight, hold_back, or null.',
   'Be a living person, not an answer machine: react to what was said with feeling, keep your own mood, now and then ask the player something back, and bring up what you remember of them when it fits. Use the player’s name only if they told it to you. Asleep, you mumble or say nothing.',
   'Reply with JSON only, in the format the task gives.',
 ].join('\n');
@@ -34,6 +35,8 @@ export const SAY_SCHEMA = {
   properties: {
     say: { type: 'string', description: 'what they say aloud, 1-3 sentences; "" only when silent' },
     silent: nullable({ type: 'boolean', description: 'true when, having heard them, they choose to say nothing at all' }),
+    action: nullable({ type: 'string', enum: ['turn_away', 'walk_off', 'flee', 'glare', 'cry', 'shove_past'], description: 'what they do, with the words or instead of them' }),
+    act: nullable({ type: 'string', enum: ['join', 'leave', 'follow', 'wait', 'fight', 'hold_back'], description: 'only about walking with the player; join only when the brief says they decided to come' }),
     mood: nullable({ type: 'string', description: 'one word: warm, happy, neutral, wary, angry, sad, worried, amused, sleepy' }),
     opinion_delta: { type: 'number', description: 'how this exchange changes their opinion of the player, -10..5' },
     learned: { type: 'array', items: { type: 'string' }, description: 'ids of facts from the brief they actually told the player' },
@@ -50,12 +53,12 @@ export const SAY_SCHEMA = {
       additionalProperties: false,
     }),
   },
-  required: ['say', 'silent', 'mood', 'opinion_delta', 'learned', 'rumor_told', 'rumor', 'name', 'memory', 'asked', 'commit'],
+  required: ['say', 'silent', 'action', 'act', 'mood', 'opinion_delta', 'learned', 'rumor_told', 'rumor', 'name', 'memory', 'asked', 'commit'],
   additionalProperties: false,
 };
 
 // The same, said in the prompt (claude.ai's sample takes no schema).
-const SAY_FORMAT = 'Reply with one JSON object and nothing else: {"say": string ("" only when silent), "silent": true only if you choose to say nothing at all, else null, "mood": one word, "opinion_delta": number from -10 to 5, "learned": [fact ids you told], "rumor_told": news id or null, "rumor": a short clause you will repeat about what they said, or null, "name": their name if they just told it, else null, "memory": a short clause starting "you" worth remembering about them, else null, "asked": "name" or "other" if you asked them something, else null, "commit": null, or when they ask you to do something {"kind": "tell"|"give"|"teach", "agree": true|false}}';
+const SAY_FORMAT = 'Reply with one JSON object and nothing else: {"say": string ("" only when silent), "silent": true only if you choose to say nothing at all, else null, "action": "turn_away"|"walk_off"|"flee"|"glare"|"cry"|"shove_past" or null, "act": "join"|"leave"|"follow"|"wait"|"fight"|"hold_back" or null, "mood": one word, "opinion_delta": number from -10 to 5, "learned": [fact ids you told], "rumor_told": news id or null, "rumor": a short clause you will repeat about what they said, or null, "name": their name if they just told it, else null, "memory": a short clause starting "you" worth remembering about them, else null, "asked": "name" or "other" if you asked them something, else null, "commit": null, or when they ask you to do something {"kind": "tell"|"give"|"teach", "agree": true|false}}';
 
 export const LINES_SCHEMA = {
   type: 'object',
@@ -156,6 +159,7 @@ export function buildSayTask(b) {
   if (b.promises?.length) L.push(`Your promises to them (you keep your word, or say plainly why not):\n${b.promises.map((x) => `- ${clip(x, 160)}`).join('\n')}`);
   if (b.owed) L.push(`You broke a promise to them (${clip(b.owed, 120)}): own it first, plainly.`);
   if (b.request) L.push(b.request);
+  if (b.acts) L.push(clip(b.acts, 260));
   if (b.asked) L.push(`You had just asked them ${b.asked === 'their name' ? 'their name' : 'a question'}; this may be their answer.`);
   L.push(`They say to you now: "${clip(b.text, 300)}"`);
   L.push('Answer as yourself, in one to three short spoken sentences.');
@@ -208,11 +212,21 @@ export function cleanLine(text, max = 280) {
   return speakable(t) ? t : null;
 }
 
+const ACTIONS_OK = new Set(['turn_away', 'walk_off', 'flee', 'glare', 'cry', 'shove_past']);
+const ACTS_OK = new Set(['join', 'leave', 'follow', 'wait', 'fight', 'hold_back']);
+
 export function coerceSay(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  // Silence is an answer too (DESIGN §23.3): heard, and nothing said.
-  const silent = raw.silent === true;
-  const say = silent ? '' : cleanLine(raw.say, 320);
+  const action = ACTIONS_OK.has(raw.action) ? raw.action : null;
+  const act = ACTS_OK.has(raw.act) ? raw.act : null;
+  // Silence is an answer too (DESIGN §23.3): heard, and nothing said. An empty say with an
+  // action is a silence shown as that action; an empty say with neither is no answer.
+  let silent = raw.silent === true;
+  let say = silent ? '' : cleanLine(raw.say, 320);
+  if (!say && !silent && action && !String(raw.say ?? '').trim()) {
+    silent = true;
+    say = '';
+  }
   if (!say && !silent) return null;
   const d = Number(raw.opinion_delta);
   const name = typeof raw.name === 'string' ? raw.name.trim().replace(/[.!,]+$/, '') : '';
@@ -222,6 +236,8 @@ export function coerceSay(raw) {
   return {
     say,
     silent,
+    action,
+    act,
     mood: typeof raw.mood === 'string' ? raw.mood.toLowerCase().replace(/[^a-z]/g, '').slice(0, 16) || null : null,
     opinionDelta: Number.isFinite(d) ? Math.max(-10, Math.min(5, d)) : 0,
     learned: Array.isArray(raw.learned) ? raw.learned.filter((x) => typeof x === 'string').slice(0, 3) : [],
@@ -258,4 +274,70 @@ export function coerceNight(raw) {
     if (out.length >= 6) break;
   }
   return out.length >= 2 ? out : null;
+}
+
+// --- saying it aloud (round 14b T-2, DESIGN §33.3): one call for everyone who heard ---
+
+export const ALOUD_SCHEMA = {
+  type: 'object',
+  properties: {
+    replies: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          who: { type: 'string', description: 'the id of the person answering' },
+          say: { type: 'string', description: 'what they say aloud, 1-2 sentences; "" to say nothing' },
+          action: nullable({ type: 'string', enum: ['turn_away', 'walk_off', 'flee', 'glare', 'cry', 'shove_past'] }),
+          mood: nullable({ type: 'string' }),
+          opinion_delta: { type: 'number', description: '-10..5' },
+          memory: nullable({ type: 'string', description: 'a short clause starting "you", worth remembering, or null' }),
+        },
+        required: ['who', 'say', 'action', 'mood', 'opinion_delta', 'memory'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['replies'],
+  additionalProperties: false,
+};
+
+// b: { text, shout, place, time, weather, playerName, people: [{ id, profile, opinionLabel,
+//      opinion, standing, knownName }] }  — each brief cut down to about 600 characters.
+export function buildAloudTask(b) {
+  const L = [];
+  L.push(`The stranger (the player) has just said aloud, for everyone near to hear${b.shout ? ', SHOUTING' : ''}: "${clip(b.text, 300)}"`);
+  L.push(`Where and when: ${b.place || 'Hearthvale'}, ${b.time || ''}${b.weather ? `, ${b.weather}` : ''}.`);
+  L.push('These people heard every word. Each decides for themselves whether to answer: some answer, some say nothing (say "" with an action, or leave them out). Each answers in their own voice, one or two short spoken sentences, as their opinion and feelings say. They may answer each other too. No narration.');
+  for (const p of (b.people || []).slice(0, 4)) {
+    const bits = [`[${p.id}] ${personLine(p.id, p.profile).slice(0, 260)}`];
+    const s = voiceSamples(p.id, 2);
+    if (s.length) bits.push(`Lines: ${s.map((x) => `"${x}"`).join(' ')}`);
+    bits.push(`Opinion of the stranger: ${p.opinionLabel} (${Math.round(p.opinion)}/100).${p.knownName ? ` They know the name ${clip(p.knownName, 20)}.` : ''}`);
+    if (p.standing) bits.push(`Right now: ${clip(p.standing, 200)}`);
+    L.push(`- ${clip(bits.join(' '), 600)}`);
+  }
+  L.push('Return {"replies":[{"who": id, "say": string, "action": null|"turn_away"|"walk_off"|"flee"|"glare"|"cry"|"shove_past", "mood": one word, "opinion_delta": -10..5, "memory": "you …" or null}]}.');
+  return L.join('\n');
+}
+
+export function coerceAloud(raw, ids) {
+  const list = Array.isArray(raw?.replies) ? raw.replies : Array.isArray(raw) ? raw : [];
+  const out = [];
+  const seen = new Set();
+  for (const r of list) {
+    if (!r || typeof r !== 'object') continue;
+    const who = String(r.who || '').toLowerCase().trim();
+    const id = ids.find((x) => x === who || who.startsWith(x));
+    if (!id || seen.has(id)) continue;
+    const action = ACTIONS_OK.has(r.action) ? r.action : null;
+    const say = cleanLine(r.say, 220) || '';
+    if (!say && !action) continue;
+    seen.add(id);
+    const d = Number(r.opinion_delta);
+    let memory = typeof r.memory === 'string' ? cleanLine(r.memory, 110) : null;
+    if (memory && !/^you\b/i.test(memory)) memory = null;
+    out.push({ id, say, action, mood: typeof r.mood === 'string' ? r.mood.toLowerCase().replace(/[^a-z]/g, '').slice(0, 16) || null : null, opinionDelta: Number.isFinite(d) ? Math.max(-10, Math.min(5, d)) : 0, memory: memory ? memory.replace(/^You\b/, 'you').replace(/[.!?]+$/, '') : null });
+  }
+  return out;
 }

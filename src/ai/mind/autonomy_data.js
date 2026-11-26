@@ -31,6 +31,13 @@ export const DEEDS = {
   murdered_villager: { severity: -10, kind: 'violence', violent: true, grave: true, text: 'Killed one of the villagers.' },
   attacked_guard: { severity: -2, kind: 'violence', violent: true, text: 'Attacked one of the guard.' },
   stole: { severity: -2, kind: 'dishonesty', text: 'Took what belonged to someone else.' },
+  // Round 14b (T-3): what the player's hands did, between asterisks.
+  affection_welcome: { severity: 1, kind: 'kindness', text: 'Held me close when I wanted it.' },
+  kissed_unwelcome: { severity: -2, kind: 'respect', text: 'Kissed me when I did not want it.' },
+  touched_unwelcome: { severity: -1, kind: 'respect', text: 'Put their hands on me when I did not want it.' },
+  slapped_lyra: { severity: -3, kind: 'violence', violent: true, text: 'Slapped me.' },
+  shoved_lyra: { severity: -2, kind: 'violence', violent: true, text: 'Shoved me.' },
+  bowed: { severity: 0.5, kind: 'respect', text: 'Bowed to me.' },
   lied: { severity: -2, kind: 'dishonesty', text: 'Lied to me.' },
 };
 
