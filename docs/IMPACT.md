@@ -84,6 +84,7 @@ indoors and out; *future*: dungeons (the Weeping Cut), other villages, other flo
 | Saves | Only what differs from the generated world is saved (dirty objects, fog bits) | `src/world/objects.js`, `src/world/travel.js` |
 | Walls, sight, the use button | A new building, ruin or wall tile stops a blow, an eye and "use" by `map.blocksProjectile` and shut doors; lights under its roof stay inside | `src/world/walls.js`, `src/murder/witness.js`, `src/render/lighting.js` |
 | Breakables | A new prop kind gets a `BREAKABLE` toughness or stays whole; a prop a story needs is `story: true` (a boss's trail sign is spared by `trailBoss`); anything holding an inventory never breaks | `src/world/breakables.js` |
+| Roofs (round 14b verify-b) | The roof pass draws over everything under it: a mark that must show from outside (a burned building's scorch) is drawn through `map.roofDecor` (the occupation's `drawRoof`), never among the entities. A new kind of damage to a building (a collapse, a siege) draws there too | `src/world/map.js`, `src/world/occupation.js` |
 | Mending (round 14b) | A broken prop is mended only where people live (`peopleLiveAt`: the vale while anyone is in it; never Brindlecombe, the wilds or an emptied village); a bush grows back anywhere. A new place where people live (a camp, a resettled village) says so there | `src/world/broken.js` |
 | Promises and errands | Villagers keep their word inside the vale; a message for someone out past it waits for them to come home | `src/ai/social/commitments.js` |
 | Performance | Chunked ground, far objects update in turns, near-only spawns | `src/world/map.js`, `src/world/objects.js` |
@@ -139,7 +140,8 @@ all), **unkindling** (the player channelling the Unkindling; the target held and
 (`murder.die`: natural, no case). Party (built): **walking alone** (no holder: no card, no
 Ask bar, no badge, no map dot), **waiting** / **fighting beside you** (a villager's duty),
 **dead Lyra** (nothing of hers runs; the role released; People a memorial; §34.6). Blood (round 14b): **winded** (Lyra after running from
-you a while), **hiding** (a child at home from a known killer), **taken away** (a child of
+you a while, whether she flees, keeps her distance or avoids you on her own day: a stat
+modifier on her pace, never saved; verify-b), **hiding** (a child at home from a known killer), **taken away** (a child of
 an emptied house: `absent.cause 'taken_away'`), **searched** (a body), **burned** (a store),
 **claimed** (a house), **hunted** (a posse searching from where you were last seen), **news
 waiting** (a body found but not yet known to the village). Society: **failing** (abed at home before a death of age),
