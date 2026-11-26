@@ -2003,10 +2003,16 @@ notices and has opinions (berserk frightens her).
   0 → 76/76, 20 → 99/97, 30 → 110/105, 50 → 133/115, 70 → 156/120, 180 → 260/128,
   200 → 260/128, 999 → 260/129. An old save loads its counts and simply follows the curve;
   Reset stat points, Free stat points on and off and the chapel's respec are unchanged.
-  The Character sheet says under each attribute what the next point adds ("Next: +0.5%
-  speed", its main effect; every effect in the tooltip) with a small meter of how much of
-  the first point's worth it still carries, dimmed past a third, and one line: "Each point
-  in the same attribute counts a little less than the last."
+  The Character sheet says under each attribute what the next point adds, its main effect
+  (every effect in the tooltip), as the number on the sheet will really move: read from the
+  pipeline with one point more (`progression.nextGain`, the way the gear compare reads a
+  piece), so gear, hastes, the speed knee and the clamps all count. Speed reads as a share
+  of the pace you walk at now (49 Grace: "Next: +0.3% speed", 114.5 → 114.9 px/s; the
+  curve's own step is 0.48% of the bare 76); health, mana and the sword, shown whole, read
+  the curve's step ("+2.7 health"); a number at its clamp says so ("mana at its limit"),
+  and Free stat points at 999 says "As high as it goes". A small meter shows how much of
+  the first point's worth the next still carries on the curve, dimmed past a third, and one
+  line: "Each point in the same attribute counts a little less than the last."
 - **The speed ceiling** (round 14b, `src/core/stats.js`): speed has a knee in the pipeline,
   `value = clamp(knee((base + Σadd) × (1 + Σpct)) × Πmul)` with `knee(v) = 130 + 40·o/(o+40)`,
   `o = v − 130`, for v past 130: below 130 px/s nothing changes (points alone never reach
@@ -2018,8 +2024,9 @@ notices and has opinions (berserk frightens her).
   through the village lanes and in at a door (`scripts/stats_check.mjs`): steps stay under
   4 px (a tile is 16; `moveActor` splits moves into 4 px anyway, so nothing walks through a
   wall or a shut door), a roll into a wall stops at it, and Lyra (128 px/s at a run) is at
-  most seven tiles behind and back beside you as you stop; past 30 tiles out of sight the
-  catch-up brings her. The breakdown names what the ceiling held back ("Speed ceiling ×0.7"),
+  most seven tiles behind in the lanes and about thirteen on a fifty-tile straight, and back
+  beside you about a second after you stop; past 30 tiles out of sight the catch-up brings
+  her. The breakdown names what the ceiling held back ("Speed ceiling ×0.7"),
   so the sheet's numbers still multiply out.
 - **Gear**: slots weapon, armor, cloak, boots, two charms. Items have stats and a rarity
   color; Bram forges and upgrades weapons and armor (with ore, crystals and coin), Sabeth

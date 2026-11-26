@@ -189,8 +189,9 @@ export class CharacterView {
     this.renderEffects();
   }
 
-  // "Next: +1.1% speed": the attribute's main effect for one more point; every effect in
-  // the tooltip. Small gains look small (dimmed, a short meter).
+  // "Next: +1.1% speed": what one more point really does to the attribute's main number
+  // (progression.nextGain: the pipeline with one point more); every effect in the
+  // tooltip. Small gains look small (dimmed, a short meter of the curve's share).
   renderNext(id, r) {
     const pr = this.game.progression;
     const list = safe(() => pr.nextGain?.(id), []) || [];
@@ -198,7 +199,9 @@ export class CharacterView {
     r.next.hidden = !m;
     if (!m) return;
     const share = m.first ? Math.max(0, Math.min(1, Math.abs(m.d / m.first))) : 0;
-    setText(r.nextText, `Next: ${gainWords(m)}`);
+    // Free stat points at the top (999): no next point to show.
+    const top = pr.free && !safe(() => pr.canSpend(id), true);
+    setText(r.nextText, top ? 'As high as it goes' : `Next: ${gainWords(m)}`);
     r.meter.style.width = `${Math.max(2, Math.round(share * 100))}%`;
     toggleClass(r.next, 'small', share < 0.34);
     r.next.title = `One more point: ${list.map(gainWords).join(', ')} (${Math.round(share * 100)}% of what the first point gave)`;
@@ -350,11 +353,25 @@ function smallNum(a) {
   return '<0.01';
 }
 
+// Health, mana and the sword are shown whole (or to a tenth): one point's share of them is
+// the curve's own step, not the rounded difference.
+const SHOWN_ROUNDED = new Set(['maxHp', 'maxMana', 'atk', 'def']);
+
+// m: one entry of progression.nextGain. Where the pipeline's own answer is there (`real`),
+// the words say that: what the sheet's number will do (the speed knee, the clamps, gear and
+// hastes counted); speed, a share of a pace, as a share of the pace you walk at now.
 export function gainWords(m) {
   const s = STATS[m.stat] || {};
   const word = GAIN_WORD[m.stat] || (s.label || m.stat).toLowerCase();
-  const sign = m.d < 0 ? '−' : '+';
-  const a = Math.abs(m.d);
+  if (m.limit) return `${word} at its limit`;
+  const known = Number.isFinite(m.real);
+  if (known && m.part === 'pct' && s.fmt !== 'pct' && s.fmt !== 'mul' && m.before > 0) {
+    const share = m.real / m.before;
+    return `${share < 0 ? '−' : '+'}${smallNum(Math.abs(share) * 100)}% ${word}`;
+  }
+  const d = known && !SHOWN_ROUNDED.has(m.stat) ? m.real : m.d;
+  const sign = d < 0 || (d === 0 && m.d < 0) ? '−' : '+';
+  const a = Math.abs(d);
   if (m.part === 'pct' || s.fmt === 'pct' || s.fmt === 'mul') return `${sign}${smallNum(a * 100)}% ${word}`;
   if (s.fmt === 'rate') return `${sign}${smallNum(a)}/s ${word}`;
   if (s.fmt === 'sec') return `${sign}${smallNum(a)} s ${word}`;

@@ -1,4 +1,5 @@
 import { ATTRS, ATTR_IDS, POINTS_PER_LEVEL, LEVEL_GROWTH, XP_FOR, THREAT, respecCost, scaled, pointsEffect, nextPoint } from './attributes.js';
+import { STATS } from '../core/stats.js';
 
 // Levels and stat points (DESIGN §26): game.progression.
 //
@@ -9,7 +10,8 @@ import { ATTRS, ATTR_IDS, POINTS_PER_LEVEL, LEVEL_GROWTH, XP_FOR, THREAT, respec
 //                                                   points; raise anything, then the real
 //                                                   points come back)
 //   points (the spent ones, by attribute)           xpFor(kind) (fights are combat's)
-//   nextGain(attr) -> [{ stat, part, d, first }]    what one more point adds (the curve)
+//   nextGain(attr) -> [{ stat, part, d, first,      what one more point adds: the curve's step
+//     before, after, real, limit }]                 (d) and what it really does (the pipeline)
 //   serialize() / deserialize(d)
 //
 // The pipeline's 'level' and 'points' sources live here, so a level or a point is
@@ -166,11 +168,42 @@ export class Progression {
     return n;
   }
 
-  // What the next point in this attribute would add (attributes.js nextPoint): the
-  // character sheet's "next" line.
+  // What the next point in this attribute would add: the curve's own step (attributes.js
+  // nextPoint: `d`, `first`), and what it really does to the numbers the sheet shows
+  // (`before`, `after`, `real`), read from the pipeline with one point more, as the gear
+  // compare does, so the speed knee, the clamps, gear and whatever runs now all count.
+  // `limit`: the stat already sits at its clamp, so the point adds nothing to it.
+  // The character sheet's "Next:" line.
   nextGain(attr) {
     if (!own.call(ATTRS, attr)) return [];
-    return nextPoint(attr, this.points[attr] || 0);
+    const n = this.points[attr] || 0;
+    const list = nextPoint(attr, n);
+    const P = this.game.player;
+    const S = this.game.stats;
+    if (!P || !S || typeof S.all !== 'function' || typeof S.touch !== 'function') return list;
+    let before = null;
+    let after = null;
+    try {
+      before = S.all(P);
+      this.points[attr] = n + 1;
+      S.touch();
+      after = S.all(P);
+    } catch {
+      after = null;
+    } finally {
+      this.points[attr] = n;
+      S.touch();
+    }
+    if (!before || !after) return list;
+    for (const m of list) {
+      const s = STATS[m.stat];
+      m.before = before[m.stat];
+      m.after = after[m.stat];
+      m.real = m.after - m.before;
+      const edge = s ? (m.d < 0 ? s.min : s.max) : null;
+      m.limit = edge != null && Number.isFinite(m.before) && Math.abs(m.before - edge) < 1e-9;
+    }
+    return list;
   }
 
   canSpend(attr) {

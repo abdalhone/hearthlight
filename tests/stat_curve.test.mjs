@@ -345,3 +345,97 @@ test('the bare pipeline knees speed for anyone, and leaves every other stat as i
   assert.equal(a.speed, soften(200, STATS.speed.knee, STATS.speed.max));
   assert.ok(a.speed < 170 && a.speed > 150);
 });
+
+// ---------------------------------------------------------------- the sheet's "Next:" line
+
+// What one more point really does to the numbers the sheet shows (the gear compare's way:
+// the pipeline itself, one point more).
+function realStep(g, id) {
+  const P = g.player;
+  const pr = g.progression;
+  const before = g.stats.all(P);
+  pr.points[id] = (pr.points[id] || 0) + 1;
+  g.stats.touch();
+  const after = g.stats.all(P);
+  pr.points[id] -= 1;
+  g.stats.touch();
+  return { before, after };
+}
+
+const pctIn = (text) => Number((String(text).match(/([0-9.]+)%/) || [])[1]);
+
+test('the sheet\'s "Next:" line says what one more point really does: speed as a share of the walk you have now, past the knee too', async () => {
+  const { gainWords } = await import('../src/ui/character_view.js');
+  const g = arena();
+  const P = g.player;
+  const pr = g.progression;
+  pr.startFree();
+  // 49 Grace: the walk is 114.5 px/s and one more point adds 0.37 px/s, a third of a percent
+  // of it (the curve's own step, 0.48% of the bare 76, read as "+0.5% speed" before).
+  pr.points.grace = 49;
+  pr.changed();
+  let { before, after } = realStep(g, 'grace');
+  let m = pr.nextGain('grace')[0];
+  let truth = ((after.speed - before.speed) / before.speed) * 100;
+  assert.equal(m.stat, 'speed');
+  assert.ok(Math.abs(pctIn(gainWords(m)) - truth) <= 0.051, `49 Grace: "${gainWords(m)}", one more point really adds ${truth.toFixed(3)}% to ${before.speed.toFixed(1)} px/s`);
+  // Berserk, the Last Stand and Oath running (past the knee): the next point counts for less.
+  pr.points.grace = 0;
+  pr.changed();
+  g.stats.addModifier(P, { id: 'price:berserk:gain', source: 'price:berserk', ...PRICES.berserk.gain, t: 120 });
+  g.stats.addModifier(P, { id: 'price:laststand:gain', source: 'price:laststand', ...LAST_STAND_GAIN, t: 60 });
+  g.prices.state.oath = { t: 60 };
+  g.companion.x = P.x + 10;
+  g.companion.y = P.y;
+  g.stats.refresh(P);
+  assert.ok(P.speed > STATS.speed.knee, `hasted past the knee (${P.speed.toFixed(1)})`);
+  ({ before, after } = realStep(g, 'grace'));
+  m = pr.nextGain('grace')[0];
+  truth = ((after.speed - before.speed) / before.speed) * 100;
+  assert.ok(truth < 1, `past the knee one point adds ${truth.toFixed(2)}%`);
+  assert.ok(Math.abs(pctIn(gainWords(m)) - truth) <= 0.051, `hasted: "${gainWords(m)}" vs ${truth.toFixed(3)}%`);
+});
+
+test('every effect\'s words agree with the pipeline at 0, 7, 30 and 200 points, and a stat at its clamp says so', async () => {
+  const { gainWords } = await import('../src/ui/character_view.js');
+  const g = arena();
+  const P = g.player;
+  const pr = g.progression;
+  P.level = 12;
+  pr.startFree();
+  for (const n of [0, 7, 30, 200]) {
+    for (const id of ATTR_IDS) {
+      for (const k of ATTR_IDS) pr.points[k] = 0;
+      pr.points[id] = n;
+      pr.changed();
+      const { before, after } = realStep(g, id);
+      for (const m of pr.nextGain(id)) {
+        const s = STATS[m.stat];
+        const words = gainWords(m);
+        const num = Number((words.match(/([0-9.]+)/) || [])[1]);
+        let want;
+        if (m.stat === 'speed') want = ((after.speed - before.speed) / before.speed) * 100;
+        else if (s.fmt === 'pct' || s.fmt === 'mul') want = (after[m.stat] - before[m.stat]) * 100;
+        // health, mana and the sword show whole (or tenth) numbers: one point is the curve's step
+        else if (['maxHp', 'maxMana', 'atk'].includes(m.stat)) want = m.d;
+        else want = after[m.stat] - before[m.stat];
+        const tol = Math.max(0.051, Math.abs(want) * 0.051);
+        if (words.includes('<0.01')) assert.ok(Math.abs(want) < 0.0095, `${id} ${n}: ${words} vs ${want}`);
+        else assert.ok(Math.abs(num - Math.abs(want)) <= tol, `${id} at ${n}: "${words}" vs ${want}`);
+      }
+    }
+  }
+  // Focus late in a life: mana sits at its 400 clamp, so one more point adds no mana and says so.
+  for (const k of ATTR_IDS) pr.points[k] = 0;
+  P.level = 80;
+  pr.points.focus = 300;
+  pr.changed();
+  assert.equal(g.stats.all(P).maxMana, STATS.maxMana.max);
+  const mana = pr.nextGain('focus').find((x) => x.stat === 'maxMana');
+  assert.ok(mana.limit, 'mana is at its limit');
+  assert.match(gainWords(mana), /limit/);
+  // Free stat points at 999: nothing more to add, the line says the attribute is as high as it goes.
+  pr.points.grace = 999;
+  pr.changed();
+  assert.equal(pr.canSpend('grace'), false);
+});
