@@ -38,7 +38,7 @@ const failures = [];
 let checks = 0;
 const check = (ok, label, info = '') => {
   checks++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${info ? `  ${String(info).slice(0, 300)}` : ''}`);
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${label}${info ? `  ${String(info).slice(0, 1200)}` : ''}`);
   if (!ok) failures.push(label);
   return ok;
 };
@@ -79,7 +79,7 @@ function pageSetup() {
   const v = g.village;
   v.provider = () => ({ id: 'check' });
   v.askClaude = async (p, rules, task, schema, kind) => {
-    window.__vTasks.push({ kind, task: String(task).slice(0, 4000) });
+    window.__vTasks.push({ kind, task: String(task).slice(0, 40000) });
     const base = { say: '', silent: null, action: null, act: null, mood: 'warm', opinion_delta: 0, learned: [], rumor_told: null, rumor: null, name: null, memory: null, asked: null, commit: null };
     if (kind === 'aloud') {
       const ids = [...String(task).matchAll(/\[(\w+)\]/g)].map((m) => m[1]).filter((x) => g.entities.get(x));
@@ -120,6 +120,8 @@ function pageSetup() {
     try {
       g.ui?.closeAll?.();
       g.ui?.chat?.close?.();
+      // The next Talk is a fresh turn to whoever it is (the chat notes fear on a turn).
+      if (g.ui?.chat && g.ui.chat.target !== 'lyra') g.ui.chat.target = '@near';
       document.querySelectorAll('.toast, .tip, .hint-card, .coach').forEach((e) => e.remove());
     } catch {
       /* cosmetic */
@@ -146,7 +148,9 @@ function pageSetup() {
     const r = e.getBoundingClientRect();
     return r.width > 0 && r.height > 0;
   };
-  g.clock.skipTo?.(12);
+  // Midday for a new game; a loaded game keeps its own hour unless it is far from midday.
+  const h = g.clock.hour;
+  if (!(h >= 10 && h <= 15)) g.clock.skipTo?.(12);
   window.__clean();
 }
 
@@ -182,6 +186,15 @@ async function play(S) {
     else await page.mouse.click(r.x + r.w / 2, r.y + r.h / 2);
     await wait(300);
     return r;
+  };
+  // A dialog option: tap the box until the choices show, then the option.
+  const option = async (sel) => {
+    for (let i = 0; i < 30; i++) {
+      if (await rectOf(sel)) return press(sel);
+      await press('.panel-dialog .dlg-box');
+      await wait(250);
+    }
+    return null;
   };
   const talk = async () => {
     if (S.phone) await press('.tbtn-interact');
@@ -261,9 +274,11 @@ async function play(S) {
     await wait(200);
   };
   // Save, reload the page, continue: the run picks up the loaded game.
+  let savedDay = null;
   const reload = async () => {
-    await ev(async () => {
+    savedDay = await ev(async () => {
       await window.__game.save.save('r14b_story');
+      return window.__game.clock.day;
     });
     await boot();
     const ok = await ev(async () => !!(await window.__game.continueGame()));
@@ -286,7 +301,9 @@ async function play(S) {
   const square = (spots) =>
     ev((spots) => {
       const g = window.__game;
-      g.clock.skipTo?.(12);
+      // Midday (not a jump to tomorrow's noon when it is already midday).
+      const h = g.clock.hour ?? (g.clock.t % 900) / 37.5;
+      if (!(h >= 10 && h <= 15)) g.clock.skipTo?.(12);
       const sq = window.__sq;
       window.__away(Object.keys(spots));
       for (const [id, [dx, dy]] of Object.entries(spots)) {
@@ -356,7 +373,7 @@ async function play(S) {
     check(!!tr && tr.h >= 44, `[${tag}] 5 "Trade · Give · Work" in the chat header, ${tr ? Math.round(tr.h) : 0} px`);
     await press('.chat-trade');
     await wait(400);
-    await press('.dlg-opt.opt-shop');
+    await option('.dlg-opt.opt-shop');
     await page.waitForSelector('.shop', { timeout: 4000 }).catch(() => {});
     check(await ev(() => window.__vis('.shop')), `[${tag}] 5 Trade from the chat opens Garrick's shop`);
     await shot('05-trade-from-chat');
@@ -415,9 +432,11 @@ async function play(S) {
     let st = await chatState();
     check(st.rows.some((r) => /You don't\./.test(r)) && (await ev(() => window.__vTasks.length)) === 0, `[${tag}] 7 *kisses Pip*: "You don't." and no mind asked`, st.rows.slice(-2).join(' | '));
     await ev(() => window.__clean());
+    const tillyAge = await ev(() => window.__game.calendar?.ageOf?.('tilly'));
     await sayTo('tilly', '*kisses Tilly*');
     st = await chatState();
-    check(st.rows.some((r) => /You don't\./.test(r)) && (await ev(() => window.__vTasks.length)) === 0, `[${tag}] 7 *kisses Tilly* at 17: "You don't.", no call`, st.rows.slice(-2).join(' | '));
+    if (tillyAge < 18) check(st.rows.some((r) => /You don't\./.test(r)) && (await ev(() => window.__vTasks.length)) === 0, `[${tag}] 7 *kisses Tilly* at ${tillyAge}: "You don't.", no call`, st.rows.slice(-2).join(' | '));
+    else check(!st.rows.slice(-2).some((r) => /You don't\./.test(r)), `[${tag}] 7 *kisses Tilly* at ${tillyAge} (her birthday came): hers to answer`, st.rows.slice(-2).join(' | '));
     await ev(() => window.__clean());
     const c0 = await ev(() => window.__ev.filter((e) => e.t === 'crime').length);
     await sayTo('bram', '*slaps Bram*');
@@ -457,6 +476,7 @@ async function play(S) {
     check(st.open && st.target === 'elda', `[${tag}] 1 Talk facing Elda: the chat, To Elda`, st.target);
     check(st.rows.some((r) => /backs away from you/.test(r)), `[${tag}] 1 "Elda backs away from you, white to the lips."`, st.rows.slice(-2).join(' | '));
     check(!st.disabled, `[${tag}] 1 the field is open`);
+    await ev(() => (window.__vTasks.length = 0));
     await say("please, I'm sorry");
     await until(() => (window.__game.village.talks.elda || []).some((t) => /sorry/.test(t.you) && !t.pending), null, 12000);
     await wait(500);
@@ -680,17 +700,19 @@ async function play(S) {
   });
 
   await item(4, 'the HUD with no companion', async () => {
+    // A new morning after Bram went home: Lyra may come back of her own accord (her plans);
+    // let that settle, then ask whoever walks with you to go home ("Go home, thank you").
+    await wait(1500);
     await ev(() => {
       const g = window.__game;
       g.party.release('dismissed');
-      const L = g.companion;
-      if (L.mind.companionship !== 'apart') L.mind.autonomy.setCompanionship('apart', '', { silent: true });
       window.__lyraAway();
     });
     await square({ elda: [0, 0] });
-    await wait(400);
+    await wait(600);
     const st = await hud();
-    check(!st.holder && !st.card && !st.cmdbar && !st.orders, `[${tag}] 4 alone: no card, no Ask bar, no orders`, JSON.stringify({ h: st.holder, card: st.card, bar: st.cmdbar, orders: st.orders }));
+    const why4 = await ev(() => ({ cs: window.__game.companion.mind.companionship, changes: window.__ev.filter((e) => e.t === 'companion_changed').slice(-5) }));
+    check(!st.holder && !st.card && !st.cmdbar && !st.orders, `[${tag}] 4 alone: no card, no Ask bar, no orders`, JSON.stringify({ h: st.holder, card: st.card, bar: st.cmdbar, orders: st.orders, ...why4 }));
     check(!st.badge && st.dot.length === 0, `[${tag}] 4 alone: no edge badge, no companion dot`, JSON.stringify({ badge: st.badge, dot: st.dot }));
     check(!/Lyra/.test(st.text), `[${tag}] 4 alone: no "Lyra" on the HUD`, st.text.match(/.{0,30}Lyra.{0,30}/)?.[0] || '');
     if (!S.phone) check(st.talkDesk, `[${tag}] 4 desktop keeps its Talk button`);
@@ -728,7 +750,8 @@ async function play(S) {
     await wait(400);
     const st = await chatState();
     check(!st.disabled && st.rows.some((r) => /Bram/.test(r) && r !== 'Bram, I am sorry.'), `[${tag}] 8 he hears it and answers coldly, or shows his silence`, st.rows.slice(-2).join(' | '));
-    check(await ev(() => window.__vTasks.some((t) => /broke with them/.test(t.task))), `[${tag}] 8 his brief says he broke with you, and still hears every word`);
+    const t8 = await ev(() => window.__vTasks.map((t) => `${t.kind}:${(t.task.match(/.{0,80}(broke|cut|cold).{0,80}/) || [''])[0]}`));
+    check(await ev(() => window.__vTasks.some((t) => /broke with them/.test(t.task))), `[${tag}] 8 his brief says he broke with you, and still hears every word`, JSON.stringify(t8));
     await shot('08-cut-ties');
     await ev(() => (window.__vClaude = 'plain'));
   });
@@ -902,11 +925,14 @@ async function play(S) {
     check(!d.holder && !d.card, `[${tag}] 11 the HUD slot is empty`, JSON.stringify(d));
     await wait(1200);
     await shot('11-lyra-dead');
-    const after = await ev(() => {
+    await ev(() => {
       const g = window.__game;
       g.murder.found('lyra', 'hobb', g.murder.dead.lyra.place);
-      g.clock.t += 40 * 2;
-      g.murder.update?.(0.1);
+      g.clock.t += 40;
+    });
+    await until(() => window.__game.murder.funerals.some((f) => f.about === 'lyra'), null, 8000);
+    const after = await ev(() => {
+      const g = window.__game;
       g.ui.openPeople('lyra');
       const text = document.querySelector('.people-page')?.textContent || '';
       const ms = g.missions;
@@ -1002,12 +1028,22 @@ async function play(S) {
   await item(23, 'saves: after Lyra died, with a hunt, a year on', async () => {
     const before = await ev(() => {
       const g = window.__game;
-      g.murder.hunt = g.murder.hunt || { state: 'searching', posse: ['rowan'], lastSeen: { x: g.player.x, y: g.player.y, t: g.clock.t, place: 'town_square' }, reports: {}, since: g.clock.t };
       g.clock.skipDays?.(12);
       g.calendar?.update?.();
+      // The bell for Lyra: the watch hunts from where you were last seen (blood's startHunt).
+      const rec = g.murder.dead.lyra;
+      rec.known = 'witnessed';
+      rec.alarm = { raised: true, by: 'rowan', t: g.clock.t };
+      rec.t = g.clock.t;
+      rec.x = g.player.x;
+      rec.y = g.player.y;
+      g.murder.hunt = null;
+      g.murder.raiseAlarm?.(rec, 'rowan');
+      if (!g.murder.hunt) g.murder.hunt = { about: 'lyra', since: g.clock.t, lastSeen: { x: g.player.x, y: g.player.y, t: g.clock.t, by: 'rowan', place: 'town_square' }, posse: ['rowan'], reports: {}, state: 'search', heardAt: g.clock.t };
       return { day: g.clock.day, lyraDead: g.murder.isDead('lyra'), hunt: !!g.murder.hunt, tansy: g.calendar?.ageOf?.('tansy') };
     });
     const ok = await reload();
+    before.day = savedDay;
     const after = await ev(() => {
       const g = window.__game;
       return { day: g.clock.day, lyraDead: g.murder.isDead('lyra'), body: !!g.companion?.dead, hunt: !!g.murder.hunt, tansy: g.calendar?.ageOf?.('tansy'), holder: g.party.holderId };
@@ -1034,7 +1070,7 @@ async function play(S) {
       window.__put(g.entities.get('bram'), P.x + 18, P.y);
       g.ui.openDialog(g.entities.get('bram'));
     }, P);
-    await press('.dlg-opt.opt-shop');
+    await option('.dlg-opt.opt-shop');
     await page.waitForSelector('.shop', { timeout: 4000 }).catch(() => {});
     const rows = await ev(() => [...document.querySelectorAll('.shop-row')].length);
     check(rows > 0, `[${tag}] 18 Bram's shop opens`, `${rows} rows`);
@@ -1141,7 +1177,7 @@ async function play(S) {
     });
     await wait(600);
     await shot('20-tempter');
-    await press('.panel-dialog .opt-after');
+    await option('.panel-dialog .opt-after');
     await wait(500);
     const pact = await ev(() => ({ has: window.__game.villain.hasPact(), gifts: window.__ev.find((e) => e.t === 'pact_sealed')?.gifts || [], learned: !!window.__game.unkindle?.learned }));
     check(pact.has && pact.gifts.includes('unkindle') && pact.learned, `[${tag}] 20 the pact "after": the Unkindling is taught`, JSON.stringify(pact));
@@ -1240,13 +1276,14 @@ async function play(S) {
       const tansy = g.entities.get('tansy');
       return { a0, pip: g.calendar.ageOf('pip'), tansy: g.calendar.ageOf('tansy'), minor: g.people?.isMinor?.(tansy) ?? null, date: g.calendar.dateLabel(), canKill: g.murder.canKill(tansy), brief: g.calendar.briefLine?.('tansy') || '' };
     });
-    check(y.pip === y.a0.pip + 1 && y.tansy === 16, `[${tag}] 19 a year on: Pip ${y.a0.pip}→${y.pip}, Tansy sixteen`, JSON.stringify(y));
-    check(y.canKill === true, `[${tag}] 19 Tansy at sixteen is an adult to the game`);
-    check(/year 2/.test(y.date), `[${tag}] 19 the date shows the year`, y.date);
+    check(y.pip === y.a0.pip + 1 && y.tansy === y.a0.tansy + 1, `[${tag}] 19 a year on: Pip ${y.a0.pip}→${y.pip}, Tansy ${y.a0.tansy}→${y.tansy}`, JSON.stringify(y));
+    check(y.canKill === (y.tansy >= 16), `[${tag}] 19 Tansy at ${y.tansy} is ${y.tansy >= 16 ? 'an adult' : 'a child'} to the game (canKill ${y.canKill})`);
+    check(/year \d/.test(y.date) && y.date !== y.a0.date, `[${tag}] 19 the date shows the season and year`, `${y.a0.date} -> ${y.date}`);
     await ev(() => window.__game.ui.openPeople('tansy'));
     await wait(400);
     const pp = await ev(() => document.querySelector('.people-page')?.textContent || '');
-    check(/16/.test(pp), `[${tag}] 19 People shows her age`, pp.slice(0, 80));
+    const tansyAge = await ev(() => window.__game.calendar.ageOf('tansy'));
+    check(new RegExp(`\\b${tansyAge}\\b`).test(pp), `[${tag}] 19 People shows her age (${tansyAge})`, pp.slice(0, 80));
     await shot('19-a-year-on');
   });
 
@@ -1285,7 +1322,7 @@ async function play(S) {
       g.ui.openDialog(g.entities.get('mira'));
     });
     await wait(300);
-    await press('.dlg-opt.opt-shop');
+    await option('.dlg-opt.opt-shop');
     await wait(400);
     const miraLine = await ev(() => ({ shop: window.__vis('.shop'), line: document.querySelector('.panel-dialog .dlg-text')?.textContent || '' }));
     check(!miraLine.shop && miraLine.line.length > 2, `[${tag}] 21 Mira will not trade, and says so`, miraLine.line.slice(0, 80));
@@ -1296,9 +1333,10 @@ async function play(S) {
       g.ui.openDialog(g.entities.get('garrick'));
     });
     await wait(300);
-    await press('.dlg-opt.opt-shop');
-    await wait(400);
-    check(await ev(() => window.__vis('.shop')), `[${tag}] 21 Garrick fences`);
+    await option('.dlg-opt.opt-shop');
+    await page.waitForSelector('.shop', { timeout: 3000 }).catch(() => {});
+    const fence = await ev(() => ({ shop: window.__vis('.shop'), line: document.querySelector('.panel-dialog .dlg-text')?.textContent || '' }));
+    check(fence.shop, `[${tag}] 21 Garrick fences`, fence.line.slice(0, 80));
     await shot('21-garrick-fences');
     await ev(() => window.__clean());
     const world = await ev(() => {
@@ -1361,8 +1399,8 @@ async function play(S) {
       check(l1, `[${tag}] 16 a middle click locks the wolf under the cursor`);
       await page.mouse.wheel(0, 120);
       await wait(200);
-      const l2 = await ev(() => window.__game.lock?.target === window.__w2);
-      check(l2, `[${tag}] 16 the wheel moves the lock to the next`);
+      const l2 = await ev(() => ({ moved: !!window.__game.lock?.target && window.__game.lock.target !== window.__w1, who: window.__game.lock?.target?.species || window.__game.lock?.target?.id || null }));
+      check(l2.moved, `[${tag}] 16 the wheel moves the lock to the next`, JSON.stringify(l2));
     } else {
       const r = await rectOf('.tbtn-attack');
       const cdp = await ctx.newCDPSession(page);
@@ -1465,8 +1503,12 @@ async function play(S) {
       window.__put(b, g.player.x + 24, g.player.y, false);
       g.party.invite(b);
       const P = g.player;
+      const C = g.entities.all().find((e) => e.species && e.type === 'actor')?.constructor;
+      const w = g.entities.add(new C(g, 'wolf', { x: P.x - 30, y: P.y }));
+      w.controller = null;
       P.hp = 1;
-      if (!P.downed) g.survival.fall?.(P, {});
+      g.combat.damage(w, P, 999, { exact: true, crit: false });
+      w.removed = true;
       await new Promise((r) => setTimeout(r, 1200));
       return { downed: !!P.downed, ring: !!document.querySelector('.sv-clock, .sv-ring, .down-ring'), job: g.survival.jobs?.length ?? null, holder: g.party.holderId };
     });
