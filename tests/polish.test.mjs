@@ -4,6 +4,8 @@
 //   - overdraw's drought is paid in full; emberblood's blood pays part of each weave
 //     (src/magic/prices.js);
 //   - the Spellbook's Leech preview draws life home to the caster (src/ui/weave_sandbox.js);
+//   - down on an upright phone the countdown sits under the top cards, the toasts under it;
+//     a new game or a load never shows the last one's countdown (src/ui/death_view.js);
 //   - the Last Stand's minute never makes a child killable (D1: children stay unkillable).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,6 +20,7 @@ import { SandboxPreview } from '../src/ui/weave_sandbox.js';
 import { compileWeave } from '../src/magic/compile.js';
 import { PriceRuntime } from '../src/magic/prices.js';
 import { makeGame as makeMurderWorld, step as worldStep, put, px } from './murder_world.mjs';
+import { DeathView } from '../src/ui/death_view.js';
 
 // ------------------------------------------------------------------ mending
 
@@ -241,4 +244,78 @@ test('polish: burning in the Last Stand ("kill anybody") still never makes a chi
   assert.equal(g.murder.kill(pip, g.player), null);
   assert.ok(!pip.dead);
   void TILE;
+});
+
+// ------------------------------------------------------------------ the down countdown's place
+
+// A DeathView with no DOM: the root, the cards and the countdown are rectangles, and the
+// root's style records the custom properties place() sets (src/ui/death_view.js).
+function countdownRig({ touch = true, cards = { top: 6, bottom: 101, height: 95 }, right = { top: 6, bottom: 64, height: 58 }, block = { top: 109, bottom: 265, height: 156, width: 330 } } = {}) {
+  const props = {};
+  const classes = new Set();
+  const rect = (r) => (r ? { getBoundingClientRect: () => ({ left: 0, right: r.width || 100, width: r.width || 100, ...r }), hidden: !!r.hidden } : null);
+  const els = { '.hud-cards': rect(cards), '.hud-right': rect(right) };
+  const root = {
+    style: { setProperty: (k, v) => (props[k] = v), removeProperty: (k) => delete props[k] },
+    querySelector: (sel) => els[sel] || null,
+    classList: { toggle: (c, on) => (on ? classes.add(c) : classes.delete(c)), contains: (c) => classes.has(c) },
+  };
+  const handlers = {};
+  const game = {
+    bus: { on: (ev, fn) => ((handlers[ev] ||= []).push(fn)), emit: (ev, p) => (handlers[ev] || []).forEach((fn) => fn(p)) },
+    ui: { isTouch: touch, _uiz: 1, root },
+    uiRoot: root,
+    survival: { isFallen: () => false },
+    player: {},
+  };
+  const dv = new DeathView(game);
+  dv.fallenEl = { ...rect(block), hidden: false };
+  dv.ring = { getBoundingClientRect: () => ({ width: 112 }), width: 112, height: 112 };
+  dv.layer = { style: {} };
+  dv.mounted = true;
+  return { dv, game, props, classes };
+}
+
+test('polish: down on an upright phone, the countdown sits just under the top cards (however tall the price chips make them), the toasts under it', () => {
+  const hadWindow = 'window' in globalThis;
+  const prev = globalThis.window;
+  globalThis.window = { innerWidth: 390, innerHeight: 844, devicePixelRatio: 1 };
+  try {
+    const { dv, props } = countdownRig();
+    dv.place();
+    assert.equal(props['--sv-top'], '109px', 'cards to 101 px (two rows of chips): the countdown at 109');
+    assert.equal(props['--sv-below'], '273px', 'toasts under the countdown');
+    // One row of chips: the cards are shorter, the countdown comes up with them.
+    const one = countdownRig({ cards: { top: 6, bottom: 78, height: 72 } });
+    one.dv.place();
+    assert.equal(one.props['--sv-top'], '86px');
+    // A card further down the screen (not the top strip) or a hidden one does not count.
+    const low = countdownRig({ cards: { top: 400, bottom: 480, height: 80 }, right: { top: 6, bottom: 64, height: 58, hidden: true } });
+    low.dv.place();
+    assert.equal(low.props['--sv-top'], undefined, 'nothing at the top: the stylesheet keeps its default');
+    // Getting up clears both, so nothing is left on the root for the next fall.
+    dv.visible = true;
+    dv.hide();
+    assert.equal(props['--sv-top'], undefined);
+    assert.equal(props['--sv-below'], undefined);
+    // A computer never sets them (its countdown is under the body, at the Interface size).
+    const pc = countdownRig({ touch: false });
+    globalThis.window = { innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1 };
+    pc.dv.place();
+    assert.equal(pc.props['--sv-top'], undefined);
+    assert.equal(pc.props['--sv-below'], undefined);
+  } finally {
+    if (hadWindow) globalThis.window = prev;
+    else delete globalThis.window;
+  }
+});
+
+test('polish: a new game or a load never starts with the last one\'s countdown on screen', () => {
+  const { dv, game, classes } = countdownRig();
+  dv.visible = true;
+  classes.add('sv-down');
+  game.bus.emit('game_start', {});
+  assert.equal(dv.visible, false);
+  assert.equal(dv.fallenEl.hidden, true);
+  assert.ok(!classes.has('sv-down'), 'the root no longer says you are down');
 });
