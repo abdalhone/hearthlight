@@ -601,8 +601,9 @@ async function play(S) {
       const bram = g.entities.get('bram');
       P.x = bram.x + 18;
       P.y = bram.y;
-      P.maxHp = 300;
-      P.hp = 300;
+      // A strong stranger (the fight is the trial's cause, not the test).
+      g.stats?.addModifier?.(P, { id: 'vb_strong', source: 'vb', label: 'Strong', kind: 'buff', add: { maxHp: 600 } });
+      P.hp = P.maxHp;
       P.faceToward(bram.x, bram.y);
       delete bram.think;
       // He comes at the stranger (a quarrel the run does not need to stage in words).
@@ -611,12 +612,14 @@ async function play(S) {
     });
     const hit = await until(() => window.__game.player.lastAttacker === window.__game.entities.get('bram'), null, 20000);
     check(hit, `[${tag}] 15 Bram swings first and lands it`);
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 80; i++) {
       const s = await ev(() => {
         const g = window.__game;
         const b = g.entities.get('bram');
-        g.player.faceToward(b.x, b.y);
-        return { downed: !!b.downed, d: Math.hypot(b.x - g.player.x, b.y - g.player.y) };
+        const P = g.player;
+        if (P.hp < P.maxHp * 0.6) P.hp = P.maxHp;
+        P.faceToward(b.x, b.y);
+        return { downed: !!b.downed, d: Math.hypot(b.x - P.x, b.y - P.y) };
       });
       if (s.downed) break;
       if (s.d > 22) await ev(() => {
