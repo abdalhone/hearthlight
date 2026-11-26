@@ -12,6 +12,8 @@
 //     life, murder and party exist and before a save is applied.
 
 import { blowAtChests, ownersNotice } from '../../world/containers.js';
+import { installLock } from '../lock_on.js';
+import { LockLayer } from '../../render/lock_layer.js';
 
 // Blows on locked chests (a Strike or a heavy weave forces the hasp; lighter blows get a
 // word), and owners who find their chest short (theft unseen, D10).
@@ -33,4 +35,23 @@ const chestsPlugin = {
   },
 };
 
-export default [installChests, chestsPlugin];
+// Lock-on (round 14b, item 14): game.lock, its reticle, and its controls read each frame.
+function installLockOn(game) {
+  installLock(game);
+  try {
+    game.entities?.add?.(new LockLayer(game));
+  } catch (err) {
+    console.warn('[blood] the lock reticle failed', err);
+  }
+}
+
+const lockPlugin = {
+  id: 'blood_lock',
+  name: 'Lock-on',
+  description: 'Middle mouse, G or R3 lock on; the wheel cycles; weaves and the sword aim at the lock (round 14b).',
+  update(dt, ctx) {
+    ctx?.game?.lock?.update?.(dt);
+  },
+};
+
+export default [installChests, chestsPlugin, installLockOn, lockPlugin];
