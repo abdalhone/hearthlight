@@ -222,3 +222,62 @@ test('a blow nobody screened (an accident, the forgiven habit): Lyra reacts only
   g.combat.damage(g.player, tob, 2, { kind: 'magic', accident: true });
   assert.ok(said.length >= 1, 'in sight, she reacts');
 });
+
+// Leftover "Lyra chatters while you are down", played: the barks keep quiet, but her shown
+// thoughts did not. Down in the meadow with Lyra a field away and not coming, her musings
+// ("The hearthwatch. I still wonder about it.") were pinned to the screen's edge. While you
+// lie bleeding she shows nothing unless she can see you or is the one coming for you.
+test('down and bleeding, Lyra far off: no thought bubble of hers is shown (unless she sees you or comes)', () => {
+  const g = makeMurderGame({ hour: 11, settings: { showThoughts: true } });
+  clearScene(g, []);
+  g.settings.showThoughts = true;
+  const shown = [];
+  g.bubbles.thought = (e, t) => {
+    shown.push({ who: e?.id, t });
+    return true;
+  };
+  g.bubbles.hasBubble = () => false;
+  const L = g.companion;
+  const m = L.mind;
+  L.x = g.player.x + 2000;
+  L.y = g.player.y;
+  g.player.downed = true;
+  m.thinker.lastShown = -1e9;
+  m.perception.lastSpoke = -1e9;
+  m._showThought('The hearthwatch. I still wonder about it.', 0);
+  assert.deepEqual(shown, [], 'far off and not coming: nothing shown');
+  // Coming for you (a rescue job): she may.
+  g.survival.jobs.set(L, { role: 'carry' });
+  m.thinker.lastShown = -1e9;
+  m._showThought('Hold on. I am coming.', 0);
+  assert.equal(shown.length, 1, 'on her way to you');
+  g.survival.jobs.delete(L);
+  // Standing up again: her thoughts show as ever.
+  g.player.downed = false;
+  m.thinker.lastShown = -1e9;
+  m._showThought('Wicks and ashes.', 0);
+  assert.equal(shown.length, 2);
+});
+
+// Item 5 on a phone, the merger's first worry ("the Talk button in a crowd"): the round button
+// reads "Talk to Elda", and the tap opened the chat to Rowan, who had walked up in the
+// meantime (the tap asked again who was best). The tap goes to whoever the button names,
+// while they are still there to talk to.
+import { namedInReach } from '../src/ui/touch.js';
+
+test('the phone Talk button: the tap goes to the person it names, while they are in reach', () => {
+  const g = makeMurderGame({ hour: 12 });
+  clearScene(g, ['elda', 'rowan']);
+  const elda = g.entities.get('elda');
+  const row = g.entities.get('rowan');
+  putAt(elda, g.player.x - 18, g.player.y);
+  putAt(row, g.player.x + 12, g.player.y + 6);
+  assert.equal(namedInReach(g, elda), elda, 'the button named Elda: Elda');
+  putAt(elda, g.player.x - 400, g.player.y);
+  assert.equal(namedInReach(g, elda), null, 'walked off: ask again who is near');
+  putAt(elda, g.player.x - 18, g.player.y);
+  elda.downed = true;
+  assert.equal(namedInReach(g, elda), null, 'downed: not a talk');
+  elda.downed = false;
+  assert.equal(namedInReach(g, null), null);
+});

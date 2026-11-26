@@ -770,6 +770,424 @@ async function play(S) {
     await ev(() => window.__game.party.release('dismissed'));
   });
 
+  // ================================================================ 23: saves, mid-scene
+  const reload = async () => {
+    await ev(async () => {
+      await window.__game.save.save('verify_a');
+    });
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => window.__game?.state === 'title', null, { timeout: 60000 });
+    const ok = await ev(async () => !!(await window.__game.continueGame()));
+    await page.waitForFunction(() => window.__game.state === 'playing', null, { timeout: 60000 }).catch(() => {});
+    await wait(700);
+    await ev(pageSetup);
+    return ok;
+  };
+  await item(23, 'saves: with Bram, mid-parting, a year on, mid-hunt', async () => {
+    // (a) Bram walks with you; save, reload: he still does, and walks after you.
+    await ev(() => {
+      const g = window.__game;
+      g.clock.skipTo?.(11);
+      const sq = g.locations.get('town_square').center;
+      g.player.x = sq.x + 60;
+      g.player.y = sq.y + 40;
+      const b = g.entities.get('bram');
+      b.x = g.player.x + 24;
+      b.y = g.player.y;
+      b.opinionOfPlayer = 85;
+      b.wrongedDay = null;
+      g.party.invite(b);
+    });
+    await wait(400);
+    const h0 = await ev(() => window.__game.party.holderId);
+    let ok = await reload();
+    const a = await ev(() => {
+      const g = window.__game;
+      const b = g.entities.get('bram');
+      const P = g.player;
+      P.x += 90;
+      g.camera.snap?.();
+      return { holder: g.party.holderId, duty: !!b.duty, d0: Math.round(Math.hypot(b.x - P.x, b.y - P.y)) };
+    });
+    await wait(3000);
+    const a2 = await ev(() => {
+      const g = window.__game;
+      const b = g.entities.get('bram');
+      return { d1: Math.round(Math.hypot(b.x - g.player.x, b.y - g.player.y)), card: document.querySelector('.companion-card')?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 60) || '' };
+    });
+    check(ok && h0 === 'bram' && a.holder === 'bram' && a.duty, `[${tag}] 23 with Bram: reloaded, he still walks with you`, JSON.stringify({ h0, ...a }));
+    check(a2.d1 < a.d0 - 30, `[${tag}] 23 ... and walks after you`, JSON.stringify({ ...a, ...a2 }));
+    if (!S.phone) check(/Bram/.test(a2.card), `[${tag}] 23 ... his card on the HUD`, a2.card);
+    await shot('23-bram-reloaded');
+    await ev(() => window.__game.party.release('dismissed'));
+    // (b) Lyra's parting scene, saved mid-scene: it ends on load, the letter is there, the
+    // chat to her is open, and nothing is stuck.
+    await ev(() => {
+      const g = window.__game;
+      const L = g.companion;
+      if (L._heldController) L.controller = L._heldController;
+      L.x = g.player.x - 40;
+      L.y = g.player.y;
+      g.party.release?.('dismissed');
+      L.mind.autonomy.setCompanionship('left', 'I need to walk my own road for a while.', { cause: 'trust' });
+    });
+    await wait(2500);
+    const mid = await ev(() => {
+      const g = window.__game;
+      const pa = g.companion.mind.autonomy.parting;
+      return { active: !!pa?.active, phase: pa?.st?.phase || null, cs: g.companion.mind.companionship };
+    });
+    await shot('23-parting-mid');
+    ok = await reload();
+    await wait(800);
+    const b = await ev(() => {
+      const g = window.__game;
+      const pa = g.companion.mind.autonomy.parting;
+      return { ok: true, active: !!pa?.active, cs: g.companion.mind.companionship, letter: !!g.flags.lyra_letter, inBag: !!g.player.inventory?.has?.('lyra_letter'), holder: g.party.holderId, state: g.state };
+    });
+    check(mid.active, `[${tag}] 23 the parting scene was playing when saved`, JSON.stringify(mid));
+    check(ok && !b.active && b.cs === 'left' && b.state === 'playing', `[${tag}] 23 reloaded mid-parting: the scene is over, she has left`, JSON.stringify(b));
+    check(b.letter, `[${tag}] 23 ... and her letter is there (bag or table)`, JSON.stringify(b));
+    check(b.holder !== 'lyra', `[${tag}] 23 ... and she does not hold the companion slot`, String(b.holder));
+    await shot('23-parting-reloaded');
+    // (c) A year on: the day, the ages and Tansy grown come back.
+    const y0 = await ev(() => {
+      const g = window.__game;
+      g.clock.skipDays?.(12);
+      g.calendar?.update?.();
+      return { day: g.clock.day, tansy: g.calendar?.ageOf?.('tansy'), pip: g.calendar?.ageOf?.('pip') };
+    });
+    ok = await reload();
+    const y1 = await ev(() => {
+      const g = window.__game;
+      return { day: g.clock.day, tansy: g.calendar?.ageOf?.('tansy'), pip: g.calendar?.ageOf?.('pip'), label: g.calendar?.dateLabel?.() || '' };
+    });
+    check(ok && y1.day === y0.day && y1.tansy === y0.tansy && y1.pip === y0.pip, `[${tag}] 23 a year on: the day and the ages come back`, JSON.stringify({ y0, y1 }));
+    // (d) Mid-hunt: a killing the watch saw; save; the hunt comes back.
+    const h = await ev(() => {
+      const g = window.__game;
+      g.clock.skipTo?.(12);
+      const sq = g.locations.get('town_square').center;
+      const wys = g.entities.get('wys');
+      const row = g.entities.get('rowan');
+      wys.x = sq.x;
+      wys.y = sq.y;
+      row.x = sq.x + 40;
+      row.y = sq.y + 10;
+      row.faceToward?.(wys.x, wys.y);
+      g.player.x = sq.x + 14;
+      g.player.y = sq.y;
+      g.murder.kill(wys, g.player);
+      const rec = g.murder.dead.wys;
+      if (rec && !g.murder.isHunted()) g.murder.raiseAlarm?.(rec, 'rowan', { saw: true });
+      return { hunted: g.murder.isHunted(), about: g.murder.hunt?.about || null };
+    });
+    ok = await reload();
+    const h2 = await ev(() => ({ hunted: window.__game.murder.isHunted(), about: window.__game.murder.hunt?.about || null, dead: window.__game.murder.isDead('wys') }));
+    check(h.hunted && ok && h2.hunted && h2.about === h.about && h2.dead, `[${tag}] 23 mid-hunt: the hunt and the dead come back`, JSON.stringify({ h, h2 }));
+    await shot('23-hunt-reloaded');
+  });
+
+  // ================================================================ 40: talk and party leftovers
+  await item(40, 'leftovers: Lyra quiet while you are down, place lines, her ear, frightened chips, a companion behind, waking, the map, prompts and bubbles', async () => {
+    // A log of every bubble, by speaker, with where they stood.
+    await ev(() => {
+      const g = window.__game;
+      window.__said = [];
+      if (!g.bubbles.__logged) {
+        for (const k of ['say', 'thought']) {
+          const f = g.bubbles[k].bind(g.bubbles);
+          g.bubbles[k] = (e, text, o) => {
+            window.__said.push({ who: e?.id, kind: k, text: String(text), d: e && g.player ? Math.round(Math.hypot(e.x - g.player.x, e.y - g.player.y)) : null, job: e === g.companion ? !!g.survival?.jobs?.has?.(e) : null, down: !!g.player.downed });
+            return f(e, text, o);
+          };
+        }
+        g.bubbles.__logged = true;
+      }
+    });
+    const lyraBack = () =>
+      ev(() => {
+        const g = window.__game;
+        const L = g.companion;
+        if (L._heldController) L.controller = L._heldController;
+        if (L.mind.companionship !== 'together') L.mind.autonomy.setCompanionship('together', '', { silent: true });
+        if (g.party.holderId !== 'lyra') g.party.set?.('lyra', 'verify');
+      });
+    // (a) Down and bleeding, Lyra a long way off: she says nothing to you.
+    await lyraBack();
+    await ev(() => {
+      const g = window.__game;
+      g.clock.skipTo?.(11);
+      const m = g.locations.get('south_meadow').center;
+      g.player.x = m.x;
+      g.player.y = m.y;
+      const L = g.companion;
+      L.x = m.x + 2000;
+      L.y = m.y;
+      L.behavior?.setDirective?.({ type: 'stay', x: m.x + 2000, y: m.y });
+      g.camera.snap?.();
+      window.__said.length = 0;
+      g.player.fall({ cause: 'test' });
+    });
+    for (let i = 0; i < 6; i++) {
+      await ev(() => {
+        const g = window.__game;
+        g.companion.mind?.thinker?.nudge?.(0);
+        if (g.brain?.barks) g.brain.barks.lastBarkAt = -1e9;
+      });
+      await wait(1500);
+    }
+    const a = await ev(() => window.__said.filter((x) => x.who === 'lyra' && x.down && !x.job && x.d > 400));
+    check(a.length === 0, `[${tag}] L1 down, Lyra far off and not coming: she says nothing to you`, JSON.stringify(a.slice(0, 3)));
+    await shot('L1-down-quiet');
+    await ev(() => {
+      const g = window.__game;
+      const r = g.survival.fallOf(g.player);
+      if (r) {
+        g.survival.revive?.(g.player) ?? (g.player.downed = false);
+      }
+      g.player.downed = false;
+      g.player.hp = g.player.maxHp;
+      g.survival.falls?.delete?.(g.player);
+      if (g.player.state === 'downed') g.player.setState('idle');
+    });
+    await wait(500);
+    // (b) A place line only where you both are: Lyra walks into the chapel far from you.
+    await ev(() => {
+      const g = window.__game;
+      window.__said.length = 0;
+      const ch = g.locations.get('chapel').center;
+      const L = g.companion;
+      L.x = ch.x;
+      L.y = ch.y;
+      g.brain?.barks?.visited?.delete?.('chapel');
+    });
+    await wait(4500);
+    const b = await ev(() => window.__said.filter((x) => x.who === 'lyra' && /chapel|Chapel|Flame/.test(x.text)));
+    check(b.length === 0, `[${tag}] L2 Lyra enters the chapel far from you: no place line to you`, JSON.stringify(b.slice(0, 2)));
+    // (c) Her ear: Elda cries out inside the Kettle; Lyra outside with you: she turns and asks.
+    const c0 = await ev(() => {
+      const g = window.__game;
+      window.__said.length = 0;
+      const k = g.locations.get('ember_kettle').bounds;
+      const elda = g.entities.get('elda');
+      window.__at(elda, k.x + 2, Math.floor(k.y + k.h / 2));
+      const L = g.companion;
+      L.behavior?.setDirective?.({ type: 'follow', target: 'player' });
+      L.x = (k.x - 1.5) * 16;
+      L.y = (k.y + k.h / 2) * 16;
+      L.facing = { x: -1, y: 0 };
+      g.player.x = L.x - 24;
+      g.player.y = L.y;
+      g.camera.snap?.();
+      g.brain.barks.cooldowns?.clear?.();
+      g.brain.barks.lastBarkAt = -1e9;
+      g.brain.barks.lastLyraSpeechAt = -1e9;
+      g.brain.lastReplyAt = -1e9;
+      g.bus.emit('call_for_help', { victim: elda, victimEntity: elda, attacker: null, x: elda.x, y: elda.y, severity: 3 });
+      return { fx: L.facing.x };
+    });
+    await wait(3500);
+    const c = await ev(() => ({ lines: window.__said.filter((x) => x.who === 'lyra').map((x) => x.text), fx: window.__game.companion.facing.x }));
+    check(c.lines.some((t) => /hear|What was that|Something|Hush|scream/i.test(t)) && !c.lines.some((t) => /Elda/.test(t)), `[${tag}] L3 a cry behind a wall: Lyra turns and says she heard something, never who`, JSON.stringify(c));
+    await shot('L3-her-ear');
+    // (d) Someone terrified of you: the chat's chips are a frightened person's, not hellos.
+    await ev(() => {
+      const g = window.__game;
+      const elda = g.entities.get('elda');
+      const sq = g.locations.get('town_square').center;
+      window.__at(elda, Math.floor(sq.x / 16), Math.floor(sq.y / 16));
+      elda.terror = { until: g.murder.now() + 600, of: 'player' };
+      g.player.x = elda.x + 18;
+      g.player.y = elda.y;
+      g.player.facing = { x: -1, y: 0 };
+      g.player.dir = 'left';
+      g.camera.snap?.();
+      g.ui.chat.close?.();
+    });
+    await wait(400);
+    const who4 = await ev(() => {
+      const g = window.__game;
+      const P = g.player;
+      const near = g.villageLife.villagers().map((v) => ({ id: v.id, d: Math.round(Math.hypot(v.x - P.x, v.y - P.y)) })).filter((v) => v.d < 120);
+      return { near, label: document.querySelector('.tbtn-interact')?.getAttribute('aria-label') || '', elda: { mode: g.entities.get('elda').mode } };
+    });
+    if (S.phone) await page.touchscreen.tap(...(await (async () => {
+      const r = await rectOf('.tbtn-interact');
+      return [r.x + r.w / 2, r.y + r.h / 2];
+    })()));
+    else await page.keyboard.press('t');
+    await wait(700);
+    const d = await ev(() => {
+      const c = window.__game.ui.chat;
+      return { target: c.target, chips: [...document.querySelectorAll('.chat-chips .chip')].map((b) => b.textContent), status: document.querySelector('.chat-status, .chat-head .chat-sub')?.textContent || '', rows: [...document.querySelectorAll('.chat-log .msg')].map((r) => r.textContent.trim()).slice(-2) };
+    });
+    check(d.target === 'elda' && d.chips.length > 0 && !d.chips.some((t) => /Hello|news|Tell me about yourself/.test(t)), `[${tag}] L4 Elda terrified: no friendly chips`, JSON.stringify({ ...d, who4 }));
+    check(d.rows.some((r) => /backs away from you/.test(r)), `[${tag}] L4 ... and what you see as you turn to her`, JSON.stringify(d.rows));
+    await shot('L4-terrified-chips');
+    await ev(() => {
+      const g = window.__game;
+      g.ui.chat.close?.();
+      g.entities.get('elda').terror = null;
+    });
+    // (e) A companion who falls far behind catches up without a blink you can see.
+    await ev(() => {
+      const g = window.__game;
+      const b = g.entities.get('bram');
+      const sq = g.locations.get('town_square').center;
+      b.x = sq.x;
+      b.y = sq.y;
+      b.opinionOfPlayer = 85;
+      b.wrongedDay = null;
+      g.player.x = sq.x + 20;
+      g.player.y = sq.y;
+      g.party.release?.('dismissed');
+      g.party.invite(b);
+    });
+    await wait(500);
+    await ev(() => {
+      const g = window.__game;
+      const m = g.locations.get('south_meadow').center;
+      g.player.x = m.x;
+      g.player.y = m.y + 40;
+      g.camera.snap?.();
+      window.__bramPath = [];
+      const tick = () => {
+        const b = g.entities.get('bram');
+        const c = g.camera;
+        window.__bramPath.push({ x: b.x, y: b.y, px: g.player.x, py: g.player.y, view: c ? { x: c.x, y: c.y, w: c.viewW || c.w || 0, h: c.viewH || c.h || 0 } : null });
+        if (window.__bramPath.length < 900) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    await wait(9000);
+    const e = await ev(() => {
+      const g = window.__game;
+      const b = g.entities.get('bram');
+      const path = window.__bramPath;
+      let jump = null;
+      for (let i = 1; i < path.length; i++) {
+        const dd = Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
+        if (dd > 64) {
+          const p = path[i];
+          const onScreen = (() => {
+            const r = g.renderer.worldToCss(p.x, p.y);
+            const W = innerWidth;
+            const H = innerHeight;
+            return r && r.x > 0 && r.x < W && r.y > 0 && r.y < H;
+          })();
+          jump = { dd: Math.round(dd), onScreen };
+        }
+      }
+      return { holder: g.party.holderId, d: Math.round(Math.hypot(b.x - g.player.x, b.y - g.player.y) / 16), jump };
+    });
+    check(e.holder === 'bram' && e.d <= 12, `[${tag}] L5 Bram left far behind catches up (${e.d} tiles off after 9 s)`, JSON.stringify(e));
+    check(!e.jump || !e.jump.onScreen, `[${tag}] L5 ... with no blink in view`, JSON.stringify(e.jump));
+    await shot('L5-caught-up');
+    await ev(() => window.__game.party.release?.('dismissed'));
+    // (f) Waking: Lyra far behind when you sleep does not wake beside you.
+    await lyraBack();
+    const f0 = await ev(async () => {
+      const g = window.__game;
+      g.clock.skipTo?.(22);
+      const home = g.locations.get('player_home') || g.locations.get('home') || g.locations.get('wayhouse');
+      const P = g.player;
+      if (home?.center) {
+        P.x = home.center.x;
+        P.y = home.center.y;
+      }
+      const L = g.companion;
+      L.x = P.x + 70 * 16;
+      L.y = P.y;
+      L.behavior?.setDirective?.({ type: 'stay', x: L.x, y: L.y });
+      g.camera.snap?.();
+      const r = await g.sleep();
+      return { slept: r !== false, d: Math.round(Math.hypot(L.x - P.x, L.y - P.y) / 16) };
+    });
+    await page.waitForFunction(() => window.__game.state === 'playing', null, { timeout: 30000 }).catch(() => {});
+    await wait(800);
+    const f = await ev(() => {
+      const g = window.__game;
+      const L = g.companion;
+      return { hour: Math.round(g.clock.hour), d: Math.round(Math.hypot(L.x - g.player.x, L.y - g.player.y) / 16) };
+    });
+    check(f0.slept && f.d > 4, `[${tag}] L6 Lyra far off when you slept: she does not wake beside you (${f.d} tiles)`, JSON.stringify({ f0, f }));
+    // (g) The map on this screen: your coins' ember-ring far off is in view with you.
+    const g0 = await ev(() => {
+      const g = window.__game;
+      g.ui.closeAll?.();
+      const m = g.locations.get('south_meadow').center;
+      g.player.x = m.x;
+      g.player.y = m.y;
+      g.player.inventory.add('coin', 40);
+      const save = { x: g.player.x, y: g.player.y };
+      g.player.x = m.x - 50 * 16;
+      g.player.y = m.y + 10 * 16;
+      g.survival.dropRing(g.player);
+      g.player.x = save.x;
+      g.player.y = save.y;
+      g.camera.snap?.();
+      g.ui.openMap();
+      return true;
+    });
+    await wait(900);
+    const gm = await ev(() => {
+      const g = window.__game;
+      const wm = g.ui.worldMap;
+      const c = wm.canvas;
+      const W = c.clientWidth;
+      const H = c.clientHeight;
+      const s = wm.scale(W, H);
+      const toScr = (x, y) => ({ x: (x / 16 - wm.cx) * s + W / 2, y: (y / 16 - wm.cy) * s + H / 2 });
+      const ring = wm.marks().find((m) => m.kind === 'ember');
+      const me = toScr(g.player.x, g.player.y);
+      const rr = ring ? toScr(ring.x, ring.y) : null;
+      const inView = (p) => !!p && p.x >= 0 && p.x <= W && p.y >= 0 && p.y <= H;
+      return { W, H, me: inView(me), ring: inView(rr), hasRing: !!ring };
+    });
+    check(gm.hasRing && gm.me && gm.ring, `[${tag}] L7 the map opens with you and your coins' ember-ring in view`, JSON.stringify(gm));
+    await shot('L7-map-ring');
+    await ev(() => {
+      const g = window.__game;
+      g.ui.closeModal(g.ui.worldMap.panel, true);
+      g.survival.ring && (g.survival.ring.taken = true);
+    });
+    // (h) A prompt never under the companion's words: by the well with Bram talking.
+    await ev(() => {
+      const g = window.__game;
+      const sq = g.locations.get('town_square').center;
+      const b = g.entities.get('bram');
+      g.party.invite(b);
+      const well = g.objects?.all?.().find?.((o) => /well/.test(o.kind || o.type || '')) || null;
+      const at = well ? { x: well.x, y: well.y + 18 } : { x: sq.x, y: sq.y + 20 };
+      g.player.x = at.x;
+      g.player.y = at.y;
+      g.player.facing = { x: 0, y: -1 };
+      g.player.dir = 'up';
+      b.x = g.player.x + 16;
+      b.y = g.player.y + 4;
+      g.camera.snap?.();
+      g.bubbles.say(b, 'Aye, the well water is the best in the vale, they say. Drink, if you like.', { kind: 'say', duration: 8 });
+    });
+    await wait(900);
+    const hh = await ev(() => {
+      const g = window.__game;
+      const pr = document.querySelector('.interact-prompt');
+      const vis = pr && !pr.hidden && getComputedStyle(pr).display !== 'none';
+      const R = vis ? pr.getBoundingClientRect() : null;
+      const c = g.canvas.getBoundingClientRect();
+      const dpr = c.width ? g.canvas.width / c.width : 1;
+      const bub = (g.bubbles._vis || []).find((x) => x.entity?.id === 'bram');
+      const L = bub?.layout;
+      const B = L ? { left: c.left + L.x / dpr, top: c.top + L.y / dpr, right: c.left + (L.x + L.w) / dpr, bottom: c.top + (L.y + L.h) / dpr } : null;
+      const overlap = !!R && !!B && R.left < B.right && R.right > B.left && R.top < B.bottom && R.bottom > B.top;
+      return { prompt: vis ? pr.textContent.trim() : null, R: R && { l: Math.round(R.left), t: Math.round(R.top), r: Math.round(R.right), b: Math.round(R.bottom) }, B: B && { l: Math.round(B.left), t: Math.round(B.top), r: Math.round(B.right), b: Math.round(B.bottom) }, overlap };
+    });
+    check(!hh.overlap, `[${tag}] L8 the use prompt (${hh.prompt}) and Bram's words do not overlap`, JSON.stringify(hh));
+    await shot('L8-prompt-bubble');
+    await ev(() => window.__game.party.release?.('dismissed'));
+  });
+
   check(errors.length === 0, `[${tag}] no page errors`, errors.slice(0, 5).join(' | '));
   await ctx.close();
 }

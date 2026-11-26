@@ -3770,4 +3770,11 @@ The rule is fixed; the numbers are what play tunes (`src/magic/balance.js`).
   fixed rect the bubbles stack around, so their pinned words are never drawn under it.
 - **Fear on reopening the chat** (§29.3 above): the note on each opening, and "terrified of
   you" in the header.
+- **Quiet while you are down, thoughts too**: her barks kept quiet while the player bled out
+  unseen, but her shown thoughts did not ("The hearthwatch. I still wonder about it." pinned
+  to the edge from a field away). `mind._showThought` keeps the barks' rule
+  (`_mayShowWhileDown`: she sees you, or she is the one coming for you).
+- **The phone's Talk button keeps its word** (`touch.namedInReach`): a tap goes to whoever
+  the round button names ("Talk to Elda") while they are still up and within three tiles,
+  not to whoever a crowd has put nearest since the label was drawn.
 
