@@ -386,3 +386,40 @@ test('he keeps his post: the village\'s alarm (a killing seen) never sends him r
   assert.notEqual(t.mode, 'flee');
   assert.ok(Math.hypot(t.x - post.x, t.y - post.y) < 4, `still at the gate (${Math.round(t.x - post.x)}, ${Math.round(t.y - post.y)})`);
 });
+
+// Verify-b (round 14b): the author's own sentence is "when I want, I can stop and say no". Typed
+// in the chat, the common ways of saying it end the pact; a no to one ask stays a no to that
+// ask (the pact holds), so the wider words never swallow a refusal of a single thing.
+test('"I want to stop", in the ways people say it, ends the pact; "not that one" refuses only the ask', async () => {
+  const ends = [
+    'I want to stop.',
+    "I don't want to do this anymore",
+    "I'm not doing this anymore.",
+    "I won't kill anyone for you.",
+    "I'm not killing anyone else.",
+    'I refuse to kill anymore.',
+    "I'm leaving the pact.",
+    "I'm breaking our deal.",
+    'Cancel the deal.',
+    'The pact is broken.',
+    "I don't want your magic.",
+    "I don't want to be part of this anymore.",
+    "I'm stopping. Find someone else.",
+  ];
+  for (const words of ends) {
+    const { g, V, t } = gate();
+    await says(g, t, 'Fine. Teach me after.');
+    assert.equal(V.hasPact(), true);
+    await says(g, t, words);
+    assert.equal(V.state.ended, true, `"${words}" ends it`);
+  }
+  for (const words of ["No. Not that one.", "I don't want to kill him.", "I'm not doing that."]) {
+    const { g, V, t } = gate();
+    await says(g, t, 'Fine. Teach me after.');
+    const a = V.offerAsk({ force: true });
+    assert.ok(a && a.state === 'offered');
+    await says(g, t, words);
+    assert.equal(V.hasPact(), true, `"${words}" leaves the pact standing`);
+    assert.equal(a.state, 'refused', `"${words}" refuses the ask`);
+  }
+});
