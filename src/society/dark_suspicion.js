@@ -212,6 +212,7 @@ export class DarkSuspicion {
     this.installed = false;
     this._offs = [];
     this._duty = null;
+    this._hearsFirst = false; // the village emits player_heard (talk): decide there
   }
 
   get coldfire() {
@@ -694,7 +695,7 @@ export class DarkSuspicion {
       if (t - a.t0 > 150) return give('far');
       if (dist(e, P) <= 30) {
         a.at ??= t;
-        if (this.isPrivate(e) && !this.unk?.channel) return this.openAsking(e);
+        if (this.isPrivate(e) && !this.unk?.channel && !safe(() => g.ui?.isModalOpen?.(), false)) return this.openAsking(e);
         if (t - a.at > 45) return give('not_private');
       } else a.at = null;
       return;
@@ -767,6 +768,7 @@ export class DarkSuspicion {
     a.phase = 'answered';
     a.answeredT = Math.round(this.now());
     a.answer = String(text || '').slice(0, 160);
+    a.pending = true; // its consequences follow once the reply is out (afterWords)
     return v;
   }
 
@@ -853,10 +855,16 @@ export class DarkSuspicion {
       pre.touch = true;
       this.touchNow = { id: e.id };
     }
-    const v = this.decide(e, t);
-    if (v) pre.verdict = v;
+    // The verdict: decided once the words have reached her (talk's village emits player_heard
+    // as it hears and remembers them, before anyone is asked to word a reply); a village
+    // without that event: here, just before the original call (which hears them first thing).
+    const asking = this.asking?.id === e.id && this.asking.phase === 'open';
+    if (asking) {
+      pre.asking = true;
+      if (!this._hearsFirst) this.decide(e, t);
+    }
     const st = this.people[e.id];
-    if (!v && e.id === 'aveline' && st?.riteOffered && RX.rite.test(t)) {
+    if (!asking && e.id === 'aveline' && st?.riteOffered && RX.rite.test(t)) {
       pre.rite = this.atChapel(e) ? 'here' : 'there';
       this.riteNow = { id: e.id, where: pre.rite };
     }
@@ -868,6 +876,11 @@ export class DarkSuspicion {
     this.riteNow = null;
     if (!pre || !reply || typeof reply !== 'object') return reply;
     const offline = reply.source !== 'claude';
+    const a = this.asking;
+    if (pre.asking && a?.id === e.id && a.pending && a.verdict) {
+      a.pending = false;
+      pre.verdict = a.verdict;
+    }
     if (pre.verdict) {
       this.apply(e, pre.verdict);
       // Worded: she lingers a moment by you (the duty), then goes back to her day.
@@ -964,6 +977,16 @@ export class DarkSuspicion {
     if (this.installed) return;
     const bus = this.game?.bus;
     if (bus?.on) {
+      // Her asking's answer: decided once your words have reached her (talk: player_heard).
+      this._offs.push(
+        bus.on('player_heard', (p) =>
+          safe(() => {
+            this._hearsFirst = true;
+            const e = p?.npc;
+            if (e && this.asking?.id === e.id && this.asking.phase === 'open' && !p.asleep) this.decide(e, p.text);
+          }),
+        ),
+      );
       // Worry travels by meeting: only to the faithful and the teller's friends.
       this._offs.push(bus.on('village_talk', (p) => safe(() => this.onMeeting(p?.a, p?.b))));
       // Whoever tends you (helps you up, Mira at her cots) feels the cold of you.

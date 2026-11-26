@@ -467,3 +467,25 @@ test('a boss shrugs it off unless you are much stronger; then its own defeat pla
   assert.equal(defeated, g.player, 'its own defeat');
   assert.equal(unk.prey.boss, 1);
 });
+
+test('with a village that hears first (talk emits player_heard), the verdict is decided after the words reach her and before the wording', async () => {
+  const { g, unk, sus } = setup({ keep: ['aveline'] });
+  const av = near(g, 'aveline', 1, 0);
+  sus.st('aveline').signs = { hands: 1, breath: 1 };
+  sus.asking = { id: 'aveline', phase: 'open', t0: 0, openT: Math.round(sus.now()) };
+  const order = [];
+  const v = g.village;
+  v._darkWrapped = false;
+  v.playerSays = async (npc, text) => {
+    order.push(`heard:${sus.asking?.verdict ? 'decided' : 'open'}`);
+    g.bus.emit('player_heard', { npc, text, asleep: false });
+    order.push(`worded:${/BELIEVE|DOUBT/.test(unk.briefLine('aveline')) ? 'with verdict' : 'without'}`);
+    return { lines: ['(her own words)'], source: 'claude' };
+  };
+  sus.wrapTalk();
+  sus._hearsFirst = true;
+  const reply = await v.playerSays(av, 'A fever, I think. I have been ill.');
+  assert.deepEqual(order, ['heard:open', 'worded:with verdict']);
+  assert.equal(sus.st('aveline').asked?.verdict, 'believed');
+  assert.deepEqual(reply.lines, ['(her own words)'], 'Claude worded it: the game only decided');
+});
