@@ -38,7 +38,8 @@ test('settings: five tabs (Game, Controls, Sound & voices, Minds (Claude), Displ
 
 test('settings: Game → Practice holds the three action rows, each once, none of them a setting', () => {
   const all = Object.values(SETTINGS_LAYOUT).flat().flatMap((g) => g.actions || []);
-  assert.deepEqual(all, ['resetPoints', 'freePoints', 'trialMagic'], 'exactly these, once');
+  // (Round 14b: Minds holds one more, Back up: the Mind panel's export moved to Settings.)
+  assert.deepEqual(all, ['resetPoints', 'freePoints', 'trialMagic', 'backupMind'], 'exactly these, once');
   const practice = SETTINGS_LAYOUT.game.find((g) => g.id === 'practice');
   assert.equal(practice.title, 'Practice');
   assert.deepEqual(practice.keys, []);
