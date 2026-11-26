@@ -2820,8 +2820,9 @@ for the day and reaches the juror's prompt.
 
 The Unkindling (working name kept; LORE §2, "The Unkindling — the cold that takes"): a dark
 spell from the tempter's pact that puts out a person's flame from the inside. Built by soul as
-below (S20-1 to S20-6; §13b's bar, signs in the world and the faithful's asking are the next
-soul round: §37.9).
+below: S20-1 to S20-5 (§37.1–§37.8) and §13b, S20-6 (replaced) to S20-11 (§37.9–§37.12: the
+taken flame, the signs, the faithful who read them, known dark magic as dangerous and not
+evil, beasts and bandits as prey).
 
 ### 37.1 `game.unkindle` (`src/magic/unkindle.js`, registered through `src/core/plugins/soul.js`)
 
@@ -2838,38 +2839,56 @@ soul round: §37.9).
   carry no list). Never otherwise. `available()`: learned, or a magic trial (Settings → Practice
   → "Try all magic", `magic.trial`), which lends it for **training dummies only**.
 - **Targets:** `kindOf(e)` → `'person'` (a villager, Lyra, whoever walks with you, any actor with
-  a profile), `'tempter'`, `'boss'`, `'undead'`, `'beast'`, `'dummy'`, `'self'`. `check(e)` →
-  null or `{ reason, line }`: `'child'` (`isMinor`: "No. Not a child."), `'self'`, `'wall'`
-  (`walls.canReach`), `'far'` (`REACH` 26 px: close enough to touch), `'undead'` ("Nothing in
-  there to take."), `'beast'` (not this round: §13b S20-11), `'dead'`, `'carried'`, `'dummy'` (a
-  trial lends it for straw only). `targetInReach()` → `{ target, refusal }`: `game.lock.target`
+  a profile), `'tempter'`, `'boss'`, `'undead'`, `'bandit'`, `'beast'` (a hostile one),
+  `'harmless'` (a hen, the cat, a deer), `'dummy'`, `'self'`. `check(e)` → null or `{ reason,
+  line }`: `'child'` (`isMinor`: "No. Not a child."), `'self'`, `'wall'` (`walls.canReach`),
+  `'far'` (`REACH` 26 px: close enough to touch; a boss at its edge), `'undead'` ("Nothing in
+  there to take."; bats too, what gravelight wears), `'harmless'` ("Not a harmless thing."),
+  `'dead'`, `'carried'`, `'dummy'` (a trial lends it for straw only). Hostile beasts and bandits
+  may be taken: §37.12. `targetInReach()` → `{ target, refusal }`: `game.lock.target`
   first (blood, feature-detected), else the nearest in front within touch.
 - **Strength:** `powerOf(P)` (max health, attack, the weave in you (`spellPower`), `resist`, level,
-  times how whole you are now) against `strengthOf(e)` (max health, attack, defence, the watch or
+  times how whole you are now, times coldfire's `powerMul()`: a fuller bar takes stronger souls) against `strengthOf(e)` (max health, attack, defence, the watch or
   the hunt, a will in their traits, Lyra's weave and level; times how whole they are; asleep
   ×0.6, downed ×0.45). `verdict(e)` → `{ ratio, kind, dur, peak, struggle }`:
   `'easy'` (ratio < 1: a 2.5–3.5 s pull), `'close'` (1–1.6: 3.5–5 s, harder jerks that win back
-  ground, more time to be broken), `'resists'` (≥ 1.6, every boss and the tempter, and anyone
-  `murder.canKill` refuses: it comes only so far, then snaps back). At level 1 Elda and Bram are
+  ground, more time to be broken), `'resists'` (≥ 1.6, and anyone `murder.canKill` refuses: it
+  comes only so far, then snaps back). A boss (strength at least 90) or the tempter (600) is
+  taken only when the ratio is ≤ 1/1.6 (a hand much stronger: a long 'close' pull); otherwise
+  it shrugs the spell off at once, never held (no stun to chain). A pull's length is divided
+  by coldfire's `1 + 0.4·bar` (§37.9). At level 1 Elda and Bram are
   easy, Wys awake is close (asleep, easy), Hess and Rowan break free; a hurt stranger is weaker.
 - **The hold:** `begin(target?)` → `{ ok, reason, line }`, `release(why)`, `channel` (read by the
   look and the controls), `update(dt)`. While it lasts the target is **held and silent**:
   `silence(game, e, 0.6)` refreshed each frame (loudness 0), `lockTime`/`rootTime`, no wind-up,
-  no walking, facing you; you stand with a raised hand (`P.castPose`, `lockTime`). Phases:
+  no walking, facing you (a creature's own controller is set aside while it is held and given
+  back after: `HELD`). **The hold plants you** (the author: "I can move while I'm doing spells;
+  it should stop me"): from the first pull to the last of it drawn into your hand you stand
+  (`lockTime` refreshed, your velocity zeroed), turned to the one you hold with a raised hand
+  (`P.castPose`); the stick or the keys do not walk you. A roll (the dodge) is the way out: it
+  breaks the hold and you roll. (§14, the general rule for every weave, is the follow-up
+  stage's; this is the Unkindling's channel under it, `castMoveMul 0` in effect.) Phases:
   `pull` (k 0→1, with jerks), `tear` (0.22 s), `sag` (0.55 s: the kill falls at its end),
   `drawn` (0.45 s), or `snap` (0.4 s, a stronger soul) or `slip` (0.32 s, a broken hold). It
   breaks on: a hit on you (`damage` with an amount), you down, the target gone, carried or moved
   more than `HOLD_SLIP` (10 px) from where it was held, out of reach (`REACH + 14`), a wall
-  between, a panel opened, or letting go. A hold broken past `KNOW_AT` (15% of the pull) is felt:
+  between, a panel opened, a roll, or letting go. A hold broken past `KNOW_AT` (15% of the pull) is felt:
   they know what you tried (§37.8); before it, only a chill. `COOLDOWN` 2.5 s between holds.
 - **The death:** at the end of the sag, `murder.kill(v, player, { cause: 'unkindled', silent:
-  true, unmarked: true })` (no record, no death: the soul goes back). `tally++`, `deaths`, `mark`.
+  true, unmarked: true })` (no record, no death: the soul goes back). `tally++`, `deaths`, and
+  coldfire takes it (§37.9). Prey (a beast, a bandit) dies as creatures die (`combat.kill`: the
+  `death` event, drops and XP; its clash and spray muted; `unmarked`), `prey[kind]++`; a boss
+  taken plays out its own defeat (`beginDefeat`). Neither is a murder record (§37.12).
 - **Bus out:** `unkindle_learned`, `unkindle_begin { id, kind }`, `unkindle_end { id, outcome:
   'taken' | 'resisted' | 'broken' }`, `unkindled { id, seen }`, `unkindle_resisted { id, kind }`
   (the tempter's amusement: society may listen), `unkindle_attempt { id, knows, outcome }`,
-  `killing_known { id, cause, knownBy }` (§37.8).
+  `killing_known { id, cause, knownBy }` (§37.8); `unkindled` carries `kind` ('person',
+  'beast', 'bandit', 'boss'); coldfire emits `coldfire { bar, add, kind, mark }`; the faithful
+  `dark_asking { id, phase }`, `dark_verdict { id, verdict, caught, killer }`, `dark_rite`.
 - **`briefLine(id)`** (≤ 220 chars, feature-detected by talk's `sayBrief` and Lyra's prompt):
-  only what that person saw, was told or can feel (§37.8).
+  only what that person saw, was told or can feel: during the faithful's asking, her knowledge
+  and the verdict only (§37.11); else what they know of the deaths (§37.8), then the signs as
+  they perceived them or the dark magic they know of (§37.11).
 
 ### 37.2 Silent and unmarked killings (the base)
 
@@ -3011,16 +3030,107 @@ flame. Never me.").
   with no mark… nobody can say what took him"), two ("whisper of the Hollow; you bar your door"),
   three ("The Moot is frightened"). Never "souls" unless they know it.
 
-### 37.9 The price is that it shows (S20-6 as replaced by §13b)
+### 37.9 Coldfire, the taken flame (S20-6 as replaced, S20-7: `src/magic/coldfire.js`, `game.unkindle.coldfire`)
 
-No health is lost. `mark` (+1 a soul taken, at most 12; after 3 days without taking it fades 0.2 a
-day) gives `signTier()` 0–3. This round shows tier 1 and 2 only to one beside you who sees you
-(touch distance): their brief carries "a cold coming off them, like well-stone" / "their hands
-are cold as well-stone". The bar (coldfire), the signs drawn in the world, the faithful who read
-them and Aveline's asking (§13b, S20-7 to S20-11) are the next soul round; `mark`, `signTier`,
-`briefLine` and `attempts` are where they plug in.
+No health is lost: the price is that it shows (§37.10, §37.11). Two measures, saved in
+`plugins.unkindle.coldfire`:
+- **`bar`** 0–100, shown. Each soul adds `FILL[kind]` × its strength against a typical one
+  (0.6–1.5): a person 36, a bandit 20, a beast 8, a boss 60; straw nothing. It **ebbs** 14 a day
+  by the clock (sleep too): a full bar is gone in about a week. What it gives (`b` = bar/100):
+  Sword and Weave power **+30%·b** through the one stat pipeline (`stats.addProvider('coldfire')`:
+  `pct { atk, spellPower }`, label "Coldfire"; nothing in `magic.js` or `combat.js` changes;
+  a full bar is strong, never a one-shot on a boss); the Unkindling pulls `1/(1 + 0.4·b)` as
+  long; your power in its strength check × `(1 + 0.5·b)`.
+- **`mark`**, hidden: what you have taken over time (+1 a person, +0.5 a bandit, +0.3 a beast,
+  +1.5 a boss; at most 8). `settled` follows it up 0.5 a day (the signs come on over days) and
+  down at once; after 5 days without taking the mark fades 0.1 a day (weeks). `tier()` from
+  `settled`: **faint** ≥ 0.4, **clear** ≥ 1, **strong** ≥ 4 (three wolves and a bandit are
+  clear after about two days; four people and more, strong). An older save's `mark` carries
+  over, settled.
+- `rite()` (Aveline's, §37.11): the bar emptied, the mark × 0.4.
+- **On screen** (`src/ui/coldfire_view.js`, `src/styles/soul.css`): a thin cold-blue meter right
+  under health in the HUD's player card, only once the first soul is taken, its text the boost
+  now ("+19%"); it is a meter of the card, so it follows both phone orientations and the
+  Interface size. The Character panel gets a **Coldfire** box after "Running now": the bar,
+  "Sword and Weave +x%", how much faster the pull is, how fast it ebbs, the souls taken, and
+  what shows on you now. Both are added on instances (the card's health meter, the character
+  view's `render`), feature-detected.
 
-### 37.10 Seams
+### 37.10 The signs (S20-8: `src/render/soul_signs.js`, `game.unkindle.signs`)
+
+By coldfire's tier: **faint** — breath that fogs at night (a warm one too), hands ice-cold (felt
+only: §37.11); **clear** — flames and lamps lean away from you and gutter as you pass (warm
+lights within 60 px, this frame's light only, nudged away and sputtering; a tongue of flame bent
+from you drawn over the night's light), hens, the cat and the wild things shy (`creature.scare`,
+within 46 px), frost in your footprints at night (a print each step, melting in 26 s);
+**strong** — a pale cold glint in your eyes at night (on the sprite's own eyes), your shadow slow
+to follow (a second shadow that lags), the wildflowers in a cup by your bed (Wayhouse) droop and
+die. The world part runs anywhere (tests too: `shyAt`, `frostAt`, `leaningNear()` are what the
+faithful see); the drawing installs only on a browser game: a `drawShadow` on the player (the
+renderer's ground pass), and a wrapper on `lighting.composite` (the lean, then breath, eyes and
+flame tongues over the light). Reduce motion: the still version (a steady haze, no sputter, no
+lag: the shadow a fixed step behind). Cost: a few rects a frame and one pass over the lights.
+
+### 37.11 The faithful read the signs; dangerous, not evil (S20-9, S20-10: `src/society/dark_suspicion.js`, `game.unkindle.suspicion`)
+
+- **Perceiving.** Each grown person (never a child) builds their own `s` (0–100) only from what
+  they see (`sight.js`: breath and the eyes within 3 tiles at night, the leaning flames, the hens
+  shying, frost at night, the lagging shadow by day) or feel (a touch in an act, `*hugs*`,
+  `*takes her hand*`, within 40 px; whoever tends you when you are helped up, `revived`). Each
+  sign counts once an in-game hour. **Faith** weighs it: Aveline 1.6, anyone whose day has
+  `'pray'` (Wenna, Bram) 1, the superstitious (Corran) 0.7, the ordinary 0.15 and capped at 40
+  ("You're cold as a well stone. Are you ill?", their own barks). Aveline joins the household
+  flames she found guttered (`rec.flame.known`) to the signs (+15 each). Worry travels **by
+  meeting** (`village_talk`): only to the faithful and the teller's friends (bond tags). It falls
+  3 a day, 12 once the signs are gone.
+- **The asking.** At **60**, Aveline (else another of the faithful) comes **by day** (8–19),
+  **in private** (no other grown eyes on you within 7 tiles, `watchersOf`; whoever walks with you
+  may stay): a duty step walks her to you (`helpMove`), then she asks in her own words, built from
+  what she saw ("I've seen it: the candles lean away from you when you come in… And the Ironhand
+  flame guttered on the altar the hour Bram died… What are you carrying?"); the chat opens to her
+  with the field open (`ui.talkTo`, else `chat.selectTarget`), her line in the thread. Gone if you
+  walk off or after 2 minutes ("Another time, then."), again in 3 days.
+- **The verdict, first.** `village.playerSays` is wrapped on the instance: the original hears and
+  remembers your words first, as always; while her asking is open the game decides the verdict
+  before any wording (`decideVerdict(knowledge, answer)`, pure): a confession (dark magic,
+  souls, the beasts, the pact) → **knows**; a confession naming a dead person → knows, and it is
+  murder (she becomes a knower; §37.8 links it). A denial, an excuse or an evasion against what
+  she knows (`evidenceOf`: a faint sign 1, clear 2, strong 3, a guttered flame 3, being told 1):
+  she knows of the dark magic already (saw or told) → **knows, caught**; evidence ≥ 9 → knows
+  (undeniable); ≥ 6 → **doubted**; an illness against only the faint signs → **believed**;
+  evidence ≤ 2 → believed; else doubted. Her brief during the reply (`askingBrief`) carries only
+  her knowledge and the verdict, so one Claude call words it; offline her own lines.
+- **What follows.** Believed: `s` −45 and quiet 4 days (a sign weighs 0.35). Doubted: `s` +10,
+  opinion −2, quiet 2 days. Knows: **known dark magic** (`learnDark`): opinion −4 (caught in a
+  lie −6 more, `s` +20), wary; she asks you to stop (`askedStop`) and Aveline offers the **rite**
+  at the chapel flame: your choice, by saying so to her (at the chapel: `coldfire.rite()`, "Kneel
+  with me…"; elsewhere: "At the chapel…"). Known dark magic is never a crime: no case, no wanted,
+  no hunt, no grievance; reputation and the trial read only murder records.
+- **Seen.** A beast or a bandit taken before someone's eyes (`watchersOf` from where it fell and
+  from you): they saw dark magic (their own shaken words), the `'dark_magic'` rumour (valence
+  −0.15, severity 0.3: by meeting, never a grievance), and whoever hears it knows (`told`).
+  A PERSON unkindled before someone's eyes is murder (§37.8): the line holds in the game and
+  in the briefs ("Dangerous, not evil" for dark magic; "They are a killer" for a killing).
+- **Stopping and going on.** Once you have stopped (7 days without taking) and the signs have
+  dropped below where they were when she asked, one who asked you to stop says so ("You're
+  warmer. Thank you."). A soul taken after being asked: on their next sight of a sign, worry
+  becomes fear (+20; "You didn't stop."); never a crime without a killing.
+- **Lyra** perceives as anyone does (faith 0.5, her own memory of each sign); knowing your dark
+  magic she keeps it, feels fear, trusts a little less (her relationships), and her brief says
+  so: what she does about it (frightened, pleading, leaving if it goes on) is her own mind's.
+- Saved in `plugins.unkindle.suspicion` (per person: `s`, `signs`, `told`, `dark`, `asked`,
+  `askedStop`, `fear`, `flames`, `riteOffered`, `warmerSaid`); an asking in progress never is.
+
+### 37.12 Prey that is not murder (S20-11)
+
+Hostile beasts (`'beast'`: wolves, boars, slimes; anything not wildlife, not a pet) and bandits
+(`'bandit'`) are held like a person (their controller set aside) and taken: smaller souls for
+the bar, no murder record, no tally, no Hollow. Harmless things (`'harmless'`: hens, the cat,
+deer, rabbits) are refused and never offered; skeletons and bats have nothing to take; a boss
+or the tempter only by a hand much stronger (§37.1); training dummies only in practice. Never
+a child, never the player, never through a wall.
+
+### 37.13 Seams
 
 - Read, feature-detected: `pact_sealed` / `villain.hasPact` / `villain.tempter` (society),
   `game.lock.target` (blood), `murder.kill` options, `onFound`, `canKill`, `isPerson` (base and
@@ -3031,6 +3141,21 @@ them and Aveline's asking (§13b, S20-7 to S20-11) are the next soul round; `mar
   target's `draw` (tremble and sag, restored after).
 - Society reads `rec.linked`, `rec.knownKilling`, `rec.knownBy` and `killing_known` (its
   reputation and the tempter); talk reads `briefLine`.
+- §13b, also on instances: `village.playerSays` (the touch and the verdict: the original runs
+  first and unchanged, so every word is heard and remembered), `ui.character.render` (the
+  Coldfire box), the HUD card's health meter (the bar after it), the player's `drawShadow`
+  (the ground signs), `lighting.composite` again (the lean and the lit signs). A creature's
+  `controller` while held. The stat pipeline's `addProvider('coldfire')`. Read: `village_talk`
+  (worry by meeting), `revived` (who tends you), `npc.duty`/`helpMove` (the walk-up),
+  `ui.talkTo` (talk) or `chat.selectTarget`, `creature.scare`, `murder.fearOf`.
+- **For §13c (the dark path you can leave, the follow-up on society's files):** ending the pact
+  touches nothing here: `game.unkindle.learned` stays true (you keep what you learned), the
+  bar ebbs and the mark fades on their own, and the faithful's suspicion and known dark magic
+  stay what people know. Society may listen to `coldfire`, `dark_verdict` and `dark_rite`.
+- **For §14 (casting stops you, the follow-up):** the Unkindling's hold already plants the
+  caster (lockTime each frame, velocity zeroed, a roll breaks it); when §14 brings
+  `castMoveMul 0` for every channel, the Unkindling can set it too (`P.castMoveMul = 0` while
+  `channel` is in `pull`/`tear`/`sag`/`drawn`) without changing what the player feels.
 
 ## Polish (r14b)
 
