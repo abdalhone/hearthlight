@@ -71,6 +71,9 @@ indoors and out; *future*: dungeons (the Weeping Cut), other villages, other flo
 | Missions | Objectives can point there (`at`, `where`), markers and the edge arrow find it | `src/missions/*` |
 | Death and rescue | How far the sickroom is; whether anyone can carry you back from there | `src/survival/*` |
 | Saves | Only what differs from the generated world is saved (dirty objects, fog bits) | `src/world/objects.js`, `src/world/travel.js` |
+| Walls, sight, the use button | A new building, ruin or wall tile stops a blow, an eye and "use" by `map.blocksProjectile` and shut doors; lights under its roof stay inside | `src/world/walls.js`, `src/murder/witness.js`, `src/render/lighting.js` |
+| Breakables | A new prop kind gets a `BREAKABLE` toughness or stays whole; a prop a story needs is `story: true` (a boss's trail sign is spared by `trailBoss`); anything holding an inventory never breaks | `src/world/breakables.js` |
+| Promises and errands | Villagers keep their word inside the vale; a message for someone out past it waits for them to come home | `src/ai/social/commitments.js` |
 | Performance | Chunked ground, far objects update in turns, near-only spawns | `src/world/map.js`, `src/world/objects.js` |
 
 ## 4. Characters
@@ -108,6 +111,7 @@ stand (round 14 D4), talking (a panel open), in a cutscene, trading.
 | Travel | Places are reached and the map's fog lifts only while you move about | `src/world/travel.js` |
 | Missions | Objectives that need you standing, awake, at a place, at an hour | `src/missions/*` |
 | Saves | What is saved mid-state (down, carried, asleep) | `src/core/save.js`, `src/survival/*` |
+| Sleep | Any hour, any bed that is nobody's; never while down, carried, fighting or burning (the last stand); the clock's jump moves promises' due times and turns the calendar before the save | `src/world/rest.js`, `src/core/game.js` `sleep` |
 
 ## 6. Devices
 
@@ -119,7 +123,8 @@ slow phones (test at 4× CPU throttle).
 |---|---|---|
 | Panels | Fit the screen, a ✕ of at least 44 px, close by tap outside, finger-sized controls | `src/ui/*`, `scripts/phone_check.mjs` |
 | Controls | Every action reachable by touch, by keys (and the map's N), by pad | `src/core/input.js`, `src/ui/touch.js` |
-| The map | Drag, pinch, wheel, +/−; tools over the chart on a phone held sideways | `src/ui/world_map.js` |
+| The map | Drag, pinch, wheel, +/−; tools over the chart on a phone held sideways; with a mouse the panel is zoomed (Interface size), so pointer math divides by the canvas's zoom | `src/ui/world_map.js` |
+| Interface size | Desktop panels and HUD are drawn at `--uiz` (1.2 Normal, 1.45 Large); anything that reads pointer positions inside them must divide by its own zoom | `src/ui/ui_scale.js` |
 | Performance | Chunk painting, fog/overlays (one flat wash, not full-screen textures), object updates | `src/render/*`, `src/world/*` |
 | Text | Toasts and signs readable at phone size | `src/ui/toast.js` |
 

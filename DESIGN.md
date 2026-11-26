@@ -1381,7 +1381,12 @@ village. She should be able to ask help for other people. They can come and help
   `src/world/rest.js`). Your bed says "Sleep until morning" at **any hour** (no more
   "from 6 PM"): you wake at 7 the next morning (the same morning before 7), healed, and the
   game saves, as before. Not while a fight is near (`sleepBlocked`: a hostile within 10
-  tiles, a blow taken in the last 8 s, lying fallen, carrying someone): a toast says why.
+  tiles, a blow taken in the last 8 s, lying fallen, carrying someone, burning through the
+  Last Stand's minute: §25): a toast says why. *Round 13 x 14a:* any bed that is nobody's
+  (an empty house in Brindlecombe) sleeps you the same way and says the same words; "Your
+  bed", Menu → Home and the map's home mark still mean the Wayhouse bed (`home.js`
+  `homeBed`). The calendar turns before the sleep's save, so a birthday the night carried
+  you into is had once and saved as had (§32.10).
   **Every chair, stool, bench and pew is a seat** (`Seat` in objects.js): the use button
   says "Sit"; you sit in the villagers' own sitting pose (a chair at a table faces it,
   the rest face out), sharing their seats (`obj._sitters`: a full bench says so). Moving
@@ -1822,6 +1827,11 @@ Sleeping to morning (§19.8, now at any hour) breaks no promise: hours skipped a
 nobody could keep one in, so an open promise's day moves on with the clock (the walk a sleep
 interrupted starts again). "Teach me" asks for a lesson on its own; "show me…" only with the
 weave in it, so "show me where my bed is" is the way home (§19.8), never a lesson.
+*Round 13 x 14a:* a "go tell Lyra" while she is out past the vale (the wider world, §32)
+waits for her to come home: the villager says so ("She's out past the vale just now. I'll
+tell her when she's back"), never walks out into the wilds after her, turns back from a
+walk begun if she leaves (`commitments.lyraAway`, `stopWalk`), and a day lost to her
+absence breaks it with that reason ("Lyra was away, out past the vale").
 
 ### 23.3 Silence is a choice made after hearing (`src/ai/silence.js`; the author: "make them able to choose to not respond to me but they have to get my msg so they get it and decide to not answer")
 
@@ -2293,8 +2303,12 @@ arc reaches the props in front of it.
   Until then nobody leans on it or works at it: a villager's `near` and work props skip the
   rubble (`npc.js` `spotFor`), and a broken seat seats nobody (`rest.js` `seatFor`).
 - **Never**: buildings (tiles), doors, windows, beds, chests, lamps, hearths, wells, anything a
-  story needs (`story: true` on the object; `unbreakable` likewise), the notice board and signs
-  hung on buildings. A prop you can look at (the Holloways' barrels, the thatching reed, Pip's
+  story needs (`story: true` on the object; `unbreakable` likewise; every sign of a boss on its
+  trail, `trailBoss`: the toll board, the scored trunks, §32.4), the notice board and signs
+  hung on buildings. **Chests** (round 13 x 14a): nothing that holds an inventory ever breaks.
+  A blow (Strike, a heavy weave, the sword) neither opens nor spills a chest; a locked one
+  keeps its ways in (§32.6: its key, its keeper, or Force the lock at the chest with the use
+  button, theft if it is someone's), and its contents are never lost or doubled. A prop you can look at (the Holloways' barrels, the thatching reed, Pip's
   treasure crate) breaks like any other: its rubble has nothing to read, and its words come
   back with it when it is mended (the author: "a strike and a heavy spell should break trees
   and also anything else").
@@ -2317,7 +2331,19 @@ and the altar, candles, hearths and forges inside light nothing, so they never g
 roof; walk in, the roof fades (`map.drawRoofs`) and they shine. Windows, lamps and signs on
 the front wall are outside the roof and glow to the street at night. It applies to every light
 the renderer collects (objects, actors, flashes), in all three passes (the light map, the
-night lift and the glow).
+night lift and the glow). The witnesses' light (`witness.js` `lightAt`) keeps the same rule
+for every light, objects and entities alike: a lantern carried or the ember-ring (§27) under a
+roof lights its room, never the street outside the wall (round 13 x 14a).
+
+**Round 13 x 14a seams.** The wider world (§32) keeps every rule of this section at its
+negative tiles: Brindlecombe's walls and doors, the ruins, palisades and thickets stop a blow,
+an eye and the use button (`wallTile` reads `map.blocksProjectile`, which the wilds' tiles
+fill like the vale's); Brindlecombe's houses have roofs, so whatever lights under them stays
+inside; the square's rain barrels and crates, the graveyard and lookout fences, the east
+fork's cart and barrels break and mend as the vale's do and save by their positional ids
+(`barrel@-312,43`); a beam pins a wolf in the deep wood as anywhere, and a boss on its trail
+resists as Varek does. Tests: `tests/v11_seams.test.mjs`; in the browser
+`node scripts/seams_play.mjs`.
 
 Tests: `tests/walls.test.mjs`, `tests/hit_stun.test.mjs`, `tests/breakables.test.mjs`,
 `tests/interior_lights.test.mjs`. In the browser: `node scripts/world_check.mjs` (each scene by
@@ -2375,7 +2401,11 @@ bitset: the save grows by about a kilobyte), names of places you reached, lit wa
 you, Lyra, home, the mission objective, the ember-ring where your coins lie (any entity
 of type `ember_ring`, or any entity with `mapMark()`), and the bosses you have heard of.
 Drag, pinch, wheel or +/− to zoom, "Me" to come back; the tools sit over the chart so a
-phone held sideways keeps its height.
+phone held sideways keeps its height. With a mouse the panel is drawn at Interface size
+(§14, CSS `zoom`): a click and a drag divide screen pixels by the canvas's own zoom
+(`canvasZoom`), so the mark named is the one under the mouse and the chart follows it one for
+one. Home on the map is the bed the Home pointer leads to (`homeBed`). Menu → Map has the
+flag icon (round 13 x 14a).
 
 ### 32.4 Bosses you can find
 
@@ -2409,7 +2439,8 @@ pointed to on day one). Marked bosses show on the map with their names. Events:
 owner. No key: the keeper may open it (Lyra opens her own trunk for someone she trusts),
 or you may force the lock. Forcing or emptying someone's chest is theft (`crime`, kind
 `theft`, `owner`). Rowan gives the watch's footlocker key for Hold the Line. Loot
-(bandits', Brindlecombe's) is free.
+(bandits', Brindlecombe's) is free. Forcing is done at the chest (the use button, then
+Force the lock): a Strike or any other blow never opens, breaks or spills a chest (§31.3).
 
 ### 32.7 Footsteps by ground
 
@@ -2439,5 +2470,7 @@ it they turn a year older: the profile's `age` (which every prompt and line read
 Lyra's soul age change, a `birthday { id, name, age, day }` event goes out and the village
 hears of it. Children grow up with the rest; they stay unkillable by their build (child or
 teen), not by a number. The stranger does not know their own age. Old age does not kill
-anyone (yet), and sprites do not change with age (yet).
+anyone (yet), and sprites do not change with age (yet). Sleep (§19.8) jumps the clock at
+most one morning ahead: the calendar is turned in `game.sleep` before its save, so a
+birthday is never skipped by a reload and never had twice.
 
