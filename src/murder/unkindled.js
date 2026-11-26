@@ -64,7 +64,7 @@ export const SOUL_LINES = {
     'Help! {V} is dead— and there is not a mark on {him}!',
   ],
   mira: "No mark on {him}. Cold as stone… like the hollow wind took {him}, but there's been no wind.",
-  aveline: 'The {house} flame guttered {when}. That is when {he} went.',
+  aveline: '{House} guttered {when}. That is when {he} went.',
   lyraHorror: [
     'What did you— that was {V}. That light was {V}, and you closed your hand on it.',
     'No. No, no. I saw it leave {him}. You pulled {V} out of {himself}.',
@@ -114,12 +114,13 @@ export function hourPhrase(h) {
   return `a little after ${names[whole]}${part(whole)}`;
 }
 
-// The household's name for its flame: "the Ironhand flame", else "Bram's flame".
+// The household's flame on the altar: "the Ironhand flame" (a family name), else "Pip's flame".
 export function houseOf(profile, fallbackName = 'their') {
-  const n = String(profile?.name || '').replace(/"[^"]*"/g, '').trim();
+  const n = String(profile?.name || '').replace(/"[^"]*"/g, ' ').trim();
   const parts = n.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2 && !/^(Sister|Captain|Old)$/i.test(parts[parts.length - 1])) return parts[parts.length - 1];
-  return `${fallbackName}'s`;
+  const titled = /^(Sister|Captain|Old|Brother|Mother|Father)$/i.test(parts[0] || '');
+  if (parts.length >= (titled ? 3 : 2)) return `the ${parts[parts.length - 1]} flame`;
+  return `${parts.length ? parts[parts.length - 1] : fallbackName}'s flame`;
 }
 
 export class Hollow {
@@ -537,7 +538,7 @@ export class Hollow {
     const av = this.entity('aveline');
     if (!av || av.dead || this.murder?.dead?.aveline) return;
     rec.flame.said = true;
-    const text = fillLine(SOUL_LINES.aveline, this.vars(rec.id, { house: rec.flame.house, when: hourPhrase(rec.flame.hour) }));
+    const text = fillLine(SOUL_LINES.aveline, this.vars(rec.id, { House: cap(rec.flame.house), when: hourPhrase(rec.flame.hour) }));
     if (this.visible(av)) this.say(av, text, 'say');
     this.event('talk', `Sister Aveline: "${text}"`, { who: 'aveline', about: rec.id });
   }
@@ -561,7 +562,7 @@ export class Hollow {
       // Aveline at the altar: the guttered flame tells her the hour.
       if (rec.flame && !rec.flame.known && rec.id !== 'aveline' && avAt === 'chapel') {
         rec.flame.known = true;
-        this.event('flame', `At the altar, Sister Aveline found the ${rec.flame.house} flame burned low and guttered, ${hourPhrase(rec.flame.hour)}.`, { who: 'aveline', about: rec.id });
+        this.event('flame', `At the altar, Sister Aveline found ${rec.flame.house} burned low and guttered, ${hourPhrase(rec.flame.hour)}.`, { who: 'aveline', about: rec.id });
         if (rec.foundAt != null) this.avelineSays(rec);
       }
       if (rec.foundAt != null && !rec.miraSaw && rec.mystery && t >= (rec.miraAt ?? Infinity)) this.miraLooks(rec);
