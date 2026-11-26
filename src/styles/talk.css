@@ -71,3 +71,7 @@
   text-align: right;
   font-style: italic;
 }
+.chat .chat-head .chat-trade {
+  min-height: 44px;
+  height: auto;
+}

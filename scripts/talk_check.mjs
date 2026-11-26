@@ -144,6 +144,7 @@ async function run(S) {
     }
     g.companion.x = sq.x + 200;
     g.companion.y = sq.y + 120;
+    g.bubbles?.clear?.(g.companion); // what she said where the game began stays there
     // A Claude for the villagers that the check can steer: silent, or a plain answer.
     window.__vClaude = 'plain';
     window.__vTasks = [];
@@ -372,12 +373,21 @@ async function run(S) {
   st = await chatState();
   check(st.target === 'lyra' && !st.disabled, `[${tag}] 6 the field to her is open`, st.ph);
   const nBefore = await ev(() => window.__game.ui.chat.messages.length);
-  await say('please');
+  // She keeps her distance (12 tiles) as you come: the player steps back to ten tiles from
+  // where she is now, just as the word is said.
+  await tap('.chat-field');
+  await ev(() => {
+    const g = window.__game;
+    g.player.x = g.companion.x - 10 * 16;
+    g.player.y = g.companion.y;
+  });
+  await page.keyboard.type('please', { delay: 5 });
+  await page.keyboard.press('Enter');
   await page.waitForFunction((n) => window.__game.ui.chat.messages.length >= n + 2, nBefore, { timeout: 15000 }).catch(() => {});
   await wait(400);
   const lyraRow = await ev((n) => window.__game.ui.chat.messages.slice(n).filter((m) => m.from !== 'player').map((m) => m.text), nBefore);
-  check(lyraRow.length >= 1 && !lyraRow.some((t) => /catch that|won't talk/.test(t)), `[${tag}] 6 she answers, or shows her silence: ${lyraRow.join(' | ')}`);
-  check(await ev(() => window.__game.companion.mind.conversation.some((c) => c.role === 'player' && /\bplease\b/.test(c.text))), `[${tag}] 6 her record has the word`);
+  check(lyraRow.length >= 1 && !lyraRow.some((t) => /catch that|won't talk|too far away/.test(t)), `[${tag}] 6 she answers, or shows her silence: ${lyraRow.join(' | ')}`);
+  check(await ev(() => window.__game.companion.mind.conversation.some((c) => c.role === 'player' && /\bplease\b/.test(c.text))), `[${tag}] 6 her record has the word`, JSON.stringify(await ev(() => ({ conv: window.__game.companion.mind.conversation.slice(-3), target: window.__game.ui.chat.target, said: window.__game.ui.chat.messages.slice(-3).map((m) => m.from + ':' + m.text) }))));
   await shot('6-lyra-gone');
   await ev(() => {
     const g = window.__game;
@@ -407,6 +417,8 @@ async function run(S) {
     L.x = g.player.x + 6 * 16;
     L.y = g.player.y;
     g.camera.snap?.();
+    window.__partEnds = [];
+    g.bus.on('lyra_parting', (p) => window.__partEnds.push(p));
     a.setCompanionship('left', 'You hurt Pip.', { cause: 'villager', lineKey: 'to_left_villager' });
     window.__partingInfo = { st: a.companionship, active: a.parting.active, ledger: a.ledger.slice(-4).map((e) => e.deed), fear: a.stats().fear, target: !!a.behavior()?.currentTarget };
     return true;
@@ -420,7 +432,7 @@ async function run(S) {
   await say("I'm sorry. Please don't go.");
   await page.waitForFunction(() => !window.__game.companion.mind.autonomy.parting.active, null, { timeout: 30000 }).catch(() => {});
   const letter = await ev(() => window.__game.player.inventory.count('lyra_letter'));
-  check(letter === 1, `[${tag}] 7 her letter is in the bag`);
+  check(letter === 1, `[${tag}] 7 her letter is in the bag`, JSON.stringify(await ev(() => ({ ends: window.__partEnds, flag: window.__game.flags.lyra_letter && { onTable: window.__game.flags.lyra_letter.onTable } }))));
   await ev(() => {
     window.__game.ui.chat.close();
     window.__game.ui.openLetter('lyra_letter');
