@@ -1,9 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { makeGame, px, put } from './murder_world.mjs';
-import { partyPlugin } from '../src/core/party.js';
+import { makeGame, px, put, step, downBy, events } from './murder_world.mjs';
+import { partyPlugin, holderOf } from '../src/core/party.js';
 import { Chat } from '../src/ui/chat.js';
+import { companionView } from '../src/ui/companion_view.js';
+import { peopleList, lyraPage } from '../src/ui/people_view.js';
+import { afraidOptions } from '../src/entities/npc_dialogue.js';
+import { WorldMap } from '../src/ui/world_map.js';
+import { FINISH_HOLD } from '../src/murder/data.js';
 
 // Round 14b merge: the seams between the six workstreams (talk, party, blood, society,
 // polish, soul) that only exist once they are together. Each test is behaviour that was
@@ -61,4 +66,61 @@ test('talk x party: whoever walks with you is not picked for a chat by the well,
   assert.equal(v.requestChat(bram, tobias), false);
   g.party.release('dismissed');
   assert.equal(v.walksWithPlayer(bram), false);
+});
+
+test('blood x party: Lyra killed while she walks with you: the slot is empty, People is a memorial; a killed villager companion too', async () => {
+  const g = scene();
+  const L = g.companion;
+  assert.equal(g.party.holderId, 'lyra');
+  put(L, g.player.x + 14, g.player.y);
+  g.player.faceToward(L.x, L.y);
+  L.hp = 1;
+  g.combat.damage(g.player, L, 99, { exact: true, crit: false });
+  assert.ok(L.downed);
+  g.flags.finisherWarnedLyra = true;
+  g.input.down = (a) => a === 'attack';
+  assert.equal(g.murder.onAttackPress(g.player), true);
+  step(g, FINISH_HOLD + 0.4, 1 / 20);
+  assert.ok(g.murder.isDead('lyra'), 'the blow fell');
+  assert.equal(holderOf(g), null, 'the role is released when she dies');
+  assert.equal(companionView(g), null, 'the HUD slot is empty: no card, no quote');
+  const row = peopleList(g).find((x) => x.id === 'lyra');
+  assert.ok(row && row.dead && row.sub === 'In memory', 'People keeps her, in memory');
+  assert.equal(lyraPage(g).dead ?? true, true);
+  // A villager who walks with you dies the same way; the slot empties.
+  const bram = g.entities.get('bram');
+  bram.opinionOfPlayer = 80;
+  put(bram, g.player.x + 16, g.player.y);
+  assert.ok(g.party.invite(bram).ok);
+  assert.equal(holderOf(g), bram);
+  assert.ok(downBy(g, bram));
+  assert.ok(g.murder.kill(bram, g.player));
+  assert.equal(holderOf(g), null);
+  assert.ok(events(g, 'companion_changed').some((c) => c.from === 'bram' && c.to == null), 'released (struck by you, downed or dead)');
+  // Never a child: Pip cannot walk with you and cannot be killed.
+  const pip = g.entities.get('pip');
+  put(pip, g.player.x + 16, g.player.y);
+  assert.equal(g.party.invite(pip).ok, false);
+  assert.equal(g.murder.canKill(pip), false);
+});
+
+test("blood x talk: a posse out for you puts \"Give yourself up\" in an afraid person's dialog (murder.isHunted)", () => {
+  const g = scene();
+  assert.equal(typeof g.murder.isHunted, 'function');
+  const elda = g.entities.get('elda');
+  assert.ok(!afraidOptions(elda, g.player).some((o) => o.id === 'murder:surrender'), 'not hunted: no surrender');
+  g.murder.hunt = { state: 'searching', posse: ['rowan'], lastSeen: { x: 0, y: 0, t: 0 }, reports: {} };
+  assert.equal(g.murder.isHunted(), true);
+  assert.ok(afraidOptions(elda, g.player).some((o) => o.id === 'murder:surrender'), 'hunted: you can give yourself up to anyone');
+  g.murder.hunt.state = 'over';
+  assert.equal(g.murder.isHunted(), false);
+});
+
+test('blood x party: the map names a fallen village "Hearthvale (yours)" (occupation.placeName)', () => {
+  const g = scene();
+  const map = new WorldMap({ game: g });
+  g.travel = { marks: () => [{ kind: 'place', id: 'hearthvale', x: 10, y: 10, label: 'Hearthvale' }], seenTile: () => true, known: () => false, heard: {}, reached: {} };
+  assert.equal(map.marks().find((m) => m.id === 'hearthvale').label, 'Hearthvale');
+  g.occupation = { placeName: (id, name) => (id === 'hearthvale' ? `${name} (yours)` : name) };
+  assert.equal(map.marks().find((m) => m.id === 'hearthvale').label, 'Hearthvale (yours)');
 });

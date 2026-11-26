@@ -7,6 +7,14 @@ import { bossMarks } from '../world/boss_trails.js';
 import { homeBed, HOME_ID } from '../world/home.js';
 import { holderOf } from '../core/party.js';
 
+function safe(fn, fallback = null) {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+}
+
 // The map (DESIGN §32.3): the whole world as you have walked it. A small painted chart of
 // the ground (one pixel a tile), the parts you have not seen under a dark wash, the roads,
 // the places you have reached with their names, the lit waystones, you and whoever walks with you, your
@@ -301,8 +309,13 @@ export class WorldMap {
     const g = this.game;
     const out = [];
     const t = g.travel;
-    for (const m of t?.marks?.() || []) {
+    for (let m of t?.marks?.() || []) {
       if ((m.kind === 'place' || m.kind === 'waystone') && !(t.seenTile?.(Math.floor(m.x / TILE), Math.floor(m.y / TILE)) ?? true)) continue;
+      // A fallen village is yours (blood's occupation.placeName: "Hearthvale (yours)").
+      if (m.kind === 'place' && m.label) {
+        const named = safe(() => g.occupation?.placeName?.(m.id, m.label), null);
+        if (named && named !== m.label) m = { ...m, label: named };
+      }
       out.push(m);
     }
     // Home is where the Home pointer leads (world/home.js): your bed in the Wayhouse.
@@ -395,7 +408,7 @@ export class WorldMap {
     }
     this._drawn = drawn;
     const loc = g.locations?.at?.(g.player.x, g.player.y);
-    this.panel?.setTitle('Map', loc?.name || '');
+    this.panel?.setTitle('Map', (loc && safe(() => g.occupation?.placeName?.(loc.id, loc.name), null)) || loc?.name || '');
   }
 }
 

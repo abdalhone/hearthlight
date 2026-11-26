@@ -1660,6 +1660,11 @@ export class Murder {
     safe(() => Hunt.tickHunt(this));
   }
 
+  // Is a posse out for the stranger (talk's afraid dialog offers "Give yourself up")?
+  isHunted() {
+    return Hunt.active(this);
+  }
+
   // The hunt's part in a posse member's day, and their lifted leash (npc.js asks).
   chaseOf(npc, target) {
     return Hunt.chaseOf(this, npc, target);
