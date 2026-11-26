@@ -2021,7 +2021,9 @@ notices and has opinions (berserk frightens her).
   waking words say so); die with an empty purse and there is no new ring. One at a time,
   saved with the game (`survival.serialize().ring`, a few dozen bytes). A tag floats over
   it while it is in view and an ember arrow at the screen's edge points the way with the
-  paces to it (`ui/ember_ring_view.js`, clear of the HUD, the hotbar and the thumbs); maps
+  paces to it (`ui/ember_ring_view.js`, clear of the HUD, the hotbar and the thumbs: it
+  measures the mission line and the corner cards as drawn, so Interface size's zoom on a
+  computer never puts it on them, round 13 x 14a); maps
   read `survival.mapMarks()`. Lyra knows (her prompt). A rescue is not a death: carried
   to the sickroom you keep your purse (less Mira's bill). The final death leaves no ring.
   Only coins: items stay with you. (The watch's fine when it hauls you in stays 10%.)
