@@ -135,7 +135,10 @@ async function run(S) {
         await wait(40);
       }
     } else if (stickAt) {
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: hand });
+      // Lift only the stick's finger: the active points left are the hand's (a touchEnd would
+      // lift every finger, the hand's too).
+      if (hand.length) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: hand });
+      else await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       stickAt = null;
     }
   };
