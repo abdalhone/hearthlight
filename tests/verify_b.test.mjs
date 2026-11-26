@@ -151,3 +151,35 @@ test('per knower: a villager who never heard of your crime is not briefed as sha
   g.village.addRumor('attacked_villager', { victim: 'bram', witnesses: ['elda'] });
   assert.match(text(buildConversationTask(g, elda)), /is shaken/, 'told: now she is');
 });
+
+// Item 21 ("a burned store"), looked at: the general store burned at noon looked whole. Its
+// scorch was drawn among the people and things, under the roof the map draws over them, so
+// nothing showed; and Garrick stood at his door crying "Potions! Bread! Lanterns!" over his
+// burned shop. The map lets a plugin draw on a roof (roofDecor); the occupation scorches a
+// burned building's roof with it; and an owner whose shop burned says so instead of selling.
+test('a burned store shows on its roof, and its owner does not cry his wares over it', async () => {
+  const { Occupation } = await import('../src/world/occupation.js');
+  const g = makeMurderGame({ hour: 12 });
+  g.occupation = new Occupation(g);
+  const occ = g.occupation;
+  const st = g.locations.get('general_store');
+  const bld = g.map.buildings.find((b) => b.x < st.bounds.x + st.bounds.w && b.x + b.w > st.bounds.x && b.y < st.bounds.y + st.bounds.h && b.y + b.h > st.bounds.y);
+  assert.ok(bld, 'the store has a building on the map');
+  const ctx = () => {
+    const calls = [];
+    return { calls, save() {}, restore() {}, fillRect: (...a) => calls.push(a), drawImage() {}, set globalAlpha(v) {}, get globalAlpha() { return 1; }, set fillStyle(v) {}, get fillStyle() { return ''; } };
+  };
+  assert.equal(typeof g.map.roofDecor, 'function', 'the occupation draws on roofs');
+  const before = ctx();
+  g.map.roofDecor(before, bld, { x: bld.x * 16, y: bld.y * 16 - 16, w: bld.w * 16, h: bld.h * 16 }, 0, 0, 1, 1);
+  assert.equal(before.calls.length, 0, 'a whole roof is left alone');
+  occ.burn('general_store', g.player);
+  const after = ctx();
+  g.map.roofDecor(after, bld, { x: bld.x * 16, y: bld.y * 16 - 16, w: bld.w * 16, h: bld.h * 16 }, 0, 0, 1, 1);
+  assert.ok(after.calls.length > 40, `the burned roof is scorched (${after.calls.length} marks)`);
+  // Garrick by his burned shop: his own words for it, never his wares.
+  const garrick = g.entities.get('garrick');
+  const line = occ.burnedLine?.(garrick);
+  assert.ok(line && !/Potions|Buy something|Lanterns!/.test(line), `his line: ${line}`);
+  assert.equal(occ.burnedLine?.(g.entities.get('bram')) ?? null, null, 'Bram\'s smithy stands');
+});
