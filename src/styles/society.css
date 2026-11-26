@@ -203,3 +203,41 @@
     grid-template-columns: repeat(3, 1fr);
   }
 }
+/* Sideways phone: one pane at a time (Buy | Sell tabs, as upright), so each row fits on one
+   line beside their words; the worth note gives way to the price. */
+@media (max-height: 520px) and (min-width: 600px) {
+  .shop-tabs {
+    display: inline-flex;
+  }
+  .shop-panes {
+    grid-template-columns: 1fr;
+  }
+  .shop .shop-pane:last-child {
+    display: none;
+  }
+  .shop.show-sell .shop-pane:first-child {
+    display: none;
+  }
+  .shop.show-sell .shop-pane:last-child {
+    display: block;
+  }
+  .shop-pane h3,
+  .shop-worth {
+    display: none;
+  }
+  .shop-head {
+    gap: 8px;
+  }
+}
+/* Upright phone: the worth note gives way; the price never squeezes the name. */
+@media (max-width: 480px) {
+  .shop-worth {
+    display: none;
+  }
+  .shop-row .price {
+    flex: none;
+  }
+  .shop-row .item-img:first-child {
+    flex: none;
+  }
+}

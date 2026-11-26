@@ -193,16 +193,22 @@ export function localJuror(m, id, about, checked, defence) {
 
 function reasonFor(m, id, about, { vote, k, caught, provoked, claims }) {
   const V = name(m, about);
+  const r = roll(m, about, `${id}:why`);
+  const one = (list) => list[Math.floor(r * list.length) % list.length];
   if (caught.length) {
     const c = claims.find((x) => x.id === caught[0]);
-    return c?.kind === 'alibi' ? `They say they were somewhere else. I saw them with my own eyes. They are lying to this room.` : c?.kind === 'blame' ? `They put it on someone else. I know better.` : `What they told us is not true. I know it is not.`;
+    if (c?.kind === 'alibi') return one(['They say they were somewhere else. I saw them with my own eyes. They are lying to this room.', 'I saw where they were. It was not where they say.']);
+    if (c?.kind === 'blame') return one(['They put it on someone else. I know better.', 'That is a lie, and a cruel one. I know who it was not.']);
+    return one(['What they told us is not true. I know it is not.', 'I know that for a lie.']);
   }
-  if (k.saw === 'clear') return vote === 'mercy' ? `I saw it. But I saw ${V} go for them first, too.` : `I saw it with my own eyes. I will not unsee it.`;
+  if (k.saw === 'clear') return vote === 'mercy' ? `I saw it. But I saw ${V} go for them first, too.` : one(['I saw it with my own eyes. I will not unsee it.', `I was there. I watched ${V} die.`]);
   if (provoked) return `I saw ${V} strike first. That does not make it right. It makes it a fight.`;
   if (claims.some((x) => x.kind === 'confess')) return vote === 'mercy' ? 'They said it to our faces. That counts for something.' : 'They said it themselves. What else is there?';
-  if (vote === 'not_proven') return k.opinion >= 55 ? `I know them a little. I do not see it in them, and nobody here saw it.` : `Nobody here saw it done. I will not put anyone outside on a feeling.`;
-  if (vote === 'mercy') return `I think they did it. I am not sure they deserve the whole of it.`;
-  return k.kin ? `${V} was mine. Somebody did this. Everything points one way.` : `Everything the watch says points one way.`;
+  if (vote === 'not_proven') return k.opinion >= 55 ? one(['I know them a little. I do not see it in them, and nobody here saw it.', 'Would they do this? Not the one I know.']) : one(['Nobody here saw it done. I will not put anyone outside on a feeling.', 'Suspicion is not proof. Not proven.']);
+  if (vote === 'mercy') return one(['I think they did it. I am not sure they deserve the whole of it.', 'Guilty, I think. But I would not shut the door on them for good.']);
+  if (k.kin) return `${V} was mine. Somebody did this. Everything points one way.`;
+  if (k.opinion < 30) return one(['I never trusted them, and now this.', 'They came out of the snow, and now a grave. I have heard enough.']);
+  return one(['Everything the watch says points one way.', 'What the watch told us is enough for me.', 'I did not see it. But I heard what was found, and I believe it.']);
 }
 
 function coerce(r, id, knows) {

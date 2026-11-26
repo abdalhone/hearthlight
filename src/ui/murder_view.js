@@ -242,7 +242,7 @@ export class MurderView {
       const img = h('img', { class: 'portrait jury-face', alt: '', draggable: 'false', src: safe(() => portraitUrl(g, key, 'neutral'), '') || '' });
       const said = h('p', { class: 'jury-said', text: '…' });
       const vote = h('span', { class: 'jury-vote is-wait', text: 'weighing' });
-      const card = h('div', { class: 'jury-card' }, h('span', { class: 'portrait-frame' }, img), h('div', { class: 'jury-text' }, h('b', { text: e?.name?.split(' ')[0] || id }), said, vote));
+      const card = h('div', { class: 'jury-card' }, h('span', { class: 'portrait-frame' }, img), h('div', { class: 'jury-text' }, h('b', { text: safe(() => m.name(id), null) || e?.name?.split(' ')[0] || id }), said, vote));
       cards.set(id, { card, said, vote, img, key });
       grid.append(card);
     }
