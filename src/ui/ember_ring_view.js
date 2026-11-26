@@ -121,7 +121,10 @@ export class EmberRingView {
     const dy = p.y - cy;
     // Clear of the HUD: the cards and the quest line at the top, the hotbar at the bottom.
     const pad = 40;
-    const top = 74;
+    // Clear of the HUD as it is drawn (round 13's Interface size zooms it on a computer):
+    // below the mission line, and below the corner cards when the arrow is at a side.
+    const hud = this.hudClear();
+    const top = Math.max(74, hud.top);
     // (on a phone, above the thumbs: the stick and the buttons own the bottom corners)
     const touch = !!g.ui?.isTouch;
     const bottom = Math.max(46, touch ? Math.min(150, H * 0.28) : this.hotbarClear(H));
@@ -129,7 +132,9 @@ export class EmberRingView {
     const sy = dy ? (dy > 0 ? H - bottom - cy : top - cy) / dy : Infinity;
     const s = Math.min(Math.abs(sx), Math.abs(sy));
     const x = cx + dx * s;
-    const y = cy + dy * s;
+    let y = cy + dy * s;
+    if (x < hud.leftR && y < hud.leftB) y = Math.min(H - bottom, hud.leftB);
+    else if (x > hud.rightL && y < hud.rightB) y = Math.min(H - bottom, hud.rightB);
     const ang = Math.atan2(dy, dx);
     this.edge.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
     this.edgeTip.style.transform = `rotate(${ang.toFixed(3)}rad)`;
@@ -143,6 +148,30 @@ export class EmberRingView {
   }
 
   // How far up from the bottom the hotbar reaches (re-read now and then, not every frame).
+  // The HUD's top band, measured twice a second: { top, leftR, leftB, rightL, rightB } (px).
+  hudClear() {
+    const now = performance.now();
+    if (this._hud && now - (this._hudAt || 0) < 500) return this._hud;
+    this._hudAt = now;
+    const box = (sel) => {
+      const e = document.querySelector(sel);
+      if (!e || e.hidden || e.offsetParent === null) return null;
+      const r = e.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 ? r : null;
+    };
+    const quest = box('.hud-center .quest-line');
+    const left = box('.hud-cards');
+    const right = box('.hud-right');
+    this._hud = {
+      top: quest ? quest.bottom + 14 : 0,
+      leftR: left ? left.right + 12 : -1,
+      leftB: left ? left.bottom + 14 : 0,
+      rightL: right ? right.left - 12 : Infinity,
+      rightB: right ? right.bottom + 14 : 0,
+    };
+    return this._hud;
+  }
+
   hotbarClear(H) {
     const now = performance.now();
     if (now - (this._hbAt || 0) > 500) {

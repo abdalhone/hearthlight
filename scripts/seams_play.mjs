@@ -343,6 +343,10 @@ async function run(S) {
   await shot('6-woke-ring-arrow');
   check(died.coins >= 31 && died.y < 0, `[${tag}] the coins wait in an ember-ring up in the wilds (${died.coins}, ${died.where})`);
   check(inside(edge), `[${tag}] the ember arrow is on screen at this size`);
+  const edgeLabel = await rectOf('.er-edge-label');
+  const hudBoxes = await Promise.all(['.hud-center .quest-line', '.hud-cards', '.hud-right'].map((q) => rectOf(q)));
+  const hit = hudBoxes.findIndex((b) => overlap(b, edge) || overlap(b, edgeLabel));
+  check(hit < 0, `[${tag}] the ember arrow and its words keep clear of the HUD (mission line, cards)`, hit >= 0 ? ['mission line', 'cards', 'right corner'][hit] : '');
 
   // ---------- the menu: Map and Home ----------
   if (S.phone) await tapSel('.hud-menu');
