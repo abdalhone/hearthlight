@@ -631,6 +631,17 @@ export class Village {
     return (e.talkingUntil ?? -Infinity) > t;
   }
 
+  // Walking with the player (party's holder, §34): not free for a chat by the well.
+  walksWithPlayer(e) {
+    const party = this.game?.party;
+    return !!e && e !== this.game?.companion && !!safe(() => party?.isCompanion?.(e), false);
+  }
+
+  // Party's take(): whatever pair talk they were in ends; they walk with the player now.
+  endTalk(e) {
+    if (e && this.isTalking(e)) this.stopPlaying();
+  }
+
   // On their way somewhere (a talk is a nod in passing), as against milling about a room
   // or a stall (they stop for a proper talk: npc.social holds them still while it plays).
   stationary(e) {
@@ -656,7 +667,7 @@ export class Village {
 
   // Pick two people near each other and let them talk.
   startSomething(t) {
-    const all = this.villagers().filter((e) => this.awake(e) && !this.busyWithPlayer(e) && !this.isTalking(e));
+    const all = this.villagers().filter((e) => this.awake(e) && !this.busyWithPlayer(e) && !this.isTalking(e) && !this.walksWithPlayer(e));
     if (all.length < 2) return null;
     const cands = [];
     const evening = this.hour() >= 18 && this.hour() < 22.5;
@@ -734,6 +745,7 @@ export class Village {
   // A villager's own social() asks the village to start a chat with someone beside them.
   requestChat(a, b) {
     if (!a || !b || a === b) return false;
+    if (this.walksWithPlayer(a) || this.walksWithPlayer(b)) return false;
     const t = this.now();
     if (t - (this.pairAt.get(pairKey(a.id, b.id)) ?? -Infinity) < HOUR * 1.5) return false;
     if (t - (this.personAt.get(a.id) ?? -Infinity) < 20 || t - (this.personAt.get(b.id) ?? -Infinity) < 20) return false;
@@ -756,7 +768,7 @@ export class Village {
     let best = null;
     let bestW = 0;
     for (const e of this.villagers()) {
-      if (!this.awake(e) || this.busyWithPlayer(e) || this.isTalking(e)) continue;
+      if (!this.awake(e) || this.busyWithPlayer(e) || this.isTalking(e) || this.walksWithPlayer(e)) continue;
       const d = dist(e, lyra);
       if (d > 64) continue;
       if (t - (this.pairAt.get(pairKey('lyra', e.id)) ?? -Infinity) < HOUR * 2) continue;

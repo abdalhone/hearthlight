@@ -255,6 +255,7 @@ export class Chat {
     const kind = KINDS.has(m.kind) ? m.kind : null;
     const msg = { from, text, name: m.name || null, t: now, kind, memories: refs, offer: m.offer && m.offer.name ? m.offer : null, note: m.note ? cleanLine(m.note, 300) : '', el: null };
     this.messages.push(msg);
+    if (from === 'lyra') this.noteShared(refs);
     if (this.messages.length > MAX_MESSAGES) this.messages.shift();
     if (this.mounted) {
       this._render(msg);
@@ -284,6 +285,19 @@ export class Chat {
     if (!msg || !refs.length) return;
     msg.memories = refs;
     if (msg.el && !msg.el.querySelector('.mem-wrap')) msg.el.append(this.memoryChips(refs));
+    if (msg.from === 'lyra') this.noteShared(refs);
+  }
+
+  // What she cited to you in talk is shared now (contract §33/§34.5: party keeps it in
+  // mind.shared, and People shows it; a left or gone Lyra confides nothing new).
+  noteShared(refs) {
+    const ids = (Array.isArray(refs) ? refs : []).map((r) => r?.id).filter(Boolean);
+    if (!ids.length) return;
+    try {
+      this.game?.bus?.emit?.('memories_shared', { who: LYRA, ids });
+    } catch {
+      /* a listener's trouble is not the chat's */
+    }
   }
 
   // Lyra's thinking (the brain drives it); a villager's shows while their answer comes.
