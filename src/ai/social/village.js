@@ -1021,10 +1021,10 @@ export class Village {
         if (!isPlayer(p.actor)) return;
         // A theft (round 14b, DESIGN §35.3): 'stole' (or 'robbed_the_dead'), never an
         // assault, and only from those who saw it (the event carries its witnesses).
-        if (p.kind === 'theft') {
+        if (p.kind === 'theft' || p.kind === 'arson') {
           const seen = Array.isArray(p.witnesses) ? p.witnesses.filter((id) => typeof id === 'string') : [];
           if (!seen.length) return;
-          this.addRumor(p.dead ? 'robbed_the_dead' : 'stole', { victim: p.owner || p.victim?.id || null, witnesses: seen, saw: seen, source: seen[0] });
+          this.addRumor(p.kind === 'arson' ? 'burned_store' : p.dead ? 'robbed_the_dead' : 'stole', { victim: p.owner || p.victim?.id || null, witnesses: seen, saw: seen, source: seen[0] });
           return;
         }
         if (!p.victim?.id) return;

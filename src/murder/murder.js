@@ -1673,7 +1673,7 @@ export class Murder {
   // ------------------------------------------------------------------ npc hooks
 
   entryFor(npc, entry, hour) {
-    return Grief.entryFor(this, npc, entry, hour) || Hunt.entryFor(this, npc, entry, hour);
+    return Grief.entryFor(this, npc, entry, hour) || Hunt.entryFor(this, npc, entry, hour) || safe(() => this.game.occupation?.entryFor?.(npc, entry, hour), null);
   }
 
   dialogOptions(npc) {
@@ -1693,6 +1693,8 @@ export class Murder {
   }
 
   refusesTrade(npc) {
+    // A burned store sells nothing (round 14b, world/occupation.js).
+    if (npc?.id && safe(() => this.game.occupation?.shopClosed?.(npc.id), false)) return true;
     return Grief.refusesTrade(this, npc);
   }
 

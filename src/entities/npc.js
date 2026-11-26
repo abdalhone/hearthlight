@@ -1436,7 +1436,7 @@ export class NPC extends Actor {
     // A theft is its own, lighter crime (round 14b, DESIGN §35.3): never a fight, never an
     // assault, and known only to those who saw it (containers.js and the body's pockets
     // emit it only with witnesses).
-    if (p.kind === 'theft') return this.onTheft(p);
+    if (p.kind === 'theft' || p.kind === 'arson') return this.onTheft(p);
     const kind = p.kind === 'knockout' ? 'knockout' : 'assault';
     const day = g.clock?.day ?? 1;
     const log = crimeLog(g);
@@ -1524,10 +1524,11 @@ export class NPC extends Actor {
     if (!sawIt && !robbed) return;
     if (sawIt) {
       this.coldDay = g.clock?.day ?? 1;
-      this.adjustOpinion(robbed ? -12 : p.dead ? -10 : -5, p.dead ? 'saw the stranger rob the dead' : 'saw the stranger steal');
+      const arson = p.kind === 'arson';
+      this.adjustOpinion(arson ? -25 : robbed ? -12 : p.dead ? -10 : -5, arson ? 'saw the stranger set a fire' : p.dead ? 'saw the stranger rob the dead' : 'saw the stranger steal');
       if (now(g) - this.shoutAt > 4) {
         this.shoutAt = now(g);
-        this.say(p.dead ? 'Are you— are you going through their pockets?' : robbed ? "That's MINE. Put it back!" : 'Hey! That is not yours!', { kind: 'shout', target: actor });
+        this.say(arson ? 'FIRE! They set it alight! FIRE!' : p.dead ? 'Are you— are you going through their pockets?' : robbed ? "That's MINE. Put it back!" : 'Hey! That is not yours!', { kind: 'shout', target: actor });
       }
       this.faceToward(actor.x, actor.y);
     } else if (robbed) this.wrongedDay = g.clock?.day ?? 1;

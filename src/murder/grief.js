@@ -580,7 +580,9 @@ export function applyHeirs(m) {
 // them): standIn('lyra') is 'lyra' while she lives, and stays 'lyra' after (nobody else
 // gives her lessons, her waystone or her oath).
 export function standIn(m, giver) {
-  if (!giver || giver === 'board' || !m.knownDead(giver)) return giver;
+  // A child taken away from an emptied house (round 14b, occupation.js) passes on too.
+  const away = !!giver && m.entity(giver)?.absent?.cause === 'taken_away';
+  if (!giver || giver === 'board' || (!m.knownDead(giver) && !away)) return giver;
   if (giver === 'lyra') return giver;
   for (const id of STAND_INS[giver] || []) if (alive(m, id)) return id;
   return 'board';

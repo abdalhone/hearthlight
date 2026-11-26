@@ -706,6 +706,8 @@ export class Autonomy {
       if (seen == null && !seesActor(this.game, this.lyra(), victim)) return undefined;
     }
     if (k === 'knockout') return this._villagerDowned(victim);
+    // A fire set (round 14b): not a blow on anyone; she hears of it by meeting people.
+    if (k === 'arson') return undefined;
     if (/^(theft|steal|stole|stealing)$/.test(k)) {
       // Only a theft she saw (round 14b, the shared sight rule): the event names who saw it.
       const seen = Array.isArray(witnesses) ? witnesses : null;

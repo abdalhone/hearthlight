@@ -13,13 +13,50 @@
 
 import { blowAtChests, ownersNotice } from '../../world/containers.js';
 import { installLock } from '../lock_on.js';
+import { Occupation, ScorchLayer } from '../../world/occupation.js';
 import { LockLayer } from '../../render/lock_layer.js';
 
 // Blows on locked chests (a Strike or a heavy weave forces the hasp; lighter blows get a
 // word), and owners who find their chest short (theft unseen, D10).
 function installChests(game) {
-  game.chestBlow = (x, y, r, blow) => blowAtChests(game, x, y, r, blow);
+  game.chestBlow = (x, y, r, blow) => {
+    const out = blowAtChests(game, x, y, r, blow);
+    if (blow?.fire) game.occupation?.fireAt?.(x, y, r, blow);
+    return out;
+  };
 }
+
+// The village under the stranger's hand (round 14b, V-19): burned stores, taken houses,
+// children who hide and are taken away. Saved with the plugins.
+const occupationPlugin = {
+  id: 'occupation',
+  name: 'The village under your hand',
+  description: 'Burned stores, claimed houses, children hiding and taken away (round 14b).',
+  install(ctx) {
+    const g = ctx?.game;
+    if (!g || g.occupation) return;
+    g.occupation = new Occupation(g);
+    try {
+      g.entities?.add?.(new ScorchLayer(g));
+    } catch (err) {
+      console.warn('[blood] the scorch layer failed', err);
+    }
+    if (this._pending !== undefined) {
+      g.occupation.deserialize(this._pending);
+      this._pending = undefined;
+    }
+  },
+  update(dt, ctx) {
+    ctx?.game?.occupation?.update?.(dt);
+  },
+  serialize(ctx) {
+    return ctx?.game?.occupation?.serialize?.() ?? null;
+  },
+  deserialize(data, ctx) {
+    if (ctx?.game?.occupation) ctx.game.occupation.deserialize(data);
+    else this._pending = data;
+  },
+};
 
 const chestsPlugin = {
   id: 'blood_chests',
@@ -54,4 +91,4 @@ const lockPlugin = {
   },
 };
 
-export default [installChests, chestsPlugin, installLockOn, lockPlugin];
+export default [installChests, chestsPlugin, installLockOn, lockPlugin, occupationPlugin];
