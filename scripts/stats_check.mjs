@@ -561,21 +561,23 @@ async function run(S) {
   const gains = nexts.map((x) => Number((x.next.match(/([0-9.]+)%/) || [])[1]));
   check(gains.every((gv, i) => i === 0 || gv <= gains[i - 1]) && gains[0] > gains[gains.length - 1], `${tag}: "Next" shrinks as the points grow`, nexts.map((x) => x.next.replace('Next: ', '')).join(' → '));
   // And it is true: one more point really moves the walk by what the line says (a share of
-  // the pace you have now, read from the pipeline with one point more).
+  // the normal pace, as every speed percentage is, read from the pipeline with one point more).
   const truth = await ev(() => {
     const g = window.__game;
     const P = g.player;
     const pr = g.progression;
+    const parts = g.stats.breakdown(P, 'speed');
+    const normal = parts.reduce((t, b) => t + b.add, 0) * parts.reduce((m, b) => m * b.mul, 1);
     const before = g.stats.all(P).speed;
     pr.points.grace += 1;
     g.stats.touch();
     const after = g.stats.all(P).speed;
     pr.points.grace -= 1;
     g.stats.touch();
-    return ((after - before) / before) * 100;
+    return ((after - before) / normal) * 100;
   });
   const said = gains[gains.length - 1];
-  check(Math.abs(said - truth) <= 0.051, `${tag}: at 80 Grace "${nexts[nexts.length - 1].next}" is what one more point does (${truth.toFixed(3)}% of the walk now)`);
+  check(Math.abs(said - truth) <= 0.051, `${tag}: at 80 Grace "${nexts[nexts.length - 1].next}" is what one more point does (${truth.toFixed(3)}% of the normal pace)`);
   phase = 'might';
   // Might the same way: its next point keeps a good share (strength keeps growing), where
   // Grace's speed has bent hard.
