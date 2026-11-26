@@ -3736,6 +3736,12 @@ The rule is fixed; the numbers are what play tunes (`src/magic/balance.js`).
   on every card whose giver is gone ("Captain Rowan is dead. Wys sees it done now."), a "What
   is done stays done" section under Active, closed missions under Done; `missions` toasts a
   pass-on once (`flags.passed_<id>`) and emits `mission_passed`.
+- **He keeps his post and hears you out.** The Tempter does not perceive the village (no
+  flee from its killers, no coming to see its dead: `perceive()` is empty, a flee or help is
+  put back to his post, the walker stopped each beat), so a killing the bell announces never
+  walks him off the gate. He does not go at dawn while the chat is still answering or holds a
+  line of yours for him (`hearing()`): every message is delivered first. A price named on an
+  earlier night and never answered is off the table the next night.
 - **Saved** in `plugins.villain`: `ended, endedDay, endedNight, endedHow, oathBroken,
   oathKnownBy, hostile, returns, returnOffer, asks, askNight, soulHeld, flamesOut`; an older
   save reads with none of it.
