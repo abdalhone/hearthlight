@@ -1235,6 +1235,14 @@ So "mending the Song" would mean finding willing singers for every verse, which 
 | The drowned verse-house (9.9) | Corran | The lake, and the stranger |
 | The map is a chart of the verse (9.9) | Nobody | The stranger reading its word |
 | Owlsend's survivors (9.7) | Hess | Ketty Brask at the ward line |
+| What the pilgrim at the ruins gate is (9.11) | Nobody; Aveline guesses the moment she hears of him ("that is not a man") | Meeting him; the way he comes apart |
+
+### 11. The pilgrim at the ruins gate (round 14b: the villain's path)
+
+**Known.** Nothing, at first. After the stranger has beaten something the vale feared, or after a killing of theirs is known, a cold blue lamp burns some nights outside the Sunken Ruins' gate, and a tall man in a grey hood waits under it. He gives his name as Isembard, "a pilgrim of the old shrine, once". He is courteous, patient and faintly amused, never raises his voice, and never tells an outright lie; he leaves things out.
+**What he offers.** The strongest magic there is: the shadow that drinks, a price paid in blood, and "the quiet hand" that puts a person's flame out from the inside, with no sound and no mark (the Unkindling). The price is every grown soul under Hearthvale's bell. Never the children: he has "no use for small flames", and says they would be taken down the road and live. He will teach before, on the stranger's word (a debt), or after, when it is quiet. If the village's flames go out, the ward goes out, and the ruins wake.
+**Rumored.** Once someone is told: a madman; a bandit spy; a ghost of the shrine. Aveline, hearing of the cold blue light and the courteous voice, says at once that it is not a man.
+**The truth (hidden).** A hundred and ten years ago three pilgrims went below the shrine in the upper halls and never came back, and the Moot locked the gate at the chapel's asking (Section 3). Isembard was one of them. What waits at the gate is the ruins' gravelight wearing him, the way it wears the bones of the dead and walks them as skeletons (Section 2). It is borrowed light, and it wants paying back. It cannot cross a living ward; violence inside the bell-reach thins the ward (9.4), and a village whose flames are all out has no ward at all. That is why it wants the village dead, and why it is patient: the ruins have been waking since midsummer, and it is in no hurry. Struck down, it comes apart like frost on a window into cold blue light, and the light goes back into the ground. Nobody in Hearthvale knows any of this, and Varek's men, who brought out the blue crystal, have never seen him.
 
 ---
 

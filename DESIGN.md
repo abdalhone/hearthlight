@@ -2125,8 +2125,11 @@ notices and has opinions (berserk frightens her).
   the ward with nothing strong: "it could have been the bandits"). The lead (Rowan, else
   Wys, Hess, Alder) comes to ask: truth, lie, dodge or confess per question; ≥ 0.6 →
   "Go quietly / Run". The Moot (Alder, else Elda, Petra…) tries the stranger: guilty
-  (a confession, a clear eyewitness, or suspicion ≥ 0.75) → *outside* for 3 days, the
-  kept flame put out and barred, half the coin to the family; or not proven. Wanted and
+  → *outside* for 3 days, the kept flame put out and barred, half the coin to the family;
+  or not proven. Round 14b (§36.5): the stranger speaks a defence in their own words and
+  each juror weighs it on their own knowledge (one Claude call each); the verdict emerges
+  from the votes, and mercy is a lighter sentence (one day outside). The old arithmetic
+  (a confession, a clear eyewitness, or suspicion ≥ 0.75) remains for the absent. Wanted and
   never caught: the Moot judges in their absence.
 - **Grief and the world**: mourning (family 30 days, close friends 14, friends 4; family
   stay home of a morning, pray at dusk), grief in their first words, the Moot meets, the
@@ -2530,9 +2533,9 @@ lookout first; Hold the Line is a line to hold; The Count sends you to Brindleco
 ### 32.9 A shop that buys what you carry (the author: "a shop to sell my stuff")
 
 Gale's Goods buys anything worth anything: Garrick's own prices for what he names
-(`shop.buys`), and half its worth for any other item of value (`shop.buysAll: 0.5`; not
-keys, quest items or coin). The shop's sign says so. The full selling shop of round 14b
-can build on `buysAll`.
+(`shop.buys`), and a share of its worth for any other item of value (not keys, quest items
+or coin). The shop's sign says so. Round 14b's full shop (four merchants by taste, one
+stock, haggling, stolen goods) is §36.2.
 
 ### 32.10 People grow older (the author: "make people age as well")
 
@@ -2541,8 +2544,8 @@ turns every 12 days. Everyone has a birthday (a day of the year fixed by their n
 it they turn a year older: the profile's `age` (which every prompt and line reads) and
 Lyra's soul age change, a `birthday { id, name, age, day }` event goes out and the village
 hears of it. Children grow up with the rest; who is a child is decided by age (round 14b,
-§34.2: `isMinor`, under 16), so a child stops being one on the birthday that makes them 16. The stranger does not know their own age. Old age does not kill
-anyone (yet), and sprites do not change with age (yet). Sleep (§19.8) jumps the clock at
+§34.2: `isMinor`, under 16), so a child stops being one on the birthday that makes them 16. Round 14b (§36.3): seasons, the pace setting, Petra's
+reckoning of the stranger's age, looks that follow the years, and death of old age. Sleep (§19.8) jumps the clock at
 most one morning ahead: the calendar is turned in `game.sleep` before its save, so a
 birthday is never skipped by a reload and never had twice.
 
@@ -2775,46 +2778,153 @@ a watch that knows arrests you; `player.crime` is read per knower, not as one sh
 
 ## 36. Society (workstream society; the author: "should they forgive me?")
 
-### 36.1 Reputation (`src/society/reputation.js`)
+Everything registers through `src/core/plugins/society.js` (plugin objects: reputation,
+villain, aging, trade; installers: `installVillainHooks`, `installAging`). Nobody's profile is
+edited: tastes, wares, stock and the tempter live in their own tables.
 
-`game.reputation.of(id)` and `game.reputation.titles({ knownTo })` (the Butcher of
-Hearthvale, Oathbreaker, the Unkindler). Only deeds someone knows count, as they know them:
-seen (the sight rule), told face to face, the bell, the road's word carried by travellers who
-meet; never what nobody saw. It listens to `villager_killed`, never `villager_died`. Guards and
-children read it, and talk's prompts (`titles`).
+### 36.0 Days (`src/core/time.js`)
 
-### 36.2 The shop
+A night slept through midnight is a new day like any other: `clock.skipTo(hour)` and
+`clock.skipDays(n)` go through one `advance(hours)` that emits `new_day { day, skipped: true }`
+once per midnight crossed, before `time_skip`. So the village's morning, the quests, Lyra's
+day plan, the murder's morning (Hess walks the woods), old age and the shops' restock all
+hear a slept night exactly once (round 14b leftover).
 
-Buy and sell at Garrick, Bram, Fennick and Elda by taste, stock and haggling. Selling reads
-`game.provenance.of(itemId)`: stolen goods to someone who knows the owner are risky; the shop
-`take()`s the entries it sells before removing the items (§35.4).
+### 36.1 Reputation (`src/society/reputation.js`, `game.reputation`)
 
-### 36.3 Ages and deaths nobody did
+Derived from the truth, never a stored score: the murder records, the rumours' `heardBy`,
+the provenance ledger's `seenBy`, the trial's caught lies, and a short list of oaths.
+- `counts({ knownTo })` → `{ killedKnown, killedSecret, proven, unkindledKnown, thefts, lies,
+  oathsBroken, oathsKept, rescues }` as that person knows them (no `knownTo`: as anyone does).
+- `knows(rec, id)` / `knowsDeed(m, rec, id)`: they saw it (`knowsKiller`), the bell rang, the
+  Moot's verdict (its heads, and whoever heard its `convicted` news), Lyra's own belief, or
+  soul's `rec.knownBy` for a linked Unkindling.
+- `knownAsKilling(m, rec)`: a blade's death is a killing once seen or found; an Unkindling
+  (`cause 'unkindled'`) only once seen (`known 'witnessed'`), linked (`rec.linked` /
+  `rec.knownKilling`, bus `killing_known { id }`) or proven. Deaths nobody did
+  (`rec.natural`) are never deeds.
+- `titles({ knownTo })` → `[{ id, title, bad, why }]`: the Butcher of Hearthvale (3 known
+  killings), a killer (1–2), the Unkindler, Oathbreaker (a broken oath: betraying the
+  tempter), a thief (2 seen), a liar (2 caught), the one who carries the fallen (3 rescues,
+  no killings), the one who kept the ward (the hero ending) — and any title they have HEARD
+  (rumour kinds `title_*`, by meeting).
+- `look()` (on deaths, verdicts, rumours, each morning): a title newly known goes out as a
+  rumour with `heardBy` = those who know (`title_known { id, title, knownBy }`); the first day
+  anyone knew it starts the road's clock: `roadWord()` after `ROAD_DELAY_DAYS` (2), and a
+  carter's line at the road's places (`enter_location` at the fork, the Long Mile…;
+  `road_word`).
+- `briefLine(id)` (≤ 220 chars) for prompts; talk's `sayBrief` reads `titles({ knownTo })`.
+- Listens to `villager_killed`, never `villager_died`. Saved: oaths, heroes, when titles were
+  first known; the rest is rebuilt on load.
 
-- `murder.die(v, { cause })` (the base, decision D13): the record and body of a killing with
-  none of its consequences: `natural: true`, no witnesses, alarm, case or wanted, no
-  `seenMurder`; `markGone` with the cause; unmarked and silent by default; emits
-  `villager_died { id, cause }` and never `villager_killed`. A minor never dies of age
-  (`cause: 'age'`). Found later (`found()`): grief and a funeral, no case and no blade
-  ("No mark on him: his time had come"); society may own its lines through `onFound` (§37.3).
-  Every reader of `Object.values(murder.dead)` that means a killing skips `rec.natural`.
-- `calendar.dateLabel()` ("Day 9, early autumn, year 1") and `calendar.briefLine(id)`, read by
-  party's HUD and People and by talk's prompts. Settings: `yearDays` (12 / 24 / 48 / 96), `oldAge`.
-  `isMinor` follows the calendar, so a child grows into an adult the game treats as one.
+### 36.2 The shop (`src/world/trade.js`, `game.trade`; UI `src/ui/dialog.js` renderShop)
 
-### 36.4 The villain path (`src/story/villain.js`)
+- Merchants: Garrick (anything of worth, ~0.45), Bram (weapons, armour, boots, ore, ~0.55),
+  Mira (potions, herbs, moonpetal, slime, bat wing, 0.6), Elda (food, 0.5); `TASTES`, and a
+  profile's own `shop.buys` overrides. `shopOf(game, npc)` merges a profile's wares with
+  `WARES` (Bram's gear, Mira's potions and tonics, Elda's soups). `isMerchant(npc)` gives the
+  Trade option (Mira has it now).
+- `priceFor(game, npc, id, 'buy'|'sell', { haggled, markup })`: by mood (opinion and
+  familiarity bands), a won haggle (a tenth), a blood price. Never a loop: anyone pays at most
+  `SELL_CAP` of the least anyone asks after every discount.
+- One stock: `DAILY` per merchant; where the village's errand stock names the item it is the
+  same stock (`villageLife.stock`); sold out is said; the morning restocks and tops up purses
+  (`PURSE`); selling adds to their stock and is paid from their purse.
+- `haggle(npc)`: once a day each, by nature (Garrick welcomes it, Wenna never) and mood.
+- Stolen goods: a sale reads `game.provenance` (`stolenOf`), and `take()`s the entries it
+  sells before the pack loses the item (§35.4). The owner, kin or someone who cares, or a
+  unique piece may know it (seeded): refused in their words, colder, a `stole` rumour
+  (`theft_recognized`). A fond Garrick, or Garrick after the Butcher, fences what is not his
+  at half ("I don't ask").
+- One graded refusal (`stance(game, npc)` → `{ refuse, markup, fence, why }`, read by
+  `npc_dialogue.refusesTrade` and `grief.refusesTrade`): kin of someone they know you killed
+  never; anyone who knows, not for `FRESH_DAYS` (3); then a blood price (+25% a death, at most
+  double); after the Butcher, nobody but Garrick's fence; a case they believe of about one of
+  theirs. A refusal is always their line; Trade stays on the list.
+- UI: n left / sold out, price against worth, buy steppers, Sell 1 / All, the stolen mark, a
+  mood and discount badge, Haggle, an inline "Sure?" before selling gear, a rare piece or your
+  last one, a tap on a row for what it is; 44 px on touch; one pane at a time on a phone.
 
-- `game.villain.hasPact()`; society emits `bus 'pact_sealed' { gifts: [...] }` when the pact
-  is made (soul listens, §37.4). The tempter speaks through a persona (§33.3) and counts the
-  village's dead from `villager_killed` only. The endings read `game.occupation`.
+### 36.3 Ages and deaths nobody did (`src/world/calendar.js`, `src/world/aging.js`, `src/art/age_look.js`)
 
-### 36.5 The trial
+- `murder.die(v, { cause })` (the base, D13): the record and body of a killing with none of
+  its consequences. Found (`found()`), a death of age is owned by aging's `onFound` handler:
+  the finder's own words ("In his sleep"), no case, no blade, no Moot (`grief.onFound` skips
+  the Moot for `rec.natural`), "Died of old age" on the epitaph, Lyra's grief without
+  suspicion (her prompt says "died of old age", never murdered).
+- The calendar: day 1 early autumn; four seasons, each early, mid and late (`season()`,
+  `seasonName()`); `dateLabel()` ("Day 1, early autumn, year 1"); `briefLine(id)` (the date,
+  their age, a birthday; ≤ 200 chars). Settings → Game → The years: `yearDays` (12 / 24 / 48 /
+  96; ages kept by anchors when it changes; an old save reads at twelve) and `oldAge`.
+  Lyra's birthday is at midsummer; the dead stop aging and get no birthday; the stranger's
+  age is Petra's reckoning (25 at a new game; the waking morning is the birthday). A
+  birthday: `birthday { id, name, age, day, adult? }`, a toast ("Tansy is sixteen today:
+  grown, to the village."), a `birthday` rumour for kin, a word of their own when you are
+  near, Lyra's notice (`mind.noticeText`).
+- `isMinor` follows the calendar, so a child grows into an adult the game treats as one;
+  `text.isChild`, Lyra's `protectWorth`, the errands' `CHILDREN` and `toneFor` go by age.
+- Looks: `ageLook(appearance, age, baseAge)`: greying from 50, grey 65, silver 80; lines from
+  50; stooped 75, bent 85; child → teen at 13 → grown at 16. Painted lazily once per stage
+  (`id~key`), `spriteKey` set on load and birthdays; portraits follow it. A grown child gets a
+  grown body (health and pace).
+- Old age (`game.aging`): a seeded daily chance from 77 (`chanceOf`), never in the first year,
+  never a child, never Hobb, Wenna or Petra while the Maren thread is open, off by setting;
+  a failing day abed at home (Mira and Aveline visit: `entryFor`), death in the small hours
+  through `murder.die(v, { cause: 'age' })`, found by kin in the morning.
 
-A free-text defence; one Claude call per juror, in parallel (at most 7), each with only its
-own brief: what that juror saw (the sight rule), heard (the hearing rule: what and where,
-never who) or was told face to face. A lie counts as caught only if
-`checkClaim(...).knownBy` includes that juror. The heard-today unease (`npc.uneasy`) is saved
-for the day and reaches the juror's prompt.
+### 36.4 The villain path (`src/story/villain.js`, `src/story/tempter_data.js`)
+
+- The tempter, Isembard (LORE §9.11): a visitor NPC (`profile.visitor`, a `Tempter` subclass
+  with his own dialogue), at night outside the ruins gate once a boss has fallen or a killing
+  of the stranger's is known; a cold blue lamp; gone at dawn. Talkable like anyone: the chat
+  reaches him (`village.playerSays` is wrapped for him alone), his words are heard and kept
+  first; online his persona rules (`TEMPTER_RULES`, `profile.mind`), offline his lines.
+- The offer: the village's grown souls (never the children) for gravelight. The game decides
+  a pact or a refusal before anyone words it (dialogue options, or clear words in the chat:
+  "teach me after", "teach me now", "no").
+- `seal('before'|'after')` → `pact_sealed { gifts, pact }`: before gives the dark essence,
+  bloodprice and the Unkindling now (a debt); after lends the Unkindling now and pays the rest
+  (`pact_paid`: every weave) when the village is empty. `hasPact()`: sealed and not broken.
+  Soul listens and calls `game.unkindle.learn()` (§37.4).
+- Kills: from `villager_killed` with `by 'player'` only, counted once known as killings
+  (`knownAsKilling`); never `villager_died`. `livingAdults()` (adults, alive, not fled, and a
+  blow could take them); `emptied()` reads `game.occupation.emptied()` when blood provides it.
+- Endings: **villain** (pact kept, village empty): the last flame goes out, the ward lets go,
+  the ruins wake; a scene, his wages; the life closes (`save.closeLife`, an end page in the
+  memorial's shape; `life_closed { ending: 'villain' }`). **Hero**: warn the watch, Reeve,
+  chapel or huntress (`murder:villain:warn`, carried by the murder's dialog hook), fight him
+  (struck, he turns: `FACTION.UNDEAD`, leash at the gate); downed, he comes apart into blue
+  light: the ward holds, the save continues, a hero's name; beating him after a pact, or
+  warning after it, is Oathbreaker (`reputation.oath('tempter')`, `pact_broken`).
+- Saved in `plugins.villain`; he is never saved as a villager (`serialize()` → null).
+
+### 36.5 The trial (`src/murder/defence.js`, `src/murder/jury.js`, `grief.trial`; UI `murder_view.js`)
+
+- The watch's account, then `MurderView.defence({ about, chair })` → `{ text, quick }`: a
+  field (with dictation) and three chips (I did it / It was not me / Say nothing); closing it
+  is a silent plea; the tap that skipped the scene cannot send it.
+- `parseDefence(text)` → claims (alibi with its place, not there, never met, self-defence,
+  accident, blame, character, mercy, confess, deny); `checkClaim(m, rec, claim)` →
+  `{ lie, knownBy, proof }` from the record (who, where, when, provoked), the sightings near
+  the hour, the eyes that saw it, the one blamed; an unknown place is unverifiable; what the
+  watch said aloud to the Moot is known to the whole room (`checkDefence(…, { room, spokenBy })`).
+- `jurorsOf` (the chair and the living heads, at most 7); `jurorBrief` holds only that juror's
+  knowledge (what they saw, what the watch said to the room, the rumours they heard, their
+  opinion and familiarity, their care for the dead, fear, the day's unease (`npc.uneasy`),
+  the other deaths they know of, and the claims they can catch); `deliberate`: one quick
+  Claude call each, in parallel, one 25 s budget (`BUDGET_MS`), the rest `localJuror`
+  (deterministic); a `caught` id counts only if that juror is in `knownBy`.
+- "The Moot weighs it" (`MurderView.weighing`): each face fills in with a word and a vote;
+  "Hear the verdict". `tally`: guilty + mercy against not proven, the chair breaks a tie;
+  mercy outnumbering guilty is a lighter sentence (one day outside, a quarter of the coin, the
+  flame left lit). Each juror's reason is spoken (`verdictFor`), then the chair's verdict.
+- Caught lies: `lie_caught` in the record's answers, a `lied_about` rumour. The result
+  `{ guilty, mercy, plea, suspicion, votes, claims, tally }` reaches `applyVerdict`, Lyra's
+  `onVerdict` and `moot_verdict { …, mercy, votes }`.
+- Saved: `case.trial { defence, quick, claims, votes, t, day, state, sentence }` and
+  `trialPending.deliberating`: a reload re-runs it without the defence asked again and without
+  Claude asked again (the votes already in are kept; the rest weigh it alone).
+- `opts.plea` alone is the old arithmetic (`judge`), for the absent and for tests.
 
 ## 37. Soul (workstream soul; the author: "I kill him with no sound, with nothing… even if they find him, they will be shocked how is he dead")
 
