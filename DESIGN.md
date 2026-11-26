@@ -3618,3 +3618,38 @@ Workstream polish takes the small things the checks left. As built:
   over a speech bubble (bubbles.js belongs to party and talk).
 - Its CSS is in `src/styles/polish.css`; `src/core/plugins/polish.js` stays empty (nothing
   here needs a plugin). Tests: `tests/polish.test.mjs`; the check: `scripts/polish_check.mjs`.
+
+## 38. The round 14b merge: where the workstreams meet
+
+The six workstreams (talk §33, party §34, blood §35, society §36, soul §37, polish) were
+merged in that order onto `r14b/base`. Each kept its own hunks (plan §4). These are the
+contracts that only exist once they are together, and how the merge holds them
+(`tests/r14b_merge.test.mjs` checks each; `scripts/r14b_story.mjs` plays the author's list on
+all three screens):
+
+- **Cited memories** (talk → party): the chat emits `memories_shared {who: 'lyra', ids}`
+  whenever a line of Lyra's carries memory chips (shown at once or attached later); party
+  keeps them in `mind.shared`, which People shows. A left or gone Lyra confides nothing new.
+- **Pair talk and the companion** (party → talk): `village.endTalk(e)` ends whatever chat
+  by the well the new holder was in; `village.walksWithPlayer(e)` keeps the holder out of
+  new pair talk and out of Lyra's chats while they walk with you.
+- **The hunt in the afraid dialog** (blood → talk): `murder.isHunted()` (the posse is out,
+  `hunt.active`) adds "Give yourself up" to anyone's afraid options.
+- **The fallen village on the map** (blood → party): the map's place labels and title go
+  through `occupation.placeName(id, name)`: "Hearthvale (yours)".
+- **One refusal for every shop** (society, with blood and talk): `trade.stance(game, npc)`
+  also refuses for a burned store (`occupation.shopClosed`, why `'burned'`, said in their
+  words); `village.standing().refusesTrade` reads the same rule; a frightened merchant keeps
+  Trade on the afraid list (answered in their fear).
+- **A child who knows** (blood → society): `occupation.knowsKiller(child)` asks reputation's
+  per-knower count (`reputation.counts({knownTo}).killedKnown`), not a guessed shape.
+- **News before the funeral** (blood → society): a death of age found by kin is known to the
+  village within the hour (blood's news by meeting, or the bell and the chapel); the funeral
+  is planned then, still with no case and no Moot.
+- **The pact and the Unkindling** (society → soul): checked together, not changed:
+  `pact_sealed` teaches it; an unseen Unkindling counts for the tempter and the reputation
+  only after `killing_known`.
+- **Not built by anyone, left open**: D3's forgiven first swing at a calm person (talk left it
+  to combat, blood did not build it); a merchant companion's shop while they walk with you
+  (party's open note); casting that plants you for every weave (plan §14, the follow-up
+  stage; only the Unkindling's hold plants you now).

@@ -390,6 +390,12 @@ async function run(S) {
     return { rec: g.murder.dead.corran ? { cause: g.murder.dead.corran.cause, natural: g.murder.dead.corran.natural } : null };
   });
   await wait(2600);
+  // The village knows within the hour (blood, round 14b: news by meeting, or the bell and the
+  // chapel); the funeral is planned then.
+  await ev(() => {
+    window.__game.clock.t += 40;
+  });
+  await wait(800);
   const found = await ev(() => {
     const g = window.__game;
     return { found: g.murder.dead.corran?.foundAt != null, case: !!g.murder.cases.corran, moot: g.murder.moots.some((x) => x.about === 'corran'), funeral: g.murder.funerals.some((f) => f.about === 'corran'), killed: window.__ev.some((e) => e.t === 'villager_killed' && e.p.id === 'corran') };
