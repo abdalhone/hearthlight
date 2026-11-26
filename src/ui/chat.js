@@ -991,6 +991,11 @@ export class Chat {
     toggleClass(this.el, 'to-npc', true);
     const reach = !!e && isVillager(e) && this.inReach(e);
     this.tradeBtn.hidden = !reach;
+    // Their dialog's own name where they have one (the pilgrim at the gate trades in pacts,
+    // not goods: verify-b); everyone else's is a shop, a gift and work.
+    const label = reach ? e?.profile?.dialogLabel || 'Trade · Give · Work' : null;
+    const lab = label && this.tradeBtn.querySelector('.btn-label');
+    if (lab && lab.textContent !== label) lab.textContent = label;
     setText(this.title, e?.name || this.targetName(id));
     const st = standingOf(g, e);
     const bits = [];

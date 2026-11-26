@@ -26,6 +26,10 @@ const APPROACH_MAX = 40; // s: never chases the player for longer
 const LINE_GAP = 3.4; // s between her lines
 const ANSWER_WINDOW = 25; // s the chat is open to her for an answer
 const ONLINE_WAIT = 15000; // ms: Claude's farewell, else her own words
+// A blow from the player while the scene runs ends it (her ledger's deeds).
+const STRUCK = ['hit_lyra', 'slapped_lyra', 'shoved_lyra', 'lethal_attack', 'downed_lyra'];
+// Held down when the chat opens: the player is busy walking or fighting.
+const BUSY_KEYS = ['up', 'down', 'left', 'right', 'attack', 'dodge'];
 
 function safe(fn, fallback = null) {
   try {
@@ -129,7 +133,7 @@ export class Parting {
       this.leaveLetter(state, { reason, onTable: true });
       return false;
     }
-    this.st = { phase: 'approach', state, reason, cause, t: 0, lines: partingLines(this.a, state, { P, reason }), i: 0, next: 0, answer: '', windowEnd: null, online: null };
+    this.st = { phase: 'approach', state, reason, cause, t: 0, since: this.a.now?.() ?? 0, lines: partingLines(this.a, state, { P, reason }), i: 0, next: 0, answer: '', windowEnd: null, online: null };
     this.askClaude();
     const b = this.a.behavior?.();
     safe(() => b?.setDirective?.({ type: 'follow', target: 'player', distance: 'close' }, { quiet: true }));
@@ -189,6 +193,15 @@ export class Parting {
       this.end('interrupted');
       return;
     }
+    // Struck while she says it, or fighting back now (verify-b): no standing to talk. The
+    // letter is left on the table.
+    const b = this.a.behavior?.();
+    const fighting = !!(b?.currentTarget && !b.currentTarget.removed && !b.currentTarget.dead);
+    const struck = (this.a.ledger || []).some((e) => e && STRUCK.includes(e.deed) && e.t > (st.since ?? Infinity));
+    if (fighting || struck) {
+      this.end('interrupted');
+      return;
+    }
     st.t += dt;
     const d = Math.hypot(l.x - p.x, l.y - p.y);
     if (st.phase !== 'approach' && d > WALKED_OFF) {
@@ -233,12 +246,16 @@ export class Parting {
     }
   }
 
-  // The chat to her, open for an answer (the field is never locked; the window is hers).
+  // The chat to her, open for an answer (the field is never locked; the window is hers). It
+  // never takes the keys from someone walking or swinging (verify-b: "wasd" and "jjj" went
+  // into the field mid-stride): then the field waits for T, Enter or a tap.
   openChat() {
     const g = this.game();
     const ui = g?.ui;
     if (!ui) return;
     safe(() => (typeof ui.talkTo === 'function' ? ui.talkTo('lyra') : ui.chat?.open?.(false)));
+    const busy = BUSY_KEYS.some((k) => !!safe(() => g.input?.down?.(k), false));
+    if (busy) safe(() => ui.chat?.field?.blur?.());
     safe(() => ui.chat?.addMessage?.({ from: 'system', text: `${this.a.lyra?.()?.name || 'Lyra'} is leaving you. Say something, if you want; she is listening.`, kind: 'act' }));
   }
 

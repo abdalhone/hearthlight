@@ -143,9 +143,15 @@ export function jurorBrief(m, id, about, checked, defence) {
   lines.push(`Their defence, in their words: "${String(defence || '').slice(0, 500) || '(they said nothing)'}"`);
   const mine = (checked || []).filter((c) => c.lie && (c.knownBy || []).includes(id));
   const knows = mine.map((c) => c.id);
-  if (mine.length) lines.push(`Claims YOU know are false: ${mine.map((c) => `${c.id} (${c.kind}${c.proof ? `: ${c.proof.replace(/^\w+ saw you/, 'you saw them')}` : ''})`).join('; ')}.`);
+  // "You saw them" only to whoever did; the rest of the room was told it (checkDefence).
+  const sawIt = (c) => !Array.isArray(c.saw) || c.saw.includes(id);
+  const proofFor = (c) => (sawIt(c) ? c.proof.replace(/^\w+ saw you/, 'you saw them') : `${c.proof.replace(/ saw you/, ' saw them')}, and said so to the Moot`);
+  if (mine.length) lines.push(`Claims YOU know are false: ${mine.map((c) => `${c.id} (${c.kind}${c.proof ? `: ${proofFor(c)}` : ''})`).join('; ')}.`);
   const supports = (checked || []).filter((c) => c.supports && (c.knownBy || []).includes(id));
-  if (supports.length) lines.push(`What you saw bears out: ${supports.map((c) => c.kind.replace('_', ' ')).join(', ')}.`);
+  const seen = supports.filter(sawIt);
+  const told = supports.filter((c) => !sawIt(c));
+  if (seen.length) lines.push(`What you saw bears out: ${seen.map((c) => c.kind.replace('_', ' ')).join(', ')}.`);
+  if (told.length) lines.push(`What was said to the Moot bears out: ${told.map((c) => `${c.kind.replace('_', ' ')}${c.saw?.[0] ? ` (${name(m, c.saw[0])} saw it, and said so)` : ''}`).join(', ')}.`);
   lines.push('Answer as JSON: {"vote": "guilty"|"not_proven"|"mercy", "belief": 0..1, "reason": string, "caught": [claim ids]}.');
   let text = lines.join('\n');
   if (text.length > 2400) text = `${text.slice(0, 2399)}…`;
@@ -202,7 +208,12 @@ function reasonFor(m, id, about, { vote, k, caught, provoked, claims }) {
     return one(['What they told us is not true. I know it is not.', 'I know that for a lie.']);
   }
   if (k.saw === 'clear') return vote === 'mercy' ? `I saw it. But I saw ${V} go for them first, too.` : one(['I saw it with my own eyes. I will not unsee it.', `I was there. I watched ${V} die.`]);
-  if (provoked) return `I saw ${V} strike first. That does not make it right. It makes it a fight.`;
+  if (provoked) {
+    const saw = !Array.isArray(provoked.saw) || provoked.saw.includes(id);
+    if (saw) return `I saw ${V} strike first. That does not make it right. It makes it a fight.`;
+    const W = name(m, provoked.saw[0]);
+    return one([`${W} saw ${V} strike first. That does not make it right. It makes it a fight.`, `${W} saw who struck first. I will not call a fight a murder.`, `If ${W} says ${V} went for them first, I believe it. A fight, then.`, `${W} has no reason to lie for the stranger. ${V} struck first.`]);
+  }
   if (claims.some((x) => x.kind === 'confess')) return vote === 'mercy' ? 'They said it to our faces. That counts for something.' : 'They said it themselves. What else is there?';
   if (vote === 'not_proven') return k.opinion >= 55 ? one(['I know them a little. I do not see it in them, and nobody here saw it.', 'Would they do this? Not the one I know.']) : one(['Nobody here saw it done. I will not put anyone outside on a feeling.', 'Suspicion is not proof. Not proven.']);
   if (vote === 'mercy') return one(['I think they did it. I am not sure they deserve the whole of it.', 'Guilty, I think. But I would not shut the door on them for good.']);

@@ -38,6 +38,8 @@ export const HOUSES = Object.freeze(['smithy', 'ember_kettle', 'herbalist', 'far
 const HIDE_SECONDS = 2.5 * 37.5; // a child stays hidden this long after seeing the killer
 const TAKE_HOUR = 9; // the cart comes at this hour of the morning after
 const SMOKE_DAYS = 1; // smoke rises this long after a burning
+// An owner by their burned shop (verify-b: never their wares over the ashes).
+const BURNED_LINES = ['Everything I had. Gone in an hour.', 'Who would do this? Who?', 'Twenty years of work. Look at it.', "Don't. Just… don't ask me to sell you anything."];
 
 function safe(fn, fallback = null) {
   try {
@@ -62,6 +64,8 @@ export class Occupation {
     this.fallen = null; // day the village was emptied
     this._smokeT = 0;
     this._t = 0;
+    // A burned building shows on its roof (the map's roof pass; verify-b).
+    if (game?.map) game.map.roofDecor = (ctx, b, geo, ox, oy, time, alpha) => this.drawRoof(ctx, b, geo, ox, oy, time, alpha);
   }
 
   // ---------------------------------------------------------------- who lives where
@@ -92,6 +96,66 @@ export class Occupation {
   shopClosed(npcId) {
     for (const [loc, who] of Object.entries(STORE_OF)) if (who === npcId && this.burns[loc]) return true;
     return false;
+  }
+
+  // An owner whose shop burned says so, in place of crying their wares (npc.js asks it for
+  // their idle line). -> a line, or null.
+  burnedLine(npc) {
+    if (!npc?.id || !this.shopClosed(npc.id)) return null;
+    const i = Math.floor((this.game?.time ?? Math.random() * 10) / 7) % BURNED_LINES.length;
+    return BURNED_LINES[(i + BURNED_LINES.length) % BURNED_LINES.length];
+  }
+
+  // The building on the map a burned location stands in (tile rects overlap).
+  burnedAt(b) {
+    if (!b) return null;
+    for (const [id, rec] of Object.entries(this.burns)) {
+      const lb = safe(() => this.game.locations.get(id).bounds, null);
+      if (lb && b.x < lb.x + lb.w && b.x + b.w > lb.x && b.y < lb.y + lb.h && b.y + b.h > lb.y) return { id, rec };
+    }
+    return null;
+  }
+
+  // Scorch on the roof itself (map.roofDecor; the roof is drawn over the world, so a scorch
+  // drawn among the people never showed): blackened patches, a burned-through hole, and
+  // embers for a day or two. geo is the roof's geometry in world pixels.
+  drawRoof(ctx, b, geo, ox, oy, time = 0, alpha = 1) {
+    const hit = this.burnedAt(b);
+    if (!hit || !geo || !(alpha > 0.02)) return false;
+    const x0 = Math.round(geo.x - ox);
+    const y0 = Math.round(geo.y - oy);
+    const w = Math.round(geo.w);
+    const h = Math.round(geo.h);
+    const seed = hit.id.length * 31;
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.78;
+    ctx.fillStyle = '#17100c';
+    for (let yy = 0; yy < h; yy += 3) {
+      for (let xx = 0; xx < w; xx += 3) {
+        const k = ((xx * 7 + yy * 13 + seed) ^ (xx * yy + seed)) & 7;
+        if (k < 5) ctx.fillRect(x0 + xx, y0 + yy, 3, 3);
+      }
+    }
+    // A hole burned through near the ridge, charred rafters across it.
+    ctx.globalAlpha = alpha * 0.95;
+    ctx.fillStyle = '#070505';
+    const hx = x0 + Math.round(w * 0.38);
+    const hy = y0 + Math.round(h * 0.22);
+    ctx.fillRect(hx, hy, Math.round(w * 0.24), Math.round(h * 0.26));
+    ctx.fillStyle = '#3a2418';
+    for (let i = 0; i < 3; i++) ctx.fillRect(hx - 2, hy + 3 + i * Math.round(h * 0.08), Math.round(w * 0.24) + 4, 2);
+    const day = this.game?.clock?.day ?? 1;
+    if (day - hit.rec.day < 2) {
+      for (let i = 0; i < 10; i++) {
+        const fx = x0 + ((i * 37 + seed) % Math.max(1, w));
+        const fy = y0 + ((i * 23 + seed) % Math.max(1, h));
+        ctx.globalAlpha = alpha * (0.5 + 0.5 * Math.sin(time * 6 + i));
+        ctx.fillStyle = i % 2 ? '#ff7a2a' : '#ffd66b';
+        ctx.fillRect(fx, fy, 2, 2);
+      }
+    }
+    ctx.restore();
+    return true;
   }
 
   // A weave's blow at (x, y): fire on a store sets it alight (blow.fire, from the player).

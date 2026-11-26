@@ -190,3 +190,40 @@ test('saved while the Moot weighs it: a reload re-runs it without the defence as
   assert.ok(c2.trial.votes.filter((v) => v.source === 'claude').length === inBefore, 'the votes already in are kept');
   assert.equal(g2.murder.trialPending, null);
 });
+
+// Verify-b (round 14b): what an eyewitness at the Moot says aloud is said to the room, for
+// the defence as well as against it. Bram struck first and Elda saw it; the watch read her
+// account to the Moot. Before this, only Elda "knew" the self-defence was true, so the rest
+// voted as if nobody had told them, and Rowan's brief said "you saw" of a sighting not his.
+test('a true self-defence an eyewitness bears out before the Moot is heard by the room; nobody is told they saw what they did not', () => {
+  const { g, rec, c } = scene({ provoked: true, eldaSaw: false });
+  rec.seen = [{ id: 'elda', clarity: 'clear' }];
+  rec.known = 'witnessed';
+  c.evidence = [{ kind: 'witness', w: 0.9, by: 'elda', text: 'Elda saw the stranger kill Bram.' }];
+  c.suspicion = 0.85;
+  const room = jurorsOf(g.murder, 'bram');
+  assert.ok(room.includes('elda') && room.includes('rowan'));
+  const words = 'He struck me first with his hammer. I had no choice.';
+  const checked = checkDefence(g.murder, rec, parseDefence(words, g.murder, 'bram'), { room, spokenBy: ['elda'] });
+  const sd = checked.find((x) => x.kind === 'self_defence');
+  assert.equal(sd.supports, true);
+  assert.equal(sd.public, true, 'Elda said it aloud to the room');
+  assert.deepEqual([...sd.knownBy].sort(), [...room].sort());
+  // Rowan did not see it: his brief names who did; Elda's says she saw it.
+  const rb = jurorBrief(g.murder, 'rowan', 'bram', checked, words).text;
+  assert.match(rb, /bears out/);
+  assert.match(rb, /Elda/);
+  assert.ok(!/What you saw bears out/.test(rb), rb);
+  assert.match(jurorBrief(g.murder, 'elda', 'bram', checked, words).text, /What you saw bears out: self defence/);
+  // Rowan believes it was done, and that it was a fight: mercy, in words that are true of him.
+  const rv = localJuror(g.murder, 'rowan', 'bram', checked, words);
+  assert.equal(rv.vote, 'mercy', JSON.stringify(rv));
+  assert.ok(!/^I saw/.test(rv.reason), rv.reason);
+  // A lie the watch said aloud: the room knows it, but only Elda is told "you saw them".
+  rec.snap.player = [{ by: 'elda', t: rec.t - HOUR / 2, place: 'whisperwood' }];
+  const lie = checkDefence(g.murder, rec, [{ id: 'alibi1', kind: 'alibi', place: 'mirror_lake' }], { room, spokenBy: ['elda'] })[0];
+  assert.equal(lie.lie, true);
+  assert.equal(lie.public, true);
+  assert.ok(!/you saw them/.test(jurorBrief(g.murder, 'rowan', 'bram', [lie], 'I was at the lake.').text));
+  assert.match(jurorBrief(g.murder, 'elda', 'bram', [lie], 'I was at the lake.').text, /you saw them/);
+});

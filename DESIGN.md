@@ -3783,3 +3783,41 @@ The rule is fixed; the numbers are what play tunes (`src/magic/balance.js`).
   the round button names ("Talk to Elda") while they are still up and within three tiles,
   not to whoever a crowd has put nearest since the label was drawn.
 
+### 38.9 Played by hand (independent verifier B: items 11–21, 24–26, 28 and the blood, society and polish leftovers)
+
+What the author's list, played on three screens by real input, found and what changed. Each
+has a test (`tests/verify_b.test.mjs`, the trial and dark-path tests) or a browser check
+(`scripts/verify_b.mjs`).
+- **Lyra can be caught** (item 11; V-7). Struck, she leaves you or keeps her distance and
+  steps away at up to 1.3 of her pace; only a `flee` tired her, and the tiring never held (her
+  pace is the stat pipeline's, written every frame). `murder.tireFlight` counts running from a
+  stranger close behind her in any of those ways (moving away, fast, within 8 tiles), and
+  winded is a stat modifier (`winded`, speed ×0.55, not saved, gone after 10 s at rest).
+- **Her parting never takes your keys mid-fight** (item 11 × T-5). A blow while she says it,
+  or her fighting back, ends the scene (the letter on the table, as a walk-off); the chat the
+  scene opens gives the keyboard back to someone walking or swinging (T, Enter or a tap take it).
+- **No stale notices over a body.** "X is down! Reach them…" is keyed `down:<id>` and put away
+  when they are up or dead; Lyra's death puts away her running notices about you
+  (`companionship`, `deed:*`). `Toasts.dismiss(key | 'prefix*')`.
+- **The trial hears the eyewitness** (item 15). A true defence an eyewitness bears out goes
+  public to the Moot the same way a lie the watch gave away does (`checkDefence`: `supports`
+  as `lie`); `saw` keeps who saw it with their own eyes, so the others are told "Elda saw it,
+  and said so", never "you saw".
+- **"I want to stop" ends the pact** (item 28). `END_RE` knows the common ways of saying it
+  ("I want to stop", "I don't want to do this anymore", "I'm not killing anyone else", "cancel
+  the deal", "the pact is broken"…); "I don't want to kill him" refuses only the ask (`NO_RE`).
+  His chat's header button is his own: "The bargain" (`profile.dialogLabel`), not a shop.
+- **Per knower, the arrest where you fall** (leftover). `Player.onDowned` settles the crime
+  only when the guard who downed you knows of it (`combat.knowsCrime`); a villager is briefed
+  as "shaken" by your crime (Lyra's walk-up conversation) only if they know of it.
+- **A burned store looks burned** (item 21). `map.drawRoofs` calls an optional
+  `roofDecor(ctx, building, geometry, ox, oy, time, alpha)` after each roof; the occupation
+  blackens a burned building's roof, burns a hole near the ridge and lights embers for two
+  days. Its owner's idle line is their loss (`occupation.burnedLine`), never their wares.
+- **The shop shows its wares** (item 18, `src/styles/society.css`). Upright the trading panel
+  takes the height and the wares scroll as one; sideways and on a computer the purse and the
+  haggle share a row and "Done trading" stays in view; the Buy | Sell tabs are 44 px on touch.
+- **Left as found** (not this verifier's to change): Lyra's own brief reads "Wanted by the
+  guards right now" from the watch's record (`prompt.js willSection`: she has no `knowsWanted`
+  of her own); Lyra narrates a place where she is, from far off (talk's leftover); a juror who
+  votes not proven after hearing the eyewitness may still say "A fight, then".

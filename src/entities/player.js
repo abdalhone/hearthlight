@@ -928,8 +928,19 @@ export class Player extends Actor {
 
   onDowned(by) {
     if (this._down) return;
-    // Beaten by the guard while wanted: the matter is settled where you fell.
-    const arrested = !!by && by.faction === 'guard' && !!this.crime;
+    // Beaten by the guard while wanted: the matter is settled where you fell. Only by one who
+    // knows you are wanted (per knower, DESIGN §35.2): a guard who never heard of it and
+    // downed you in a fight you started has arrested nobody.
+    const knows = () => {
+      const c = this.game.combat;
+      if (typeof c?.knowsCrime !== 'function') return true;
+      try {
+        return !!c.knowsCrime(by, this);
+      } catch {
+        return true;
+      }
+    };
+    const arrested = !!by && by.faction === 'guard' && !!this.crime && knows();
     if (arrested) {
       try {
         if (!this.game.combat?.clearCrime?.(this, 'arrested')) this.crime = null;

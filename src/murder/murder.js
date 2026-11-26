@@ -1581,17 +1581,37 @@ export class Murder {
   // kill her?"). Her flight runs at 1.45 of her 80 (116 px/s) against the stranger's 76: after
   // WINDED_AFTER seconds she is winded to WINDED of her pace (about 64 px/s) until she has
   // stopped running a while. Villagers already run slower than the stranger (40 x 1.75).
+  // Verify-b: not only a flight. Struck, she leaves you or keeps her distance (keep_away, or
+  // her own day with the stranger avoided), and steps away from them at up to 1.3 of her pace:
+  // running from a stranger close behind her, by any reason, tires her the same way.
   tireFlight() {
     const g = this.game;
     const L = lyraOf(g);
     if (!L || L.dead || this.dead[L.id]) return;
     const d = L.behavior?.directive;
-    const fleeing = !L.downed && d?.type === 'flee' && (d.from === 'player' || d.from === g.player?.id);
+    const P = g.player;
+    const fromP = (w) => w === 'player' || (!!P && (w === P.id || w === P));
+    const last = L._tfAt;
+    L._tfAt = { x: L.x, y: L.y };
+    let avoiding = false;
+    if (!L.downed && P && last && (d?.type === 'keep_away' ? fromP(d.from) : d?.type === 'independent' && fromP(d.avoid))) {
+      const mx = L.x - last.x;
+      const my = L.y - last.y;
+      const moved = Math.hypot(mx, my);
+      const gap = Math.hypot(L.x - P.x, L.y - P.y);
+      // Running (not strolling), away from the stranger, who is close behind.
+      avoiding = moved / TICK > 40 && gap < 8 * TILE && (mx * (L.x - P.x) + my * (L.y - P.y)) / (moved * Math.max(1, gap)) > 0.3;
+    }
+    const fleeing = !L.downed && ((d?.type === 'flee' && fromP(d.from)) || avoiding);
+    // Her pace is the stat pipeline's (game.stats writes a managed actor's speed every frame,
+    // so a pace changed by hand never lasted a frame): winded is a modifier on it.
+    const managed = !!safe(() => g.stats?.isManaged?.(L), false);
     if (fleeing) {
       L._fleeT = (L._fleeT || 0) + TICK;
       if (L._fleeT >= WINDED_AFTER && L._windedFrom == null) {
         L._windedFrom = L.speed;
-        L.speed = Math.round(L.speed * WINDED);
+        if (managed) safe(() => g.stats.addModifier(L, { id: 'winded', source: 'winded', label: 'Winded', kind: 'weak', mul: { speed: WINDED }, t: 90 }));
+        else L.speed = Math.round(L.speed * WINDED);
         L._restT = 0;
         safe(() => g.bus?.emit?.('winded', { entity: L }));
       }
@@ -1601,7 +1621,8 @@ export class Murder {
     if (L._windedFrom != null) {
       L._restT = (L._restT || 0) + TICK;
       if (L._restT >= WINDED_REST) {
-        L.speed = L._windedFrom;
+        if (managed) safe(() => g.stats.removeModifier(L, 'winded'));
+        else L.speed = L._windedFrom;
         L._windedFrom = null;
       }
     }

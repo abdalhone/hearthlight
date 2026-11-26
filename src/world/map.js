@@ -512,6 +512,15 @@ export class TileMap {
       const prev = ctx.globalAlpha;
       ctx.globalAlpha = prev * b._alpha;
       ctx.drawImage(roof.canvas, Math.round(g.x - ox), Math.round(g.y - oy));
+      // What a plugin draws on a roof (a burned building's scorch: src/world/occupation.js).
+      if (typeof this.roofDecor === 'function') {
+        try {
+          this.roofDecor(ctx, b, g, ox, oy, time, ctx.globalAlpha);
+        } catch (err) {
+          if (!this._roofDecorWarned) console.warn('[map] roof decor failed', err);
+          this._roofDecorWarned = true;
+        }
+      }
       ctx.globalAlpha = prev;
     }
   }

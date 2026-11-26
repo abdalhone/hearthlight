@@ -454,8 +454,23 @@ export class UI {
       if (!(isHolder(entity) || (isLyra(entity) && lyraHere()))) return;
       const name = isLyra(entity) ? lyraName() : displayName(g, entity);
       const obj = isLyra(entity) ? 'her' : 'them';
-      this.toast(`${name} is down! Reach ${obj} and press ${this.isTouch ? 'the hand button' : 'E'} to help ${obj} up.`, 'warn');
+      this.toast(`${name} is down! Reach ${obj} and press ${this.isTouch ? 'the hand button' : 'E'} to help ${obj} up.`, 'warn', { key: `down:${entity?.id ?? ''}` });
     });
+    // ... and once they are up again, or dead, that call no longer holds (verify-b: a finished
+    // Lyra lay dead under "Lyra is down! Reach her and press E to help her up.").
+    const upOrGone = (p, dead = false) => {
+      const id = p?.id ?? p?.entity?.id ?? p?.target?.id ?? p?.victim?.id ?? (typeof p?.victim === 'string' ? p.victim : null);
+      if (!id) return;
+      this.toasts?.dismiss?.(`down:${id}`);
+      // Lyra dead: her running notices about you ("will not forget this", "near her, she
+      // still hears you") no longer hold either.
+      if (dead && (id === LYRA_ID || id === g.companion?.id)) {
+        this.toasts?.dismiss?.('companionship');
+        this.toasts?.dismiss?.('deed:*');
+      }
+    };
+    bus.on('revived', (p) => upOrGone(p));
+    for (const ev of ['villager_killed', 'villager_died']) bus.on(ev, (p) => upOrGone(p, true));
     // Her village protects her (§19.7): a cry for help is news the player should see,
     // once per person while it lasts.
     const helpAt = new Map();
