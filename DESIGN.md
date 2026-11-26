@@ -2033,8 +2033,10 @@ notices and has opinions (berserk frightens her).
   pace, the same pace Berserk's +40% and every other speed percentage is a share of, so a
   point reads the same with Berserk running as without (0 Grace: "Next: +1.5% speed"; 49
   Grace: "+0.5% speed"); the Speed number's tooltip says so ("Each % is a share of your
-  normal pace, 76."), and any number a clamp holds says "At its limit" there (a dodge build
-  in dodge gear meets the 40% clamp). Health, mana and the sword, shown whole, read
+  normal pace, 76."; every number with a percentage on it says what its % are a share of,
+  and a chance's own +% reads "+30% of it", a share of the chance, never more points of it),
+  and any number a clamp holds says "At its limit" there (a dodge build in dodge gear meets
+  the 40% clamp). Health, mana and the sword, shown whole, read
   the curve's step ("+10 health", at 80 Might "+0.9 sword"); a number at its clamp says so
   ("bleed-out at its limit"), and Free stat points at 999 says "As high as it goes". A small
   meter shows how much of the first point's worth the next still carries (speed at 80 Grace

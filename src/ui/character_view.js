@@ -403,7 +403,8 @@ export function statTip(S, P, id) {
   const lines = parts.map((b) => {
     const bits = [];
     if (b.add) bits.push(`${b.add > 0 ? '+' : ''}${fmt.fmt === 'pct' ? `${Math.round(b.add * 100)}%` : Math.round(b.add * 100) / 100}`);
-    if (b.pct) bits.push(`${b.pct > 0 ? '+' : ''}${Math.round(b.pct * 100)}%`);
+    // A chance's own +% is a share of the chance ("+30% of it"), never more points of it.
+    if (b.pct) bits.push(`${b.pct > 0 ? '+' : ''}${Math.round(b.pct * 100)}%${fmt?.fmt === 'pct' ? ' of it' : ''}`);
     if (b.mul !== 1) bits.push(`×${Math.round(b.mul * 100) / 100}`);
     return `${b.label}: ${bits.join(' ')}`;
   });
@@ -412,9 +413,12 @@ export function statTip(S, P, id) {
   const pct = parts.reduce((t, b) => t + b.pct, 0);
   const mul = parts.reduce((k, b) => k * b.mul, 1);
   const plain = add * mul;
-  if (parts.some((b) => b.pct) && fmt.fmt !== 'pct' && fmt.fmt !== 'mul') {
-    const n = Math.round(plain * 10) / 10;
-    lines.push(id === 'speed' ? `Each % is a share of your normal pace, ${n}.` : `Each % is a share of ${n}, the ${fmt.label.toLowerCase()} before any %.`);
+  if (parts.some((b) => b.pct)) {
+    const n = fmt.fmt === 'pct' || fmt.fmt === 'mul' ? formatStat(id, plain) : String(Math.round(plain * 10) / 10);
+    const word = fmt.label.toLowerCase();
+    if (id === 'speed') lines.push(`Each % is a share of your normal pace, ${n}.`);
+    else if (fmt.fmt === 'pct') lines.push(`Each "% of it" is a share of ${n}, the ${word} before them.`);
+    else lines.push(`Each % is a share of ${n}, the ${word} before any %.`);
   }
   const raw = add * Math.max(0, 1 + pct) * mul;
   if (raw > fmt.max + 1e-9) lines.push(`At its limit (${formatStat(id, fmt.max)}): more adds nothing.`);

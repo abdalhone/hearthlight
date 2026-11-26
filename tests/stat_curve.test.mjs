@@ -623,6 +623,20 @@ test('the speed tooltip says what its percentages are shares of; Oath\'s words a
   assert.doesNotMatch(oath.label, /everything/, `"${oath.label}" promises +30% to a speed it adds 10% to`);
   assert.match(oath.label, /10% speed/);
   assert.match(PRICES.oath.gainText, /10% speed/);
+  // A chance's own +% (Oath's +30% crit) is a share of the chance, not thirty more points of
+  // it: the tooltip must not read as a sum ("+10%, +17%, +30%" for 35%).
+  const crit = statTip(S, P, 'crit');
+  const v = S.get(P, 'crit');
+  const parts = S.breakdown(P, 'crit');
+  const plain = parts.reduce((t, b) => t + b.add, 0);
+  assert.ok(Math.abs(v - plain * 1.3) < 1e-9, `crit ${v} is ${plain} × 1.3`);
+  assert.match(crit, /\+30% of it/, crit);
+  assert.match(crit, new RegExp(`share of ${Math.round(plain * 100)}%`), crit);
+  // Weave power's shares likewise say what they are of.
+  S.addModifier(P, { id: 'surge', source: 'surge', label: 'Surge: weave power', kind: 'buff', pct: { spellPower: 0.12 }, t: 30 });
+  const sp = S.breakdown(P, 'spellPower');
+  const spPlain = sp.reduce((t, b) => t + b.add, 0) * sp.reduce((k, b) => k * b.mul, 1);
+  assert.match(statTip(S, P, 'spellPower'), new RegExp(`share of ${Math.round(spPlain * 100)}%`));
   // Dodge from 60 Grace, boots, a cloak, Swiftfoot and wind is past its 40% clamp: say so.
   g.progression.points.grace = 60;
   g.progression.changed();
