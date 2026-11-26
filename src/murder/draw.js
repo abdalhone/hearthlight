@@ -101,6 +101,9 @@ export function drawBody(e, rec, ctx, ox, oy, time) {
   ctx.beginPath();
   ctx.ellipse(sx, sy - 1, 11, 3, 0, 0, Math.PI * 2);
   ctx.fill();
+  // A killing leaves blood under the body where it lies (dried dark); an unmarked death
+  // (round 14b, rec.unmarked: the Unkindling) or one nobody did (rec.natural) leaves none.
+  if (rec && !rec.unmarked && !rec.natural && rec.state !== 'laid_out' && !rec.hidden) drawStain(ctx, sx, sy, e.id);
   const lift = rec?.state === 'laid_out' ? 5 : 0;
   if (rec?.covered) {
     const s = shroudFor(atlas, e.spriteKey);
@@ -111,6 +114,21 @@ export function drawBody(e, rec, ctx, ox, oy, time) {
     }
   }
   drawCharacter(ctx, atlas, e.spriteKey, 'down', e.dir || 'down', 0, sx, sy - lift, { state: 'dead' });
+}
+
+// A small dried pool beside the fallen: a few pixels of dark red, the same for each body.
+const STAIN = ['#3d0910', '#5c0f17'];
+function drawStain(ctx, sx, sy, id = '') {
+  let h = 7;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  const prev = ctx.globalAlpha;
+  ctx.globalAlpha = prev * 0.8;
+  ctx.fillStyle = STAIN[0];
+  ctx.fillRect(sx - 6 + (h & 3), sy - 1, 7, 2);
+  ctx.fillRect(sx - 4 + (h & 3), sy + 1, 4, 1);
+  ctx.fillStyle = STAIN[1];
+  ctx.fillRect(sx - 4 + (h & 3), sy - 1, 3, 1);
+  ctx.globalAlpha = prev;
 }
 
 function drawBier(ctx, sx, sy) {

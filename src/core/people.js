@@ -78,7 +78,7 @@ export function ageOf(game, who) {
   if (Number.isFinite(cal)) return cal;
   const p = profileOf(game, who, id);
   if (Number.isFinite(p?.age)) return p.age;
-  if (Number.isFinite(who?.age)) return who.age;
+  // (Never entity.age: on an actor that is seconds alive, for its animations.)
   const b = id ? baseAge(id) : null;
   return Number.isFinite(b) ? b : null;
 }

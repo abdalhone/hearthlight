@@ -54,6 +54,15 @@ export class BloodTrail {
     this.marks.length = 0;
   }
 
+  // Wipe every mark within r px of (x, y): a body left unmarked (round 14b, murder.kill's
+  // `unmarked`, DESIGN §37.2) lies on clean ground.
+  clearNear(x, y, r = 16) {
+    const r2 = r * r;
+    const before = this.marks.length;
+    this.marks = this.marks.filter((m) => (m.x - x) ** 2 + (m.y - y) ** 2 > r2);
+    return before - this.marks.length;
+  }
+
   // Ground pass: the renderer calls drawShadow on every drawable before any sprite.
   drawShadow(ctx, ox, oy) {
     const list = this.marks;

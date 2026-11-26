@@ -26,7 +26,11 @@
 //   decorateDialogue(npc, d) / toneFor(npc)          npc: grief and fear in their words
 //   refusesTrade(npc) / flameBarred()                shops and the chapel turn the stranger away
 //   standIn(giverId) / isDead(id)                    missions: a graceful alternative
-// Events: villager_killed, murder_witnessed, body_hidden, body_found, murder_case,
+//   kill(v, killer?, { cause, silent, unmarked })    a killing (round 14b, DESIGN §35.1, §37.2)
+//   die(v, { cause })                                a death nobody did: old age (§36.3)
+//   onFound(handler) -> off()                        who owns a body's discovery (§37.3)
+// Events: villager_killed {id, cause, by, killer, provoked, silent, unmarked, witnesses},
+// villager_died {id, cause}, murder_witnessed, body_hidden, body_found, murder_case,
 // questioned, arrested, moot_verdict, funeral, moot_met.
 
 import { TILE } from '../core/constants.js';
@@ -36,7 +40,7 @@ import { whenPhrase } from '../ai/village_life/problems.js';
 import { witnessesOf, look, lightAt } from './witness.js';
 import { canReach } from '../world/walls.js';
 import { lyraOf, isMinor } from '../core/people.js';
-import { hears, hearsWords, cryLoudness, LOUD } from '../ai/hearing.js';
+import { hears, hearsWords, cryLoudness, LOUD, silence, isSilenced } from '../ai/hearing.js';
 import { UNKILLABLE, FINISH_HOLD, FINISH_REACH, FINISH_CANCEL, MURDER_WANTED, HOUR, DAY, HIDE, hidingPlace, INVESTIGATORS, levelOf } from './data.js';
 import { gatherEvidence, suspicionOf, buildQuestions, judgeAnswer, WEIGHTS } from './investigation.js';
 import { murderLine, watchLine } from './lines.js';
@@ -55,6 +59,7 @@ const SCREAM_REACH = 96; // px: near enough to make out who and what in a scream
 const WATCH_REACH = 64; // px: a witness this close to one of the watch has told them
 const TERROR_HOURS = 18; // a killing seen stays this raw: they run, and will not talk
 const DREAD_AFTER = 2; // killings seen: after this many, never calm with the stranger again
+const PROVOKED = 20; // s: the victim fought or hit the killer this recently (rec.provoked)
 
 function safe(fn, fallback = null) {
   try {
@@ -93,6 +98,7 @@ export class Murder {
     this.layer = new MurderLayer(this);
     this.view = null; // the UI (src/ui/murder_view.js), when a browser is up
     this._graveEnts = new Map();
+    this.foundHandlers = []; // onFound: who owns the discovery of a body (round 14b, §37.3)
     const bus = game?.bus;
     if (bus?.on) {
       bus.on('revived', (p) => safe(() => this.onRevived(p)));
@@ -325,6 +331,8 @@ export class Murder {
     const v = this.entity(victim);
     if (!v) return false;
     const g = this.game;
+    // Held silent, or killed silently (round 14b, §37.2): loudness 0, nobody hears a thing.
+    if (isSilenced(g, v) || this.dead[v.id]?.silent) return false;
     let best = false;
     for (const e of [...(this.life?.villagers?.() || []), g?.companion]) {
       if (!e || e === v || e.dead || e.absent || !e.isAlive?.()) continue;
@@ -410,7 +418,7 @@ export class Murder {
     if (!player || player.carrying || player.downed || player.dead) return false;
     const v = this.finishTarget(player);
     if (!v) return false;
-    if (UNKILLABLE.has(v.id) || v === this.game.companion) {
+    if (UNKILLABLE.has(v.id) || v === this.game.companion || isMinor(this.game, v)) {
       this.refuse(player, v);
       return true;
     }
@@ -502,26 +510,43 @@ export class Murder {
 
   // ------------------------------------------------------------------ a death
 
+  // Never a child: by age, the one rule (src/core/people.js isMinor; DESIGN §34.2).
   canKill(v) {
-    return !!v && this.isVillager(v) && !UNKILLABLE.has(v.id) && !v.dead && !this.dead[v.id];
+    return !!v && this.isVillager(v) && !UNKILLABLE.has(v.id) && !isMinor(this.game, v) && !v.dead && !this.dead[v.id];
   }
 
-  // Kill a villager for good. Returns the record, or null.
-  kill(v, killer = this.game?.player) {
-    v = this.entity(v);
-    if (!this.canKill(v)) return null;
-    const g = this.game;
+  // Did the victim fight or hit the killer in the last PROVOKED seconds (round 14b, §35.1)?
+  // Read when the blow falls: their fight (fightTarget, mode), the killer's last attacker,
+  // and combat's record of who hurt whom (what self-defense reads).
+  provoked(v, killer) {
+    if (!v || !killer) return false;
     const t = this.now();
-    const place = this.placeOf(v);
-    const seen = witnessesOf(g, v.x, v.y, { exclude: [v.id] });
-    if (killer) for (const w of witnessesOf(g, killer.x, killer.y, { exclude: [v.id] })) if (!seen.some((s) => s.id === w.id)) seen.push(w);
-    const sv = g.survival;
+    if (v.fightTarget === killer && (v.mode === 'fight' || v.mode === 'confront')) return true;
+    const la = killer.lastAttacker;
+    const src = la && la.type === 'projectile' ? la.owner : la;
+    if (src === v && t - (killer.lastAttackedAt ?? -Infinity) <= PROVOKED) return true;
+    const c = this.game?.combat;
+    const at = safe(() => c?.aggressions?.get?.(killer)?.get?.(v), null);
+    if (Number.isFinite(at)) return t - at <= PROVOKED;
+    return !!safe(() => c?.isSelfDefense?.(killer, v), false) && t - (v.lastAttackedAt ?? -Infinity) <= PROVOKED;
+  }
+
+  // The fall is over and the body is ours: off a carrier, out of the sickroom and the downed.
+  endFall(v) {
+    const g = this.game;
+    const sv = g?.survival;
     if (v.carriedBy) safe(() => sv?.endCarry?.(v.carriedBy));
     safe(() => sv?.resolveFall?.(v, 'died'));
     safe(() => sv?.patients?.delete?.(v));
-    safe(() => g.combat?.downedAt?.delete?.(v));
+    safe(() => g?.combat?.downedAt?.delete?.(v));
     delete this.pending[v.id];
-    const rec = {
+  }
+
+  // The record of a death (shared by kill and die). Round 14b adds by, cause, provoked,
+  // silent, unmarked and natural (§35.1); an old save's record has none of them, and reads
+  // as cause 'killed', the rest unknown (null) or false.
+  record(v, { t, place, seen = [], cause = 'killed', by = null, provoked = null, silent = false, unmarked = false, natural = false } = {}) {
+    return {
       id: v.id,
       t,
       day: this.day(),
@@ -539,16 +564,81 @@ export class Murder {
       clues: [],
       after: [],
       answers: [],
-      snap: this.snapshot(v.id, t),
+      snap: natural ? { victim: [], player: [] } : this.snapshot(v.id, t),
+      by,
+      cause,
+      provoked,
+      silent: !!silent,
+      unmarked: !!unmarked,
+      natural: !!natural,
     };
+  }
+
+  // Kill a villager for good. Returns the record, or null.
+  // kill(v, killer = the player, opts) or kill(v, opts) (round 14b, DESIGN §35.1, §37.2):
+  //   opts.cause     what the record calls it ('killed' by default; 'unkindled', ...)
+  //   opts.silent    no cry, no call for help, no scream: the victim is held silent (loudness
+  //                  0 through src/ai/hearing.js); eyes still see (witnesses by the sight rule)
+  //   opts.unmarked  no blood, smear or wound on the body (the record keeps it; saved)
+  //   opts.by        the killer's id when no killer entity is given
+  kill(v, killer = this.game?.player, opts = {}) {
+    if (killer && typeof killer === 'object' && !Number.isFinite(killer.x) && killer.type !== 'actor') {
+      opts = killer;
+      killer = opts.killer !== undefined ? opts.killer : this.game?.player;
+    }
+    opts = opts || {};
+    v = this.entity(v);
+    if (!this.canKill(v)) return null;
+    const g = this.game;
+    const t = this.now();
+    const silent = !!opts.silent;
+    const unmarked = !!opts.unmarked;
+    // Silent: the voice goes first, before anything else in this death could make a sound.
+    if (silent) silence(g, v, Infinity);
+    const place = this.placeOf(v);
+    const seen = witnessesOf(g, v.x, v.y, { exclude: [v.id] });
+    if (killer) for (const w of witnessesOf(g, killer.x, killer.y, { exclude: [v.id] })) if (!seen.some((s) => s.id === w.id)) seen.push(w);
+    const provoked = this.provoked(v, killer);
+    this.endFall(v);
+    const by = killer ? (this.isPlayer(killer) ? 'player' : killer.id ?? null) : typeof opts.by === 'string' ? opts.by : null;
+    const cause = typeof opts.cause === 'string' && opts.cause ? opts.cause : 'killed';
+    const rec = this.record(v, { t, place, seen, cause, by, provoked, silent, unmarked });
     this.dead[v.id] = rec;
     // Out of the village's life (errands, problems, conversations), the body left where it fell.
-    safe(() => this.life?.markGone?.(v.id, { cause: 'killed', seen: seen.map((s) => s.id), at: { place }, keepBody: true }));
+    safe(() => this.life?.markGone?.(v.id, { cause, seen: seen.map((s) => s.id), at: { place }, keepBody: true }));
+    // Unmarked: whatever blood lay where they stood is gone with the wound that never was.
+    if (unmarked) safe(() => g.survival?.trail?.clearNear?.(v.x, v.y, 18));
     this.layBody(v, rec);
-    this.emit('villager_killed', { id: v.id, entity: v, killer, witnesses: seen.map((s) => s.id), place, x: v.x, y: v.y });
+    this.emit('villager_killed', { id: v.id, entity: v, killer, by, cause, provoked, silent, unmarked, witnesses: seen.map((s) => s.id), place, x: v.x, y: v.y });
     safe(() => g.particles?.emit?.('dust', v.x, v.y, { count: 6, speed: 14, life: 0.6 }));
     if (seen.length) this.seenMurder(rec);
     else this.watchUntil = t + HOUR;
+    safe(() => {
+      if (g.save) g.save.pending = g.save.pending || 'auto';
+    });
+    return rec;
+  }
+
+  // A death nobody did (decision D13; round 14b, DESIGN §36.3): old age, and any cause a
+  // workstream names. The same record and body as a killing, and none of a killing's
+  // consequences: no witnesses, no alarm, no case, no wanted, nothing for the tempter or
+  // the village's reckoning of the stranger. The village life takes them out by `cause`.
+  // Emits villager_died {id, cause}, never villager_killed. A minor never dies of age.
+  die(v, { cause = 'age', silent = true, unmarked = true } = {}) {
+    v = this.entity(v);
+    if (!v || !this.isVillager(v) || v.dead || this.dead[v.id]) return null;
+    if (cause === 'age' && isMinor(this.game, v)) return null;
+    const g = this.game;
+    const t = this.now();
+    if (silent) silence(g, v, Infinity);
+    const place = this.placeOf(v);
+    this.endFall(v);
+    const rec = this.record(v, { t, place, seen: [], cause: String(cause || 'age'), by: null, provoked: null, silent, unmarked, natural: true });
+    this.dead[v.id] = rec;
+    safe(() => this.life?.markGone?.(v.id, { cause: rec.cause, seen: [], at: { place }, keepBody: true }));
+    if (unmarked) safe(() => g.survival?.trail?.clearNear?.(v.x, v.y, 18));
+    this.layBody(v, rec);
+    this.emit('villager_died', { id: v.id, entity: v, cause: rec.cause, place, x: v.x, y: v.y });
     safe(() => {
       if (g.save) g.save.pending = g.save.pending || 'auto';
     });
@@ -577,7 +667,8 @@ export class Murder {
     safe(() => v.walker?.stop?.());
     safe(() => v.leaveBed?.());
     safe(() => v.leaveSeat?.());
-    if (!v.absent) v.absent = { cause: 'killed', since: rec.t };
+    if (!v.absent) v.absent = { cause: rec.cause || 'killed', since: rec.t };
+    v.unmarked = !!rec.unmarked; // no blood, smear or wound drawn on them (round 14b, §37.2)
     v.state = 'dead';
     v.hidden = !!rec.hidden || rec.state === 'buried';
     v.solid = false;
@@ -606,7 +697,7 @@ export class Murder {
     if (!P) return;
     const t = this.now();
     for (const rec of Object.values(this.dead)) {
-      if (t - rec.t > HOUR || rec.known) continue;
+      if (t - rec.t > HOUR || rec.known || rec.natural) continue;
       const last = rec.after[rec.after.length - 1];
       if (last && last.by === by && t - last.t < HOUR / 4) continue;
       if (rec.after.length >= 24) continue;
@@ -854,31 +945,84 @@ export class Murder {
       if (lk) rec.clues.push({ kind: 'over_body', by: finder, t: Math.round(t), place: rec.foundPlace, clarity: lk.clarity });
     }
     safe(() => this.life?.onBodyFound?.(id, finder, rec.foundPlace));
-    if (fe && fe !== g.companion && !witnessed) {
-      this.say(fe, murderLine(finder, lake ? 'lakeGives' : 'foundBody', { about: id, P: this.playerName() }, this.rng()), 'shout');
-      safe(() => {
-        fe.walker?.stop?.();
-        fe.faceToward?.(v.x, v.y);
-        if (fe.r) fe.r.key = null;
-      });
-    }
     rec.coverAt = t + (witnessed ? 25 : 10);
     rec.chapelAt = t + 1.5 * HOUR;
     rec.newsAt = t + HOUR;
-    this.event('found', `${finder ? this.name(finder) : 'Someone'} found ${this.name(id)}'s body ${placeAt(rec.foundPlace, this.placeName(rec.foundPlace))}. A blade did it.`, { who: finder, about: id });
-    this.emit('body_found', { id, finder, place: rec.foundPlace, murder: true });
-    this.openCase(id);
-    Grief.onFound(this, rec);
-    // Lyra learns of it as anyone does (DESIGN §29.4): from the finder's own cry when she is
-    // near enough to make out the words, else face to face (the village's news of the body
-    // reaching her, tickNews), or with everyone else within the hour. Not through two walls
-    // the moment someone next door finds it.
-    if (finder !== 'lyra' && !witnessed) {
-      if (this.lyraHearsFinding(fe || v)) Lyra.learnsDeath(this, rec);
-      else rec.lyraNewsAt = rec.newsAt;
+    // The parts of a discovery a handler may take over (onFound), each runnable on its own.
+    const defaults = {
+      // The finder's cry over the body (their own voice: heard by the hearing rule).
+      cry: () => {
+        if (!fe || fe === g.companion || witnessed) return;
+        this.say(fe, murderLine(finder, lake ? 'lakeGives' : 'foundBody', { about: id, P: this.playerName() }, this.rng()), 'shout');
+        safe(() => {
+          fe.walker?.stop?.();
+          fe.faceToward?.(v.x, v.y);
+          if (fe.r) fe.r.key = null;
+        });
+      },
+      note: () => this.event('found', `${finder ? this.name(finder) : 'Someone'} found ${this.name(id)}'s body ${placeAt(rec.foundPlace, this.placeName(rec.foundPlace))}. A blade did it.`, { who: finder, about: id }),
+      openCase: () => this.openCase(id),
+      // Lyra learns of it as anyone does (DESIGN §29.4): from the finder's own cry when she is
+      // near enough to make out the words, else face to face (the village's news of the body
+      // reaching her, tickNews), or with everyone else within the hour. Not through two walls
+      // the moment someone next door finds it.
+      lyra: () => {
+        if (finder === 'lyra' || witnessed) return;
+        if (this.lyraHearsFinding(fe || v)) Lyra.learnsDeath(this, rec);
+        else rec.lyraNewsAt = rec.newsAt;
+      },
+      toast: () => {
+        if (!witnessed) this.toast(`${this.name(id)} has been found dead ${placeAt(rec.foundPlace, this.placeName(rec.foundPlace))}. Struck down with a blade. The watch is asking questions.`, 'warn', `found:${id}`);
+      },
+      grief: () => Grief.onFound(this, rec),
+    };
+    // Who owns this discovery (round 14b, DESIGN §37.3): handlers in order; the first that
+    // returns true for a cause it owns takes over the finder's lines, the note, the case,
+    // Lyra's learning and the toast (it may call any of ctx.defaults itself). Grief, the
+    // funeral and the village's news of the body (life.onBodyFound) happen either way.
+    const ctx = { finder, finderEntity: fe || null, body: v || null, place: rec.foundPlace, witnessed, lake, cause: rec.cause || 'killed', murder: this, defaults };
+    let owner = null;
+    for (const h of this.foundHandlers) {
+      if (safe(() => h(rec, ctx), false) === true) {
+        owner = h;
+        break;
+      }
     }
-    if (!witnessed) this.toast(`${this.name(id)} has been found dead ${placeAt(rec.foundPlace, this.placeName(rec.foundPlace))}. Struck down with a blade. The watch is asking questions.`, 'warn', `found:${id}`);
+    if (owner) {
+      rec.foundOwned = true;
+      this.emit('body_found', { id, finder, place: rec.foundPlace, murder: !rec.natural, cause: rec.cause || 'killed', owned: true });
+      defaults.grief();
+      return rec;
+    }
+    if (rec.natural) {
+      // A death nobody did (die(), §36.3): no case, no blade. Grief and a funeral, all the same.
+      this.event('found', `${finder ? this.name(finder) : 'Someone'} found ${this.name(id)} dead ${placeAt(rec.foundPlace, this.placeName(rec.foundPlace))}. There is no mark on ${this.pronoun(id, 'him')}.`, { who: finder, about: id });
+      this.emit('body_found', { id, finder, place: rec.foundPlace, murder: false, cause: rec.cause });
+      defaults.grief();
+      this.toast(`${this.name(id)} has been found dead ${placeAt(rec.foundPlace, this.placeName(rec.foundPlace))}. No mark on ${this.pronoun(id, 'him')}: ${this.pronoun(id, 'his')} time had come.`, 'info', `found:${id}`);
+      return rec;
+    }
+    defaults.cry();
+    defaults.note();
+    this.emit('body_found', { id, finder, place: rec.foundPlace, murder: true, cause: rec.cause || 'killed' });
+    defaults.openCase();
+    defaults.grief();
+    defaults.lyra();
+    defaults.toast();
     return rec;
+  }
+
+  // Register who owns the discovery of a body whose cause they know (round 14b, §37.3):
+  // handler(rec, ctx) -> true to take it over. ctx: { finder, finderEntity, body, place,
+  // witnessed, lake, cause, murder, defaults: { cry, note, openCase, lyra, toast, grief } }.
+  // Returns a function that removes the handler. With no handler, found() is unchanged.
+  onFound(handler) {
+    if (typeof handler !== 'function') return () => {};
+    this.foundHandlers.push(handler);
+    return () => {
+      const i = this.foundHandlers.indexOf(handler);
+      if (i >= 0) this.foundHandlers.splice(i, 1);
+    };
   }
 
   // Does Lyra make out the finder's cry ("That's Garrick!") where she is: in the open, or
@@ -1227,6 +1371,8 @@ export class Murder {
         delete this.pending[id];
         continue;
       }
+      // Held silent (round 14b, §37.2): they can tell nobody while it lasts.
+      if (isSilenced(g, v)) continue;
       if (!v.downed) {
         this.reveal(id, null);
         continue;
@@ -1515,7 +1661,15 @@ export class Murder {
         v.x = at.x;
         v.y = at.y;
       }
-      v.absent = { cause: 'killed', since: rec.t };
+      // Old saves: no cause (a killing), no by or provoked (unknown), marked, not silent.
+      if (typeof rec.cause !== 'string' || !rec.cause) rec.cause = 'killed';
+      if (rec.by === undefined) rec.by = null;
+      if (rec.provoked === undefined) rec.provoked = null;
+      rec.silent = !!rec.silent;
+      rec.unmarked = !!rec.unmarked;
+      rec.natural = !!rec.natural;
+      v.absent = { cause: rec.cause, since: rec.t };
+      if (rec.silent) silence(this.game, v, Infinity);
       this.layBody(v, rec);
       if (rec.state === 'buried') v.hidden = true;
     }

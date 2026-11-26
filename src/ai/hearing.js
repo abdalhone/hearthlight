@@ -8,6 +8,10 @@
 //   hears(game, listener, x, y, loud, { mul })  -> 'clear' | 'muffled' | null
 //   heardFrom(game, x, y, loud, people)         -> [{ id, how, d }] nearest first
 //   cryLoudness(severity)                       -> px a cry carries in open air
+//   silence(game, e, seconds) / isSilenced(game, e) / voiceOf(game, e, loud)
+//                                               -> a person held silent (round 14b: the
+//                                                  Unkindling's hold, a silent killing) makes
+//                                                  no sound: loudness 0, heard by nobody
 //
 // - The reach comes from the loudness: px in open air (LOUD; a cry by severity is the old
 //   HELP_HEAR 300 / 440 / 600). `mul` widens it for one listener (kin know the voice).
@@ -45,6 +49,39 @@ function safe(fn, fallback = null) {
   } catch {
     return fallback;
   }
+}
+
+// Held silent (round 14b, DESIGN §37.2): a person whose voice is taken (the Unkindling's
+// channel, murder.kill's `silent`) makes no sound for anyone, until `seconds` pass (Infinity:
+// for good). Every cry, call for help, scream and blow they would make is loudness 0
+// through voiceOf(), so hears() hears nothing, behind nothing, a tile away. The clock is the
+// game's (game.clock.t, else game.time).
+function nowOf(game) {
+  const t = game?.clock?.t;
+  return Number.isFinite(t) ? t : Number(game?.time) || 0;
+}
+
+export function silence(game, e, seconds = Infinity) {
+  if (!e) return null;
+  const until = seconds === Infinity ? Infinity : nowOf(game) + Math.max(0, Number(seconds) || 0);
+  const prev = typeof e.silentUntil === 'number' && !Number.isNaN(e.silentUntil) ? e.silentUntil : -Infinity;
+  e.silentUntil = Math.max(prev, until);
+  return e.silentUntil;
+}
+
+export function unsilence(e) {
+  if (e) e.silentUntil = -Infinity;
+}
+
+export function isSilenced(game, e) {
+  if (!e || typeof e !== 'object') return false;
+  const u = e.silentUntil;
+  return u === Infinity || (Number.isFinite(u) && u > nowOf(game));
+}
+
+// The loudness a sound from `e` really has: 0 while they are held silent.
+export function voiceOf(game, e, loud) {
+  return isSilenced(game, e) ? 0 : loud;
 }
 
 // How far a cry for help carries in open air, by severity 1..3 (npc.js's old HELP_HEAR).

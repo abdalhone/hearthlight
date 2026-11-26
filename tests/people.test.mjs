@@ -94,3 +94,12 @@ test('lyraOf is Lyra herself: game.lyra, else her entity, else game.companion', 
   assert.equal(lyraOf({ lyra, companion: bram }), lyra);
   assert.equal(lyraOf(null), null);
 });
+
+test("an actor's own `age` (seconds alive, for its animations) is never read as years", () => {
+  const lyra = { id: 'lyra', age: 0.4 };
+  const g = { entities: { get: (id) => (id === 'lyra' ? lyra : null) }, companion: lyra };
+  assert.equal(ageOf(g, lyra), 24);
+  assert.equal(isMinor(g, lyra), false);
+  const bram = { id: 'bram', age: 3, profile: { id: 'bram', age: 38 } };
+  assert.equal(ageOf({}, bram), 38);
+});

@@ -7,7 +7,7 @@ import * as D from './npc_dialogue.js';
 import { NPC_PROFILES } from './npc_data.js';
 import { RESPONSE_LINES, HEAR_LINES } from './npc_lines.js';
 import { look } from '../murder/witness.js';
-import { hears, cryLoudness, hearsWords, placeOfSound, LOUD } from '../ai/hearing.js';
+import { hears, cryLoudness, hearsWords, placeOfSound, LOUD, isSilenced, voiceOf } from '../ai/hearing.js';
 import { placePhrase } from '../ai/village_life/errands_data.js';
 import { isMinor, lyraOf } from '../core/people.js';
 
@@ -1413,7 +1413,8 @@ export class NPC extends Actor {
     } catch {
       told = false;
     }
-    const loud = told ? 0 : p.kind === 'knockout' ? LOUD.scream : p.kind === 'assault' ? LOUD.blow : 0;
+    // A victim held silent (round 14b, §37.2) makes neither cry nor sound: loudness 0.
+    const loud = told ? 0 : voiceOf(g, victim, p.kind === 'knockout' ? LOUD.scream : p.kind === 'assault' ? LOUD.blow : 0);
     const at = victim && Number.isFinite(victim.x) ? victim : actor;
     const heard = !sees && loud > 0 ? hears(g, this, at.x, at.y, loud) : null;
     if (isPlayer) {
@@ -1544,7 +1545,7 @@ export class NPC extends Actor {
     // Caught by the stranger's weave meant for something else: a yelp, not a call to arms.
     if (p.accident) {
       const t0 = now(g);
-      if (t0 - (this._yelpAt ?? -Infinity) > 5) {
+      if (t0 - (this._yelpAt ?? -Infinity) > 5 && !isSilenced(g, this)) {
         this._yelpAt = t0;
         try {
           g.bubbles?.say?.(this, ACCIDENT_YELPS[Math.floor(Math.random() * ACCIDENT_YELPS.length)], { kind: 'shout' });
@@ -1564,6 +1565,8 @@ export class NPC extends Actor {
 
   callForHelp(attacker, severity = 1) {
     const g = this.game;
+    // Held silent (the Unkindling's hold, a silent killing): no call for help at all.
+    if (isSilenced(g, this)) return;
     try {
       g.bus?.emit?.('call_for_help', { victim: this, attacker: attacker || null, x: this.x, y: this.y, severity });
     } catch {
@@ -1608,7 +1611,9 @@ export class NPC extends Actor {
     const d = Math.hypot(this.x - x, this.y - y);
     const kin = this.isKinOf(victim.id);
     // Kin know the voice from further off.
-    const how = forced ? 'told' : hears(g, this, x, y, cryLoudness(sev), { mul: kin && sev >= 2 ? 1.8 : 1 });
+    // A cry from someone held silent is no cry (loudness 0, round 14b §37.2); told face to
+    // face is words, not their voice.
+    const how = forced ? 'told' : hears(g, this, x, y, voiceOf(g, victim, cryLoudness(sev)), { mul: kin && sev >= 2 ? 1.8 : 1 });
     if (!how) return;
     // Who did it, as far as this one knows: the teller's word, or their own eyes and ears.
     const told = forced && who && who !== victim && !who.removed ? attackerOf(who) : null;
@@ -1656,7 +1661,7 @@ export class NPC extends Actor {
       saw = null;
     }
     if (saw === true) return culprit;
-    if (!victim.dead && hearsWords(g, this, victim, TELL_REACH)) return culprit;
+    if (!victim.dead && !isSilenced(g, victim) && hearsWords(g, this, victim, TELL_REACH)) return culprit;
     return null;
   }
 
@@ -2252,6 +2257,8 @@ export class NPC extends Actor {
 
   say(text, opts = {}) {
     if (!text) return;
+    // Held silent (round 14b, DESIGN §37.2): no word, no cry, no scream reaches anyone.
+    if (isSilenced(this.game, this)) return;
     this._lastLine = text;
     const g = this.game;
     const kind = opts.kind || 'say';
@@ -2660,6 +2667,8 @@ function installVillageHooks(game) {
   const bus = game.bus;
   const lastCall = { t: -Infinity, sev: 0 };
   const alarm = (victim, attacker, sev) => {
+    // Held silent: no alarm goes up from them (round 14b, DESIGN §37.2).
+    if (isSilenced(game, victim)) return;
     const t = now(game);
     if (t - lastCall.t < 5 && sev <= lastCall.sev) return;
     lastCall.t = t;

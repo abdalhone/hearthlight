@@ -10,6 +10,8 @@ import { suspicionOf, WEIGHTS } from '../src/murder/investigation.js';
 import { MISSIONS } from '../src/missions/data.js';
 import { MissionSystem } from '../src/missions/system.js';
 import { TILE } from '../src/core/constants.js';
+import { hears, voiceOf, silence, isSilenced, LOUD } from '../src/ai/hearing.js';
+import { drawBody } from '../src/murder/draw.js';
 
 // Killing, witnesses, bodies and what the village can know (DESIGN §29). The author: "if I
 // killed someone without nobody seeing it, nobody should know… they would feel that he's
@@ -614,5 +616,301 @@ test('Lyra asks, once, when she is unsure; a denial she chooses to believe, a co
       assert.ok(rec.answers.some((a) => a.kind === 'lyra_told'), 'she told the watch');
       assert.ok(g.murder.cases.bram.suspicion >= 0.85);
     }
+  }
+});
+
+// ------------------------------------------------------------------ round 14b, the base (F6)
+// DESIGN §35.1 (records), §36.3 (die), §37.2 (silent, unmarked), §37.3 (onFound).
+
+test('round 14b: a killing records who, why and whether they fought first; villager_killed says so; old saves read as unknown', () => {
+  const g = makeGame({ hour: 12 });
+  quiet(g, ['bram', 'garrick']);
+  const bram = g.entities.get('bram');
+  put(bram, px(WOODS.tx + 1), px(WOODS.ty));
+  put(g.player, px(WOODS.tx), px(WOODS.ty));
+  downBy(g, bram);
+  const rec = g.murder.kill(bram, g.player);
+  assert.equal(rec.by, 'player');
+  assert.equal(rec.cause, 'killed');
+  assert.equal(rec.provoked, false, 'Bram never raised a hand to the stranger');
+  assert.equal(rec.silent, false);
+  assert.equal(rec.unmarked, false);
+  assert.equal(bram.absent.cause, 'killed');
+  const ev = events(g, 'villager_killed').find((e) => e.id === 'bram');
+  assert.ok(ev && ev.cause === 'killed' && ev.by === 'player' && ev.provoked === false);
+  assert.equal(events(g, 'villager_died').length, 0, 'a killing is never a death nobody did');
+  // One who struck the stranger in the last 20 s was provoked.
+  const garrick = g.entities.get('garrick');
+  put(garrick, px(WOODS.tx), px(WOODS.ty + 1));
+  g.combat._noteAggression(g.player, garrick); // combat's own record of who hurt whom
+  downBy(g, garrick);
+  assert.equal(g.murder.provoked(garrick, g.player), true);
+  g.clock.t += 25;
+  assert.equal(g.murder.provoked(garrick, g.player), false, 'longer ago than 20 s is not provoked');
+  g.clock.t -= 25;
+  g.player.lastAttacker = garrick;
+  g.player.lastAttackedAt = g.clock.t;
+  const r2 = g.murder.kill(garrick, g.player);
+  assert.equal(r2.provoked, true, 'Garrick hit the stranger first');
+  // An old save's record (no cause, no by, no provoked) reads as a killing, the rest unknown.
+  const data = JSON.parse(JSON.stringify(g.murder.serialize()));
+  for (const r of Object.values(data.dead)) {
+    delete r.cause;
+    delete r.by;
+    delete r.provoked;
+    delete r.silent;
+    delete r.unmarked;
+  }
+  const h = makeGame({ hour: 12 });
+  h.murder.deserialize(data);
+  const old = h.murder.dead.bram;
+  assert.equal(old.cause, 'killed');
+  assert.equal(old.by, null);
+  assert.equal(old.provoked, null);
+  assert.equal(old.silent, false);
+  assert.equal(old.unmarked, false);
+  assert.equal(h.entities.get('bram').absent.cause, 'killed');
+});
+
+test('round 14b: die() is a death nobody did: no alarm, no case, no wanted, villager_died only; a minor never dies of age', () => {
+  const g = makeGame({ hour: 12 });
+  quiet(g, ['petra', 'hess', 'pip']);
+  const petra = g.entities.get('petra');
+  const hess = g.entities.get('hess');
+  hold(hess);
+  put(petra, px(WOODS.tx + 1), px(WOODS.ty));
+  put(hess, px(WOODS.tx + 3), px(WOODS.ty)); // in plain view of it: she still sees nothing done
+  put(g.player, px(WOODS.tx), px(WOODS.ty));
+  const rec = g.murder.die(petra, { cause: 'age' });
+  assert.ok(rec && petra.dead);
+  assert.equal(rec.cause, 'age');
+  assert.equal(rec.natural, true);
+  assert.equal(rec.by, null);
+  assert.deepEqual(rec.seen, [], 'no witnesses to a death nobody did');
+  assert.equal(rec.known, null);
+  assert.equal(rec.unmarked, true, 'old age leaves no wound');
+  assert.equal(petra.absent.cause, 'age');
+  assert.deepEqual(events(g, 'villager_killed'), [], 'never villager_killed');
+  const died = events(g, 'villager_died');
+  assert.equal(died.length, 1);
+  assert.equal(died[0].id, 'petra');
+  assert.equal(died[0].cause, 'age');
+  assert.equal(g.player.crime ?? null, null, 'no wanted');
+  assert.equal(g.murder.wanted, null);
+  assert.equal(events(g, 'crime').length, 0, 'no alarm');
+  assert.equal(events(g, 'murder_witnessed').length, 0);
+  assert.equal(g.murder.cases.petra, undefined, 'no case');
+  assert.ok(!g.village.rumors.list.some((r) => r.kind === 'murder'));
+  // Found: grief and a funeral, but no case and no blade.
+  g.murder.found('petra', 'hess', 'whisperwood');
+  assert.equal(g.murder.cases.petra, undefined, 'found: still no case');
+  assert.ok(g.murder.funerals.some((f) => f.about === 'petra'), 'a funeral all the same');
+  const bf = events(g, 'body_found').find((e) => e.id === 'petra' && 'murder' in e);
+  assert.equal(bf.murder, false);
+  assert.ok(!g.toasts.some((t) => /blade/i.test(t.text)), 'no blade in the news');
+  // A child never dies of age; die() takes no other killing.
+  const pip = g.entities.get('pip');
+  assert.equal(g.murder.die(pip, { cause: 'age' }), null);
+  assert.ok(!pip.dead);
+  // kill() is unchanged by any of this: still a killing, still a case when found.
+  assert.equal(g.murder.die(petra, { cause: 'age' }), null, 'the dead do not die twice');
+});
+
+test('round 14b: children are unkillable through isMinor (age, not a list): a grown teen can die, a child by age cannot', () => {
+  const g = makeGame({ hour: 12 });
+  quiet(g, ['bram', 'tilly', 'pip']);
+  const bram = g.entities.get('bram');
+  const tilly = g.entities.get('tilly');
+  const pip = g.entities.get('pip');
+  for (const [e, dx] of [[bram, 1], [tilly, 2], [pip, 3]]) put(e, px(WOODS.tx + dx), px(WOODS.ty));
+  put(g.player, px(WOODS.tx), px(WOODS.ty));
+  // Pip (9) and Tansy (15) are minors by age.
+  assert.equal(g.murder.canKill(pip), false);
+  assert.equal(g.murder.canKill(g.entities.get('tansy')), false);
+  // The rule is the age: Bram made twelve by the calendar is a child to it.
+  g.calendar = { ageOf: (id) => (id === 'bram' ? 12 : null) };
+  assert.equal(g.murder.canKill(bram), false, 'a child by age is never killable');
+  downBy(g, bram);
+  assert.equal(g.murder.kill(bram, g.player), null);
+  assert.equal(g.murder.kill(bram, { cause: 'unkindled', silent: true, unmarked: true }), null, 'nor by a silent spell');
+  g.murder.onAttackPress(g.player);
+  assert.equal(g.murder.hold, null, 'no finishing blow is held over a child');
+  assert.ok(g.said.some((s) => s.who === 'player' && /Not a child/.test(s.text)));
+  delete g.calendar;
+  // Tilly (17) is an adult.
+  assert.equal(g.murder.canKill(tilly), true);
+});
+
+test('round 14b: silent — no cry, no call for help, no scream: a tile away, behind nothing, nobody hears', () => {
+  // A sleeper a tile away hears a blow and a cry (hearing.js: asleep, a third of the reach)
+  // and cannot see it (asleep): the ear alone decides.
+  const setup = () => {
+    const g = makeGame({ hour: 12 });
+    quiet(g, ['bram', 'elda']);
+    const bram = g.entities.get('bram');
+    const elda = g.entities.get('elda');
+    hold(bram);
+    hold(elda);
+    put(bram, px(WOODS.tx + 1), px(WOODS.ty));
+    put(elda, px(WOODS.tx + 2), px(WOODS.ty));
+    elda.state = 'sleep';
+    put(g.player, px(WOODS.tx), px(WOODS.ty));
+    return { g, bram, elda };
+  };
+  // Not silent: the blow's cry carries to her.
+  {
+    const { g, bram, elda } = setup();
+    g.combat.damage(g.player, bram, 1, { exact: true, crit: false });
+    assert.ok(events(g, 'call_for_help').some((p) => p.victim === bram), 'he cries out');
+    assert.ok(g.murder.heardBy(bram, 2), 'and she hears it');
+    assert.ok(hears(g, elda, bram.x, bram.y, voiceOf(g, bram, LOUD.scream)));
+  }
+  // Held silent (the Unkindling's hold): nothing at all.
+  {
+    const { g, bram, elda } = setup();
+    silence(g, bram, 5);
+    assert.ok(isSilenced(g, bram));
+    g.combat.damage(g.player, bram, 1, { exact: true, crit: false });
+    assert.equal(events(g, 'call_for_help').length, 0, 'no call for help');
+    assert.equal(g.murder.heardBy(bram, 3), false);
+    assert.equal(hears(g, elda, bram.x, bram.y, voiceOf(g, bram, LOUD.scream)), null, 'loudness 0 through the hearing rule');
+    assert.equal(elda.uneasy ?? null, null, 'she sleeps on');
+    assert.ok(!g.said.some((s) => s.who === 'bram'), 'not a word from him');
+    // The silent killing itself.
+    const rec = g.murder.kill(bram, { cause: 'unkindled', silent: true, unmarked: true });
+    assert.ok(rec && bram.dead);
+    assert.equal(rec.cause, 'unkindled');
+    assert.equal(rec.by, 'player');
+    assert.equal(rec.silent, true);
+    assert.equal(bram.absent.cause, 'unkindled');
+    assert.equal(events(g, 'call_for_help').length, 0);
+    assert.equal(g.murder.heardBy(bram, 3), false);
+    const ev = events(g, 'villager_killed').find((e) => e.id === 'bram');
+    assert.ok(ev.silent && ev.unmarked && ev.cause === 'unkindled');
+    assert.equal(elda.uneasy ?? null, null);
+    assert.equal(elda.state, 'sleep');
+    // Seconds pass: the hold on a living person ends (silence(…, 5)); the dead stay silent.
+    step(g, 6, 1 / 10);
+    assert.ok(isSilenced(g, bram), 'a body killed silently stays silent');
+  }
+  // Eyes are not ears: one awake who SEES a silent killing is a witness (the sight rule).
+  {
+    const { g, bram } = setup();
+    const hess = g.entities.get('hess');
+    hold(hess);
+    put(hess, px(WOODS.tx + 1), px(WOODS.ty + 3));
+    const rec = g.murder.kill(bram, { cause: 'unkindled', silent: true, unmarked: true });
+    assert.ok(rec.seen.some((s) => s.id === 'hess'), 'she saw it');
+    assert.equal(rec.known, 'witnessed');
+  }
+});
+
+test('round 14b: unmarked — no blood under the body; the record keeps it across a save', () => {
+  const g = makeGame({ hour: 12 });
+  quiet(g, ['bram', 'mira']);
+  const bram = g.entities.get('bram');
+  const mira = g.entities.get('mira');
+  put(bram, px(WOODS.tx + 1), px(WOODS.ty));
+  put(mira, px(WOODS.tx + 1), px(WOODS.ty + 4));
+  put(g.player, px(WOODS.tx), px(WOODS.ty));
+  // Blood where someone stood (a fall's pool): an unmarked death leaves the ground clean.
+  g.survival.trail.pool(bram.x, bram.y - 3, 1);
+  assert.equal(g.survival.trail.marks.length, 1);
+  const rec = g.murder.kill(bram, { cause: 'unkindled', silent: true, unmarked: true });
+  assert.equal(rec.unmarked, true);
+  assert.equal(bram.unmarked, true, 'layBody reads it');
+  assert.equal(g.survival.trail.marks.length, 0, 'no blood where he lies');
+  // The renderer draws no stain under an unmarked body, and one under a marked one.
+  const calls = [];
+  const ctx = new Proxy({ canvas: { width: 400, height: 240 }, globalAlpha: 1 }, {
+    get(t, k) {
+      if (k in t) return t[k];
+      return (...a) => calls.push([k, ...a]);
+    },
+    set(t, k, v) {
+      t[k] = v;
+      if (k === 'fillStyle') calls.push(['fillStyle', v]);
+      return true;
+    },
+  });
+  const stains = () => calls.filter((c) => c[0] === 'fillStyle' && /^#(3d0910|5c0f17)$/.test(c[1])).length;
+  drawBody(bram, rec, ctx, 0, 0, 0);
+  assert.equal(stains(), 0, 'unmarked: no blood drawn');
+  drawBody(bram, { ...rec, unmarked: false }, ctx, 0, 0, 0);
+  assert.ok(stains() > 0, 'a marked killing leaves blood');
+  // Saved and restored.
+  const data = JSON.parse(JSON.stringify(g.murder.serialize()));
+  const h = makeGame({ hour: 12 });
+  h.murder.deserialize(data);
+  assert.equal(h.murder.dead.bram.unmarked, true);
+  assert.equal(h.murder.dead.bram.silent, true);
+  assert.equal(h.entities.get('bram').unmarked, true);
+  assert.ok(isSilenced(h, h.entities.get('bram')));
+});
+
+test('round 14b: onFound — a handler owns the discovery of a cause it knows; with none, found() is unchanged', () => {
+  const run = (withHandler) => {
+    const g = makeGame({ hour: 12 });
+    quiet(g, ['bram', 'hess']);
+    const bram = g.entities.get('bram');
+    put(bram, px(WOODS.tx + 1), px(WOODS.ty));
+    put(g.player, px(WOODS.tx), px(WOODS.ty));
+    const seenBy = [];
+    let off = null;
+    if (withHandler) {
+      // A handler for some other cause first: it declines (returns nothing).
+      g.murder.onFound((rec) => {
+        seenBy.push(['other', rec.id]);
+        return rec.cause === 'something_else';
+      });
+      off = g.murder.onFound((rec, ctx) => {
+        seenBy.push(['soul', rec.id, ctx.finder, ctx.cause]);
+        if (rec.cause !== 'unkindled') return false;
+        g.ui.toast('No mark on him. Cold as stone.', 'warn');
+        return true;
+      });
+    }
+    g.murder.kill(bram, { cause: 'unkindled', silent: true, unmarked: true });
+    put(g.player, px(96), px(79));
+    g.murder.found('bram', 'hess', 'whisperwood');
+    return { g, seenBy, off };
+  };
+  // No handler: the old discovery, the case and all.
+  {
+    const { g } = run(false);
+    assert.ok(g.murder.cases.bram, 'a case');
+    assert.ok(g.toasts.some((t) => /Struck down with a blade/.test(t.text)));
+    assert.ok(g.murder.funerals.some((f) => f.about === 'bram'));
+  }
+  // With one: handlers in order; the owner takes the lines and the case; grief stays.
+  {
+    const { g, seenBy, off } = run(true);
+    assert.deepEqual(seenBy.map((s) => s[0]), ['other', 'soul']);
+    assert.deepEqual(seenBy[1].slice(1), ['bram', 'hess', 'unkindled']);
+    assert.equal(g.murder.cases.bram, undefined, 'the owner took the case');
+    assert.ok(!g.toasts.some((t) => /blade/i.test(t.text)), 'no blade');
+    assert.ok(g.toasts.some((t) => /Cold as stone/.test(t.text)), "the owner's lines");
+    assert.ok(g.murder.funerals.some((f) => f.about === 'bram'), 'grief and a funeral all the same');
+    assert.equal(g.murder.dead.bram.foundAt != null, true);
+    const bf = events(g, 'body_found').find((e) => e.id === 'bram' && e.owned);
+    assert.ok(bf && bf.cause === 'unkindled');
+    // Removing the handler restores the old discovery.
+    off();
+    assert.equal(g.murder.foundHandlers.length, 1);
+  }
+  // A handler that declines (or throws) leaves the default.
+  {
+    const g = makeGame({ hour: 12 });
+    quiet(g, ['bram']);
+    const bram = g.entities.get('bram');
+    put(bram, px(WOODS.tx + 1), px(WOODS.ty));
+    put(g.player, px(WOODS.tx), px(WOODS.ty));
+    g.murder.onFound(() => {
+      throw new Error('a broken handler');
+    });
+    downBy(g, bram);
+    g.murder.kill(bram, g.player);
+    g.murder.found('bram', 'hess', 'whisperwood');
+    assert.ok(g.murder.cases.bram, 'still a case');
   }
 });
