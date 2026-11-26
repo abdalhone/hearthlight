@@ -342,6 +342,9 @@ async function run(S) {
     const g = window.__game;
     const tob = g.entities.get('tobias');
     g.combat.revive?.(tob, g.player, 1);
+    // Bram ran to help him (a cry heard): Tobias is up, so he comes back to you.
+    const bram = g.entities.get('bram');
+    if (bram.mode === 'help') bram.endHelp?.(true);
     window.__clean();
   });
 
