@@ -223,7 +223,10 @@ export class Unkindle {
     if (e.kind === 'undead' || UNDEAD.has(e.species)) return 'undead';
     // A bandit or a beast: a smaller soul, prey that is not murder (§13b S20-11).
     if (BANDITS.has(e.species) || e.faction === 'bandit' || e.kind === 'human') return 'bandit';
-    if (e.pet || e.species === 'cat' || e.faction === 'wildlife' || e.spec?.threat === 0) return 'harmless';
+    // Harmless (a hen, the cat, a deer, a rabbit): no threat to anyone. A boar, wildlife that
+    // charges, is a beast.
+    const threat = e.spec?.threat ?? (e.faction === 'wildlife' ? 0 : 1);
+    if (e.pet || e.species === 'cat' || threat === 0) return 'harmless';
     return 'beast';
   }
 

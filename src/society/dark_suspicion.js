@@ -787,8 +787,21 @@ export class DarkSuspicion {
       safe(() => e.adjustOpinion?.(-2, 'would not tell her true'));
     } else if (v.verdict === 'knows') {
       if (v.killer) {
-        // A killing confessed: murder, with all that follows (the village side links it).
+        // A killing confessed, to her face: murder, with all that follows. She knows of that
+        // death now (she was told it), and knows who; the village side links the rest.
         const hv = this.unk?.village;
+        const rec = g.murder?.dead?.[v.killer];
+        if (rec && rec.by === 'player') {
+          const kb = new Set(Array.isArray(rec.knownBy) ? rec.knownBy : []);
+          kb.add(e.id);
+          rec.knownBy = [...kb];
+          if (!rec.linked) {
+            rec.linked = true;
+            rec.knownKilling = true;
+            safe(() => g.bus?.emit?.('killing_known', { id: rec.id, cause: rec.cause, knownBy: [...rec.knownBy] }));
+            safe(() => hv?.reopen?.(rec, [e.id]));
+          }
+        }
         if (hv) {
           hv.knowers.add(e.id);
           safe(() => hv.link());

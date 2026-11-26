@@ -489,3 +489,26 @@ test('with a village that hears first (talk emits player_heard), the verdict is 
   assert.equal(sus.st('aveline').asked?.verdict, 'believed');
   assert.deepEqual(reply.lines, ['(her own words)'], 'Claude worded it: the game only decided');
 });
+
+test('a boar that charges is a beast; a deer is not prey; a killing confessed to her is murder she knows', async () => {
+  const { g, unk, sus } = setup({ keep: ['aveline', 'bram'] });
+  assert.equal(unk.kindOf(beast(g, 'boar', 2, 0)), 'beast');
+  assert.equal(unk.kindOf(beast(g, 'deer', 0, 2)), 'harmless');
+  const bram = near(g, 'bram', 1, 0);
+  unk.begin(bram);
+  hold(g, unk);
+  assert.ok(bram.dead);
+  const av = near(g, 'aveline', 0, 1);
+  sus.asking = { id: 'aveline', phase: 'open', t0: 0, openT: Math.round(sus.now()) };
+  sus.st('aveline').signs = { hands: 1 };
+  const killed = [];
+  g.bus.on('killing_known', (p) => killed.push(p.id));
+  const reply = await g.village.playerSays(av, 'It was me. I killed Bram.');
+  const rec = g.murder.dead.bram;
+  assert.ok(rec.knownBy.includes('aveline'));
+  assert.equal(rec.knownKilling, true);
+  assert.ok(killed.includes('bram'));
+  assert.ok(unk.village.knows('aveline'));
+  assert.match(reply.lines.join(' '), /Bram/);
+  assert.match(unk.briefLine('aveline'), /killer/);
+});
