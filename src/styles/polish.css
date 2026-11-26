@@ -93,3 +93,15 @@
   width: calc(7px * var(--uiz, 1));
   height: calc(7px * var(--uiz, 1));
 }
+
+/* ---------- Prices on a phone (DESIGN §25) ----------
+   The HUD keeps one chip per running gain or cost. On a phone the row was cut after three
+   or four chips (two prices at once already make four): it wraps to a second row instead,
+   and never more than two. (stats_style.js injects the chips' own styles at run time.) */
+@media (max-width: 640px), (max-height: 520px) {
+  .ui .buff-row {
+    flex-wrap: wrap;
+    max-height: 40px;
+    overflow: hidden;
+  }
+}

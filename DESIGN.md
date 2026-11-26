@@ -1916,8 +1916,10 @@ is a **gain** and a **cost**, both timed modifiers on the shared stat pipeline (
   stagger, for 2 min; when it ends the heart gives out and the player falls (§27, with a
   short 30 s window).
 - `glass` — +50% weave power for 30 s; take +50% damage for 30 s.
-- `overdraw` — weaves cost no mana for 10 s; then no mana regeneration for 30 s.
-- `emberblood` — while active, lose 2% HP per second and cast 30% faster (toggle).
+- `overdraw` — weaves cost no mana for 10 s; then no mana regeneration for 20 s. Casting
+  it again while the well is dry borrows nothing (the drought is paid in full).
+- `emberblood` — while active, lose 2% HP per second; cast 30% faster and weaves cost 30%
+  less mana (the blood pays part of each) (toggle).
 - `lastlight` — when the player would fall, heal fully once; max HP −50% until the next
   sleep.
 - `oath` — +30% to everything while Lyra is near; if she is hurt, the player is too.
@@ -1940,6 +1942,11 @@ is a **gain** and a **cost**, both timed modifiers on the shared stat pipeline (
   saw. Order with the others: lastlight catches the fall first (the last stand stays
   held); berserk's end cannot fell you while you burn, and the burn ends it. Saved as
   held or as the seconds left, so closing the page does not escape the minute.
+Played and balanced in round 14b (`scripts/price_sim.mjs`: each price in a long fight at
+level 1, beside no price at all; the author's own numbers kept as said). In a fight of
+fifteen seconds every price but lastlight and oath (which pay off elsewhere) gives 20–50%
+more damage; past thirty seconds bloodprice, glass and emberblood leave you lower, and
+overdraw's drought takes back most of its burst. The table is the script's output.
 Prices are earned like other components (missions, bosses, a few found), shown with their
 cost in red in the Spellbook and on the hotbar button, and their timers on the HUD. Lyra
 notices and has opinions (berserk frightens her).

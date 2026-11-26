@@ -458,23 +458,31 @@ async function run(S) {
       const pick = (o) => o && { tx: o.tx, ty: o.ty, type: o.objType };
       return { dead: pick(dead), wild: pick(wild), home: pick(home) };
     });
-    // Break them with a real blow: a Strike at each.
+    // Break them with a real blow: a Strike at each (again, if the first only chipped it).
     const strikeAt = async (o) => {
       if (!o) return false;
       await goTo(o.tx, o.ty + 2, 12);
       await wait(500);
-      return ev((o) => {
-        const g = window.__game;
-        const P = g.player;
-        const it = g.objects.list.find((x) => x.tx === o.tx && x.ty === o.ty && x.objType === o.type);
-        if (!it) return false;
-        it.state.broken = false;
-        it._dmg = 0;
-        g.magic.resetCooldowns?.();
-        P.faceDir?.('up');
-        g.magic.cast(P, { shape: 'strike', essences: ['raw'], twists: [] }, { x: it.x, y: it.y - 8 }, { free: true });
-        return true;
-      }, o);
+      for (let i = 0; i < 4; i++) {
+        const done = await ev((o) => {
+          const g = window.__game;
+          const P = g.player;
+          const it = g.objects.list.find((x) => x.tx === o.tx && x.ty === o.ty && x.objType === o.type);
+          if (!it) return true;
+          if (it.state.broken) return true;
+          P.x = it.x;
+          P.y = it.y + 26;
+          P.downed = false;
+          g.magic.unlockAll?.();
+          g.magic.resetCooldowns?.();
+          P.faceDir?.('up');
+          g.magic.cast(P, { shape: 'strike', essences: ['raw'], twists: [] }, { x: it.x, y: it.y - 8 }, { free: true });
+          return false;
+        }, o);
+        if (done) return true;
+        await wait(450);
+      }
+      return false;
     };
     const state = (o) => ev((o) => {
       const g = window.__game;
@@ -492,7 +500,7 @@ async function run(S) {
     // Three days on: every prop updated once more.
     await ev((r) => {
       const g = window.__game;
-      g.clock.t += 3 * 24 * 3600;
+      g.clock.t += 3 * 900; // three days (DAY_SECONDS)
       g.player.x = 80 * 16;
       g.player.y = 90 * 16;
       for (const k of ['dead', 'wild', 'home']) {
