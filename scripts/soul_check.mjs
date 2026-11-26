@@ -369,11 +369,13 @@ async function run(S) {
   // ---------- the finder's shock ----------
   const found = await ev(() => {
     const g = window.__game;
+    // (Toasts from here: the night slept through is a new day now (society's clock), and
+    // its morning may find him before Elda does; either finding says it.)
+    window.__toasts.length = 0;
     g.clock.skipTo?.(7.2);
     const elda = g.entities.get('elda');
     window.__at(elda, 86, 62, 8, 10);
     elda.faceDir?.('left');
-    window.__toasts.length = 0;
     window.__clean();
     g.murder.found('bram', 'elda', g.murder.dead.bram.place);
     return { toasts: window.__toasts.slice(), case: !!g.murder.cases.bram, wanted: g.murder.isWanted(), mystery: !!g.murder.dead.bram.mystery };
