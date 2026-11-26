@@ -2647,8 +2647,9 @@ it (`game.party?.weighJoin?.(e)`), so any workstream may land first.
 - ***Acts* between asterisks**: `parseActs`; the game decides consent and outcome, the minds
   only word the reaction (D6). Intimate verbs need `canBeIntimate(game, target)` or the game
   refuses ("You don't."). A text act never kills and deals at most 1–3 hp. An assault act goes
-  through `combat.assault(attacker, target, kind)` (a wrapper on `_recordCrime`): known only to
-  those who see it (the sight rule, `murder.screenCrime`), its cry heard by the hearing rule.
+  through `combat.assault(attacker, target, kind, { amount })` (a wrapper on `_recordCrime`):
+  known only to those who see it (the sight rule, `murder.screenCrime`), its cry heard by the
+  hearing rule.
 - **Cut ties and the parting scene**: words still reach a gone Lyra within 16 tiles (D9) and
   she answers as she feels; her leaving is a scene with her reasons and a letter; the village
   learns of it from those who heard her words clearly (`hears`, `LOUD.talk`) and then by
@@ -2719,10 +2720,11 @@ she is gone or left. An old save's `lyra_gone.farewell` moves to `lyra_farewell`
   consent (villagers by opinion, familiarity and fear; Lyra by trust and affinity, and only
   together) and outcome before any mind words it; the brief says "They do (an act, not
   words): *…*. It was unwelcome to you."; Lyra's context has "# {player} does". Intimate acts
-  need `canBeIntimate` (18+): below it, "You don't." and no mind is asked. An assault deals
-  1–3 hp and never downs anyone: through `combat.damage`, or `combat.assault(attacker,
-  target, kind)` when the blow cannot land; either way the crime is known only to those who
-  see it (`murder.screenCrime`). A lethal verb is only a threat. Rumours by sight:
+  need `canBeIntimate` (18+): below it, "You don't." and no mind is asked. Every assault by
+  hand goes through `combat.assault(attacker, target, kind, { amount, knockback })`: 1–3 hp,
+  never the last of it (no one is ever downed by a text act, a child least of all), the
+  'damage' event so they react as hit (their own onHurt), and the crime known only to those
+  who see it (`murder.screenCrime`), blood's rules either way. A lethal verb is only a threat. Rumours by sight:
   `unwelcome`, `spat_at`, `slapped_lyra`, `threat`. Lyra's deeds: `affection_welcome`,
   `kissed_unwelcome`, `touched_unwelcome`, `slapped_lyra`, `shoved_lyra`, `bowed`. The chat
   shows an italic act row and an act bubble over the player (bubbles kind `'act'`).

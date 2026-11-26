@@ -120,11 +120,30 @@ async function play(size) {
       g.player.x = e.x + 20;
       g.player.y = e.y + 2;
     }, id);
-  // The person the player meant: if a tap in a crowd picked a neighbour, the player taps
-  // the one they meant in the chat's "To" row (the real way to put it right).
+  // Round 14b (decision D3): a tap on a person never opens talk. The player stands beside
+  // them, facing them, and presses T (desktop) or the round Talk button (phones); if the
+  // chat picked someone else in a crowd, they tap the one they meant in the To row.
   const talkTo = async (id) => {
     if (id !== 'lyra') await standBy(id);
-    await tapPerson(id);
+    await page.evaluate((id) => {
+      const g = window.__game;
+      const e = id === 'lyra' ? g.companion : g.entities.get(id);
+      const P = g.player;
+      if (!e) return;
+      const dx = e.x - P.x;
+      const dy = e.y - P.y;
+      const l = Math.hypot(dx, dy) || 1;
+      P.facing = { x: dx / l, y: dy / l };
+    }, id);
+    await wait(250);
+    if (size.touch) {
+      const btn = await page.evaluate(() => {
+        const e = [...document.querySelectorAll('.tbtn-interact, .hud-chat')].find((x) => x.getBoundingClientRect().width > 0);
+        const r = e?.getBoundingClientRect();
+        return r ? [r.left + r.width / 2, r.top + r.height / 2] : null;
+      });
+      if (btn) await tap(...btn);
+    } else await page.keyboard.press('t');
     await page.waitForFunction(() => window.__game.ui.chat.isOpen(), null, { timeout: 4000 }).catch(() => null);
     const t = await page.evaluate(() => window.__game.ui.chat.target);
     if (t === id) return true;
@@ -133,7 +152,7 @@ async function play(size) {
       const r = el?.getBoundingClientRect();
       return r && r.width ? [r.left + r.width / 2, r.top + r.height / 2] : null;
     }, id);
-    console.log(`note  ${tag}: a tap on ${id} picked ${t}; tapping ${id} in the To row${chip ? '' : ' (no chip found)'}`);
+    console.log(`note  ${tag}: Talk picked ${t}; tapping ${id} in the To row${chip ? '' : ' (no chip found)'}`);
     if (chip) await tap(...chip);
     await wait(300);
     return (await page.evaluate(() => window.__game.ui.chat.target)) === id;
@@ -434,8 +453,9 @@ async function play(size) {
   const where = await screenOf('lyra');
   const vp = size.viewport;
   const onScreen = !!where && where.x > 24 && where.x < vp.width - 24 && where.y > 24 && where.y < vp.height - 24;
-  if (onScreen) await tapPerson('lyra');
-  else {
+  // (Round 14b: no tap on a person opens talk; the Talk button, then her chip.)
+  await walkAfter('lyra', 4, { gap: 60, until: 'Math.hypot(g.companion.x - g.player.x, g.companion.y - g.player.y) < 170' });
+  {
     const btn = await page.evaluate(() => {
       const e = [...document.querySelectorAll('.tbtn-interact, .hud-chat')].find((x) => x.getBoundingClientRect().width > 0);
       const r = e?.getBoundingClientRect();
@@ -457,7 +477,7 @@ async function play(size) {
   // Within earshot of her (she may have kept well away): the player walks after her.
   await walkAfter('lyra', 4, { gap: 60, until: 'Math.hypot(g.companion.x - g.player.x, g.companion.y - g.player.y) < 170' });
   const tapped = await page.evaluate(() => ({ open: window.__game.ui.chat.isOpen(), target: window.__game.ui.chat.target }));
-  check(tapped.open && tapped.target === 'lyra', `${tag}: ${onScreen ? 'a tap on Lyra as she keeps away' : 'the Talk button, with her off screen,'} opens the chat to her (${JSON.stringify(tapped)})`);
+  check(tapped.open && tapped.target === 'lyra', `${tag}: the Talk button and her chip open the chat to her as she keeps away (${JSON.stringify(tapped)})`);
   await say('Lyra, please talk to me');
   await wait(600);
   await say('Lyra? Please.');
