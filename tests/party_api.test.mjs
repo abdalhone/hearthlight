@@ -86,7 +86,8 @@ test('saved and restored last; an old save with no party block derives the holde
   const g = makeGame({ hour: 12 });
   g.party.set('bram', 'test', 'player');
   const saved = JSON.parse(JSON.stringify(g.party.serialize()));
-  assert.deepEqual(saved, { v: 1, holderId: 'bram' });
+  // (v2, workstream party: a villager holder's duty rides along; set() alone attaches none.)
+  assert.deepEqual(saved, { v: 2, holderId: 'bram', duty: null });
   const h = makeGame({ hour: 12 });
   h.party.deserialize(saved);
   assert.equal(h.party.holderId, 'bram');
