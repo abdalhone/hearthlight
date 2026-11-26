@@ -622,8 +622,11 @@ export class Autonomy {
     if (source && this.isPlayer(source) && target && this.isVillager(target)) {
       // A blow that knocks them out is recorded by the 'downed' that follows it.
       if (!(target.hp > 0)) return undefined;
-      // Only what she saw (DESIGN §29: line of sight, light, distance).
-      if (this.game?.murder && !this.game.murder.saw('lyra', target)) return undefined;
+      // Only what she saw (DESIGN §29: line of sight, light, distance). A blow nobody
+      // screened as a crime (an accident, the forgiven habit) she judges by her own eyes.
+      const screened = this.game?.murder?.sawBlow?.('lyra', target);
+      if (screened === false) return undefined;
+      if (screened == null && !seesActor(this.game, this.lyra(), target)) return undefined;
       return this._playerHitNpc(target, ev);
     }
     return undefined;

@@ -515,6 +515,115 @@ async function play(S) {
   });
 
 
+  // ================================================================ 5: a click on a person (D3)
+  await item(5, 'a click on a calm person: the sword, forgiven once', async () => {
+    if (S.phone) {
+      // A tap on a person does nothing at all (no chat, no swing).
+      const r = await ev(() => {
+        const g = window.__game;
+        const sq = g.locations.get('town_square').center;
+        window.__away(['tobias']);
+        const t = g.entities.get('tobias');
+        window.__at(t, Math.floor(sq.x / 16), Math.floor(sq.y / 16));
+        g.player.x = t.x + 40;
+        g.player.y = t.y;
+        g.camera.snap?.();
+        return { hp: t.hp };
+      });
+      await wait(500);
+      Object.assign(r, await ev(() => {
+        const g = window.__game;
+        const t = g.entities.get('tobias');
+        const p = g.renderer.worldToCss(t.x, t.y - 10);
+        const c = g.canvas.getBoundingClientRect();
+        return { x: c.left + p.x, y: c.top + p.y };
+      }));
+      await page.touchscreen.tap(r.x, r.y);
+      await wait(500);
+      const after = await ev(() => ({ hp: window.__game.entities.get('tobias').hp, chat: window.__game.ui.chat.isOpen?.() }));
+      check(after.hp === r.hp && !after.chat, `[${tag}] 5 a tap on Tobias: no chat, no blow`, JSON.stringify(after));
+      return;
+    }
+    const at = await ev(() => {
+      const g = window.__game;
+      g.flags.talkHintShown = false;
+      g.flags.habitForgiven = false;
+      g.clock.skipTo?.(12);
+      const sq = g.locations.get('town_square').center;
+      window.__away(['tobias', 'garrick']);
+      const t = g.entities.get('tobias');
+      window.__at(t, Math.floor(sq.x / 16), Math.floor(sq.y / 16));
+      const gar = g.entities.get('garrick');
+      window.__at(gar, Math.floor(sq.x / 16) + 1, Math.floor(sq.y / 16) + 3);
+      gar.faceToward?.(t.x, t.y);
+      g.player.x = t.x + 18;
+      g.player.y = t.y;
+      g.player.facing = { x: -1, y: 0 };
+      g.player.dir = 'left';
+      g.camera.snap?.();
+      window.__toasts.length = 0;
+      window.__crimes = [];
+      g.bus.on('crime', (p) => window.__crimes.push(p.kind));
+      window.__blows = [];
+      g.bus.on('damage', (p) => {
+        if (p?.target?.id === 'tobias' && p.source === g.player) window.__blows.push(!!p.accident);
+      });
+      window.__yelps = [];
+      const say = g.bubbles.say.bind(g.bubbles);
+      g.bubbles.say = (e, text, o) => {
+        if (e?.id === 'tobias') window.__yelps.push(text);
+        return say(e, text, o);
+      };
+      return { hp: t.hp };
+    });
+    await wait(500);
+    Object.assign(at, await ev(() => {
+      const g = window.__game;
+      const t = g.entities.get('tobias');
+      const p = g.renderer.worldToCss(t.x, t.y - 10);
+      const c = g.canvas.getBoundingClientRect();
+      return { x: c.left + p.x, y: c.top + p.y };
+    }));
+    const tgt = await ev((at) => {
+      const e = document.elementFromPoint(at.x, at.y);
+      return e ? `${e.tagName}.${e.className}` : null;
+    }, at);
+    await page.mouse.move(at.x, at.y);
+    await wait(60);
+    await page.mouse.click(at.x, at.y);
+    await wait(700);
+    const one = await ev(() => ({ attacks: window.__game.player.combo, st: window.__game.player.state, state: window.__game.state, input: window.__game.input.enabled, hp: window.__game.entities.get('tobias').hp, crimes: window.__crimes.slice(), yelps: window.__yelps.slice(), toasts: window.__toasts.slice(), crime: window.__game.combat.hasCrime(window.__game.player), chat: window.__game.ui.chat.isOpen?.() }));
+    check(one.hp < at.hp && !one.chat, `[${tag}] 5 a click on Tobias is the sword, not talk`, JSON.stringify({ ...one, tgt, at }));
+    check(!one.crime && one.crimes.length === 0, `[${tag}] 5 the first such blow is forgiven (no crime)`, JSON.stringify(one.crimes));
+    check(one.yelps.some((y) => /Watch it|Careful|Mind where|Not at me/.test(y)), `[${tag}] 5 ... he yelps "Watch it!"`, JSON.stringify(one.yelps));
+    check(one.toasts.some((t) => /T talks to whoever is in front of you\. Striking people is a crime/.test(t)), `[${tag}] 5 ... and the hint is said once`, JSON.stringify(one.toasts));
+    await shot('05-habit-forgiven');
+    await wait(900);
+    await ev(() => {
+      const g = window.__game;
+      const t = g.entities.get('tobias');
+      t.invuln = 0;
+      t.fightTarget = null;
+      g.player.x = t.x + 18;
+      g.player.y = t.y;
+      g.player.facing = { x: -1, y: 0 };
+      g.player.dir = 'left';
+    });
+    await wait(400);
+    const at2 = await ev(() => {
+      const g = window.__game;
+      const t = g.entities.get('tobias');
+      const p = g.renderer.worldToCss(t.x, t.y - 10);
+      const c = g.canvas.getBoundingClientRect();
+      return { x: c.left + p.x, y: c.top + p.y };
+    });
+    await page.mouse.click(at2.x, at2.y);
+    await wait(700);
+    const two = await ev(() => ({ blows: window.__blows.slice(), crimes: window.__crimes.slice(), crime: window.__game.combat.hasCrime(window.__game.player), secret: !!window.__game.murder?.isSecret?.('tobias') }));
+    check(two.blows.length >= 2 && two.blows[0] === true && two.blows.slice(1).every((a) => a === false), `[${tag}] 5 the second click is a real blow (a crime if seen, his to tell if not)`, JSON.stringify(two));
+    await shot('05-second-is-crime');
+  });
+
   // ================================================================ TOP PRIORITY B: the HUD
   const vis = (sel) =>
     ev((sel) => {

@@ -350,6 +350,13 @@ export class Player extends Actor {
     this.dir = dirFromVec(a.x, a.y, this.dir);
   }
 
+  // Was this swing started by a mouse click (not J, Space or a touch)? (decision D3)
+  _clickSwing() {
+    const t = this.game.input?.clickSwingAt;
+    const now = this.game.time ?? 0;
+    return Number.isFinite(t) && now - t >= 0 && now - t < 0.6;
+  }
+
   _modalOpen() {
     try {
       return !!this.game.ui?.isModalOpen?.();
@@ -536,6 +543,8 @@ export class Player extends Actor {
         lock: c.lock,
         cooldown: 0.08,
         silent: true,
+        // A swing a mouse click started just now: the old click-to-talk habit (D3).
+        habit: this._clickSwing(),
       });
     } catch (err) {
       console.warn('[player] melee failed', err);

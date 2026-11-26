@@ -385,6 +385,7 @@ export class Combat {
         knockback: opts.knockback ?? 90,
         launch: opts.launch || 0,
         heavy: !!opts.heavy,
+        habit: !!opts.habit,
         dirX: d > 0.001 ? dx * inv : fx,
         dirY: d > 0.001 ? dy * inv : fy,
       });
@@ -473,6 +474,27 @@ export class Combat {
 
   // ---------------------------------------------------------------- damage
 
+  // Decision D3 (round 14b; the author: "Sometimes I click on them and try to talk to them"):
+  // a click on a person is the sword wherever it lands, so the old habit is forgiven once.
+  // The first sword blow in a life that lands on a calm person (lawful, standing, not
+  // fighting, fleeing or afraid of you, not the one you locked on to) is an accident: it
+  // lands, they yelp, and there is no crime and no grudge. Every blow after it is a real one.
+  // Only a swing a mouse click started is the habit (`opts.habit`, set by the player's sword
+  // from input.clickSwingAt): J, Space or the phone's sword button are meant (a phone's tap
+  // on a person does nothing at all). A weave, a slap and a finishing blow never are.
+  _forgivenHabit(attacker, target, kind, opts) {
+    const g = this.game;
+    if (!opts.habit || !attacker || !this.isPlayer(attacker) || kind !== 'melee' || opts.dot || opts.deliberate) return false;
+    if (!this.isLawful(target) || target.downed || !(target.hp > 0)) return false;
+    const flags = g.flags || (g.flags = {});
+    if (flags.habitForgiven) return false;
+    if (g.lock?.target === target) return false;
+    if (['fight', 'flee', 'confront'].includes(target.mode) || target.fightTarget === attacker) return false;
+    if (g.murder?.fearOf?.(target)) return false;
+    flags.habitForgiven = true;
+    return true;
+  }
+
   // opts: { kind, knockback (px/s), crit (bool to force), launch (px/s up), heavy,
   //         dirX, dirY (knockback direction), invuln (seconds), exact (no variance) }
   // Weaves (src/magic) add: damageType / damageTypes [{type, share}] (target.resist or
@@ -531,7 +553,7 @@ export class Combat {
     const isPlayer = this.isPlayer(target);
     const isFriend = isPlayer || this.isParty(target) || this.isLyra(target);
     const attacker = source && source.type === 'actor' ? source : null;
-    const accident = !!opts.accident;
+    const accident = !!opts.accident || this._forgivenHabit(attacker, target, kind, opts);
     if (attacker && !accident) this._noteAggression(target, attacker);
     // Hurting a villager or guard is a crime; set it before anyone hears about the hit.
     // (A blow a ward caught was still a blow; an accident is not a crime.)
