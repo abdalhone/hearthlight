@@ -5,6 +5,7 @@
 
 import { nonRaw, weaveOf, earnedPart } from './tracker.js';
 import { seesActor } from '../ai/sight.js';
+import { lyraDead } from '../core/party.js';
 
 const SIGHT = 170;
 
@@ -76,7 +77,7 @@ export class LyraWatch {
     const g = this.game;
     const l = this.lyra();
     const p = g.player;
-    if (!l || !p || l.removed || l.downed || l.state === 'sleep') return false;
+    if (!l || !p || l.removed || l.downed || l.state === 'sleep' || lyraDead(g)) return false;
     const cs = l.mind?.companionship || 'together';
     if (cs === 'gone' || g.flags?.lyra_gone) return false;
     // The one rule for eyes (DESIGN §29.2): walls, light and distance, not distance alone.

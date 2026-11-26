@@ -302,8 +302,10 @@ the source of truth; `gold` is a getter).
 `new Companion(game, {x, y})`, id `lyra`, faction `player`, `mind = new Mind(game, this)`,
 `behavior = new Behavior(game, this)` (also her controller). Interact → opens the chat
 (or revives her when downed). Ranged arcane bolts (glowing light), dagger when close,
-heal spell. Never dies: at 0 HP she is `downed`; the player revives her by interacting;
-after 60 s she gets up alone at 15% HP.
+heal spell. At 0 HP she is `downed`; the player revives her by interacting; after 60 s she
+gets up alone at 15% HP. Round 14b: she can be killed by the finishing blow like any adult
+(blood, V-7); dead, nothing of hers runs any more (§34.6). She is Lyra the person
+(`game.companion`, `game.lyra`), not "whoever walks with you" (`game.party.holder`, §34.1).
 
 ### NPCs (`src/entities/npc.js`, `src/entities/npc_data.js`)
 `new NPC(game, profile, {x, y})`. Required villagers:
@@ -2769,15 +2771,39 @@ restored last in `game.deserialize`.
   `companionship_changed` (Lyra together or wary takes the role when it is free; apart, left
   or gone releases it when she holds it; she never takes it from someone else),
   `villager_killed` and `villager_died` (the holder's death releases it, why `'died'`).
-- **Party adds** (contract, feature-detected by everyone): `invite(e, { text, by })` (their own
-  mind decides: Lyra by `mind.evaluateRequest({ action: 'rejoin' })`, a villager by
-  `weighJoin`), `take(e, { why, by })` (one at a time; the previous holder released with
-  `'replaced'`), `release(why)` (dismissed, left, gone, died, downed, night, fear, replaced),
-  `ask(cmdId, args)`, `weighJoin(e)` → `{ decision: accept | accept_conditional | refuse,
-  line, terms }`, `onVillagerAct(e, act, reply)`, `canTake(lyra)` (talk's autonomy asks it
-  before she returns to together). A companion's senses are the village's: they react to a
-  cry they hear (`onCallForHelp`, `hears`) and leave over an assault or a killing they SEE
-  (the sight rule), never over one they could only have known by distance.
+- **Built by party** (contract, feature-detected by everyone):
+  - `invite(e, { text, by })` → `{ decision, why, line, terms, narration, ok }`: their own
+    mind decides. Lyra by her own will (`mind.evaluateRequest({ action: 'rejoin' })`, then
+    `autonomy.rejoin({ asked: true })`); her yes takes the role even from someone else, who
+    goes home (`'replaced'`). A villager by `weighJoin` (§34.4); on a yes, `take`.
+  - `take(e, { why, by, terms })`: one at a time; the previous holder is released with
+    `'replaced'` (Lyra goes her own way: "You walk with Bram now. I have my own day to get
+    on with."). A villager gets a `CompanionDuty` (§34.4) and is marked away in village life
+    (`markAway(id, { reason: 'companion' })`, renewed each day) so no missing chain starts.
+  - `release(why, { line, by, quiet })`: whys `dismissed`, `left`, `gone`, `died`, `night`,
+    `hurt`, `fear`, `opinion`, `grievance`, `work`, `replaced`. A villager says their line
+    and their day resumes; `gone` also calls `village.noteCutTies(id)` (talk, feature-detected).
+  - `ask(cmdId)` → `{ ok, refused, verdict: { decision, message }, message }` (alone:
+    `{ ok: false, alone: true }`, nothing shown): Lyra through her own `evaluateRequest` and
+    the action registry; a villager through `duty.request(cmd)`.
+  - `weighJoin(e)`; `canTake(e)` (the role is free or theirs); `onVillagerAct(e, act, reply)`
+    (talk's `act`: `join` is weighed again by the game, never taken on a mind's word;
+    `leave` releases; `follow`, `wait`, `fight`, `hold_back` are orders to the holder).
+  - `guardLyra()`: Lyra's own plans may bring her back (`setCompanionship` to together or
+    wary); while someone else holds the role her return is turned aside (she says so if
+    near, once a day). Talk's own `party.canTake(lyra)` check in autonomy makes it redundant.
+  - `bouncing(state)`: the UI asks it so a turned-aside return is never announced.
+  - `update(dt)` (stepped by the party slot plugin, `src/core/plugins/party.js`): the
+    catch-up watchdog. Lyra holding the role, following, more than 40 tiles behind and out
+    of sight for 4 s blinks to a spot near you out of view (`steering.teleportNear`).
+  - Listens also to `crime` (a villager companion who SEES you assault or kill someone, by
+    the witnesses list or `canSee`, walks off: `fear`, or `gone` for a killing or a blow on
+    them), `damage` (struck by you on purpose: `gone`; a weave's splash, `accident` or
+    `magic` without `deliberate`, is not a blow), `memories_shared` (§34.5), `new_day`.
+  - Saves `{ v: 2, holderId, duty }` (the duty: directive, stance, terms, since, missed work).
+  - Helpers: `holderOf(game)` (the holder; a game without a party reads Lyra while she walks
+    with you), `isParty(game, e)` (the player or the holder), `isLyra(game, e)`,
+    `lyraDead(game)` (`flags.lyra_dead`, `murder.isDead('lyra')`).
 - **NPC hooks** (`src/entities/npc.js`, the only lines party needs there):
   - `npc.duty` (null, or `{ step(npc, dt, tick) }`): `think()` runs
     `if (this.duty?.step?.(this, dt, tick) !== undefined) return;` before the day's routine
@@ -2804,14 +2830,91 @@ restored last in `game.deserialize`.
   17 are adults to every system but this one.
 - Each cut-off is one constant: raise `MINOR_UNDER` to 18 and every rule follows.
 
-### 34.3 What party shows
+### 34.3 What party shows (`src/ui/companion_view.js`, `hud.js`, `bubbles.js`, `world_map.js`)
 
-The HUD's companion slot shows `game.party.holder` (name, portrait, health, where they stand
-with you) or nothing when you walk alone; nothing of Lyra's is pinned when she is not with
-you. The People view (Tab/M) replaces the Mind panel: you, Lyra first while she matters
-most, and each villager; private memories are counted, not shown; no soul editing. The
-clock reads `game.calendar?.dateLabel?.()` (§36.3). A dead Lyra: every reader of her mind
-feature-detects `game.murder?.isDead?.('lyra')`.
+- `companionView(game)` (pure) → null when you walk alone, else `{ id, name, portraitKey,
+  expr, hp, maxHp, downed, status, stance, isLyra, cs, standing, rel, barTitle, jobs,
+  askLabel, cardTitle }`. Lyra's standing is her companionship (with trust and fear);
+  a villager's is their opinion of you (`opinionLevel`).
+- The HUD card (`.companion-card`, `.companion-wrap`; the old `.lyra-*` classes and the
+  fold are gone) is drawn from it; alone there is no card, no Ask bar and no orders, and
+  the UI root carries `no-companion` (else `has-companion`). The corner Talk (T) button
+  (`.hud-talk`) stays in every state and calls talk's `ui.talkToNearest`.
+- A tap on the card, or Tab, opens People at the holder (`ui.openPeople(id)`; `openMind`
+  stays as an alias for scripts).
+- The off-screen edge badge, the map's dot (`kind: 'companion'`), the bubbles pinned to the
+  edge, the bodies bubbles keep clear of, the toasts' avoidance and the fallen-carry home
+  follow the holder. Nothing of Lyra's is pinned on screen while she is not with you: her
+  level-up, down and revived toasts, overheard talk and unprompted lines show only while
+  she walks with you or is near (16 tiles), and her morning diary page only if she slept
+  under your roof (it is then marked read: `flags.diary_read`).
+- Sleep heals the player, Lyra and the holder; the holder wakes beside you only if within
+  20 tiles when you lay down; Lyra far away slept at home (`comeHome`).
+- The clock reads `game.calendar?.dateLabel?.()` (§36.3) when society brings it.
+
+### 34.4 A villager companion (`src/entities/npc_companion.js`, `npc_companion_lines.js`)
+
+- `weighJoin(game, npc)` (the game decides before any mind words it): refused for a child
+  (the game says so: "Pip is a child. Children do not go on the road with you."), the dead,
+  the downed or absent, terror or dread (`murder.fearOf`), a player they know is wanted, a
+  fresh grievance (weight 6+) or a wrong today, the night (their own schedule says sleep,
+  or 21:00–6:00), a post kept (Rowan and Wys on watch, Elda with Pip), the frail (80+),
+  under half health. Else a score: opinion + familiarity × 0.15, −10 for an elder, +5 for
+  the trained, −15 during their working hours: 65+ accept, 50+ accept on terms ("home by
+  dark"), else refuse (busy, or not with you).
+- `CompanionDuty` (`npc.duty`, through the F5 hook): follows a little behind you (running
+  to keep up: speed ×1.6–2.3), waits where asked, steps out of the sword arc
+  (`swordArcPush`), catches up from 30+ tiles behind out of sight, and fights what threatens
+  you both (`foe()`: hostile to you or them, within 150 px, seen through the sight rule;
+  `defend` only what comes at you): provoked by the foe and `startFight(foe, { anchor:
+  player, leash: 200 })`. Their own `perceive` is wrapped while on duty so a fighter holds
+  their ground beside you instead of fleeing (`attachDuty` / `detachDuty`).
+- `fightAbility`: 2 trained (the watch, the huntress, profile combat), 1 able (an adult),
+  0 none (elder, frail, the chapel's keeper). "Fight" from a non-trained, non-strong person
+  becomes "Defend"; anyone with no ability stays out of it.
+- `wantsToLeave()` every two seconds: bedtime (or dark, on terms), under 30% health after a
+  fight, opinion under 35, a fresh grievance or a wrong today, fear, being known wanted, six
+  game hours of missed work. They say a line in their own voice and `release(why)`.
+- Missions ask whoever walks with you along (`askCompanion`: saved as `s.companion { id,
+  answer, why }`; an old save's `s.lyra` migrates); a boss fight asks them
+  (`companionJoins`); the bag's right column gives them gifts (`npc.receiveGift`); the
+  Oath price binds to them; the holder answers first when you fall and carries you home.
+- A villager companion is in the party and stays lawful (`combat.isParty` vs
+  `combat.isLyra`): hitting them is assault.
+
+### 34.5 People (`src/ui/people_panel.js`, `src/ui/people_view.js`)
+
+- Tab, M, a card tap or Menu → People. A list (left on a computer, a strip on a phone): You,
+  Lyra (first while she matters most, a memorial once dead), the holder, then everyone met
+  (familiarity, facts told, talk, a gift, or having walked with you), with ages.
+- You: how Hearthvale sees you (`villageFeeling`), what people say (`rumorsAboutPlayer`),
+  each villager's view, titles (`reputation.titles`, feature-detected).
+- Lyra: you and her (ledger, promises), how she sees you, her life (timeline, goals she said
+  aloud), what she shared, "N things she keeps to herself", her knowledge as told (her
+  theories and rumours counted), secrets she told at the bond they need, diary pages read
+  (closed dates for the rest), who she is (read only). Dead: her last page, her last words,
+  how the village speaks of her.
+- A villager: what they told you, talk, a grievance, their last gift; how they see you;
+  their life (role, age, what they are doing now; never the profile's private description).
+- Actions: Talk (`ui.talkTo`, feature-detected), Invite to travel / Ask her to travel with
+  you again (`party.invite`), Go home, thank you (`party.release('dismissed')`), and the Ask
+  row (orders; Jobs while it is Lyra).
+- `privacyOf(entry, ctx)` (private by default): a memory shows when it is about you and in
+  `mind.shared` (saved) or cited in the chat; a secret once told and at its `revealAtBond`;
+  knowledge you or someone told her, or lore; a diary page once read. Left or gone, nothing
+  new becomes shared (talk's `memories_shared { who, ids }` is ignored); what was stays.
+- No soul editing: the Mind panel's Soul and Data tabs, the import and `ui.resetMind` are
+  gone; Settings → Minds → Back up saves her mind as a file.
+
+### 34.6 A dead Lyra (the person side of item 7; the killing itself is blood's, V-7)
+
+When `game.murder` records her death (`murder.dead.lyra`) or `flags.lyra_dead` is set:
+`Companion.update` runs nothing of hers (no mind, plans, behavior or light) and never
+knocks her out or gets her up; her body is knelt by and lifted through murder's body rules;
+the role is released (`'died'`); scenes that need her (`lyraState` → reason `'dead'`),
+her lessons (`lyraWith` → `'gone'`), her eyes (`missions/lyra.js sees`), boss fights and
+the carry home skip her; the Maren quest's state is the game's (keyed by game), so the
+story goes on; People shows her memorial.
 
 ## 35. Violence (workstream blood; the author: "the people should fight me, not just let me kill their whole village")
 

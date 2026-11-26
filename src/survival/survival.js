@@ -42,6 +42,7 @@ import { EmberRing } from './ember_ring.js';
 import { hears } from '../ai/hearing.js';
 import { ensureCrawl } from '../art/characters_art.js';
 import { CRAWL_STEP, CRAWL_ANIM } from '../art/characters_humanoid.js';
+import { holderOf } from '../core/party.js';
 
 // Death is dangerous (DESIGN §27). `game.survival` owns every fall in the world: the
 // player's bleed-out window and the cinematic around it, Lyra's and the villagers' own
@@ -476,12 +477,17 @@ export class Survival {
     }
     const counts = countRoles(this, rec);
     const list = [];
+    // A villager walking with you (round 14b, DESIGN §34.2) answers first and from farther,
+    // as Lyra does: they were with you.
+    const mate = safe(() => holderOf(g), null);
     for (const e of g.entities?.all?.() || []) {
       if (!isVillager(e) || !canRespond(this, e)) continue;
-      const d = Math.hypot(e.x - ox, e.y - oy);
+      const withYou = e === mate;
+      const d = withYou ? -1 : Math.hypot(e.x - ox, e.y - oy);
       let reach = radius * (e.state === 'sleep' ? ASLEEP_EAR : 1);
+      if (withYou) reach = Math.max(reach, LYRA_HEARS);
       if (rec.wanted && e.isGuard) reach = Math.max(reach, GUARD_HEARS_WANTED);
-      if (!forced && d > reach) continue;
+      if (!forced && Math.hypot(e.x - ox, e.y - oy) > reach) continue;
       if (sight && !rec.wanted && typeof e.canSee === 'function' && !e.canSee(F)) continue;
       // A shout is heard by the one rule for ears (DESIGN §29.4): a wall muffles it hard.
       if (!forced && !sight && !(rec.wanted && e.isGuard) && !safe(() => hears(g, e, ox, oy, radius), true)) continue;

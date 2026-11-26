@@ -436,7 +436,7 @@ for (const view of VIEWS) {
     ui.closeAll();
     ui.hud.setQuest('Ask Sister Aveline about Maren, who went into the Sunken Ruins.');
     const small = ui.hud.isSmall();
-    if (small) ui.hud.setMini(true);
+    if (small) ui.hud.setMini?.(true); // (round 14b: the fold is gone; the card is always folded on a phone)
     await wait(250);
     const box = (sel) => {
       const el = document.querySelector(sel);
@@ -446,7 +446,7 @@ for (const view of VIEWS) {
     };
     const hit = (a, b) => a && b && a.x < b.r && a.r > b.x && a.y < b.b && a.b > b.y;
     const quest = box('.quest-line');
-    const cards = [box('.player-card'), box('.lyra-card'), box('.place-card'), box('.hud-buttons')];
+    const cards = [box('.player-card'), box('.companion-card'), box('.place-card'), box('.hud-buttons')];
     const band = Math.max(...cards.filter(Boolean).map((c) => c.b), quest ? quest.b : 0);
     const tiny = [];
     for (const el of document.querySelectorAll('.hud button, .touch button')) {
@@ -455,28 +455,26 @@ for (const view of VIEWS) {
       const live = cs.visibility !== 'hidden' && cs.pointerEvents !== 'none' && Number(cs.opacity) > 0.05;
       if (r.width && live && (r.width < 40 || r.height < 40)) tiny.push(`${el.className} ${Math.round(r.width)}x${Math.round(r.height)}`);
     }
-    const folded = box('.lyra-card');
-    // Tap her folded card: it unfolds; the fold tab folds it again.
+    const folded = box('.companion-card');
+    // (Round 14b: the card no longer unfolds; a tap opens People at whoever walks with you.)
     let unfolded = null;
     let refolded = null;
     let mindOpened = false;
     if (small) {
-      document.querySelector('.lyra-card').click();
+      document.querySelector('.companion-card').click();
       await wait(250);
-      unfolded = box('.lyra-card');
       mindOpened = !!ui.top();
-      const q2 = box('.quest-line');
-      const overlapOpen = hit(q2, unfolded);
-      document.querySelector('.lyra-fold').click();
+      unfolded = box('.companion-card');
+      ui.closeAll?.();
       await wait(250);
-      refolded = box('.lyra-card');
-      return { small, band, vh: innerHeight, tiny, folded, unfolded, refolded, mindOpened, overlap: cards.some((c) => hit(c, quest)), overlapOpen };
+      refolded = box('.companion-card');
+      return { small, band, vh: innerHeight, tiny, folded, unfolded, refolded, mindOpened, overlap: cards.some((c) => hit(c, quest)), overlapOpen: false };
     }
     return { small, band, vh: innerHeight, tiny, overlap: cards.some((c) => hit(c, quest)) };
   });
   if (hud.small) {
     check(`[${label}] the phone HUD leaves the world visible`, hud.band <= hud.vh * (view.viewport.height > 520 ? 0.2 : 0.36), `top band ends at ${Math.round(hud.band)} of ${hud.vh}px`);
-    check(`[${label}] her card folds to portrait + mood and unfolds on a tap`, hud.folded.w < 80 && hud.unfolded.w > hud.folded.w + 60 && !hud.mindOpened && Math.abs(hud.refolded.w - hud.folded.w) < 2, JSON.stringify({ folded: Math.round(hud.folded.w), open: Math.round(hud.unfolded.w), refolded: Math.round(hud.refolded.w) }));
+    check(`[${label}] the companion's card is portrait + mood and a tap opens People`, hud.folded.w < 80 && hud.mindOpened && Math.abs(hud.refolded.w - hud.folded.w) < 2, JSON.stringify({ folded: Math.round(hud.folded.w), refolded: Math.round(hud.refolded?.w || 0), opened: hud.mindOpened }));
     check(`[${label}] the quest line never covers a card (folded or open)`, !hud.overlap && !hud.overlapOpen);
   }
   // Tap targets: a phone's fingers need 40 px (a desktop's mouse is fine with the slim

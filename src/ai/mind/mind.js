@@ -67,6 +67,9 @@ export class Mind {
     this.diary = [];
     this.conversation = [];
     this.secretsRevealed = [];
+    // Memories she has shared with the player (cited in the chat, told): People shows these
+    // (round 14b, DESIGN §34.5); the rest she keeps to herself and People only counts.
+    this.shared = new Set();
     this.perception = new Perception(game, this);
     this.thinker = new ThoughtGenerator(this);
     this.index = new MemoryIndex(this);
@@ -915,6 +918,7 @@ export class Mind {
       workingMemory: this.workingMemory.serialize(),
       perception: this.perception.serialize(),
       secrets: [...this.secretsRevealed],
+      shared: [...(this.shared || [])].slice(-400),
       autonomy,
     };
     // Stay under the save budget: forget old, small episodes first (her life story is not
@@ -968,6 +972,7 @@ export class Mind {
     if (Array.isArray(d.workingMemory)) this.workingMemory.deserialize(d.workingMemory);
     if (d.perception) this.perception.deserialize(d.perception);
     if (Array.isArray(d.secrets)) this.secretsRevealed = d.secrets.filter((x) => Number.isInteger(x));
+    this.shared = new Set(Array.isArray(d.shared) ? d.shared.filter((x) => typeof x === 'string' || Number.isFinite(x)).map(String) : []);
     if (d.autonomy && this.autonomy?.deserialize) {
       try {
         this.autonomy.deserialize(d.autonomy);

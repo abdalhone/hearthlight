@@ -1,15 +1,17 @@
 // Written content for the interface: requests, jobs, Lyra's answers, quick
 // replies, the How to play page. Pure data + small pure pickers (unit-tested).
 
-// The "Ask Lyra" bar. Every button is a request she weighs (DESIGN.md §16.4): it runs
-// game.actions.run(action, args, 'player') and she answers. `key` is its hotkey: Alt
-// (Option) + the digit, since the plain number row casts weaves (§22.4).
+// The "Ask <companion>" bar (round 14b: whoever walks with you, Lyra or anyone, DESIGN
+// §34.4). Every button is a request they weigh: Lyra runs game.actions.run(action, args,
+// 'player') through her consent gate; a villager answers through their duty
+// (game.party.ask). `key` is its hotkey: Alt (Option) + the digit, since the plain number
+// row casts weaves (§22.4).
 export const COMMANDS = [
-  { id: 'follow', label: 'Follow', icon: 'boots', key: 'Alt 1', action: 'follow', args: { target: 'player' }, hint: 'Ask her to walk with you' },
-  { id: 'stay', label: 'Wait', icon: 'flag', key: 'Alt 2', action: 'stay', args: {}, hint: 'Ask her to wait here' },
-  { id: 'attack', label: 'Fight', icon: 'sword', key: 'Alt 3', action: 'set_combat_mode', args: { value: 'attack' }, hint: 'Ask her to fight anything that is not a friend' },
-  { id: 'defend', label: 'Defend', icon: 'shield', key: 'Alt 4', action: 'set_combat_mode', args: { value: 'defend' }, hint: 'Ask her to fight only what threatens you both' },
-  { id: 'passive', label: 'Hold back', icon: 'feather', key: 'Alt 5', action: 'set_combat_mode', args: { value: 'passive' }, hint: 'Ask her to stay out of fights' },
+  { id: 'follow', label: 'Follow', icon: 'boots', key: 'Alt 1', action: 'follow', args: { target: 'player' }, hint: 'Ask them to walk with you' },
+  { id: 'stay', label: 'Wait', icon: 'flag', key: 'Alt 2', action: 'stay', args: {}, hint: 'Ask them to wait here' },
+  { id: 'attack', label: 'Fight', icon: 'sword', key: 'Alt 3', action: 'set_combat_mode', args: { value: 'attack' }, hint: 'Ask them to fight anything that is not a friend' },
+  { id: 'defend', label: 'Defend', icon: 'shield', key: 'Alt 4', action: 'set_combat_mode', args: { value: 'defend' }, hint: 'Ask them to fight only what threatens you both' },
+  { id: 'passive', label: 'Hold back', icon: 'feather', key: 'Alt 5', action: 'set_combat_mode', args: { value: 'passive' }, hint: 'Ask them to stay out of fights' },
 ];
 
 // Asking her to travel with you again, once she is apart or has left (§16.3).
@@ -78,6 +80,7 @@ export const MENU_ICONS = Object.freeze({
   spellbook: 'spellbook',
   missions: 'scroll',
   lyra: 'mind',
+  people: 'mind',
   character: 'shield',
   inventory: 'bag',
   village: 'people',
@@ -106,8 +109,8 @@ export const CONTROLS = [
   { id: 'interact', what: 'Use, open, trade (E)', keys: 'E', pad: 'X', touch: 'The round button above the sword: it says what it does (Talk to Bram, Open…)' },
   { id: 'listen', what: 'Listen in', keys: 'L', pad: null, touch: 'Tap “Listen in” when two villagers talk nearby' },
   { id: 'talk', what: 'Talk to whoever is nearest in front of you: T or Enter · pad Y · the Talk button (nobody near: say it aloud to everyone)', keys: 'T or Enter', pad: 'Y', touch: 'The round button above the sword: "Talk to Bram" beside someone, Talk when nobody is near' },
-  { id: 'ask', what: 'Ask Lyra for help', keys: 'Alt + 1 – 5, or Ask in her Mind', pad: null, touch: 'Tap her portrait: the Ask row is at the top' },
-  { id: 'mind', what: "Lyra's mind", keys: 'Tab or M, or a click on her portrait', pad: 'Back', touch: 'Tap her portrait' },
+  { id: 'ask', what: 'Ask your companion for help', keys: 'Alt + 1 – 5, or Ask in People', pad: null, touch: 'Tap their portrait: the Ask row is at the top' },
+  { id: 'mind', what: 'People', keys: 'Tab or M, or a click on your companion’s portrait', pad: 'Back', touch: 'Tap your companion’s portrait, or Menu → People' },
   { id: 'inventory', what: 'Bag', keys: 'I', pad: 'LB', touch: 'Menu → Bag' },
   { id: 'help', what: 'Call for help when you fall', keys: 'E or H', pad: 'X', touch: 'The Call for help button' },
   { id: 'menu', what: 'Menu (pause)', keys: 'Esc', pad: 'Start', touch: 'The Menu button, top right' },
@@ -134,7 +137,7 @@ export const HOW_TO_PLAY = [
     id: 'lyra',
     title: 'Lyra lives for herself',
     text:
-      'Lyra and Hess carried you down off the Hollowcrown; you slept eighty-one days. When you woke, Lyra took the hearthwatch for reasons of her own: the stipend, a second blade for the ruins, and whatever ties you to Maren, the teacher who walked into the Sunken Ruins and never came back. She travels with you because she chooses to, while it is good for her. She weighs everything you ask, and she watches what you do. Treat her well and she will trust you. Hurt her, frighten her or harm the people she loves, and she will stop you, run to her people or shout for help. Hearthvale is her home: she never leaves it, and the village stands with her.',
+      'Lyra and Hess carried you down off the Hollowcrown; you slept eighty-one days. When you woke, Lyra took the hearthwatch for reasons of her own: the stipend, a second blade for the ruins, and whatever ties you to Maren, the teacher who walked into the Sunken Ruins and never came back. She travels with you because she chooses to, while it is good for her. She weighs everything you ask, and she watches what you do. Treat her well and she will trust you. Hurt her, frighten her or harm the people she loves, and she will stop you, run to her people or shout for help. Hearthvale is her home: she never leaves it, and the village stands with her. She is not the only one who can walk with you: ask any grown man or woman of the village to travel with you, and they decide by their own mind (children stay at home). One companion at a time; you can also walk alone.',
   },
   {
     id: 'talking',
@@ -144,14 +147,14 @@ export const HOW_TO_PLAY = [
   },
   {
     id: 'asking',
-    title: 'Asking her for help',
+    title: 'Asking your companion for help',
     rows: [
-      ['Follow', 'Ask her to walk with you.'],
-      ['Wait', 'Ask her to wait where she is.'],
-      ['Fight', 'Ask her to engage every creature nearby that is not a friend. Once she agrees, she does not ask again for each one.'],
-      ['Defend', 'Ask her to fight only what threatens you or her.'],
-      ['Hold back', 'Ask her to keep out of fights. She still heals.'],
-      ['Jobs', 'Chopping, gathering, fishing, mining, foraging, cooking or collecting loot, delivered to you or the cottage chest.'],
+      ['Follow', 'Ask them to walk with you.'],
+      ['Wait', 'Ask them to wait where they are.'],
+      ['Fight', 'Ask them to engage every creature nearby that is not a friend. Not everyone is a fighter: some will only defend.'],
+      ['Defend', 'Ask them to fight only what threatens you or them.'],
+      ['Hold back', 'Ask them to keep out of fights. Lyra still heals.'],
+      ['Jobs', 'Lyra only: chopping, gathering, fishing, mining, foraging, cooking or collecting loot, delivered to you or the cottage chest.'],
     ],
   },
   {
@@ -162,9 +165,9 @@ export const HOW_TO_PLAY = [
   },
   {
     id: 'mind',
-    title: 'Her mind',
+    title: 'People',
     text:
-      "Lyra's Mind shows her mood and plans, how she sees you and what she has seen you do, the people she knows, her memories, what she knows of the world, her life before you met, her diary, her goals and her soul. You can export her whole mind as a file and bring it back later.",
+      'People shows you and everyone you have met, Lyra first while she matters most to you. Under You: how Hearthvale sees you, the talk about you and each villager’s view. For each person: what is between you, how they see you, and their life as far as you know it. What Lyra tells you, shows you or cites stays visible; what she keeps to herself is only counted, and her diary pages show once you have read them. Nobody’s soul is yours to edit. Settings → Minds → Back up saves her whole mind to a file.',
   },
   {
     id: 'falling',

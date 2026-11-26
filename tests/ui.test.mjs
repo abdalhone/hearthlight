@@ -433,7 +433,7 @@ test('orders, jobs and acknowledgements are complete', () => {
 
 test('the bar asks: labels and hints are requests, never orders', () => {
   for (const c of COMMANDS) {
-    assert.match(c.hint, /^Ask her/, c.id);
+    assert.match(c.hint, /^Ask (her\b|them\b)/, c.id); // round 14b: whoever walks with you
     assert.ok(!/order/i.test(c.hint + c.label), c.id);
   }
   const all = JSON.stringify({ ACK_LINES, HOW_TO_PLAY });

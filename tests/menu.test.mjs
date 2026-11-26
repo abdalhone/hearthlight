@@ -38,7 +38,8 @@ test('settings: five tabs (Game, Controls, Sound & voices, Minds (Claude), Displ
 
 test('settings: Game → Practice holds the three action rows, each once, none of them a setting', () => {
   const all = Object.values(SETTINGS_LAYOUT).flat().flatMap((g) => g.actions || []);
-  assert.deepEqual(all, ['resetPoints', 'freePoints', 'trialMagic'], 'exactly these, once');
+  // (Round 14b: Minds holds one more, Back up: the Mind panel's export moved to Settings.)
+  assert.deepEqual(all, ['resetPoints', 'freePoints', 'trialMagic', 'backupMind'], 'exactly these, once');
   const practice = SETTINGS_LAYOUT.game.find((g) => g.id === 'practice');
   assert.equal(practice.title, 'Practice');
   assert.deepEqual(practice.keys, []);
@@ -96,12 +97,12 @@ function fakeUi({ magic = true, missions = true, character = false, story = true
   return { game, ui, calls };
 }
 
-test('menu: Resume, Spellbook, Bag, Missions, Lyra, Character, the Book, Settings, Save, Quit — each once', () => {
+test('menu: Resume, Spellbook, Bag, Missions, People, Character, the Book, Settings, Save, Quit — each once', () => {
   const { game, ui, calls } = fakeUi({ character: true });
   const items = pauseItems(game, ui);
   assert.deepEqual(
     items.map((i) => i.id),
-    ['resume', 'spellbook', 'inventory', 'missions', 'lyra', 'character', 'book', 'settings', 'save', 'quit'],
+    ['resume', 'spellbook', 'inventory', 'missions', 'people', 'character', 'book', 'settings', 'save', 'quit'],
   );
   const all = items.flatMap((i) => (i.sub ? [i, i.sub] : [i]));
   assert.equal(new Set(all.map((i) => i.id)).size, all.length, 'ids unique');
@@ -109,7 +110,7 @@ test('menu: Resume, Spellbook, Bag, Missions, Lyra, Character, the Book, Setting
   // Every place has its home here (the HUD keeps only what play needs every second);
   // the chat and the menu itself are not places.
   for (const id of ['chat', 'talk', 'pause']) assert.ok(!all.some((i) => i.id === id), id);
-  assert.equal(items.find((i) => i.id === 'lyra').label, 'Lyra');
+  assert.equal(items.find((i) => i.id === 'people').label, 'People'); // round 14b: not Lyra's
   assert.equal(items.find((i) => i.id === 'book').sub.id, 'prologue');
   const ctx = { close: () => calls.push('close'), save: () => calls.push('save') };
   for (const it of all) it.run(ctx);
@@ -120,21 +121,21 @@ test('menu: Resume, Spellbook, Bag, Missions, Lyra, Character, the Book, Setting
 test('menu: what this build lacks is left out, never shown broken', () => {
   const { game, ui } = fakeUi({ magic: false, missions: false, character: false, story: false });
   const ids = pauseItems(game, ui).map((i) => i.id);
-  assert.deepEqual(ids, ['resume', 'inventory', 'lyra', 'book', 'settings', 'save', 'quit']);
+  assert.deepEqual(ids, ['resume', 'inventory', 'people', 'book', 'settings', 'save', 'quit']);
   assert.equal(pauseItems(game, ui).find((i) => i.id === 'book').sub, null);
   assert.equal(characterOpener({}), null);
   let opened = 0;
   characterOpener({ character: { open: () => opened++ } })();
   assert.equal(opened, 1);
-  // Her name follows the setting.
+  // People is People whatever Lyra is called (round 14b: the menu is not built around her).
   game.settings.companionName = 'Wren';
-  assert.equal(pauseItems(game, ui).find((i) => i.id === 'lyra').label, 'Wren');
+  assert.equal(pauseItems(game, ui).find((i) => i.id === 'people').label, 'People');
 });
 
 test('menu icons: one per place, all real icons', () => {
   for (const [id, name] of Object.entries(MENU_ICONS)) assert.ok(name === 'spellbook' || ICONS[name], `${id}: ${name}`);
   // The same place never borrows another place's icon.
-  const places = ['prologue', 'book', 'pastLives', 'settings', 'howTo', 'spellbook', 'inventory', 'missions', 'lyra', 'character', 'village', 'save', 'quit', 'newGame'];
+  const places = ['prologue', 'book', 'pastLives', 'settings', 'howTo', 'spellbook', 'inventory', 'missions', 'people', 'character', 'village', 'save', 'quit', 'newGame'];
   const used = places.map((p) => MENU_ICONS[p]);
   assert.equal(new Set(used).size, used.length, used.join(' '));
 });
@@ -157,7 +158,7 @@ test('controls: written once, for every device; How to play starts with them', (
   assert.match(keys['Menu (pause)'], /Esc/);
   assert.match(keys.Spellbook, /\bB\b/);
   assert.match(keys.Bag, /\bI\b/); // the bag ("Bag" in the menu and its panel)
-  assert.match(keys["Lyra's mind"], /Tab or M/);
+  assert.match(keys.People, /Tab or M/); // the Mind is People (round 14b)
   assert.equal(HOW_TO_PLAY[0].id, 'controls');
   assert.ok(HOW_TO_PLAY[0].controls);
   const ids2 = HOW_TO_PLAY.map((s) => s.id);

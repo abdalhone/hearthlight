@@ -6,6 +6,7 @@ import { dropItem, updatePickupToasts } from './pickups.js';
 import { playHit, playPoof, playHeal, playLevelUp } from '../render/pixel_fx_play.js';
 import { canReach } from '../world/walls.js';
 import { swingAtProps } from '../world/breakables.js';
+import { holderOf, isParty as isPartyOf } from '../core/party.js';
 
 // Combat rules for every actor: melee arcs, projectiles, damage, healing, death,
 // knock-outs, crimes, items that heal, experience. Contract in DESIGN.md ("Combat", §16.7).
@@ -179,7 +180,7 @@ export class Combat {
       // Anyone game.survival holds lies with a bleed-out window of their own (§27).
       if (this.isPlayer(a) || g.survival?.owns?.(a)) continue;
       const down = this.t - t0;
-      if (this.isCompanion(a) || a.downable === true) {
+      if (this.isLyra(a) || a.downable === true) {
         if (down >= SELF_REVIVE_SECONDS) this.revive(a, a, SELF_REVIVE_FRACTION);
       } else if (down >= NPC_REVIVE_FALLBACK) {
         this.revive(a, a, NPC_REVIVE_FRACTION);
@@ -211,13 +212,27 @@ export class Combat {
     return !!a && (a === this.game.player || a.id === PLAYER_ID);
   }
 
-  isCompanion(a) {
+  // Lyra herself (round 14b, DESIGN §34.1: "is Lyra" vs "is in the party"). Her own rules
+  // stay hers: she gets up alone, she is not one of the village's lawful, she fights back.
+  isLyra(a) {
     return !!a && (a === this.game.companion || a.id === COMPANION_ID);
   }
 
-  // A villager or guard: a person of Hearthvale (not an animal, not the player's party).
+  // (The old name: it always meant Lyra herself.)
+  isCompanion(a) {
+    return this.isLyra(a);
+  }
+
+  // The player or whoever walks with them now (game.party.holder): friendly fire, shared xp,
+  // "near your companion". A villager companion is in the party AND stays lawful (hitting
+  // them is assault).
+  isParty(a) {
+    return isPartyOf(this.game, a);
+  }
+
+  // A villager or guard: a person of Hearthvale (not an animal, not Lyra, not the player).
   isLawful(a) {
-    if (!a || a.type !== 'actor' || a.species || this.isPlayer(a) || this.isCompanion(a)) return false;
+    if (!a || a.type !== 'actor' || a.species || this.isPlayer(a) || this.isLyra(a)) return false;
     return LAWFUL.has(a.faction) || (!!a.profile && a.faction !== 'bandit');
   }
 
@@ -225,7 +240,7 @@ export class Combat {
   // and anything flagged essential or downable.
   isDownable(a) {
     if (!a) return false;
-    return this.isPlayer(a) || this.isCompanion(a) || a.downable === true || this.isEssential(a) || this.isLawful(a);
+    return this.isPlayer(a) || this.isLyra(a) || a.downable === true || this.isEssential(a) || this.isLawful(a);
   }
 
   // Anything with an NPC profile, and actors flagged essential, never die.
@@ -486,7 +501,7 @@ export class Combat {
     target.hp = Math.max(0, target.hp - dealt);
 
     const isPlayer = this.isPlayer(target);
-    const isFriend = isPlayer || this.isCompanion(target);
+    const isFriend = isPlayer || this.isParty(target) || this.isLyra(target);
     const attacker = source && source.type === 'actor' ? source : null;
     const accident = !!opts.accident;
     if (attacker && !accident) this._noteAggression(target, attacker);
@@ -810,13 +825,14 @@ export class Combat {
     if (!killer || xp <= 0) return;
     const player = g.player;
     const lyra = g.companion;
+    const mate = holderOf(g); // whoever walks with you (round 14b)
     if (killer === player) {
       this._xpPopup(target, xp);
       this.giveXp(player, xp);
-      // Lyra learns from fights she stands in, at half the rate.
-      if (lyra && lyra.isAlive?.() && lyra.distTo?.(target) < SHARED_XP_RANGE) this.giveXp(lyra, Math.max(1, Math.floor(xp / 2)));
-    } else if (killer === lyra) {
-      this.giveXp(lyra, xp);
+      // Lyra learns from fights she stands in beside you, at half the rate.
+      if (lyra && mate === lyra && lyra.isAlive?.() && lyra.distTo?.(target) < SHARED_XP_RANGE) this.giveXp(lyra, Math.max(1, Math.floor(xp / 2)));
+    } else if (killer === lyra || (mate && killer === mate)) {
+      if (killer === lyra) this.giveXp(lyra, xp);
       // You share in fights you stand in; not in what she hunts on her own across the map.
       if (player && !player.removed && !player.dead && Math.hypot(player.x - target.x, player.y - target.y) < SHARED_XP_RANGE) {
         this._xpPopup(target, xp);

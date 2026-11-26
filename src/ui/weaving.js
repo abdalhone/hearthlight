@@ -17,6 +17,7 @@
 
 import { previewOf, aimsAtSpot, castModeOf, weavePalette, componentInfo, cleanWeave, fallbackName, IDS, normKind, singular } from './weave_meta.js';
 import { cycleSlot, WEAVE_SLOTS } from '../core/input.js';
+import { isParty } from '../core/party.js';
 
 const SELECTED_KEY = 'hearthlight.weave.selected';
 const BODY_UP = 7; // aim from the chest, not the feet
@@ -835,7 +836,7 @@ export class Weaving {
     cand.length = 0;
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
-      if (e === p || e === g.companion || e.type !== 'actor' || e.removed) continue;
+      if (e === p || e === g.companion || isParty(g, e) || e.type !== 'actor' || e.removed) continue;
       if (typeof e.isAlive === 'function' && !e.isAlive()) continue;
       const dx = e.x - ox;
       const dy = e.y - oy;

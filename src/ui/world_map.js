@@ -5,10 +5,11 @@ import { tileDef, T } from '../world/tiles.js';
 import { CELL } from '../world/travel.js';
 import { bossMarks } from '../world/boss_trails.js';
 import { homeBed, HOME_ID } from '../world/home.js';
+import { holderOf } from '../core/party.js';
 
 // The map (DESIGN §32.3): the whole world as you have walked it. A small painted chart of
 // the ground (one pixel a tile), the parts you have not seen under a dark wash, the roads,
-// the places you have reached with their names, the lit waystones, you and Lyra, your
+// the places you have reached with their names, the lit waystones, you and whoever walks with you, your
 // home, the mission you are on, the bosses you have heard of (§32.4), and anything else
 // that wants a mark (the ember-ring where your coins lie, death branch). Drag to look
 // round, pinch or wheel or +/− to zoom, "Me" to come back. M is the mind on a keyboard,
@@ -81,6 +82,9 @@ export class WorldMap {
     };
     this._wire();
     this.center();
+    // The first frame, once the chart has a size: centred on you, zoomed out just enough to
+    // show the ember-ring or the mission's objective too (round 14b leftover).
+    this._frame = true;
     this.ui.openModal(panel);
     const loop = () => {
       if (!this.isOpen()) return;
@@ -94,6 +98,53 @@ export class WorldMap {
     const p = this.game.player;
     this.cx = p.x / TILE;
     this.cy = p.y / TILE;
+  }
+
+  // Centred on you, with what matters in view: your coins' ember-ring first, else the
+  // mission's objective. At each zoom (from the one chosen, outwards; never past the whole-map
+  // fit) the view first leans toward it as far as keeps you on the chart; only if that is not
+  // enough does it zoom out a step (round 14b leftover: "the map opens on the vale").
+  frame(W, H) {
+    const g = this.game;
+    const p = g.player;
+    if (!p || !W || !H) return;
+    this.center();
+    const marks = this.marks();
+    const goal = marks.find((m) => m.kind === 'ember') || marks.find((m) => m.kind === 'objective');
+    if (!goal) return;
+    const pad = 28;
+    const px = p.x / TILE;
+    const py = p.y / TILE;
+    const gx = goal.x / TILE;
+    const gy = goal.y / TILE;
+    const tryAt = () => {
+      const s = this.scale(W, H);
+      const hx = Math.max(0, W / s / 2 - pad / s);
+      const hy = Math.max(0, H / s / 2 - pad / s);
+      // A center that keeps both you and it inside the padded view, if there is one.
+      if (Math.abs(gx - px) > 2 * hx || Math.abs(gy - py) > 2 * hy) return false;
+      const cx = Math.max(gx - hx, Math.min(gx + hx, px));
+      const cy = Math.max(gy - hy, Math.min(gy + hy, py));
+      this.cx = Math.max(px - hx, Math.min(px + hx, cx));
+      this.cy = Math.max(py - hy, Math.min(py + hy, cy));
+      return true;
+    };
+    // Zoom out only while the chart still has room to drag (a whole-world fit has none).
+    const m = g.map;
+    const fit = Math.min(W / m.w, H / m.h);
+    while (!tryAt()) {
+      const z = ZOOMS[this.zi - 1];
+      if (this.zi <= 0 || z === 0 || Math.max(fit, z) <= fit * 1.02) {
+        // Not both at once: lean as far toward it as keeps you on the chart.
+        const s = this.scale(W, H);
+        const hx = Math.max(0, W / s / 2 - pad / s);
+        const hy = Math.max(0, H / s / 2 - pad / s);
+        this.cx = Math.max(px - hx, Math.min(px + hx, gx));
+        this.cy = Math.max(py - hy, Math.min(py + hy, gy));
+        return;
+      }
+      this.zi--;
+    }
   }
 
   zoomBy(d) {
@@ -275,8 +326,10 @@ export class WorldMap {
         if (mm) out.push({ x: e.x, y: e.y, ...mm });
       }
     }
-    const c = g.companion;
-    if (c && !c.removed && !c.dead) out.push({ kind: 'lyra', x: c.x, y: c.y, label: 'Lyra' });
+    // Whoever walks with you (round 14b: the holder of the role, Lyra only while she is the
+    // one); nobody beside you, no dot.
+    const c = holderOf(g);
+    if (c && !c.removed && !c.dead && !c.hidden) out.push({ kind: 'companion', lyra: c.id === 'lyra', x: c.x, y: c.y, label: c.id === 'lyra' ? g.settings?.companionName || c.name || 'Lyra' : String(c.name || c.id).split(' ')[0] });
     out.push({ kind: 'you', x: g.player.x, y: g.player.y, label: 'You' });
     return out;
   }
@@ -292,6 +345,10 @@ export class WorldMap {
     if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) {
       c.width = Math.round(W * dpr);
       c.height = Math.round(H * dpr);
+    }
+    if (this._frame && c.clientWidth > 0) {
+      this._frame = false;
+      this.frame(W, H);
     }
     const ctx = c.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -363,8 +420,9 @@ function drawMark(ctx, mk, x, y, t, s) {
       ctx.arc(x, y, 3.5, 0, Math.PI * 2);
       ctx.fill();
       break;
+    case 'companion':
     case 'lyra':
-      ctx.fillStyle = '#b48cff';
+      ctx.fillStyle = mk.kind === 'companion' && !mk.lyra ? '#ffb46b' : '#b48cff';
       ctx.strokeStyle = '#1a1030';
       ctx.lineWidth = 1.5;
       ctx.beginPath();

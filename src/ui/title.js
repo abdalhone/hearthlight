@@ -1,7 +1,7 @@
 // Title screen (DESIGN.md §14, §24): name, an animated scene behind (the renderer's title
 // view, plus drifting embers here), and one short menu: Continue (when a save exists),
 // New game, Prologue, The Book of Halcyre, Past lives (when a story has ended), Settings,
-// How to play; a line naming the mind Lyra uses.
+// How to play; a line naming the mind the people of Hearthvale use.
 
 import { h, button, setText, icon, clear } from './dom.js';
 import { makePanel } from './modal.js';
@@ -110,12 +110,11 @@ export class TitleScreen {
   refreshMindLine() {
     if (!this.mindLine) return;
     const st = safe(() => this.game.brain?.status?.()) || {};
-    const name = this.game.settings?.companionName || 'Lyra';
+    // Minds (round 14b): Lyra is one person among many; the line names what thinks for them.
     let text;
-    if (st.provider === 'claude.ai') text = `${name}'s mind: Claude, through claude.ai`;
-    else if (st.provider === 'api') text = `${name}'s mind: Claude, with your API key`;
-    else if (st.label && st.label.toLowerCase().includes(name.toLowerCase())) text = st.label;
-    else text = `${name}'s mind: ${st.label || 'her offline mind'}`;
+    if (st.provider === 'claude.ai') text = 'Minds: Claude, through claude.ai';
+    else if (st.provider === 'api') text = 'Minds: Claude, with your API key';
+    else text = `Minds: ${String(st.label || 'offline').replace(/^lyra'?s?\s+/i, '').replace(/\bher\b/gi, 'their') || 'offline'}`;
     setText(this.mindLine, text);
     this.mindLine.dataset.provider = st.provider || 'local';
   }
@@ -192,7 +191,7 @@ export class TitleScreen {
   openHowTo(section = '') {
     const prev = this.ui.stack.find((p) => p.id === 'howto');
     if (prev) this.ui.closeModal(prev, true);
-    const panel = makePanel({ id: 'howto', title: 'How to play', subtitle: 'Hearthvale, Lyra, and you', iconName: 'hand', cls: 'panel-wide' });
+    const panel = makePanel({ id: 'howto', title: 'How to play', subtitle: 'Hearthvale, its people, and you', iconName: 'hand', cls: 'panel-wide' });
     let target = null;
     // The magic lessons, again: they point at the real buttons as they become relevant.
     const coach = this.ui.coach;

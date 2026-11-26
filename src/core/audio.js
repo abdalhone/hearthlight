@@ -10,6 +10,7 @@ import { SFX, SFX_GAP } from '../ui/sfx.js';
 import { MusicPlayer } from '../ui/music.js';
 import { tone, noise, fm, makeNoiseBuffer, makeImpulse } from '../ui/synth.js';
 import { VoicePlayer } from '../audio/voice.js';
+import { holderOf } from './party.js';
 
 const MAX_VOICES = 28; // concurrent effects; quieter extras are dropped
 // Background sounds (`other: true`, e.g. other people's footfalls) keep their own spacing,
@@ -309,7 +310,7 @@ export class Audio {
     const g = this.game;
     if (g.state !== 'playing' || !g.player || !g.entities) return false;
     const p = g.player;
-    const c = g.companion;
+    const c = holderOf(g) || g.companion;
     // lastAttackedAt may be stamped with the game clock or the real-time clock: accept either.
     const recent = (a) => {
       const at = a?.lastAttackedAt;

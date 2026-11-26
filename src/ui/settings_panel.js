@@ -34,7 +34,7 @@ export const SETTINGS_LAYOUT = {
     { id: 'voices', title: 'Voices in the cutscenes', note: 'The story scenes are spoken. Everywhere else, words are text.', keys: ['voices', 'voiceVol'] },
   ],
   minds: [
-    { id: 'lyra', title: "Lyra's mind", keys: ['brain', 'modelTier'] },
+    { id: 'lyra', title: 'Minds', keys: ['brain', 'modelTier'], actions: ['backupMind'] },
     { id: 'apikey', title: 'Your own API key', keys: ['apiModel'] },
     { id: 'village', title: 'Villagers', keys: ['villageAi'] },
   ],
@@ -49,6 +49,7 @@ export const SETTINGS_LAYOUT = {
 export const ACTION_ROWS = {
   resetPoints: { label: 'Reset stat points', note: 'Every point you spent comes back to spend again, free. Level, gear and weaves stay.', button: 'Reset' },
   freePoints: { label: 'Free stat points', note: 'Raise every stat as far as you like, free. Off: back to the points you really spent.', button: 'Turn on' },
+  backupMind: { label: 'Back up', note: "Save Lyra's whole mind (her memories, diary and how she sees you) as a file. Nothing in it can be edited here.", button: 'Back up' },
   trialMagic: { label: 'Try all magic', note: 'Every shape, essence, twist and price, to try. Off: back to what you earned (rewards earned meanwhile stay).', button: 'Turn on' },
 };
 
@@ -74,7 +75,7 @@ const BRAIN_CHOICES = [
 // by their own methods.
 export const SETTING_ROWS = {
   playerName: { kind: 'text', label: 'Your name', note: 'What the people of Hearthvale call you.', max: 20 },
-  companionName: { kind: 'text', label: 'Her name', note: 'The name your companion answers to.', max: 20 },
+  companionName: { kind: 'text', label: "Lyra's name", note: 'The name Lyra answers to, if you would rather call her something else.', max: 20 },
   deathMode: {
     kind: 'select',
     label: 'When you die',
@@ -414,6 +415,7 @@ export class SettingsPanel {
   actionBlocked(id) {
     const g = this.game;
     const P = g.player;
+    if (id === 'backupMind') return g.state === 'playing' && (g.lyra || g.companion)?.mind ? null : 'Start or continue a journey first.';
     if (g.state !== 'playing' || !P) return 'Start or continue a journey first.';
     if (safe(() => g.survival?.isFallen?.(P), false) || P.downed) return 'Not while you lie bleeding. Ask again once you are on your feet.';
     if (id === 'resetPoints') {
@@ -423,6 +425,39 @@ export class SettingsPanel {
     if (id === 'trialMagic' && typeof g.magic?.startTrial !== 'function') return 'Not in this build.';
     if (id === 'freePoints' && typeof g.progression?.startFree !== 'function') return 'Not in this build.';
     return null;
+  }
+
+  // Settings → Minds → Back up (round 14b: the Mind panel's Data tab is gone; nobody's mind
+  // is edited, imported or reset from the interface). A file through the runtime's
+  // downloads, else the browser's own download.
+  backupMind() {
+    const g = this.game;
+    const data = safe(() => g.save?.exportMind?.(), '') || '';
+    if (!data) {
+      this.ui.toast('There is nothing to back up yet.', 'info');
+      return;
+    }
+    const name = String(g.settings?.companionName || 'lyra').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const filename = `${name}-mind-day${g.clock?.day || 1}.json`;
+    const rt = g.runtime;
+    const done = () => this.ui.toast('Her mind is saved to a file. Keep it somewhere safe.', 'good', { title: 'Backed up' });
+    if (rt?.downloads?.save) {
+      rt.downloads.save({ filename, data }).then(done, () => this.ui.toast('The file could not be saved here.', 'warn'));
+      return;
+    }
+    try {
+      const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      done();
+    } catch {
+      this.ui.toast('The file could not be saved here.', 'warn');
+    }
   }
 
   actionRow(id) {
@@ -465,6 +500,7 @@ export class SettingsPanel {
     const ui = this.ui;
     const g = this.game;
     if (this.actionBlocked(id)) return this.refreshActions();
+    if (id === 'backupMind') return this.backupMind();
     if (id === 'resetPoints') {
       const n = g.progression.spent();
       const free = !!g.progression.free;

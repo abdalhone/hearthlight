@@ -9,6 +9,7 @@ import { Chat } from './chat.js';
 import { Toasts } from './toast.js';
 import { Coach } from './coach.js';
 import { MindPanel } from './mind_panel.js';
+import { PeoplePanel } from './people_panel.js';
 import { DialogPanel } from './dialog.js';
 import { InventoryPanel, ChestPanel } from './inventory.js';
 import { SettingsPanel } from './settings_panel.js';
@@ -26,6 +27,8 @@ import { normalizeArgs } from '../ai/brain/actions.js';
 import { gainText, frac, truncate } from './format.js';
 import { companionshipOf, companionshipLabel, companionshipReason, deedLabel, requestAnswer } from './lyra_view.js';
 import { applyUiZoom } from './ui_scale.js';
+import { holderOf, isLyra as isLyraPerson, lyraDead } from '../core/party.js';
+import { displayName } from './companion_view.js';
 import { HomePointer } from './home_pointer.js';
 import { nearestTalkTarget, NEAR, LYRA as LYRA_ID } from './chat_target.js';
 import { buildLetterPanel } from './letter_view.js';
@@ -98,6 +101,7 @@ export class UI {
     this.hud = new Hud(this);
     this.toasts = new Toasts(this);
     this.mind = new MindPanel(this);
+    this.people = new PeoplePanel(this); // People (round 14b, DESIGN §34.5): the Mind's place in play
     this.dialog = new DialogPanel(this);
     this.inventory = new InventoryPanel(this);
     this.chest = new ChestPanel(this);
@@ -182,7 +186,7 @@ export class UI {
         // Tab toggles Lyra's mind in play; inside other panels it moves focus as usual.
         if (e.code === 'Tab' && this.game.state === 'playing' && !isTextTarget(t)) {
           const top = this.top();
-          if (!top || top === this.mind.panel) e.preventDefault();
+          if (!top || top === this.mind.panel || (this.people && top === this.people.panel)) e.preventDefault();
           else {
             e.stopPropagation();
             return;
@@ -368,6 +372,10 @@ export class UI {
     const isPlayer = (e) => e && (e === g.player || e.id === 'player');
     const isLyra = (e) => e && (e === g.companion || e.id === 'lyra');
     const lyraName = () => g.settings?.companionName || g.companion?.name || 'Lyra';
+    // Lyra's news reaches the screen only while she walks with you or is near (round 14b,
+    // DESIGN §34.3: nothing of hers is pinned on screen when she is not with you).
+    const lyraHere = () => this.lyraWithYou() || this.nearPlayer(g.lyra || g.companion, 16);
+    const isHolder = (e) => !!e && !!holderOf(g) && (e === holderOf(g) || e.id === holderOf(g)?.id);
 
     bus.on('entity_added', ({ entity }) => {
       // A fresh companion carries her default soul: remember it for "restore default".
@@ -397,7 +405,7 @@ export class UI {
 
     bus.on('level_up', ({ entity, level }) => {
       if (isPlayer(entity)) this.toast(`Level ${level}! You feel stronger and steadier.`, 'good', { title: 'Level up' });
-      else if (isLyra(entity)) this.toast(`${lyraName()} reached level ${level}. Her bolts burn brighter.`, 'lyra');
+      else if (isLyra(entity) && lyraHere()) this.toast(`${lyraName()} reached level ${level}. Her bolts burn brighter.`, 'lyra');
     });
 
     bus.on('item_gained', (p) => {
@@ -420,7 +428,11 @@ export class UI {
     bus.on('item_used', () => (this.invDirty = true));
 
     bus.on('downed', ({ entity }) => {
-      if (isLyra(entity)) this.toast(`${lyraName()} is down! Reach her and press ${this.isTouch ? 'the hand button' : 'E'} to help her up.`, 'warn');
+      // Whoever walks with you (or Lyra, near): reach them and help them up.
+      if (!(isHolder(entity) || (isLyra(entity) && lyraHere()))) return;
+      const name = isLyra(entity) ? lyraName() : displayName(g, entity);
+      const obj = isLyra(entity) ? 'her' : 'them';
+      this.toast(`${name} is down! Reach ${obj} and press ${this.isTouch ? 'the hand button' : 'E'} to help ${obj} up.`, 'warn');
     });
     // Her village protects her (§19.7): a cry for help is news the player should see,
     // once per person while it lasts.
@@ -442,7 +454,9 @@ export class UI {
       this.toast(text, 'warn', { key: `help:${id}` });
     });
     bus.on('revived', ({ entity, by }) => {
-      if (isLyra(entity)) this.toast(isPlayer(by) ? `You helped ${lyraName()} back to her feet.` : `${lyraName()} is back on her feet.`, 'good');
+      if (!(isHolder(entity) || (isLyra(entity) && lyraHere()))) return;
+      const name = isLyra(entity) ? lyraName() : displayName(g, entity);
+      this.toast(isPlayer(by) ? `You helped ${name} back to ${isLyra(entity) ? 'her' : 'their'} feet.` : `${name} is back on ${isLyra(entity) ? 'her' : 'their'} feet.`, 'good');
     });
 
     // Work she took on for you is news; her own work, on her own day, is her business.
@@ -457,16 +471,24 @@ export class UI {
       if (p.reason) this.toast(String(p.reason), 'lyra', { title: `${lyraName()} gave up on ${this.jobLabel(p.job).toLowerCase()}` });
     });
 
+    // Her diary page shows in the morning only if she slept under your roof (she walks with
+    // you and woke near you) and the page is hers to share; otherwise it waits, closed, on her
+    // People page. A page shown is marked read (people_view.js shows read pages).
     bus.on('player_wake', (p) => {
       const r = p?.reflection;
       const diary = r?.diary;
       const text = typeof diary === 'string' ? diary : diary?.text;
-      if (text) setTimeout(() => this.showDiary({ day: diary?.day ?? Math.max(1, (p.day || 2) - 1), text }), 900);
+      if (!text) return;
+      const day = diary?.day ?? Math.max(1, (p.day || 2) - 1);
+      if (!this.lyraSleptNear() || diary?.private) return;
+      setTimeout(() => {
+        if (this.showDiary({ day, text }) !== false) this.markDiaryRead(day);
+      }, 900);
     });
 
     bus.on('conversation', (c) => {
       const lines = Array.isArray(c?.lines) ? c.lines : [];
-      if (!lines.length) return;
+      if (!lines.length || !lyraHere()) return;
       const other = isLyra(c.a) ? c.b : c.a;
       const nameOf = (sp) => {
         if (sp && typeof sp === 'object') return sp.name || '…';
@@ -477,6 +499,20 @@ export class UI {
       this.chat.addOverheard(`${lyraName()} talked with ${other?.name || 'someone'}`, lines.map((l) => ({ name: nameOf(l.speaker), text: l.text || '' })));
     });
 
+    // ----- whoever walks with you (§34.1) -----
+    // The slot changes hands: the HUD redraws; a villager coming or going is news (Lyra's own
+    // comings and goings are told by onCompanionship, in her words).
+    const WHY_HOME = { night: 'has gone home for the night', hurt: 'has gone home to mend', fear: 'will not walk with you after what they saw', gone: 'will not walk with you any more', opinion: 'has had enough and gone home', grievance: 'has gone home, still wronged', work: 'has gone back to work', dismissed: 'has gone home', replaced: 'has gone home', left: 'has gone their own way', downed: 'is being looked after; they will not walk with you today' };
+    bus.on('companion_changed', (p) => {
+      this.hud?.refreshCompanion(true);
+      this.people?.markDirty?.();
+      const ent = (id) => (id ? safe(() => (id === 'lyra' ? g.lyra || g.companion : g.entities.get(id))) : null);
+      const to = ent(p?.to);
+      const from = ent(p?.from);
+      if (to && !isLyra(to)) this.toast(`${displayName(g, to)} walks with you now.`, 'good', { key: 'companion' });
+      else if (from && !isLyra(from) && p?.why !== 'died') this.toast(`${displayName(g, from)} ${WHY_HOME[p?.why] || 'has gone home'}.`, p?.why === 'fear' || p?.why === 'gone' ? 'warn' : 'info', { key: 'companion' });
+    });
+
     // ----- Lyra's own will (§16) -----
     bus.on('companionship_changed', (p) => this.onCompanionship(p || {}));
     bus.on('request_evaluated', (p) => {
@@ -484,10 +520,12 @@ export class UI {
       if (v && v.decision && !ACCEPTED.has(v.decision)) this.hud?.flashRefusal();
       this.hud?.refreshCompanion(true);
       this.mind?.markDirty('you');
+      this.people?.markDirty?.();
     });
     bus.on('deed', (p) => {
       this.hud?.refreshCompanion(true);
       this.mind?.markDirty('you');
+      this.people?.markDirty?.();
       const sev = Number(p?.severity) || 0;
       if (Math.abs(sev) < 2) return;
       const label = deedLabel(p?.deed);
@@ -499,6 +537,7 @@ export class UI {
     });
     bus.on('promise', (p) => {
       this.mind?.markDirty('you');
+      this.people?.markDirty?.();
       const text = truncate(String(p?.text || '').trim(), 120);
       if (!text) return;
       if (p.state === 'kept') this.toast(text, 'good', { title: p.by === 'player' ? 'You kept your word' : `${lyraName()} kept her word` });
@@ -516,6 +555,8 @@ export class UI {
         return;
       }
       if (g.state !== 'playing') return;
+      // Her own lines join the chat while she walks with you, or the chat is on her.
+      if (!this.lyraWithYou() && !(this.chat.isOpen() && this.chat.target === 'lyra') && !this.nearPlayer(p.speaker, 12)) return;
       const kind = p.kind || 'say';
       if (kind === 'bark' || kind === 'whisper') return;
       if (p.target && !isPlayer(p.target)) return;
@@ -527,10 +568,14 @@ export class UI {
       this.mind?.markDirty('people');
       if (p?.personId === 'player') {
         this.mind?.markDirty('you');
+      this.people?.markDirty?.();
         this.hud?.refreshCompanion(true);
       }
     });
-    bus.on('memory_added', () => this.mind?.markDirty('memories'));
+    bus.on('memory_added', () => {
+      this.mind?.markDirty('memories');
+      this.people?.markDirty?.();
+    });
     // The village's social life changes what the People tab shows (§19.3).
     for (const ev of ['village_talk', 'rumor', 'bond_changed']) bus.on(ev, () => this.mind?.markDirty('people'));
     bus.on('settings_changed', ({ key }) => {
@@ -765,6 +810,28 @@ export class UI {
     this.dialog?.close();
   }
 
+  // People (round 14b, DESIGN §34.5): you and each person, opened at `who` ('you', 'lyra',
+  // a villager's id), else at whoever walks with you, else at You. The panel is
+  // people_panel.js when it is built in, else Lyra's Mind panel.
+  openPeople(who = null) {
+    if (!this.inited) return;
+    const top = this.top();
+    const panel = this.people || this.mind;
+    if (top && top !== panel.panel && top.id !== 'pause') this.closeModal(top, true);
+    const id = who || holderOf(this.game)?.id || 'you';
+    if (this.people) this.people.open(id);
+    else this.mind.open(id === 'you' ? 'you' : id === 'lyra' ? 'now' : 'people');
+  }
+
+  togglePeople() {
+    const panel = this.people || this.mind;
+    if (panel.isOpen()) panel.close();
+    else this.openPeople();
+  }
+
+  // The old name, kept for scripts (playtest, ui3_check): Lyra's Mind panel at a tab. In play
+  // nothing opens it any more (Tab, M, the card and the menu open People); it has no Soul or
+  // Data tab and edits nothing.
   openMind(tab = 'now') {
     if (!this.inited) return;
     const top = this.top();
@@ -773,8 +840,7 @@ export class UI {
   }
 
   toggleMind() {
-    if (this.mind.isOpen()) this.mind.close();
-    else this.openMind(this.mind.tab || 'now');
+    this.togglePeople();
   }
 
   openInventory() {
@@ -848,26 +914,8 @@ export class UI {
     });
   }
 
-  resetMind() {
-    const g = this.game;
-    const mind = g.companion?.mind;
-    if (!mind) return false;
-    try {
-      if (typeof mind.reset === 'function') mind.reset();
-      else if (this.mindSnapshot) {
-        mind.deserialize(JSON.parse(this.mindSnapshot));
-        // A fresh mind saves no soul (it is the default one): restore that too.
-        if (typeof mind.resetSoul === 'function') mind.resetSoul();
-        else if (this.soulSnapshot) mind.soul = clone(this.soulSnapshot);
-      } else return false;
-    } catch (err) {
-      console.warn('[ui] mind reset failed', err);
-      return false;
-    }
-    g.bus.emit('soul_changed', { owner: g.companion });
-    if (g.save) g.save.pending = 'auto';
-    return true;
-  }
+  // (Round 14b: no reset of anyone's mind from the interface: People shows a mind, it never
+  // edits one. A backup is in Settings → Minds.)
 
   // ---------- small contract pieces ----------
 
@@ -899,28 +947,71 @@ export class UI {
     return this.fader.to(0, seconds, this.reduceMotion);
   }
 
-  // ---------- asking Lyra (§16.4) ----------
+  // ---------- asking your companion (§16.4, §34.4) ----------
 
-  // Every button on the bar is a request: it passes her consent gate and she answers.
+  // Every button on the bar is a request to whoever walks with you (game.party.ask): Lyra
+  // weighs it in her own mind and consent gate; a villager answers through their duty.
+  // Alone, there is nobody to ask: nothing happens and nothing is shown.
   runCommand(id) {
     if (id === 'talk') {
       this.talkToNearest();
       return;
     }
+    const g = this.game;
+    const h = holderOf(g);
+    if (!h) return null;
+    const lyra = isLyraPerson(g, h);
     if (id === 'jobs') {
-      this.hud.openJobs(this.isTouch);
-      return;
+      if (lyra) this.hud.openJobs(this.isTouch);
+      return null;
     }
     const cmd = COMMANDS.find((c) => c.id === id);
-    if (cmd) this.ask(cmd.action, cmd.args, id);
+    if (!cmd) return null;
+    if (lyra) return this.ask(cmd.action, cmd.args, id);
+    const r = safe(() => g.party?.ask?.(id), null) || { ok: false, message: '' };
+    this.showAnswer(r, id, '', [], h);
+    return r;
   }
 
+  // Jobs are Lyra's (her Behavior has them); nobody else is asked for one.
   runJob(job, deliverTo = 'player') {
+    if (!this.lyraWithYou()) return;
     this.ask('start_job', { target: deliverTo, value: job.id, amount: job.amount }, 'job');
   }
 
   runStopJob() {
+    if (!this.lyraWithYou()) return;
     this.ask('stop_job', {}, 'stop_job');
+  }
+
+  // Is Lyra the one walking with you now (she holds the role)?
+  lyraWithYou() {
+    const g = this.game;
+    const h = holderOf(g);
+    return !!h && isLyraPerson(g, h) && !lyraDead(g);
+  }
+
+  // Within `tiles` of the player (and alive, and in the world)?
+  nearPlayer(e, tiles = 12) {
+    const p = this.game.player;
+    if (!e || !p || e.removed || e.dead) return false;
+    return Math.hypot((e.x || 0) - p.x, (e.y || 0) - p.y) <= tiles * 16;
+  }
+
+  // She slept under your roof: she walks with you, alive, and woke near you.
+  lyraSleptNear() {
+    const g = this.game;
+    return this.lyraWithYou() && this.nearPlayer(g.lyra || g.companion, 20);
+  }
+
+  // A diary page the player has read (shown in the morning): People shows read pages whole.
+  markDiaryRead(day) {
+    const g = this.game;
+    const d = Number(day);
+    if (!Number.isFinite(d) || !g.flags) return;
+    const read = Array.isArray(g.flags.diary_read) ? g.flags.diary_read : [];
+    if (!read.includes(d)) g.flags.diary_read = [...read, d].slice(-200);
+    this.people?.markDirty?.('lyra');
   }
 
   // "Ask her back" while she is apart or has left. If no plugin offers 'rejoin', the
@@ -995,12 +1086,14 @@ export class UI {
     return { refused: true, verdict, result };
   }
 
-  // Her answer to a request, in her own voice: the gate's or the action's words, or a
-  // fitting line of her own. A counter-offer becomes a button under her reply.
-  showAnswer(r, kind, fallback = '', heard = []) {
+  // The answer to a request, in the asked one's own voice: the gate's or the action's words,
+  // or a fitting line of their own. A counter-offer (Lyra's) becomes a button under her reply.
+  showAnswer(r, kind, fallback = '', heard = [], who = null) {
     const g = this.game;
-    const a = requestAnswer(r, { kind, fallback, pick: pickAck, heard });
-    this.lyraSays(a.line, { kind: a.kind, offer: a.counter, bubble: a.bubble });
+    const lyra = !who || isLyraPerson(g, who);
+    const a = requestAnswer(r, { kind, fallback, pick: lyra ? pickAck : () => '', heard });
+    if (lyra) this.lyraSays(a.line, { kind: a.kind, offer: a.counter, bubble: a.bubble });
+    else this.personSays(who, a.line, { kind: a.kind });
     if (a.refused) {
       this.hud?.flashRefusal();
       g.audio?.play('error', { volume: 0.45, pitch: 0.8 });
@@ -1008,37 +1101,57 @@ export class UI {
     this.hud?.refreshCompanion(true);
   }
 
-  // Lyra speaks: a bubble over her head and a line in the chat. When neither the chat
-  // nor she is in view, a toast carries her words.
+  // Lyra speaks (personSays for her, with her chat's extras: offers and cited memories).
   lyraSays(text, { kind = null, offer = null, memories = null, bubble = true } = {}) {
     const g = this.game;
-    const c = g.companion;
+    this.personSays(g.lyra || g.companion, text, { kind, offer, memories, bubble });
+  }
+
+  // Someone speaks to you (round 14b, P-B4): a bubble over them, a line in their own chat
+  // thread, and, when neither the chat nor they are in view, a toast with their words.
+  // Lyra's toast shows only while she walks with you or the chat is on her.
+  personSays(e, text, { kind = null, offer = null, memories = null, bubble = true } = {}) {
+    const g = this.game;
     const line = String(text || '').trim();
-    if (!line) return;
-    if (bubble && c && !c.removed) safe(() => g.bubbles?.say?.(c, line, { kind: 'say' }));
-    else safe(() => g.saidToday?.quote?.('lyra', line, 'chat')); // said all the same (DESIGN §23.1)
-    this.chat.addMessage({ from: 'lyra', text: line, kind, offer, memories });
-    // A panel covers the world (and her bubble); off-screen she cannot be seen either.
-    if (this.stack.length || (!this.chat.isOpen() && !this.lyraInView())) this.toast(line, 'lyra', { title: g.settings?.companionName || c?.name || 'Lyra' });
+    if (!line || !e) return;
+    const lyra = isLyraPerson(g, e);
+    if (bubble && !e.removed) safe(() => g.bubbles?.say?.(e, line, { kind: 'say' }));
+    else if (lyra) safe(() => g.saidToday?.quote?.('lyra', line, 'chat')); // said all the same (DESIGN §23.1)
+    if (lyra) this.chat.addMessage({ from: 'lyra', text: line, kind, offer, memories });
+    else this.chat.addMessage({ to: e.id, from: 'npc', text: line, seen: this.nearPlayer(e, 12) });
+    const chatOnThem = this.chat.isOpen() && this.chat.target === (lyra ? 'lyra' : e.id);
+    if (lyra && !this.lyraWithYou() && !chatOnThem) return;
+    // A panel covers the world (and the bubble); off-screen they cannot be seen either.
+    if (this.stack.length || (!chatOnThem && !this.personInView(e))) this.toast(line, lyra ? 'lyra' : 'info', { title: displayName(g, e) });
+  }
+
+  personInView(e) {
+    const cam = this.game.camera;
+    if (!e || e.removed || !cam) return false;
+    const vw = cam.vw || 0;
+    const vh = cam.vh || 0;
+    return e.x >= cam.x && e.x <= cam.x + vw && e.y >= cam.y && e.y <= cam.y + vh;
   }
 
   lyraInView() {
     const g = this.game;
-    const c = g.companion;
-    const cam = g.camera;
-    if (!c || c.removed || !cam) return false;
-    const vw = cam.vw || 0;
-    const vh = cam.vh || 0;
-    return c.x >= cam.x && c.x <= cam.x + vw && c.y >= cam.y && c.y <= cam.y + vh;
+    return this.personInView(g.lyra || g.companion);
   }
 
   // Where she stands with the player changed: the HUD, the chat and a toast say so.
   onCompanionship(p) {
     const g = this.game;
     const state = companionshipOf(g);
+    // Back by her own plans for a moment while someone else walks with you: the party sends
+    // her on her way again at once (party.bouncing), so there is no return to announce.
+    if (safe(() => g.party?.bouncing?.(state), false)) {
+      this.hud?.refreshCompanion(true);
+      return;
+    }
     const name = g.settings?.companionName || g.companion?.name || 'Lyra';
     this.hud?.refreshCompanion(true);
     this.mind?.markDirty('you');
+      this.people?.markDirty?.();
     this.chat.setGone(state === 'gone');
     if (state === this.lastCs) return;
     this.lastCs = state;
@@ -1077,6 +1190,7 @@ export class UI {
     this.coach?.update(dt);
     this.dialog.update(dt);
     this.mind.update(dt);
+    this.people.update(dt);
     this.settings.update(dt);
 
     if (this.invDirty) {
@@ -1136,12 +1250,12 @@ export class UI {
     if (top?.padNav && inp.lastDevice === 'gamepad') top.padNav(inp);
     if (inp.uiPressed('mind')) {
       inp.consume('mind');
-      if (!top || top === this.mind.panel || top === this.inventory.panel) this.toggleMind();
+      if (!top || top === this.mind.panel || top === this.people?.panel || top === this.inventory.panel) this.togglePeople();
       return;
     }
     if (inp.uiPressed('inventory')) {
       inp.consume('inventory');
-      if (!top || top === this.inventory.panel || top === this.mind.panel) this.toggleInventory();
+      if (!top || top === this.inventory.panel || top === this.mind.panel || top === this.people?.panel) this.toggleInventory();
       return;
     }
     if (top) return;
@@ -1150,13 +1264,11 @@ export class UI {
       this.talkToNearest();
       return;
     }
-    // Number keys ask only while she travels with you; apart, she is not yours to direct.
-    const mode = this.hud?.mode || 'full';
+    // Alt + 1..5 ask whoever walks with you; alone, there is nobody to ask.
     for (let i = 0; i < COMMANDS.length; i++) {
       if (inp.uiPressed(`cmd${i + 1}`)) {
         inp.consume(`cmd${i + 1}`);
-        if (mode === 'full') this.runCommand(COMMANDS[i].id);
-        else if (mode === 'collapsed' && i === 0) this.askBack();
+        if (holderOf(this.game)) this.runCommand(COMMANDS[i].id);
       }
     }
   }

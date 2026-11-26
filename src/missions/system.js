@@ -20,6 +20,8 @@ import { componentLabel, componentWords, bossFor, BOSS_NAMES, BOSS_PLACES, isCom
 import { whenOk, whenLabel, inPlace, nearPoint, pointPx, weaveOf, weaveMatches, weaveEarned, aimOf, nonRaw, speciesMatches, isBossTarget, progressText, objectiveGoal } from './tracker.js';
 import { TILE } from '../core/constants.js';
 import { lyraOf } from '../core/people.js';
+import { holderOf, lyraDead } from '../core/party.js';
+import { fightAbility } from '../entities/npc_companion.js';
 
 const POLL = 0.25;
 const NUDGE_AFTER = 75; // seconds of play without a weave before a hint
@@ -168,7 +170,8 @@ export class MissionSystem {
 
   lyraWith() {
     const cs = safe(() => this.game.companion?.mind?.companionship, 'together') || 'together';
-    return this.game.flags?.lyra_gone ? 'gone' : cs;
+    // Dead (round 14b), she teaches nothing more: her lessons are found alone, like 'gone'.
+    return this.game.flags?.lyra_gone || lyraDead(this.game) ? 'gone' : cs;
   }
 
   questStage() {
@@ -222,7 +225,7 @@ export class MissionSystem {
     this.emit('mission_accepted', { id, mission: m });
     if (!silent) this.toast(this.objective(id)?.label || m.summary, 'quest', { title: `New mission: ${m.title}` });
     safe(() => this.game.audio?.play?.('quest', { volume: 0.6 }));
-    if (askLyra && m.danger) this.askLyra(m);
+    if (askLyra && m.danger) this.askCompanion(m);
     else if (m.lyra?.accept && !silent) this.lyraLine(m.lyra.accept);
     this.enterStep(id);
     this.save();
@@ -880,12 +883,44 @@ export class MissionSystem {
   }
 
   // Dangerous missions: she weighs coming along through her own request API.
+  // A dangerous mission: whoever walks with you is asked along (round 14b, DESIGN §34.4).
+  // Lyra answers through her own mind (askLyra); a villager by their duty and their nerve.
+  // Saved as s.companion { id, answer, why } (old saves' s.lyra / s.lyraWhy migrate).
+  askCompanion(m) {
+    const g = this.game;
+    const s = this.state[m.id];
+    if (!s) return;
+    const h = safe(() => holderOf(g), null);
+    if (!h) {
+      s.companion = { id: null, answer: 'alone', why: '' };
+      return;
+    }
+    if (h.id === 'lyra') {
+      this.askLyra(m);
+      s.companion = { id: 'lyra', answer: s.lyra || 'unasked', why: s.lyraWhy || '' };
+      return;
+    }
+    const near = g.player && Math.hypot(h.x - g.player.x, h.y - g.player.y) < 220;
+    if (!near) {
+      s.companion = { id: h.id, answer: 'unasked', why: '' };
+      return;
+    }
+    const able = safe(() => fightAbility(g, h), 1) >= 1;
+    const r = able ? safe(() => g.party?.ask?.('follow'), null) : null;
+    const ok = able && (!r || r.ok !== false);
+    const why = able ? '' : 'that is no place for someone like me';
+    s.companion = { id: h.id, answer: ok ? 'coming' : 'declined', why };
+    const line = ok ? r?.message || "I'm with you." : "Not there. That's no place for me. I'll wait for you here.";
+    safe(() => g.ui?.personSays?.(h, line));
+  }
+
   askLyra(m) {
     const g = this.game;
     const l = g.companion;
     const mind = l?.mind;
     const s = this.state[m.id];
     if (!l || !mind || !s) return;
+    if (lyraDead(g)) return;
     const cs = this.lyraWith();
     if (cs === 'left' || cs === 'gone') {
       s.lyra = 'apart';
@@ -1124,6 +1159,7 @@ export class MissionSystem {
         tracked: this.tracked === m.id,
         lyra: s?.lyra || null,
         lyraWhy: s?.lyraWhy || '',
+        companion: s?.companion || (s?.lyra ? { id: 'lyra', answer: s.lyra, why: s.lyraWhy || '' } : null),
         objectives: m.objectives.map((o, i) => ({
           label: o.label,
           done: s ? s.status === 'done' || s.status === 'ready' || i < s.step : false,
@@ -1179,7 +1215,7 @@ export class MissionSystem {
   serialize() {
     const state = {};
     for (const [id, s] of Object.entries(this.state)) {
-      state[id] = { status: s.status, step: s.step, n: Math.round(s.n * 100) / 100, t0: Math.round(s.t0 || 0), accepted: s.accepted, done: s.done ?? null, lyra: s.lyra || null, lit: s.lit?.slice(0, 12) || [] };
+      state[id] = { status: s.status, step: s.step, n: Math.round(s.n * 100) / 100, t0: Math.round(s.t0 || 0), accepted: s.accepted, done: s.done ?? null, lyra: s.lyra || null, companion: s.companion || null, lit: s.lit?.slice(0, 12) || [] };
     }
     return { v: 1, state, tracked: this.tracked, flags: { ...this.flags }, granted: this.granted.slice(), lyraOffered: { ...this.lyraOffered }, playT: Math.round(this.playT) };
   }
@@ -1202,6 +1238,8 @@ export class MissionSystem {
         spawned: false,
         spawnIds: [],
         lyra: s.lyra || null,
+        // Round 14b: who was asked along (an old save's s.lyra is Lyra's answer).
+        companion: s.companion && typeof s.companion === 'object' ? { id: s.companion.id ?? null, answer: String(s.companion.answer || 'unasked'), why: String(s.companion.why || '') } : s.lyra ? { id: 'lyra', answer: s.lyra, why: '' } : null,
         lit: Array.isArray(s.lit) ? s.lit.slice(0, 12) : [],
       };
     }

@@ -10,4 +10,9 @@
 //     'game_start' event); or
 //   - an installer function (game) => void, run at the end of game.buildWorld, after village
 //     life, murder and party exist and before a save is applied.
-export default [];
+//
+// partyPlugin steps game.party.update (the catch-up watchdog: a companion far behind and out
+// of sight catches up, src/core/party.js).
+import { partyPlugin } from '../party.js';
+
+export default [partyPlugin];

@@ -256,7 +256,7 @@ async function run([W, H]) {
       }
       return true;
     };
-    const allowed = ['.lyra-card', '.hud-menu', '.quest-line', '.wbtn', '.tbtn-attack', '.tbtn-dodge', '.tbtn-interact', '.buff', '.listen-prompt', '.boss-bar button'];
+    const allowed = ['.companion-card', '.hud-menu', '.quest-line', '.wbtn', '.tbtn-attack', '.tbtn-dodge', '.tbtn-interact', '.buff', '.listen-prompt', '.boss-bar button'];
     const out = { extra: [], have: {} };
     for (const e of document.querySelectorAll('.layer-hud button, .layer-touch button, .layer-hud [role=button]')) {
       if (!vis(e)) continue;
@@ -268,7 +268,8 @@ async function run([W, H]) {
     return out;
   });
   check(!hud.extra.length, `${tag}: the HUD has nothing extra (${hud.extra.join(' | ')})`);
-  for (const s of ['.lyra-card', '.hud-menu', '.wbtn', '.tbtn-attack', '.tbtn-dodge', '.tbtn-interact']) check(hud.have[s] > 0, `${tag}: the HUD has ${s}`);
+  // (Round 14b: the companion card is whoever walks with you; Lyra at a new game.)
+  for (const s of ['.companion-card', '.hud-menu', '.wbtn', '.tbtn-attack', '.tbtn-dodge', '.tbtn-interact']) check(hud.have[s] > 0, `${tag}: the HUD has ${s}`);
   check(!hud.cards.some((c) => /place-card/.test(c)), `${tag}: no clock card on a phone`);
   // Weave buttons do not overlap one another (their tap areas).
   const overlap = await page.evaluate(() => {
@@ -446,15 +447,15 @@ async function run([W, H]) {
 
   // ---------- shortcuts on the HUD ----------
   await quiet();
-  await tapSel('.lyra-card', 'her portrait');
+  await tapSel('.companion-card', 'her portrait');
   await wait(600);
-  check((await stack()).at(-1) === 'mind', `${tag}: her portrait opens her Mind`);
-  if (await box('.mind-ask .ask-btn')) check(true, 'ask');
-  else check(false, `${tag}: her Mind has the Ask row`);
-  // Opened a second time (the menu opened it before): her face and mood are still there.
-  check(!!(await box('.mind-hero .portrait')), `${tag}: her Mind shows her face and mood when opened again`);
+  // (Round 14b: the card opens People at whoever walks with you: Lyra at a new game.)
+  check((await stack()).at(-1) === 'people', `${tag}: her portrait opens People`);
+  if (await box('.people-ask-wrap .ask-btn')) check(true, 'ask');
+  else check(false, `${tag}: People has the Ask row for her`);
+  check(!!(await box('.people-head .portrait')), `${tag}: People shows her face`);
   await shot('12-mind');
-  await tapSel('.modal-layer > .panel:last-child .panel-close', 'Mind ✕');
+  await tapSel('.modal-layer > .panel:last-child .panel-close', 'People ✕');
   await wait(400);
   const q = await box('.quest-line');
   if (q) {
