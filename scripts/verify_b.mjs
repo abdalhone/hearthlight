@@ -679,6 +679,8 @@ async function play(S) {
       window.__away();
       window.__lyraAway();
       g.flags.bosses = { varek: { defeated: true, shards: {} } };
+      // Claude offline: his own lines.
+      g.village.provider = () => null;
       g.clock.skipTo(22);
     });
     check(await gate(), `[${tag}] 28 he waits at the gate`);
@@ -708,8 +710,9 @@ async function play(S) {
     v = await V();
     check(v.ended && !v.pact && v.hostile && v.learned, `[${tag}] 28 "I want to stop.": the pact ends, he turns cold, the Unkindling stays`, JSON.stringify(v));
     const rows = await ev(() => [...document.querySelectorAll('.chat-log .msg')].map((r) => r.textContent.trim()).slice(-3));
-    check(rows.length && !/I want to stop\.$/.test(rows.at(-1)), `[${tag}] 28 he answers it (heard first, then his words)`, JSON.stringify(rows));
+    check(rows.some((r) => /^Isembard/.test(r) && /word|broken|friend|kept|enem/i.test(r)), `[${tag}] 28 he answers it in his own words (heard first, then answered)`, JSON.stringify(rows));
     check(/cold/i.test(v.header), `[${tag}] 28 the chat says he is cold to you`, v.header.slice(0, 120));
+    check(!/Trade · Give · Work/.test(v.header) && /The bargain/.test(v.header), `[${tag}] 28 his header's button is the bargain, not a shop`, v.header.slice(0, 120));
     await shot('28-i-want-to-stop');
   });
 

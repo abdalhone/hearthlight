@@ -20,6 +20,7 @@ export const TEMPTER_PROFILE = {
   id: TEMPTER_ID,
   name: 'Isembard',
   role: 'a pilgrim at the ruins gate',
+  dialogLabel: 'The bargain', // the chat header's button to his dialog (no shop, no work)
   faction: 'villager',
   age: 50,
   visitor: true,

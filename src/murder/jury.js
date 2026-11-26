@@ -210,7 +210,9 @@ function reasonFor(m, id, about, { vote, k, caught, provoked, claims }) {
   if (k.saw === 'clear') return vote === 'mercy' ? `I saw it. But I saw ${V} go for them first, too.` : one(['I saw it with my own eyes. I will not unsee it.', `I was there. I watched ${V} die.`]);
   if (provoked) {
     const saw = !Array.isArray(provoked.saw) || provoked.saw.includes(id);
-    return saw ? `I saw ${V} strike first. That does not make it right. It makes it a fight.` : `${name(m, provoked.saw[0])} saw ${V} strike first. That does not make it right. It makes it a fight.`;
+    if (saw) return `I saw ${V} strike first. That does not make it right. It makes it a fight.`;
+    const W = name(m, provoked.saw[0]);
+    return one([`${W} saw ${V} strike first. That does not make it right. It makes it a fight.`, `${W} saw who struck first. I will not call a fight a murder.`, `If ${W} says ${V} went for them first, I believe it. A fight, then.`, `${W} has no reason to lie for the stranger. ${V} struck first.`]);
   }
   if (claims.some((x) => x.kind === 'confess')) return vote === 'mercy' ? 'They said it to our faces. That counts for something.' : 'They said it themselves. What else is there?';
   if (vote === 'not_proven') return k.opinion >= 55 ? one(['I know them a little. I do not see it in them, and nobody here saw it.', 'Would they do this? Not the one I know.']) : one(['Nobody here saw it done. I will not put anyone outside on a feeling.', 'Suspicion is not proof. Not proven.']);
