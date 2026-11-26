@@ -942,16 +942,12 @@ async function play(S) {
     await shot('L1-down-quiet');
     await ev(() => {
       const g = window.__game;
-      const r = g.survival.fallOf(g.player);
-      if (r) {
-        g.survival.revive?.(g.player) ?? (g.player.downed = false);
-      }
-      g.player.downed = false;
+      g.survival.reviveWith(g.player, g.companion, 'test', 1);
       g.player.hp = g.player.maxHp;
-      g.survival.falls?.delete?.(g.player);
-      if (g.player.state === 'downed') g.player.setState('idle');
     });
     await wait(500);
+    const up = await ev(() => ({ downed: !!window.__game.player.downed, fallen: !!window.__game.survival.isFallen(window.__game.player), ring: !!document.querySelector('.sv-fallen:not([hidden])') }));
+    check(!up.downed && !up.fallen, `[${tag}] L1 ... helped up again`, JSON.stringify(up));
     // (b) A place line only where you both are: Lyra walks into the chapel far from you.
     await ev(() => {
       const g = window.__game;

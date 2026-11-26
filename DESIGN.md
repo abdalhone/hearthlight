@@ -3774,6 +3774,11 @@ The rule is fixed; the numbers are what play tunes (`src/magic/balance.js`).
   unseen, but her shown thoughts did not ("The hearthwatch. I still wonder about it." pinned
   to the edge from a field away). `mind._showThought` keeps the barks' rule
   (`_mayShowWhileDown`: she sees you, or she is the one coming for you).
+- **A cry for help you did not cause, by your own eyes and ears** (`ui.helpCryText`,
+  standing rule 6): seen, it has a name ("Elda is shouting for help!"); heard and not seen,
+  it is a sound and a place ("A muffled cry for help, from the Ember Kettle."); unheard
+  (across the vale, behind too many walls), there is no notice at all. Before, every such
+  cry anywhere named its victim to you.
 - **The phone's Talk button keeps its word** (`touch.namedInReach`): a tap goes to whoever
   the round button names ("Talk to Elda") while they are still up and within three tiles,
   not to whoever a crowd has put nearest since the label was drawn.

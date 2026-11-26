@@ -281,3 +281,27 @@ test('the phone Talk button: the tap goes to the person it names, while they are
   elda.downed = false;
   assert.equal(namedInReach(g, null), null);
 });
+
+// Standing rule 6, met while playing her ear (L3): Elda cried out inside the Kettle, the
+// player outside its wall, and the notice read "Elda is shouting for help!". Hearing tells
+// what and where, never who; and a cry nobody near could hear is no notice at all.
+import { helpCryText } from '../src/ui/ui.js';
+
+test('a cry for help the player did not cause: named only if seen; heard, it is a sound and a place; unheard, nothing', () => {
+  const g = makeMurderGame({ hour: 12 });
+  clearScene(g, ['elda']);
+  const elda = g.entities.get('elda');
+  const k = g.locations.get('ember_kettle').bounds;
+  putAt(elda, (k.x + 2) * 16, (k.y + k.h / 2) * 16);
+  // The player outside the Kettle's wall: a muffled cry, no name.
+  putAt(g.player, (k.x - 2) * 16, (k.y + k.h / 2) * 16);
+  const muffled = helpCryText(g, { victim: elda, attacker: null, x: elda.x, y: elda.y, severity: 3 });
+  assert.ok(muffled && !/Elda/.test(muffled), `heard through a wall: what and where, never who (${muffled})`);
+  // Far across the vale: nothing.
+  putAt(g.player, elda.x + 120 * 16, elda.y);
+  assert.equal(helpCryText(g, { victim: elda, attacker: null, x: elda.x, y: elda.y, severity: 3 }), null, 'unheard: no notice');
+  // In sight, in the open: her name.
+  putAt(elda, g.player.x + 40, g.player.y);
+  const seen = helpCryText(g, { victim: elda, attacker: null, x: elda.x, y: elda.y, severity: 2 });
+  assert.match(seen || '', /Elda/, 'seen: named');
+});

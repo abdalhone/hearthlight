@@ -32,6 +32,8 @@ import { displayName } from './companion_view.js';
 import { HomePointer } from './home_pointer.js';
 import { nearestTalkTarget, NEAR, LYRA as LYRA_ID } from './chat_target.js';
 import { buildLetterPanel } from './letter_view.js';
+import { hears, cryLoudness, placeOfSound } from '../ai/hearing.js';
+import { seesActor } from '../ai/sight.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -61,6 +63,26 @@ const STATE_LINES = {
   left: (n) => `${n} has left you.`,
   gone: (n) => `${n} has cut you off. She is home with her own people now; near her, she still hears you.`,
 };
+
+// The notice for a cry for help the player did not cause (standing rule 6): by the player's
+// own eyes and ears. Seen, the cry has a name; heard and not seen, it is a sound and a
+// place ("A muffled cry for help, from the Ember Kettle."); unheard, there is no notice.
+export function helpCryText(g, p) {
+  const v = p?.victim;
+  const ent = v && typeof v === 'object' ? v : safe(() => g.entities?.get?.(v));
+  const P = g?.player;
+  if (!ent || !P) return null;
+  const x = Number.isFinite(p?.x) ? p.x : ent.x;
+  const y = Number.isFinite(p?.y) ? p.y : ent.y;
+  const name = isLyraPerson(g, ent) || ent.id === 'lyra' ? g.settings?.companionName || ent.name || 'Lyra' : String(ent.name || ent.id || '').split(' ')[0];
+  if (safe(() => seesActor(g, P, ent), false)) return `${name} is shouting for help!`;
+  const how = safe(() => hears(g, P, x, y, cryLoudness(p?.severity)), null);
+  if (!how) return null;
+  const at = safe(() => placeOfSound(g, x, y), null);
+  const where = at ? safe(() => g.locations?.get?.(at)?.name, null) : null;
+  if (how === 'muffled') return `A muffled cry for help${where ? `, from ${where}` : ', somewhere behind the walls'}.`;
+  return `Someone is shouting for help${where ? `, over by ${where}` : ''}!`;
+}
 
 export class UI {
   constructor(game, root) {
@@ -444,12 +466,20 @@ export class UI {
       if (!id || isPlayer(ent)) return;
       const now = g.time || 0;
       if (now - (helpAt.get(id) ?? -99) < 15) return;
-      helpAt.set(id, now);
       const name = isLyra(ent) || id === 'lyra' ? lyraName() : String(ent?.name || id).split(' ')[0];
       const byYou = isPlayer(p?.attacker) || p?.attacker === 'player';
       // Far from anyone, or shut in behind walls, a cry goes nowhere (DESIGN §29.4): nobody
       // comes, and nobody knows. Heard through a wall, it is a noise, not a name.
       const heard = !byYou || !g.murder?.heardBy || safe(() => g.murder.heardBy(ent, p?.severity), true);
+      // Not by you: what your own eyes and ears tell you (standing rule 6), or nothing.
+      if (!byYou) {
+        const t = helpCryText(g, { ...p, victim: ent });
+        if (!t) return;
+        helpAt.set(id, now);
+        this.toast(t, 'warn', { key: `help:${id}` });
+        return;
+      }
+      helpAt.set(id, now);
       const text = !byYou ? `${name} is shouting for help!` : heard === 'muffled' ? `${name} cries out. Someone outside the walls may have heard something.` : heard ? `${name} is shouting for help, and the village is coming.` : `${name} cries out. Nobody is near enough to hear.`;
       this.toast(text, 'warn', { key: `help:${id}` });
     });
