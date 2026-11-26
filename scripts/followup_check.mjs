@@ -20,6 +20,7 @@
 import { createRequire } from 'node:module';
 import { mkdir } from 'node:fs/promises';
 import { startServer } from './serve.mjs';
+import { plantBracket } from './plant_span.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -100,6 +101,16 @@ function pageSetup() {
     }
     window.__samples = [];
     window.__sampling = true;
+    // The plant each cast asks for, in game seconds (castPlant is its only setter).
+    window.__plantAsks = [];
+    if (!P.__plantHooked) {
+      const orig = P.castPlant.bind(P);
+      P.castPlant = (sec) => {
+        window.__plantAsks?.push(sec);
+        return orig(sec);
+      };
+      P.__plantHooked = true;
+    }
     const tick = (t) => {
       window.__samples.push({ t, x: P.x, y: P.y, plant: P.castPlantT || 0, st: g.magic?.castingState?.(P) || null, roll: !!P.rolling, dir: P.dir });
       if (window.__sampling) requestAnimationFrame(tick);
@@ -371,13 +382,19 @@ async function play(S) {
   const planted = run.filter((s) => s.plant > 0);
   const plantMs = planted.length ? planted.at(-1).t - planted[0].t : 0;
   const plantMoved = planted.length ? Math.abs(planted.at(-1).x - planted[0].x) : 99;
+  // The game steps at a fixed rate and draws once a frame: on a slow phone one drawn frame can
+  // run several steps, so the first and last planted frames only bound the plant from below.
+  // It lies between that and the span from the frame before it to the frame after it.
+  const plantSpan = plantBracket(run);
+  const plantAsk = await ev(() => (window.__plantAsks || []).slice());
   const tail = run.filter((s) => s.t > (planted.at(-1)?.t ?? 0) + 250);
   const runSpeed = tail.length >= 2 ? (tail.at(-1).x - tail[0].x) / ((tail.at(-1).t - tail[0].t) / 1000) : 0;
   const speed = await ev(() => window.__game.player.speed * (window.__game.player.speedMul || 1));
   const tapCast = await ev(() => window.__ev.filter((e) => e.t === 'spell_cast' && e.player).length);
   check(tapCast >= 1, `[${tag}] 27 the tap cast flew`);
   check(planted.length >= 2 && plantMoved < 0.6, `[${tag}] 27 a tap while running plants you for the pose`, `planted ${plantMs.toFixed(0)} ms, moved ${plantMoved.toFixed(2)} px over ${planted.length} frames`);
-  check(plantMs >= 150 && plantMs <= 520, `[${tag}] 27 ... a short plant (${plantMs.toFixed(0)} ms)`);
+  const plantAskMs = plantAsk.length ? Math.round(Math.max(...plantAsk) * 1000) : 0;
+  check(plantAskMs >= 150 && plantAskMs <= 520 && plantSpan.lo <= 520 && plantSpan.hi >= 150, `[${tag}] 27 ... a short plant (${plantAskMs} ms asked; seen ${plantSpan.lo.toFixed(0)}-${plantSpan.hi.toFixed(0)} ms)`);
   check(runSpeed > speed * 0.85, `[${tag}] 27 ... then you run on at full speed`, `${runSpeed.toFixed(1)} of ${speed.toFixed(1)} px/s`);
   await allUp().catch(() => {});
 
