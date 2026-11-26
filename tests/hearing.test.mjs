@@ -308,3 +308,111 @@ test('a witness who saw it still tells others face to face: then they are colder
   assert.ok(mira.opinionOfPlayer < o0.mira, 'and thinks less of them');
   assert.equal(mira.knowsWanted(P), !!P.crime && P.crime.until > g.clock.t, 'and knows they are wanted, while they are');
 });
+
+// ------------------------------------------------------------------ told later, not seen (verifier)
+
+test('a blow told later is told to one person: whoever sees the stranger at that moment saw nothing', () => {
+  const g = makeGame({ hour: 14 });
+  only(g, ['tobias', 'mira', 'rowan', 'bram']);
+  const P = g.player;
+  const [tobias, mira, rowan, bram] = ['tobias', 'mira', 'rowan', 'bram'].map((id) => g.entities.get(id));
+  for (const e of [tobias, mira, rowan, bram]) e.think = () => {};
+  // Inside the shut Kettle, nobody watching: the blow is the victim's to tell.
+  standAt(g, tobias, 70, 49);
+  standAt(g, P, 69, 49);
+  P.faceToward(tobias.x, tobias.y);
+  const sq = g.locations.get('town_square').center;
+  put(rowan, sq.x + 60, sq.y);
+  put(bram, sq.x + 40, sq.y + 20);
+  put(mira, sq.x - 300, sq.y + 200);
+  downBy(g, tobias);
+  assert.ok(tobias.downed && !P.crime, 'nobody saw it: nothing on record yet');
+  step(g, 1);
+  // The stranger walks out into the square, in plain sight of Rowan and Bram.
+  put(P, sq.x, sq.y);
+  step(g, 1);
+  const o0 = { bram: bram.opinionOfPlayer, rowan: rowan.opinionOfPlayer };
+  // Mira reaches Tobias inside; he tells her who did it.
+  standAt(g, mira, 71, 49);
+  step(g, 1.5);
+  assert.ok(P.crime, 'told: now it is on record');
+  const r = g.village.rumors.list.find((x) => x.victim === 'tobias' && x.kind === 'downed_villager');
+  assert.ok(r && r.heardBy.includes('mira'), 'Mira was told');
+  assert.ok(!r.heardBy.includes('bram') && !r.heardBy.includes('rowan'), `the square was not: ${JSON.stringify(r?.heardBy)}`);
+  assert.ok(!fighting(rowan, P), `Rowan, who saw only the stranger walking, does not come at them (${rowan.mode})`);
+  assert.notEqual(bram.fleeFrom, P, 'Bram does not run from them');
+  assert.notEqual(bram.coldDay, g.clock.day, 'nor turns cold');
+  assert.equal(bram.opinionOfPlayer, o0.bram, 'nor thinks less of them');
+  assert.equal(bram.knowsWanted(P), false);
+  assert.equal(rowan.knowsWanted(P), false);
+  assert.equal(mira.knowsWanted(P), true, 'Mira knows');
+});
+
+// ------------------------------------------------------------------ a body found next door (verifier)
+
+test('Lyra in the Kettle learns of a body found in the store next door only when the news reaches her', () => {
+  const g = makeGame({ hour: 14 });
+  only(g, ['garrick', 'corran', 'lyra']);
+  const P = g.player;
+  const L = g.companion;
+  const [garrick, corran] = ['garrick', 'corran'].map((id) => g.entities.get(id));
+  for (const e of [garrick, corran]) e.think = () => {};
+  standAt(g, garrick, 57, 54);
+  standAt(g, P, 56, 54);
+  const k = g.locations.get('ember_kettle').center;
+  holdLyra(g, k.x, k.y);
+  P.faceToward(garrick.x, garrick.y);
+  downBy(g, garrick);
+  const rec = g.murder.kill(garrick, P);
+  assert.equal(rec.seen.length, 0, 'nobody saw it');
+  // Corran comes into his store and finds him; Lyra sits in the Kettle, two walls off.
+  standAt(g, corran, 59, 55);
+  g.murder.found('garrick', 'corran', 'general_store');
+  step(g, 2);
+  const grievesGarrick = () => (L.mind.memory?.all?.() || []).some((m) => /Garrick is dead/.test(m.text));
+  assert.ok(!g.murder.lyra.garrick?.grieved && !grievesGarrick(), 'she has not heard: nobody told her');
+  assert.ok(!g.said.some((s) => s.who === 'lyra' && /Garrick/.test(s.text)), 'and says nothing of him');
+  // Within the hour the whole village knows, and so does she.
+  for (let i = 0; i < 80 && !g.murder.lyra.garrick?.grieved; i++) step(g, 1, 1 / 10);
+  assert.ok(g.murder.lyra.garrick?.grieved && grievesGarrick(), 'with everyone, within the hour');
+});
+
+test('near enough to hear the finder cry out in the open, Lyra learns of the body at once', () => {
+  const g = makeGame({ hour: 14 });
+  only(g, ['tobias', 'bram', 'lyra']);
+  const P = g.player;
+  const [tobias, bram] = ['tobias', 'bram'].map((id) => g.entities.get(id));
+  for (const e of [tobias, bram]) e.think = () => {};
+  const sq = g.locations.get('town_square').center;
+  put(tobias, sq.x, sq.y);
+  put(P, sq.x - 14, sq.y);
+  holdLyra(g, sq.x + 400, sq.y);
+  P.faceToward(tobias.x, tobias.y);
+  downBy(g, tobias);
+  g.murder.kill(tobias, P);
+  holdLyra(g, sq.x + 120, sq.y + 30);
+  put(bram, sq.x + 20, sq.y + 10);
+  g.murder.found('tobias', 'bram', 'town_square');
+  assert.ok(g.murder.lyra.tobias?.grieved, 'she heard Bram cry it out across the square');
+});
+
+// ------------------------------------------------------------------ words through a wall (verifier)
+
+test("Lyra does not take in words shouted on the other side of a wall (her mind's overhearing)", () => {
+  const g = makeGame({ hour: 14 });
+  only(g, ['hobb', 'lyra']);
+  const L = g.companion;
+  const hobb = g.entities.get('hobb');
+  hobb.think = () => {};
+  holdLyra(g, px(75), px(47)); // inside the Kettle, by the east wall
+  standAt(g, hobb, 78, 47); // out in the street
+  assert.ok(wallBetween(g, L.x, L.y - 6, hobb.x, hobb.y - 6), 'the wall between');
+  const heard = () => (L.mind.memory?.all?.() || []).filter((m) => /mention Maren/.test(m.text)).length;
+  const n0 = heard();
+  g.bus.emit('speech', { speaker: hobb, text: 'Maren went over the ruins wall, they say.', target: null, kind: 'shout' });
+  assert.equal(heard(), n0, 'through the wall: a noise, not words');
+  // The same words in the open, no wall between: she takes them in.
+  holdLyra(g, hobb.x + 40, hobb.y);
+  g.bus.emit('speech', { speaker: hobb, text: 'Maren went over the ruins wall, they say.', target: null, kind: 'shout' });
+  assert.equal(heard(), n0 + 1, 'in the open: she heard Maren named');
+});

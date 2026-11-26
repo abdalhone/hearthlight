@@ -1377,11 +1377,27 @@ export class NPC extends Actor {
     }
     const isPlayer = actor === g.player || actor.id === 'player';
     const isVictim = victim === this;
-    const sees = isVictim || (this.isAlive() && this.distTo(actor) <= SIGHT && this.canSee(actor));
+    // Saw it: the crime's own screen when there is one (murder.sawBlow: who saw the blow as
+    // it fell, or, for a blow told later, the one it was told to), and the stranger in sight
+    // now. Seeing the stranger at the moment a crime is told elsewhere is not seeing it.
+    let screened = null;
+    try {
+      screened = victim ? (g.murder?.sawBlow?.(this.id, victim) ?? null) : null;
+    } catch {
+      screened = null;
+    }
+    const sees = isVictim || (screened !== false && this.isAlive() && this.distTo(actor) <= SIGHT && this.canSee(actor));
     // Ears (DESIGN §29.4): a blow and a cry where it fell, by the one rule (walls muffle it,
     // a shut house keeps it in). A theft makes no sound; the bell's 'murder' is news, not a
     // noise. Hearing tells what and where, never who: no opinion, no fight, no flight.
-    const loud = p.kind === 'knockout' ? LOUD.scream : p.kind === 'assault' ? LOUD.blow : 0;
+    // A crime told later (the hurt one's words, murder.reveal) is no sound at all.
+    let told = false;
+    try {
+      told = !!victim && !!g.murder?.toldNow?.(victim);
+    } catch {
+      told = false;
+    }
+    const loud = told ? 0 : p.kind === 'knockout' ? LOUD.scream : p.kind === 'assault' ? LOUD.blow : 0;
     const at = victim && Number.isFinite(victim.x) ? victim : actor;
     const heard = !sees && loud > 0 ? hears(g, this, at.x, at.y, loud) : null;
     if (isPlayer) {

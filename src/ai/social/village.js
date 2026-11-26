@@ -1022,9 +1022,14 @@ export class Village {
         // A killing (DESIGN §29) is told by game.murder, with its own witnesses.
         if (p.kind === 'murder' || p.kind === 'outside') return;
         const kind = p.kind === 'knockout' ? 'downed_villager' : 'attacked_villager';
-        const witnesses = this.witnessesNear(p.victim.x, p.victim.y, SIGHT, { sight: true });
+        // Those who saw it, by the crime's own screen when it has one (murder.sawBlow: who
+        // saw the blow fall, or, for a blow told later, only the one it was told to).
+        const screen = (id) => safe(() => g?.murder?.sawBlow?.(id, p.victim) ?? null, null);
+        const witnesses = this.witnessesNear(p.victim.x, p.victim.y, SIGHT, { sight: true }).filter((id) => screen(id) !== false);
+        for (const id of this.villagers().map((e) => e.id)) if (screen(id) === true && !witnesses.includes(id) && id !== p.victim.id) witnesses.push(id);
         const lyra = g?.companion;
-        if (lyra && seesPoint(g, lyra, p.victim.x, p.victim.y)) witnesses.push('lyra');
+        const ls = screen('lyra');
+        if (lyra && (ls === true || (ls == null && seesPoint(g, lyra, p.victim.x, p.victim.y)))) witnesses.push('lyra');
         this.addRumor(kind, { victim: p.victim.id, witnesses });
         return;
       }

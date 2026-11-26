@@ -20,6 +20,7 @@ import {
 import { LYRA_PEOPLE, KNOWN_PLACES } from './soul.js';
 import { itemName, itemDef } from '../../entities/items.js';
 import { seesActor, sawTheBlow } from '../sight.js';
+import { hearsWords } from '../hearing.js';
 
 // Perception: turns bus events (and what she can see) into feelings, memories and
 // opinions. Owned by the Mind; it subscribes to the bus in the Mind constructor.
@@ -897,6 +898,9 @@ export class Perception {
     }
     if (this.isPlayer(speaker)) return;
     if (!this.near(speaker, NOTICE_RADIUS)) return;
+    // Words through a wall are a noise, not words (DESIGN §29.4, src/ai/hearing.js): a
+    // scream of a name in the next house tells her nothing.
+    if (this.game && this.owner && !this.isSelf(target) && !hearsWords(this.game, this.owner, speaker, NOTICE_RADIUS)) return;
     if (this.throttle(`heard_topics_${speaker.id}`, 6)) m.noticeText(String(text), { source: 'overheard', amount: 0.3 });
     // Said to her face, in a talk she is having: the conversation itself is remembered.
     if (/\bmaren\b/i.test(text) && !this.isSelf(target) && this.throttle('heard_maren', 120)) {
