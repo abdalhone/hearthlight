@@ -50,6 +50,7 @@ import * as Grief from './grief.js';
 import * as Lyra from './lyra.js';
 import * as Hunt from './hunt.js';
 import * as Loot from './loot.js';
+import { playFinisher, trackDamage } from './finishers.js';
 import { openBodyChoice } from '../ui/body_view.js';
 
 const TICK = 0.5;
@@ -121,6 +122,7 @@ export class Murder {
     }
     this.attach();
     this.installPlugin();
+    safe(() => trackDamage(game)); // what the stranger fights with lately (finishers.js)
   }
 
   // Lyra's side, through the plugin registry: what she knows for Claude's prompt, and her
@@ -531,13 +533,18 @@ export class Murder {
     }
   }
 
+  // The blow falls: the death is now (witnesses, the record, everything a killing is), and a
+  // short finisher by the stranger's build is laid over the next second (round 14b,
+  // finishers.js; Settings -> Finishers: full, brief or off, the same outcome).
   strike(P, v) {
     const g = this.game;
     safe(() => P.setState?.('attack', 0.4));
     safe(() => g.audio?.play?.('hit', { x: v.x, y: v.y, volume: 0.9, pitch: 0.55 }));
     safe(() => g.camera?.shake?.(2.5, 0.25));
     g.hitStop = Math.max(g.hitStop || 0, 0.3);
-    return this.kill(v, P);
+    const rec = this.kill(v, P);
+    if (rec) safe(() => playFinisher(g, P, v, rec));
+    return rec;
   }
 
   // ------------------------------------------------------------------ a death
