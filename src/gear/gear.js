@@ -379,3 +379,18 @@ export function fmtTime(sec) {
 }
 
 export { SLOTS, SLOT_LABEL, RARITY, GEAR, BUFF_ITEMS, gearDef, gearStats, rarityOf, maxUpOf };
+
+// What a ware does, in the words the bag and the Character sheet use (DESIGN §39): a piece
+// of gear's rarity, slot and stats; a draught's or a dish's timed buff; each percentage
+// saying what it is a share of (stats.pctWords). Null for a plain thing. The shop's ware
+// lines read it.
+export function wareWords(id, level = 0) {
+  const gear = gearDef(id);
+  if (gear) {
+    const does = describeContribution(gearStats(id, level)).join(', ');
+    return `${RARITY[gear.rarity]?.label || 'Common'} ${gear.slot}${level ? ` +${level}` : ''}${does ? `: ${does}` : ''}`;
+  }
+  const b = own.call(BUFF_ITEMS, id) ? BUFF_ITEMS[id].buff : null;
+  if (b) return `${b.label}: ${describeContribution(b).join(', ')} for ${Math.round((b.seconds || 60) / 60) || 1} min`;
+  return null;
+}

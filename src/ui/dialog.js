@@ -11,6 +11,7 @@ import { fmtInt, isGiftable, sortItems, voicePitch, capitalize } from './format.
 import { TalkSession, villageOf, firstName, SAY_MAX } from './village_view.js';
 import { FieldDictation } from './dictation.js';
 import { shopOf, priceFor, stance, moodOf } from '../world/trade.js';
+import { wareWords } from '../gear/gear.js';
 
 const CHARS_PER_SECOND = 52;
 
@@ -538,11 +539,14 @@ export class DialogPanel {
   // A row: icon, name (and how many), a note (stock), the stolen mark, the price against what it
   // is worth, the buttons. A tap on the row shows what it is, inline.
   shopRow(id, def, price, btn, dim, qty, { note = '', stolen = false, worth = null } = {}) {
-    const detail = h('p', { class: 'shop-detail', hidden: true, text: def?.desc || '' });
+    // What it does (gear and buffs), each % saying what it is a share of, as the Character
+    // sheet and the bag say it (DESIGN §39; gear.wareWords). Shown with its words on a tap.
+    const does = safe(() => wareWords(id), null);
+    const detail = h('p', { class: 'shop-detail', hidden: true }, def?.desc || '', does ? h('span', { class: 'shop-does', style: 'display:block' }, does) : null);
     const worthTxt = Number.isFinite(worth) && String(worth) !== String(price) ? h('span', { class: 'shop-worth', text: `worth ${worth}` }) : null;
     const row = h(
       'div',
-      { class: `shop-row ${dim ? 'dim' : ''} ${stolen ? 'is-stolen' : ''}`.trim() },
+      { class: `shop-row ${dim ? 'dim' : ''} ${stolen ? 'is-stolen' : ''}`.trim(), title: does || null },
       h('img', { class: 'item-img', alt: '', src: itemIconUrl(this.game, id) }),
       h(
         'span',

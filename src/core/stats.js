@@ -477,6 +477,23 @@ export function formatStat(id, v) {
 }
 
 // A contribution in words: "+3 Armor", "+12% Weave power", "×0.6 Health".
+// A percentage in words, saying what it is a share of, as the Character sheet does (round
+// 14b, DESIGN §26 and §39: a percentage is a share of the number before any percentage, so
+// "40% should always give 40%"). Speed's is the normal pace; a chance's own +% is a share of
+// the chance, never more points of it; a number that points and gear add to (the sword,
+// weave power, health, armor) is a share of yours. A multiplier that starts at ×1 and that
+// nothing adds to (cast speed, swings, damage, cooldowns) reads plainly: its share is the
+// same few points either way.
+const PLAIN_PCT = new Set(['castSpeed', 'cooldown', 'swing', 'dmgDealt', 'dmgTaken', 'manaCost', 'manaRegen', 'carrySpeed', 'strike', 'critMul']);
+const LOWER_PCT = new Set(['cooldown', 'dmgTaken', 'manaCost']);
+export function pctWords(k, v) {
+  const n = `${v > 0 ? '+' : '−'}${Math.round(Math.abs(v) * 100)}%`;
+  const word = STATS[k]?.label || k;
+  if (k === 'speed') return `${n} ${word} (of your normal pace)`;
+  if (PLAIN_PCT.has(k) || !STATS[k]) return `${n} ${LOWER_PCT.has(k) ? word.toLowerCase() : word}`;
+  return `${n} of your ${word.toLowerCase()}`;
+}
+
 export function describeContribution(c) {
   const out = [];
   if (!c) return out;
@@ -492,8 +509,7 @@ export function describeContribution(c) {
   }
   for (const [k, v] of Object.entries(c.pct || {})) {
     if (!v) continue;
-    if (k === 'cooldown' || k === 'dmgTaken' || k === 'manaCost') out.push(`${v > 0 ? '+' : '−'}${Math.round(Math.abs(v) * 100)}% ${word(k).toLowerCase()}`);
-    else out.push(`${v > 0 ? '+' : '−'}${Math.round(Math.abs(v) * 100)}% ${word(k)}`);
+    out.push(pctWords(k, v));
   }
   for (const [k, v] of Object.entries(c.mul || {})) {
     if (v === 1 || !Number.isFinite(v)) continue;

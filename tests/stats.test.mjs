@@ -78,7 +78,7 @@ test('the pipeline composes base + level + points + gear + modifiers in one fixe
   assert.equal(g.stats.get(a, 'dodge'), STATS.dodge.max);
   assert.equal(g.stats.get(a, 'crit'), STATS.crit.max);
   for (const id of STAT_IDS) assert.ok(STATS[id].label && typeof formatStat(id, 1) === 'string', id);
-  assert.deepEqual(describeContribution({ add: { def: 2 }, pct: { speed: 0.12 }, mul: { maxHp: 0.6 } }), ['+2 Armor', '+12% Speed', 'Health −40%']);
+  assert.deepEqual(describeContribution({ add: { def: 2 }, pct: { speed: 0.12 }, mul: { maxHp: 0.6 } }), ['+2 Armor', '+12% Speed (of your normal pace)', 'Health −40%']);
   assert.equal(makeModifier({ source: 'x' }).kind, 'buff');
 });
 

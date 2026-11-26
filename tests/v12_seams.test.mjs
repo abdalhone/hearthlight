@@ -458,3 +458,31 @@ test('seam 6: casting plants you at 999 Grace with every haste running; the plan
   assert.equal(plants['0:0'], plants[`${FREE_MAX}:0`], 'the same plant with 0 or 999 Focus');
   assert.equal(plants['0:1'], plants[`${FREE_MAX}:1`]);
 });
+
+// ---------------------------------------------------------------- 8. the shop and gear words
+
+import { describeContribution } from '../src/core/stats.js';
+import { wareWords } from '../src/gear/gear.js';
+
+// The sheet says what a % is a share of (round 14b stats: "Each % is a share of your normal
+// pace, 76."); the gear in your bag, the forge and the shop's wares say it the same way.
+test('seam 8: gear and wares say what each % is a share of, as the sheet does; loot and prices unchanged', () => {
+  const boots = describeContribution(GEAR.roadrunner_boots.stats);
+  assert.ok(boots.includes('+8% Speed (of your normal pace)'), boots.join(', '));
+  assert.ok(boots.includes('+3% Dodge chance'), 'a chance added is points of it, as before');
+  const oathLike = describeContribution({ pct: { crit: 0.3, atk: 0.3, spellPower: 0.05, castSpeed: 0.08 } });
+  assert.ok(oathLike.includes('+30% of your critical chance'), oathLike.join(', '));
+  assert.ok(oathLike.includes('+30% of your sword'), 'a share of the sword before any %');
+  assert.ok(oathLike.includes('+5% of your weave power'));
+  assert.ok(oathLike.includes('+8% Cast speed'), 'a ×1 number nothing adds to reads plainly');
+  assert.ok(describeContribution({ pct: { speed: -0.06 } }).includes('−6% Speed (of your normal pace)'), 'heavy armour too');
+  // The shop's ware line for a piece of gear and for a draught.
+  const ware = wareWords('roadrunner_boots');
+  assert.match(ware, /\+8% Speed \(of your normal pace\)/);
+  assert.match(ware, /Uncommon boots/);
+  assert.equal(wareWords('swiftfoot_draught'), 'Swiftfoot: +3% Dodge chance, +12% Speed (of your normal pace) for 2 min');
+  assert.equal(wareWords('iron_ore'), null, 'a plain thing has no stat words');
+  // Prices and what a ware is worth are the shop's own (no stat file touches them).
+  assert.equal(GEAR.roadrunner_boots.value, 85);
+  assert.equal(BUFF_ITEMS.swiftfoot_draught.value, 28);
+});
