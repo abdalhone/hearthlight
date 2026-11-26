@@ -426,10 +426,13 @@ export function refusesTrade(npc, player) {
   if (!npc.profile.shop) return true;
   // Not to a known killer; not to someone the family believes did it (DESIGN §29).
   if (g.murder?.refusesTrade?.(npc)) return true;
-  if (npc.isWantedNear?.(player) || npc.crimeActive?.()) return true;
+  // Only what this shopkeeper knows: a wanted stranger, a crime today they saw or were told
+  // of (DESIGN §29.4: the news travels by meeting, not on the wind).
+  const knows = npc.knowsWanted ? npc.knowsWanted(player) : npc.crimeActive?.();
+  if (npc.isWantedNear?.(player) || knows) return true;
   if (npc.wrongedDay === day) return true;
   const rec = npc.crimeToday?.();
-  if (!rec) return false;
+  if (!rec || (npc.knowsCrimeToday && !npc.knowsCrimeToday())) return false;
   if (rec.knockouts > 0) return true;
   return npc.opinionOfPlayer < 45;
 }

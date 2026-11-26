@@ -433,9 +433,11 @@ export class UI {
       helpAt.set(id, now);
       const name = isLyra(ent) || id === 'lyra' ? lyraName() : String(ent?.name || id).split(' ')[0];
       const byYou = isPlayer(p?.attacker) || p?.attacker === 'player';
-      // Far from anyone, a cry goes nowhere (DESIGN §29): nobody comes, and nobody knows.
+      // Far from anyone, or shut in behind walls, a cry goes nowhere (DESIGN §29.4): nobody
+      // comes, and nobody knows. Heard through a wall, it is a noise, not a name.
       const heard = !byYou || !g.murder?.heardBy || safe(() => g.murder.heardBy(ent, p?.severity), true);
-      this.toast(byYou ? (heard ? `${name} is shouting for help, and the village is coming.` : `${name} cries out. Nobody is near enough to hear.`) : `${name} is shouting for help!`, 'warn', { key: `help:${id}` });
+      const text = !byYou ? `${name} is shouting for help!` : heard === 'muffled' ? `${name} cries out. Someone outside the walls may have heard something.` : heard ? `${name} is shouting for help, and the village is coming.` : `${name} cries out. Nobody is near enough to hear.`;
+      this.toast(text, 'warn', { key: `help:${id}` });
     });
     bus.on('revived', ({ entity, by }) => {
       if (isLyra(entity)) this.toast(isPlayer(by) ? `You helped ${lyraName()} back to her feet.` : `${lyraName()} is back on her feet.`, 'good');

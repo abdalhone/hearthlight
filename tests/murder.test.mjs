@@ -311,8 +311,10 @@ test('found later: the watch investigates from real sightings; the stranger can 
   put(g.player, px(96), px(79));
   // Asked by Elda, the stranger says they have not seen him.
   g.villageLife.recordClaim({ to: 'elda', about: 'bram', kind: 'not_seen' });
-  // The search reaches the wood; the body is found: missing becomes murder.
-  stepTo(g, 16);
+  // Deep in the wood nobody heard him cry out (DESIGN §29.4: Elda, 550 px off behind the
+  // Kettle's walls, no longer comes running). The search reaches the wood; the body is
+  // found: missing becomes murder.
+  for (let i = 0; i < 6000 && rec.foundAt == null; i++) step(g, 5, 1 / 8);
   assert.ok(rec.foundAt != null, 'the search found him');
   const c = g.murder.cases.bram;
   assert.ok(c && c.lead === 'rowan');

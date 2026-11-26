@@ -35,6 +35,7 @@ import { placeAt, placePhrase, pronoun } from '../ai/village_life/errands_data.j
 import { whenPhrase } from '../ai/village_life/problems.js';
 import { witnessesOf, look, lightAt } from './witness.js';
 import { canReach } from '../world/walls.js';
+import { hears, hearsWords, cryLoudness } from '../ai/hearing.js';
 import { UNKILLABLE, FINISH_HOLD, FINISH_REACH, FINISH_CANCEL, MURDER_WANTED, HOUR, DAY, HIDE, hidingPlace, INVESTIGATORS, levelOf } from './data.js';
 import { gatherEvidence, suspicionOf, buildQuestions, judgeAnswer, WEIGHTS } from './investigation.js';
 import { murderLine, watchLine } from './lines.js';
@@ -309,15 +310,21 @@ export class Murder {
     return s.ids.has(id);
   }
 
-  // Is anyone near enough to hear this victim's cry (npc.js HELP_HEAR, by severity)?
+  // Does anyone hear this victim's cry? The one rule for ears (src/ai/hearing.js, DESIGN
+  // §29.4): the reach by severity, walls and shut doors muffling it, sleep dulling it.
+  // -> 'clear' (someone heard it in the open), 'muffled' (only through a wall), or false.
   heardBy(victim, severity = 1) {
-    const reach = [0, 300, 440, 600][Math.max(1, Math.min(3, Math.round(Number(severity) || 1)))];
-    for (const e of [...(this.life?.villagers?.() || []), this.game?.companion]) {
-      if (!e || e === victim || e.dead || e.absent || !e.isAlive?.()) continue;
-      const r = reach * (e.state === 'sleep' ? 0.35 : 1);
-      if (dist(e, victim) <= r) return true;
+    const v = this.entity(victim);
+    if (!v) return false;
+    const g = this.game;
+    let best = false;
+    for (const e of [...(this.life?.villagers?.() || []), g?.companion]) {
+      if (!e || e === v || e.dead || e.absent || !e.isAlive?.()) continue;
+      const how = safe(() => hears(g, e, v.x, v.y, cryLoudness(severity)), null);
+      if (how === 'clear') return 'clear';
+      if (how) best = how;
     }
-    return false;
+    return best;
   }
 
   isSecret(victimId) {
@@ -612,10 +619,11 @@ export class Murder {
       n++;
       this.terrify(e, rec);
     }
-    // The scream carries a little way: whoever is close enough to make out the words.
+    // The scream carries a little way: whoever is close enough to make out the words, with
+    // no wall between (a wall leaves a noise, not words: src/ai/hearing.js).
     for (const e of this.life?.villagers?.() || []) {
       if (!e || e.id === rec.id || knowers.includes(e.id) || !e.isAlive?.() || e.state === 'sleep') continue;
-      if (rec.seen.some((s) => s.id !== 'lyra' && dist(this.entity(s.id), e) <= SCREAM_REACH)) knowers.push(e.id);
+      if (rec.seen.some((s) => s.id !== 'lyra' && safe(() => hearsWords(g, e, this.entity(s.id), SCREAM_REACH), false))) knowers.push(e.id);
     }
     const r = safe(() => this.village?.addRumor?.('murder', { victim: rec.id, witnesses: knowers, saw: rec.seen.filter((s) => s.id !== 'lyra').map((s) => s.id), source: knowers[0] || 'village' }), null);
     rec.rumor = r?.id || null;
@@ -1183,6 +1191,8 @@ export class Murder {
       }
       for (const e of [...(this.life?.villagers?.() || []), g.companion]) {
         if (!e || e === v || !e.isAlive?.() || e.state === 'sleep' || dist(e, v) > TELL_REACH) continue;
+        // Words, face to face: not through a wall (src/ai/hearing.js).
+        if (!safe(() => hearsWords(g, e, v, TELL_REACH), true)) continue;
         this.reveal(id, e.id);
         break;
       }

@@ -5,8 +5,10 @@ import { Walker } from './npc_walker.js';
 import { now, rand, hostileTo, alive, walkLine, speak, pickLine } from './creature_util.js';
 import * as D from './npc_dialogue.js';
 import { NPC_PROFILES } from './npc_data.js';
-import { RESPONSE_LINES } from './npc_lines.js';
+import { RESPONSE_LINES, HEAR_LINES } from './npc_lines.js';
 import { look } from '../murder/witness.js';
+import { hears, cryLoudness, hearsWords, placeOfSound, LOUD } from '../ai/hearing.js';
+import { placePhrase } from '../ai/village_life/errands_data.js';
 
 // Villagers of Hearthvale. Each one lives by the 24-hour schedule in its profile
 // (npc_data.js): walks there with the pathfinder (opening doors and closing them
@@ -22,7 +24,6 @@ export const KNOCKOUT_SECONDS = 30;
 export const SIGHT = 150; // how far a villager sees a crime or a threat (px)
 const THREAT_RADIUS = 96; // monsters closer than this send villagers running
 const GUARD_RADIUS = 170; // guards engage hostiles this close
-const GUARD_CRIME_HEAR = 420; // guards come running to a crime this far away
 const GUARD_LEASH = 300; // and give up the chase this far from their post
 const SAY_GAP = 6; // seconds between ambient lines from any two villagers
 const HUNT_RADIUS = 150; // Hess takes on hostile creatures this close (DESIGN §19.1)
@@ -48,7 +49,13 @@ const LAMP_AREAS = ['town_square', 'lamplight_lane', 'weavers_row'];
 
 // The village answering a call for help (DESIGN §19.7).
 const TENDERS = new Set(['mira', 'hobb', 'wenna', 'elda', 'aveline']); // heal, help up, walk home
-const HELP_HEAR = [0, 300, 440, 600]; // how far a shout carries, by severity 1..3
+// How far a cry carries, and what it tells, is the one rule for ears (src/ai/hearing.js,
+// DESIGN §29.4): open air by severity (300 / 440 / 600 px), muffled hard by a wall, a little
+// further through an open door, less to a sleeper; it tells what and where, never who.
+const SEEN_NEAR = 96; // px: the one seen this close to the hurt is the one who did it
+// The village's news of the stranger's crimes (src/ai/social/rumors.js kinds).
+const CRIME_NEWS = new Set(['attacked_villager', 'downed_villager', 'hit_lyra', 'downed_lyra', 'murder']);
+const TELL_REACH = 44; // px: the hurt tell who did it to whoever reaches them (murder.js)
 const HELP_SECONDS = 45; // the longest anyone stays on one call
 // What a villager yelps when the stranger's weave catches them by accident.
 const ACCIDENT_YELPS = ['Oi! Mind where that goes!', 'Ow! Watch it!', 'Careful with that!', 'Hey! Not at me!'];
@@ -1018,7 +1025,8 @@ export class NPC extends Actor {
       if (d2 > GUARD_RADIUS * GUARD_RADIUS) continue;
       if (!alive(e)) continue;
       if (this.isGuard) {
-        if (d2 < fd && hostileTo(g, this, e) && this.canSee(e)) {
+        // The stranger is struck only by a watchman who knows they are wanted (§29.4).
+        if (d2 < fd && hostileTo(g, this, e) && (e !== p || this.knowsWanted(p) || !crimeActive(g, p)) && this.canSee(e)) {
           foe = e;
           fd = d2;
         }
@@ -1039,7 +1047,7 @@ export class NPC extends Actor {
     // Carers stay with the hurt even with the culprit about, unless they come close.
     const steadfast = this.mode === 'help' && this.help && this.help.role !== 'shout';
     // The player is wanted: keep clear of them.
-    if (p && alive(p) && crimeActive(g, p) && this.distTo(p) < (steadfast ? 44 : SIGHT) && this.canSee(p)) {
+    if (p && alive(p) && this.distTo(p) < (steadfast ? 44 : SIGHT) && this.knowsWanted(p) && this.canSee(p)) {
       if (this.mode !== 'flee' || this.fleeFrom !== p) this.startFlee(p, 8, 'crime');
       else this.fleeUntil = Math.max(this.fleeUntil, now(g) + 4);
       return;
@@ -1063,7 +1071,31 @@ export class NPC extends Actor {
   }
 
   isWantedNear(player = this.game.player) {
-    return !!player && crimeActive(this.game, player) && this.distTo(player) < SIGHT;
+    return !!player && this.knowsWanted(player) && this.distTo(player) < SIGHT;
+  }
+
+  // Does this villager know the stranger is wanted (DESIGN §29.4)? The record (player.crime)
+  // is the watch's; what a villager knows is their own: the bell (a killing told to the
+  // watch, the Moot's sentence) reaches everyone; a blow is known to those who saw it, came
+  // and saw who, were told by the hurt one, or had it from someone face to face (the village's
+  // news, rumors.js). Without the village's news (a bare world): the record is all there is.
+  knowsWanted(actor = this.game.player) {
+    const g = this.game;
+    if (!actor || !crimeActive(g, actor)) return false;
+    const c = actor.crime;
+    if (c && (c.kind === 'murder' || c.kind === 'outside')) return true;
+    if (!g.village?.rumors?.list) return true;
+    if (this.help?.attacker === actor || this.fightTarget === actor || this.fleeFrom === actor) return true;
+    return this.knowsCrimeToday();
+  }
+
+  // Has news of a crime of the stranger's today reached this villager (seen or told)?
+  knowsCrimeToday() {
+    const g = this.game;
+    const list = g.village?.rumors?.list;
+    if (!list) return !!this.crimeToday();
+    const day = g.clock?.day ?? 1;
+    return list.some((r) => r.day === day && r.about === 'player' && CRIME_NEWS.has(r.kind) && r.heardBy.includes(this.id));
   }
 
   crimeActive() {
@@ -1346,23 +1378,33 @@ export class NPC extends Actor {
     const isPlayer = actor === g.player || actor.id === 'player';
     const isVictim = victim === this;
     const sees = isVictim || (this.isAlive() && this.distTo(actor) <= SIGHT && this.canSee(actor));
+    // Ears (DESIGN §29.4): a blow and a cry where it fell, by the one rule (walls muffle it,
+    // a shut house keeps it in). A theft makes no sound; the bell's 'murder' is news, not a
+    // noise. Hearing tells what and where, never who: no opinion, no fight, no flight.
+    const loud = p.kind === 'knockout' ? LOUD.scream : p.kind === 'assault' ? LOUD.blow : 0;
+    const at = victim && Number.isFinite(victim.x) ? victim : actor;
+    const heard = !sees && loud > 0 ? hears(g, this, at.x, at.y, loud) : null;
     if (isPlayer) {
-      // Word travels: everyone is cool toward the player for the rest of the day.
-      this.coldDay = day;
       if (isVictim) {
+        this.coldDay = day;
         this.wrongedDay = day;
         this.adjustOpinion(kind === 'knockout' ? -35 : -20, `${kind} by the player`);
-      } else if (sees) this.adjustOpinion(kind === 'knockout' ? -14 : -7, `saw the player's ${kind}`);
-      else this.adjustOpinion(kind === 'knockout' ? -3 : -1, 'heard about a crime');
+      } else if (sees) {
+        this.coldDay = day;
+        this.adjustOpinion(kind === 'knockout' ? -14 : -7, `saw the player's ${kind}`);
+      } else if (heard) this.unease(at.x, at.y);
+      // Everyone else: nothing yet. The news travels by meeting (the village's rumors,
+      // DESIGN §29.2), and moves them when it reaches them.
     }
     if (!this.isAlive()) return;
     if (this.isGuard) {
-      const hears = this.distTo(actor) <= GUARD_CRIME_HEAR || sees;
-      if (hears && hostileTo(g, this, actor)) this.startFight(actor);
+      // The watch strikes what it sees. Heard only, they go to the place (the victim's own
+      // cry, onCallForHelp) and act on what they find there.
+      if (sees && hostileTo(g, this, actor)) this.startFight(actor);
       return;
     }
-    // Hess answers a crime like the watch does, when she sees it or is close.
-    if (this.profile.hunter && isPlayer && (sees || this.distTo(actor) <= 260) && this.state !== 'sleep') {
+    // Hess answers a crime like the watch does, when she sees it.
+    if (this.profile.hunter && isPlayer && sees && this.state !== 'sleep') {
       this.post = { x: this.x, y: this.y };
       this.startFight(actor);
       return;
@@ -1508,8 +1550,12 @@ export class NPC extends Actor {
   }
 
   // call_for_help { victim, attacker, x, y, severity } — from a villager, or from Lyra's
-  // mind/behavior. Each villager in earshot picks a part: fight, tend, shield a child,
-  // fetch the watch, or shout and keep clear.
+  // mind/behavior. Each villager who HEARS it (the one rule for ears, src/ai/hearing.js:
+  // walls muffle, sleep dulls) picks a part: fight, tend, shield a child, fetch the watch,
+  // come to look, or shout and keep clear. A cry tells what and where, never who
+  // (DESIGN §29.4): who did it is known only to those who see it (or come and see), or to
+  // whom the hurt say it close by. `forced`: someone ran to them with it, face to face; the
+  // attacker in it is the one the teller knew (p.culprit: the one who really did it).
   onCallForHelp(p, forced = false) {
     const g = this.game;
     // Lyra's mind calls with ids (victim 'lyra', attacker 'player' or an id) and the
@@ -1522,43 +1568,95 @@ export class NPC extends Actor {
     // A witness running for the watch with a killing to tell keeps running (DESIGN §29.3):
     // another cry does not turn her aside before the watch has heard it from her.
     if (!forced && this.mode === 'flee' && this.fleeHome === 'to' && this.terror && !this.isGuard) return;
-    const attacker = who && who !== victim && !who.removed ? attackerOf(who) : null;
+    const real = callEntity(g, p?.culpritEntity, p?.culprit) || who;
+    const culprit = real && real !== victim && real !== this && !real.removed ? attackerOf(real) : null;
     const sev = Math.max(1, Math.min(3, Math.round(Number(p.severity) || 1)));
     const x = Number.isFinite(p.x) ? p.x : victim.x;
     const y = Number.isFinite(p.y) ? p.y : victim.y;
     const d = Math.hypot(this.x - x, this.y - y);
     const kin = this.isKinOf(victim.id);
-    const asleep = this.state === 'sleep';
-    const range = HELP_HEAR[sev] * (kin && sev >= 2 ? 1.8 : 1) * (asleep ? (sev >= 3 ? 0.6 : 0.3) : 1);
-    if (!forced && d > range) return;
+    // Kin know the voice from further off.
+    const how = forced ? 'told' : hears(g, this, x, y, cryLoudness(sev), { mul: kin && sev >= 2 ? 1.8 : 1 });
+    if (!how) return;
+    // Who did it, as far as this one knows: the teller's word, or their own eyes and ears.
+    const told = forced && who && who !== victim && !who.removed ? attackerOf(who) : null;
+    const attacker = forced ? told : this.knowsWho(victim, culprit);
     const t = now(g);
     const h = this.help;
     if (this.mode === 'help' && h && h.victim === victim) {
       // Already on it: the news is worse, or the culprit has changed.
       if (attacker) h.attacker = attacker;
+      if (culprit) h.culprit = culprit;
       h.sev = Math.max(h.sev, sev);
       h.lastCall = t;
       h.until = Math.max(h.until, t + 20);
-      if (forced && h.role === 'shout' && (this.isGuard || this.profile.hunter)) this.startHelp(victim, attacker, sev, x, y, d, true);
+      if (forced && (h.role === 'shout' || h.role === 'look') && (this.isGuard || this.profile.hunter)) this.startHelp(victim, h.attacker, sev, x, y, d, true, { culprit: h.culprit, how });
       // The watch and Hess, already on their way: once the one doing it is someone they
       // would strike (wanted for it, or a beast), they stop shouting or tending and join
       // the fight (DESIGN §16.6: Lyra calls the watch on the one who came at her).
-      else if (h.role !== 'fight' && attacker && (this.isGuard || this.profile.hunter) && helpRole(this, { victim, attacker, sev, d, incident: incidentFor(g, victim), game: g, forced }) === 'fight') {
+      else if (h.role !== 'fight' && h.attacker && (this.isGuard || this.profile.hunter) && helpRole(this, { victim, attacker: h.attacker, sev, d, incident: incidentFor(g, victim), game: g, forced }) === 'fight') {
+        const keep = h.culprit;
         this.endHelp(true);
-        this.startHelp(victim, attacker, sev, x, y, d, forced);
+        this.startHelp(victim, attacker || keep, sev, x, y, d, forced, { culprit: keep, how });
       }
       return;
     }
     if (this.mode === 'fight' && this.fightTarget && alive(this.fightTarget) && this.fightTarget !== attacker) return;
     if (this.mode === 'fight' && this.fightTarget === attacker) return;
-    this.startHelp(victim, attacker, sev, x, y, d, forced);
+    this.startHelp(victim, attacker, sev, x, y, d, forced, { culprit, how });
   }
 
-  startHelp(victim, attacker, sev, x, y, d, forced = false) {
+  // Who did it, as this villager knows it right now (DESIGN §29.4). A beast's snarl or a
+  // bandit's yell says what it is. A person is known only by eyes (the sight rule: seen at
+  // the hurt one's side, or the blow itself seen) or by the hurt one's own words, close by
+  // and through no wall. A cry alone never names anyone.
+  knowsWho(victim, culprit) {
+    if (!culprit || !victim) return null;
+    const g = this.game;
+    if (!isPerson(g, culprit)) return culprit;
+    if (this.canSee(culprit) && Math.hypot(culprit.x - victim.x, culprit.y - victim.y) <= SEEN_NEAR) return culprit;
+    let saw = null;
+    try {
+      saw = g.murder?.sawBlow?.(this.id, victim) ?? null;
+    } catch {
+      saw = null;
+    }
+    if (saw === true) return culprit;
+    if (!victim.dead && hearsWords(g, this, victim, TELL_REACH)) return culprit;
+    return null;
+  }
+
+  // Heard a crime, saw nothing (DESIGN §29.4): uneasy for the day. No opinion of anyone.
+  unease(x, y) {
+    const g = this.game;
+    this.uneasy = { day: g.clock?.day ?? 1, place: placeOfSound(g, x, y), t: now(g) };
+  }
+
+  // Now they know who (they came and saw, or the hurt told them): the news is theirs as if
+  // they had seen it, through the village's own news (rumors: their opinion moves, and they
+  // carry it on face to face).
+  learnWho(victim, attacker) {
+    const g = this.game;
+    if (!attacker || !(attacker === g.player || attacker.id === 'player') || !victim?.id) return;
+    const lyra = victim.id === 'lyra' || victim === g.companion;
+    const down = !!victim.downed || !!victim.dead;
+    const kind = lyra ? (down ? 'downed_lyra' : 'hit_lyra') : down ? 'downed_villager' : 'attacked_villager';
+    if (victim.dead) return; // a killing has its own knowing (murder.js: found, over the body)
+    try {
+      g.village?.addRumor?.(kind, { victim: lyra ? null : victim.id, witnesses: [this.id], saw: [this.id] });
+    } catch {
+      /* the news is decoration to the help */
+    }
+    if (!g.village?.addRumor && this.profile) this.adjustOpinion(down ? -14 : -7, 'saw who did it');
+  }
+
+  startHelp(victim, attacker, sev, x, y, d, forced = false, { culprit = attacker, how = forced ? 'told' : 'clear' } = {}) {
     const g = this.game;
     const t = now(g);
     const inc = incidentFor(g, victim);
-    const role = helpRole(this, { victim, attacker, sev, d, incident: inc, game: g, forced });
+    // Heard someone hurt, and no idea who: a person did it, not a beast they could hear.
+    const heardOnly = !attacker && !!culprit && isPerson(g, culprit);
+    const role = helpRole(this, { victim, attacker, sev, d, incident: inc, game: g, forced, heardOnly });
     if (!role) return;
     if (role === 'fight') {
       this.wake();
@@ -1572,6 +1670,7 @@ export class NPC extends Actor {
     if (role === 'flee') {
       this.wake();
       if (attacker) this.startFlee(attacker, 10, attacker === g.player ? 'crime' : 'flee');
+      else if (heardOnly) this.sayHeard(x, y, how);
       else this.sayHelp('shout', victim, true);
       return;
     }
@@ -1582,7 +1681,7 @@ export class NPC extends Actor {
     this.r.walking = false;
     this.fleeFrom = null;
     this.mode = 'help';
-    this.help = { victim, attacker, role, sev, phase: 'go', t: 0, at: t, lastCall: t, until: t + HELP_SECONDS, x, y, child: null, guard: null, said: false };
+    this.help = { victim, attacker, culprit: culprit || attacker || null, how, role, sev, phase: 'go', t: 0, at: t, lastCall: t, until: t + HELP_SECONDS, x, y, child: null, guard: null, said: false };
     inc.responders.set(this.id, role);
     const h = this.help;
     if (role === 'shield') {
@@ -1593,13 +1692,37 @@ export class NPC extends Actor {
       inc.fetcher = this;
       h.guard = nearestGuard(g, this);
     }
-    // The first words: by name when it is someone they love.
-    const special = victim.id === 'lyra' ? this.profile.rescue?.lyra : null;
+    // The first words: by name when it is someone they love (and they could tell the voice).
+    const special = victim.id === 'lyra' && (how !== 'muffled' || this.isKinOf('lyra')) ? this.profile.rescue?.lyra : null;
     const wanted = attacker && attacker === g.player && crimeActive(g, attacker);
     if (special?.length && (role === 'tend' || role === 'confront')) this.sayLine(special, victim, 'shout');
     else if (wanted && (role === 'tend' || role === 'shout')) this.sayLine(this.profile.crime, attacker, 'shout');
+    else if (heardOnly && role !== 'fetch') this.sayHeard(x, y, how);
     else this.sayHelp(role === 'tend' ? 'shout' : role === 'confront' ? 'answer' : role, victim, true);
-    this.icon('!');
+    this.icon(heardOnly ? '?' : '!');
+  }
+
+  // What someone who only heard it says (DESIGN §29.4): what and where, never who.
+  sayHeard(x, y, how = 'clear') {
+    const g = this.game;
+    const place = placeOfSound(g, x, y);
+    const own = HEAR_LINES[this.profile.id] || {};
+    const any = HEAR_LINES.any;
+    const muffled = how === 'muffled';
+    let list = muffled ? own.muffled || any.muffled : own.clear || any.clear;
+    if (!place) {
+      const plain = (list || []).filter((l) => !/\{place\}/i.test(l));
+      list = plain.length ? plain : muffled ? any.mutedNowhere : any.clearNowhere;
+    }
+    const phrase = place ? placePhrase(place, g.locations?.get?.(place)?.name || '') : '';
+    const fill = (l) => l.replace(/\{place\}/g, phrase).replace(/\{Place\}/g, phrase.charAt(0).toUpperCase() + phrase.slice(1));
+    const t = now(g);
+    if (t - this.shoutAt < 2.5) return;
+    const l = pickLine(g, list);
+    if (!l) return;
+    this.shoutAt = t;
+    this.faceToward(x, y);
+    this.say(fill(l), { kind: muffled ? 'say' : 'shout', target: null });
   }
 
   sayHelp(kind, about, shout = false) {
@@ -1631,6 +1754,25 @@ export class NPC extends Actor {
     if (!h || !h.victim || h.victim.removed || t > h.until) return this.endHelp();
     h.t += dt;
     const v = h.victim;
+    // Heard it, did not know who (DESIGN §29.4): coming closer, they may see now, or the
+    // hurt one may tell them. Then they know, and answer as one who knows.
+    if (tick && !h.attacker && h.culprit && !h.culprit.removed && isPerson(g, h.culprit)) {
+      const k = this.knowsWho(v, h.culprit);
+      if (k) {
+        h.attacker = k;
+        this.learnWho(v, k);
+        const role = helpRole(this, { victim: v, attacker: k, sev: h.sev, d: this.distTo(v), incident: incidentFor(g, v), game: g });
+        if (role && role !== h.role) {
+          const keep = { x: h.x, y: h.y, sev: h.sev };
+          this.endHelp(true);
+          return this.startHelp(v, k, keep.sev, keep.x, keep.y, this.distTo(v), false, { culprit: k, how: 'saw' });
+        }
+        // Same part to play, but now they know whose doing it is, and say so.
+        if (k === g.player && crimeActive(g, k)) this.sayLine(this.profile.crime, k, 'shout');
+      }
+    }
+    // A cry, and then a death: the helper comes upon a body (murder.js decides what is found).
+    if (v.dead) return this.cameUponBody(dt, tick, h, v);
     const a = h.attacker && alive(h.attacker) && !h.attacker.removed && !h.attacker.downed ? h.attacker : null;
     // Danger: whoever did it is still at the victim's side, and recently at it.
     const danger = !!a && Math.hypot(a.x - v.x, a.y - v.y) < DANGER_NEAR && (t - h.lastCall < 14 || hostileTo(g, a, v) || crimeActive(g, a));
@@ -1643,9 +1785,64 @@ export class NPC extends Actor {
         return this.confrontStep(dt, tick, h, v, a, danger);
       case 'fetch':
         return this.fetchStep(dt, tick, h, v);
+      case 'look':
+        return this.lookStep(dt, tick, h, v);
       default:
         return this.shoutStep(dt, tick, h, v, a);
     }
+  }
+
+  // Heard a person hurt and saw nothing (DESIGN §29.4): go toward the sound until it is in
+  // sight, then act on what is there. The hurt one down: a carer tends them, the rest stand
+  // by. The one who did it in plain sight: now they know (helpStep above). Nothing to see:
+  // they look a while and go back to their day.
+  lookStep(dt, tick, h, v) {
+    const g = this.game;
+    const dv = this.distTo(v);
+    if (h.phase === 'go') {
+      const seen = dv < 72 && this.canSee(v);
+      if (!seen && this.helpMove(dt, v.x + (this.x < v.x ? -16 : 16), v.y + 4, 1.4, 24, tick) !== 'arrived') return;
+      h.phase = 'there';
+      h.t = 0;
+      this.walker.stop();
+      this.speedMul = 1;
+      this.moveIntent.x = 0;
+      this.moveIntent.y = 0;
+      this.faceToward(v.x, v.y);
+      const carer = TENDERS.has(this.profile.id) || this.isKinOf(v.id) || !!RESPONSE_LINES[this.profile.id]?.tend || !!this.profile.tend;
+      if ((v.downed || (v.hp ?? 1) < (v.maxHp ?? 1)) && carer && !this.isGuard) {
+        h.role = 'tend';
+        h.phase = 'go';
+        incidentFor(g, v).responders.set(this.id, 'tend');
+      }
+      return;
+    }
+    this.moveIntent.x = 0;
+    this.moveIntent.y = 0;
+    if (tick) this.faceToward(v.x, v.y);
+    if (h.t > (this.isGuard ? 8 : 4) + this.jitter * 3) this.endHelp();
+  }
+
+  // Came to a cry and found a body: they look on it (murder.bodySeen: found, and the one
+  // standing over it is seen there), and the help is over.
+  cameUponBody(dt, tick, h, v) {
+    const g = this.game;
+    const dv = this.distTo(v);
+    if (h.t > 30) return this.endHelp();
+    if (dv > 60 || !this.canSee(v)) {
+      this.helpMove(dt, v.x + (this.x < v.x ? -18 : 18), v.y + 4, 1.3, 30, tick);
+      return;
+    }
+    this.walker.stop();
+    this.moveIntent.x = 0;
+    this.moveIntent.y = 0;
+    this.faceToward(v.x, v.y);
+    try {
+      g.murder?.bodySeen?.(this.id, v.id, g.locations?.at?.(v.x, v.y)?.id || null);
+    } catch {
+      /* the finding is murder.js's to decide */
+    }
+    this.endHelp();
   }
 
   // Walk (or hurry) toward a point, re-planning now and then. 'arrived' when close.
@@ -1802,7 +1999,8 @@ export class NPC extends Actor {
       this.faceToward(G.x, G.y);
       const lead = RESPONSE_LINES[this.profile.id]?.fetch;
       if (lead?.length) this.say(`${D.firstName(G)}! ${D.firstName(v) === 'them' ? 'Quick' : D.firstName(v)} — over there!`, { kind: 'shout', target: G });
-      G.onCallForHelp({ victim: v, attacker: h.attacker, x: h.x, y: h.y, severity: Math.max(2, h.sev) }, true);
+      // Told face to face: who did it, if they knew; where, either way.
+      G.onCallForHelp({ victim: v, attacker: h.attacker, culpritEntity: h.culprit || h.attacker || null, x: h.x, y: h.y, severity: Math.max(2, h.sev) }, true);
       this.endHelp();
     }
   }
@@ -2314,6 +2512,14 @@ function callEntity(g, ent, ref) {
   }
 }
 
+// A person (the player, Lyra, a villager) is a WHO: known by eyes or words. A beast or a
+// bandit is a WHAT: its snarl or its yell tells those who hear it (DESIGN §29.4).
+function isPerson(g, e) {
+  if (!e) return false;
+  if (e === g?.player || e.id === 'player' || e === g?.companion || e.id === 'lyra') return true;
+  return !!e.profile && !e.species;
+}
+
 function attackerOf(src) {
   if (!src) return null;
   if (src.type === 'projectile') return src.owner || null;
@@ -2368,11 +2574,14 @@ function incidentFor(g, victim) {
 //   tend      Mira, the Ambrels, Elda, Aveline, and family of the victim: heal, help up, walk home
 //   shield    an adult with Pip or Tansy close by: stand between the child and the trouble
 //   fetch     one villager runs for the watch when no guard is near
+//   look      heard a person hurt and saw nothing (DESIGN §29.4): go and see, then act on
+//             what they find (the watch included: they strike only what they see)
 //   flee      children, and anyone with the trouble on top of them
 //   shout     everyone else: raise the alarm, look, keep clear
+// ctx.heardOnly: they heard a person hurt and do not know who did it (attacker is null).
 export function helpRole(npc, ctx) {
   const g = ctx.game || npc.game;
-  const { victim, attacker, sev = 1, d = 0, incident = null, forced = false } = ctx;
+  const { victim, attacker, sev = 1, d = 0, incident = null, forced = false, heardOnly = false } = ctx;
   const id = npc.profile?.id;
   const fighter = npc.isGuard || !!npc.profile?.hunter;
   const playerDid = !!attacker && (attacker === g?.player || attacker.id === 'player');
@@ -2382,7 +2591,7 @@ export function helpRole(npc, ctx) {
     if (playerDid && npc.profile?.hunter && crimeActive(g, attacker)) return 'fight';
     if (playerDid && (sev >= 2 || forced || d < 140)) return 'confront';
   }
-  if (fighter && !attacker) return victim?.downed || sev >= 2 ? 'tend' : 'shout';
+  if (fighter && !attacker) return heardOnly ? 'look' : victim?.downed || sev >= 2 ? 'tend' : 'shout';
   if (isChild(npc)) return 'flee';
   // A witness in terror of the stranger (a killing seen, DESIGN §29.3) keeps clear of them:
   // never kneels to tend, shields or fetches at their feet.
@@ -2395,13 +2604,15 @@ export function helpRole(npc, ctx) {
   }
   if (RESPONSE_LINES[id]?.tend && d < 200 && (sev >= 2 || victim?.downed)) return 'tend';
   if (attacker && close < 60) return 'flee';
-  if (attacker && incident && !incident.fetcher && sev >= 2) {
+  if ((attacker || heardOnly) && incident && !incident.fetcher && sev >= 2) {
     const G = nearestGuard(g, npc);
     const guardNear = G && Math.hypot(G.x - victim.x, G.y - victim.y) < 240;
     if (G && !guardNear && G.mode !== 'fight') return 'fetch';
   }
   // One knock from afar is not everyone's business.
   if (sev <= 1 && d > 160 && !forced) return null;
+  // A scream close by, nobody knows whose doing: some go to see.
+  if (heardOnly && sev >= 2 && d < 200) return 'look';
   return 'shout';
 }
 

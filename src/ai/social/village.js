@@ -18,6 +18,7 @@ import { WEAVE_RUMORS } from '../../missions/rumors.js';
 import { Commitments } from './commitments.js';
 import { murderLine } from '../../murder/lines.js';
 import { seesPoint } from '../sight.js';
+import { hearsWords } from '../hearing.js';
 import { silenceAct, turnAway } from '../silence.js';
 import { VILLAGER_RULES, SAY_SCHEMA, LINES_SCHEMA, NIGHT_SCHEMA, buildSayTask, buildListenTask, buildNightTask, coerceSay, coerceLines, coerceNight, cleanLine } from './village_prompt.js';
 
@@ -1037,7 +1038,13 @@ export class Village {
         const kind = victimId === 'lyra' ? (down ? 'downed_lyra' : 'hit_lyra') : down ? 'downed_villager' : 'attacked_villager';
         const x = p.x ?? p.victim?.x ?? 0;
         const y = p.y ?? p.victim?.y ?? 0;
-        this.addRumor(kind, { victim: victimId, witnesses: [...this.witnessesNear(x, y, 240), victimId] });
+        // A cry tells what and where, never who (DESIGN §29.4, src/ai/hearing.js): the news
+        // of who did it is the eyes' (those who see it now) and the hurt one's own words to
+        // whoever is beside them. Those who only heard learn it by meeting, like anyone.
+        const eyes = this.witnessesNear(x, y, SIGHT, { sight: true });
+        const v = p.victim && typeof p.victim === 'object' ? p.victim : p.victimEntity || null;
+        const told = v ? this.villagers().filter((e) => e !== v && alive(e) && hearsWords(g, e, v, 44)).map((e) => e.id) : [];
+        this.addRumor(kind, { victim: victimId, witnesses: [...new Set([...eyes, ...told]), victimId], saw: eyes });
         return;
       }
       case 'death': {
