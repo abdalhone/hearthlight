@@ -1018,7 +1018,16 @@ export class Village {
         return;
       }
       case 'crime': {
-        if (!isPlayer(p.actor) || !p.victim?.id) return;
+        if (!isPlayer(p.actor)) return;
+        // A theft (round 14b, DESIGN §35.3): 'stole' (or 'robbed_the_dead'), never an
+        // assault, and only from those who saw it (the event carries its witnesses).
+        if (p.kind === 'theft') {
+          const seen = Array.isArray(p.witnesses) ? p.witnesses.filter((id) => typeof id === 'string') : [];
+          if (!seen.length) return;
+          this.addRumor(p.dead ? 'robbed_the_dead' : 'stole', { victim: p.owner || p.victim?.id || null, witnesses: seen, saw: seen, source: seen[0] });
+          return;
+        }
+        if (!p.victim?.id) return;
         // A killing (DESIGN §29) is told by game.murder, with its own witnesses.
         if (p.kind === 'murder' || p.kind === 'outside') return;
         const kind = p.kind === 'knockout' ? 'downed_villager' : 'attacked_villager';

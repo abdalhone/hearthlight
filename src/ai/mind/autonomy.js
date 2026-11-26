@@ -688,7 +688,7 @@ export class Autonomy {
     this.recordDeed('downed_villager', { victim });
   }
 
-  _onCrime({ actor, victim, kind }) {
+  _onCrime({ actor, victim, kind, witnesses }) {
     if (!this.isPlayer(actor)) return;
     const k = String(kind || '').toLowerCase();
     // A killing is weighed by game.murder (src/murder/lyra.js): seen, told, or suspected.
@@ -707,6 +707,10 @@ export class Autonomy {
     }
     if (k === 'knockout') return this._villagerDowned(victim);
     if (/^(theft|steal|stole|stealing)$/.test(k)) {
+      // Only a theft she saw (round 14b, the shared sight rule): the event names who saw it.
+      const seen = Array.isArray(witnesses) ? witnesses : null;
+      if (seen && !seen.includes('lyra')) return undefined;
+      if (!seen && !seesActor(this.game, this.lyra(), this.game?.player)) return undefined;
       this.recordDeed('stole', { victim });
       return;
     }

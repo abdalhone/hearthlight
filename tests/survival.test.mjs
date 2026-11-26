@@ -409,6 +409,9 @@ test('wanted when you fall: the watch carries you to the guardhouse cell, then M
   placeAt(g, P, sq.x, sq.y);
   step(g, 0.3);
   P.crime = { level: 1, kind: 'assault', until: g.clock.t + 600, victimId: 'bram', since: g.clock.t, t: g.clock.t };
+  // Rowan knows it (round 14b, per knower): the news reached him face to face.
+  g.village?.addRumor?.('attacked_villager', { victim: 'bram', witnesses: ['rowan'] });
+  assert.ok(rowan.knowsWanted(P), 'Rowan knows');
   const rec = fell(g);
   assert.ok(rec.wanted);
   assert.equal(g.survival.jobFor(rowan)?.role, 'arrest');

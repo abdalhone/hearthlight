@@ -496,7 +496,8 @@ test('helpRole: guards and Hess fight, carers tend, children run, one fetches th
   assert.equal(helpRole(mira, ctx(mira)), 'tend');
   assert.equal(helpRole(hobb, ctx(hobb)), 'tend');
   assert.equal(helpRole(pip, ctx(pip)), 'flee');
-  assert.ok(['shield', 'shout', 'flee'].includes(helpRole(garrick, ctx(garrick))));
+  // Garrick fights back now (round 14b, a defender): a wolf at Lyra's side, he goes at it.
+  assert.ok(['shield', 'fight'].includes(helpRole(garrick, ctx(garrick))));
   // The player striking Lyra before combat calls it a crime: the watch steps in the way.
   const c = { ...ctx(rowan), attacker: g.player, d: 60 };
   assert.equal(helpRole(rowan, c), 'confront');

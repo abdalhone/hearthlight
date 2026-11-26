@@ -10,6 +10,7 @@ import { look } from '../murder/witness.js';
 import { hears, cryLoudness, hearsWords, placeOfSound, LOUD, isSilenced, voiceOf } from '../ai/hearing.js';
 import { placePhrase } from '../ai/village_life/errands_data.js';
 import { isMinor, lyraOf } from '../core/people.js';
+import { DEFENDER_COMBAT, isDefender, defenderLine, defendsAgainst } from './defenders.js';
 
 // Villagers of Hearthvale. Each one lives by the 24-hour schedule in its profile
 // (npc_data.js): walks there with the pathfinder (opening doors and closing them
@@ -55,7 +56,7 @@ const TENDERS = new Set(['mira', 'hobb', 'wenna', 'elda', 'aveline']); // heal, 
 // further through an open door, less to a sleeper; it tells what and where, never who.
 const SEEN_NEAR = 96; // px: the one seen this close to the hurt is the one who did it
 // The village's news of the stranger's crimes (src/ai/social/rumors.js kinds).
-const CRIME_NEWS = new Set(['attacked_villager', 'downed_villager', 'hit_lyra', 'downed_lyra', 'murder']);
+const CRIME_NEWS = new Set(['attacked_villager', 'downed_villager', 'hit_lyra', 'downed_lyra', 'murder', 'lethal_attack']);
 const TELL_REACH = 44; // px: the hurt tell who did it to whoever reaches them (murder.js)
 const HELP_SECONDS = 45; // the longest anyone stays on one call
 // What a villager yelps when the stranger's weave catches them by accident.
@@ -131,7 +132,8 @@ const NPC_CONTROLLER = {
 
 export class NPC extends Actor {
   constructor(game, profile, o = {}) {
-    const c = profile.combat || {};
+    // A defender's stats (round 14b, src/entities/defenders.js) when the profile has none.
+    const c = profile.combat || DEFENDER_COMBAT[profile.id] || {};
     const child = profile.appearance?.build === 'child';
     const big = profile.appearance?.build === 'big';
     super(game, {
@@ -1051,6 +1053,16 @@ export class NPC extends Actor {
       return;
     }
     if (this.profile.hunter && this.mode === 'fight') return;
+    // A defender in a fight stays in it (round 14b): it ends by its own leash and nerve.
+    const civil = this.isCivilDefender();
+    if (civil && this.mode === 'fight') return;
+    // A defender takes on a beast that comes into the village (not out in the wilds, not
+    // asleep): Bram's hammer at the wolf in the square, the rest run.
+    if (civil && threat && threat.species && this.state !== 'sleep' && td < 70 * 70 && this.inVillage(threat)) {
+      this.post = { x: this.x, y: this.y };
+      this.startFight(threat, { leash: 160 });
+      return;
+    }
     // Carers stay with the hurt even with the culprit about, unless they come close.
     const steadfast = this.mode === 'help' && this.help && this.help.role !== 'shout';
     // The player is wanted: keep clear of them.
@@ -1062,6 +1074,17 @@ export class NPC extends Actor {
     if (threat) {
       if (this.mode !== 'flee' || this.fleeFrom !== threat) this.startFlee(threat, 6, 'flee');
       else this.fleeUntil = Math.max(this.fleeUntil, now(g) + 3);
+    }
+  }
+
+  // Inside the village's own bounds (a place of danger 1 or less): where its people stand up
+  // to a beast rather than run.
+  inVillage(e) {
+    try {
+      const loc = this.game.locations?.at?.(e.x, e.y);
+      return !!loc && (loc.danger ?? 2) <= 1;
+    } catch {
+      return false;
     }
   }
 
@@ -1259,19 +1282,30 @@ export class NPC extends Actor {
       this.freezeT = (c.freeze || 0.9) * 2;
       this.icon('sweat');
     }
-    if (target === g.player && this.profile.hunter) this.provoke(target);
+    if (target === g.player && (this.profile.hunter || this.isCivilDefender())) this.provoke(target, { known: true });
     if (now(g) - this.shoutAt > 6) {
       this.shoutAt = now(g);
       const isPlayer = target === g.player;
-      this.say(pickLine(g, isPlayer ? this.profile.crime : this.profile.fight) || 'Halt!', { kind: 'shout', target });
+      const own = isPlayer && this.isCivilDefender() ? defenderLine(this.profile.id, 'answer', () => rand(g)) : null;
+      this.say(own || pickLine(g, isPlayer ? this.profile.crime : this.profile.fight) || 'Halt!', { kind: 'shout', target });
     }
   }
 
+  // A villager who fights back without being of the watch or a huntress (round 14b,
+  // src/entities/defenders.js): Bram, Tobias, Garrick, Sabeth, Tilly, of an age to.
+  isCivilDefender() {
+    return !this.isGuard && !this.profile.hunter && isDefender(this.game, this);
+  }
+
   // Hess is not of the watch: combat lets her strike the player only while the player is
-  // wanted for hurting someone, through the same 'provoked' rule creatures use.
-  provoke(target) {
+  // wanted for hurting someone, through the same 'provoked' rule creatures use. A defender
+  // (round 14b) the same, for as long as they defend someone from a stranger they KNOW did
+  // it (`known`: they saw it, came and saw, or were told face to face): what they know is
+  // their own, whatever the watch's record says (DESIGN §29.4, §35.2).
+  provoke(target, { known = false } = {}) {
     const g = this.game;
-    if (target !== g.player || !crimeActive(g, target)) return;
+    if (target !== g.player) return;
+    if (!crimeActive(g, target) && !(known && this.isCivilDefender())) return;
     this.provokedBy = target;
     this.provokedMode = 'fight';
     this.provokedAt = g.combat?.now?.() ?? now(g);
@@ -1287,14 +1321,24 @@ export class NPC extends Actor {
       if (t) this.faceToward(t.x, t.y);
       return;
     }
-    if (tick && t && this.profile.hunter && t === g.player) this.provoke(t);
+    if (tick && t && t === g.player && (this.profile.hunter || (this.isCivilDefender() && this.provokedBy === t))) this.provoke(t, { known: true });
+    // Terrified, or knocked out of their nerve (round 14b): a defender stops.
+    if (tick && t === g.player && !this.isGuard && !this.profile.hunter && DEFENDER_COMBAT[this.profile.id] && !isDefender(g, this)) return this.endFight(t);
     if (tick) {
       const valid = t && alive(t) && (hostileTo(g, this, t) || (this.profile.hunter && t.species && huntable(t)));
       // Running in from afar to answer a call, the usual leash waits until they arrive.
       const rushing = now(g) < (this.rushUntil ?? 0) && t && this.distTo(t) > 90;
       const at = this.fightAnchor ?? this.post;
-      const tooFar = !t || (!rushing && (this.distTo(t) > 260 || (at && Math.hypot(this.x - at.x, this.y - at.y) > (this.fightLeash ?? GUARD_LEASH))));
-      if (!valid || tooFar) return this.endFight(t);
+      // The posse hunting a known killer (round 14b, murder/hunt.js): the leash is lifted.
+      const chase = t ? g.murder?.chaseOf?.(this, t) : null;
+      const far = chase?.far ?? 260;
+      const leash = chase?.leash ?? this.fightLeash ?? GUARD_LEASH;
+      const tooFar = !t || (!rushing && (this.distTo(t) > far || (at && Math.hypot(this.x - at.x, this.y - at.y) > leash)));
+      if (!valid || tooFar) {
+        // Lost them: where they were last seen is where the hunt looks next.
+        if (t && chase && valid) g.murder?.lostSight?.(this, t);
+        return this.endFight(t);
+      }
     }
     if (!t) return this.endFight(null);
     if (this.windup > 0) {
@@ -1370,8 +1414,15 @@ export class NPC extends Actor {
     this.r.key = null;
     if (this.isAlive() && now(g) - this.shoutAt > 3) {
       this.shoutAt = now(g);
+      const own = wasPlayer && DEFENDER_COMBAT[this.profile.id] && !this.isGuard ? defenderLine(this.profile.id, 'over', () => rand(g)) : null;
       const list = wasPlayer ? this.profile.crimeOver : this.profile.fightReturn;
-      if (list?.length) this.pendingSay = { at: now(g) + 0.6, text: pickLine(g, list), kind: 'say', target: wasPlayer ? target : null };
+      if (own) this.pendingSay = { at: now(g) + 0.6, text: own, kind: 'say', target };
+      else if (list?.length) this.pendingSay = { at: now(g) + 0.6, text: pickLine(g, list), kind: 'say', target: wasPlayer ? target : null };
+    }
+    // A defender's fight is over: they let it go (combat's 'provoked' with it).
+    if (wasPlayer && this.provokedBy === target && !this.profile.hunter) {
+      this.provokedBy = null;
+      this.provokedMode = null;
     }
   }
 
@@ -1382,6 +1433,10 @@ export class NPC extends Actor {
     if (!p || !p.actor || p.actor === this) return;
     const actor = p.actor;
     const victim = p.victim;
+    // A theft is its own, lighter crime (round 14b, DESIGN §35.3): never a fight, never an
+    // assault, and known only to those who saw it (containers.js and the body's pockets
+    // emit it only with witnesses).
+    if (p.kind === 'theft') return this.onTheft(p);
     const kind = p.kind === 'knockout' ? 'knockout' : 'assault';
     const day = g.clock?.day ?? 1;
     const log = crimeLog(g);
@@ -1442,8 +1497,40 @@ export class NPC extends Actor {
       this.startFight(actor);
       return;
     }
+    // A defender who SAW it (round 14b, DESIGN §35.2) comes at the stranger for the one hurt;
+    // the one hurt fights back too if they are a defender. Heard only: nothing here (the
+    // cry brings them to look, onCallForHelp).
+    if (isPlayer && sees && this.state !== 'sleep' && this.isCivilDefender() && defendsAgainst(kind)) {
+      this.post = { x: this.x, y: this.y };
+      this.rushUntil = now(g) + 12;
+      this.startFight(actor);
+      return;
+    }
     // Witnesses run; a carer on the way to the hurt runs too, and comes back once clear.
     if (sees) this.startFlee(actor, isVictim ? 14 : 10, 'crime');
+  }
+
+  // A theft (round 14b, DESIGN §35.3): those who saw it think less of the stranger, the one
+  // robbed most. Nobody fights over it or runs from it; it is not counted with the blows of
+  // the day. The news goes on by meeting (village.js: 'stole', 'robbed_the_dead').
+  onTheft(p) {
+    const g = this.game;
+    const actor = p.actor;
+    if (!(actor === g.player || actor?.id === 'player') || !this.isAlive()) return;
+    const witnesses = Array.isArray(p.witnesses) ? p.witnesses : null;
+    const owner = p.owner || p.victim?.id || null;
+    const robbed = owner === this.profile.id;
+    const sawIt = witnesses ? witnesses.includes(this.id) : false;
+    if (!sawIt && !robbed) return;
+    if (sawIt) {
+      this.coldDay = g.clock?.day ?? 1;
+      this.adjustOpinion(robbed ? -12 : p.dead ? -10 : -5, p.dead ? 'saw the stranger rob the dead' : 'saw the stranger steal');
+      if (now(g) - this.shoutAt > 4) {
+        this.shoutAt = now(g);
+        this.say(p.dead ? 'Are you— are you going through their pockets?' : robbed ? "That's MINE. Put it back!" : 'Hey! That is not yours!', { kind: 'shout', target: actor });
+      }
+      this.faceToward(actor.x, actor.y);
+    } else if (robbed) this.wrongedDay = g.clock?.day ?? 1;
   }
 
   adjustOpinion(delta, reason = '') {
@@ -1840,6 +1927,9 @@ export class NPC extends Actor {
     const dv = this.distTo(v);
     if (h.phase === 'go') {
       const seen = dv < 72 && this.canSee(v);
+      // Whoever did it may still be there, and they do not know who (round 14b leftover):
+      // they stop short (at the door, or a way off in the open) until they see who.
+      if (!seen && this.heardRisk(h, v) && dv < DANGER_NEAR + 40) return this.holdBack(tick, v);
       if (!seen && this.helpMove(dt, v.x + (this.x < v.x ? -16 : 16), v.y + 4, 1.4, 24, tick) !== 'arrived') return;
       h.phase = 'there';
       h.t = 0;
@@ -1902,11 +1992,28 @@ export class NPC extends Actor {
     return 'moving';
   }
 
+  // Heard someone hurt, not who did it, and that one may still be at their side (round 14b
+  // leftover: "a carer who only heard walks straight into the fight").
+  heardRisk(h, v) {
+    const c = h?.culprit;
+    if (!c || h.attacker || c.removed || !alive(c) || c.downed || !isPerson(this.game, c)) return false;
+    return Math.hypot(c.x - v.x, c.y - v.y) < DANGER_NEAR;
+  }
+
+  holdBack(tick, v) {
+    this.walker.stop();
+    this.speedMul = 1;
+    this.moveIntent.x = 0;
+    this.moveIntent.y = 0;
+    if (tick) this.faceToward(v.x, v.y);
+  }
+
   tendStep(dt, tick, h, v, a, danger) {
     const g = this.game;
     const t = now(g);
     const dv = this.distTo(v);
     if (h.phase === 'go') {
+      if (!danger && this.heardRisk(h, v) && dv < DANGER_NEAR + 40) return this.holdBack(tick, v);
       if (danger && dv < DANGER_NEAR + 40) {
         // Close enough to call out, too close to the trouble to go in.
         this.walker.stop();
@@ -2010,7 +2117,7 @@ export class NPC extends Actor {
   confrontStep(dt, tick, h, v, a, danger) {
     const g = this.game;
     if (!a || h.t > 16 || (!danger && h.t > 6)) return this.endHelp();
-    if (hostileTo(g, this, a) || (this.profile.hunter && crimeActive(g, a))) {
+    if (hostileTo(g, this, a) || (this.profile.hunter && crimeActive(g, a)) || (this.isCivilDefender() && (danger || h.sev >= 2))) {
       this.post = { x: this.x, y: this.y };
       this.mode = 'routine';
       this.help = null;
@@ -2626,12 +2733,24 @@ export function helpRole(npc, ctx) {
   const { victim, attacker, sev = 1, d = 0, incident = null, forced = false, heardOnly = false } = ctx;
   const id = npc.profile?.id;
   const fighter = npc.isGuard || !!npc.profile?.hunter;
+  // A villager who fights back (round 14b, DESIGN §35.2): never a child, an elder, the
+  // terrified or the downed (src/entities/defenders.js).
+  const civil = !fighter && isDefender(g, npc);
   const playerDid = !!attacker && (attacker === g?.player || attacker.id === 'player');
   const close = attacker ? Math.hypot(npc.x - attacker.x, npc.y - attacker.y) : Infinity;
   if (fighter && attacker) {
     if (hostileTo(g, npc, attacker) || (npc.profile?.hunter && attacker.species && huntable(attacker))) return 'fight';
     if (playerDid && npc.profile?.hunter && crimeActive(g, attacker)) return 'fight';
     if (playerDid && (sev >= 2 || forced || d < 140)) return 'confront';
+  }
+  // A defender who KNOWS who hurt them (`attacker` is only ever the one this villager knows:
+  // saw, came and saw, or was told): the one at it now, or a beast in the village.
+  if (civil && attacker && attacker !== victim) {
+    // A child close by and nobody between them and the trouble: that first.
+    const child = incident ? nearestChild(npc, 110) : null;
+    if (child && !incident.shielded.has(child.id) && child !== victim) return 'shield';
+    if (attacker.species && hostileTo(g, attacker, npc)) return 'fight';
+    if (playerDid) return sev >= 2 || victim?.downed || forced || d < 140 ? 'fight' : 'confront';
   }
   if (fighter && !attacker) return heardOnly ? 'look' : victim?.downed || sev >= 2 ? 'tend' : 'shout';
   if (isChild(npc)) return 'flee';

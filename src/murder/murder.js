@@ -48,6 +48,7 @@ import { murderLine, watchLine } from './lines.js';
 import { drawBody, MurderLayer, Grave } from './draw.js';
 import * as Grief from './grief.js';
 import * as Lyra from './lyra.js';
+import * as Hunt from './hunt.js';
 
 const TICK = 0.5;
 const SLOW = 1;
@@ -100,6 +101,7 @@ export class Murder {
     this.view = null; // the UI (src/ui/murder_view.js), when a browser is up
     this._graveEnts = new Map();
     this.foundHandlers = []; // onFound: who owns the discovery of a body (round 14b, §37.3)
+    this.hunt = null; // a known killer hunted from where they were last seen (round 14b, hunt.js)
     const bus = game?.bus;
     if (bus?.on) {
       bus.on('revived', (p) => safe(() => this.onRevived(p)));
@@ -293,6 +295,8 @@ export class Murder {
     sight.onSeen = (a, b) => {
       if (prev) prev(a, b);
       if (b === 'player' && this.now() < this.watchUntil) safe(() => this.notePlayerSeen(a));
+      // The hunt (round 14b): a sighting by one who knows, told to the posse face to face.
+      if (b === 'player' && this.hunt && this.hunt.state !== 'over') safe(() => Hunt.sighting(this, a));
     };
   }
 
@@ -838,6 +842,8 @@ export class Murder {
     }
     if (!rec.turned) Grief.villageTurns(this, rec);
     if (!rec.lyraTold) rec.lyraHearsAt = this.now() + 20;
+    // The hunt is up: the posse goes to where the killer was last seen (round 14b, hunt.js).
+    safe(() => Hunt.startHunt(this, rec, by));
     const e = this.entity(by);
     if (e && !saw) this.say(e, watchLine?.(by, 'alarm', { about: rec.id, P: this.playerName() }, this.rng()) || `The stranger killed ${this.name(rec.id)}! Ring the bell!`, 'shout');
     this.toast(saw ? `${this.name(rec.id)} is dead, and the watch saw you do it. The watch is coming.` : `${this.name(by)} knows what you did to ${this.name(rec.id)}. The bell is ringing: the watch is coming.`, 'warn', 'murder');
@@ -1376,6 +1382,12 @@ export class Murder {
       if (quiet) return this.surrender(about, by);
       this.setWanted(about, 'murder');
       this.say(this.entity(by), by === 'rowan' ? 'STOP! Wys! With me!' : 'Stop! STOP!', 'shout');
+      // Run: the chase is on from here (round 14b).
+      safe(() => {
+        const rec = this.dead[about];
+        if (rec && (!this.hunt || this.hunt.state === 'over')) Hunt.startHunt(this, rec, by);
+        Hunt.lost(this, this.entity(by), g.player);
+      });
       this.emit('crime', { actor: g.player, victim: this.entity(about), kind: 'murder', witnesses: [by] });
       return false;
     });
@@ -1490,6 +1502,16 @@ export class Murder {
     this.tickCustody();
     Lyra.tick(this);
     Grief.tickOutside(this);
+    safe(() => Hunt.tickHunt(this));
+  }
+
+  // The hunt's part in a posse member's day, and their lifted leash (npc.js asks).
+  chaseOf(npc, target) {
+    return Hunt.chaseOf(this, npc, target);
+  }
+
+  lostSight(npc, target) {
+    return Hunt.lost(this, npc, target);
   }
 
   nearestAlive(v, r) {
@@ -1612,7 +1634,7 @@ export class Murder {
   // ------------------------------------------------------------------ npc hooks
 
   entryFor(npc, entry, hour) {
-    return Grief.entryFor(this, npc, entry, hour);
+    return Grief.entryFor(this, npc, entry, hour) || Hunt.entryFor(this, npc, entry, hour);
   }
 
   dialogOptions(npc) {
@@ -1682,6 +1704,7 @@ export class Murder {
       watchUntil: Number.isFinite(this.watchUntil) ? this.watchUntil : null,
       trialPending: this.trialPending || null,
       witnessedBy: this.witnessedBy,
+      hunt: Hunt.serializeHunt(this.hunt),
       terror: Object.fromEntries((this.life?.villagers?.() || []).filter((e) => e.terror && this.now() < e.terror.until).map((e) => [e.id, e.terror])),
     };
   }
@@ -1700,6 +1723,7 @@ export class Murder {
     this.lyra = obj(d.lyra);
     this.watchUntil = Number.isFinite(d.watchUntil) ? d.watchUntil : -Infinity;
     this.witnessedBy = obj(d.witnessedBy);
+    this.hunt = Hunt.deserializeHunt(d.hunt);
     for (const [id, tr] of Object.entries(obj(d.terror))) {
       const e = this.entity(id);
       if (e && tr && Number.isFinite(tr.until)) e.terror = tr;

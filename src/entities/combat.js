@@ -242,8 +242,11 @@ export class Combat {
     if (!a || !b || a === b) return false;
     // A charmed creature fights for its charmer's side and nobody holds a grudge meanwhile.
     if (a.statusFlags?.charmedBy || b.statusFlags?.charmedBy) return factionRelation(sideOf(a), sideOf(b)) === 'hostile';
-    // While the player is wanted, the guard and the player are at war (§16.7).
-    if ((a.faction === 'guard' && this.hasCrime(b)) || (b.faction === 'guard' && this.hasCrime(a))) return true;
+    // While the player is wanted, the guard and the player are at war (§16.7), but only a
+    // guard who KNOWS it (round 14b, DESIGN §35.2: per knower; npc.knowsWanted: saw it, came
+    // and saw, was told face to face, or the bell). player.crime is the watch's record, not
+    // what every guard knows.
+    if ((a.faction === 'guard' && this.knowsCrime(a, b)) || (b.faction === 'guard' && this.knowsCrime(b, a))) return true;
     if (factionRelation(a.faction, b.faction) === 'hostile') return true;
     return this._provokedAgainst(b, a) || this._provokedAgainst(a, b);
   }
@@ -252,6 +255,20 @@ export class Combat {
   hasCrime(actor = this.game.player) {
     const c = actor?.crime;
     return !!c && c.until > this.now();
+  }
+
+  // Does `knower` know that `actor` is wanted (round 14b, per knower)? A villager answers for
+  // themselves (npc.knowsWanted); anything without a mind of its own reads the record.
+  knowsCrime(knower, actor = this.game.player) {
+    if (!this.hasCrime(actor)) return false;
+    if (knower && typeof knower.knowsWanted === 'function') {
+      try {
+        return !!knower.knowsWanted(actor);
+      } catch {
+        return true;
+      }
+    }
+    return true;
   }
 
   // Is `creature` angry at `other` because `other` hurt it recently?
