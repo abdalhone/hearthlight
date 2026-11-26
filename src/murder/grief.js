@@ -265,7 +265,7 @@ function standMourners(m, rec, who, off) {
     P.faceDir?.('up');
   }
   const L = m.game.companion;
-  if (L && !L.downed && !['left', 'gone'].includes(L.mind?.companionship)) {
+  if (L && !L.downed && !L.dead && !m.dead?.[L.id] && !['left', 'gone'].includes(L.mind?.companionship)) {
     L.x = bier.x + 16;
     L.y = bier.y + 74;
     L.faceToward?.(bier.x, bier.y);
@@ -576,8 +576,12 @@ export function applyHeirs(m) {
 }
 
 // Who gives this giver's missions now: them, a stand-in, or the notice board.
+// Lyra's own missions close with her (STAND_INS.lyra is empty; missions/system.js closes
+// them): standIn('lyra') is 'lyra' while she lives, and stays 'lyra' after (nobody else
+// gives her lessons, her waystone or her oath).
 export function standIn(m, giver) {
-  if (!giver || giver === 'lyra' || giver === 'board' || !m.knownDead(giver)) return giver;
+  if (!giver || giver === 'board' || !m.knownDead(giver)) return giver;
+  if (giver === 'lyra') return giver;
   for (const id of STAND_INS[giver] || []) if (alive(m, id)) return id;
   return 'board';
 }

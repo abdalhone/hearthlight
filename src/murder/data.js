@@ -1,12 +1,12 @@
-// Plain data behind DESIGN §29: who can never be killed, who takes over whose work, who
-// stands in for whom, who leads the watch and the Moot and says the words at a funeral,
-// where a body can be hidden, and the numbers the system runs on.
+// Plain data behind DESIGN §29: who takes over whose work, who stands in for whom, who
+// leads the watch and the Moot and says the words at a funeral, where a body can be
+// hidden, and the numbers the system runs on.
+//
+// Who can never be killed is no longer a list (round 14b, DESIGN §35.1): a child is a
+// child by age (src/core/people.js isMinor, under 16), and every adult can die, Lyra and
+// any companion included.
 
 import { TILE } from '../core/constants.js';
-
-// Never: Lyra (she never dies, DESIGN §16), and the children (the author: Pip and Tansy
-// can't be killed).
-export const UNKILLABLE = new Set(['lyra', 'pip', 'tansy']);
 
 export const HOUR = 37.5; // game seconds per in-game hour
 export const DAY = 900;
@@ -59,6 +59,8 @@ export const HEIRS = {
   sabeth: { by: 'hess', work: 'the vats' },
   alder: { by: 'petra', work: "the Reeve's ledger" },
   tilly: { by: 'bram', work: 'her half of the forge' },
+  // Lyra (round 14b): her father takes back the far lamps she lit before him.
+  lyra: { by: 'hobb', work: 'the far lamps' },
 };
 // Work nobody takes on: it stays undone, and the village feels it.
 export const UNDONE = {
@@ -87,7 +89,13 @@ export const STAND_INS = {
   elda: ['sabeth', 'pip'],
   garrick: ['alder', 'elda'],
   petra: ['alder', 'wenna'],
+  // Lyra's own missions are hers alone (her lessons, her waystone, her oath): they close
+  // with her (missions/system.js); a step that waits on a word to her passes.
+  lyra: [],
 };
+
+// What Lyra leaves (round 14b): her trunk at the chandlery goes to her mother.
+export const KEEPSAKES = { lyra: { trunk: 'wenna' } };
 
 // Who might know Maren's story when Sister Aveline is gone (her pupil, her Sunday friend).
 export const MAREN_KEEPERS = ['petra', 'mira', 'elda', 'hobb'];

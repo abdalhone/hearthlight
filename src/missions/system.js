@@ -180,6 +180,8 @@ export class MissionSystem {
   missing(m) {
     const r = m.requires || {};
     const out = [];
+    // Lyra's own, after her death: never (round 14b, DESIGN §35.1).
+    if (m.giver === 'lyra' && safe(() => this.game.murder?.isDead?.('lyra'), false)) out.push(`${this.giverName('lyra')} is dead`);
     for (const id of r.missions || []) if (this.status(id) !== 'done') out.push(`after "${this.get(id)?.title || id}"`);
     if (r.done && this.doneCount() < r.done) out.push(`once you have done ${r.done} errands`);
     if (r.day && this.day() < r.day) out.push(`from day ${r.day}`);
@@ -606,13 +608,26 @@ export class MissionSystem {
     this.flushPending();
     const pl = g.player;
     if (!pl) return;
+    // Lyra's own missions close with her (round 14b, DESIGN §35.1): nobody else gives her
+    // lessons, her waystone or her oath.
+    if (safe(() => this.game.murder?.knownDead?.('lyra'), false)) {
+      for (const [id, s] of Object.entries(this.state)) {
+        const m = this.get(id);
+        if (!m || m.giver !== 'lyra' || s.status === 'done' || s.status === 'closed') continue;
+        s.status = 'closed';
+        if (this.tracked === id) this.tracked = this.active()[0]?.id || null;
+        this.toast(`${m.title}: ${this.giverName('lyra')} is dead. It ends here.`, 'info');
+        this.emit('mission_closed', { id, mission: m, why: 'giver_dead' });
+      }
+    }
     for (const [id, s] of Object.entries(this.state)) {
       if (s.status !== 'active') continue;
       s.stepT += step;
       const o = this.objective(id);
       if (!o) continue;
-      // A word for someone who has died (DESIGN §29): it can never be given; the step passes.
-      if (o.type === 'talk' && o.target && o.target !== 'lyra' && safe(() => this.game.murder?.knownDead?.(o.target), false)) {
+      // A word for someone who has died (DESIGN §29): it can never be given; the step passes
+      // (Lyra too, round 14b).
+      if (o.type === 'talk' && o.target && safe(() => this.game.murder?.knownDead?.(o.target), false)) {
         this.toast(`${this.get(id).title}: ${this.giverName(o.target)} is dead. That word will never be given.`, 'info');
         this.bump(id, objectiveGoal(o));
         continue;

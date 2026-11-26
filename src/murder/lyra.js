@@ -4,6 +4,10 @@
 // people, how far she trusts them. Believing it ends things for good (gone). Unsure, she
 // asks the stranger to their face, once. A confession she takes to the watch. Grief is
 // her own: for a friend, quiet; for her mother or her father, everything stops.
+//
+// Round 14b (DESIGN §35.1): Lyra can be killed. Dead, she sees, hears, weighs and remembers
+// nothing more: every entry here does nothing for a dead Lyra (lyra(m) is null), and she
+// never remembers, grieves or asks about her own death.
 
 import { HOUR, DAY } from './data.js';
 import { lyraLine } from './lines.js';
@@ -20,13 +24,28 @@ function safe(fn, fallback = null) {
   }
 }
 
+// The record (or id) is her own death: she never learns of that.
+function isHers(m, x) {
+  const id = typeof x === 'string' ? x : x?.id;
+  return !!id && id === lyraOf(m.game)?.id;
+}
+
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const PARENTS = { hobb: 'father', wenna: 'mother' };
 const RE_CONFESS = /\b(yes|yeah|i did|i killed|it was me|i did it|guilty|i'?m sorry|forgive me)\b/i;
 const RE_DENY = /\b(no|nope|never|i didn'?t|didn'?t do|wasn'?t me|it wasn'?t|of course not|how could you)\b/i;
 
+import { lyraOf } from '../core/people.js';
+
 function lyra(m) {
-  return m.game?.companion || null;
+  const L = lyraOf(m.game);
+  if (!L || L.dead || m.dead?.[L.id]) return null;
+  return L;
+}
+
+// Is she dead (or never there)? Then nothing of hers runs: no belief, no clue, no word.
+function gone(m) {
+  return !lyra(m);
 }
 
 function mind(m) {
@@ -88,10 +107,12 @@ function goneFor(m, rec, text, severity = -10) {
 // ------------------------------------------------------------------ seeing and hearing
 
 export function sawHold(m, v) {
+  if (gone(m) || isHers(m, v)) return;
   say(m, v.id === 'hobb' || v.id === 'wenna' ? `NO! Get away from ${v.id === 'hobb' ? 'Da' : 'Mam'}! GET AWAY!` : "Don't you dare. Don't you DARE! Put it down!", 'shout');
 }
 
 export function witnessed(m, rec) {
+  if (gone(m) || isHers(m, rec)) return;
   const st = state(m, rec.id);
   st.belief = 'knows';
   st.how = 'saw';
@@ -107,6 +128,7 @@ export function witnessed(m, rec) {
 
 // Someone saw it; the news reaches her (the bell, the shouting in the lane).
 export function hearsOfMurder(m, rec) {
+  if (gone(m) || isHers(m, rec)) return;
   const st = state(m, rec.id);
   if (st.belief === 'knows' || st.belief === 'believes') return;
   const from = (rec.seen || []).find((s) => s.id !== 'lyra') || (rec.clues || []).find((c) => c.kind === 'carry' && c.clarity === 'clear');
@@ -123,6 +145,7 @@ export function hearsOfMurder(m, rec) {
 
 // The body was found by someone else: grief, then she weighs what is said.
 export function learnsDeath(m, rec) {
+  if (gone(m) || isHers(m, rec)) return;
   const st = state(m, rec.id);
   if (st.belief === 'knows' || st.belief === 'believes') return;
   grief(m, rec);
@@ -131,6 +154,7 @@ export function learnsDeath(m, rec) {
 
 // She came on the body herself.
 export function foundBody(m, rec) {
+  if (gone(m) || isHers(m, rec)) return;
   const st = state(m, rec.id);
   const V = m.name(rec.id);
   say(m, PARENTS[rec.id] ? `${PARENTS[rec.id] === 'father' ? 'Da' : 'Mam'}? ${PARENTS[rec.id] === 'father' ? 'Da' : 'Mam'}! No— no, no, no. ROWAN!` : `${V}? Oh, no. No. ROWAN! Somebody! It's ${V}!`, 'shout');
@@ -142,6 +166,7 @@ export function foundBody(m, rec) {
 }
 
 export function grief(m, rec, { quiet = false } = {}) {
+  if (gone(m) || isHers(m, rec)) return;
   const st = state(m, rec.id);
   if (st.grieved) return;
   st.grieved = true;
@@ -159,6 +184,7 @@ export function grief(m, rec, { quiet = false } = {}) {
 
 // She saw the stranger carrying something, or someone.
 export function sawCarry(m, rec, clarity) {
+  if (gone(m) || isHers(m, rec)) return;
   const V = m.name(rec.id);
   const P = m.playerName();
   if (clarity === 'clear') {
@@ -208,6 +234,7 @@ export function beliefOf(m, rec) {
 }
 
 export function tick(m) {
+  if (gone(m)) return;
   const now = m.now();
   for (const [id, st] of Object.entries(m.lyra)) {
     const rec = m.dead[id];
@@ -251,6 +278,7 @@ function ask(m, rec, st) {
 
 // The stranger's answer to her question, from the chat.
 export function onPlayerMessage(m, text) {
+  if (gone(m)) return null;
   const q = m.lyraAsking;
   if (!q || !text) return null;
   const rec = m.dead[q.about];
@@ -278,6 +306,7 @@ export function onPlayerMessage(m, text) {
 }
 
 export function onConfession(m, rec, to) {
+  if (gone(m) || isHers(m, rec)) return;
   const st = state(m, rec.id);
   const V = m.name(rec.id);
   const P = m.playerName();
@@ -296,12 +325,14 @@ export function onConfession(m, rec, to) {
 
 // After the watch has asked: a word for the stranger, if she doubts it and is near.
 export function afterQuestioning(m, c) {
+  if (gone(m) || isHers(m, c?.about)) return;
   const st = m.lyra[c.about];
   if (!st || !near(m, 180)) return;
   if (st.belief === 'doubts' && c.suspicion < 0.6) say(m, lyraLine('defends', { about: c.about }, m.rng()));
 }
 
 export function onVerdict(m, about, v) {
+  if (gone(m) || isHers(m, about)) return;
   const rec = m.dead[about];
   if (!rec) return;
   const st = state(m, about);
@@ -317,6 +348,7 @@ export function onVerdict(m, about, v) {
 
 // What she knows, for Claude: deaths, and what she believes.
 export function promptContext(m) {
+  if (gone(m)) return '';
   const bits = [];
   const t = m.now();
   for (const rec of Object.values(m.dead)) {

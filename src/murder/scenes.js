@@ -37,10 +37,11 @@ export function playScript(m, id, script) {
   );
 }
 
+// Lyra near and with you (round 14b: never a dead Lyra, DESIGN §35.1).
 function companionNear(m) {
   const L = m.game?.companion;
   const P = m.game?.player;
-  return !!L && !!P && !L.downed && Math.hypot(L.x - P.x, L.y - P.y) < 140 && !['left', 'gone'].includes(L.mind?.companionship);
+  return !!L && !!P && !L.downed && !L.dead && !m.dead?.[L.id] && Math.hypot(L.x - P.x, L.y - P.y) < 140 && !['left', 'gone'].includes(L.mind?.companionship);
 }
 
 export function funeralScript(m, rec, officiant, mourners) {
@@ -87,7 +88,7 @@ export function trialScripts(m, about, chair) {
     for (const e of said) open.push({ say: lead, text: e.text });
   } else for (const e of said) open.push({ narrate: e.text });
   const L = m.game?.companion;
-  if (L && m.lyra?.[about]) open.push({ say: 'lyra', text: lyraLine('trial', { about }, m.rng()) });
+  if (L && !L.dead && !m.dead?.[L.id] && m.lyra?.[about]) open.push({ say: 'lyra', text: lyraLine('trial', { about }, m.rng()) });
   if (chair) open.push({ say: chair, text: 'What do you say?' });
   const verdictFor = (v) => {
     const steps = [];

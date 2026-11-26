@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { makeGame, step, px, put, holdLyra, downBy, events, villagers } from './murder_world.mjs';
 import { VILLAGERS } from '../src/ai/social/bonds_data.js';
 import { look, witnessesOf, lineOfSight, lightAt } from '../src/murder/witness.js';
-import { FINISH_HOLD, UNKILLABLE, HOUR, DAY, hidingPlace, STAND_INS } from '../src/murder/data.js';
+import { FINISH_HOLD, HOUR, DAY, hidingPlace, STAND_INS, HEIRS } from '../src/murder/data.js';
+import { isMinor } from '../src/core/people.js';
 import { trial } from '../src/murder/grief.js';
 import { suspicionOf, WEIGHTS } from '../src/murder/investigation.js';
 import { MISSIONS } from '../src/missions/data.js';
@@ -27,6 +28,12 @@ function quiet(g, keep = []) {
     v.think = () => {};
   }
   if (!keep.includes('lyra')) holdLyra(g, px(150), px(112));
+}
+
+// Lyra on her own feet again (quiet() holds her far away).
+function freeLyraFor(g) {
+  const L = g.companion;
+  if (L?._heldController) L.controller = L._heldController;
 }
 
 function hold(e) {
@@ -59,7 +66,7 @@ function stepTo(g, hour, dt = 1 / 8) {
   for (let i = 0; i < 4000 && !(g.clock.hour >= hour && g.clock.hour < hour + 0.5); i++) step(g, 5, dt);
 }
 
-test('the finishing blow is held, warned about once, and never falls on Lyra or a child', async () => {
+test('the finishing blow is held, warned about once, and never falls on a child', async () => {
   const g = makeGame({ hour: 12 });
   quiet(g, ['bram', 'pip']);
   const bram = g.entities.get('bram');
@@ -94,7 +101,7 @@ test('the finishing blow is held, warned about once, and never falls on Lyra or 
   step(g, FINISH_HOLD + 0.3, 1 / 20);
   assert.ok(bram.dead, 'held long enough: dead');
   assert.ok(g.murder.isDead('bram'));
-  // Never a child, never Lyra.
+  // Never a child (by age: src/core/people.js isMinor).
   put(pip, g.player.x + 10, g.player.y);
   pip.hp = 1;
   g.combat.damage(g.player, pip, 99, { exact: true, crit: false });
@@ -105,8 +112,110 @@ test('the finishing blow is held, warned about once, and never falls on Lyra or 
   assert.ok(!pip.dead && pip.downed, 'Pip lies there, alive');
   assert.equal(g.murder.kill(pip, g.player), null);
   assert.equal(g.murder.kill(g.entities.get('tansy'), g.player), null);
-  assert.equal(g.murder.kill(g.companion, g.player), null);
-  for (const id of ['pip', 'tansy', 'lyra']) assert.ok(UNKILLABLE.has(id));
+  for (const id of ['pip', 'tansy']) assert.ok(isMinor(g, g.entities.get(id)), `${id} is a child`);
+  // Lyra is an adult: the blow can fall on her (round 14b, DESIGN §35.1).
+  assert.equal(g.murder.canKill(g.companion), true);
+});
+
+test('Lyra and a companion can die; Pip and Tansy never, until Tansy is sixteen (round 14b)', async () => {
+  const g = makeGame({ hour: 12 });
+  quiet(g, ['bram']);
+  const L = g.companion;
+  freeLyraFor(g);
+  put(L, px(WOODS.tx + 1), px(WOODS.ty));
+  put(g.player, px(WOODS.tx), px(WOODS.ty));
+  g.player.faceToward(L.x, L.y);
+  L.hp = 1;
+  g.combat.damage(g.player, L, 99, { exact: true, crit: false });
+  assert.ok(L.downed, 'Lyra is down');
+  // Her own first warning, even after the villagers' one was read.
+  g.flags.finisherWarned = true;
+  g.flags.finisherWarnedLyra = false;
+  let asked = null;
+  g.ui.confirm = (o) => {
+    asked = o;
+    return Promise.resolve(true);
+  };
+  assert.equal(g.murder.onAttackPress(g.player), true);
+  assert.ok(asked && /Hobb and Wenna/.test(asked.text), 'a warning of her own');
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(g.flags.finisherWarnedLyra, true);
+  g.input.down = (a) => a === 'attack';
+  assert.equal(g.murder.onAttackPress(g.player), true);
+  step(g, FINISH_HOLD + 0.4, 1 / 20);
+  assert.ok(g.murder.isDead('lyra'), 'Lyra is dead');
+  assert.ok(L.dead && !L.downed && !L.isAlive(), 'dead, not knocked out');
+  const killed = events(g, 'villager_killed').find((e) => e.id === 'lyra');
+  assert.ok(killed && killed.by === 'player' && killed.cause === 'killed');
+  // She stays dead: no getting up after a minute, no mind, nothing she says.
+  step(g, 80, 1 / 10);
+  assert.ok(L.dead && !L.downed && !L.isAlive(), 'still dead after a minute and more');
+  assert.equal(g.murder.dead.lyra.state, 'lying');
+  // Her body is knelt by and lifted like anyone's.
+  assert.equal(g.murder.bodyCanInteract(L, g.player), true);
+  assert.match(g.murder.bodyLabel(L), /Lift Lyra/);
+  // Unseen: she is missing to the village (markGone takes Lyra too).
+  assert.equal(g.villageLife.absences.get('lyra')?.cause, 'killed');
+  // A companion (Bram) can die too.
+  const bram = g.entities.get('bram');
+  put(bram, px(WOODS.tx - 1), px(WOODS.ty));
+  if (g.party?.set) g.party.set('bram', 'test', null);
+  assert.ok(downBy(g, bram));
+  assert.ok(g.murder.kill(bram, g.player), 'a companion can be killed');
+  // Children never, Tansy until sixteen.
+  const pip = g.entities.get('pip');
+  const tansy = g.entities.get('tansy');
+  assert.equal(g.murder.canKill(pip), false);
+  assert.equal(g.murder.canKill(tansy), false);
+  const age = g.calendar?.ageOf?.('tansy');
+  if (Number.isFinite(age) && g.calendar?.ageOf) {
+    const was = g.calendar.ageOf;
+    g.calendar.ageOf = (id) => (id === 'tansy' ? 15 : was.call(g.calendar, id));
+    assert.equal(g.murder.canKill(tansy), false, 'Tansy at fifteen: never');
+    g.calendar.ageOf = (id) => (id === 'tansy' ? 16 : was.call(g.calendar, id));
+    assert.equal(g.murder.canKill(tansy), true, 'Tansy at sixteen: an adult to every system');
+    g.calendar.ageOf = was;
+  }
+});
+
+test('after Lyra dies: her parents mourn a month, a case, a funeral, a grave; she never learns of it; the save keeps her dead (round 14b)', () => {
+  const g = makeGame({ hour: 9 });
+  quiet(g, ['hess']);
+  const L = g.companion;
+  freeLyraFor(g);
+  put(L, px(WOODS.tx + 1), px(WOODS.ty));
+  put(g.player, px(WOODS.tx), px(WOODS.ty));
+  L.hp = 1;
+  g.combat.damage(g.player, L, 99, { exact: true, crit: false });
+  const rec = g.murder.kill(L, g.player);
+  assert.ok(rec, 'killed');
+  assert.equal(HEIRS.lyra.by, 'hobb');
+  g.murder.found('lyra', 'hess', 'whisperwood');
+  assert.ok(g.murder.cases.lyra, 'a case opens');
+  // Her parents mourn for a month (kin), and there is a funeral.
+  for (const id of ['hobb', 'wenna']) {
+    const mo = g.villageLife.mourning[id];
+    assert.ok(mo && mo.about === 'lyra' && mo.until >= g.clock.day + 29, `${id} mourns her`);
+  }
+  assert.ok(g.murder.funerals.find((f) => f.about === 'lyra'), 'a funeral is planned');
+  // She never learns of, grieves or is told her own death.
+  assert.equal(g.murder.lyra.lyra, undefined, 'no belief about her own death');
+  assert.equal(g.murder.promptContext(), '');
+  // Her missions close (nobody gives them for her).
+  const ms = new MissionSystem(g);
+  g.missions = ms;
+  ms.state.sworn = { status: 'active', step: 0, n: 0, t0: 0, stepT: 0 };
+  ms.update(2);
+  assert.equal(ms.state.sworn.status, 'closed');
+  assert.ok(MISSIONS.filter((m) => m.giver === 'lyra').every((m) => ms.missing(m).some((x) => /dead/.test(x))), 'never offered again');
+  // Saved and loaded: still dead, her body where it lay.
+  const data = JSON.parse(JSON.stringify(g.murder.serialize()));
+  const h = makeGame({ hour: 9 });
+  h.murder.deserialize(data);
+  const L2 = h.companion;
+  assert.equal(Math.round(L2.x), Math.round(data.dead.lyra.x), 'her body where it lay');
+  step(h, 70, 1 / 10);
+  assert.ok(h.murder.isDead('lyra') && L2.dead && !L2.downed && !L2.isAlive(), 'the save keeps her dead');
 });
 
 test('witnesses are exactly those who could see: distance, walls, night and its lamps, trees', () => {
@@ -464,7 +573,7 @@ test('the world keeps working with any one of the eighteen dead (children can ne
     put(v, px(WOODS.tx + 1), px(WOODS.ty));
     put(g.player, px(WOODS.tx), px(WOODS.ty));
     const rec = g.murder.kill(v, g.player);
-    if (UNKILLABLE.has(id)) {
+    if (isMinor(g, v)) {
       assert.equal(rec, null, `${id} cannot be killed`);
       assert.ok(!v.dead);
       continue;
