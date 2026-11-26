@@ -4,6 +4,7 @@
 // are outside the drawn shape when it fills, the blow misses.
 
 import { alive, hostileTo, walkLine, rand } from '../entities/creature_util.js';
+import { wallBetween } from '../world/walls.js';
 
 export const DANGER = '#ff6b5e';
 export const DANGER_EDGE = '#ffd0a0';
@@ -255,6 +256,15 @@ export function strike(b, e, opts = {}, shape = null) {
     const l = Math.hypot(dx, dy) || 1;
     dx /= l;
     dy /= l;
+  }
+  // Nothing hits through a wall (round 14b, DESIGN §35.6): a slam, a sweep or a hazard lands
+  // only where a straight line from where it came reaches without a wall or a shut door.
+  const fx = shape?.x ?? b.x;
+  const fy = shape?.y ?? b.y;
+  try {
+    if (wallBetween(g, fx, fy - 3, e.x, e.y - 3)) return 0;
+  } catch {
+    /* no map: as before */
   }
   // Lyra cannot read a marker the way a player can: blows that find her land softer.
   const isPlayer = e === g.player;

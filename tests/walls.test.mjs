@@ -166,3 +166,54 @@ test('bolts do not seek, chain or ricochet to a foe behind a wall', () => {
   const pick = m.nearestFoe({ cast: { caster: p } }, p.x, p.y, 200, null);
   assert.equal(pick, a, 'the one in the open, never the one behind the wall');
 });
+
+// Round 14b (V-16, DESIGN §35.6): nothing hits through walls: bosses, creatures, rubble.
+import { T } from '../src/world/tiles.js';
+import { blowTile, BLOCKS_BLOW } from '../src/world/walls.js';
+import { strike as bossStrike, hitShape } from '../src/bosses/kit.js';
+
+// The room, plus a one-tile heap of rubble at (5, 14) and a ruin wall tile at (12, 14).
+function rubbleRoom() {
+  const g = room();
+  const base = g.map.blocksProjectile;
+  g.map.tileAt = (tx, ty) => (tx === 5 && ty === 14 ? T.RUBBLE : tx === 12 && ty === 14 ? T.RUIN_WALL : 0);
+  g.map.blocksProjectile = (tx, ty) => base(tx, ty) || (tx === 12 && ty === 14);
+  return g;
+}
+
+test('a heap of rubble stops a blade or a skeleton’s reach, not an arrow', () => {
+  const g = rubbleRoom();
+  assert.ok(BLOCKS_BLOW.has(T.RUBBLE));
+  assert.equal(blowTile(g, 5, 14), true);
+  const p = g.entities.add(new Player(g, { x: 5 * TILE + 8, y: 15 * TILE + 6 }));
+  g.player = p;
+  const skel = g.entities.add(new Actor(g, { x: 5 * TILE + 8, y: 13 * TILE + 8, faction: 'undead', maxHp: 50, atk: 8 }));
+  skel.faceDir('down');
+  // 30 px apart, the rubble between: the reach (28) would cross it, the rule does not.
+  assert.equal(canReach(g, skel, p, skel.x, skel.y, { melee: true }), false);
+  assert.equal(canReach(g, skel, p), true, 'an arrow flies over it');
+  g.combat.melee(skel, { target: p, range: 34, kind: 'bite', cooldown: 0 });
+  assert.equal(p.hp, p.maxHp, 'no blow across the rubble');
+  // Across a one-tile ruin wall: nothing either way.
+  const q = g.entities.add(new Actor(g, { x: 12 * TILE + 8, y: 13 * TILE + 6, faction: 'undead', maxHp: 50, atk: 8 }));
+  p.x = 12 * TILE + 8;
+  p.y = 15 * TILE + 4;
+  g.combat.melee(q, { target: p, range: 34, kind: 'bite', cooldown: 0 });
+  assert.equal(p.hp, p.maxHp, 'no blow through a ruin wall');
+});
+
+test('a boss blow and a hazard land nothing through a wall', () => {
+  const g = room();
+  const p = g.entities.add(new Player(g, { x: 5 * TILE, y: 11 * TILE + 6 }));
+  g.player = p;
+  const boss = g.entities.add(new Actor(g, { x: 5 * TILE, y: 9 * TILE, faction: 'monster', maxHp: 400, atk: 14 }));
+  boss.boss = true;
+  const dealt = bossStrike(boss, p, { mul: 1 });
+  assert.equal(dealt, 0, 'the slam stops at the wall');
+  assert.equal(p.hp, p.maxHp);
+  const n = hitShape(boss, { kind: 'circle', x: 5 * TILE, y: 9 * TILE + 8, r: 60 }, { mul: 1 });
+  assert.equal(n, 0, 'a ring of fire round the boss reaches nobody behind the wall');
+  // On the same side it lands.
+  p.y = 9 * TILE + 14;
+  assert.ok(bossStrike(boss, p, { mul: 1 }) > 0, 'in the open it lands');
+});

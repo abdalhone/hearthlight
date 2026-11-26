@@ -32,6 +32,10 @@ export const SELF_DEFENSE_WINDOW = 60; // how long someone who hurt you stays a 
 export const NPC_REVIVE_FALLBACK = 40;
 export const NPC_REVIVE_FRACTION = 0.5;
 const SHARED_XP_RANGE = 260; // px: kills made this close count as a fight fought together
+// Round 14b: a mission leader's share of a stun (status ccResist), and how long a boss is
+// proof against another stagger after one.
+const LEADER_CC = 0.55;
+const BOSS_REEL_IMMUNE = 3.5;
 const PROVOKE_MEMORY = 45; // game seconds a creature stays angry at whoever hurt it
 const DEFAULT_MELEE_CD = 0.4;
 const MIN_SHOT_GAP = 0.15; // guards against accidental per-frame shooting
@@ -357,8 +361,9 @@ export class Combat {
       if (d > range + (e.radius ?? 5)) continue;
       if (d > 6 && (dx * fx + dy * fy) / d < minCos) continue;
       if (!this.canHarm(attacker, e, e === target)) continue;
-      // Walls and closed doors stop the blade (DESIGN §31.1): nobody is hit through a house.
-      if (!canReach(g, attacker, e)) continue;
+      // Walls and closed doors stop the blade (DESIGN §31.1): nobody is hit through a house;
+      // nor across a heap of rubble (round 14b, walls.BLOCKS_BLOW: arrows still fly over).
+      if (!canReach(g, attacker, e, attacker.x, attacker.y, { melee: true })) continue;
       const inv = d > 0.001 ? 1 / d : 0;
       const dealt = this.damage(attacker, e, power, {
         kind,
@@ -608,8 +613,16 @@ export class Combat {
       return;
     }
     const charge = Math.max(0, Math.min(1, Number(opts.charge) || 0));
+    // A mission's leader ("Scarred", round 14b leftover) shrugs off half of every stun.
+    if (target.leader && !Number.isFinite(target.ccResist)) target.ccResist = LEADER_CC;
     let held = null;
-    if (opts.heavy || charge >= 0.5) held = status.apply(target, 'reeling', { src, potency: 1 + charge * 0.5 });
+    // A boss reels from a heavy blow (stars at its head: a stagger you can see), then is
+    // proof against another for a while, so it is never stun-locked (round 14b leftover).
+    const bossReady = !tough || !(target._reelImmuneUntil > this.t);
+    if ((opts.heavy || charge >= 0.5) && bossReady) {
+      held = status.apply(target, 'reeling', { src, potency: 1 + charge * 0.5 });
+      if (held && tough) target._reelImmuneUntil = this.t + BOSS_REEL_IMMUNE;
+    }
     if (!held && !tough) held = status.apply(target, 'flinch', { src });
     // The pose: held while the stun lasts; a blow inside the immunity only jolts the sprite.
     if (!tough) {
