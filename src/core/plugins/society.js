@@ -10,4 +10,7 @@
 //     'game_start' event); or
 //   - an installer function (game) => void, run at the end of game.buildWorld, after village
 //     life, murder and party exist and before a save is applied.
-export default [];
+import { reputationPlugin } from '../../society/reputation.js';
+import { villainPlugin, installVillainHooks } from '../../story/villain.js';
+
+export default [reputationPlugin, villainPlugin, installVillainHooks];
