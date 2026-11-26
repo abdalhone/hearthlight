@@ -3686,10 +3686,14 @@ The rule is fixed; the numbers are what play tunes (`src/magic/balance.js`).
 - **Said once.** The coach's hold step and, the first time the stick pushes against a stance
   (`cast_stand`, once: `flags.standHintShown`), a toast: "You stand still to weave. Roll to
   break off." The Spellbook says it under the weave's numbers; CONTROLS and How to play too.
-- **Tuning by play** (a weaver bot over wolves, a bandit camp and Varek, rule on and off, at
-  1280x720 and on a sideways phone; `scripts/followup_check.mjs` for the feel): with the
-  numbers above the fights take about as long and cost about as much health as walking while
-  casting did, so neither the plant nor CHARGE_TIME (1.5 s) changed.
+- **Tuning by play** (a weaver bot kiting with the Spark and a Blast over three wolves, a
+  bandit camp and Varek, the rule on and off, at 1280x720 and on a sideways phone;
+  `scripts/followup_check.mjs` for the feel by hand-held input): wolves 3.5–9.8 s standing
+  against 4.8–5.4 s walking, the camp 5.2–10 s against 9.5–9.8 s, no more damage taken; Varek
+  64.5 s standing against 58–73 s walking, with about a third more damage taken (299 against
+  214–233: a weaver who stands is easier to hit, as meant). Nothing there is miserable, so the
+  plant (0.24–0.4 s) and CHARGE_TIME (1.5 s) stay as they are; if hand play finds the boss
+  harsh, shorten CHARGE_TIME first (the exposure is the charge, not the plant).
 
 ### 38.7 The dark path you can leave (the follow-up stage, plan §13c; the author: "when I want, I can stop and say no")
 

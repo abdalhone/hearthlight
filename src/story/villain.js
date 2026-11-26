@@ -1048,6 +1048,8 @@ export class Villain {
       return false;
     }
     if (s.endedNight != null && this.nightKey() === s.endedNight) return false; // not the night you said it
+    // A price named on an earlier night and never answered is no longer on the table.
+    if (s.returnOffer && s.returnOffer.night !== this.nightKey()) s.returnOffer = null;
     if (s.returnOffer) return false;
     const near = Math.hypot(P.x - t.x, P.y - t.y) < STAND_RANGE;
     const talking = (this.game?.time ?? 0) - (this._spokeAt ?? -99) < TALK_HOLDS || !!safe(() => this.game.ui?.isModalOpen?.(), false);

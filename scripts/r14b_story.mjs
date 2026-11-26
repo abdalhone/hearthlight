@@ -1,5 +1,6 @@
-// Round 14b, the merged game: the author's list (plan §11, items 1 to 25, and §13's verifier
-// item 26) played as one scripted run in the built game, on a phone held sideways (844x390)
+// Round 14b, the merged game: the author's list (plan §11, items 1 to 25, §13's verifier
+// item 26, and the follow-up's items 27 (§14, casting stops you) and 28 (§13c, the dark path
+// you can leave)) played as one scripted run in the built game, on a phone held sideways (844x390)
 // and upright (390x844) by real taps, and on a computer (1280x720) by keys and mouse; the
 // sideways phone also at 4x CPU throttle (item 24).
 //
@@ -1514,6 +1515,267 @@ async function play(S) {
     });
     check(down.downed && down.ring, `[${tag}] 25 down: the countdown is on screen`, JSON.stringify(down));
     await shot('25-down');
+  });
+
+  // ================================================================ session G: the follow-up (plan §14 and §13c)
+  if (!ITEMS || [27, 28].some((n) => ITEMS.has(n))) await fresh();
+  // Fingers by CDP (several at once; one is lifted by a touchEnd naming only it).
+  const fingers = new Map();
+  let fcdp = null;
+  const fsend = async (type, pts) => {
+    fcdp ||= await ctx.newCDPSession(page);
+    await fcdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts });
+  };
+  const fDown = async (id, x, y) => {
+    fingers.set(id, { x: Math.round(x), y: Math.round(y), id });
+    await fsend('touchStart', [...fingers.values()]);
+  };
+  const fMove = async (id, x, y) => {
+    fingers.set(id, { x: Math.round(x), y: Math.round(y), id });
+    await fsend('touchMove', [...fingers.values()]);
+  };
+  const fUp = async (id) => {
+    const p = fingers.get(id);
+    fingers.delete(id);
+    if (p) await fsend('touchEnd', [p]);
+  };
+
+  await item(27, 'casting stops you: hold and push, roll, tap while running', async () => {
+    const m0 = await ev(() => {
+      const g = window.__game;
+      const P = g.player;
+      window.__away();
+      window.__lyraAway();
+      window.__at(P, 100, 61, false);
+      P.vel.x = P.vel.y = 0;
+      P.facing = { x: -1, y: 0 };
+      P.dir = 'left';
+      g.magic.mana.cur = g.magic.mana.max;
+      g.magic.resetCooldowns?.();
+      g.camera.snap?.();
+      window.__casts = 0;
+      g.bus.on('spell_cast', (p) => p?.caster === g.player && window.__casts++);
+      return { x: P.x, y: P.y };
+    });
+    const WB = '.tcluster .wbtn[data-slot="0"]';
+    const stickAt = async () => {
+      const z = await rectOf('.stick-zone');
+      return z ? { x: z.x + z.w * 0.4, y: z.y + z.h * 0.6 } : null;
+    };
+    // Hold the weave, push right: you turn, you do not walk.
+    if (S.phone) {
+      const r = await rectOf(WB);
+      await fDown(7, r.x + r.w / 2, r.y + r.h / 2);
+      await wait(120);
+      const st = await stickAt();
+      await fDown(8, st.x, st.y);
+      for (let i = 1; i <= 4; i++) await fMove(8, st.x + i * 12, st.y);
+    } else {
+      await page.keyboard.down('1');
+      await wait(120);
+      await page.keyboard.down('d');
+    }
+    await wait(1100);
+    const held = await ev((m0) => {
+      const g = window.__game;
+      const P = g.player;
+      return { st: g.magic.castingState(P), moved: Math.hypot(P.x - m0.x, P.y - m0.y), dir: P.dir };
+    }, m0);
+    await shot('27-charge');
+    check(held.st === 'charge' && held.moved < 1.5 && held.dir === 'right', `[${tag}] 27 holding a charge and pushing ${S.phone ? 'the stick' : 'D'}: you turn but do not walk`, JSON.stringify(held));
+    // Roll: the charge breaks.
+    const x0 = await ev(() => window.__game.player.x);
+    if (S.phone) {
+      const r = await rectOf('.tbtn-dodge');
+      await fDown(9, r.x + r.w / 2, r.y + r.h / 2);
+      await wait(70);
+      await fUp(9);
+    } else await page.keyboard.press('k');
+    await wait(650);
+    const rolled = await ev((x0) => ({ hold: !!window.__game.magic.holdOf(window.__game.player), dx: window.__game.player.x - x0 }), x0);
+    check(!rolled.hold && rolled.dx > 10, `[${tag}] 27 a roll breaks the charge, and you roll`, JSON.stringify(rolled));
+    if (S.phone) {
+      await fUp(8);
+      await fUp(7);
+    } else {
+      await page.keyboard.up('d');
+      await page.keyboard.up('1');
+    }
+    await wait(300);
+    // Tap-cast while running: a short plant, then you run on.
+    await ev(() => {
+      const g = window.__game;
+      g.magic.resetCooldowns?.();
+      g.magic.mana.cur = g.magic.mana.max;
+      window.__casts = 0;
+    });
+    if (S.phone) {
+      const st = await stickAt();
+      await fDown(8, st.x, st.y);
+      for (let i = 1; i <= 4; i++) await fMove(8, st.x + i * 12, st.y);
+    } else await page.keyboard.down('d');
+    await wait(600);
+    await ev(() => {
+      const P = window.__game.player;
+      window.__run = [];
+      window.__runOn = true;
+      const tick = (t) => {
+        window.__run.push({ t, x: P.x, plant: P.castPlantT || 0 });
+        if (window.__runOn) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    if (S.phone) {
+      const r = await rectOf(WB);
+      await fDown(7, r.x + r.w / 2, r.y + r.h / 2);
+      await wait(60);
+      await fUp(7);
+    } else {
+      await page.keyboard.down('1');
+      await wait(60);
+      await page.keyboard.up('1');
+    }
+    await wait(900);
+    const run = await ev(() => {
+      window.__runOn = false;
+      return { rows: window.__run, casts: window.__casts, speed: window.__game.player.speed };
+    });
+    if (S.phone) await fUp(8);
+    else await page.keyboard.up('d');
+    const pl = run.rows.filter((r) => r.plant > 0);
+    const tail = run.rows.filter((r) => r.t > (pl.at(-1)?.t ?? 0) + 250);
+    const v = tail.length > 1 ? (tail.at(-1).x - tail[0].x) / ((tail.at(-1).t - tail[0].t) / 1000) : 0;
+    check(run.casts >= 1 && pl.length > 2 && Math.abs(pl.at(-1).x - pl[0].x) < 0.6, `[${tag}] 27 a tap while running: a short plant`, `${pl.length} frames, ${pl.length ? (pl.at(-1).t - pl[0].t).toFixed(0) : 0} ms`);
+    check(v > run.speed * 0.85, `[${tag}] 27 ... then you run on`, `${v.toFixed(1)} of ${run.speed} px/s`);
+  });
+
+  await item(28, 'the dark path you can leave', async () => {
+    const gate = async () => {
+      const ok = await until(() => !!window.__game.villain?.tempter, null, 10000);
+      if (!ok) return false;
+      await ev(() => {
+        const g = window.__game;
+        const t = g.villain.tempter;
+        g.player.x = t.x - 18;
+        g.player.y = t.y;
+        g.player.vel.x = g.player.vel.y = 0;
+        g.player.facing = { x: 1, y: 0 };
+        g.player.dir = 'right';
+        g.ui.chat.target = '@near';
+        g.camera.snap?.();
+      });
+      await wait(300);
+      return true;
+    };
+    const night = async () => {
+      await ev(() => {
+        const g = window.__game;
+        g.ui.closeAll?.();
+        g.ui.chat.close?.();
+        g.clock.skipTo(12);
+      });
+      await wait(700);
+      await ev(() => window.__game.clock.skipTo(22));
+      await wait(400);
+      return gate();
+    };
+    const sayTo = async (text) => {
+      for (let i = 0; i < 2; i++) {
+        await say(text);
+        const ok = await until((t) => [...document.querySelectorAll('.chat-log .msg')].some((r) => r.textContent.includes(t)), text, 3000);
+        if (ok) break;
+      }
+      await wait(900);
+    };
+    const V = () => ev(() => {
+      const g = window.__game;
+      const s = g.villain.state;
+      const a = g.villain.currentAsk();
+      return { pact: g.villain.hasPact(), ended: s.ended, hostile: s.hostile, offer: s.returnOffer, ask: a ? `${a.kind}:${a.target}:${a.state}` : null, asks: s.asks.map((x) => `${x.kind}:${x.target}:${x.state}`), learned: !!g.unkindle?.learned, fighting: s.fighting, ending: s.ending, warned: s.warned.length };
+    });
+    await ev(() => {
+      const g = window.__game;
+      window.__away();
+      window.__lyraAway();
+      g.flags.bosses = { varek: { defeated: true, shards: {} } };
+      g.missions?.accept?.('spear_drill', { silent: true });
+      g.clock.skipTo(22);
+    });
+    check(await gate(), `[${tag}] 28 he waits at the gate`);
+    await talk();
+    await sayTo('Teach me after.');
+    let v = await V();
+    check(v.pact && v.learned, `[${tag}] 28 the pact: the Unkindling is taught`, JSON.stringify(v));
+    // One of his single asks (a named person): yes, and it is done.
+    await night();
+    await talk();
+    await sayTo('What do you want tonight?');
+    v = await V();
+    check(/^person:\w+:offered$/.test(v.ask || ''), `[${tag}] 28 his ask: one named person`, v.ask);
+    await sayTo("Yes, I'll do it.");
+    v = await V();
+    const who = (v.ask || '').split(':')[1];
+    await ev((id) => {
+      const g = window.__game;
+      g.murder.kill(g.entities.get(id), g.player);
+      const rec = g.murder.dead[id];
+      rec.known = 'witnessed';
+      if (rec.alarm) rec.alarm.raised = true;
+      rec.foundAt = g.clock.t;
+      rec.newsWaits = false;
+      g.missions?.update?.(1);
+    }, who);
+    await wait(500);
+    const sd = await ev((id) => {
+      const j = window.__game.missions.journal();
+      return { gone: j.gone.find((x) => x.id === id)?.lines?.map((l) => l.text) || [], notes: j.active.map((c) => c.note).filter(Boolean) };
+    }, who);
+    await ev(() => window.__game.ui.chat.close?.());
+    await ev(() => window.__game.ui.openMissions('active'));
+    await wait(500);
+    await ev(() => document.querySelector('.mj-gone')?.scrollIntoView?.({ block: 'center' }));
+    await shot('28-stays-done');
+    check(sd.gone.some((l) => /keeps|takes the chair|seat at the Moot|sees it done|ends here|errands/.test(l)), `[${tag}] 28 done: ${who}'s missions and roles close or pass on`, sd.gone.join(' | '));
+    await press('.panel-missions .panel-close');
+    // The next ask: no. The pact holds. Then "I'm done", in my own words.
+    await night();
+    await talk();
+    await sayTo('Anything else?');
+    await sayTo('No. Not that.');
+    v = await V();
+    check(v.pact && v.asks.some((x) => x.endsWith(':refused')), `[${tag}] 28 the next ask refused: the pact holds`, JSON.stringify(v.asks));
+    await sayTo("I'm done. The pact is over.");
+    v = await V();
+    check(v.ended && !v.pact && v.hostile && v.learned && v.warned === 0, `[${tag}] 28 "I'm done": the pact ends, he turns cold, you keep the Unkindling, nobody warned`, JSON.stringify(v));
+    await shot('28-done');
+    // Go back: a higher price.
+    await night();
+    await talk();
+    await sayTo('Take me back.');
+    v = await V();
+    check(v.offer?.toll?.length >= 1, `[${tag}] 28 going back: a higher price`, JSON.stringify(v.offer));
+    await sayTo('No. Not at that price.');
+    v = await V();
+    check(!v.offer && !v.pact, `[${tag}] 28 ... refused: no pact`, JSON.stringify(v));
+    await ev(() => window.__game.ui.chat.close?.());
+    // That later night, silent beside him: he stands against you; the hero ending is open.
+    await ev(() => {
+      const g = window.__game;
+      const t = g.villain.tempter;
+      g.player.x = t.x - 34;
+      g.player.y = t.y;
+    });
+    const stands = await until(() => !!window.__game.villain.state.fighting, null, 20000);
+    check(stands, `[${tag}] 28 later, he stands against you`);
+    await ev(() => {
+      const g = window.__game;
+      const t = g.villain.tempter;
+      t.hp = 1;
+      g.combat.damage(g.player, t, 999, { exact: true });
+    });
+    check(await until(() => window.__game.villain.state.ending === 'hero', null, 10000), `[${tag}] 28 the hero ending is still reachable`);
+    await wait(800);
+    await shot('28-hero');
   });
 
   // The same three rules on every screen.

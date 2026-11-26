@@ -342,3 +342,18 @@ test('saves round-trip: an ended pact, his enmity, an offered return, his asks, 
   assert.deepEqual(g3.villain.state.asks, []);
   assert.equal(g3.villain.hasPact(), true);
 });
+
+test('a price named and never answered is off the table the next night: he stands against you then', async () => {
+  const { g, V, t } = gate();
+  await says(g, t, 'Teach me after.');
+  await says(g, t, "I'm done.");
+  const t2 = nextNight(g);
+  await says(g, t2, 'Take me back.');
+  assert.ok(V.state.returnOffer, 'the price is named');
+  // Walk away without an answer; the next night, silent beside him.
+  const t3 = nextNight(g);
+  put(g.player, t3.x + 30, t3.y);
+  step(g, 8 + STAND_AFTER + 2);
+  assert.equal(V.state.returnOffer, null, 'no longer on the table');
+  assert.equal(V.state.fighting, true);
+});
