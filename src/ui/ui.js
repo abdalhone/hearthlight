@@ -784,12 +784,10 @@ export class UI {
     else this.openPeople();
   }
 
-  // Old names (scripts, the menu): the Mind is People now.
+  // The old name, kept for scripts (playtest, ui3_check): Lyra's Mind panel at a tab. In play
+  // nothing opens it any more (Tab, M, the card and the menu open People); it has no Soul or
+  // Data tab and edits nothing.
   openMind(tab = 'now') {
-    if (this.people) {
-      this.openPeople(['now', 'you', 'memories', 'knowledge', 'life', 'diary', 'goals'].includes(tab) ? 'lyra' : tab === 'people' ? 'you' : tab);
-      return;
-    }
     if (!this.inited) return;
     const top = this.top();
     if (top && top !== this.mind.panel && top.id !== 'pause') this.closeModal(top, true);

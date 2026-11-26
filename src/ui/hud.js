@@ -960,7 +960,14 @@ export class Hud {
     const clock = g.clock;
     if (clock) {
       setText(this.clock, clock.timeString());
-      setText(this.dayEl, `Day ${clock.day}`);
+      // The date in words when society's calendar gives it ("Day 9, early autumn, year 1").
+      let date = '';
+      try {
+        date = g.calendar?.dateLabel?.() || '';
+      } catch {
+        date = '';
+      }
+      setText(this.dayEl, date || `Day ${clock.day}`);
       const wt = clock.weather?.type || 'clear';
       setIcon(this.wIcon, weatherIconKey(wt, clock.isNight));
       setText(this.wLabel, weatherLabel(wt, clock.isNight));

@@ -300,3 +300,29 @@ test('a dead Lyra: nothing of hers runs, the role is released, her page is a mem
   assert.equal(page.dead, true);
   assert.match(page.memorial.line, /is dead/);
 });
+
+test('the catch-up watchdog: Lyra holding the role, far behind and out of sight, comes to you', () => {
+  const g = scene(12);
+  const L = g.companion;
+  assert.equal(g.party.holderId, 'lyra');
+  let blinked = 0;
+  L.behavior.steering.teleportNear = (t) => {
+    blinked++;
+    L.x = t.x + 9 * 16;
+    L.y = t.y;
+    return true;
+  };
+  L.x = g.player.x + 60 * 16;
+  L.y = g.player.y;
+  g.camera.x = g.player.x - g.camera.vw / 2;
+  g.camera.y = g.player.y - g.camera.vh / 2;
+  for (let i = 0; i < 6; i++) g.party.update(1);
+  assert.ok(blinked >= 1, 'she came');
+  assert.ok(Math.hypot(L.x - g.player.x, L.y - g.player.y) < 12 * 16);
+  // Waiting where you asked her to: she waits.
+  blinked = 0;
+  L.behavior.directive = { type: 'stay' };
+  L.x = g.player.x + 60 * 16;
+  for (let i = 0; i < 6; i++) g.party.update(1);
+  assert.equal(blinked, 0, 'a wait is a wait');
+});
