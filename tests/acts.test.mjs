@@ -175,3 +175,20 @@ test('Lyra: a hug at low trust is unwelcome (a deed in her ledger, she pulls awa
   assert.match(p.context, /# Ash does\nThey do \(an act, not words\): \*hugs Lyra\*/);
   back();
 });
+
+test('a child struck by hand: the assault rules apply (a crime if seen), and they are never downed, let alone killed', async () => {
+  const back = quiet();
+  const g = makeGame({ hour: 12 });
+  clearScene(g, ['pip', 'elda']);
+  const pip = g.entities.get('pip');
+  beside(g, pip);
+  put(g.entities.get('elda'), pip.x - 30, pip.y);
+  for (let i = 0; i < 12; i++) {
+    pip.invuln = 0;
+    await g.village.playerSays(pip, '*punches Pip*');
+    assert.ok(pip.hp >= 1 && !pip.downed && !pip.dead, `never downed (${pip.hp})`);
+  }
+  assert.equal(g.player.crime?.kind, 'assault', 'seen by Elda: an assault on record');
+  assert.equal(g.murder?.isDead?.('pip') || false, false);
+  back();
+});

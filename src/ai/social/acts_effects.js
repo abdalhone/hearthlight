@@ -2,8 +2,8 @@
 // consent and outcome before any mind words the reaction. A text act never kills and deals
 // at most 1–3 hp (never downing anyone, a child least of all). Intimate acts need
 // canBeIntimate (18 and over): below it the game refuses them ("You don't.") and no mind is
-// ever asked. An assault goes through combat (the crime pipeline: known only to those who
-// SEE it, murder.screenCrime; a blow that cannot land goes through combat.assault). What
+// ever asked. An assault goes through combat.assault (the crime pipeline: known only to
+// those who SEE it, murder.screenCrime; the hp taken, never the last of it). What
 // others make of it travels by sight (the village's witnessesNear with sight) and then by
 // meeting.
 //
@@ -185,13 +185,13 @@ export function decideActs(game, e, acts, { village = null } = {}) {
           t.flash = 1;
           safe(() => a?.recordDeed?.(act.verb === 'slap' || act.verb === 'punch' || act.verb === 'kick' ? 'slapped_lyra' : 'shoved_lyra'));
           safe(() => village?.addRumor?.('slapped_lyra', { victim: 'lyra', witnesses: seenBy(village, t.x, t.y, ['lyra']) }));
-        } else if (cap > 0 && hp > cap * 3 + 1 && game?.combat?.damage) {
-          safe(() => game.combat.damage(P, t, cap, { kind: 'slap', exact: true, crit: false, knockback: act.verb === 'shove' ? 70 : 25, noHitStop: true }));
-          if (t.hp < 1) t.hp = 1;
+        } else if (game?.combat?.assault) {
+          // Every assault by hand goes through combat's one wrapper: the crime (by sight),
+          // their own reaction to being hit (the damage event), never their last hp.
+          safe(() => game.combat.assault(P, t, 'assault', { amount: cap, knockback: act.verb === 'shove' ? 60 : 20 }));
         } else {
           if (cap > 0) t.hp = Math.max(1, hp - cap);
           t.flash = 1;
-          safe(() => game?.combat?.assault?.(P, t, 'assault'));
         }
         if (!lyra) safe(() => t.adjustOpinion?.(-8, 'the player struck them'));
         local = { lines: [pick(LINES.assault, n)], mood: 'angry', delta: 0, intent: 'act', action: 'glare' };

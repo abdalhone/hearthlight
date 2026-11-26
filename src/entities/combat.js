@@ -643,23 +643,36 @@ export class Combat {
     if (escalated && this.isPlayer(actor)) this._toast(crimeLine(victim, kind), 'warn', { key: 'crime', title: 'Crime' });
   }
 
-  // An assault with no wound to show (round 14b T-3, DESIGN §33.3): a slap, a shove or a
-  // grab typed between asterisks, when the blow itself cannot land (they are already at
-  // their last hp). The crime is what a blow would be: known only to those who see it
-  // (murder.screenCrime, the sight rule); the victim's own cry and their onCrime follow the
-  // 'crime' event, heard by the hearing rule. -> true (seen), 'unseen', or false.
-  assault(attacker, target, kind = 'assault') {
-    if (!attacker || !target || target.removed || attacker === target) return false;
+  // An assault by hand, typed between asterisks (round 14b T-3, DESIGN §33.3): a slap, a
+  // shove, a punch. `amount` (1–3) is taken from their hp but never the last of it (a text
+  // act never downs anyone, a child least of all); the 'damage' event tells them they were
+  // hit (their own onHurt: a cry, a flinch, a fight or a flight), and the crime is what a
+  // blow would be: known only to those who see it (murder.screenCrime, the sight rule).
+  // -> true (seen), 'unseen', or false (not a lawful person: no crime).
+  assault(attacker, target, kind = 'assault', { amount = 0, knockback = 0 } = {}) {
+    if (!attacker || !target || target.removed || attacker === target || target.dead) return false;
+    const g = this.game;
+    const n = Math.max(0, Math.min(Math.round(Number(amount) || 0), Math.max(0, (target.hp || 0) - 1)));
+    if (n > 0) target.hp -= n;
+    target.flash = 1;
+    target.lastAttacker = attacker;
+    target.lastAttackedAt = g.clock?.t ?? this.t;
+    if (knockback > 0 && target.knock) {
+      const dx = target.x - attacker.x;
+      const dy = target.y - attacker.y;
+      const l = Math.hypot(dx, dy) || 1;
+      target.knock.x += (dx / l) * knockback;
+      target.knock.y += (dy / l) * knockback;
+    }
     if (!this.isPlayer(attacker) || !this.isLawful(target)) return false;
     const k = kind === 'knockout' ? 'knockout' : 'assault';
     this._noteAggression(target, attacker);
-    target.lastAttacker = attacker;
-    target.lastAttackedAt = this.game.clock?.t ?? this.t;
-    const g = this.game;
-    if (g.murder?.screenCrime && !g.murder.screenCrime(attacker, target, k)) return 'unseen';
-    this._recordCrime(attacker, target, k);
-    this._reportCrime(attacker, target, k);
-    return true;
+    let crime = k;
+    if (g.murder?.screenCrime && !g.murder.screenCrime(attacker, target, k)) crime = null;
+    if (crime) this._recordCrime(attacker, target, crime);
+    g.bus?.emit('damage', { source: attacker, target, amount: n, kind: 'slap', crit: false, byHand: true });
+    if (crime) this._reportCrime(attacker, target, crime);
+    return crime ? true : 'unseen';
   }
 
   // Wanted for a crime someone else saw done and told (Lyra, calling the watch on the one
