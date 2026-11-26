@@ -521,7 +521,9 @@ export class Murder {
   provoked(v, killer) {
     if (!v || !killer) return false;
     const t = this.now();
-    if (v.fightTarget === killer && (v.mode === 'fight' || v.mode === 'confront')) return true;
+    if (v.fightTarget === killer && v.mode === 'fight') return true;
+    // Answering a cry by squaring up to the one who did it (npc help role 'confront').
+    if (v.mode === 'help' && v.help?.role === 'confront' && v.help.attacker === killer) return true;
     const la = killer.lastAttacker;
     const src = la && la.type === 'projectile' ? la.owner : la;
     if (src === v && t - (killer.lastAttackedAt ?? -Infinity) <= PROVOKED) return true;

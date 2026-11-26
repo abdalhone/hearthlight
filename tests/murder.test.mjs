@@ -652,6 +652,14 @@ test('round 14b: a killing records who, why and whether they fought first; villa
   g.player.lastAttackedAt = g.clock.t;
   const r2 = g.murder.kill(garrick, g.player);
   assert.equal(r2.provoked, true, 'Garrick hit the stranger first');
+  // Squaring up to the stranger, answering a cry (the help role 'confront'), is provoking too.
+  const elda = g.entities.get('elda');
+  assert.equal(g.murder.provoked(elda, g.player), false);
+  elda.mode = 'help';
+  elda.help = { role: 'confront', attacker: g.player };
+  assert.equal(g.murder.provoked(elda, g.player), true);
+  elda.help = null;
+  elda.mode = 'routine';
   // An old save's record (no cause, no by, no provoked) reads as a killing, the rest unknown.
   const data = JSON.parse(JSON.stringify(g.murder.serialize()));
   for (const r of Object.values(data.dead)) {
