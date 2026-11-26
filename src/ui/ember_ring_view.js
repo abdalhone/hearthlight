@@ -162,12 +162,16 @@ export class EmberRingView {
     const quest = box('.hud-center .quest-line');
     const left = box('.hud-cards');
     const right = box('.hud-right');
+    // (round 14b polish: the arrow is drawn at the Interface size too, src/styles/polish.css,
+    // and turned it reaches about 14 px × the size from its point: the gap grows with it)
+    const z = Math.max(1, Number(this.game?.ui?._uiz) || 1);
+    const gap = 14 + 18 * (z - 1);
     this._hud = {
-      top: quest ? quest.bottom + 14 : 0,
+      top: quest ? quest.bottom + gap : 0,
       leftR: left ? left.right + 12 : -1,
-      leftB: left ? left.bottom + 14 : 0,
+      leftB: left ? left.bottom + gap : 0,
       rightL: right ? right.left - 12 : Infinity,
-      rightB: right ? right.bottom + 14 : 0,
+      rightB: right ? right.bottom + gap : 0,
     };
     return this._hud;
   }

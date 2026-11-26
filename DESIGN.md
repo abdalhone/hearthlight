@@ -2908,8 +2908,10 @@ Workstream polish takes the small things the checks left. As built:
   drawn at the Interface size (`ui._uiz`) as far as it fits between the body and the
   screen's foot (`place()`, four times a second); the ring's canvas follows the pixels it
   is shown at.
-- **The ember-ring's marks** follow Interface size (CSS only: the arrow and its words by
-  `zoom`, the tag by its sizes; `ember_ring_view.js` is unchanged).
+- **The ember-ring's marks** follow Interface size (CSS: the arrow and its words by `zoom`,
+  the tag by its sizes). Turned toward the ring, the grown arrow reaches about 14 px × the
+  size from its point, so `ember_ring_view.js hudClear()` keeps a gap from the mission line
+  and the corner cards of `14 + 18 × (size − 1)` px (14 at size 1, as before).
 - **The Last Stand's fire** (`src/render/death_fx.js`): each edge is one strip (scorched rim,
   glow, pixel flames in four frames) painted once per window size; a frame is four copies.
 - **Snow under a warm light** (`src/render/lighting.js snowLight`): where `weather.localSnow`

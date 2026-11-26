@@ -273,6 +273,28 @@ async function run(S) {
     check(!!tip && Math.max(tip.w, tip.h) >= 20 * z2 * 0.9, `${tag} B: the ember arrow follows Interface size (${tip && Math.round(Math.max(tip.w, tip.h))} px)`);
     check(fs >= 11 * z2 * 0.9, `${tag} B: and its words (${Math.round(fs)} px type)`);
     check(inside(tip) && inside(label), `${tag} B: the arrow and its words are on screen`);
+    // The ring far to the north, a little either side: the grown arrow sits under the mission
+    // line (and under a corner card when it is off to a side), never on it.
+    const hudHits = [];
+    for (const [ox, oy, name] of [[0, -2400, 'north'], [-500, -2400, 'north-west'], [700, -2400, 'north-east'], [-2400, -1700, 'up-left']]) {
+      await ev(({ ox, oy }) => {
+        const g = window.__game;
+        const P = g.player;
+        g.survival.putOutRing?.('test');
+        g.survival.placeRing({ x: P.x + ox, y: P.y + oy, coins: 57, day: 1, where: 'up the hill', place: 'the hill' });
+        g.ui?.toasts?.clear?.();
+        document.querySelectorAll('.toast').forEach((t) => t.remove());
+      }, { ox, oy });
+      await wait(900);
+      const t = await rectOf('.er-edge-tip');
+      const l = await rectOf('.er-edge-label');
+      const boxes = await Promise.all(['.hud-center .quest-line', '.hud-cards', '.hud-right'].map((q) => rectOf(q)));
+      const hit = boxes.findIndex((b) => overlap(b, t) || overlap(b, l));
+      if (hit >= 0) hudHits.push(`${name}: ${['mission line', 'cards', 'right corner'][hit]}`);
+      if (name === 'north') await shot('B3-ember-arrow-north-large');
+    }
+    M.arrowHud = hudHits;
+    check(hudHits.length === 0, `${tag} B: the grown arrow and its words keep clear of the mission line and the cards (${hudHits.join('; ') || 'clear'})`);
     await ev(() => {
       const g = window.__game;
       g.survival.putOutRing?.('test');

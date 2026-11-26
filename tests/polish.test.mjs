@@ -6,6 +6,8 @@
 //   - the Spellbook's Leech preview draws life home to the caster (src/ui/weave_sandbox.js);
 //   - down on an upright phone the countdown sits under the top cards, the toasts under it;
 //     a new game or a load never shows the last one's countdown (src/ui/death_view.js);
+//   - the ember-ring's arrow, drawn at the Interface size, keeps a gap from the mission line
+//     and the corner cards that grows with it (src/ui/ember_ring_view.js hudClear);
 //   - the Last Stand's minute never makes a child killable (D1: children stay unkillable).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,6 +23,7 @@ import { compileWeave } from '../src/magic/compile.js';
 import { PriceRuntime } from '../src/magic/prices.js';
 import { makeGame as makeMurderWorld, step as worldStep, put, px } from './murder_world.mjs';
 import { DeathView } from '../src/ui/death_view.js';
+import { EmberRingView } from '../src/ui/ember_ring_view.js';
 
 // ------------------------------------------------------------------ mending
 
@@ -318,4 +321,32 @@ test('polish: a new game or a load never starts with the last one\'s countdown o
   assert.equal(dv.visible, false);
   assert.equal(dv.fallenEl.hidden, true);
   assert.ok(!classes.has('sv-down'), 'the root no longer says you are down');
+});
+
+test('polish: the ember arrow\'s gap from the mission line and the cards grows with the Interface size (it is drawn at that size)', () => {
+  const had = 'document' in globalThis;
+  const prev = globalThis.document;
+  const box = (r) => ({ hidden: false, offsetParent: {}, getBoundingClientRect: () => ({ width: 100, height: 40, ...r }) });
+  const els = {
+    '.hud-center .quest-line': box({ top: 14, bottom: 97, left: 450, right: 830 }),
+    '.hud-cards': box({ top: 12, bottom: 355, left: 12, right: 405 }),
+    '.hud-right': box({ top: 12, bottom: 185, left: 990, right: 1270 }),
+  };
+  globalThis.document = { querySelector: (sel) => els[sel] || null };
+  try {
+    const at = (uiz) => new EmberRingView({ bus: null, ui: { _uiz: uiz } }).hudClear();
+    const n = at(1);
+    assert.equal(n.top, 97 + 14, 'at size 1 as it always was');
+    assert.equal(n.leftB, 355 + 14);
+    assert.equal(n.rightB, 185 + 14);
+    const big = at(1.45);
+    // Turned toward the ring, the grown arrow reaches 10·√2 × 1.45 ≈ 20.5 px from its point.
+    assert.ok(big.top - 97 >= 10 * Math.SQRT2 * 1.45, `gap ${big.top - 97}`);
+    assert.ok(big.leftB - 355 >= 10 * Math.SQRT2 * 1.45);
+    assert.ok(at(1.2).top - 97 >= 10 * Math.SQRT2 * 1.2);
+    assert.equal(big.leftR, n.leftR, 'the side margins are unchanged');
+  } finally {
+    if (had) globalThis.document = prev;
+    else delete globalThis.document;
+  }
 });
