@@ -2193,6 +2193,9 @@ Hearing is a sense like sight, with one rule, and it tells **what and where, nev
   victim telling who did it (`TELL_REACH` 44 px, clear only), the village's own record of a cry
   (`village` `call_for_help`: who did it goes to those who see it and to whoever the hurt one
   can tell, never to all within 240 px), Lyra overhearing the player (110 px, clear only),
+  the bystanders of the player's words in the village's news (a threat, an insult, a kind
+  word: 90 px, clear only; Lyra saying she is leaving: 200 px, clear only; `witnessesNear(…,
+  { words: true })`) — while a rescue or a helping hand is news only to those who saw it,
   and the player's own shout when fallen (`survival.alert`; the watch hunting a wanted stranger
   and the sight sweep keep their own reach). Lyra's cry at a crime (`barks` `crime_warning`)
   and what her perception makes of it take only a blow she saw (`sight.sawTheBlow`): out in

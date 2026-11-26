@@ -853,11 +853,13 @@ export class Village {
 
   // Who is near enough: to hear (a cry, a word), or with `sight`, who actually SAW the
   // point (DESIGN §29.2: the one rule for eyes — walls, light and distance).
-  witnessesNear(x, y, r = SIGHT, { sight = false } = {}) {
+  // With `words`, who HEARD the words said there, clearly (src/ai/hearing.js: no wall between).
+  witnessesNear(x, y, r = SIGHT, { sight = false, words = false } = {}) {
     const out = [];
     for (const e of this.villagers()) {
       if (!alive(e) || Math.hypot(e.x - x, e.y - y) > r || e.state === 'sleep') continue;
       if (sight && !seesPoint(this.game, e, x, y)) continue;
+      if (words && safe(() => hears(this.game, e, x, y, r), 'clear') !== 'clear') continue;
       out.push(e.id);
     }
     return out;
@@ -1058,7 +1060,7 @@ export class Village {
           if (hunted || fled) {
             // Burned off them with a weave, the story grows in the telling (missions/rumors.js).
             const woven = !!g?.missions?.wovenKill?.(beast) && !!RUMOR_KINDS.weave_rescue;
-            this.addRumor(woven ? 'weave_rescue' : 'rescued', { victim: e.id, beast: String(beast.species).replace(/_/g, ' '), witnesses: [e.id, ...this.witnessesNear(e.x, e.y)] });
+            this.addRumor(woven ? 'weave_rescue' : 'rescued', { victim: e.id, beast: String(beast.species).replace(/_/g, ' '), witnesses: [e.id, ...this.witnessesNear(e.x, e.y, SIGHT, { sight: true })] });
             this.amend(e.id, 'help');
             return;
           }
@@ -1068,7 +1070,7 @@ export class Village {
       case 'revived': {
         const e = p.entity;
         if (!e || !isPlayer(p.by) || !VILLAGERS.includes(e.id)) return;
-        this.addRumor('helped_up', { victim: e.id, witnesses: [e.id, ...this.witnessesNear(e.x, e.y)] });
+        this.addRumor('helped_up', { victim: e.id, witnesses: [e.id, ...this.witnessesNear(e.x, e.y, SIGHT, { sight: true })] });
         this.amend(e.id, 'help');
         return;
       }
@@ -1081,7 +1083,7 @@ export class Village {
       }
       case 'companionship_changed': {
         const lyra = g?.companion;
-        const near = lyra ? this.witnessesNear(lyra.x, lyra.y, 200) : [];
+        const near = lyra ? this.witnessesNear(lyra.x, lyra.y, 200, { words: true }) : [];
         const was = p.previous;
         // 'apart' is her own plans for the day, nobody's news; leaving is.
         if (p.state === 'gone') this.addRumor('lyra_gone', { witnesses: ['lyra', ...near], source: 'lyra', about: 'lyra' });
@@ -1344,7 +1346,7 @@ export class Village {
     const id = e.id;
     if (reply.delta) e.adjustOpinion?.(round1(reply.delta), `the player said: ${said.slice(0, 40)}`);
     if (local.intent === 'apology') this.amend(id, 'apology');
-    if (local.intent === 'threat') this.addRumor('threat', { victim: id, witnesses: [id, ...this.witnessesNear(e.x, e.y, 90)] });
+    if (local.intent === 'threat') this.addRumor('threat', { victim: id, witnesses: [id, ...this.witnessesNear(e.x, e.y, 90, { words: true })] });
     // Something said that they will repeat (Claude's judgement, only when it moved them).
     if (reply.rumor && Math.abs(reply.delta || 0) >= 3) {
       const r = this.rumors.add({ kind: 'said', text: reply.rumor, valence: Math.sign(reply.delta) * 0.3, severity: 0.3, source: id, heardBy: [id], t: this.now(), day: this.day() });

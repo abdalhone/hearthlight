@@ -795,7 +795,8 @@ export function spreadWord(v, e, local) {
   const tag = `${id}:${key}`;
   if (seen[tag] === day) return null;
   seen[tag] = day;
-  const near = (v.witnessesNear?.(e.x, e.y, 90) || []).filter((w) => w !== id);
+  // Those who heard the words themselves: close, and no wall between (src/ai/hearing.js).
+  const near = (v.witnessesNear?.(e.x, e.y, 90, { words: true }) || []).filter((w) => w !== id);
   if (def.kind) return v.addRumor?.(def.kind, { witnesses: [id, ...near] }) || null;
   const r = v.rumors.add({ kind: `said_${key}`, text: def.text, you: def.you, valence: def.valence, severity: def.severity, source: id, victim: id, heardBy: [id, ...near], t: v.now?.() ?? 0, day });
   if (!r) return null;
