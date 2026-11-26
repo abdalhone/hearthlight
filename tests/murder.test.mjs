@@ -664,9 +664,47 @@ test('the lake gives back what it takes: days later, on the shore, found in the 
   step(g, 2, 1 / 10);
   assert.ok(rec.foundAt != null, 'found in the morning');
   assert.equal(rec.foundBy, 'corran', 'Corran walks his shore');
-  assert.ok(g.murder.cases.bram, 'and the watch opens a case');
+  // Round 14b: the watch opens a case when the news reaches them (by meeting), or with the
+  // bell within the hour; not the moment Corran finds him across the lake.
+  assert.equal(g.murder.cases.bram, undefined, 'the watch has not heard yet');
+  assert.equal(g.murder.knownDead('bram'), false, 'nor has the village');
+  assert.equal(g.murder.knowsDead('bram', 'corran'), true, 'Corran knows');
+  const c = g.villageLife.cases.get('bram');
+  const r = c?.deadRumor ? g.village.rumors.get(c.deadRumor) : null;
+  assert.ok(r, "the news of the body ('found_dead') goes round by meeting");
+  g.village.rumors.hear(r, 'rowan', 'corran', g.rng);
+  g.murder.tickFoundNews();
+  assert.ok(g.murder.cases.bram, 'and the watch opens a case once Rowan hears it');
   assert.ok(g.villageLife.cases.get('bram')?.status === 'dead');
   void corran;
+});
+
+test('round 14b: a body found by a villager is known to the village as the news reaches them, or within the hour', () => {
+  const g = makeGame({ hour: 9 });
+  quiet(g, ['tobias', 'corran']);
+  const tobias = g.entities.get('tobias');
+  put(tobias, px(WOODS.tx + 1), px(WOODS.ty));
+  put(g.player, px(WOODS.tx), px(WOODS.ty));
+  assert.ok(downBy(g, tobias));
+  const rec = g.murder.kill(tobias, g.player);
+  put(g.player, px(96), px(79));
+  g.murder.found('tobias', 'corran', 'whisperwood');
+  // Tansy (his daughter) has not heard: no mourning yet; the finder knows.
+  assert.equal(g.villageLife.mourning.tansy?.about === 'tobias', false, 'Tansy does not know yet');
+  assert.equal(g.murder.cases.tobias, undefined, 'the watch does not know yet');
+  assert.equal(g.murder.funerals.some((f) => f.about === 'tobias'), false, 'no funeral planned yet');
+  // The news reaches Tansy face to face: she mourns a month.
+  const c = g.villageLife.cases.get('tobias');
+  const r = g.village.rumors.get(c.deadRumor);
+  g.village.rumors.hear(r, 'tansy', 'corran', g.rng);
+  g.murder.tickFoundNews();
+  assert.ok(g.villageLife.mourning.tansy?.about === 'tobias' && g.villageLife.mourning.tansy.until >= g.clock.day + 29, 'she mourns as she hears');
+  // The bell within the hour: everyone, the case, the funeral.
+  g.clock.t = rec.t + 37.5 * 1.1;
+  g.murder.slowTick();
+  assert.ok(g.murder.knownDead('tobias'));
+  assert.ok(g.murder.cases.tobias, 'the case opens');
+  assert.ok(g.murder.funerals.some((f) => f.about === 'tobias'), 'the funeral is planned');
 });
 
 test('wanted for murder and beaten down by the watch: the Moot sits once the stranger is up', () => {

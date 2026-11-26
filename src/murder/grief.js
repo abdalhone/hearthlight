@@ -84,6 +84,25 @@ export function onFound(m, rec) {
   applyHeirs(m);
 }
 
+// Mourning for those who know (round 14b leftover: the news of a body travels by meeting):
+// family a month, close friends a fortnight, friends a few days, each from when they hear.
+export function mournAs(m, rec, knowers) {
+  const life = m.life;
+  if (!life) return;
+  const day = m.day();
+  rec.mournedBy = rec.mournedBy || [];
+  for (const id of knowers || []) {
+    if (!VILLAGERS.includes(id) || id === rec.id || rec.mournedBy.includes(id) || !alive(m, id)) continue;
+    rec.mournedBy.push(id);
+    const c = care(m, id, rec.id);
+    const fam = kin(id, rec.id);
+    const days = fam ? 30 : c >= 0.6 ? 14 : c >= 0.35 ? 4 : 0;
+    if (!days) continue;
+    const cur = life.mourning[id];
+    if (!cur || cur.until < day + days || cur.about === rec.id) life.mourning[id] = { about: rec.id, until: day + days, kind: 'grief', kin: fam || undefined };
+  }
+}
+
 export function everyoneKnows(m, rec) {
   const life = m.life;
   const all = VILLAGERS.filter((id) => id !== rec.id);

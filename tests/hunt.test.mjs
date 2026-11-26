@@ -205,3 +205,58 @@ test('a carer who only heard stops short (at the door) until she sees who; she n
   }
   assert.ok(closest > 84, `she kept her distance while she did not know who (${Math.round(closest)} px)`);
 });
+
+test('news by meeting: a beating and a theft are known only to those who saw them until they meet; the unease of a heard blow is saved for the day', () => {
+  const g = makeGame({ hour: 12 });
+  quiet(g, ['garrick', 'elda', 'rowan', 'sabeth']);
+  const FIELD = field(g);
+  const garrick = g.entities.get('garrick');
+  const elda = g.entities.get('elda');
+  const rowan = g.entities.get('rowan');
+  for (const e of [garrick, elda, rowan]) e.think = () => {};
+  put(g.player, px(FIELD.tx), px(FIELD.ty));
+  put(garrick, px(FIELD.tx + 1), px(FIELD.ty));
+  put(elda, px(FIELD.tx + 4), px(FIELD.ty));
+  put(rowan, px(141), px(101));
+  g.player.faceToward(garrick.x, garrick.y);
+  g.combat.damage(g.player, garrick, 6, { kind: 'melee' });
+  const r = g.village.rumors.list.find((x) => x.kind === 'attacked_villager' && x.victim === 'garrick');
+  assert.ok(r && r.heardBy.includes('elda'), 'Elda saw it');
+  assert.ok(!r.heardBy.includes('rowan'), 'Rowan, far off, did not');
+  assert.equal(rowan.knowsWanted(g.player), false, 'he does not know');
+  g.village.rumors.hear(r, 'rowan', 'elda', g.rng);
+  assert.equal(rowan.knowsWanted(g.player), true, 'told face to face: now he does');
+  // A theft: only its witnesses.
+  g.bus.emit('crime', { actor: g.player, kind: 'theft', owner: 'tobias', witnesses: ['elda'] });
+  const st = g.village.rumors.list.find((x) => x.kind === 'stole');
+  assert.ok(st && st.heardBy.includes('elda') && !st.heardBy.includes('rowan'));
+  // Unease heard through a wall is kept across a save, for the day.
+  const sabeth = g.entities.get('sabeth');
+  sabeth.unease(garrick.x, garrick.y);
+  const d = sabeth.serialize();
+  sabeth.uneasy = null;
+  sabeth.deserialize(d);
+  assert.ok(sabeth.uneasy && sabeth.uneasy.day === g.clock.day, 'uneasy, still, after a load');
+});
+
+test('instant telling no more: a victim who is still standing walks to the watch and tells whoever they meet', () => {
+  const g = makeGame({ hour: 23.5 });
+  quiet(g, ['garrick', 'rowan']);
+  const garrick = g.entities.get('garrick');
+  const rowan = g.entities.get('rowan');
+  garrick.think = garrick.constructor.prototype.think.bind(garrick);
+  const FIELD = { tx: 62, ty: 14 };
+  put(g.player, px(FIELD.tx), px(FIELD.ty));
+  put(garrick, px(FIELD.tx + 1), px(FIELD.ty));
+  rowan.think = () => {};
+  g.player.faceToward(garrick.x, garrick.y);
+  g.combat.damage(g.player, garrick, 4, { kind: 'melee' });
+  assert.ok(g.murder.isSecret('garrick'), 'nobody saw it');
+  g.murder.tick();
+  assert.ok(g.murder.isSecret('garrick'), 'not told at once');
+  assert.equal(g.combat.hasCrime(g.player), false, 'the watch has nothing yet');
+  // He reaches Rowan: told.
+  put(garrick, rowan.x + 20, rowan.y);
+  g.murder.tick();
+  assert.equal(g.murder.isSecret('garrick'), false, 'told, face to face');
+});

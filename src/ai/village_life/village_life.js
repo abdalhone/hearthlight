@@ -2249,7 +2249,8 @@ export class VillageLife {
     if (r) c.deadRumor = r.id;
     for (const p of this.problems) if (p.status === 'open' && p.about === id) this.closeProblem(p, 'given_up', `${name} is dead`);
     this.standDown(c);
-    for (const e of this.villagers()) if (e.id !== id && this.care(e.id, id) >= 0.6) this.mourning[e.id] = { about: id, until: this.dayN() + 7, kind: 'grief' };
+    // A killing's body is murder.js's to tell (round 14b: the news by meeting, mournAs).
+    if (!this.game?.murder?.dead?.[id]) for (const e of this.villagers()) if (e.id !== id && this.care(e.id, id) >= 0.6) this.mourning[e.id] = { about: id, until: this.dayN() + 7, kind: 'grief' };
     this.toast(`${name} has been found dead.`, 'warn', `dead:${id}`);
     this.emit('body_found', { id, finder, place, case: c });
     return c;

@@ -195,11 +195,15 @@ export function sawCarry(m, rec, clarity) {
     grief(m, rec, { quiet: true });
     goneFor(m, rec, `Carried ${V}'s body away to hide it.`);
     safe(() => autonomy(m)?.callForHelp?.(m.game.player, { reason: 'attacked', severity: 3, run: true }));
-    // She tells the watch what she saw.
+    // She will tell the watch what she saw: when she reaches one of them, or when her news
+    // does, face to face (round 14b leftover: never at once). murder.tickNews raises it.
     rec.clues.push({ kind: 'carry', by: 'lyra_eyes', t: Math.round(m.now()), place: m.placeOf(m.game.player), clarity: 'clear' });
     rec.known = 'witnessed';
-    m.setWanted(rec.id, 'murder');
-    m.found(rec.id, 'lyra', m.placeOf(m.game.player), { witnessed: true });
+    rec.alarm = rec.alarm || { raised: false, by: null, t: null };
+    rec.lyraSawCarry = true;
+    rec.seen = [...(rec.seen || []).filter((s) => s.id !== 'lyra'), { id: 'lyra', clarity: 'clear', d: 0 }];
+    const r = safe(() => m.village?.addRumor?.('murder', { victim: rec.id, witnesses: ['lyra'], saw: ['lyra'], source: 'lyra' }), null);
+    rec.rumor = rec.rumor || r?.id || null;
     return;
   }
   (state(m, rec.id).own ||= []).push({ kind: 'carry', t: Math.round(m.now()), place: m.placeOf(m.game.player) });

@@ -2586,6 +2586,11 @@ export class NPC extends Actor {
       talkFamToday: this.talkFamToday,
       roomDay: this.roomDay,
       downedFor: this.downedFor,
+      // Heard a crime today, saw nothing (round 14b leftover: kept for the day; talk's
+      // prompts read it): { day, place, t }.
+      uneasy: this.uneasy && this.uneasy.day === (this.game.clock?.day ?? 1) ? { ...this.uneasy } : undefined,
+      missingGoods: this.missingGoods && this.missingGoods.day === (this.game.clock?.day ?? 1) ? { ...this.missingGoods } : undefined,
+      hideUntil: Number.isFinite(this.hideUntil) && this.hideUntil > (this.game.clock?.t ?? 0) ? this.hideUntil : undefined,
     };
   }
 
@@ -2595,9 +2600,13 @@ export class NPC extends Actor {
     if (Number.isFinite(d.opinion)) this.opinionOfPlayer = clamp(d.opinion, 0, 100);
     if (Number.isFinite(d.familiarity)) this.familiarity = clamp(d.familiarity, 0, 100);
     if (Array.isArray(d.told)) this.told = new Set(d.told.filter((x) => typeof x === 'string'));
-    for (const k of ['coldDay', 'shakenDay', 'wrongedDay', 'giftDay', 'giftsToday', 'talkDay', 'talkFamToday', 'roomDay', 'downedFor']) {
+    for (const k of ['coldDay', 'shakenDay', 'wrongedDay', 'giftDay', 'giftsToday', 'talkDay', 'talkFamToday', 'roomDay', 'downedFor', 'hideUntil']) {
       if (Number.isFinite(d[k])) this[k] = d[k];
     }
+    // The day's unease and goods found missing, only for the day they were had.
+    const today = this.game.clock?.day ?? 1;
+    if (d.uneasy && Number.isFinite(d.uneasy.day) && d.uneasy.day === today) this.uneasy = { day: d.uneasy.day, place: typeof d.uneasy.place === 'string' ? d.uneasy.place : null, t: Number(d.uneasy.t) || 0 };
+    if (d.missingGoods && d.missingGoods.day === today) this.missingGoods = { day: d.missingGoods.day, object: String(d.missingGoods.object || '') };
     if (this.downed) {
       this.mode = 'downed';
       this.setState('downed');
