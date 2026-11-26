@@ -20,7 +20,7 @@ import { STORY } from '../lore/story.js';
 const MAX_MESSAGES = 140;
 const SCAN_EVERY = 0.25; // seconds between earshot checks while open
 const DUP_WINDOW_MS = 6000; // the same line from two paths within this window is one message
-const KINDS = new Set(['answer', 'refusal', 'problem', 'initiative', 'state', 'order', 'bark']);
+const KINDS = new Set(['answer', 'refusal', 'problem', 'initiative', 'state', 'order', 'bark', 'act']);
 // Quick lines for saying something aloud to everyone near (round 14b T-2).
 const ALOUD_CHIPS = ['Hello, everyone!', 'Good morning, Hearthvale!', 'Has anyone seen Maren?', 'Can anyone help me?', 'HELP!'];
 const HIM = new Set(['hobb', 'bram', 'pip', 'rowan', 'tobias', 'garrick', 'alder', 'corran', 'wys']);
@@ -490,6 +490,7 @@ export class Chat {
     if (!g.brain?.handlePlayerMessage) return;
     // Echo now so the line appears instantly even if the brain is slow to answer.
     this.addMessage({ from: 'player', text: t });
+    this.actBubble(t);
     this.lastPlayerEcho = { text: t, at: Date.now() };
     this.lastSentAt = Date.now();
     g.audio?.play('ui_click');
@@ -1101,6 +1102,18 @@ export class Chat {
     return s;
   }
 
+  // An act between asterisks shows over the player's head, in italics (round 14b T-3).
+  actBubble(text) {
+    const m = String(text || '').match(/\*([^*\n]{1,120})\*/);
+    if (!m) return false;
+    try {
+      this.game.bubbles?.say?.(this.game.player, `*${m[1].trim()}*`, { kind: 'act' });
+    } catch {
+      /* cosmetic */
+    }
+    return true;
+  }
+
   // The player says something to a villager.
   sendToVillager(id, text) {
     const t = cleanLine(text, 300);
@@ -1120,6 +1133,7 @@ export class Chat {
     // The rest of their last answer is said before the player's next line, never after.
     this.flushUnsaid(id);
     this.pushVillager(id, { from: 'player', text: t });
+    this.actBubble(t);
     this.talkedAt = Date.now();
     g.audio?.play('ui_click');
     // Still answering the last line: this one waits its turn.
@@ -1143,7 +1157,9 @@ export class Chat {
     this.flushUnsaid(NEAR);
     this.pushVillager(NEAR, { from: 'player', text: t, aloud: true });
     g.audio?.play('ui_click');
-    try {
+    if (this.actBubble(t)) {
+      /* the act over their head; the words, if any, follow in the thread */
+    } else try {
       const shout = /!\s*$/.test(t) || (t.replace(/[^A-Za-z]/g, '').length >= 3 && t.replace(/[^A-Za-z]/g, '') === t.replace(/[^A-Za-z]/g, '').toUpperCase());
       g.bubbles?.say?.(g.player, t, { kind: shout ? 'shout' : 'say' });
     } catch {
@@ -1173,6 +1189,11 @@ export class Chat {
   aloudReplied(res, said) {
     const g = this.game;
     if (!res) return;
+    if (res.refused) {
+      this.pushVillager(NEAR, { from: 'system', text: res.refused, act: true });
+      return;
+    }
+    if (res.acted) this.pushVillager(NEAR, { from: 'system', text: res.acted, act: true });
     const heardClear = (res.hearers || []).filter((h) => h.how === 'clear');
     if (!res.hearers?.length) {
       this.pushVillager(NEAR, { from: 'system', text: res.shout ? 'Your shout carries, and nobody answers. Nobody is near enough to hear it.' : 'Nobody is near enough to hear you.', act: true });
@@ -1311,6 +1332,8 @@ export class Chat {
     // you now (the author: "Elda has gone on her way… and she STILL replies").
     if ((this.target === id && this.away) || !canHear(g, e, EARSHOT_LOSE)) return;
     if (reply.mood) this.moods.set(id, String(reply.mood).toLowerCase());
+    // What the player's hands did, as the game decided it (*bows*, *slaps Bram*).
+    if (reply.acted) this.pushVillager(id, { from: 'system', text: reply.acted, act: true });
     if (!reply.ok || reply.silent || reply.narrationOnly) {
       // No words came: what the player sees them do instead.
       this.pushVillager(id, { from: 'system', text: reply.narration || reply.lines[0] });

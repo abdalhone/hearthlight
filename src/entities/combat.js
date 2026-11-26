@@ -643,6 +643,25 @@ export class Combat {
     if (escalated && this.isPlayer(actor)) this._toast(crimeLine(victim, kind), 'warn', { key: 'crime', title: 'Crime' });
   }
 
+  // An assault with no wound to show (round 14b T-3, DESIGN §33.3): a slap, a shove or a
+  // grab typed between asterisks, when the blow itself cannot land (they are already at
+  // their last hp). The crime is what a blow would be: known only to those who see it
+  // (murder.screenCrime, the sight rule); the victim's own cry and their onCrime follow the
+  // 'crime' event, heard by the hearing rule. -> true (seen), 'unseen', or false.
+  assault(attacker, target, kind = 'assault') {
+    if (!attacker || !target || target.removed || attacker === target) return false;
+    if (!this.isPlayer(attacker) || !this.isLawful(target)) return false;
+    const k = kind === 'knockout' ? 'knockout' : 'assault';
+    this._noteAggression(target, attacker);
+    target.lastAttacker = attacker;
+    target.lastAttackedAt = this.game.clock?.t ?? this.t;
+    const g = this.game;
+    if (g.murder?.screenCrime && !g.murder.screenCrime(attacker, target, k)) return 'unseen';
+    this._recordCrime(attacker, target, k);
+    this._reportCrime(attacker, target, k);
+    return true;
+  }
+
   // Wanted for a crime someone else saw done and told (Lyra, calling the watch on the one
   // who came at her: DESIGN §16.6). Sets it on record; the watch is hostile meanwhile.
   markWanted(actor, victim, kind = 'assault') {

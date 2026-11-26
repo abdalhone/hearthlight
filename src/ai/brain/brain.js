@@ -27,6 +27,8 @@ import { companionshipOf, distanceTiles, previewVerdict, isRefusal } from './her
 import { DAY_SECONDS } from '../../core/constants.js';
 import { saidToday } from '../said_today.js';
 import { silenceAct, turnAway } from '../silence.js';
+import { parseActs } from '../social/acts.js';
+import { decideActs } from '../social/acts_effects.js';
 
 const REFLECT_WAIT = 20; // seconds the wake-up waits for Claude's diary before using her own
 const ICON_EVERY = 2.2;
@@ -230,10 +232,27 @@ export class Brain {
     g.bus?.emit('player_message', { text: clean });
     logConversation(g, 'player', clean);
     this._faceThePlayer();
+    // *Acts* between asterisks (round 14b T-3): the game decides what the hands did, then
+    // she words her reaction knowing it. A refused act (an intimate act the game will not
+    // allow) goes no further: no mind is asked.
+    let acts = null;
+    try {
+      const pa = parseActs(clean, { names: g.village?.actNames?.() || { lyra: ['lyra'] } });
+      if (pa.acts.length) acts = { ...decideActs(g, g.companion, pa.acts, { village: g.village || null }), words: pa.words };
+    } catch (err) {
+      console.warn('[brain] acts failed', err);
+      acts = null;
+    }
+    if (acts?.refused) {
+      this._system(acts.refused, 'act');
+      return { say: '', thought: null, actions: [], provider: 'local', refused: true };
+    }
+    if (acts?.narration) this._system(acts.narration, 'act');
+    const heardText = acts ? acts.words : clean;
 
     let parsed;
     try {
-      parsed = parseMessage(clean, nluEnv(g));
+      parsed = parseMessage(heardText || '…', nluEnv(g));
     } catch (err) {
       console.error('[brain] understanding failed', err);
       parsed = { text: clean, clauses: [], commands: [], offer: null };
@@ -243,11 +262,11 @@ export class Brain {
     const provider = this.providers.current();
     if (provider) {
       if (executed.length) this._ackBubble(parsed);
-      const turn = { text: clean, parsed, executed };
+      const turn = { text: clean, parsed, executed, acts };
       if (this.busy) return this._enqueue(turn);
       return this._claudeTurn(turn);
     }
-    return this._localTurn({ text: clean, parsed, executed });
+    return this._localTurn({ text: clean, parsed, executed, acts });
   }
 
   // When she cannot hear at all: dead, not there, knocked out, a scene playing, or out of
@@ -437,7 +456,7 @@ export class Brain {
     }
   }
 
-  async _localTurn({ parsed, executed = [] }) {
+  async _localTurn({ parsed, executed = [], acts = null }) {
     const g = this.game;
     // Offline, nobody else will weigh lower-confidence requests: put them to her now.
     const more = this._runClauses(parsed.clauses.filter((c) => c.intent && c.intent.actions.length && !c.results));
@@ -458,6 +477,9 @@ export class Brain {
     } finally {
       recalled = index?.endTrace?.() || [];
     }
+    // Her reaction to what the player's hands did comes first; only an act, it is all she says.
+    const actLine = acts?.local?.lines?.[0];
+    if (actLine) reply.say = acts.words ? `${actLine} ${reply.say || ''}`.trim() : actLine;
     reply.chips = this._localChips(reply, recalled, since);
     for (const a of reply.actions || []) {
       if (all.length >= MAX_ACTIONS + 2) break;
@@ -520,7 +542,7 @@ export class Brain {
     let result;
     try {
       const requests = this._previewRequests(turn.parsed);
-      const { rules, context, recall } = buildChatPrompt(g, turn.text, turn.executed, { requests, offer: turn.parsed.offer || null });
+      const { rules, context, recall } = buildChatPrompt(g, turn.text, turn.executed, { requests, offer: turn.parsed.offer || null, does: turn.acts?.brief || null });
       const call = { items: new Map((recall?.items || []).map((x) => [x.id, x.label])) };
       let toolMax = 0;
       try {
@@ -834,9 +856,9 @@ export class Brain {
     }
   }
 
-  _system(text) {
+  _system(text, kind = null) {
     try {
-      this.game.ui?.chat?.addMessage?.({ from: 'system', text });
+      this.game.ui?.chat?.addMessage?.({ from: 'system', text, ...(kind ? { kind } : {}) });
     } catch {
       /* ignore */
     }

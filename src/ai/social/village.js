@@ -21,6 +21,8 @@ import { seesPoint } from '../sight.js';
 import { hears, hearsWords, heardFrom, cryLoudness, placeOfSound } from '../hearing.js';
 import { silenceAct, turnAway, actionText, normalizeAction } from '../silence.js';
 import { detectInvite } from './invite.js';
+import { parseActs } from './acts.js';
+import { decideActs } from './acts_effects.js';
 import { isMinor } from '../../core/people.js';
 import { VILLAGER_RULES, SAY_SCHEMA, LINES_SCHEMA, NIGHT_SCHEMA, ALOUD_SCHEMA, buildSayTask, buildListenTask, buildNightTask, buildAloudTask, coerceSay, coerceLines, coerceNight, coerceAloud, cleanLine } from './village_prompt.js';
 
@@ -1262,8 +1264,11 @@ export class Village {
     // They watched the stranger kill (DESIGN §29.3): terror, or dread for good. Never a lock:
     // they hear it, keep it, and answer in fear, through their own mind (round 14b T-A1).
     const fear = asleep ? null : safe(() => this.game?.murder?.fearOf?.(e), null);
-    let local = fear ? this.afraidLocal(e, said, fear) : safe(() => localReply(this, e, said), null) || { lines: ['Hm.'], mood: null, delta: 0, intent: 'unknown', told: [], mentioned: [] };
-    if (actsOut?.local) local = { ...local, ...actsOut.local, lines: actsOut.local.lines?.length ? actsOut.local.lines : local.lines };
+    // The words without the acts, for their own rules (only an act: their reaction to it).
+    const words = actsOut ? actsOut.words : said;
+    let local = fear ? this.afraidLocal(e, said, fear) : words ? safe(() => localReply(this, e, words), null) : null;
+    local ||= { lines: ['Hm.'], mood: null, delta: 0, intent: 'unknown', told: [], mentioned: [] };
+    if (actsOut?.local && !fear) local = { ...local, ...actsOut.local, lines: words && local.lines?.length ? [...actsOut.local.lines, ...local.lines].slice(0, 2) : actsOut.local.lines };
     // An ask they can act on (go to Lyra, give, teach): what the game allows, and their
     // answer to it, decided before anyone words it (DESIGN §23.2).
     const cm = this.commitments;
@@ -1362,6 +1367,16 @@ export class Village {
       .slice(0, 300);
     const out = { shout: false, help: false, hearers: [], replies: [], muffled: [], lyra: null };
     if (!said || !P) return out;
+    // An act said aloud (*bows*, *waves at Elda*): the one it is aimed at, if named and near,
+    // feels it; everyone who sees it may talk of it (decideActs, by sight).
+    const pa = parseActs(said, { names: this.actNames() });
+    if (pa.acts.length) {
+      const named = pa.acts.map((a) => a.target).find((x) => x && x !== 'addressee');
+      const tgt = named ? (named === 'lyra' ? g.companion : this.entity(named)) : null;
+      const d = tgt ? safe(() => decideActs(g, tgt, pa.acts, { village: this }), null) : null;
+      if (d?.refused) return { ...out, refused: d.refused };
+      out.acted = d?.narration || pa.acts.map((a) => `You ${a.raw.replace(/^\w+/, (w) => w.replace(/(?:es|s)$/, ''))}.`).join(' ');
+    }
     const letters = said.replace(/[^A-Za-z]/g, '');
     const shout = /!\s*$/.test(said) || (letters.length >= 3 && letters === letters.toUpperCase());
     const help = shout && /\bhelp\b/i.test(said);
@@ -1492,6 +1507,28 @@ export class Village {
     row.aloud = true;
     row.they = lines.map((l) => String(l).slice(0, 200)).slice(0, 2);
     if (!lines.length) row.silent = true;
+  }
+
+  // *Acts* between asterisks (round 14b T-3): the game decides what the hands did before any
+  // mind words the reaction. -> null (no acts) or { refused, narration, brief, local, words }
+  playerActs(e, acts, said) {
+    const parsed = Array.isArray(acts) ? { acts, words: String(said || '').replace(/\*[^*\n]{1,120}\*/g, ' ').replace(/\s+/g, ' ').trim() } : parseActs(said, { names: this.actNames() });
+    if (!parsed.acts.length) return null;
+    const d = decideActs(this.game, e, parsed.acts, { village: this });
+    if (!d.refused) safe(() => addNote(this, e.id, `you did this to me: *${parsed.acts[0].raw.slice(0, 50)}*`, 1));
+    return { refused: d.refused, narration: d.narration, brief: d.brief, local: d.local, words: parsed.words, outcomes: d.outcomes };
+  }
+
+  // The names the player may use for people in an act ("*hugs Elda*").
+  actNames() {
+    if (this._actNames) return this._actNames;
+    const out = { lyra: ['lyra'] };
+    for (const id of VILLAGERS) {
+      const n = this.name(id).replace(/^(Captain|Sister|Reeve)\s+/, '').split(' ')[0].toLowerCase();
+      out[id] = [n, id];
+    }
+    this._actNames = out;
+    return out;
   }
 
   // The words reach them before anything else (DESIGN §23.3, §33.4): their talk with the

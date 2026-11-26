@@ -515,7 +515,7 @@ function argText(args = {}) {
 
 // opts: { message, executed: [{name, args, ok, message, refused, verdict}],
 //   requests: [{ text, name, args, verdict }], offer, recall: {text, items}, budget, task }
-export function buildContext(game, { message = '', executed = [], requests = [], offer = null, recall = null, budget = 6000, task = null } = {}) {
+export function buildContext(game, { message = '', executed = [], requests = [], offer = null, recall = null, budget = 6000, task = null, does = null } = {}) {
   const g = game || {};
   const me = g.companion;
   const mind = me?.mind;
@@ -594,6 +594,11 @@ export function buildContext(game, { message = '', executed = [], requests = [],
   }
   if (task) tail.push(`\n${task}`);
   else {
+    // What their hands did (round 14b T-3): decided by the game; she only words her reaction.
+    if (does) {
+      tail.push(`\n# ${playerName} does`);
+      tail.push(clip(does, 400));
+    }
     tail.push(`\n# ${playerName} says`);
     tail.push(`"${clip(message, 600)}"`);
     tail.push('\nReply as yourself with the JSON object only.');
@@ -676,11 +681,11 @@ export function contextBudget(rules) {
 }
 
 // Chat prompt: { rules, context, recall } (the claude.ai provider joins rules and context).
-export function buildChatPrompt(game, message, executed = [], { requests = [], offer = null } = {}) {
+export function buildChatPrompt(game, message, executed = [], { requests = [], offer = null, does = null } = {}) {
   const rules = buildRules(game);
   const budget = contextBudget(rules);
   const recall = recallFor(game, message, RECALL_BUDGET);
-  const context = buildContext(game, { message, executed, requests, offer, recall, budget });
+  const context = buildContext(game, { message, executed, requests, offer, recall, budget, does });
   return { rules, context, recall };
 }
 
