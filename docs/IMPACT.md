@@ -96,7 +96,7 @@ person); *future*: travellers, Owlsend's survivors, new villagers.
 | Lines and voice | Every character's own words for a new event (barks, dialogue, Claude persona) | `src/ai/social/*`, `src/entities/npc_data*.js` |
 | Knowledge and rumors | What they know of places and bosses (`TRAILS.tellers`, `ROAD_TALK`, facts) | `src/world/boss_trails.js`, `src/entities/npc_data*.js` |
 | Killability and crimes | Adults can be killed, children (`isMinor`) cannot; theft and assault are crimes others learn of by eyes or by meeting someone who knows; every death records `by`, `cause`, `provoked` (DESIGN §35.1); a death nobody did goes through `murder.die` (no case, no alarm) | `src/murder/*`, `src/world/containers.js`, `src/core/people.js` |
-| The companion role (round 14b) | Any adult may hold it (`party.canHold`); the HUD slot, the Ask bar, missions that count "with you", follow on foot, stand-ins when they die; a new kind of person says whether they can hold it | `src/core/party.js`, `src/entities/npc.js` (`duty`, `startFight` anchor and leash) |
+| The companion role (round 14b) | Any adult may hold it (`party.canHold`; children never). Built: the HUD slot (`companion_view.js`, nothing when alone), the Ask bar and Alt+1..5 (`party.ask`), the edge badge, the map dot, People (`people_panel.js`), missions that ask them along (`askCompanion`), boss fights (`companionJoins`), the bag's gifts, the Oath price, the carry home, sleep, the catch-up watchdog, follow and fight on foot (`CompanionDuty`), leaving (bedtime, hurt, fear, a blow). A new kind of person says whether `canHold` takes them, writes their lines in `npc_companion_lines.js` and their fight ability (`fightAbility`) | `src/core/party.js`, `src/entities/npc_companion.js`, `src/entities/npc.js` (`duty`, `startFight` anchor and leash), `src/ui/companion_view.js` |
 | Senses | Every eye and ear goes through one rule each: sight (`src/ai/sight.js`) and hearing (`src/ai/hearing.js`: walls muffle, a cry tells what and where, never who; a beast's snarl is a what, a person a who). A new kind of character (a deaf one, a hound) gets its exception there, as Wenna's blindness does in `witness.js` | `src/ai/sight.js`, `src/ai/hearing.js`, `src/entities/npc.js` |
 | Ownership | Their beds, chests and keys (`owner`, `keeper`, `keyId`) | `src/world/containers.js`, `src/world/objects.js` |
 | Combat and AI | Fight back, flee, stun, finishers per body size | `src/entities/*`, `src/bosses/*` |
@@ -104,7 +104,7 @@ person); *future*: travellers, Owlsend's survivors, new villagers.
 | Missions | Givers, turn-ins, foes that scale with your level (`toughen`) | `src/missions/*` |
 | Age | Everyone grows a year older on their birthday (`game.calendar`); who is a child is decided by age (`isMinor`, under 16; the build only when the age is unknown); a new character needs a base age | `src/world/calendar.js`, `src/core/people.js` |
 | Trade | Who buys and sells what (`shop.buys`, `shop.buysAll`) | `src/entities/npc_data*.js`, `src/ui/dialog.js` |
-| The map | Lyra's dot; future companions; bosses once heard of | `src/ui/world_map.js` |
+| The map | The holder's dot (`kind: 'companion'`, Lyra only while she walks with you), none alone; opens on you, zoomed out until the ember-ring or the objective shows; bosses once heard of | `src/ui/world_map.js` |
 
 ## 5. States
 
@@ -115,7 +115,9 @@ on** (blood), **saying aloud** (talk), **parting scene** (talk), **on duty** (an
 the companion role: mode `'duty'`), **held silent** (`hearing.js` `silence`: no sound at
 all), **unkindling** (the player channelling the Unkindling; the target held and silent),
 **unkindled** (a body with no mark: dead, silent, unmarked; soul's stub), **dead of age**
-(`murder.die`: natural, no case).
+(`murder.die`: natural, no case). Party (built): **walking alone** (no holder: no card, no
+Ask bar, no badge, no map dot), **waiting** / **fighting beside you** (a villager's duty),
+**dead Lyra** (nothing of hers runs; the role released; People a memorial; §34.6).
 
 | System | What must react | Where |
 |---|---|---|
