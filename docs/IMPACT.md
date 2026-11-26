@@ -127,6 +127,7 @@ all), **unkindling** (the player channelling the Unkindling; the target held and
 | Travel | Places are reached and the map's fog lifts only while you move about | `src/world/travel.js` |
 | Missions | Objectives that need you standing, awake, at a place, at an hour | `src/missions/*` |
 | Saves | What is saved mid-state (down, carried, asleep) | `src/core/save.js`, `src/survival/*` |
+| Talk (round 14b) | Only the body keeps words from someone: dead, downed or unconscious, a cutscene, out of earshot, a wall (`chat_target.whyNotHeard`); asleep they still get the words. A new state that should keep someone from hearing is a body's state and goes there, never a feeling. Saying aloud reaches whoever the hearing rule lets hear it; the parting scene holds Lyra's body (her keep-away steps aside) and ends if the player walks 8 tiles off | `src/ui/chat_target.js`, `src/ai/social/village.js`, `src/ai/mind/autonomy_parting.js` |
 | Sleep | Any hour, any bed that is nobody's; never while down, carried, fighting or burning (the last stand); the clock's jump moves promises' due times and turns the calendar before the save | `src/world/rest.js`, `src/core/game.js` `sleep` |
 
 ## 6. Devices
@@ -139,6 +140,7 @@ slow phones (test at 4× CPU throttle).
 |---|---|---|
 | Panels | Fit the screen, a ✕ of at least 44 px, close by tap outside, finger-sized controls | `src/ui/*`, `scripts/phone_check.mjs` |
 | Controls | Every action reachable by touch, by keys (and the map's N), by pad | `src/core/input.js`, `src/ui/touch.js` |
+| Talk controls (round 14b) | No tap or click on a person opens talk; T / Enter / pad Y and the Talk buttons talk to whoever is in front (`ui.talkToNearest`); the phone's round button names the person ("Talk to Bram") and opens the chat to them; a villager within reach gets "Trade · Give · Work" (44 px) | `src/ui/ui.js`, `src/ui/touch.js`, `src/ui/chat.js`, `src/ui/chat_target.js` |
 | The map | Drag, pinch, wheel, +/−; tools over the chart on a phone held sideways; with a mouse the panel is zoomed (Interface size), so pointer math divides by the canvas's zoom | `src/ui/world_map.js` |
 | Interface size | Desktop panels and HUD are drawn at `--uiz` (1.2 Normal, 1.45 Large); anything that reads pointer positions inside them must divide by its own zoom | `src/ui/ui_scale.js` |
 | Performance | Chunk painting, fog/overlays (one flat wash, not full-screen textures), object updates | `src/render/*`, `src/world/*` |
@@ -167,6 +169,7 @@ Values: Claude (in the claude.ai Artifact or with a key), the offline mind.
 | Every mind and line | Works offline with local lines; online gets the same facts in its prompt | `src/ai/*`, `src/platform/claude_runtime.js` |
 | Prompt context | Plugins' `promptContext` (missions, travel: where you are in the wider world) | `src/ai/plugins/*`, `src/world/travel.js` |
 | Trials and judgement | Round 14b: villagers weigh your words with Claude; offline they still decide | `src/murder/*` |
+| Talk (round 14b) | Fear, silence and acts reach Claude in the brief (terror, dread, "They do: *…*", cut ties, uneasy, the other workstreams' `briefLine`s); offline every one has its own lines (fear banks, `gone_reply`, act reactions, more shrugs). Saying aloud is ONE batched quick call for up to four, else local; her farewell waits 15 s for Claude, else her own words | `src/ai/social/village_prompt.js`, `src/ai/social/acts_effects.js`, `src/ai/brain/prompt.js`, `src/ai/mind/autonomy_parting.js` |
 | Death causes in prompts (round 14b) | A death's `cause` reaches the minds as people know it: `'killed'`, `'age'`, and `'unkindled'` (soul's stub: "no mark on him… like the hollow wind", the village's fear of "the Hollow" through `game.unkindle.briefLine(id)`); offline lines say the same | `src/murder/*`, `src/ai/social/village_prompt.js`, `src/ai/brain/prompt.js` |
 
 ## 9. Saves and permadeath
