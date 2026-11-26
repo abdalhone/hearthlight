@@ -2016,7 +2016,12 @@ notices and has opinions (berserk frightens her).
   30 points in Might (the rest in Vitality) beats Varek, Greyjaw, the Lake's Hum and the
   Bone Warden in 12, 6, 26 and 16 s (median of three bot fights; with 30 in Weave and the
   rest in Focus, 10, 13, 13 and 13 s), against 33, 20, 33, 19 s with none in Might; by
-  hand on a computer Varek yields in 12–40 s across runs. Far out, 50 Vitality at level 15 is 584
+  hand on a computer Varek yields in 12–40 s across runs. Nine bot fights a cell (the Lake's
+  Hum is mostly its dives, so three are noisy): 12, 7, 18, 16 s with the sword (the old
+  line 13, 7, 24, 16) and 10, 14, 11, 12 s with the Weave (old 12, 19, 13, 18). Fought by hand
+  on the computer at level 15 (verifier, one run each, new against the old line): Varek
+  with 30 Might 26 s against 43; Greyjaw at night with 30 Weave 18 s against 35; the Bone
+  Warden with 30 Weave 21 s against 24 (its phases set most of that fight's length). Far out, 50 Vitality at level 15 is 584
   health, more than Varek's 520 (the first pass never passed 506), and 100 Might or Weave
   bring him down in 4 cuts or 7 Sparks. Death stays dangerous: bosses and foes are
   unchanged, foes still bite harder as you level (THREAT), and with a third of the points
