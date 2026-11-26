@@ -549,34 +549,110 @@ function realStep(g, id) {
 
 const pctIn = (text) => Number((String(text).match(/([0-9.]+)%/) || [])[1]);
 
-test('the sheet\'s "Next:" line says what one more point really does: speed as a share of the walk you have now, hasted too', async () => {
+// The pace a speed's percentages are shares of: the plain walk (base and flat adds) times
+// any slow, before a single percentage (the pipeline's (base + Σadd) × Πmul).
+function normalPace(g) {
+  const parts = g.stats.breakdown(g.player, 'speed');
+  return parts.reduce((t, b) => t + b.add, 0) * parts.reduce((m, b) => m * b.mul, 1);
+}
+
+test('the sheet\'s "Next:" line counts speed as every speed percentage is counted: a share of the normal pace, hasted, slowed or not', async () => {
+  // "40% should always give 40%, no matter what": Berserk's +40% is 40% of the normal pace
+  // whatever else runs, so a Grace point's share must read the same with Berserk on as off.
   const { gainWords } = await import('../src/ui/character_view.js');
   const g = arena();
   const P = g.player;
   const pr = g.progression;
   pr.startFree();
-  pr.points.grace = 49;
-  pr.changed();
-  let { before, after } = realStep(g, 'grace');
-  let m = pr.nextGain('grace')[0];
-  let truth = ((after.speed - before.speed) / before.speed) * 100;
-  assert.equal(m.stat, 'speed');
-  assert.ok(Math.abs(pctIn(gainWords(m)) - truth) <= 0.051, `49 Grace: "${gainWords(m)}", one more point really adds ${truth.toFixed(3)}% to ${before.speed.toFixed(1)} px/s`);
-  // Berserk, the Last Stand and Oath running: the next point adds its whole step of the
-  // normal pace, which is a smaller share of the faster walk.
-  pr.points.grace = 0;
-  pr.changed();
-  g.stats.addModifier(P, BERSERK);
-  g.stats.addModifier(P, { id: 'price:laststand:gain', source: 'price:laststand', ...LAST_STAND_GAIN, t: 60 });
+  const said = {};
+  const check = (label) => {
+    const { before, after } = realStep(g, 'grace');
+    const m = pr.nextGain('grace')[0];
+    assert.equal(m.stat, 'speed');
+    const truth = ((after.speed - before.speed) / normalPace(g)) * 100;
+    assert.ok(Math.abs(truth - m.d * 100) < 1e-9, `${label}: one more point adds ${truth.toFixed(4)}% of the normal pace, the curve's whole step`);
+    assert.ok(Math.abs(pctIn(gainWords(m)) - truth) <= 0.051, `${label}: "${gainWords(m)}" vs ${truth.toFixed(3)}% of the normal pace`);
+    said[label] = gainWords(m);
+  };
+  for (const n of [0, 49]) {
+    pr.points.grace = n;
+    pr.changed();
+    check(`${n} Grace`);
+    // Berserk, the Last Stand and Oath running: the next point still adds its whole share.
+    g.stats.addModifier(P, BERSERK);
+    g.stats.addModifier(P, { id: 'price:laststand:gain', source: 'price:laststand', ...LAST_STAND_GAIN, t: 60 });
+    g.prices.state.oath = { t: 60 };
+    g.companion.x = P.x + 10;
+    g.companion.y = P.y;
+    g.stats.refresh(P);
+    check(`${n} Grace, hasted`);
+    // A slow on top (hunger's ×0.9): the normal pace is slower, the share the same.
+    g.stats.addModifier(P, { id: 'weak', mul: { speed: 0.9 }, kind: 'weak' });
+    check(`${n} Grace, hasted and slowed`);
+    g.stats.removeModifier(P, 'weak');
+    g.stats.removeModifier(P, 'price:berserk:gain');
+    g.stats.removeModifier(P, 'price:laststand:gain');
+    g.prices.state.oath = null;
+    g.stats.refresh(P);
+  }
+  assert.equal(said['0 Grace'], '+1.5% speed');
+  assert.equal(said['0 Grace, hasted'], said['0 Grace'], 'Berserk running takes nothing off a point');
+  assert.equal(said['49 Grace, hasted and slowed'], said['49 Grace']);
+});
+
+test('the speed tooltip says what its percentages are shares of; Oath\'s words are true of speed; a number held at its clamp says so', async () => {
+  const { statTip } = await import('../src/ui/character_view.js');
+  const g = arena();
+  const P = g.player;
+  const S = g.stats;
+  g.progression.startFree();
+  g.progression.points.grace = 30;
+  g.progression.changed();
+  S.addModifier(P, BERSERK);
   g.prices.state.oath = { t: 60 };
   g.companion.x = P.x + 10;
   g.companion.y = P.y;
-  g.stats.refresh(P);
-  ({ before, after } = realStep(g, 'grace'));
-  m = pr.nextGain('grace')[0];
-  assert.ok(Math.abs(after.speed - before.speed - PLAYER_BASE.speed * m.d) < 1e-9, 'the point\'s whole step of the normal pace');
-  truth = ((after.speed - before.speed) / before.speed) * 100;
-  assert.ok(Math.abs(pctIn(gainWords(m)) - truth) <= 0.051, `hasted: "${gainWords(m)}" vs ${truth.toFixed(3)}%`);
+  S.refresh(P);
+  const tip = statTip(S, P, 'speed');
+  assert.match(tip, /Berserk[^\n]*: \+40%/);
+  assert.match(tip, /normal pace/i, `the tooltip names the pace the shares are of:\n${tip}`);
+  assert.match(tip, /\b76\b/, 'and says it (76 px/s)');
+  // Oath adds 10% of the pace, 30% of strength, weaves, armor and crit: its words say so.
+  const oath = S.breakdown(P, 'speed').find((b) => b.source === 'price:oath');
+  assert.ok(oath && Math.abs(oath.pct - 0.1) < 1e-12);
+  assert.doesNotMatch(oath.label, /everything/, `"${oath.label}" promises +30% to a speed it adds 10% to`);
+  assert.match(oath.label, /10% speed/);
+  assert.match(PRICES.oath.gainText, /10% speed/);
+  // Dodge from 60 Grace, boots, a cloak, Swiftfoot and wind is past its 40% clamp: say so.
+  g.progression.points.grace = 60;
+  g.progression.changed();
+  stackTheRest(g);
+  assert.equal(S.get(P, 'dodge'), STATS.dodge.max);
+  assert.match(statTip(S, P, 'dodge'), /limit/i);
+  assert.doesNotMatch(statTip(S, P, 'speed'), /limit/i, 'speed is nowhere near its safety clamp');
+});
+
+test('a saved wound loads as it was: a maximum worked out halfway through loading (gear before the points) does not cut it', () => {
+  const g = stranger(15, { vitality: 12, might: 20, focus: 10 }, ['steel_sword', 'iron_mail']);
+  const P = g.player;
+  P.hp = P.maxHp - 60;
+  const hp = P.hp;
+  const saved = JSON.parse(JSON.stringify(saveProgression(g)));
+  const g2 = arena();
+  const P2 = g2.player;
+  // player.deserialize has run: level, health and its maximum as saved.
+  P2.level = 15;
+  P2.maxHp = P.maxHp;
+  P2.hp = hp;
+  loadProgression(g2, saved);
+  assert.equal(P2.maxHp, P.maxHp);
+  assert.equal(P2.hp, hp, `the wound as saved (${hp} of ${P.maxHp}), not cut to the level's bare health`);
+  // A wound deeper than a smaller new maximum still fits under it.
+  const g3 = arena();
+  g3.player.level = 15;
+  g3.player.hp = 9999;
+  loadProgression(g3, saved);
+  assert.equal(g3.player.hp, g3.player.maxHp);
 });
 
 test('every effect\'s words agree with the pipeline at 0, 7, 30 and 200 points, and a stat at its clamp says so', async () => {
@@ -601,7 +677,7 @@ test('every effect\'s words agree with the pipeline at 0, 7, 30 and 200 points, 
         }
         const num = Number((words.match(/([0-9.]+)/) || [])[1]);
         let want;
-        if (m.stat === 'speed') want = ((after.speed - before.speed) / before.speed) * 100;
+        if (m.stat === 'speed') want = ((after.speed - before.speed) / normalPace(g)) * 100;
         else if (s.fmt === 'pct' || s.fmt === 'mul') want = (after[m.stat] - before[m.stat]) * 100;
         // health, mana and the sword show whole (or tenth) numbers: one point is the curve's step
         else if (['maxHp', 'maxMana', 'atk'].includes(m.stat)) want = m.d;

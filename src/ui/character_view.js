@@ -359,15 +359,18 @@ function smallNum(a) {
 const SHOWN_ROUNDED = new Set(['maxHp', 'maxMana', 'atk', 'def']);
 
 // m: one entry of progression.nextGain. Where the pipeline's own answer is there (`real`),
-// the words say that: what the sheet's number will do (the clamps, gear and
-// hastes counted); speed, a share of a pace, as a share of the pace you walk at now.
+// the words say that: what the sheet's number will do (the clamps, gear and hastes
+// counted); speed, a share of a pace, as a share of the normal pace (`of`), the same pace
+// every speed percentage in the game is a share of ("40% should always give 40%").
 export function gainWords(m) {
   const s = STATS[m.stat] || {};
   const word = GAIN_WORD[m.stat] || (s.label || m.stat).toLowerCase();
   if (m.limit) return `${word} at its limit`;
   const known = Number.isFinite(m.real);
-  if (known && m.part === 'pct' && s.fmt !== 'pct' && s.fmt !== 'mul' && m.before > 0) {
-    const share = m.real / m.before;
+  if (known && m.part === 'pct' && s.fmt !== 'pct' && s.fmt !== 'mul' && (m.of > 0 || m.before > 0)) {
+    // A share of the normal pace (the number before any percentage), as Berserk's +40% and
+    // the tooltip's lines are: a point reads the same with Berserk running as without.
+    const share = m.real / (m.of > 0 ? m.of : m.before);
     return `${share < 0 ? '−' : '+'}${smallNum(Math.abs(share) * 100)}% ${word}`;
   }
   const d = known && !SHOWN_ROUNDED.has(m.stat) ? m.real : m.d;
@@ -391,20 +394,34 @@ const WHERE = {
 // A faint silhouette for an empty slot.
 const EMPTY_ICON = { weapon: 'iron_sword', armor: 'leather_jerkin', cloak: 'traveler_cloak', boots: 'field_boots', charm1: 'hearth_charm', charm2: 'moonglass_bead' };
 
-// A stat's sources in words, for its tooltip.
-function why(S, P, id) {
+// A stat's sources in words, for its tooltip; what its percentages are shares of (the
+// number before any percentage: "+40% speed" is 40% of the normal pace); and whether a
+// clamp holds it, so nothing is held back without a word.
+export function statTip(S, P, id) {
   const parts = safe(() => S.breakdown(P, id), []) || [];
   const fmt = STATS[id];
-  return parts
-    .map((b) => {
-      const bits = [];
-      if (b.add) bits.push(`${b.add > 0 ? '+' : ''}${fmt.fmt === 'pct' ? `${Math.round(b.add * 100)}%` : Math.round(b.add * 100) / 100}`);
-      if (b.pct) bits.push(`${b.pct > 0 ? '+' : ''}${Math.round(b.pct * 100)}%`);
-      if (b.mul !== 1) bits.push(`×${Math.round(b.mul * 100) / 100}`);
-      return `${b.label}: ${bits.join(' ')}`;
-    })
-    .join('\n');
+  const lines = parts.map((b) => {
+    const bits = [];
+    if (b.add) bits.push(`${b.add > 0 ? '+' : ''}${fmt.fmt === 'pct' ? `${Math.round(b.add * 100)}%` : Math.round(b.add * 100) / 100}`);
+    if (b.pct) bits.push(`${b.pct > 0 ? '+' : ''}${Math.round(b.pct * 100)}%`);
+    if (b.mul !== 1) bits.push(`×${Math.round(b.mul * 100) / 100}`);
+    return `${b.label}: ${bits.join(' ')}`;
+  });
+  if (!fmt) return lines.join('\n');
+  const add = parts.reduce((t, b) => t + b.add, 0);
+  const pct = parts.reduce((t, b) => t + b.pct, 0);
+  const mul = parts.reduce((k, b) => k * b.mul, 1);
+  const plain = add * mul;
+  if (parts.some((b) => b.pct) && fmt.fmt !== 'pct' && fmt.fmt !== 'mul') {
+    const n = Math.round(plain * 10) / 10;
+    lines.push(id === 'speed' ? `Each % is a share of your normal pace, ${n}.` : `Each % is a share of ${n}, the ${fmt.label.toLowerCase()} before any %.`);
+  }
+  const raw = add * Math.max(0, 1 + pct) * mul;
+  if (raw > fmt.max + 1e-9) lines.push(`At its limit (${formatStat(id, fmt.max)}): more adds nothing.`);
+  else if (raw < fmt.min - 1e-9) lines.push(`At its limit (${formatStat(id, fmt.min)}).`);
+  return lines.join('\n');
 }
+const why = statTip;
 
 // Wires the sheet into the UI: ui.openCharacter, the C key, the player's card, a
 // points badge on it, and a "Character" entry in the pause menu.

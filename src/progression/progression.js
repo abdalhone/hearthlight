@@ -11,7 +11,8 @@ import { STATS } from '../core/stats.js';
 //                                                   points come back)
 //   points (the spent ones, by attribute)           xpFor(kind) (fights are combat's)
 //   nextGain(attr) -> [{ stat, part, d, first,      what one more point adds: the curve's step
-//     before, after, real, limit }]                 (d) and what it really does (the pipeline)
+//     before, after, real, of, limit }]             (d) and what it really does (the pipeline;
+//                                                   `of`: what a percentage is a share of)
 //   serialize() / deserialize(d)
 //
 // The pipeline's 'level' and 'points' sources live here, so a level or a point is
@@ -201,6 +202,16 @@ export class Progression {
       m.before = before[m.stat];
       m.after = after[m.stat];
       m.real = m.after - m.before;
+      // A percentage is a share of the number before any percentage ((base + Σadd) × Πmul):
+      // "+40% speed" is 40% of the normal pace whatever else runs, and so is a point (`of`).
+      if (m.part === 'pct' && typeof S.breakdown === 'function') {
+        try {
+          const parts = S.breakdown(P, m.stat);
+          m.of = parts.reduce((t, b) => t + b.add, 0) * parts.reduce((k, b) => k * b.mul, 1);
+        } catch {
+          /* words fall back to the number as it stands */
+        }
+      }
       const edge = s ? (m.d < 0 ? s.min : s.max) : null;
       m.limit = edge != null && Number.isFinite(m.before) && Math.abs(m.before - edge) < 1e-9;
     }

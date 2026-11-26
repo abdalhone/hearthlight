@@ -1932,7 +1932,9 @@ is a **gain** and a **cost**, both timed modifiers on the shared stat pipeline (
   less mana (the blood pays part of each) (toggle).
 - `lastlight` — when the player would fall, heal fully once; max HP −50% until the next
   sleep.
-- `oath` — +30% to everything while Lyra is near; if she is hurt, the player is too.
+- `oath` — +30% sword, weave power, armor and crit chance, +10% speed and cast speed, while
+  the companion is near; if they are hurt, the player is too. (Its words name each share:
+  "+30% to everything" was not true of speed.)
 - `laststand` — the Last Stand (round 14: "if I die, maybe I come back for 1 minute and
   kill anybody, but it will not let me live anymore"). Carried by the Bone Warden (a
   second glyph-shard beside overdraw's, `BOSS_SECOND_PRICES`), never at the start, never
@@ -2027,8 +2029,12 @@ notices and has opinions (berserk frightens her).
   The Character sheet says under each attribute what the next point adds, its main effect
   (every effect in the tooltip), as the number on the sheet will really move: read from the
   pipeline with one point more (`progression.nextGain`, the way the gear compare reads a
-  piece), so gear, hastes and the clamps all count. Speed reads as a share of the pace you
-  walk at now (49 Grace: "Next: +0.3% speed"); health, mana and the sword, shown whole, read
+  piece), so gear, hastes and the clamps all count. Speed reads as a share of the normal
+  pace, the same pace Berserk's +40% and every other speed percentage is a share of, so a
+  point reads the same with Berserk running as without (0 Grace: "Next: +1.5% speed"; 49
+  Grace: "+0.5% speed"); the Speed number's tooltip says so ("Each % is a share of your
+  normal pace, 76."), and any number a clamp holds says "At its limit" there (a dodge build
+  in dodge gear meets the 40% clamp). Health, mana and the sword, shown whole, read
   the curve's step ("+10 health", at 80 Might "+0.9 sword"); a number at its clamp says so
   ("bleed-out at its limit"), and Free stat points at 999 says "As high as it goes". A small
   meter shows how much of the first point's worth the next still carries (speed at 80 Grace
