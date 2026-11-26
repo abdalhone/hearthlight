@@ -46,6 +46,11 @@ const BASE = new Map();
 for (const p of [...NPC_PROFILES, ...MORE_PROFILES]) if (Number.isFinite(p.age)) BASE.set(p.id, p.age);
 const LYRA_BASE = 24;
 export const PLAYER_GUESS = 25;
+// Roles that change as a child grows (the canon role holds until then).
+const ROLE_BY_STAGE = {
+  pip: { teen: 'potboy at the Ember Kettle', adult: 'hand at the Ember Kettle', elder: 'hand at the Ember Kettle' },
+  tansy: { adult: 'wardrunner and chicken-keeper', elder: 'wardrunner' },
+};
 // The village's errands ask "a child?" by the profiles' ages, which apply() keeps current.
 CHILDREN.ageOf = (id) => {
   const p = [...NPC_PROFILES, ...MORE_PROFILES].find((q) => q.id === id);
@@ -243,6 +248,13 @@ export class Calendar {
     }
     // The profiles of people not standing in the world (yet) grow older too.
     for (const p of [...NPC_PROFILES, ...MORE_PROFILES]) if (BASE.has(p.id)) p.age = this.ageOf(p.id);
+    // Roles change with the stage: a grown orphan is no longer "orphan child" to the minds.
+    for (const p of [...NPC_PROFILES, ...MORE_PROFILES]) {
+      const roles = ROLE_BY_STAGE[p.id];
+      if (!roles) continue;
+      if (roles.base == null) roles.base = p.role;
+      p.role = roles[stageOf(this.ageOf(p.id))] || roles.base;
+    }
     // Lyra herself (game.lyra), not whoever is your companion now (round 14b).
     const lyra = g.lyra || g.entities?.get?.('lyra') || g.companion;
     const soul = lyra?.mind?.soul;

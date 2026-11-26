@@ -231,3 +231,32 @@ test('applyAgeLooks points a grown villager at their new look and gives a grown 
   assert.equal(pip.maxHp, 36, 'a grown body');
   assert.match(g.entities.get('hobb').spriteKey, /^hobb~.*b/, 'Hobb bent at eighty-six');
 });
+
+import { uneasePlugin } from '../src/society/unease.js';
+
+test("roles grow with the child; a day's unease is kept for that day only", () => {
+  const g = makeGame({ hour: 9 });
+  const pip = g.entities.get('pip');
+  assert.equal(pip.profile.role, 'orphan child');
+  const pb = birthdayOf('pip');
+  const pipDay = (n) => (pb === 1 ? 1 + 12 * n : pb + 12 * (n - 1));
+  g.clock.t = (pipDay(4) - 1) * DAY_SECONDS + 9 * (DAY_SECONDS / 24);
+  step(g, 0.2);
+  assert.equal(pip.profile.role, 'potboy at the Ember Kettle');
+  g.clock.t = 9 * (DAY_SECONDS / 24);
+  g.calendar.lastDay = null;
+  g.calendar.update();
+  assert.equal(pip.profile.role, 'orphan child', 'back to the canon on the first morning');
+  // Unease: saved for its day.
+  const elda = g.entities.get('elda');
+  elda.uneasy = { day: g.clock.day, place: 'ember_kettle', t: 10 };
+  const data = uneasePlugin.serialize({ game: g });
+  assert.deepEqual(Object.keys(data), ['elda']);
+  elda.uneasy = null;
+  uneasePlugin.deserialize(data, { game: g });
+  assert.equal(elda.uneasy.place, 'ember_kettle');
+  elda.uneasy = null;
+  g.clock.t += DAY_SECONDS;
+  uneasePlugin.deserialize(data, { game: g });
+  assert.equal(elda.uneasy, null, 'a day old: dropped');
+});
