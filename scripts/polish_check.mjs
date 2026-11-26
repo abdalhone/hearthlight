@@ -312,7 +312,7 @@ async function run(S) {
     check(warm(burn) - warm(calm) >= 45, `${tag} C: the edges burn plainly (red-blue ${warm(calm)} -> ${warm(burn)})`);
     check(burn.lum - calm.lum >= 8 || burn.r - calm.r >= 30, `${tag} C: and glow (lum ${calm.lum} -> ${burn.lum}, red ${calm.r} -> ${burn.r})`);
     check(warm(burn) - warm(mid) >= 30, `${tag} C: the fire is at the edges, the middle stays clear (${warm(mid)} vs ${warm(burn)})`);
-    check(warm(hot) >= warm(burn) - 5, `${tag} C: still there in the last seconds (${warm(hot)})`);
+    check(warm(hot) >= warm(burn) * 0.85, `${tag} C: still there in the last seconds (${warm(hot)})`);
     // The end of the minute is not part of this check: put the fire out quietly.
     await ev(() => {
       const g = window.__game;

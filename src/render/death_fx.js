@@ -5,6 +5,74 @@
 
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
+// The last stand's fire (§25), painted once each.
+const FLAME_W = 64; // pixels across one tile of the flame strip
+const FLAME_H = 14; // its height: the tallest tongue
+
+function canvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  return c;
+}
+
+// Four frames of pixel flames rising from the strip's top row (the rim) inward: white-hot
+// at the root, then gold, orange, ember red at the tips. Tileable across FLAME_W.
+const FLAME_COLORS = [
+  [255, 246, 214],
+  [255, 214, 110],
+  [255, 150, 40],
+  [240, 84, 18],
+  [178, 34, 10],
+];
+function flameFrames() {
+  const out = [];
+  for (let f = 0; f < 4; f++) {
+    const c = canvas(FLAME_W, FLAME_H);
+    const x = c.getContext('2d');
+    const img = x.createImageData(FLAME_W, FLAME_H);
+    const d = img.data;
+    const TAU = Math.PI * 2;
+    for (let col = 0; col < FLAME_W; col++) {
+      const u = col / FLAME_W;
+      // Whole waves across the strip, so it tiles without a seam.
+      const h0 =
+        0.42 +
+        0.22 * Math.sin(TAU * (u * 5 + f * 0.23)) +
+        0.16 * Math.sin(TAU * (u * 11 - f * 0.31) + 1.3) +
+        0.1 * Math.sin(TAU * (u * 2 + f * 0.11) + 0.4);
+      const h = Math.max(2, Math.min(FLAME_H, Math.round(h0 * FLAME_H)));
+      for (let row = 0; row < h; row++) {
+        const k = row / h;
+        const ci = k < 0.18 ? 0 : k < 0.4 ? 1 : k < 0.66 ? 2 : k < 0.86 ? 3 : 4;
+        const [r, g, b] = FLAME_COLORS[ci];
+        const i = (row * FLAME_W + col) * 4;
+        d[i] = r;
+        d[i + 1] = g;
+        d[i + 2] = b;
+        d[i + 3] = k > 0.86 ? 200 : 255;
+      }
+    }
+    x.putImageData(img, 0, 0);
+    out.push(c);
+  }
+  return out;
+}
+
+// Draw something along each of the four edges, inward from the rim: fn(length, i) draws in
+// a frame whose x runs along the edge and whose y runs from the rim into the screen.
+function eachEdge(ctx, W, H, fn) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); // top: rim at y = 0
+  fn(W, 0);
+  ctx.setTransform(-1, 0, 0, -1, W, H); // bottom: rim at y = H
+  fn(W, 1);
+  ctx.setTransform(0, 1, 1, 0, 0, 0); // left: rim at x = 0
+  fn(H, 2);
+  ctx.setTransform(0, -1, -1, 0, W, H); // right: rim at x = W
+  fn(H, 3);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
 export class DeathFx {
   constructor(game) {
     this.game = game;
@@ -13,7 +81,8 @@ export class DeathFx {
     this.bars = 0; // 0..1 letterbox
     this.flash = 0; // the white-out of the moment you fall
     this.burn = 0; // 0..1 the last stand's fire round the edges (§25)
-    this._burnTex = null;
+    this._flames = null; // the last stand's pixel flames, and its edge strips per window size
+    this._edge = null;
     this._grad = null;
     this._gradCtx = null;
     this.was = false;
@@ -47,7 +116,12 @@ export class DeathFx {
   }
 
   // The last stand's minute (§25): fire at the edges of the screen, breathing faster as
-  // the minute runs out, white-hot in the last ten seconds.
+  // the minute runs out, white-hot in the last ten seconds. Each edge is one strip, painted
+  // once per window size (four frames of flicker): a scorched rim that darkens and reddens
+  // the screen's edge (so the fire reads on bright grass and snow, not only at night), a
+  // soft glow a little way in, and a row of pixel flames licking in from the rim. A frame
+  // costs four plain copies (a gradient evaluated per pixel every frame, or a full-screen
+  // blend, costs a phone a third of its frames).
   drawBurn(ctx, renderer, dt, reduce) {
     const g = this.game;
     let left = null;
@@ -60,45 +134,66 @@ export class DeathFx {
     if (this.burn < 0.005) return;
     const W = renderer.canvas.width;
     const H = renderer.canvas.height;
-    // The fire at the edges is painted once, small, and stretched over the screen each
-    // frame (a gradient evaluated per pixel every frame costs a phone a third of its frames).
-    if (!this._burnTex && typeof document !== 'undefined') {
-      const c = document.createElement('canvas');
-      c.width = 96;
-      c.height = 64;
-      const x = c.getContext('2d');
-      const gr = x.createRadialGradient(0, 0, 0.35, 0, 0, 1);
-      gr.addColorStop(0, 'rgba(255,90,20,0)');
-      gr.addColorStop(0.62, 'rgba(255,80,20,0)');
-      gr.addColorStop(0.86, 'rgba(255,72,16,0.38)');
-      gr.addColorStop(1, 'rgba(255,120,40,0.75)');
-      x.setTransform(48 * 1.25, 0, 0, 32 * 1.35, 48, 32);
-      x.fillStyle = gr;
-      x.fillRect(-1, -1, 2, 2);
-      this._burnTex = c;
-    }
-    if (!this._burnTex) return;
+    const edge = this._edgeStrips(W, H);
+    if (!edge) return;
     const t = g.time || 0;
     const L = left ?? 0;
     const speed = 2.2 + (1 - Math.min(1, L / 60)) * 6;
     const pulse = reduce ? 0.5 : 0.5 + 0.5 * Math.sin(t * speed);
+    const last = left != null && L < 10 ? 1 - L / 10 : 0; // 0..1 over the last ten seconds
+    const f = reduce ? 0 : Math.floor(t * 9) % edge.h.length;
+    const drift = reduce ? 0 : Math.floor((t * 14 * edge.px) % edge.tw);
+    const depth = Math.round(edge.depth * (1 + 0.4 * last));
     ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = clamp01(this.burn * (0.45 + 0.35 * pulse));
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(this._burnTex, 0, 0, W, H);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = clamp01(this.burn * (0.8 + 0.2 * pulse));
     ctx.imageSmoothingEnabled = false;
+    eachEdge(ctx, W, H, (len, i) => {
+      const img = i < 2 ? edge.h[(f + i) % edge.h.length] : edge.v[(f + i) % edge.v.length];
+      // (each edge drifts its own way, so the corners do not meet in step)
+      const x = -(i % 2 ? edge.tw - 1 - drift : drift);
+      if (depth === edge.depth) ctx.drawImage(img, x, 0);
+      else ctx.drawImage(img, x, 0, img.width, depth);
+    });
     ctx.restore();
-    if (left != null && L < 10 && !reduce) {
+    if (last > 0 && !reduce) {
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = clamp01((1 - L / 10) * 0.18 * pulse);
+      ctx.globalAlpha = clamp01(last * 0.18 * pulse);
       ctx.fillStyle = '#fff0d8';
       ctx.fillRect(0, 0, W, H);
       ctx.restore();
     }
+  }
+
+  // The four edges' strips for this window size (rebuilt only when it changes).
+  _edgeStrips(W, H) {
+    if (typeof document === 'undefined') return null;
+    const px = Math.max(2, Math.round(Math.min(W, H) / 170)); // one flame pixel, in screen px
+    const key = `${W}x${H}:${px}`;
+    if (this._edge?.key === key) return this._edge;
+    const tw = FLAME_W * px;
+    const fh = FLAME_H * px;
+    const depth = Math.round(fh * 2.2);
+    const flames = this._flames || (this._flames = flameFrames());
+    const strip = (len, frame) => {
+      const c = canvas(len + tw, depth);
+      const x = c.getContext('2d');
+      // The scorched rim and the glow, row 0 at the rim.
+      const gr = x.createLinearGradient(0, 0, 0, depth);
+      gr.addColorStop(0, 'rgba(110,14,2,0.95)');
+      gr.addColorStop(0.3, 'rgba(150,34,6,0.62)');
+      gr.addColorStop(0.6, 'rgba(200,70,16,0.24)');
+      gr.addColorStop(1, 'rgba(255,110,30,0)');
+      x.fillStyle = gr;
+      x.fillRect(0, 0, len + tw, depth);
+      x.imageSmoothingEnabled = false;
+      for (let at = 0; at < len + tw; at += tw) x.drawImage(flames[frame], at, 0, tw, fh);
+      return c;
+    };
+    this._edge = { key, px, tw, depth, h: flames.map((_, i) => strip(W, i)), v: flames.map((_, i) => strip(H, i)) };
+    return this._edge;
   }
 
   draw(ctx, renderer, dt) {
