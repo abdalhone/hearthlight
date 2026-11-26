@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeGame, step as magicStep, run, resetArena, AIM } from './magic_helpers.mjs';
 import { installProgression, saveProgression, loadProgression } from '../src/progression/index.js';
+import { pointsEffect } from '../src/progression/attributes.js';
 import { compileWeave } from '../src/magic/compile.js';
 import { Shapes } from '../src/magic/shapes.js';
 import { Prices } from '../src/magic/prices.js';
@@ -533,7 +534,9 @@ test('Free stat points: every stat raises as far as you like; off puts back exac
   assert.ok(pr.spend('weave', 25).ok, 'ten, twenty-five: anything');
   assert.equal(pr.points.vitality, 42);
   assert.equal(pr.points.weave, 25);
-  assert.ok(P.maxHp > hp0 + 200, `health grew with the free points (${hp0} → ${P.maxHp})`);
+  // (Points follow the curve since round 14b: forty more Vitality add what the curve says.)
+  const grew = pointsEffect('vitality', 42).add.maxHp - pointsEffect('vitality', 2).add.maxHp;
+  assert.ok(grew > 180 && Math.abs(P.maxHp - hp0 - grew) <= 1, `health grew with the free points (${hp0} → ${P.maxHp}, +${Math.round(grew)})`);
   assert.ok(ev.some((p) => p.free && p.raised > 0), 'the fx hears a free point raised');
   assert.ok(pr.lower('weave').ok);
   assert.equal(pr.points.weave, 24);

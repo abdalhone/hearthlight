@@ -1,4 +1,4 @@
-import { ATTRS, ATTR_IDS, POINTS_PER_LEVEL, LEVEL_GROWTH, XP_FOR, THREAT, respecCost, scaled } from './attributes.js';
+import { ATTRS, ATTR_IDS, POINTS_PER_LEVEL, LEVEL_GROWTH, XP_FOR, THREAT, respecCost, scaled, pointsEffect, nextPoint } from './attributes.js';
 
 // Levels and stat points (DESIGN §26): game.progression.
 //
@@ -9,6 +9,7 @@ import { ATTRS, ATTR_IDS, POINTS_PER_LEVEL, LEVEL_GROWTH, XP_FOR, THREAT, respec
 //                                                   points; raise anything, then the real
 //                                                   points come back)
 //   points (the spent ones, by attribute)           xpFor(kind) (fights are combat's)
+//   nextGain(attr) -> [{ stat, part, d, first }]    what one more point adds (the curve)
 //   serialize() / deserialize(d)
 //
 // The pipeline's 'level' and 'points' sources live here, so a level or a point is
@@ -17,8 +18,8 @@ import { ATTRS, ATTR_IDS, POINTS_PER_LEVEL, LEVEL_GROWTH, XP_FOR, THREAT, respec
 
 const own = Object.prototype.hasOwnProperty;
 
-// While Free stat points is on, one attribute can hold at most this many (the stat
-// pipeline caps what they add up to anyway).
+// While Free stat points is on, one attribute can hold at most this many (the curve keeps
+// what they add under each effect's soft cap, and the pipeline clamps the rest).
 export const FREE_MAX = 999;
 
 function emptyPoints() {
@@ -110,6 +111,9 @@ export class Progression {
     return rule ? scaled(rule, lv - 1) : null;
   }
 
+  // The points as they stand, each attribute on its curve (attributes.js: the first point
+  // gives what it always gave, each later one a little less). Only the counts are kept and
+  // saved, so an old save's points simply follow the curve when it loads.
   pointsContribution(a) {
     if (!this.isPlayer(a)) return null;
     const out = { add: {}, pct: {} };
@@ -117,7 +121,7 @@ export class Progression {
     for (const id of ATTR_IDS) {
       const n = this.points[id] || 0;
       if (!n) continue;
-      const c = scaled(ATTRS[id].per, n);
+      const c = pointsEffect(id, n);
       for (const part of ['add', 'pct']) for (const [k, v] of Object.entries(c?.[part] || {})) out[part][k] = (out[part][k] || 0) + v;
       any = true;
     }
@@ -160,6 +164,13 @@ export class Progression {
     let n = 0;
     for (const id of ATTR_IDS) n += pts?.[id] || 0;
     return n;
+  }
+
+  // What the next point in this attribute would add (attributes.js nextPoint): the
+  // character sheet's "next" line.
+  nextGain(attr) {
+    if (!own.call(ATTRS, attr)) return [];
+    return nextPoint(attr, this.points[attr] || 0);
   }
 
   canSpend(attr) {
