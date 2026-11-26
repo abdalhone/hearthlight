@@ -43,7 +43,7 @@ const GENERIC = {
   no_attack: ['I am no soldier. I will stand by you if something comes at us, no more.'],
   no_fight: ['I am no fighter. I will keep behind you and out of the way.'],
   no_any: ['No. Not that.'],
-  lyra_back: ['You walk with {name} now.'],
+  lyra_back: ['You walk with {name} now. Fine. I have my own day.', 'Oh. {name} is with you. Never mind, then.', '{name}, is it? All right. I will be about my own business.'],
 };
 
 // A few of the eighteen in their own words (the rest use GENERIC).

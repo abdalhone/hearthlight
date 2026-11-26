@@ -12,6 +12,7 @@
 
 import { h, icon, setText } from './dom.js';
 import { placeStack } from './village_view.js';
+import { holderOf } from '../core/party.js';
 
 const ICON_FOR = { info: 'scroll', good: 'star', warn: 'heart', quest: 'scroll', lyra: 'mind', item: 'bag' };
 const LIFE = { info: 3.6, good: 3.6, warn: 5, quest: 6, lyra: 4.5, item: 2.6 };
@@ -24,7 +25,7 @@ const ANSWER_WINDOW = 2500; // ms after a tap in a panel: a notice then is its a
 // HUD pieces the stack must never cover (the chat is handled on its own).
 // Also the fallen screen (its Call for help is the one thing to tap then) and the move
 // stick (a notice over it took the thumb meant for walking or crawling).
-const HUD_SELECTOR = '.hud .card, .hud-btn, .lyra-fold, .quest-line, .listen-prompt, .interact-prompt, .cmdbar, .orders-btn, .tbtn, .jobs-menu, .fps, .sv-fallen, .stick-zone .stick';
+const HUD_SELECTOR = '.hud .card, .hud-btn, .quest-line, .listen-prompt, .interact-prompt, .cmdbar, .orders-btn, .tbtn, .jobs-menu, .fps, .sv-fallen, .stick-zone .stick';
 
 // Where an element's words actually are (a block heading is wider than its text).
 function textBox(el) {
@@ -311,13 +312,13 @@ export class Toasts {
       const r = el.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) out.push(rel(r));
     }
-    // The speakers' bubbles, and the player and Lyra themselves.
+    // The speakers' bubbles, and the player and whoever walks with them.
     try {
       for (const b of g.bubbles?.screenRects?.(this._bubbles) || []) out.push(b);
     } catch {
       /* bubbles are optional */
     }
-    for (const a of [g.player, g.companion]) {
+    for (const a of [g.player, holderOf(g)]) {
       if (!a || a.removed || !g.renderer?.worldToCss) continue;
       try {
         const p0 = g.renderer.worldToCss(a.x - 9, a.y - 28);

@@ -128,9 +128,47 @@ export class Party {
 
   // The start of a new game: Lyra holds the role while she walks with you.
   start() {
+    this.guardLyra();
     if (this.holderId) return;
     const L = lyraOf(this.game);
     if (L && WITH_YOU.has(lyraCompanionship(this.game)) && this.canHold(L)) this.set(L.id, 'start', null);
+  }
+
+  // Lyra's own plans may bring her back to you (autonomy: together or wary again). While
+  // someone else walks with you, she sees it and goes on with her day instead, saying so if
+  // she is near ("You walk with Bram now"). Her autonomy is talk's; this wraps it once, at
+  // the role's door, and does nothing when talk's own `party.canTake` check already says no.
+  guardLyra() {
+    const a = lyraOf(this.game)?.mind?.autonomy;
+    if (!a || typeof a.setCompanionship !== 'function' || a._partyGuarded) return;
+    const own = a.setCompanionship.bind(a);
+    const party = this;
+    a._partyGuarded = true;
+    a.setCompanionship = function guardedSetCompanionship(state, why = '', opts = {}) {
+      if (WITH_YOU.has(state) && !WITH_YOU.has(this.companionship) && party.otherHolds()) {
+        party.noteLyraBack();
+        return false;
+      }
+      return own(state, why, opts);
+    };
+  }
+
+  // Someone other than Lyra holds the role (and she is not being asked back).
+  otherHolds() {
+    const h = this.holder;
+    return !!h && !this.isLyra(h) && this._inviting !== COMPANION_ID;
+  }
+
+  noteLyraBack() {
+    const g = this.game;
+    const L = lyraOf(g);
+    const h = this.holder;
+    const P = g?.player;
+    const day = g?.clock?.day ?? 0;
+    if (!L || !h || !P || this._backDay === day) return;
+    if (Math.hypot(P.x - L.x, P.y - L.y) > 10 * TILE) return;
+    this._backDay = day;
+    this.sayNear(L, companionLine('lyra', 'lyra_back', { name: firstName(h) }));
   }
 
   entity(ref) {
@@ -218,6 +256,7 @@ export class Party {
     e = this.entity(e);
     if (!e) return { decision: 'refuse', why: 'cannot', line: '', ok: false, narration: true };
     if (this.isLyra(e)) return this.inviteLyra(e, { by });
+    this.guardLyra();
     const v = this.weighJoin(e, { text });
     if (ACCEPTED.has(v.decision) && v.why !== 'already') {
       const ok = this.take(e, { why: 'invited', by, terms: v.terms });
@@ -279,8 +318,13 @@ export class Party {
       // Lyra goes her own way (she is not ours to send anywhere): the role's end is her
       // companionship's 'apart', by agreement.
       if ((why === 'dismissed' || why === 'replaced') && WITH_YOU.has(lyraCompanionship(g))) {
-        safe(() => h.mind?.autonomy?.leavePlayer?.('apart', '', { asked: true }));
-        if (why === 'replaced' && next && !quiet) this.sayNear(h, companionLine('lyra', 'lyra_back', { name: firstName(next) }) || `You walk with ${firstName(next)} now.`);
+        const a = h.mind?.autonomy;
+        if (why === 'replaced' && next && typeof a?.setCompanionship === 'function') {
+          // Not "you told me to go": you asked someone else along. She takes it her own way.
+          const words = `You walk with ${firstName(next)} now. I have my own day to get on with.`;
+          safe(() => a.setCompanionship('apart', words, { apartReason: 'dismissed', silent: true }));
+          if (!quiet) this.sayNear(h, words);
+        } else safe(() => a?.leavePlayer?.('apart', '', { asked: true }));
       }
       return true;
     }

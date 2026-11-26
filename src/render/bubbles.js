@@ -1,6 +1,7 @@
 import { OUTLINE, UI } from '../art/palette.js';
 import { portrait } from '../art/characters_art.js';
 import { COMPANION_ID, PLAYER_ID } from '../core/constants.js';
+import { holderOf } from '../core/party.js';
 import {
   wrapText,
   revealCount,
@@ -445,6 +446,7 @@ export class Bubbles {
     ctx.imageSmoothingEnabled = false;
     ctx.textBaseline = 'middle';
     const playing = this.game?.state === 'playing' || this.game?.state === 'sleeping';
+    this._holder = holderOf(this.game);
     if (playing) this._drawNameTags(ctx, r);
     this._layoutBubbles(ctx, r, W, H);
     for (let i = 0; i < this._vis.length; i++) this._drawBubble(ctx, this._vis[i], r);
@@ -520,8 +522,9 @@ export class Bubbles {
       const ay = this._dy(r, e.y - headHeight(e) - z) - 2 * r.scale;
       const footY = this._dy(r, e.y) + 4 * r.scale;
       const onScreen = ax > -16 && ax < W + 16 && ay > -48 && footY < H + 48;
-      // Off-screen villagers are out of earshot; Lyra's words are pinned to the edge.
-      if (!onScreen && e.id !== COMPANION_ID) continue;
+      // Off-screen people are out of earshot; only whoever walks with you has their words
+      // pinned to the edge (round 14b: Lyra too only while she is the one).
+      if (!onScreen && e !== this._holder) continue;
       const top = b.tabH ? b.tabH - 2 * u : 0;
       const lp = this._lp;
       lp.ax = ax;
@@ -594,12 +597,12 @@ export class Bubbles {
     const g = this.game;
     const party = this._party || (this._party = []);
     party.length = 0;
-    party.push(g?.player, g?.companion);
+    party.push(g?.player, this._holder);
     const bars = g?.renderer?.healthBars?.bars;
     if (bars?.size) {
       for (const [a, b] of bars) {
         if (party.length >= pool.length) break;
-        if (!b.friend && a !== g.player && a !== g.companion) party.push(a);
+        if (!b.friend && a !== g.player && a !== this._holder) party.push(a);
       }
     }
     for (let k = 0; k < party.length; k++) {
@@ -631,7 +634,7 @@ export class Bubbles {
     const p = this.game?.player;
     const px = p ? p.x : r.ox + W / 2 / r.scale;
     const py = p ? p.y : r.oy + H / 2 / r.scale;
-    const rank = (b) => (b.entity.id === COMPANION_ID ? -2 : b.entity.id === PLAYER_ID ? -1 : Math.hypot(b.entity.x - px, b.entity.y - py));
+    const rank = (b) => (b.entity === this._holder ? -2 : b.entity.id === PLAYER_ID ? -1 : Math.hypot(b.entity.x - px, b.entity.y - py));
     const keep = vis.slice().sort((a, b) => rank(a) - rank(b)).slice(0, cap);
     const kept = new Set(keep);
     let n = 0;
@@ -899,10 +902,12 @@ export class Bubbles {
     ctx.globalAlpha = 1;
   }
 
-  // When Lyra is off screen, a small badge on the edge points toward her.
+  // When whoever walks with you is off screen, a small badge on the edge points toward them
+  // (round 14b, DESIGN §34.3): their portrait and name. Nobody beside you: no badge.
   _drawCompanionMarker(ctx, r, W, H) {
-    const c = this.game?.companion;
-    if (!c || c.removed) return;
+    const c = holderOf(this.game);
+    if (!c || c.removed || c.hidden) return;
+    const lyra = c.id === COMPANION_ID;
     const hx = this._dx(r, c.x);
     const hy = this._dy(r, c.y - 12);
     const pad = 6 * r.scale;
@@ -915,12 +920,12 @@ export class Bubbles {
     const downed = !!(c.downed || c.state === 'downed');
     const t = this._time;
     const pulse = 0.5 + 0.5 * Math.sin(t * (downed ? 7 : 3));
-    const edge = downed ? UI.danger : UI.arcane;
+    const edge = downed ? UI.danger : lyra ? UI.arcane : UI.ember;
     const bx = Math.round((ep.x - S / 2) / u) * u;
     const by = Math.round((ep.y - S / 2) / u) * u;
     ctx.globalAlpha = 0.88 + 0.12 * pulse;
     this._box(ctx, bx, by, S, S, u, OUTLINE, edge, '#1c1730');
-    const pic = this._lyraPortrait();
+    const pic = this._holderPortrait(c);
     if (pic) {
       const inner = S - 4 * u;
       ctx.imageSmoothingEnabled = true;
@@ -953,8 +958,8 @@ export class Bubbles {
     ctx.stroke();
     ctx.fillStyle = edge;
     ctx.fill();
-    // Her name under the badge (above it when the badge sits on the bottom edge).
-    const name = c.name || 'Lyra';
+    // Their name under the badge (above it when the badge sits on the bottom edge).
+    const name = lyra ? this.game?.settings?.companionName || c.name || 'Lyra' : String(c.name || c.id || '').split(' ')[0];
     ctx.font = this.fonts.label;
     ctx.textAlign = 'center';
     const ny = ep.y > H / 2 ? by - this.labelPx * 0.7 : by + S + this.labelPx * 0.8;
@@ -967,16 +972,19 @@ export class Bubbles {
     ctx.globalAlpha = 1;
   }
 
-  _lyraPortrait() {
-    if (this._portrait !== undefined) return this._portrait;
+  // The badge's face: whoever holds the role (cached per key).
+  _holderPortrait(e) {
+    const key = e?.spriteKey || e?.id || COMPANION_ID;
+    if (!this._portraits) this._portraits = new Map();
+    if (this._portraits.has(key)) return this._portraits.get(key);
     let pic = null;
     try {
-      const p = portrait(this.game.atlas, COMPANION_ID, 'neutral');
+      const p = portrait(this.game.atlas, key, 'neutral');
       if (p && p.width > 0 && p.height > 0) pic = p;
     } catch {
       pic = null;
     }
-    this._portrait = pic;
+    this._portraits.set(key, pic);
     return pic;
   }
 }

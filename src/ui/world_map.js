@@ -5,10 +5,11 @@ import { tileDef, T } from '../world/tiles.js';
 import { CELL } from '../world/travel.js';
 import { bossMarks } from '../world/boss_trails.js';
 import { homeBed, HOME_ID } from '../world/home.js';
+import { holderOf } from '../core/party.js';
 
 // The map (DESIGN §32.3): the whole world as you have walked it. A small painted chart of
 // the ground (one pixel a tile), the parts you have not seen under a dark wash, the roads,
-// the places you have reached with their names, the lit waystones, you and Lyra, your
+// the places you have reached with their names, the lit waystones, you and whoever walks with you, your
 // home, the mission you are on, the bosses you have heard of (§32.4), and anything else
 // that wants a mark (the ember-ring where your coins lie, death branch). Drag to look
 // round, pinch or wheel or +/− to zoom, "Me" to come back. M is the mind on a keyboard,
@@ -81,6 +82,9 @@ export class WorldMap {
     };
     this._wire();
     this.center();
+    // The first frame, once the chart has a size: centred on you, zoomed out just enough to
+    // show the ember-ring or the mission's objective too (round 14b leftover).
+    this._frame = true;
     this.ui.openModal(panel);
     const loop = () => {
       if (!this.isOpen()) return;
@@ -94,6 +98,37 @@ export class WorldMap {
     const p = this.game.player;
     this.cx = p.x / TILE;
     this.cy = p.y / TILE;
+  }
+
+  // Centred on you, with what matters in view: your coins' ember-ring first, else the
+  // mission's objective. Zoom out (never past the whole-map fit) until it shows; if even
+  // that cannot hold both around you, the view moves toward it, keeping you on the chart.
+  frame(W, H) {
+    const g = this.game;
+    const p = g.player;
+    if (!p || !W || !H) return;
+    this.center();
+    const marks = this.marks();
+    const goal = marks.find((m) => m.kind === 'ember') || marks.find((m) => m.kind === 'objective');
+    if (!goal) return;
+    const dx = Math.abs(goal.x - p.x) / TILE;
+    const dy = Math.abs(goal.y - p.y) / TILE;
+    const pad = 28;
+    const fits = () => {
+      const s = this.scale(W, H);
+      return dx * s <= W / 2 - pad && dy * s <= H / 2 - pad;
+    };
+    while (!fits() && this.zi > 0) this.zi--;
+    if (fits()) return;
+    const s = this.scale(W, H);
+    const mx = (goal.x + p.x) / 2 / TILE;
+    const my = (goal.y + p.y) / 2 / TILE;
+    // Toward the middle, but never so far that you leave the chart.
+    const lim = (half) => Math.max(0, half - pad / s);
+    const hx = lim(W / s / 2);
+    const hy = lim(H / s / 2);
+    this.cx = Math.max(p.x / TILE - hx, Math.min(p.x / TILE + hx, mx));
+    this.cy = Math.max(p.y / TILE - hy, Math.min(p.y / TILE + hy, my));
   }
 
   zoomBy(d) {
@@ -275,8 +310,10 @@ export class WorldMap {
         if (mm) out.push({ x: e.x, y: e.y, ...mm });
       }
     }
-    const c = g.companion;
-    if (c && !c.removed && !c.dead) out.push({ kind: 'lyra', x: c.x, y: c.y, label: 'Lyra' });
+    // Whoever walks with you (round 14b: the holder of the role, Lyra only while she is the
+    // one); nobody beside you, no dot.
+    const c = holderOf(g);
+    if (c && !c.removed && !c.dead && !c.hidden) out.push({ kind: 'companion', lyra: c.id === 'lyra', x: c.x, y: c.y, label: c.id === 'lyra' ? g.settings?.companionName || c.name || 'Lyra' : String(c.name || c.id).split(' ')[0] });
     out.push({ kind: 'you', x: g.player.x, y: g.player.y, label: 'You' });
     return out;
   }
@@ -292,6 +329,10 @@ export class WorldMap {
     if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) {
       c.width = Math.round(W * dpr);
       c.height = Math.round(H * dpr);
+    }
+    if (this._frame && c.clientWidth > 0) {
+      this._frame = false;
+      this.frame(W, H);
     }
     const ctx = c.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -363,8 +404,9 @@ function drawMark(ctx, mk, x, y, t, s) {
       ctx.arc(x, y, 3.5, 0, Math.PI * 2);
       ctx.fill();
       break;
+    case 'companion':
     case 'lyra':
-      ctx.fillStyle = '#b48cff';
+      ctx.fillStyle = mk.kind === 'companion' && !mk.lyra ? '#ffb46b' : '#b48cff';
       ctx.strokeStyle = '#1a1030';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
