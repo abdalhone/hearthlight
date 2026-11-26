@@ -210,12 +210,18 @@ for (const view of VIEWS) {
   await page.waitForTimeout(1500);
   await shot('11-moot');
   await page.evaluate(() => window.__game.story?.player?.skip?.());
-  await page.waitForSelector('.panel-plea', { timeout: 8000 }).catch(() => {});
-  await page.waitForTimeout(400);
+  // Round 14b (S-11): the defence in the stranger's own words, then the Moot weighs it.
+  await page.waitForSelector('.panel-defence', { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(600);
+  await page.fill('.panel-defence .defence-field', 'He attacked me first with his hammer. I had no choice.').catch(() => {});
   await shot('12-plea');
-  await page.evaluate(() => document.querySelector('.panel-plea .opt-deny')?.click());
+  await page.evaluate(() => document.querySelector('.panel-defence .defence-send')?.click());
+  await page.waitForSelector('.panel-weighing', { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(800);
+  await shot('12b-weighing');
+  await page.evaluate(() => document.querySelector('.panel-weighing .opt-hear')?.click());
   await page.waitForTimeout(1500);
-  await page.evaluate(() => window.__game.story?.player?.skip?.());
+  for (let i = 0; i < 12; i++) await page.evaluate(() => window.__game.story?.player?.skip?.());
   await page.waitForTimeout(1500);
   await shot('13-verdict');
   const state = await page.evaluate(() => {

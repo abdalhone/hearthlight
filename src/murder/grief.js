@@ -14,6 +14,8 @@ import { murderLine, mootLines, lyraLine, FUNERAL, MOOT } from './lines.js';
 import { profileById } from '../entities/npc_data.js';
 import { isMinor } from '../core/people.js';
 import { stance as tradeStance } from '../world/trade.js';
+import { parseDefence, checkDefence } from './defence.js';
+import { jurorsOf, deliberate, tally } from './jury.js';
 import * as Lyra from './lyra.js';
 import { funeralScript, trialScripts, playScript } from './scenes.js';
 
@@ -325,25 +327,95 @@ function holdMoot(m, x) {
   void rec;
 }
 
-// The stranger before the Moot. opts.plea skips the questions (tests, the absent).
+// The stranger before the Moot (round 14b, S-11; DESIGN §36.5). The watch's account, then
+// the stranger's own defence, in their words (MurderView.defence: a field and three chips;
+// closing it is a silent plea), then the Moot weighs it: one Claude call per juror, each with
+// only their own brief, in one 25 s budget, the rest by their own rules (jury.js); lies are
+// caught only by those who know (defence.js checkClaim). The majority decides, the chair
+// breaks a tie; mercy lightens the sentence. Saved while the Moot weighs it (c.trial, and
+// trialPending): a reload re-runs it without asking for the defence again and without asking
+// Claude again (the votes already in are kept; the rest weigh it themselves).
+// opts.plea alone skips it all (tests, the absent): the old arithmetic. opts.defence: the
+// words, without the scenes (tests, a headless game).
 export function trial(m, about, opts = {}) {
   const c = m.cases[about] || m.openCase(about);
   if (!c || c.verdict) return Promise.resolve(c?.verdict || null);
   m.weigh(about);
   const chair = chairOf(m, about);
   const g = m.game;
-  if (opts.plea || !g.story?.player || !m.view?.plea) {
-    const plea = opts.plea || 'deny';
-    return Promise.resolve(applyVerdict(m, about, judge(m, about, plea)));
+  if (opts.plea && opts.defence == null) return Promise.resolve(applyVerdict(m, about, judge(m, about, opts.plea)));
+  const resume = c.trial?.state === 'deliberating' && typeof c.trial.defence === 'string';
+  const headless = !g.story?.player || !m.view?.defence;
+  if (headless && opts.defence == null && !resume) return Promise.resolve(applyVerdict(m, about, judge(m, about, 'deny')));
+  if (headless) {
+    const words = resume ? c.trial.defence : String(opts.defence ?? '');
+    return weighDefence(m, about, words, { quick: resume ? c.trial.quick : opts.quick, resume, provider: opts.provider }).then((v) => applyVerdict(m, about, v));
   }
   const { open, verdictFor } = trialScripts(m, about, chair);
   standTrial(m, about, chair);
-  return playScript(m, 'murder_trial', open)
-    .then(() => m.view.plea({ about, chair }))
-    .then((plea) => {
-      const v = judge(m, about, plea || 'silent');
-      return playScript(m, 'murder_verdict', verdictFor(v)).then(() => applyVerdict(m, about, v));
-    });
+  const asked = resume ? Promise.resolve({ text: c.trial.defence, quick: c.trial.quick || null }) : playScript(m, 'murder_trial', open).then(() => m.view.defence({ about, chair }));
+  return asked.then((d) => {
+    const words = typeof d === 'string' ? d : String(d?.text ?? '');
+    const watch = safe(() => m.view.weighing?.({ about, chair, jurors: jurorsOf(m, about) }), null);
+    return weighDefence(m, about, words, { quick: d?.quick || null, resume, onVote: (vote) => safe(() => watch?.vote?.(vote)) }).then((v) =>
+      Promise.resolve(safe(() => watch?.done?.(v)))
+        .then(() => playScript(m, 'murder_verdict', verdictFor(v)))
+        .then(() => applyVerdict(m, about, v)),
+    );
+  });
+}
+
+// The defence weighed: claims parsed and checked, the jury asked, caught lies known, a verdict.
+export async function weighDefence(m, about, words, { quick = null, resume = false, onVote = null, provider = undefined } = {}) {
+  const c = m.cases[about] || m.openCase(about);
+  const rec = m.dead[about];
+  const text = String(words || '').slice(0, 600);
+  const claims = parseDefence(text, m, about);
+  if (quick === 'confess' && !claims.some((x) => x.kind === 'confess')) claims.push({ id: `confess${claims.length + 1}`, kind: 'confess', text: 'I did it.' });
+  // What the watch said aloud to the room (the strongest four, as the scene reads them).
+  const spokenBy = (c?.evidence || [])
+    .filter((x) => x.text)
+    .sort((a, b) => b.w - a.w)
+    .slice(0, 4)
+    .map((x) => x.by)
+    .filter(Boolean);
+  const checked = checkDefence(m, rec, claims, { room: jurorsOf(m, about), spokenBy });
+  const t = Math.round(m.now());
+  const prior = resume && Array.isArray(c.trial?.votes) ? c.trial.votes.filter(Boolean) : [];
+  c.trial = { defence: text, quick: quick || null, claims: checked, votes: [...prior], t: resume ? c.trial?.t ?? t : t, day: m.day(), state: 'deliberating', sentence: null };
+  m.trialPending = { about, t, deliberating: true };
+  // Nobody is asked twice: after a reload the votes in are kept and the rest weigh it alone.
+  const prov = resume ? null : provider !== undefined ? provider : safe(() => m.village?.provider?.(), null);
+  const votes = await deliberate(m, about, {
+    defence: text,
+    checked,
+    provider: prov,
+    have: prior,
+    onVote: (vote) => {
+      if (!c.trial.votes.some((x) => x.id === vote.id)) c.trial.votes.push(vote);
+      onVote?.(vote);
+    },
+  });
+  // Lies caught (only by those who knew): the watch hears it, and so does the village.
+  for (const cl of checked) {
+    const by = votes.filter((v) => v.caught?.includes(cl.id)).map((v) => v.id);
+    if (!by.length) continue;
+    cl.caught = true;
+    cl.caughtBy = by;
+    rec?.answers?.push({ kind: 'lie_caught', w: 0.5, t, by: by[0], text: `${m.name(by[0])} knew ${m.playerName()} lied to the Moot (${cl.kind.replace('_', ' ')}).` });
+    safe(() => m.village?.addRumor?.('lied_about', { victim: about, witnesses: by, saw: by, source: by[0] }));
+  }
+  const confess = checked.some((x) => x.kind === 'confess');
+  if (confess) rec?.answers?.push({ kind: 'confession', w: 1, t, text: `${m.playerName()} confessed before the Moot.` });
+  m.weigh(about);
+  const chair = chairOf(m, about);
+  const tl = tally(votes, chair);
+  c.trial.votes = votes;
+  c.trial.state = 'decided';
+  c.trial.sentence = tl.outcome;
+  m.trialPending = null;
+  const plea = confess ? 'confess' : text ? 'defence' : 'silent';
+  return { guilty: tl.found, mercy: tl.outcome === 'mercy', plea, suspicion: c.suspicion ?? 0, votes, claims: checked, tally: tl };
 }
 
 export function judge(m, about, plea) {
@@ -396,9 +468,28 @@ export function applyVerdict(m, about, v) {
   if (c) {
     c.verdict = v.guilty ? 'guilty' : 'not_proven';
     c.state = 'closed';
+    if (c.trial) c.trial.sentence = v.guilty ? (v.mercy ? 'mercy' : 'guilty') : 'not_proven';
   }
   const day = m.day();
-  if (v.guilty) {
+  const votes = v.tally ? ` (${v.tally.guilty} guilty, ${v.tally.mercy} mercy, ${v.tally.notProven} not proven)` : '';
+  if (v.guilty && v.mercy) {
+    // Mercy (round 14b): guilty, and spared the whole of it: one day outside, a quarter of the
+    // coin to the family, and the kept flame left burning.
+    m.outside = { until: Math.round(m.now() + DAY), day, about, mercy: true };
+    m.setWanted(about, 'outside', DAY);
+    const coin = P?.inventory?.count?.('coin') ?? 0;
+    const fine = Math.floor(coin / 4);
+    if (fine > 0) safe(() => P.inventory.remove('coin', fine));
+    if (!v.absent) walkOut(m);
+    for (const id of VILLAGERS) {
+      const e = m.entity(id);
+      if (!e || !alive(m, id) || typeof e.adjustOpinion !== 'function') continue;
+      if (e.opinionOfPlayer > 20) e.adjustOpinion(20 - e.opinionOfPlayer, 'convicted by the Moot, with mercy');
+    }
+    safe(() => m.village?.addRumor?.('convicted', { victim: about, witnesses: MOOT_HEADS.filter((id) => alive(m, id)), source: chairOf(m, about) || 'village' }));
+    m.event('verdict', `The Moot found ${m.playerName()} guilty of ${m.name(about)}'s death${votes}, and asked mercy: one day outside.`, { about });
+    m.toast(`Guilty, with mercy. One day outside${fine ? `, and ${fine} coins go to ${m.name(about)}'s people` : ''}. Your flame still burns.`, 'warn', 'verdict');
+  } else if (v.guilty) {
     // The flame is put out, and Aveline (or whoever keeps the altar) will not relight it soon.
     g.flags = g.flags || {};
     if (g.flags.keptFlame) {
@@ -419,17 +510,17 @@ export function applyVerdict(m, about, v) {
       if (e.opinionOfPlayer > 8) e.adjustOpinion(8 - e.opinionOfPlayer, 'convicted by the Moot');
     }
     safe(() => m.village?.addRumor?.('convicted', { victim: about, witnesses: MOOT_HEADS.filter((id) => alive(m, id)), source: chairOf(m, about) || 'village' }));
-    m.event('verdict', `The Moot found ${m.playerName()} guilty of ${m.name(about)}'s death${v.absent ? ', in their absence' : ''}, and put them outside for ${OUTSIDE_DAYS} days.`, { about });
+    m.event('verdict', `The Moot found ${m.playerName()} guilty of ${m.name(about)}'s death${v.absent ? ', in their absence' : votes}, and put them outside for ${OUTSIDE_DAYS} days.`, { about });
     m.toast(v.absent ? `The Moot sat without you and found you guilty of ${m.name(about)}'s death. Outside: the bell-reach is closed to you for ${OUTSIDE_DAYS} days, and your flame is out.` : `Guilty. Outside for ${OUTSIDE_DAYS} days. Your flame is out${fine ? `, and ${fine} coins go to ${m.name(about)}'s people` : ''}.`, 'warn', 'verdict');
   } else {
     if (P?.crime && (P.crime.kind === 'murder' || P.crime.kind === 'outside')) P.crime = null;
     m.wanted = null;
     safe(() => m.village?.addRumor?.('not_proven', { victim: about, witnesses: MOOT_HEADS.filter((id) => alive(m, id)), source: chairOf(m, about) || 'village' }));
-    m.event('verdict', `The Moot could not find it proven that ${m.playerName()} killed ${m.name(about)}. Nobody believes they are innocent.`, { about });
+    m.event('verdict', `The Moot could not find it proven that ${m.playerName()} killed ${m.name(about)}${votes}. Nobody believes they are innocent.`, { about });
     m.toast(`Not proven. You are free, and everyone will be watching you.`, 'info', 'verdict');
   }
   Lyra.onVerdict(m, about, v);
-  m.emit('moot_verdict', { about, guilty: !!v.guilty, plea: v.plea || null, absent: !!v.absent });
+  m.emit('moot_verdict', { about, guilty: !!v.guilty, mercy: !!v.mercy, plea: v.plea || null, absent: !!v.absent, votes: (v.votes || []).map((x) => ({ id: x.id, vote: x.vote })) });
   return c?.verdict || null;
 }
 

@@ -289,7 +289,8 @@ export class Reputation {
   }
 
   roadLine() {
-    const w = this.roadWord();
+    const order = Object.keys(TITLES);
+    const w = this.roadWord().sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
     if (!w.length) return null;
     const bad = w.find((x) => TITLES[x.id]?.bad) || w[0];
     const name = bad.title.replace(/^(a|the)\s+/i, (s) => s.toLowerCase());

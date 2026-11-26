@@ -92,8 +92,16 @@ export function trialScripts(m, about, chair) {
   const verdictFor = (v) => {
     const steps = [];
     if (v.plea === 'confess') steps.push({ narrate: 'Nobody in the room says anything for a long time.' });
+    // Round 14b (S-11): each juror says how they weighed it, then the chair gives the verdict.
+    for (const vote of (v.votes || []).slice(0, 7)) {
+      if (!vote?.reason || m.dead?.[vote.id]) continue;
+      const word = vote.vote === 'guilty' ? 'Guilty.' : vote.vote === 'mercy' ? 'Guilty. And I ask mercy.' : 'Not proven.';
+      steps.push({ say: vote.id, text: `${vote.reason} ${word}` });
+    }
+    if (v.tally) steps.push({ narrate: `${v.tally.guilty} for guilty, ${v.tally.mercy} for mercy, ${v.tally.notProven} not proven.` });
     for (const l of mootLines(chair, v.guilty ? 'guilty' : 'notProven', { about })) steps.push(line(l));
-    if (v.guilty) for (const l of mootLines(chair, 'outside', { about })) steps.push({ narrate: l });
+    if (v.guilty && v.mercy) steps.push(line('The Moot asks mercy for you. One day outside, not three. Your flame stays lit.'));
+    else if (v.guilty) for (const l of mootLines(chair, 'outside', { about })) steps.push({ narrate: l });
     return { title: 'The Moot', steps };
   };
   return { open: { title: 'The Moot sits', steps: open }, verdictFor };

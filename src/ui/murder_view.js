@@ -3,9 +3,11 @@
 // before the Moot. Built like the villager dialogue (portrait, words, options), and they
 // pause the world while they are open. game.murder.view is this object.
 
-import { h, button, clear } from './dom.js';
+import { h, button, clear, setText } from './dom.js';
 import { makePanel } from './modal.js';
-import { portraitUrl } from './art.js';
+import { portraitUrl, personArtKey } from './art.js';
+import { FieldDictation } from './dictation.js';
+import { QUICK } from '../murder/defence.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -16,6 +18,8 @@ function safe(fn, fallback = null) {
     return fallback;
   }
 }
+
+const now = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
 
 export class MurderView {
   constructor(game) {
@@ -136,6 +140,129 @@ export class MurderView {
       );
       this.ui.openModal(f.panel);
     });
+  }
+
+  // Before the Moot, in your own words (round 14b, S-11): a field (typed or spoken), and three
+  // chips for the old pleas. -> Promise<{ text, quick }>. Closing it is a silent plea. A tap
+  // that skipped the scene before it cannot send it: the field starts empty and Send needs
+  // words or a chip.
+  defence({ about, chair }) {
+    if (!this.ui?.openModal) return Promise.resolve({ text: QUICK.deny, quick: 'deny' });
+    const m = this.game.murder;
+    return new Promise((resolve) => {
+      const who = chair ? m?.entity?.(chair) : null;
+      const f = this.frame('defence', chair || 'alder', 'The Moot', who ? `${who.name} in the chair` : '');
+      f.panel.el?.classList?.add('panel-defence');
+      f.panel.el?.classList?.add('panel-plea');
+      let done = false;
+      const finish = (v) => {
+        if (done) return;
+        done = true;
+        dict?.detach?.();
+        this.ui.closeModal(f.panel, true);
+        resolve(v);
+      };
+      f.panel.onClose = () => finish({ text: '', quick: 'silent' });
+      const V = m?.entity?.(about)?.name || 'They';
+      f.setText(`The whole room is looking at you. ${V} is dead. Speak for yourself: what happened, where you were, why they should believe you.`);
+      const field = h('textarea', { class: 'field defence-field', rows: '3', maxlength: '600', 'aria-label': 'Your defence', placeholder: 'Say it in your own words…', spellcheck: 'true' });
+      field.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+          e.preventDefault();
+          send();
+        }
+      });
+      const mic = button('', { icon: 'mic', cls: 'btn-icon dlg-mic', title: 'Speak your defence' });
+      const sendBtn = button('Speak to the Moot', { cls: 'btn-ember defence-send' });
+      const send = () => {
+        const text = field.value.trim();
+        if (!text) {
+          field.focus({ preventScroll: true });
+          return;
+        }
+        finish({ text, quick: null });
+      };
+      sendBtn.addEventListener('click', send);
+      const dict = (() => {
+        try {
+          const d = new FieldDictation(this.ui, { field, mic, owner: 'defence', idleTitle: 'Speak your defence' });
+          d.attach(this.game.runtime?.dictation || null);
+          return d;
+        } catch {
+          return null;
+        }
+      })();
+      const box = h('div', { class: 'defence-box' }, field, h('div', { class: 'defence-row' }, mic, sendBtn));
+      f.panel.body.querySelector('.dlg-main')?.insertBefore(box, f.panel.body.querySelector('.dlg-options'));
+      f.setOptions(
+        [
+          { id: 'confess', label: 'I did it.' },
+          { id: 'deny', label: 'It was not me.' },
+          { id: 'silent', label: 'Say nothing.' },
+        ],
+        (o) => {
+          // The tap that skipped the last line of the scene lands here a moment later: it
+          // never speaks for the stranger.
+          if (now() - openedAt < 450) return;
+          finish({ text: QUICK[o.id] ?? '', quick: o.id });
+        },
+      );
+      const openedAt = now();
+      this.ui.openModal(f.panel);
+      if (!this.ui?.isTouch) requestAnimationFrame(() => field.focus({ preventScroll: true }));
+    });
+  }
+
+  // "The Moot weighs it": each juror's face, filling in with their word and their vote as it
+  // comes. -> { vote(v), done(verdict) } (done waits a moment for the last ones to be read).
+  weighing({ about, chair, jurors }) {
+    if (!this.ui?.openModal) return null;
+    const g = this.game;
+    const m = g.murder;
+    const f = this.frame('weighing', chair || 'alder', 'The Moot weighs it', `${m?.entity?.(about)?.name || 'A death'}`);
+    f.panel.el?.classList?.add('panel-weighing');
+    f.setText('They talk it over among themselves. Each of them weighs what you said against what they know of you.');
+    const grid = h('div', { class: 'jury' });
+    const cards = new Map();
+    for (const id of jurors || []) {
+      const e = m?.entity?.(id);
+      const key = personArtKey(g, { id, npc: true }) || id;
+      const img = h('img', { class: 'portrait jury-face', alt: '', draggable: 'false', src: portraitUrl(g, key, 'neutral') || '' });
+      const said = h('p', { class: 'jury-said', text: '…' });
+      const vote = h('span', { class: 'jury-vote is-wait', text: 'weighing' });
+      const card = h('div', { class: 'jury-card' }, h('span', { class: 'portrait-frame' }, img), h('div', { class: 'jury-text' }, h('b', { text: e?.name?.split(' ')[0] || id }), said, vote));
+      cards.set(id, { card, said, vote, img, key });
+      grid.append(card);
+    }
+    f.panel.body.querySelector('.dlg-main')?.append(grid);
+    f.setOptions([], () => {});
+    let closed = false;
+    f.panel.onClose = () => {
+      closed = true;
+    };
+    this.ui.openModal(f.panel);
+    return {
+      vote: (v) => {
+        const c = cards.get(v?.id);
+        if (!c || closed) return;
+        setText(c.said, v.reason || '…');
+        setText(c.vote, v.vote === 'guilty' ? 'Guilty' : v.vote === 'mercy' ? 'Mercy' : 'Not proven');
+        c.vote.className = `jury-vote is-${v.vote}`;
+        const expr = v.vote === 'guilty' ? 'angry' : v.vote === 'mercy' ? 'sad' : 'neutral';
+        const u = portraitUrl(g, c.key, expr);
+        if (u) c.img.src = u;
+      },
+      done: () =>
+        new Promise((resolve) => {
+          if (closed) return resolve();
+          f.setOptions([{ id: 'hear', label: 'Hear the verdict' }], () => {
+            this.ui.closeModal(f.panel, true);
+            resolve();
+          });
+          f.panel.onClose = () => resolve();
+        }),
+    };
   }
 
   // Before the Moot: what do you say? -> Promise<'confess'|'deny'|'silent'>

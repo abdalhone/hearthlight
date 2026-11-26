@@ -74,3 +74,100 @@
     min-width: 44px;
   }
 }
+
+/* ---------- the trial (S-11): the defence in your own words, the Moot weighing it ---------- */
+.defence-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+}
+.defence-field {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  font: inherit;
+}
+.defence-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.defence-send {
+  min-height: 44px;
+}
+.panel-defence .dlg-opt,
+.panel-weighing .dlg-opt {
+  min-height: 44px;
+}
+.jury {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.jury-card {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 6px;
+  background: rgba(10, 9, 25, 0.35);
+}
+.jury-face {
+  width: 40px;
+  height: 40px;
+  image-rendering: pixelated;
+}
+.jury-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.jury-said {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+}
+.jury-vote {
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.jury-vote.is-wait {
+  color: var(--parch-dim);
+}
+.jury-vote.is-guilty {
+  color: #ff8f80;
+}
+.jury-vote.is-mercy {
+  color: #ffd27a;
+}
+.jury-vote.is-not_proven {
+  color: #9fd8a8;
+}
+/* An upright phone: the keyboard covers the bottom half; keep the field high and the list short. */
+@media (max-width: 480px) {
+  .panel-defence .dlg-portrait {
+    display: none;
+  }
+  .jury {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+/* Sideways: little height; the panel scrolls within it. */
+@media (max-height: 430px) {
+  .panel-defence,
+  .panel-weighing {
+    max-height: min(520px, 96vh);
+  }
+  .panel-defence .panel-body,
+  .panel-weighing .panel-body {
+    overflow-y: auto;
+  }
+  .defence-field {
+    min-height: 52px;
+  }
+}
