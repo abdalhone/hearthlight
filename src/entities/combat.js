@@ -1058,9 +1058,12 @@ export class Combat {
 // What the player is told when they become wanted (or more wanted).
 function crimeLine(victim, kind) {
   const who = shortName(victim?.name);
-  if (kind === 'knockout') return `You knocked ${who} out cold. The guard will hunt you until the day is done.`;
+  // Someone saw it, or the hurt one told (combat records a crime only then), but the watch
+  // knows only once the news reaches them (DESIGN §29.2, §29.4): the line says so, not that
+  // they are already coming.
   if (victim?.faction === 'guard') return `You struck ${who}. Now the guard is after you.`;
-  return `You struck ${who}. The guard will be after you for a while.`;
+  if (kind === 'knockout') return `You knocked ${who} out cold, and word of it is out. Once it reaches the watch, they will hunt you until the day is done.`;
+  return `You struck ${who}, and word of it is out. Once it reaches the watch, they will be after you for a while.`;
 }
 
 // "Captain Rowan Vale" -> "Rowan", "Garrick "Gale" Hale" -> "Garrick", for short lines.

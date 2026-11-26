@@ -35,6 +35,7 @@ import { placeAt, placePhrase, pronoun } from '../ai/village_life/errands_data.j
 import { whenPhrase } from '../ai/village_life/problems.js';
 import { witnessesOf, look, lightAt } from './witness.js';
 import { canReach } from '../world/walls.js';
+import { hears, hearsWords, cryLoudness, LOUD } from '../ai/hearing.js';
 import { UNKILLABLE, FINISH_HOLD, FINISH_REACH, FINISH_CANCEL, MURDER_WANTED, HOUR, DAY, HIDE, hidingPlace, INVESTIGATORS, levelOf } from './data.js';
 import { gatherEvidence, suspicionOf, buildQuestions, judgeAnswer, WEIGHTS } from './investigation.js';
 import { murderLine, watchLine } from './lines.js';
@@ -309,15 +310,28 @@ export class Murder {
     return s.ids.has(id);
   }
 
-  // Is anyone near enough to hear this victim's cry (npc.js HELP_HEAR, by severity)?
+  // Is the crime on `victim` being reported this moment one told in words (reveal), not a
+  // blow falling? A told crime makes no sound for anyone to hear.
+  toldNow(victim) {
+    const s = this.lastScreen;
+    return !!s && !!s.told && s.victim === (victim?.id ?? victim) && this.now() - s.t <= 2;
+  }
+
+  // Does anyone hear this victim's cry? The one rule for ears (src/ai/hearing.js, DESIGN
+  // §29.4): the reach by severity, walls and shut doors muffling it, sleep dulling it.
+  // -> 'clear' (someone heard it in the open), 'muffled' (only through a wall), or false.
   heardBy(victim, severity = 1) {
-    const reach = [0, 300, 440, 600][Math.max(1, Math.min(3, Math.round(Number(severity) || 1)))];
-    for (const e of [...(this.life?.villagers?.() || []), this.game?.companion]) {
-      if (!e || e === victim || e.dead || e.absent || !e.isAlive?.()) continue;
-      const r = reach * (e.state === 'sleep' ? 0.35 : 1);
-      if (dist(e, victim) <= r) return true;
+    const v = this.entity(victim);
+    if (!v) return false;
+    const g = this.game;
+    let best = false;
+    for (const e of [...(this.life?.villagers?.() || []), g?.companion]) {
+      if (!e || e === v || e.dead || e.absent || !e.isAlive?.()) continue;
+      const how = safe(() => hears(g, e, v.x, v.y, cryLoudness(severity)), null);
+      if (how === 'clear') return 'clear';
+      if (how) best = how;
     }
-    return false;
+    return best;
   }
 
   isSecret(victimId) {
@@ -335,7 +349,17 @@ export class Murder {
     const c = this.game?.combat;
     if (!v || !P || !c) return false;
     safe(() => c._recordCrime?.(P, v, p.kind));
-    safe(() => c._reportCrime?.(P, v, p.kind));
+    // Told, not seen (DESIGN §29.4): the crime this tells is the hurt one's words to the one
+    // beside them, and to nobody else. Whoever happens to see the stranger right now saw
+    // no blow: the screen for this event names only the one told (sawBlow), so nobody else
+    // turns on the stranger, flees or fights them for it; the news goes on by meeting.
+    const prev = this.lastScreen;
+    this.lastScreen = { victim: victimId, ids: new Set(to ? [to] : []), t: this.now(), told: true };
+    try {
+      safe(() => c._reportCrime?.(P, v, p.kind));
+    } finally {
+      this.lastScreen = prev;
+    }
     const who = to ? this.name(to) : 'the watch';
     this.event('told', `${this.name(victimId)} told ${who} that ${this.playerName()} attacked ${pronoun(victimId, 'him')}.`, { who: victimId, about: 'player' });
     return true;
@@ -612,10 +636,11 @@ export class Murder {
       n++;
       this.terrify(e, rec);
     }
-    // The scream carries a little way: whoever is close enough to make out the words.
+    // The scream carries a little way: whoever is close enough to make out the words, with
+    // no wall between (a wall leaves a noise, not words: src/ai/hearing.js).
     for (const e of this.life?.villagers?.() || []) {
       if (!e || e.id === rec.id || knowers.includes(e.id) || !e.isAlive?.() || e.state === 'sleep') continue;
-      if (rec.seen.some((s) => s.id !== 'lyra' && dist(this.entity(s.id), e) <= SCREAM_REACH)) knowers.push(e.id);
+      if (rec.seen.some((s) => s.id !== 'lyra' && safe(() => hearsWords(g, e, this.entity(s.id), SCREAM_REACH), false))) knowers.push(e.id);
     }
     const r = safe(() => this.village?.addRumor?.('murder', { victim: rec.id, witnesses: knowers, saw: rec.seen.filter((s) => s.id !== 'lyra').map((s) => s.id), source: knowers[0] || 'village' }), null);
     rec.rumor = r?.id || null;
@@ -714,6 +739,15 @@ export class Murder {
   // The news reaching the watch (and Lyra) face to face, as the village's gossip carries it.
   tickNews() {
     for (const rec of Object.values(this.dead)) {
+      // A body found: told to her by someone who knows (the village's 'found_dead' news).
+      if (rec.lyraNewsAt != null) {
+        const c = safe(() => this.life?.cases?.get?.(rec.id), null);
+        const dr = c?.deadRumor ? safe(() => this.village?.rumors?.get?.(c.deadRumor), null) : null;
+        if (dr?.heardBy?.includes?.('lyra')) {
+          rec.lyraNewsAt = null;
+          safe(() => Lyra.learnsDeath(this, rec));
+        }
+      }
       if (rec.known !== 'witnessed') continue;
       const r = rec.rumor ? safe(() => this.village?.rumors?.get?.(rec.rumor), null) : null;
       if (!r) continue;
@@ -834,9 +868,24 @@ export class Murder {
     this.emit('body_found', { id, finder, place: rec.foundPlace, murder: true });
     this.openCase(id);
     Grief.onFound(this, rec);
-    if (finder !== 'lyra' && !witnessed) Lyra.learnsDeath(this, rec);
+    // Lyra learns of it as anyone does (DESIGN §29.4): from the finder's own cry when she is
+    // near enough to make out the words, else face to face (the village's news of the body
+    // reaching her, tickNews), or with everyone else within the hour. Not through two walls
+    // the moment someone next door finds it.
+    if (finder !== 'lyra' && !witnessed) {
+      if (this.lyraHearsFinding(fe || v)) Lyra.learnsDeath(this, rec);
+      else rec.lyraNewsAt = rec.newsAt;
+    }
     if (!witnessed) this.toast(`${this.name(id)} has been found dead ${placeAt(rec.foundPlace, this.placeName(rec.foundPlace))}. Struck down with a blade. The watch is asking questions.`, 'warn', `found:${id}`);
     return rec;
+  }
+
+  // Does Lyra make out the finder's cry ("That's Garrick!") where she is: in the open, or
+  // through an open doorway in line with it (src/ai/hearing.js), not through a wall?
+  lyraHearsFinding(from) {
+    const L = this.game?.companion;
+    if (!L || !from || !Number.isFinite(from.x)) return false;
+    return safe(() => hears(this.game, L, from.x, from.y, LOUD.shout), null) === 'clear';
   }
 
   // Can the player do something with this body?
@@ -1183,6 +1232,8 @@ export class Murder {
       }
       for (const e of [...(this.life?.villagers?.() || []), g.companion]) {
         if (!e || e === v || !e.isAlive?.() || e.state === 'sleep' || dist(e, v) > TELL_REACH) continue;
+        // Words, face to face: not through a wall (src/ai/hearing.js).
+        if (!safe(() => hearsWords(g, e, v, TELL_REACH), true)) continue;
         this.reveal(id, e.id);
         break;
       }
@@ -1213,6 +1264,11 @@ export class Murder {
       if (rec.newsAt != null && t >= rec.newsAt) {
         rec.newsAt = null;
         Grief.everyoneKnows(this, rec);
+      }
+      // The news of a body found reaches her with everyone's, if no one told her sooner.
+      if (rec.lyraNewsAt != null && t >= rec.lyraNewsAt) {
+        rec.lyraNewsAt = null;
+        Lyra.learnsDeath(this, rec);
       }
       if (rec.lyraHearsAt != null && t >= rec.lyraHearsAt) {
         rec.lyraHearsAt = null;

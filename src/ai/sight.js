@@ -42,3 +42,22 @@ export function watchersOf(game, x, y, people) {
   out.sort((a, b) => a[0] - b[0]);
   return out.map((x) => x[1]);
 }
+
+// Did `seer` see the blow that just fell on `victim` (DESIGN §29.2, §29.4)? The crime's own
+// screen when one was made a moment ago (murder.sawBlow: who saw it as it fell), else their
+// eyes on the victim right now. A blow behind a wall is heard, not seen: never this.
+export function sawTheBlow(game, seer, victim, id = seer?.id) {
+  if (!seer || !victim) return false;
+  const m = game?.murder;
+  if (m && typeof m.sawBlow === 'function') {
+    let s = null;
+    try {
+      s = m.sawBlow(id, victim);
+    } catch {
+      s = null;
+    }
+    if (s === true) return true;
+    if (s === false) return false;
+  }
+  return seesActor(game, seer, victim);
+}

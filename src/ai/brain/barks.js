@@ -12,6 +12,7 @@ import { ITEMS } from '../../entities/items.js';
 import { soulOf } from './soul_fallback.js';
 import { jobLabel, firstName } from './local_brain.js';
 import { companionshipOf, distanceTiles, isRefusal } from './her_state.js';
+import { sawTheBlow } from '../sight.js';
 
 export const BARK_GAP = 20; // seconds between ordinary barks
 const URGENT_GAP = 2.5;
@@ -197,7 +198,14 @@ export class Barker {
     on('deed', (p) => this.onDeed(p));
     on('companionship_changed', (p) => this.onCompanionship(p));
     on('crime', (p) => {
-      if (this.isPlayer(p.actor)) this.queue('crime_warning', {}, { priority: 5.5, urgent: true, yieldMs: 3, kind: 'shout', cooldown: 60, delay: 0.4, ttl: 5 });
+      if (!this.isPlayer(p.actor)) return;
+      // Only what she saw (DESIGN §29.4): a blow behind a wall or across the village is not
+      // hers to cry out at; the bell's news of a killing is murder/lyra.js's to tell her.
+      const k = String(p.kind || '');
+      if (k === 'murder' || k === 'outside') return;
+      const at = k === 'theft' || !p.victim ? p.actor : p.victim;
+      if (!sawTheBlow(this.game, this.lyra, at, 'lyra')) return;
+      this.queue('crime_warning', {}, { priority: 5.5, urgent: true, yieldMs: 3, kind: 'shout', cooldown: 60, delay: 0.4, ttl: 5 });
     });
     on('promise', (p) => {
       // Promises made in the chat are answered by the reply itself.

@@ -66,6 +66,7 @@ indoors and out; *future*: dungeons (the Weeping Cut), other villages, other flo
 | Lore and knowledge | A place page in the Book (`STORY.places` + a chapter), villagers' road talk, Claude's context | `src/lore/story.js`, `src/world/boss_trails.js` `ROAD_TALK`, `src/world/travel.js` |
 | The map | Its fog cell, its name label once reached, its marks (waystones, bosses) | `src/ui/world_map.js`, `src/world/travel.js` |
 | Spawns and safety | Spawn zones (near-only in the wilds), lit waystones as safe spots, the village's no-spawn rule | `src/entities/spawner.js`, `map.safeSpots` |
+| Senses | Walls, rock and shut doors (`walls.js wallTile`) stop sight and blows and muffle a cry (`hearing.js`); an open door lets it out. A new building's walls and doors do this with no more work; a new kind of opening (a window, a gap) must say what it lets through | `src/world/walls.js`, `src/ai/hearing.js` |
 | Weather and light | Local weather (the grey, snow), lights, indoors/roofs | `src/render/weather.js`, `src/render/lighting.js` |
 | NPC travel | Paths reach it (long journeys route on `map.roadGraph`); people can be sent there | `src/world/pathfind.js` |
 | Missions | Objectives can point there (`at`, `where`), markers and the edge arrow find it | `src/missions/*` |
@@ -88,7 +89,8 @@ survivors, new villagers.
 |---|---|---|
 | Lines and voice | Every character's own words for a new event (barks, dialogue, Claude persona) | `src/ai/social/*`, `src/entities/npc_data*.js` |
 | Knowledge and rumors | What they know of places and bosses (`TRAILS.tellers`, `ROAD_TALK`, facts) | `src/world/boss_trails.js`, `src/entities/npc_data*.js` |
-| Killability and crimes | Adults can be killed, children cannot; theft and assault are crimes others hear of | `src/murder/*`, `src/world/containers.js` |
+| Killability and crimes | Adults can be killed, children cannot; theft and assault are crimes others learn of by eyes or by meeting someone who knows | `src/murder/*`, `src/world/containers.js` |
+| Senses | Every eye and ear goes through one rule each: sight (`src/ai/sight.js`) and hearing (`src/ai/hearing.js`: walls muffle, a cry tells what and where, never who; a beast's snarl is a what, a person a who). A new kind of character (a deaf one, a hound) gets its exception there, as Wenna's blindness does in `witness.js` | `src/ai/sight.js`, `src/ai/hearing.js`, `src/entities/npc.js` |
 | Ownership | Their beds, chests and keys (`owner`, `keeper`, `keyId`) | `src/world/containers.js`, `src/world/objects.js` |
 | Combat and AI | Fight back, flee, stun, finishers per body size | `src/entities/*`, `src/bosses/*` |
 | Footsteps and crawling | Others' steps near you; the downed crawl for anyone | `src/world/footsteps.js`, `src/survival/*` |
@@ -106,6 +108,7 @@ stand (round 14 D4), talking (a panel open), in a cutscene, trading.
 | System | What must react | Where |
 |---|---|---|
 | Input and HUD | Which buttons show; panels pause; no fight buttons while down | `src/ui/*` |
+| Senses | Asleep: a third of a cry's reach (the loudest, 0.6) and no eyes; down, carried or dead: neither | `src/ai/hearing.js`, `src/murder/witness.js` |
 | Footsteps and pace | Steps only while walking; crawling is slower and smears | `src/entities/player.js`, `src/survival/*` |
 | Spawns and AI | Creatures do not spawn in view; foes leave the fallen to the bleed-out | `src/entities/spawner.js` |
 | Travel | Places are reached and the map's fog lifts only while you move about | `src/world/travel.js` |

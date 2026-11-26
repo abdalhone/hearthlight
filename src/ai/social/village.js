@@ -18,6 +18,7 @@ import { WEAVE_RUMORS } from '../../missions/rumors.js';
 import { Commitments } from './commitments.js';
 import { murderLine } from '../../murder/lines.js';
 import { seesPoint } from '../sight.js';
+import { hears, hearsWords } from '../hearing.js';
 import { silenceAct, turnAway } from '../silence.js';
 import { VILLAGER_RULES, SAY_SCHEMA, LINES_SCHEMA, NIGHT_SCHEMA, buildSayTask, buildListenTask, buildNightTask, coerceSay, coerceLines, coerceNight, cleanLine } from './village_prompt.js';
 
@@ -852,11 +853,13 @@ export class Village {
 
   // Who is near enough: to hear (a cry, a word), or with `sight`, who actually SAW the
   // point (DESIGN §29.2: the one rule for eyes — walls, light and distance).
-  witnessesNear(x, y, r = SIGHT, { sight = false } = {}) {
+  // With `words`, who HEARD the words said there, clearly (src/ai/hearing.js: no wall between).
+  witnessesNear(x, y, r = SIGHT, { sight = false, words = false } = {}) {
     const out = [];
     for (const e of this.villagers()) {
       if (!alive(e) || Math.hypot(e.x - x, e.y - y) > r || e.state === 'sleep') continue;
       if (sight && !seesPoint(this.game, e, x, y)) continue;
+      if (words && safe(() => hears(this.game, e, x, y, r), 'clear') !== 'clear') continue;
       out.push(e.id);
     }
     return out;
@@ -1019,9 +1022,14 @@ export class Village {
         // A killing (DESIGN §29) is told by game.murder, with its own witnesses.
         if (p.kind === 'murder' || p.kind === 'outside') return;
         const kind = p.kind === 'knockout' ? 'downed_villager' : 'attacked_villager';
-        const witnesses = this.witnessesNear(p.victim.x, p.victim.y, SIGHT, { sight: true });
+        // Those who saw it, by the crime's own screen when it has one (murder.sawBlow: who
+        // saw the blow fall, or, for a blow told later, only the one it was told to).
+        const screen = (id) => safe(() => g?.murder?.sawBlow?.(id, p.victim) ?? null, null);
+        const witnesses = this.witnessesNear(p.victim.x, p.victim.y, SIGHT, { sight: true }).filter((id) => screen(id) !== false);
+        for (const id of this.villagers().map((e) => e.id)) if (screen(id) === true && !witnesses.includes(id) && id !== p.victim.id) witnesses.push(id);
         const lyra = g?.companion;
-        if (lyra && seesPoint(g, lyra, p.victim.x, p.victim.y)) witnesses.push('lyra');
+        const ls = screen('lyra');
+        if (lyra && (ls === true || (ls == null && seesPoint(g, lyra, p.victim.x, p.victim.y)))) witnesses.push('lyra');
         this.addRumor(kind, { victim: p.victim.id, witnesses });
         return;
       }
@@ -1031,13 +1039,21 @@ export class Village {
         if (!victimId) return;
         // A cry nobody saw the cause of names nobody (DESIGN §29): the victim tells later.
         if (g?.murder?.isSecret?.(victimId)) return;
-        // Knocked down (or a severity at the top of a 0..1 scale) is the worse news.
-        const sev = Number(p.severity);
-        const down = !!p.victim?.downed || p.severity === 'downed' || p.severity === 'critical' || (Number.isFinite(sev) && sev <= 1 && sev >= 0.95);
+        // Knocked down is the worse news. Every cry comes on the 1..3 scale (npc.callForHelp,
+        // Lyra's autonomy); a severity of 1 is a first blow, not a fall (it used to read as
+        // the top of a 0..1 scale, and a single slap went round as "knocked down").
+        const hurt = p.victim && typeof p.victim === 'object' ? p.victim : p.victimEntity || null;
+        const down = !!hurt?.downed || p.severity === 'downed' || p.severity === 'critical';
         const kind = victimId === 'lyra' ? (down ? 'downed_lyra' : 'hit_lyra') : down ? 'downed_villager' : 'attacked_villager';
         const x = p.x ?? p.victim?.x ?? 0;
         const y = p.y ?? p.victim?.y ?? 0;
-        this.addRumor(kind, { victim: victimId, witnesses: [...this.witnessesNear(x, y, 240), victimId] });
+        // A cry tells what and where, never who (DESIGN §29.4, src/ai/hearing.js): the news
+        // of who did it is the eyes' (those who see it now) and the hurt one's own words to
+        // whoever is beside them. Those who only heard learn it by meeting, like anyone.
+        const eyes = this.witnessesNear(x, y, SIGHT, { sight: true });
+        const v = p.victim && typeof p.victim === 'object' ? p.victim : p.victimEntity || null;
+        const told = v ? this.villagers().filter((e) => e !== v && alive(e) && hearsWords(g, e, v, 44)).map((e) => e.id) : [];
+        this.addRumor(kind, { victim: victimId, witnesses: [...new Set([...eyes, ...told]), victimId], saw: eyes });
         return;
       }
       case 'death': {
@@ -1051,7 +1067,7 @@ export class Village {
           if (hunted || fled) {
             // Burned off them with a weave, the story grows in the telling (missions/rumors.js).
             const woven = !!g?.missions?.wovenKill?.(beast) && !!RUMOR_KINDS.weave_rescue;
-            this.addRumor(woven ? 'weave_rescue' : 'rescued', { victim: e.id, beast: String(beast.species).replace(/_/g, ' '), witnesses: [e.id, ...this.witnessesNear(e.x, e.y)] });
+            this.addRumor(woven ? 'weave_rescue' : 'rescued', { victim: e.id, beast: String(beast.species).replace(/_/g, ' '), witnesses: [e.id, ...this.witnessesNear(e.x, e.y, SIGHT, { sight: true })] });
             this.amend(e.id, 'help');
             return;
           }
@@ -1061,7 +1077,7 @@ export class Village {
       case 'revived': {
         const e = p.entity;
         if (!e || !isPlayer(p.by) || !VILLAGERS.includes(e.id)) return;
-        this.addRumor('helped_up', { victim: e.id, witnesses: [e.id, ...this.witnessesNear(e.x, e.y)] });
+        this.addRumor('helped_up', { victim: e.id, witnesses: [e.id, ...this.witnessesNear(e.x, e.y, SIGHT, { sight: true })] });
         this.amend(e.id, 'help');
         return;
       }
@@ -1074,7 +1090,7 @@ export class Village {
       }
       case 'companionship_changed': {
         const lyra = g?.companion;
-        const near = lyra ? this.witnessesNear(lyra.x, lyra.y, 200) : [];
+        const near = lyra ? this.witnessesNear(lyra.x, lyra.y, 200, { words: true }) : [];
         const was = p.previous;
         // 'apart' is her own plans for the day, nobody's news; leaving is.
         if (p.state === 'gone') this.addRumor('lyra_gone', { witnesses: ['lyra', ...near], source: 'lyra', about: 'lyra' });
@@ -1337,7 +1353,7 @@ export class Village {
     const id = e.id;
     if (reply.delta) e.adjustOpinion?.(round1(reply.delta), `the player said: ${said.slice(0, 40)}`);
     if (local.intent === 'apology') this.amend(id, 'apology');
-    if (local.intent === 'threat') this.addRumor('threat', { victim: id, witnesses: [id, ...this.witnessesNear(e.x, e.y, 90)] });
+    if (local.intent === 'threat') this.addRumor('threat', { victim: id, witnesses: [id, ...this.witnessesNear(e.x, e.y, 90, { words: true })] });
     // Something said that they will repeat (Claude's judgement, only when it moved them).
     if (reply.rumor && Math.abs(reply.delta || 0) >= 3) {
       const r = this.rumors.add({ kind: 'said', text: reply.rumor, valence: Math.sign(reply.delta) * 0.3, severity: 0.3, source: id, heardBy: [id], t: this.now(), day: this.day() });
@@ -1375,6 +1391,8 @@ export class Village {
     const lyra = g?.companion;
     const mind = lyra?.mind;
     if (!mind || !alive(lyra) || dist(lyra, g?.player) > 110) return;
+    // Words, through no wall (DESIGN §29.4, src/ai/hearing.js).
+    if (g?.player && safe(() => hears(g, lyra, g.player.x, g.player.y, 110), 'clear') !== 'clear') return;
     safe(() => mind.noticeText?.(said, { source: 'overheard', amount: 0.3 }));
     const loves = this.loves('lyra', e.id, 50);
     const n = this.name(e.id);

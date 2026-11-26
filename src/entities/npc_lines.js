@@ -681,3 +681,41 @@ export const GONE_STAYS = {
   aveline: ['She is home, child, among the people who love her. She has closed her door to you. Respect it.', 'Lyra lit her family\'s flame tonight and asked me to pray for her peace. Not for you. For her peace.'],
   garrick: ["She's at her da's, my friend, and the whole village has her back. Business advice: stay off Lamplight Lane.", 'She bought a lantern today. Full price. Looked straight through me when I mentioned you.'],
 };
+
+// Hearing a cry, not seeing it (DESIGN §29.4: hearing tells what and where, never who).
+// {place} is where the sound came from ("the Kettle"); lists without it are for a sound from
+// nowhere they can name. `clear`: heard in the open; `muffled`: through a wall or a doorway.
+// Nobody who only heard calls the stranger by name or shouts the wanted lines at them.
+export const HEAR_LINES = {
+  any: {
+    clear: ['What was that? It came from {place}!', 'Did you hear that? {Place}!', "Someone's crying out! {Place}!"],
+    muffled: ['What was that? ...From {place}?', 'Did you hear something? Sounded like {place}.', 'Was that a scream? In {place}?'],
+    clearNowhere: ['What was that?', 'Did you hear that? Over there!', "Someone's crying out!"],
+    mutedNowhere: ['What was that?', 'Did you hear something?', 'Was that a scream?'],
+  },
+  wenna: { clear: ["Who's there? Stop it, whoever you are!", "Who's there? Who's crying?"], muffled: ["Who's there? What was that, in {place}?", 'Hobb? Hobb, did you hear that?'] },
+  hobb: { clear: ['Well now. That was a cry. From {place}.'], muffled: ['Well now. Did you hear that? {Place}, I think.'] },
+  elda: { clear: ['Oh! Oh, what was that? That came from {place}!'], muffled: ['Was that— oh, what was that, in {place}?'] },
+  bram: { clear: ['Hmph. That was a scream. {Place}.'], muffled: ['Hmph. Something. {Place}.'] },
+  pip: { clear: ['What was THAT?!', 'Did you HEAR that?!'], muffled: ['What was that noise?'] },
+  tansy: { clear: ['What was that?', "That was {place}. That was a scream."], muffled: ['Did you hear that? ...Never mind. Did you?'] },
+  garrick: { clear: ['Was that a scream? That was a scream! From {place}!'], muffled: ['Was that a scream? Probably not a scream. {Place}?'] },
+  tobias: { clear: ['Oh dear. Oh dear, what was that? {Place}?'], muffled: ['Oh dear. Did you hear something?'] },
+  rowan: { clear: ['That came from {place}. Watch, with me!', '{Place}. Move.'], muffled: ['{Place}. Something is wrong in there.'] },
+  wys: { clear: ["Wh-what was that? {Place}! I'm going. I'm going!"], muffled: ['Did — did anyone else hear that? {Place}?'] },
+  hess: { clear: ['Mm. {Place}.'], muffled: ['Mm. {Place}. Something.'] },
+  mira: { clear: ["That was someone hurt. {Place}. I'll go."], muffled: ['Was that— someone hurt? In {place}?'] },
+  aveline: { clear: ['Hear that, child? {Place}. Someone needs us.'], muffled: ['Hush. Did you hear that? {Place}.'] },
+  alder: { clear: ['A disturbance! {Place}! Most irregular!'], muffled: ['Was that a disturbance? In {place}?'] },
+  petra: { clear: ["Hah? That was a scream. {Place}. I'm old, not deaf."], muffled: ["Hah? Something in {place}. I'm old, not deaf."] },
+  corran: { clear: ['Hm. A cry. From {place}.'], muffled: ['Hm. Did you hear that? Water carries sound. So do walls, a little.'] },
+  sabeth: { clear: ['What was that? {Place}!'], muffled: ['Did you hear that? From {place}?'] },
+  tilly: { clear: ['Oi! What was that? {Place}!'], muffled: ['Was that a scream? In {place}?'] },
+};
+
+// Uneasy for the rest of the day after a cry they heard and did not see (no opinion of
+// anyone: they do not know who).
+export const UNEASY_LINES = {
+  place: ['Did you hear that, earlier? From {place}. I can\'t settle.', 'There was a scream from {place}. Nobody will say what it was.', 'Something happened at {place}. I heard it. I keep listening for it again.'],
+  nowhere: ['Did you hear that, earlier? I can\'t settle.', 'There was a scream earlier. Nobody will say what it was.'],
+};

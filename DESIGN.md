@@ -965,8 +965,10 @@ I can barely stand." / "Walk into a camp of crossbows first? No. Find someone el
 - **Crimes**: damaging a villager or guard sets `player.crime = { level, until }` (assault 90 s;
   knocking someone out: the rest of the day) and emits `crime {actor, victim, kind:
   'assault'|'knockout'}`. While a crime is active, guards are hostile to the player
-  (`combat.isHostile(guard, player)` → true), villagers flee and shout, and `opinionOfPlayer`
-  drops; NPCs greet the player coldly for a day.
+  (`combat.isHostile(guard, player)` → true). Who *acts* on it is who knows it (§29.4): those
+  who saw it flee and shout, their `opinionOfPlayer` drops and they greet the player coldly
+  for the day; a watchman strikes only once he knows (saw it, came and saw, or was told);
+  everyone else hears of it by meeting someone who knows (§29.2), not on the wind.
 
 ### 16.8 Her initiative
 
@@ -1344,11 +1346,13 @@ village. She should be able to ask help for other people. They can come and help
   for help (a real line, by name when someone is near: "Rowan! Hess!") and runs toward
   people. The mind/behavior emit `call_for_help { victim, attacker, x, y, severity }`.
 - **The village answers** (characters, in `npc.js`, on `call_for_help` and on any attack on
-  a villager): guards (Rowan, Wys) and Hess come running and fight the attacker; Mira, her
-  parents, Elda or Aveline come to tend her (heal, help her up, walk her home); others shout,
-  shield children, fetch the watch, or flee. A villager who was downed can call for help too.
-- **Consequences** (social + autonomy): the attack becomes a rumor that spreads fast;
-  opinions of the player fall across the village (most among those who love her); shops
+  a villager) — those who *hear* it (§29.4: walls muffle a cry): guards (Rowan, Wys) and Hess
+  come running and fight the attacker they see (one they only heard of, they come to look
+  for); Mira, her parents, Elda or Aveline come to tend her (heal, help her up, walk her
+  home); others shout, shield children, fetch the watch, or flee. A villager who was downed
+  can call for help too.
+- **Consequences** (social + autonomy): the attack becomes a rumor that spreads fast, face to
+  face (§29.2); opinions of the player fall as it reaches people (most among those who love her); shops
   may refuse the player; the watch may confront or bar the player from the Kettle for a
   time; amends are possible but slow. Her parents' and friends' opinions of the player
   matter to her own weighing.
@@ -2146,7 +2150,7 @@ notices and has opinions (berserk frightens her).
   the chapel's altar does not light a killing in the square.
 - **News travels by meeting.** Grave news passes face to face only (`MEET` 88 px, the same
   roof, both awake). A killing seen is known by those who saw it and those near enough to
-  make out the scream (96 px); nobody else. The watch learns only when someone who knows
+  make out the scream's words (96 px, and no wall between: §29.4); nobody else. The watch learns only when someone who knows
   reaches them (`tickNews` → `raiseAlarm`): then wanted, the bell, the body found, the case
   certain, the village turns, Lyra hears the bell. A watchman who saw it raises it at once;
   a witness who has run to one of the watch tells them within 64 px, roof or no roof (she
@@ -2180,6 +2184,72 @@ notices and has opinions (berserk frightens her).
   killer's feet after a second cry.
 - A villager who **has gone on their way** cannot answer after: a reply that comes late is
   not delivered (the author saw Elda answer after "Elda has gone on her way", twice).
+
+### 29.4 Ears (`src/ai/hearing.js`; the author, of Wenna crying "Who's there? Stop it, whoever you are!" in the street at a killing inside the Ember Kettle: "How does it sees the death from the wall?")
+
+Hearing is a sense like sight, with one rule, and it tells **what and where, never who**.
+
+- **One rule for ears**: `hears(game, listener, x, y, loud, { mul })` → `'clear' | 'muffled' |
+  null`. The reach is the loudness in open air (`LOUD`: words 44 px, a scream's words 96, a
+  blow 300, a cry for help by severity 300 / 440 / 600; kin hear their own ×1.8 at severity 2+).
+  A wall or a shut door on the straight line (`walls.js wallBetween`, the tiles that stop a
+  blow) muffles it to `MUFFLE` 0.3 of the reach, and each further wall again: a scream inside
+  a shut house is heard just outside it (180 px), not down the street. An open door lets it
+  out: in line with the doorway it is open air; round the corner, along the way through the
+  doorway, `DOOR` 0.6 of the reach, muffled. Asleep: 0.3 of the reach (the loudest, 0.6). The
+  dead, the downed, the absent and the carried hear nothing.
+- **Everyone uses it**: the village answering a cry (`npc.onCallForHelp`), the watch and Hess
+  hearing a blow (`npc.onCrime`; a theft makes no sound, the bell is news, not a noise),
+  `murder.heardBy` (the "nobody near enough to hear" toast; through a wall, "may have heard
+  something"), the words of a witness's scream (`seenMurder`, 96 px, clear only), a fallen
+  victim telling who did it (`TELL_REACH` 44 px, clear only), the village's own record of a cry
+  (`village` `call_for_help`: who did it goes to those who see it and to whoever the hurt one
+  can tell, never to all within 240 px), Lyra overhearing the player (110 px, clear only),
+  the bystanders of the player's words in the village's news (a threat, an insult, a kind
+  word: 90 px, clear only; Lyra saying she is leaving: 200 px, clear only; `witnessesNear(…,
+  { words: true })`) — while a rescue or a helping hand is news only to those who saw it,
+  and the player's own shout when fallen (`survival.alert`; the watch hunting a wanted stranger
+  and the sight sweep keep their own reach). Lyra's cry at a crime (`barks` `crime_warning`)
+  and what her perception makes of it take only a blow she saw (`sight.sawTheBlow`): out in
+  the street beyond a wall she no longer shouts "What have you done?!" at a blow she never saw.
+- **Hearing tells what and where.** A beast's snarl or a bandit's yell says what it is (the
+  watch runs to fight the wolf it heard); a person — the player, Lyra, a villager — is known
+  only by eyes (the sight rule: seen at the hurt one's side within 96 px, or the blow itself
+  seen) or by words (the hurt one, close by; someone who ran to tell them: `onCallForHelp(p,
+  true)` carries who the teller knew, and `culprit` for the one who really did it). Someone who
+  only heard: stops, turns to the sound and says what they heard (`HEAR_LINES`: "What was
+  that? It came from the Kettle!"; Wenna, who is blind, keeps "Who's there? Stop it, whoever
+  you are!"), and may come to look (`look`: carers, the watch and Hess, those near), tend, or
+  fetch the watch. They do not flee from the player, call them by name, shout the wanted
+  lines, think less of them, or fight them. On the way (`helpStep`) they may see who stands
+  over the hurt one, or be told by them: then they know (`learnWho`: the crime's rumor, as a
+  witness), and answer as one who knows. A body come upon is found (`murder.bodySeen`: and
+  the one standing over it is seen there).
+- **Knowing the stranger is wanted is each villager's own** (`npc.knowsWanted`): the bell (a
+  killing told to the watch, the Moot's sentence) reaches everyone; a blow reaches those who saw
+  it, came and saw, were told by the hurt one, or had it face to face (the village's crime
+  rumors today). Villagers flee a wanted stranger, a watchman strikes them on sight, and a shop
+  turns them away, only when they know. `player.crime` stays the record combat keeps.
+- **No crime on the wind.** A crime no longer makes the whole village colder the same day.
+  Those who saw it are cold and think less of the stranger; those who only heard it are
+  uneasy (`npc.uneasy`: a line about the place, never a person); everyone else learns it by
+  meeting someone who knows (§29.2's news; `village.onHeard` moves them then).
+- **Told is not seen.** A blow nobody saw is the hurt one's to tell (`murder.reveal`): when
+  they tell whoever reaches them, the crime goes on record and its event carries a screen of
+  its own (`lastScreen` with only the one told; `sawBlow`, `toldNow`). So `npc.onCrime` and
+  the village's crime rumor take only the one told as knowing it, and a told crime makes no
+  sound: the watchman in the square who happens to see the stranger walking by at that moment
+  saw no blow, and neither fights, flees nor turns cold for it. The crime notice says what is
+  true: "…and word of it is out. Once it reaches the watch, they will hunt you…".
+- **A body found reaches Lyra as news.** She learns of a body found by someone else from the
+  finder's own cry when she makes out the words (`murder.lyraHearsFinding`: `hears(…,
+  LOUD.shout)` clear: in the open or in line with an open door), else when someone who knows
+  tells her (the village's `found_dead` rumor reaches her face to face, `tickNews`), else with
+  the whole village within the hour (`rec.lyraNewsAt` = `newsAt`). Never through two walls
+  the moment someone next door finds it; she weighs the watch's case only once she knows.
+- **Her mind's ears too.** What Lyra takes in of words said near her (`perception.onSpeech`,
+  160 px) is only what she hears clearly (`hearsWords`): a name screamed in the next house is
+  a noise.
 
 ## 30. pixelfx effects (the author: "download and use pixelfx if you see fit"; "the spells do not do any damage, and it's not clear")
 

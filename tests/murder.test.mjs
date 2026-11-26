@@ -43,6 +43,16 @@ function lakeShore(g) {
   throw new Error('no shore');
 }
 
+// The news of a body found reaching Lyra face to face (DESIGN §29.2, §29.4): someone who
+// knows tells her (the village's 'found_dead' rumor), as it would by meeting her.
+function tellLyra(g, deadId, by) {
+  const c = g.villageLife.cases.get(deadId);
+  const r = c?.deadRumor ? g.village.rumors.get(c.deadRumor) : null;
+  assert.ok(r, 'the village has the news of the body');
+  g.village.rumors.hear(r, 'lyra', by, g.rng);
+  g.murder.tickNews();
+}
+
 function stepTo(g, hour, dt = 1 / 8) {
   for (let i = 0; i < 4000 && !(g.clock.hour >= hour && g.clock.hour < hour + 0.5); i++) step(g, 5, dt);
 }
@@ -311,8 +321,10 @@ test('found later: the watch investigates from real sightings; the stranger can 
   put(g.player, px(96), px(79));
   // Asked by Elda, the stranger says they have not seen him.
   g.villageLife.recordClaim({ to: 'elda', about: 'bram', kind: 'not_seen' });
-  // The search reaches the wood; the body is found: missing becomes murder.
-  stepTo(g, 16);
+  // Deep in the wood nobody heard him cry out (DESIGN §29.4: Elda, 550 px off behind the
+  // Kettle's walls, no longer comes running). The search reaches the wood; the body is
+  // found: missing becomes murder.
+  for (let i = 0; i < 6000 && rec.foundAt == null; i++) step(g, 5, 1 / 8);
   assert.ok(rec.foundAt != null, 'the search found him');
   const c = g.murder.cases.bram;
   assert.ok(c && c.lead === 'rowan');
@@ -336,7 +348,9 @@ test('found later: the watch investigates from real sightings; the stranger can 
   assert.ok(rec.answers.some((a) => a.kind === 'lie_caught'));
   assert.ok(r.suspicion > before + 0.05, 'a caught lie weighs heavily');
   assert.ok(r.suspicion >= 0.6);
-  // Lyra weighs it with what she knows.
+  // Lyra weighs it with what she knows, once someone tells her.
+  assert.ok(!g.murder.lyra.bram, 'far off, nobody has told her yet');
+  tellLyra(g, 'bram', 'hess');
   assert.ok(g.murder.lyra.bram, 'she knows he is dead');
 });
 
@@ -506,6 +520,7 @@ test('Sister Aveline gone: Petra (or Mira, or Elda) tells Maren’s story instea
   put(h.player, px(WOODS.tx), px(WOODS.ty));
   h.murder.kill(hobb, h.player);
   h.murder.found('hobb', 'hess', 'whisperwood');
+  tellLyra(h, 'hobb', 'hess');
   assert.ok(['apart', 'wary', 'left', 'gone'].includes(h.companion.mind.companionship));
   step(h, 37.5 * 3, 1 / 6);
   assert.ok(h.murder.lyra.hobb?.grieved, 'she grieves her father');
@@ -580,6 +595,7 @@ test('Lyra asks, once, when she is unsure; a denial she chooses to believe, a co
     const rec = g.murder.kill(bram, g.player);
     put(g.player, px(96), px(79));
     g.murder.found('bram', 'hess', 'whisperwood');
+    tellLyra(g, 'bram', 'hess');
     const st = g.murder.lyra.bram;
     st.belief = 'fears';
     st.weighAt = Infinity;
