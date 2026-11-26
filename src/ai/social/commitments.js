@@ -314,7 +314,7 @@ export class Commitments {
     if (!ask) return '';
     const what = ask.kind === 'tell' ? `go and talk to Lyra for them${ask.message ? ` (their message: "${ask.message}")` : ''}` : ask.kind === 'give' ? `give them ${itemName(ask.item, 1).toLowerCase()}` : 'teach them some weaving';
     if (!dec.can || !dec.will) return `They are asking you to ${what}. You will not or cannot: ${dec.why}. Say so plainly, in your own words, and set "commit" to {"kind": "${ask.kind}", "agree": false}.`;
-    const how = ask.kind === 'tell' ? 'if you agree, you will walk over to Lyra yourself when you are free and tell her; the game makes you do it' : ask.kind === 'give' ? 'if you agree, you hand it over right now' : `if you agree, the lesson starts now (${dec.plan?.mission ? 'your errand that teaches it' : 'a lesson'}); it is yours to give`;
+    const how = ask.kind === 'tell' ? `if you agree, you will walk over to Lyra yourself when you are free and tell her; the game makes you do it${this.lyraAway() ? ". She is out past the vale just now (the wilds), so you will tell her when she is back, not go after her" : ''}` : ask.kind === 'give' ? 'if you agree, you hand it over right now' : `if you agree, the lesson starts now (${dec.plan?.mission ? 'your errand that teaches it' : 'a lesson'}); it is yours to give`;
     return `They are asking you to ${what}. You can: ${how}. Decide as yourself. If you agree, say so plainly and set "commit" to {"kind": "${ask.kind}", "agree": true}; if not, say why and set "agree": false. Never promise what you will not do.`;
   }
 
