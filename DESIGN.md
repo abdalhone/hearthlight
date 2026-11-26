@@ -2192,7 +2192,9 @@ Hearing is a sense like sight, with one rule, and it tells **what and where, nev
   (`village` `call_for_help`: who did it goes to those who see it and to whoever the hurt one
   can tell, never to all within 240 px), Lyra overhearing the player (110 px, clear only),
   and the player's own shout when fallen (`survival.alert`; the watch hunting a wanted stranger
-  and the sight sweep keep their own reach).
+  and the sight sweep keep their own reach). Lyra's cry at a crime (`barks` `crime_warning`)
+  and what her perception makes of it take only a blow she saw (`sight.sawTheBlow`): out in
+  the street beyond a wall she no longer shouts "What have you done?!" at a blow she never saw.
 - **Hearing tells what and where.** A beast's snarl or a bandit's yell says what it is (the
   watch runs to fight the wolf it heard); a person — the player, Lyra, a villager — is known
   only by eyes (the sight rule: seen at the hurt one's side within 96 px, or the blow itself

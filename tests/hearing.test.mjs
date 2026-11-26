@@ -14,6 +14,7 @@ import { look } from '../src/murder/witness.js';
 import { wallBetween } from '../src/world/walls.js';
 import { HEAR_LINES } from '../src/entities/npc_lines.js';
 import { profileById } from '../src/entities/npc_data.js';
+import { WILL_LINES } from '../src/ai/brain/lines_will.js';
 
 const FAR = { x: px(141), y: px(101) };
 
@@ -133,6 +134,12 @@ test("the author's scene: a killing inside the Ember Kettle; Wenna and Lyra out 
     assert.ok(!crime.includes(l), `no wanted line at the player: "${l}"`);
     assert.ok(!/stranger|murder|killer/i.test(l) || own.some((o) => o.split('{')[0] && l.startsWith(o.split('{')[0])), `a hearing line, not a name: "${l}"`);
   }
+  // Lyra out in the street did not see the blows: no cry at the stranger, no thought of it.
+  const warn = WILL_LINES.crime_warning.map((l) => (typeof l === 'string' ? l : l.t));
+  const lyraSaid = sayings(g, 'lyra');
+  assert.ok(!lyraSaid.some((l) => warn.includes(l)), `Lyra does not cry out at a blow she never saw: ${JSON.stringify(lyraSaid)}`);
+  const thoughts = (L.mind.thoughts?.list?.() || L.mind.thoughts || []).map?.((t) => t.text || t) || [];
+  assert.ok(!thoughts.some((t) => /Tobias is down/.test(String(t))), 'nor thinks she saw it');
   // Lyra was not told: no belief, no memory, no grief for him from the street.
   assert.ok(!['knows', 'believes'].includes(g.murder.lyra.tobias?.belief), `Lyra: ${g.murder.lyra.tobias?.belief}`);
   assert.ok(!rec.lyraTold);
