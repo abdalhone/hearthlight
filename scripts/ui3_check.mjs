@@ -436,7 +436,7 @@ for (const view of VIEWS) {
     ui.closeAll();
     ui.hud.setQuest('Ask Sister Aveline about Maren, who went into the Sunken Ruins.');
     const small = ui.hud.isSmall();
-    if (small) ui.hud.setMini(true);
+    if (small) ui.hud.setMini?.(true); // (round 14b: the fold is gone; the card is always folded on a phone)
     await wait(250);
     const box = (sel) => {
       const el = document.querySelector(sel);

@@ -298,6 +298,53 @@ async function run(S) {
   check(await ev(() => !window.__game.ui.people.isOpen()), `${tag}: People closes with its ✕`);
   await ev(() => window.__clean());
 
+  // ---------- 5d. the use prompt and the companion's bubble keep apart (leftover) ----------
+  await ev(() => {
+    const g = window.__game;
+    const P = g.player;
+    P.x = 97 * 16 + 8;
+    P.y = 103 * 16 + 10;
+    g.camera.snap?.();
+    const tob = g.entities.get('tobias');
+    window.__put(tob, 14, 0);
+    tob.hp = 1;
+    g.combat.damage(null, tob, 99, { exact: true, crit: false });
+    g.player.inventory.add('potion', 1);
+    const bram = g.entities.get('bram');
+    window.__put(bram, -14, -4);
+  });
+  await wait(700);
+  const sayAll = () =>
+    ev(() => {
+      const g = window.__game;
+      const h = g.party.holder;
+      g.bubbles.say(h, 'Hmph. He is breathing. Give him something for it, quick.', { kind: 'say' });
+    });
+  await sayAll();
+  await wait(500);
+  const apart = await ev(() => {
+    const g = window.__game;
+    const canvas = g.renderer.canvas.getBoundingClientRect();
+    const rects = (g.bubbles.screenRects?.([]) || []).map((r) => ({ x: r.x + canvas.left, y: r.y + canvas.top, w: r.w, h: r.h }));
+    const prompts = [...document.querySelectorAll('.interact-prompt, .tbtn-tag')]
+      .filter((e) => e.offsetParent && e.textContent.trim())
+      .map((e) => {
+        const r = e.getBoundingClientRect();
+        return { x: r.left, y: r.top, w: r.width, h: r.height, text: e.textContent.trim() };
+      })
+      .filter((r) => r.w > 0);
+    const hit = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    return { bubbles: rects.length, prompts: prompts.map((p) => p.text), overlap: rects.some((r) => prompts.some((p) => hit(r, p))) };
+  });
+  check(apart.bubbles > 0 && apart.prompts.some((t) => /potion/i.test(t)) && !apart.overlap, `${tag}: "Give Tobias a potion" and the companion's bubble keep apart`, JSON.stringify(apart));
+  await shot('5d-prompt-and-bubble');
+  await ev(() => {
+    const g = window.__game;
+    const tob = g.entities.get('tobias');
+    g.combat.revive?.(tob, g.player, 1);
+    window.__clean();
+  });
+
   // ---------- 6. Bram on the road: follows you, fights beside you, goes home at night ----------
   await ev(() => {
     const g = window.__game;

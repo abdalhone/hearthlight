@@ -101,8 +101,9 @@ export class WorldMap {
   }
 
   // Centred on you, with what matters in view: your coins' ember-ring first, else the
-  // mission's objective. Zoom out (never past the whole-map fit) until it shows; if even
-  // that cannot hold both around you, the view moves toward it, keeping you on the chart.
+  // mission's objective. At each zoom (from the one chosen, outwards; never past the whole-map
+  // fit) the view first leans toward it as far as keeps you on the chart; only if that is not
+  // enough does it zoom out a step (round 14b leftover: "the map opens on the vale").
   frame(W, H) {
     const g = this.game;
     const p = g.player;
@@ -111,24 +112,39 @@ export class WorldMap {
     const marks = this.marks();
     const goal = marks.find((m) => m.kind === 'ember') || marks.find((m) => m.kind === 'objective');
     if (!goal) return;
-    const dx = Math.abs(goal.x - p.x) / TILE;
-    const dy = Math.abs(goal.y - p.y) / TILE;
     const pad = 28;
-    const fits = () => {
+    const px = p.x / TILE;
+    const py = p.y / TILE;
+    const gx = goal.x / TILE;
+    const gy = goal.y / TILE;
+    const tryAt = () => {
       const s = this.scale(W, H);
-      return dx * s <= W / 2 - pad && dy * s <= H / 2 - pad;
+      const hx = Math.max(0, W / s / 2 - pad / s);
+      const hy = Math.max(0, H / s / 2 - pad / s);
+      // A center that keeps both you and it inside the padded view, if there is one.
+      if (Math.abs(gx - px) > 2 * hx || Math.abs(gy - py) > 2 * hy) return false;
+      const cx = Math.max(gx - hx, Math.min(gx + hx, px));
+      const cy = Math.max(gy - hy, Math.min(gy + hy, py));
+      this.cx = Math.max(px - hx, Math.min(px + hx, cx));
+      this.cy = Math.max(py - hy, Math.min(py + hy, cy));
+      return true;
     };
-    while (!fits() && this.zi > 0) this.zi--;
-    if (fits()) return;
-    const s = this.scale(W, H);
-    const mx = (goal.x + p.x) / 2 / TILE;
-    const my = (goal.y + p.y) / 2 / TILE;
-    // Toward the middle, but never so far that you leave the chart.
-    const lim = (half) => Math.max(0, half - pad / s);
-    const hx = lim(W / s / 2);
-    const hy = lim(H / s / 2);
-    this.cx = Math.max(p.x / TILE - hx, Math.min(p.x / TILE + hx, mx));
-    this.cy = Math.max(p.y / TILE - hy, Math.min(p.y / TILE + hy, my));
+    // Zoom out only while the chart still has room to drag (a whole-world fit has none).
+    const m = g.map;
+    const fit = Math.min(W / m.w, H / m.h);
+    while (!tryAt()) {
+      const z = ZOOMS[this.zi - 1];
+      if (this.zi <= 0 || z === 0 || Math.max(fit, z) <= fit * 1.02) {
+        // Not both at once: lean as far toward it as keeps you on the chart.
+        const s = this.scale(W, H);
+        const hx = Math.max(0, W / s / 2 - pad / s);
+        const hy = Math.max(0, H / s / 2 - pad / s);
+        this.cx = Math.max(px - hx, Math.min(px + hx, gx));
+        this.cy = Math.max(py - hy, Math.min(py + hy, gy));
+        return;
+      }
+      this.zi--;
+    }
   }
 
   zoomBy(d) {
