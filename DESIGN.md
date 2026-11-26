@@ -1346,11 +1346,13 @@ village. She should be able to ask help for other people. They can come and help
   for help (a real line, by name when someone is near: "Rowan! Hess!") and runs toward
   people. The mind/behavior emit `call_for_help { victim, attacker, x, y, severity }`.
 - **The village answers** (characters, in `npc.js`, on `call_for_help` and on any attack on
-  a villager): guards (Rowan, Wys) and Hess come running and fight the attacker; Mira, her
-  parents, Elda or Aveline come to tend her (heal, help her up, walk her home); others shout,
-  shield children, fetch the watch, or flee. A villager who was downed can call for help too.
-- **Consequences** (social + autonomy): the attack becomes a rumor that spreads fast;
-  opinions of the player fall across the village (most among those who love her); shops
+  a villager) — those who *hear* it (§29.4: walls muffle a cry): guards (Rowan, Wys) and Hess
+  come running and fight the attacker they see (one they only heard of, they come to look
+  for); Mira, her parents, Elda or Aveline come to tend her (heal, help her up, walk her
+  home); others shout, shield children, fetch the watch, or flee. A villager who was downed
+  can call for help too.
+- **Consequences** (social + autonomy): the attack becomes a rumor that spreads fast, face to
+  face (§29.2); opinions of the player fall as it reaches people (most among those who love her); shops
   may refuse the player; the watch may confront or bar the player from the Kettle for a
   time; amends are possible but slow. Her parents' and friends' opinions of the player
   matter to her own weighing.
