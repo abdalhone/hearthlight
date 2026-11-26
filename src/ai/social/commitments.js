@@ -1,5 +1,7 @@
 import { ITEMS, itemName, resolveItemId } from '../../entities/items.js';
 import { MISSIONS } from '../../missions/data.js';
+import { TILE } from '../../core/constants.js';
+import { inVale } from '../../world/wilds_layout.js';
 
 const nameFirst = (n) => String(n || '').replace(/^(captain|sister|brother|old|reeve)\s+/i, '').split(/\s+/)[0] || '';
 
@@ -248,7 +250,10 @@ export class Commitments {
       if (op < 25) return { ...out, will: false, why: 'they do not think well enough of you to run your errands', line: `${noWord(id, rng)} Run your own messages.` };
       const already = this.open(id).find((c) => c.kind === 'tell');
       if (already) return { ...out, will: true, why: 'they already promised to', line: `${yesWord(id, rng)} I said I would, and I will. I'll find Lyra when I'm free.`, plan: { kind: 'tell', message: ask.message || already.message, same: already.id } };
-      out.line = `${yesWord(id, rng)} I'll find Lyra and tell her${ask.message ? ` what you said` : ' you want a word'}. When I'm free, mind.`;
+      // Out past the vale (round 14's roads): nobody walks to Brindlecombe with a message.
+      out.line = this.lyraAway()
+        ? `${yesWord(id, rng)} She's out past the vale just now. I'll tell her${ask.message ? ` what you said` : ' you want a word'} when she's back.`
+        : `${yesWord(id, rng)} I'll find Lyra and tell her${ask.message ? ` what you said` : ' you want a word'}. When I'm free, mind.`;
       out.plan = { kind: 'tell', message: ask.message || '' };
       return out;
     }
@@ -424,8 +429,15 @@ export class Commitments {
         continue;
       }
       if (c.kind !== 'tell') continue;
+      // Lyra out past the vale (round 14: the King's Road, the Crown path): the message
+      // waits for her to come home; nobody follows her into the wilds with it.
+      const away = c.to === 'lyra' && this.lyraAway();
       if (c.due != null && t > c.due) {
-        this.breakIt(c, 'never found the time');
+        this.breakIt(c, away ? 'Lyra was away, out past the vale' : 'never found the time');
+        continue;
+      }
+      if (away) {
+        if (c.state === 'doing') this.stopWalk(c);
         continue;
       }
       if (c.state === 'open') this.tryStart(c);
@@ -435,6 +447,23 @@ export class Commitments {
         c.retryAt = t + 60;
       }
     }
+  }
+
+  // Is Lyra in the world but outside the vale's tiles (the wilds, round 14)?
+  lyraAway() {
+    const L = this.game?.companion;
+    if (!L || L.removed || !Number.isFinite(L.x) || !Number.isFinite(L.y)) return false;
+    return !inVale(Math.floor(L.x / TILE), Math.floor(L.y / TILE));
+  }
+
+  // A walk to Lyra given up while she is away: they go back to their day, the promise open.
+  stopWalk(c) {
+    const life = this.game?.villageLife;
+    const e = this.game?.entities?.get?.(c.by);
+    const step = safe(() => life?.steps?.get?.(c.by), null);
+    if (e && step && step.kind === 'keep' && step.commit === c.id) safe(() => life.endStep(e));
+    c.state = 'open';
+    c.retryAt = this.now() + 30;
   }
 
   tryStart(c) {

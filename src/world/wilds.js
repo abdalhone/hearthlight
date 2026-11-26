@@ -611,6 +611,13 @@ const WILDS_METHODS = {
       if (it.h >= 4) this.decor('shelf', it.x + it.w - 1, it.y + it.h - 1, { name: 'Shelf' });
     }
 
+    // What the living left in the square: rain barrels gone green, crates nobody came back
+    // for. They break like the vale's (breakables.js) and lie broken until mended.
+    this.decor('barrel', C.x - 6, C.y - 3, { name: 'Rain barrel' });
+    this.decor('barrel', C.x - 5, C.y - 3, { name: 'Rain barrel' });
+    this.decor('crate', C.x + 5, C.y - 3, { name: 'Crate' });
+    this.decor('crate', C.x + 6, C.y - 2, { name: 'Crate' });
+
     // The graveyard east of the lane house, and the long field gone grey.
     const gy = { x: C.x + 6, y: C.y + 12, w: 10, h: 8 };
     this.fenceLine(gy.x, gy.y, gy.x + gy.w, gy.y + gy.h, [[gy.x, gy.y + 4]]);

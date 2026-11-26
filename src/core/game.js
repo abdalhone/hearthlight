@@ -280,6 +280,13 @@ export class Game {
     this.audio.play('sleep');
     await this.ui.fadeOut(1.2);
     this.clock.skipTo(7);
+    // The morning's date settles before the sleep's save (round 13 x 14a): a birthday the
+    // night carried you into is had now and saved as had, never lost on a reload nor had twice.
+    try {
+      this.calendar?.update?.();
+    } catch (err) {
+      console.error('[game] the calendar could not turn', err);
+    }
     for (const a of [this.player, this.companion]) {
       if (!a) continue;
       a.hp = a.maxHp;

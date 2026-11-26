@@ -16,6 +16,14 @@ function alive(e) {
   return !!e && !e.removed && !e.dead && (typeof e.isAlive === 'function' ? e.isAlive() : (e.hp ?? 1) > 0);
 }
 
+function burning(game) {
+  try {
+    return !!game?.prices?.burning?.();
+  } catch {
+    return false;
+  }
+}
+
 // The nearest hostile awake within `r`, or null.
 export function foeNear(game, who, r = FIGHT_NEAR) {
   const list = game?.entities?.all?.() || game?.entities?.list || [];
@@ -48,6 +56,9 @@ export function foeNear(game, who, r = FIGHT_NEAR) {
 export function sleepBlocked(game, actor = game?.player) {
   if (!actor) return 'There is nobody to sleep.';
   if (actor.downed || game?.survival?.isFallen?.(actor)) return 'Not while you lie bleeding.';
+  // The last stand's minute (§25, round 14) is the last of a life: nobody sleeps it away,
+  // and the clock jumping to morning must not outrun it.
+  if (actor === game?.player && burning(game)) return 'Not now. You are burning, and this minute is the last you have.';
   if (actor.carrying) return 'Put them down first.';
   const t = game?.clock?.t ?? 0;
   const hit = actor.lastAttackedAt;

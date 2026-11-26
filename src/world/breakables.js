@@ -17,7 +17,11 @@ import { materialOf, refreshFences } from './broken.js';
 //     into debris (pixelfx dust and chips) and sometimes a little wood; the debris lies
 //     there, walkable, until it is mended or grows back (MEND below).
 // Never: buildings (tiles), doors, windows, beds, chests, lamps, hearths, wells, anything a
-// story needs (`story`), the notice board and the signs hung on buildings. A prop you can
+// story needs (`story`, and every sign of a boss on its trail: `trailBoss`), the notice
+// board and the signs hung on buildings. A chest (a trunk, a strongbox, the wilds' loot
+// chests) is never in BREAKABLE: a blow neither opens nor spills it. A locked one keeps its
+// own ways in (containers.js: its key, its keeper, or forcing the hasp at the chest itself
+// with the use button, which is theft if it is someone's), and what is in it stays in it. A prop you can
 // look at breaks like the rest (its words come back with it when it is mended). The
 // training dummy never breaks: it counts blows (training XP below).
 // Broken and felled state lives on each object's state, so the save keeps it.
@@ -70,7 +74,12 @@ export function breakSpec(o) {
   if (!o || o.removed || o.hidden) return null;
   const spec = BREAKABLE[o.objType];
   if (!spec) return null;
-  if (o.unbreakable || o.story) return null;
+  // A sign of a boss (boss_trails.js: the toll board, the scored trunks) is what a story
+  // needs: it points the way, so a blow never takes it (round 13 x 14a seam).
+  if (o.unbreakable || o.story || o.trailBoss) return null;
+  // Whatever holds things (a chest's inventory) never breaks: its contents are never lost
+  // in the rubble nor spilled twice.
+  if (o.inventory || o.objType === 'chest') return null;
   if (spec.training) return spec;
   // The notice board and the signs hung on buildings stay. A prop you can look at (the
   // Holloways' barrels, the thatching reed) breaks like any other and reads again once it

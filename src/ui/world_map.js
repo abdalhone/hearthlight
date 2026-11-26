@@ -4,6 +4,7 @@ import { TILE } from '../core/constants.js';
 import { tileDef, T } from '../world/tiles.js';
 import { CELL } from '../world/travel.js';
 import { bossMarks } from '../world/boss_trails.js';
+import { homeBed, HOME_ID } from '../world/home.js';
 
 // The map (DESIGN §32.3): the whole world as you have walked it. A small painted chart of
 // the ground (one pixel a tile), the parts you have not seen under a dark wash, the roads,
@@ -23,6 +24,14 @@ function chartColor(id) {
   if (id === T.ROCK) return '#57566a';
   if (id === T.WALL || id === T.FLOOR || id === T.RUG || id === T.STONE_FLOOR) return '#b0705a';
   return tileDef(id).color;
+}
+
+// The ratio of a canvas's size on screen to its CSS size (the zoom of the layer it is in).
+export function canvasZoom(c) {
+  const w = c?.clientWidth || 0;
+  if (!(w > 0) || typeof c.getBoundingClientRect !== 'function') return 1;
+  const k = c.getBoundingClientRect().width / w;
+  return Number.isFinite(k) && k > 0.2 && k < 5 ? k : 1;
 }
 
 export class WorldMap {
@@ -109,7 +118,8 @@ export class WorldMap {
     c.addEventListener('pointermove', (e) => {
       const p = this._pointers.get(e.pointerId);
       if (!p) return;
-      const s = this.scale(c.clientWidth, c.clientHeight);
+      // Screen pixels to the chart's own: the panel is drawn at Interface size (r13 zoom).
+      const s = this.scale(c.clientWidth, c.clientHeight) * this.zoomOf();
       if (this._pointers.size === 1) {
         this.cx -= (e.clientX - p.x) / s;
         this.cy -= (e.clientY - p.y) / s;
@@ -151,10 +161,17 @@ export class WorldMap {
     return ps.length < 2 ? 0 : Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y);
   }
 
+  // How much larger the chart is drawn on screen than its own CSS pixels: the Interface
+  // size zoom (ui_scale.js, `zoom` on the panel layer with a mouse), 1 on a phone.
+  zoomOf() {
+    return canvasZoom(this.canvas);
+  }
+
   _tap(e) {
     const r = this.canvas.getBoundingClientRect();
-    const x = e.clientX - r.left;
-    const y = e.clientY - r.top;
+    const k = this.zoomOf();
+    const x = (e.clientX - r.left) / k;
+    const y = (e.clientY - r.top) / k;
     let best = null;
     let bd = 26;
     for (const m of this._drawn || []) {
@@ -237,8 +254,11 @@ export class WorldMap {
       if ((m.kind === 'place' || m.kind === 'waystone') && !(t.seenTile?.(Math.floor(m.x / TILE), Math.floor(m.y / TILE)) ?? true)) continue;
       out.push(m);
     }
-    const home = g.locations?.get?.('player_home');
-    if (home) out.push({ kind: 'home', x: home.center.x, y: home.center.y, label: 'Your cottage' });
+    // Home is where the Home pointer leads (world/home.js): your bed in the Wayhouse.
+    const bed = homeBed(g);
+    const home = g.locations?.get?.(HOME_ID);
+    if (bed) out.push({ kind: 'home', x: bed.x, y: bed.y, label: 'Your bed (the Wayhouse)' });
+    else if (home) out.push({ kind: 'home', x: home.center.x, y: home.center.y, label: 'Your cottage' });
     for (const b of bossMarks(g)) out.push(b);
     // The mission you are on: its objective, when it has a place.
     try {

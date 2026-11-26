@@ -1245,8 +1245,10 @@ export class Bed extends WorldObject {
     const player = isPlayer(this.game, actor);
     if (player && this.rented) return "Lyra's room";
     if (player && this.villagerBed) return this.name;
-    // Any hour (r13): a bed sleeps you to morning (game.sleep says when it cannot).
-    if (player && this.owner === 'player') return 'Sleep until morning';
+    // Any hour (r13): a bed sleeps you to morning (game.sleep says when it cannot). Your
+    // own, or any bed that is nobody's (an empty house in Brindlecombe, round 14): the same
+    // sleep, so the same words. Home stays the Wayhouse bed (world/home.js, the Home pointer).
+    if (player && (this.owner === 'player' || !this.owner)) return 'Sleep until morning';
     return this.owner === 'lyra' && player ? "Sleep in Lyra's bed" : 'Sleep';
   }
 

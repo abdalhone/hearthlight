@@ -67,11 +67,15 @@ export function lightAt(game, x, y) {
     if (Array.isArray(L)) L.forEach(takeOne);
     else takeOne(L);
   }
+  // Lights that walk or lie on the ground (a lantern carried, the ember-ring where coins
+  // were left, round 14) keep the same roof rule: under a roof they light their room only.
   const ents = safe(() => game.entities?.all?.(), []) || [];
   for (let i = 0; i < ents.length; i++) {
     const e = ents[i];
     if (e.removed || typeof e.getLight !== 'function' || Math.abs(e.x - x) > LIGHT_REACH || Math.abs(e.y - y) > LIGHT_REACH) continue;
-    take(safe(() => e.getLight(t)));
+    const L = safe(() => e.getLight(t));
+    if (Array.isArray(L)) L.forEach(takeOne);
+    else takeOne(L);
   }
   // A lantern in the player's pack lights them and what they stand over.
   const p = game?.player;

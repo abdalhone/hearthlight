@@ -81,6 +81,7 @@ export const MENU_ICONS = Object.freeze({
   character: 'shield',
   inventory: 'bag',
   village: 'people',
+  map: 'flag',
   home: 'home',
   save: 'feather',
   quit: 'moon',
