@@ -157,3 +157,27 @@ test('without the Weave, combat keeps its brief hurt pose', async () => {
   assert.equal(b.state, 'hurt');
   assert.ok(b.lockTime > 0.15);
 });
+
+// Round 14b leftover: bosses stagger without being stun-locked; mission leaders ("Scarred")
+// resist part of every stun.
+test('a boss reels from a heavy blow, then not again for a while; a Scarred leader resists part of a stun', () => {
+  const g = makeGame({ foes: 2, party: false });
+  const [boss, lead] = g.foes;
+  boss.boss = true;
+  boss.maxHp = boss.hp = 2000;
+  g.combat.damage(g.player, boss, 5, { kind: 'melee', heavy: true, knockback: 0 });
+  assert.ok(g.magic.status.has(boss, 'reeling'), 'the boss staggers');
+  // Strike again at once, and again: no second stagger inside the window.
+  for (let i = 0; i < 3; i++) {
+    g.magic.status.remove?.(boss, 'reeling');
+    if (boss.statusImmune) boss.statusImmune.reeling = 0;
+    g.combat.damage(g.player, boss, 5, { kind: 'melee', heavy: true, knockback: 0 });
+  }
+  assert.ok(!g.magic.status.has(boss, 'reeling'), 'never stun-locked');
+  lead.leader = true;
+  lead.maxHp = lead.hp = 500;
+  g.combat.damage(g.player, lead, 3, { kind: 'melee', knockback: 0 });
+  assert.equal(lead.ccResist, 0.55);
+  const inst = g.magic.status.get(lead, 'flinch');
+  assert.ok(!inst || inst.dur < 0.3 * (0.6 + 0.4) * 0.9, 'a shorter flinch');
+});

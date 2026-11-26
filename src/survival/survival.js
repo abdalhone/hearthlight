@@ -32,7 +32,7 @@ import {
   LAY_SECONDS,
 } from './constants.js';
 import { CALL_LINES, LYRA_CARRIED, LYRA_POTION, lyraTone, pickLine } from './lines.js';
-import { stepJob, newJob, canRespond, roleFor, countRoles, isLyra, isPlayer, isVillager, speak, lineFor, stopFeet, nearestCarrier } from './rescue.js';
+import { stepJob, newJob, canRespond, roleFor, countRoles, isLyra, isPlayer, isVillager, speak, lineFor, stopFeet, nearestCarrier, knowsWantedFallen } from './rescue.js';
 import { startCarry, endCarry, syncCarries } from './carry.js';
 import { tendPlayer, wakeHome, flameReturn, finalDeath, admitPatient, releasePatient, carriedOff } from './outcomes.js';
 import { hasKeptFlame } from './kept_flame.js';
@@ -256,7 +256,7 @@ export class Survival {
     const rec = this.falls.get(F);
     let bed = null;
     // The watch takes someone wanted to the cell; Lyra and the rest take them to Mira's.
-    if (job?.role === 'arrest' || (rec?.wanted && job?.rescuer?.isGuard)) bed = safe(() => g.objects?.get?.(CELL_BED));
+    if (job?.role === 'arrest' || (rec?.wanted && job?.rescuer?.isGuard && knowsWantedFallen(this, job.rescuer, rec))) bed = safe(() => g.objects?.get?.(CELL_BED));
     if (!bed) {
       const from = job?.rescuer || F;
       let best = null;
@@ -486,11 +486,14 @@ export class Survival {
       const d = withYou ? -1 : Math.hypot(e.x - ox, e.y - oy);
       let reach = radius * (e.state === 'sleep' ? ASLEEP_EAR : 1);
       if (withYou) reach = Math.max(reach, LYRA_HEARS);
-      if (rec.wanted && e.isGuard) reach = Math.max(reach, GUARD_HEARS_WANTED);
+      // The watch looking for a stranger they KNOW is wanted (round 14b, per knower) finds
+      // them from far off; a guard who knows nothing of it hears a shout like anyone.
+      const hunting = rec.wanted && e.isGuard && knowsWantedFallen(this, e, rec);
+      if (hunting) reach = Math.max(reach, GUARD_HEARS_WANTED);
       if (!forced && Math.hypot(e.x - ox, e.y - oy) > reach) continue;
-      if (sight && !rec.wanted && typeof e.canSee === 'function' && !e.canSee(F)) continue;
+      if (sight && !hunting && typeof e.canSee === 'function' && !e.canSee(F)) continue;
       // A shout is heard by the one rule for ears (DESIGN §29.4): a wall muffles it hard.
-      if (!forced && !sight && !(rec.wanted && e.isGuard) && !safe(() => hears(g, e, ox, oy, radius), true)) continue;
+      if (!forced && !sight && !hunting && !safe(() => hears(g, e, ox, oy, radius), true)) continue;
       list.push([d, e]);
     }
     list.sort((a, b) => a[0] - b[0]);
@@ -684,7 +687,7 @@ export class Survival {
     g.bus?.emit?.('delivered', { carrier, entity: F, bed });
     if (isPlayer(this, F)) {
       this.rescuedBy(carrier, rec);
-      tendPlayer(this, carrier, bed, { arrested: job?.role === 'arrest' || (!!rec?.wanted && !!carrier.isGuard) });
+      tendPlayer(this, carrier, bed, { arrested: job?.role === 'arrest' || (!!rec?.wanted && !!carrier.isGuard && knowsWantedFallen(this, carrier, rec)) });
       return true;
     }
     const grave = !!rec?.grave;
@@ -1061,7 +1064,7 @@ export class Survival {
         safe(() => guard.leaveBed?.());
       }
     }
-    this.assignJob(guard, rec, rec.wanted ? 'arrest' : 'carry', { forced: true });
+    this.assignJob(guard, rec, rec.wanted && knowsWantedFallen(this, guard, rec) ? 'arrest' : 'carry', { forced: true });
     try {
       g.ui?.toast?.(`${guard.name || 'A patrol'} was walking the bounds and heard you.`, 'info', { key: 'patrol' });
     } catch {

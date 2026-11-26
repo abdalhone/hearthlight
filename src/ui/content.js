@@ -105,6 +105,7 @@ export const CONTROLS = [
   { id: 'dodge', what: 'Dodge roll', keys: 'K or Shift', pad: 'B', touch: 'The swirl button beside the sword' },
   { id: 'weave', what: 'Cast a weave', keys: '1 – 6 toward the mouse, or a click on its slot (at the nearest foe; hold and drag out to aim): tap to cast, hold to charge it stronger and let go (a beam pours while held)', pad: 'RT, aimed with the right stick: tap, or hold to charge', touch: 'Tap a weave button to cast at the nearest foe; hold it to charge it stronger; drag from it to aim, let go to cast, drag back onto it to cancel' },
   { id: 'choose', what: 'Choose a weave', keys: 'Right click casts the weave with the small mouse on its slot; the mouse wheel or Q / R moves it (a number key moves it too)', pad: 'LT / RB', touch: 'No choosing: every round button is one weave (its name on it, its mana on its corner)' },
+  { id: 'lock', what: 'Lock on', keys: 'Middle click on someone (an empty spot lets go), or G for the nearest in front; the wheel then moves the lock', pad: 'R3 (press the right stick)', touch: 'Hold the sword button still; swipe across it to move the lock' },
   { id: 'spellbook', what: 'Spellbook', keys: 'B', pad: 'Start, then Spellbook', touch: 'Menu → Spellbook, or the + New weave button' },
   { id: 'interact', what: 'Use, open, trade (E)', keys: 'E', pad: 'X', touch: 'The round button above the sword: it says what it does (Talk to Bram, Open…)' },
   { id: 'listen', what: 'Listen in', keys: 'L', pad: null, touch: 'Tap “Listen in” when two villagers talk nearby' },

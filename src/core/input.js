@@ -14,6 +14,7 @@ export const ACTIONS = [
   'cmd1', 'cmd2', 'cmd3', 'cmd4', 'cmd5',
   'weave1', 'weave2', 'weave3', 'weave4', 'weave5', 'weave6',
   'cast', 'slot_prev', 'slot_next', 'spellbook', 'character',
+  'lock', 'lock_next', 'lock_prev',
 ];
 
 export const KEYMAP = Object.freeze({
@@ -33,6 +34,7 @@ export const KEYMAP = Object.freeze({
   KeyQ: 'slot_prev', KeyR: 'slot_next',
   KeyB: 'spellbook',
   KeyC: 'character', // the character sheet (DESIGN §26)
+  KeyG: 'lock', // lock on to the nearest in front, or let go (round 14b, DESIGN §35.5)
 });
 
 // Alt (Option on a Mac) + 1–5 asks Lyra, as the plain number row did before weaving.
@@ -54,6 +56,7 @@ export const GAMEPAD_BUTTONS = Object.freeze({
   7: 'cast',
   8: 'mind',
   9: 'menu',
+  11: 'lock', // R3: lock on (round 14b)
   12: 'up',
   13: 'down',
   14: 'left',
@@ -231,6 +234,12 @@ export class Input {
     // Mouse: on the window so a release outside the canvas still lets go of a held cast.
     window.addEventListener('pointermove', (e) => this._onPointerMove(e), { passive: true });
     window.addEventListener('pointerdown', (e) => this._onPointerDown(e));
+    // No autoscroll or paste from the middle button over the game (round 14b: it locks on).
+    const noMiddle = (e) => {
+      if (e.button === 1 && this._isCanvas(e.target)) e.preventDefault();
+    };
+    window.addEventListener('mousedown', noMiddle, { passive: false });
+    window.addEventListener('auxclick', noMiddle, { passive: false });
     window.addEventListener('pointerup', (e) => this._onPointerUp(e));
     window.addEventListener('pointercancel', (e) => this._onPointerUp(e));
     window.addEventListener('mouseout', (e) => {
@@ -310,7 +319,27 @@ export class Input {
       e.preventDefault();
       this.mouse.right = true;
       this.setVirtual('cast', true);
+    } else if (e.button === 1) {
+      // The middle button locks on to whoever is under the cursor (round 14b): never the
+      // browser's autoscroll.
+      e.preventDefault();
+      this.lockClick = this.mouseWorld();
+      this.setVirtual('lock', true);
     }
+  }
+
+  // The world point of the last middle click (game.lock reads it once).
+  takeLockClick() {
+    const at = this.lockClick || null;
+    this.lockClick = null;
+    return at;
+  }
+
+  // Wheel steps taken while locked: they cycle the lock, not the weave slots.
+  takeLockWheel() {
+    const s = this.lockWheel || 0;
+    this.lockWheel = 0;
+    return s;
   }
 
   _onPointerUp(e) {
@@ -321,6 +350,8 @@ export class Input {
     } else if (e.button === 2 && this.mouse.right) {
       this.mouse.right = false;
       this.setVirtual('cast', false);
+    } else if (e.button === 1) {
+      this.setVirtual('lock', false);
     }
   }
 
@@ -329,7 +360,9 @@ export class Input {
     e.preventDefault();
     const r = wheelSteps(this.wheelRest, e.deltaY, e.deltaMode);
     this.wheelRest = r.rest;
-    this.wheelSteps += r.steps;
+    // Locked on (round 14b): the wheel cycles the lock; Q and R still pick weave slots.
+    if (this.game?.lock?.target) this.lockWheel = (this.lockWheel || 0) + r.steps;
+    else this.wheelSteps += r.steps;
   }
 
   // Whole wheel steps since the last call (the weave controller turns them into slots).

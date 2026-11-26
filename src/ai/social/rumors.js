@@ -22,6 +22,9 @@ export const RUMOR_KINDS = {
   attacked_villager: { text: '{stranger} struck {v}', you: 'you struck {v}', valence: -0.75, severity: 0.7 },
   attacked_guard: { text: '{stranger} drew a blade on the watch', you: 'you drew on the watch', valence: -0.6, severity: 0.6 },
   stole: { text: '{stranger} has light fingers', you: 'you have light fingers', valence: -0.45, severity: 0.4 },
+  // Round 14b (DESIGN §35.3): seen going through the pockets of the dead.
+  burned_store: { text: "{stranger} set {v}'s place alight", you: "you set {v}'s place alight", valence: -0.9, severity: 0.85 },
+  robbed_the_dead: { text: "{stranger} went through {v}'s pockets as {v} lay dead", you: "you went through {v}'s pockets", valence: -0.8, severity: 0.75 },
   killed_harmless: { text: '{stranger} kills harmless beasts for the fun of it', you: 'you kill harmless beasts for fun', valence: -0.25, severity: 0.2 },
   protected_lyra: { text: '{stranger} stood over {lyra} in a fight', you: 'you stood over Lyra in a fight', valence: 0.5, severity: 0.4, victim: 'lyra' },
   revived_lyra: { text: '{stranger} got {lyra} back on her feet when she went down', you: 'you got Lyra back on her feet', valence: 0.55, severity: 0.45, victim: 'lyra' },

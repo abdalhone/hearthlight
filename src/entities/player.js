@@ -431,6 +431,12 @@ export class Player extends Actor {
     // Over someone lying down, the sword is a held, deliberate blow (DESIGN §29).
     if (this.game.murder?.onAttackPress?.(this)) return true;
     const reach = COMBO[this.combo].range + 10;
+    // Locked on (round 14b, game.lock): the blade turns to the lock and takes it in reach.
+    const lk = this.game.lock?.aimTarget?.(reach + 6) || null;
+    if (lk && !lk.downed) {
+      this.faceToward(lk.x, lk.y);
+      if (this.game.combat?.canHarm?.(this, lk, true)) return this._swordSwing(lk);
+    }
     const foe = this._findFoe(reach, true);
     if (!foe) {
       const obj = this._findWorkTarget();

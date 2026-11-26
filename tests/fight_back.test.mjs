@@ -91,7 +91,11 @@ test('the watch answers: they carry the stranger off, and she leaves them to it'
   assert.ok(rec.wanted, 'wanted for going at her');
   const t = stepUntil(game, () => !!rec.carrier, 40);
   assert.ok(t >= 0, 'someone came for them');
-  assert.ok(rec.carrier.isGuard, `the watch (${rec.carrier.id})`);
+  // Round 14b (per knower): whoever came is of the watch or Hess, sent for by her shout; a
+  // guard who KNOWS what the stranger did takes them to the cell, else to Mira's.
+  assert.ok(rec.carrier.isGuard || rec.carrier.profile?.hunter, `the watch or Hess (${rec.carrier.id})`);
+  const job = game.survival.jobFor(rec.carrier);
+  if (job?.role === 'arrest') assert.ok(rec.carrier.knowsWanted(p), 'an arrest only by one who knows');
   assert.ok(![...rec.responders].includes(l), 'not her');
 });
 

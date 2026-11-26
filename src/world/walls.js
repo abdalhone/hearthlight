@@ -1,4 +1,5 @@
 import { TILE } from '../core/constants.js';
+import { T } from './tiles.js';
 
 // What stops a blow (DESIGN §31.1): the one rule every attack uses, the same tiles that
 // stop arrows and bolts. A sword arc, a nova, a strike's wave, a beam and a bomb's blast
@@ -27,11 +28,25 @@ export function wallAt(game, x, y) {
   return wallTile(game, Math.floor(x / TILE), Math.floor(y / TILE));
 }
 
+// Tiles that stop a hand-to-hand blow but not an arrow (round 14b, DESIGN §35.6): a heap of
+// rubble is low enough to shoot over and too broad to reach across with a blade or claws.
+export const BLOCKS_BLOW = new Set([T.RUBBLE]);
+
+export function blowTile(game, tx, ty) {
+  if (wallTile(game, tx, ty)) return true;
+  try {
+    return BLOCKS_BLOW.has(game.map?.tileAt?.(tx, ty));
+  } catch {
+    return false;
+  }
+}
+
 // Is there a wall between two points? Walks every tile the segment passes through
 // (a grid traversal, so it never slips between two wall tiles meeting at a corner).
 // The tiles of the two end points themselves do not count: someone hugging a wall is
-// still in reach, and a blow struck from a doorway still lands.
-export function wallBetween(game, x0, y0, x1, y1) {
+// still in reach, and a blow struck from a doorway still lands. `tileTest` (round 14b):
+// what stops it (wallTile by default; blowTile for a hand-to-hand blow).
+export function wallBetween(game, x0, y0, x1, y1, tileTest = wallTile) {
   const map = game?.map;
   if (!map || typeof map.blocksProjectile !== 'function') return false;
   let tx = Math.floor(x0 / TILE);
@@ -52,8 +67,8 @@ export function wallBetween(game, x0, y0, x1, y1) {
   while (guard-- > 0) {
     if (Math.abs(mx - my) < 1e-9) {
       // Exactly through a corner: both side tiles must be open for the line to pass.
-      const a = wallTile(game, tx + sx, ty) && !(tx + sx === ex && ty === ey);
-      const b = wallTile(game, tx, ty + sy) && !(tx === ex && ty + sy === ey);
+      const a = tileTest(game, tx + sx, ty) && !(tx + sx === ex && ty === ey);
+      const b = tileTest(game, tx, ty + sy) && !(tx === ex && ty + sy === ey);
       if (a && b) return true;
       tx += sx;
       ty += sy;
@@ -67,7 +82,7 @@ export function wallBetween(game, x0, y0, x1, y1) {
       my += iy;
     }
     if (tx === ex && ty === ey) return false;
-    if (wallTile(game, tx, ty)) return true;
+    if (tileTest(game, tx, ty)) return true;
   }
   return false;
 }
@@ -75,7 +90,10 @@ export function wallBetween(game, x0, y0, x1, y1) {
 // Can a blow from `a` reach `b`? Measured a little above the feet, where actors
 // collide and projectiles fly, so a body standing against a wall stays in reach.
 export const BLOW_LIFT = 3;
-export function canReach(game, a, b, fromX = a?.x, fromY = a?.y) {
+export function canReach(game, a, b, fromX = a?.x, fromY = a?.y, { melee = false } = {}) {
   if (!a || !b) return false;
-  return !wallBetween(game, fromX, fromY - BLOW_LIFT, b.x, b.y - BLOW_LIFT);
+  // Small actors stand close to the ground: never measure above their own height.
+  const la = Math.min(BLOW_LIFT, Math.max(1, (a.radius ?? 5) - 1));
+  const lb = Math.min(BLOW_LIFT, Math.max(1, (b.radius ?? 5) - 1));
+  return !wallBetween(game, fromX, fromY - la, b.x, b.y - lb, melee ? blowTile : wallTile);
 }

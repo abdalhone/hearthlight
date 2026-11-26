@@ -29,6 +29,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   // When I die (DESIGN §27): 'final' — the story ends unless a kept flame burns at the chapel
   // (the save closes and moves to Past lives); 'home' — wake at home, a little poorer.
   deathMode: 'final',
+  // The finishing blow's scene (round 14b, DESIGN §35.4): 'full' | 'brief' | 'off' (the same
+  // outcome, no scene). Reduce motion plays it brief.
+  finishers: 'full',
 });
 
 export function loadSettings() {

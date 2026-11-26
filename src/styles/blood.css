@@ -1,1 +1,27 @@
 /* Round 14b: workstream blood's styles (DESIGN §33, F8). Only blood edits this file; scripts/build.mjs, index.html and the style tests read every src/styles/*.css after src/styles.css, in sorted order. */
+
+/* The body on the ground: Search or Lift, finger-sized on every screen (round 14b, V-9). */
+.panel-body-choice .panel-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.panel-body-choice .body-choice-btn {
+  min-height: 48px;
+  min-width: 132px;
+  font-size: 1rem;
+}
+.panel-body-choice .panel-close {
+  min-width: 44px;
+  min-height: 44px;
+}
+@media (max-width: 520px) {
+  .panel-body-choice .panel-foot {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .panel-body-choice .body-choice-btn {
+    width: 100%;
+  }
+}

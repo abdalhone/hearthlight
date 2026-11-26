@@ -22,7 +22,7 @@ export const SETTINGS_TABS = [
 export const SETTINGS_LAYOUT = {
   game: [
     { id: 'names', title: 'Names', keys: ['playerName', 'companionName'] },
-    { id: 'journey', title: 'Your journey', keys: ['deathMode', 'cloudSave'] },
+    { id: 'journey', title: 'Your journey', keys: ['deathMode', 'finishers', 'cloudSave'] },
     { id: 'practice', title: 'Practice', keys: [], actions: ['resetPoints', 'freePoints', 'trialMagic'] },
   ],
   controls: [
@@ -83,6 +83,16 @@ export const SETTING_ROWS = {
     options: [
       ['final', 'Your story ends'],
       ['home', 'Wake at home'],
+    ],
+  },
+  finishers: {
+    kind: 'select',
+    label: 'Finishers',
+    note: 'The short scene when a killing blow falls. Brief or off: the same blow, less to see.',
+    options: [
+      ['full', 'Full'],
+      ['brief', 'Brief'],
+      ['off', 'Off'],
     ],
   },
   cloudSave: { kind: 'toggle', label: 'Copy in my claude.ai account', note: 'Your journey follows you to your other devices.' },

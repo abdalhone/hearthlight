@@ -65,10 +65,22 @@ export function canRespond(sv, a) {
 }
 
 // The part a villager plays for this fall, or null.
+// Does this villager know the fallen player is wanted (round 14b, per knower: DESIGN
+// §35.2)? Only one who knows comes to arrest; the rest come to help as for anyone.
+export function knowsWantedFallen(sv, npc, rec) {
+  if (!rec?.wanted) return false;
+  if (typeof npc?.knowsWanted !== 'function') return true;
+  try {
+    return !!npc.knowsWanted(rec.actor);
+  } catch {
+    return true;
+  }
+}
+
 export function roleFor(sv, npc, rec, counts) {
   const id = npc.profile?.id || npc.id;
   const full = (role) => (counts?.[role] || 0) >= (MAX_ROLE[role] ?? 1);
-  if (rec.wanted) {
+  if (rec.wanted && knowsWantedFallen(sv, npc, rec)) {
     if (npc.isGuard) return full('carry') ? null : 'arrest';
     if (FETCHERS.has(id) && !full('fetch')) return 'fetch';
     return null;

@@ -33,6 +33,10 @@ export const SELF_DEFENSE_WINDOW = 60; // how long someone who hurt you stays a 
 export const NPC_REVIVE_FALLBACK = 40;
 export const NPC_REVIVE_FRACTION = 0.5;
 const SHARED_XP_RANGE = 260; // px: kills made this close count as a fight fought together
+// Round 14b: a mission leader's share of a stun (status ccResist), and how long a boss is
+// proof against another stagger after one.
+const LEADER_CC = 0.55;
+const BOSS_REEL_IMMUNE = 3.5;
 const PROVOKE_MEMORY = 45; // game seconds a creature stays angry at whoever hurt it
 const DEFAULT_MELEE_CD = 0.4;
 const MIN_SHOT_GAP = 0.15; // guards against accidental per-frame shooting
@@ -257,8 +261,11 @@ export class Combat {
     if (!a || !b || a === b) return false;
     // A charmed creature fights for its charmer's side and nobody holds a grudge meanwhile.
     if (a.statusFlags?.charmedBy || b.statusFlags?.charmedBy) return factionRelation(sideOf(a), sideOf(b)) === 'hostile';
-    // While the player is wanted, the guard and the player are at war (§16.7).
-    if ((a.faction === 'guard' && this.hasCrime(b)) || (b.faction === 'guard' && this.hasCrime(a))) return true;
+    // While the player is wanted, the guard and the player are at war (§16.7), but only a
+    // guard who KNOWS it (round 14b, DESIGN §35.2: per knower; npc.knowsWanted: saw it, came
+    // and saw, was told face to face, or the bell). player.crime is the watch's record, not
+    // what every guard knows.
+    if ((a.faction === 'guard' && this.knowsCrime(a, b)) || (b.faction === 'guard' && this.knowsCrime(b, a))) return true;
     if (factionRelation(a.faction, b.faction) === 'hostile') return true;
     return this._provokedAgainst(b, a) || this._provokedAgainst(a, b);
   }
@@ -267,6 +274,20 @@ export class Combat {
   hasCrime(actor = this.game.player) {
     const c = actor?.crime;
     return !!c && c.until > this.now();
+  }
+
+  // Does `knower` know that `actor` is wanted (round 14b, per knower)? A villager answers for
+  // themselves (npc.knowsWanted); anything without a mind of its own reads the record.
+  knowsCrime(knower, actor = this.game.player) {
+    if (!this.hasCrime(actor)) return false;
+    if (knower && typeof knower.knowsWanted === 'function') {
+      try {
+        return !!knower.knowsWanted(actor);
+      } catch {
+        return true;
+      }
+    }
+    return true;
   }
 
   // Is `creature` angry at `other` because `other` hurt it recently?
@@ -355,8 +376,9 @@ export class Combat {
       if (d > range + (e.radius ?? 5)) continue;
       if (d > 6 && (dx * fx + dy * fy) / d < minCos) continue;
       if (!this.canHarm(attacker, e, e === target)) continue;
-      // Walls and closed doors stop the blade (DESIGN §31.1): nobody is hit through a house.
-      if (!canReach(g, attacker, e)) continue;
+      // Walls and closed doors stop the blade (DESIGN §31.1): nobody is hit through a house;
+      // nor across a heap of rubble (round 14b, walls.BLOCKS_BLOW: arrows still fly over).
+      if (!canReach(g, attacker, e, attacker.x, attacker.y, { melee: true })) continue;
       const inv = d > 0.001 ? 1 / d : 0;
       const dealt = this.damage(attacker, e, power, {
         kind,
@@ -374,6 +396,12 @@ export class Combat {
     if (this.isPlayer(attacker)) {
       try {
         this.lastPropHits = swingAtProps(g, attacker, { fx, fy, minCos, range, power, heavy: !!opts.heavy });
+        // A locked chest in front of the blade: a word, not nothing (round 14b, containers.js).
+        try {
+          g.chestBlow?.(attacker.x + fx * range * 0.5, attacker.y + fy * range * 0.5, range * 0.6, { source: attacker, heavy: !!opts.heavy });
+        } catch {
+          /* chests are optional */
+        }
       } catch (err) {
         this._warn('props', err);
       }
@@ -600,8 +628,16 @@ export class Combat {
       return;
     }
     const charge = Math.max(0, Math.min(1, Number(opts.charge) || 0));
+    // A mission's leader ("Scarred", round 14b leftover) shrugs off half of every stun.
+    if (target.leader && !Number.isFinite(target.ccResist)) target.ccResist = LEADER_CC;
     let held = null;
-    if (opts.heavy || charge >= 0.5) held = status.apply(target, 'reeling', { src, potency: 1 + charge * 0.5 });
+    // A boss reels from a heavy blow (stars at its head: a stagger you can see), then is
+    // proof against another for a while, so it is never stun-locked (round 14b leftover).
+    const bossReady = !tough || !(target._reelImmuneUntil > this.t);
+    if ((opts.heavy || charge >= 0.5) && bossReady) {
+      held = status.apply(target, 'reeling', { src, potency: 1 + charge * 0.5 });
+      if (held && tough) target._reelImmuneUntil = this.t + BOSS_REEL_IMMUNE;
+    }
     if (!held && !tough) held = status.apply(target, 'flinch', { src });
     // The pose: held while the stun lasts; a blow inside the immunity only jolts the sprite.
     if (!tough) {

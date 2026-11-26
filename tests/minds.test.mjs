@@ -792,15 +792,15 @@ test('A6: until the witness reaches the watch, nobody knows who did it: a body f
   // The witness does not stop to "find" the body: she is carrying the news.
   g.murder.bodySeen('elda', 'bram', rec.place);
   assert.equal(rec.foundAt, null, 'a witness is not a finder');
-  // Tilly comes upon the body: it is found, and the watch asks questions, but nobody has
-  // told them who did it yet.
+  // Tilly comes upon the body: it is found, but the watch has not heard even that yet
+  // (round 14b: the news of a body travels by meeting, or the bell within the hour), and
+  // nobody has told them who did it.
   put(tilly, bram.x + 30, bram.y + 10);
   g.murder.bodySeen('tilly', 'bram', rec.place);
   assert.ok(rec.foundAt != null, 'the body is found');
-  const c = g.murder.cases.bram;
-  assert.ok(c, 'a case is open');
-  assert.ok(!c.evidence.some((e) => e.kind === 'witness_clear'), `no witness's word yet: ${JSON.stringify(c.evidence.map((e) => e.kind))}`);
-  assert.notEqual(c.level, 'certain');
+  assert.equal(g.murder.cases.bram, undefined, 'the watch has not heard yet');
+  assert.equal(g.murder.knowsDead('bram', 'tilly'), true, 'Tilly knows');
+  assert.equal(g.murder.knowsDead('bram', 'garrick'), false, 'Garrick does not');
   assert.equal(g.murder.refusesTrade(garrick), false, 'Garrick has heard nothing: he still trades');
   assert.notEqual(g.player.crime?.kind, 'murder');
   // Elda reaches Wys and tells him: now the watch is certain, and the village turns.

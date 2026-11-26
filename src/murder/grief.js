@@ -13,6 +13,7 @@ import { HEIRS, UNDONE, STAND_INS, OFFICIANTS, MOOT_CHAIR, MOOT_HEADS, MAREN_KEE
 import { murderLine, mootLines, lyraLine, FUNERAL, MOOT } from './lines.js';
 import { profileById } from '../entities/npc_data.js';
 import * as Lyra from './lyra.js';
+import { lyraGriefLine } from './lines_lyra.js';
 import { funeralScript, trialScripts, playScript } from './scenes.js';
 
 function safe(fn, fallback = null) {
@@ -82,6 +83,25 @@ export function onFound(m, rec) {
   planFuneral(m, rec);
   planMoot(m, rec, 'death');
   applyHeirs(m);
+}
+
+// Mourning for those who know (round 14b leftover: the news of a body travels by meeting):
+// family a month, close friends a fortnight, friends a few days, each from when they hear.
+export function mournAs(m, rec, knowers) {
+  const life = m.life;
+  if (!life) return;
+  const day = m.day();
+  rec.mournedBy = rec.mournedBy || [];
+  for (const id of knowers || []) {
+    if (!VILLAGERS.includes(id) || id === rec.id || rec.mournedBy.includes(id) || !alive(m, id)) continue;
+    rec.mournedBy.push(id);
+    const c = care(m, id, rec.id);
+    const fam = kin(id, rec.id);
+    const days = fam ? 30 : c >= 0.6 ? 14 : c >= 0.35 ? 4 : 0;
+    if (!days) continue;
+    const cur = life.mourning[id];
+    if (!cur || cur.until < day + days || cur.about === rec.id) life.mourning[id] = { about: rec.id, until: day + days, kind: 'grief', kin: fam || undefined };
+  }
 }
 
 export function everyoneKnows(m, rec) {
@@ -265,7 +285,7 @@ function standMourners(m, rec, who, off) {
     P.faceDir?.('up');
   }
   const L = m.game.companion;
-  if (L && !L.downed && !['left', 'gone'].includes(L.mind?.companionship)) {
+  if (L && !L.downed && !L.dead && !m.dead?.[L.id] && !['left', 'gone'].includes(L.mind?.companionship)) {
     L.x = bier.x + 16;
     L.y = bier.y + 74;
     L.faceToward?.(bier.x, bier.y);
@@ -576,8 +596,14 @@ export function applyHeirs(m) {
 }
 
 // Who gives this giver's missions now: them, a stand-in, or the notice board.
+// Lyra's own missions close with her (STAND_INS.lyra is empty; missions/system.js closes
+// them): standIn('lyra') is 'lyra' while she lives, and stays 'lyra' after (nobody else
+// gives her lessons, her waystone or her oath).
 export function standIn(m, giver) {
-  if (!giver || giver === 'lyra' || giver === 'board' || !m.knownDead(giver)) return giver;
+  // A child taken away from an emptied house (round 14b, occupation.js) passes on too.
+  const away = !!giver && m.entity(giver)?.absent?.cause === 'taken_away';
+  if (!giver || giver === 'board' || (!m.knownDead(giver) && !away)) return giver;
+  if (giver === 'lyra') return giver;
   for (const id of STAND_INS[giver] || []) if (alive(m, id)) return id;
   return 'board';
 }
@@ -663,7 +689,9 @@ export function decorateDialogue(m, npc, d) {
   const rec = m.dead[mo.about];
   const when = rec?.state === 'buried' ? (m.day() - (rec.buriedDay ?? m.day()) <= 0 ? 'today' : m.day() - (rec.buriedDay ?? 0) === 1 ? 'yesterday' : 'last week') : 'soon';
   const key = rec?.state === 'buried' ? 'mournGreet' : null;
-  const line = key ? murderLine(npc.id, key, { about: mo.about, when, P: m.playerName() }, m.rng()) : safe(() => m.life.line(npc.id, 'grief', { about: mo.about }));
+  // Lyra (round 14b): her people's own words for her.
+  const forLyra = mo.about === 'lyra' ? lyraGriefLine(npc.id, m.rng()) : null;
+  const line = forLyra || (key ? murderLine(npc.id, key, { about: mo.about, when, P: m.playerName() }, m.rng()) : safe(() => m.life.line(npc.id, 'grief', { about: mo.about })));
   if (!line) return d;
   return { ...d, lines: [line, ...d.lines.slice(1)] };
 }

@@ -19,6 +19,9 @@ import { previewOf, aimsAtSpot, castModeOf, weavePalette, componentInfo, cleanWe
 import { cycleSlot, WEAVE_SLOTS } from '../core/input.js';
 import { isParty } from '../core/party.js';
 
+// A weave tapped on a phone (no drag) auto-aims only this far (round 14b leftover: a quick
+// tap must not snipe a slime across the meadow).
+export const TAP_REACH = 110;
 const SELECTED_KEY = 'hearthlight.weave.selected';
 const BODY_UP = 7; // aim from the chest, not the feet
 const MIN_SPOT = 14; // a spot is never closer than this (world px)
@@ -742,6 +745,23 @@ export class Weaving {
     out.target = null;
     out.auto = false;
     const spot = aimsAtSpot(pv);
+    // Locked on (round 14b, game.lock): every source aims at the lock while it is in reach.
+    const lk = g.lock?.aimTarget?.(range * 1.4 + 12) || null;
+    if (lk && pv?.type !== 'ring' && pv?.type !== 'shield') {
+      out.x = lk.x;
+      out.y = lk.y - BODY_UP;
+      out.target = lk;
+      if (spot) {
+        const dx = out.x - o.x;
+        const dy = out.y - o.y;
+        const d = Math.hypot(dx, dy);
+        if (d > range) {
+          out.x = o.x + (dx / d) * range;
+          out.y = o.y + (dy / d) * range;
+        }
+      }
+      return out;
+    }
     // A touch drag (the finger's own aim).
     if (c.source === 'touch') {
       const t = c.touch;
@@ -751,7 +771,8 @@ export class Weaving {
         out.y = o.y + v.y;
         return out;
       }
-      return this.autoAim(out, o, range, spot, pv);
+      // A quick tap (round 14b leftover): only a foe close in front, never a far slime.
+      return this.autoAim(out, o, range, spot, pv, { tap: true });
     }
     const input = g.input;
     if (c.source === 'pad' || (c.source === 'key' && input?.lastDevice === 'gamepad')) {
@@ -793,7 +814,7 @@ export class Weaving {
   }
 
   // A tap or a keyboard cast: the nearest foe in range, else straight ahead.
-  autoAim(out, o, range, spot, pv) {
+  autoAim(out, o, range, spot, pv, { tap = false } = {}) {
     const p = this.game.player;
     const fx = p?.facing?.x ?? 1;
     const fy = p?.facing?.y ?? 0;
@@ -804,7 +825,9 @@ export class Weaving {
       out.y = o.y + fy;
       return out;
     }
-    const reach = pv?.type === 'cone' || pv?.type === 'arc' ? range * 1.4 + 12 : range * 1.15 + 8;
+    let reach = pv?.type === 'cone' || pv?.type === 'arc' ? range * 1.4 + 12 : range * 1.15 + 8;
+    // A tap on a phone aims at what is close, the way the thumb meant it (TAP_REACH).
+    if (tap) reach = Math.min(reach, TAP_REACH);
     const foe = this.nearestFoe(o.x, o.y, fx, fy, reach);
     if (foe) {
       out.x = foe.x;

@@ -2089,8 +2089,9 @@ notices and has opinions (berserk frightens her).
 ## 29. Killing, witnesses and what the village can know (the author: "if I killed someone without nobody seeing it, nobody should know… they would feel that he's missing")
 
 - A fallen villager can be **killed** only by the player's deliberate finishing blow (an
-  explicit hold-to-strike on someone lying down, with a clear warning the first time). Lyra
-  and the bosses' rules are unchanged (Lyra never dies). The dead lie where they fell.
+  explicit hold-to-strike on someone lying down, with a clear warning the first time). Since
+  round 14b any adult can die by it, Lyra and whoever walks with you included; never a child
+  (`isMinor`; §35.1). The bosses' rules are unchanged. The dead lie where they fell.
 - **Witnesses** are anyone who saw it (line of sight, light, distance — night and walls
   hide things). Seen: murder — the alarm, the watch, Lyra's horror (§19.7 at its gravest),
   the village turns on the player. Unseen: nobody knows. The dead person's errands fail;
@@ -2118,7 +2119,8 @@ notices and has opinions (berserk frightens her).
   perception and autonomy, and the village's gossip, only take what was seen.
 - **The finishing blow**: the attack button over a downed villager starts a held strike
   (`FINISH_HOLD` 1.5 s, a ring closing over them); the first time, a plain warning
-  (`flags.finisherWarned`). Never Lyra, never Pip or Tansy. `murder.kill(v)` →
+  (`flags.finisherWarned`; Lyra has her own, round 14b). Never a child (by age, `isMinor`:
+  §35.1). `murder.kill(v)` →
   `villageLife.markGone(id, { cause: 'killed', keepBody: true })`; the body lies still.
 - **Seen**: the cries, the witnesses' terror (§29.3) and the rumor `murder`, carried face to
   face (§29.2). When the news reaches the watch (`raiseAlarm`): wanted (`player.crime =
@@ -2918,69 +2920,159 @@ story goes on; People shows her memorial.
 
 ## 35. Violence (workstream blood; the author: "the people should fight me, not just let me kill their whole village")
 
-### 35.1 The record of a death (`src/murder/murder.js`, the base)
+As built by blood (round 14b). Every new sound or witness rule goes through the one rule for
+eyes (`src/ai/sight.js`, `murder/witness.js`) and ears (`src/ai/hearing.js`); nobody acts on
+a bare distance. Children (`isMinor`, under 16) are never killable, never hurt.
+
+### 35.1 The record of a death, and who can die (`src/murder/murder.js`)
 
 - `kill(v, killer = player, opts)` or `kill(v, opts)` (opts with `killer` to name another).
   `opts.cause` (default `'killed'`), `opts.silent` and `opts.unmarked` (§37.2), `opts.by` (an
   id when no killer entity is given). Returns the record, or null.
-- `canKill(v)`: a villager, not dead, **not a minor** (`isMinor`) and not on the old
-  `UNKILLABLE` list (which blood replaces with `isMinor` and a killable Lyra, V-7).
-- The record (`murder.dead[id]`) gains `by` (`'player'`, the killer's id, or null), `cause`,
-  `provoked` (true when the victim fought or hit the killer in the last 20 s: fighting them
-  (`fightTarget`, mode `'fight'`), squaring up to them while answering a cry (help role
-  `'confront'`), the killer's `lastAttacker`, or combat's record of who hurt whom that
-  self-defense reads), `silent`, `unmarked` and `natural` (die()). `layBody` and
-  `deserialize` set `v.absent.cause = rec.cause`. An old save's record reads as cause
-  `'killed'`, `by` and `provoked` unknown (null), not silent, marked.
+- **Who can die.** `UNKILLABLE` is gone. `isPerson(e)`: a villager, Lyra herself
+  (`lyraOf`), or whoever holds the companion role. `canKill(v)`: a person, not dead, **not a
+  minor** (`isMinor`, by age; Tansy at 16 can). `finishTarget` takes any downed person (a
+  downed lock-on target first); `onAttackPress` refuses only a child ("No. Not a child.").
+  Lyra has her own first warning (`flags.finisherWarnedLyra`); the last stand's burning
+  minute (`prices.burning()`) asks nothing.
+- **A dead Lyra.** Every `murder/lyra.js` entry does nothing (`lyra(m)` is null): she never
+  learns, grieves or is asked about her own death; scenes, grief's line-up, the hearing and
+  telling loops skip her. `layBody` holds a killed non-villager still (instance `update`,
+  `interact`, no light) unless the companion has `isKilled()` of its own (party's
+  companion.js). `village_life.markGone` takes PEOPLE (an unseen killing of Lyra makes her
+  missing). `HEIRS.lyra` (the far lamps to Hobb), `KEEPSAKES.lyra` (her trunk to Wenna:
+  containers.js `ownerOf`), `STAND_INS.lyra = []`: her own missions close (status
+  `'closed'`, never offered again; missions/system.js) and a talk step to her passes.
+  `murder.deserialize` runs after the companion's and re-lays her body (game.js order).
+- **She can be caught.** Running from the stranger Lyra goes 1.45 x 80 = 116 px/s against the
+  stranger's 76; after 6 s she is winded to 0.55 of her pace (about 64 px/s) until she has
+  stopped running 10 s (`murder.tireFlight`). Villagers already run slower (40 x 1.75 = 70).
+- The record (`murder.dead[id]`) carries `by`, `cause`, `provoked`, `silent`, `unmarked`,
+  `natural` (the base), and from blood: `loot { rolled, items }`, `searched`, `finisher`,
+  `newsWaits`, `caseWaits`, `mournedBy`, `lyraSawCarry`. Old saves read safely.
 - **Events:** `villager_killed { id, entity, killer, by, cause, provoked, silent, unmarked,
-  witnesses, place, x, y }` for a killing, Lyra and companions included; `villager_died
-  { id, entity, cause, place, x, y }` for a death nobody did (§36.3). Grief, the funeral and
-  heirs listen to both; the tempter (§36.4), reputation (§36.1) and the hunt (§35.3) listen
-  only to `villager_killed`.
-- **Witnesses** are those who SEE it (`witnessesOf`, the sight rule); the victim's cry is
-  heard by the hearing rule (`murder.heardBy`, `npc.onCallForHelp`); a witness's scream
-  carries its words 96 px, clear only. Unchanged from §29; blood builds on it.
+  witnesses, place, x, y }` (Lyra and companions included); `villager_died { id, entity,
+  cause, place, x, y }` (§36.3). Grief, the funeral and heirs listen to both; the tempter,
+  reputation and the hunt only to `villager_killed`.
+- **Telling, by meeting (round 14b).** An unseen victim still standing tells whoever they
+  meet face to face (`hearsWords`) and walks to the watch on their own feet; one of the watch
+  knows what happened to them. Lyra seeing the stranger carry a body knows; her news goes by
+  meeting and the alarm rises when she reaches the watch. A body found is known to its finder
+  at once, to everyone else as the `found_dead` news reaches them (`knowsDead(id, who)`,
+  `Grief.mournAs`), or with the bell and the chapel within the hour (`knownDead` waits on
+  `rec.newsWaits`). The watch's case opens when the news reaches the watch (`rec.caseWaits`),
+  with the finder's clues. Found by the watch itself, or a killing seen and told: everyone's
+  at once.
 
-### 35.2 Finishers (`src/murder/finishers.js`, `registerFinisher`)
+### 35.2 Finishers (`src/murder/finishers.js`)
 
-A killing blow on a person plays a short pixel finisher chosen by your build (sword, magic,
-hybrid; a future bow or class registers its own). Settings → Game → "Finishers": full
-(default), brief, off; reduce motion plays brief. Never through a wall (`canReach`); never on
-a child. Its sound is the blow and the victim's cry through `hears()` (none when silent);
-who saw it is the sight rule's.
+- `registerFinisher({ id, label, score(build, game), duration, draw(ctx, sx, sy, k, scene),
+  mark(ctx, sx, sy) })`; `unregisterFinisher`, `finishers()`, `chooseFinisher(game)` (the
+  highest score). Built in: `sword`, `magic`, `hybrid`. A future bow or class registers its
+  own.
+- `buildOf(game) -> { melee, magic, ranged, kind, why }` blends the attribute points (might
+  vs weave and focus x0.6; free points too), the blade in hand, the recent blows by kind
+  (the player's melee vs weave hits in the last 120 s, `trackDamage`) and the slotted
+  weaves; `hybrid` when the two are within 0.16.
+- `murder.strike` kills at the strike (witnesses and the record unchanged) and
+  `playFinisher` lays the scene over the next second (an fx entity: hit-stop, a slowed beat
+  on a real-time clock, shake; a slash across the neck, a bolt in the slotted weave's
+  palette, or both; a tap or key skips). `rec.finisher` (saved) leaves a stylised mark on
+  the ground where they fell (`drawFinisherMark`: a clean line and dark drops, or a scorch).
+- Settings → Game → Your journey → **Finishers**: `full` (default) | `brief` | `off` (the
+  same outcome, no scene); reduce motion plays `brief`. Bus: `finisher { id, victim, mode }`.
 
 ### 35.3 The village fights back; a known killer is hunted
 
-Defenders (the watch, Hess, able-bodied villagers) act only on what they themselves know:
-`knowsWanted` (saw it by the sight rule, came and saw, the victim told them, told face to
-face, or the bell). A cry heard (`hears`: what and where) brings them to look, never to fight
-a who; a carer who only heard stops at the door until they see. The hunt is per knower: only
-a watch that knows arrests you; `player.crime` is read per knower, not as one shared record.
+- **Defenders** (`src/entities/defenders.js`): the watch, Hess, and Bram, Tobias, Garrick,
+  Sabeth and Tilly (`DEFENDER_COMBAT`: stats and a tool, read in place of a missing
+  `profile.combat`; no profile is edited), aged 17–65 (`lifeStage` adult), on their feet,
+  not terrified (`murder.fearOf`). `isDefender(game, npc)`, `defendsAgainst(kind)` (assault,
+  knockout, murder; never theft or an accident), `DEFENDER_LINES`.
+- A defender fights only someone they KNOW did it: one who SAW the blow (`npc.onCrime`,
+  `sawBlow`), or knows who from a call (`helpRole`'s attacker is only ever a known one: seen,
+  come and seen, or told). A cry only heard brings them to `look`. Combat lets them strike
+  through Hess's 'provoked' rule (`npc.provoke(target, { known })`), let go when the fight
+  ends. A child near is shielded first. Defenders take on a beast that comes into the
+  village (danger <= 1).
+- **Per knower.** `combat.knowsCrime(knower, actor)`: a guard is hostile to the stranger only
+  if he knows (`npc.knowsWanted`); `player.crime` is the watch's record, not everyone's
+  knowledge. survival: the 1400 px reach, the arrest role, the cell and a patrol's arrest
+  only for a guard who knows (`rescue.knowsWantedFallen`); the rest come to help as for
+  anyone. `lethal_attack` counts as crime news.
+- A carer who only heard holds back (at the door, or ~120 px off) while the unknown culprit
+  is still at the victim's side, until they see who (`npc.heardRisk`, `holdBack`).
+- **The hunt** (`src/murder/hunt.js`, `murder.hunt`, saved): on the bell a posse (the watch,
+  Hess, the defenders who saw it) goes to where the killer was LAST SEEN: a posse member's
+  own eyes at once; anyone else who knows and sees the stranger tells the posse when they
+  meet (64 px, `hearsWords`). `murder.entryFor` sends each posse member to the spot (spread
+  out); `murder.chaseOf(npc, target)` lifts their leash (`CHASE { far: 420, leash: 2400 }`);
+  losing the stranger marks a new last-seen (`lostSight`). Two hours with nothing new: cold;
+  no longer wanted: over. "Run" from an arrest starts the chase. Bus: `hunt_started`,
+  `hunt_over`.
 
-### 35.4 Loot, theft if seen, and where goods came from (`src/world/provenance.js`)
+### 35.4 Loot, theft if seen, and where goods came from
 
-- **Theft is a crime only if seen** (D10), for bodies and chests alike: witnesses by the sight
-  rule at the moment of taking (`witnessesOf`), never by distance; it is news by meeting (the
-  `'stole'` rumour), not assault. An owner who later finds goods missing grows suspicious; no
-  crime toast.
-- **`game.provenance`** (the base; saved with the plugins; old saves start empty):
-  `add(itemId, qty, { owner, how: 'chest' | 'forced' | 'body', day, seenBy })`, `take(itemId,
-  qty)` (first in, first out; returns the entries taken), `of(itemId)`, `qtyOf(itemId)`,
-  `all()`, `settle(itemId?)`. The player's pack reports every removal (lost, eaten, given,
-  sold, fined) and the ledger never holds more than the pack: a caller that must know which
-  entries leave (the shop) calls `take()` before removing the item. `seenBy` holds only those
-  the sight rule says saw it. Bus: `provenance_added`, `provenance_taken`. Blood feeds it;
-  society reads it.
+- **Search.** A body offers "Search or lift" (`src/ui/body_view.js`: two 48 px buttons, a
+  44 px close; headless games lift). `murder.search(v, actor)` opens the chest panel on their
+  pockets (`src/murder/loot.js`); what they carried (`src/murder/carry_data.js`: a purse,
+  tools, Rowan's footlocker key, Lyra's trunk key) is rolled once at the death into their own
+  inventory, so the save keeps it. Lyra's is "Lyra's pack".
+- **Theft only if seen** (D10; `containers.js theftIfSeen`): every hand in a body's pockets
+  or an owned chest writes the provenance ledger (`how: 'body' | 'chest' | 'forced'`,
+  `seenBy`); seen, one `crime { kind: 'theft', witnesses, dead, owner }` per object per day
+  (`npc.onTheft`: an opinion drop, a shout, no fight, not a blow of the day; village
+  `'stole'` or `'robbed_the_dead'`; Lyra's `stole` deed only if she is among the witnesses
+  or sees the stranger), and from a body a `'searched'` clue (`WEIGHTS.searched` 0.45).
+  Unseen: no crime, no toast; the owner who next sees their chest is uneasy
+  (`ownersNotice`, `goods_missing`). Forcing a lock is a sound (`hears`: uneasy, never who).
+- **A blow on a locked chest** (`game.chestBlow`, from magic.hitProps and the player's
+  swing): a Strike's fist or a heavy weave forces the hasp (D10), the panel not opened; a
+  lighter blow says "Iron-bound…". Contents never move.
+- **`game.provenance`** (the base): `add`, `take` (first in, first out), `of`, `qtyOf`,
+  `all`, `settle`; the shop calls `take()` before removing an item.
 
-### 35.5 Lock-on and the fallen village
+### 35.5 Lock-on (`src/core/lock_on.js`, `game.lock`)
 
-- `game.lock` (`src/core/lock_on.js`): the target a middle click (or a pad button) locks,
-  the wheel cycles; weaves and the sword aim at it; soul prefers it. No sound, no witness.
-- `game.occupation.{ burned(buildingId), claimed(houseId), emptied() }`: a burning store is
-  seen by the sight rule and its "Fire!" cry heard by `hears()`; children hide and are taken
-  away, never hurt (`isMinor`); society's endings read it.
-- Nothing hits through walls: creatures, bosses and rubble go through `canReach`/`wallTile`
-  (§31.1).
+- `{ target, set, clear, cycle(dir), valid, pickAt, nearestInFront, press(at), aimTarget(range),
+  update }`. Valid: alive or downed, not hidden, within 240 px of the player, reachable
+  (`canReach`), never whoever walks with you by default. It re-targets the next foe when the
+  lock dies, and lets go on distance or a wall. Bus `lock_changed`.
+- Controls: the middle button locks what is under the cursor (an empty spot lets go; no
+  autoscroll), G the nearest in front (or lets go), R3 on a pad; while locked the wheel
+  cycles the lock (`input.takeLockWheel`; Q and R still pick slots). Phone: hold the sword
+  button still 0.45 s to lock or let go; swipe across it to cycle. Never a tap on the world.
+- `weaving.aimFor` aims at the lock for every source; the sword turns to it in reach;
+  `murder.finishTarget` prefers a downed lock; soul reads `game.lock.target`. The reticle is
+  `src/render/lock_layer.js` (an fx entity).
+- A quick weave tap on a phone auto-aims only `TAP_REACH` (110 px).
+
+### 35.6 Nothing hits through walls (V-16)
+
+- `walls.BLOCKS_BLOW` (rubble): a hand-to-hand blow stops at it, an arrow flies over
+  (`canReach(..., { melee: true })`, `blowTile`; `wallBetween` takes a tile test). Small
+  actors measure from their own height.
+- Boss blows and hazards (`bosses/kit.strike`) land only with no wall between the shape's
+  origin and the target. Creatures notice prey only with a sight line, keep a lost target
+  4 s, and wind up only for a blow that can land.
+- Stagger: a boss reels from a heavy blow, then is proof against another for 3.5 s; a
+  mission leader ("Scarred") takes 0.55 of every stun (`ccResist`).
+
+### 35.7 The village under the stranger's hand (`src/world/occupation.js`, `game.occupation`)
+
+- `burned(locId)`, `claimed(locId)`, `emptied()`, `canClaim`, `claim`, `shopClosed(npcId)`,
+  `fireAt(x, y, r, blow)`, `placeName(id, name)` ("Hearthvale (yours)"), `entryFor`. Saved as
+  plugin `occupation`.
+- A fire weave's blow on a store or home sets it alight: smoke for a day, a blackened roof
+  (`ScorchLayer`), its shop closed (`murder.refusesTrade`). Arson is a crime only if seen
+  (`'arson'`, no fight; `'burned_store'` news).
+- A house whose household is dead or gone can be claimed: its chests and beds are the
+  player's. When nobody grown is left, the bell rings once, every house is claimed and
+  `village_emptied` fires (society's villain ending reads `emptied()`).
+- Children: a child who sees a stranger they know to be a killer hides at home; once every
+  grown person of their household is dead, kin (Tansy) or a carter from Saltmere (Pip) takes
+  them the next morning (`markGone` cause `'taken_away'`), unharmed; their missions pass on.
+  Bus: `child_hides`, `child_taken_away`, `store_burned`, `house_claimed`.
 
 ## 36. Society (workstream society; the author: "should they forgive me?")
 

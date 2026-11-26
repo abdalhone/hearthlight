@@ -88,6 +88,14 @@ for (const view of VIEWS) {
     bram.hp = 1;
     g.combat.damage(P, bram, 999, { exact: true, crit: false });
     g.flags.finisherWarned = false;
+    // No beast wanders into the scene (a wolf's bite knocks the stranger out of reach of
+    // the held blow and the shots go wrong): the Whisperwood's creatures are sent off.
+    for (const e of g.entities.all()) if (e.species && Math.hypot(e.x - P.x, e.y - P.y) < 600) e.removed = true;
+    g.spawner && (g.spawner.update = () => {});
+    // The downed crawl away from whoever downed them (r14a): Bram stays where he fell for
+    // the shots (on a loaded machine the page's own clock let him crawl out of reach).
+    const fall = g.survival?.falls?.get?.(bram);
+    if (fall) fall.crawled = 1e9;
   });
   await run(0.5);
   // The first time: the warning.
@@ -102,6 +110,10 @@ for (const view of VIEWS) {
   // The held ring.
   await page.evaluate(() => {
     const g = window.__game;
+    const bram = g.entities.get('bram');
+    g.player.x = bram.x - 14;
+    g.player.y = bram.y;
+    g.player.faceToward(bram.x, bram.y);
     g.murder.onAttackPress(g.player);
     g.murder.hold.auto = true;
   });

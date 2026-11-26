@@ -13,6 +13,10 @@ import { joystickVector, followBase } from '../core/input.js';
 import { shapeIconUrl } from './weave_icons.js';
 import { TOUCH_AIM_START } from './weaving.js';
 
+// Lock-on on a phone (round 14b): hold the sword still this long to lock; swipe this far
+// across it to cycle.
+const LOCK_PRESS_MS = 450;
+const LOCK_SWIPE = 34;
 const RADIUS = 52; // px the knob can travel
 const FADE_MS = 380;
 
@@ -176,13 +180,42 @@ export class TouchControls {
   }
 
   // Dragging the sword aims the swing (the world shows the arc); a tap still finds a foe.
+  // Round 14b (lock-on, DESIGN §35.5): a long press on it, held still, locks the nearest
+  // in front (or lets go); while locked, a swipe across it cycles the lock. Never a tap on
+  // the world.
   swordDrag(b) {
+    const lock = { t: null, moved: false, swiped: false };
+    b.addEventListener('pointerdown', () => {
+      lock.moved = false;
+      lock.swiped = false;
+      clearTimeout(lock.t);
+      lock.t = setTimeout(() => {
+        const g = this.game;
+        if (lock.moved || !g.lock || g.murder?.hold) return;
+        g.lock.press();
+        this.buzz?.();
+        toggleClass(b, 'locked', !!g.lock.target);
+      }, LOCK_PRESS_MS);
+    });
     b.addEventListener('pointermove', (e) => {
       if (e.pointerId !== b._pid) return;
       const r = b.getBoundingClientRect();
       const dx = e.clientX - (r.left + r.width / 2);
       const dy = e.clientY - (r.top + r.height / 2);
       const w = this.weaving;
+      if (Math.hypot(dx, dy) >= TOUCH_AIM_START) {
+        lock.moved = true;
+        clearTimeout(lock.t);
+      }
+      const L = this.game.lock;
+      if (L?.target && Math.abs(dx) >= LOCK_SWIPE && Math.abs(dx) > Math.abs(dy) * 1.4) {
+        if (!lock.swiped) {
+          lock.swiped = true;
+          L.cycle(dx > 0 ? 1 : -1);
+          this.buzz?.();
+        }
+        return;
+      }
       if (Math.hypot(dx, dy) >= TOUCH_AIM_START) {
         if (w) w.sword = { dx, dy };
         this.game.input?.setSwingAim(dx, dy);
@@ -192,7 +225,9 @@ export class TouchControls {
     const end = () => {
       const w = this.weaving;
       if (w) w.sword = null;
+      clearTimeout(lock.t);
       toggleClass(b, 'aiming', false);
+      toggleClass(b, 'locked', !!this.game.lock?.target);
     };
     b.addEventListener('pointerup', end);
     b.addEventListener('pointercancel', end);

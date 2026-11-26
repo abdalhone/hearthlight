@@ -3,6 +3,7 @@
 // laid out in the chapel they rest on a bier; buried, a mound and a headstone in the
 // chapel yard. The finishing blow shows a ring closing over the fallen while it is held.
 
+import { drawFinisherMark } from './finishers.js';
 import { Entity } from '../entities/entity.js';
 import { drawCharacter } from '../art/characters_art.js';
 import { SHADOW } from '../art/palette.js';
@@ -104,6 +105,8 @@ export function drawBody(e, rec, ctx, ox, oy, time) {
   // A killing leaves blood under the body where it lies (dried dark); an unmarked death
   // (round 14b, rec.unmarked: the Unkindling) or one nobody did (rec.natural) leaves none.
   if (rec && !rec.unmarked && !rec.natural && rec.state !== 'laid_out' && !rec.hidden) drawStain(ctx, sx, sy, e.id);
+  // The finisher's mark on the ground where they fell (round 14b, finishers.js): stylised.
+  if (rec?.finisher && !rec.unmarked && rec.state !== 'laid_out' && !rec.hidden) drawFinisherMark(ctx, sx, sy, rec.finisher);
   const lift = rec?.state === 'laid_out' ? 5 : 0;
   if (rec?.covered) {
     const s = shroudFor(atlas, e.spriteKey);

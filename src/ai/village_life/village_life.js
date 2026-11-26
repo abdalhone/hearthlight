@@ -26,7 +26,7 @@ import { ClaudeReasoner, THINK_BATCH } from './reasoner_claude.js';
 import { Cases, Absences } from './missing.js';
 import { searchLeader, searchPlaces, chooseSearchers, SEARCH_SECONDS } from './search.js';
 import { lifeLine, thoughtLine, fillLine, linesFor } from './voice.js';
-import { VILLAGERS, SHORT_NAMES } from '../social/bonds_data.js';
+import { VILLAGERS, PEOPLE, SHORT_NAMES } from '../social/bonds_data.js';
 import { thirdName, callName, voiceOf } from '../social/lines.js';
 import { profileById } from '../../entities/npc_data.js';
 import { TILE } from '../../core/constants.js';
@@ -2132,7 +2132,9 @@ export class VillageLife {
 
   markGone(id, { cause = 'vanished', seen = false, at = null, keepBody = false } = {}) {
     const e = this.entity(id);
-    if (!e || !VILLAGERS.includes(id)) return null;
+    // Any person of Hearthvale: a villager, or Lyra (round 14b: she can be killed, and an
+    // unseen killing makes her missing like anyone).
+    if (!e || !PEOPLE.includes(id)) return null;
     const t = this.now();
     const place = (at && typeof at === 'object' && at.place) || (typeof at === 'string' ? at : null) || this.placeOf(e);
     const witnesses = Array.isArray(seen) ? seen.filter((w) => w !== id) : seen ? this.watchers(e) : [];
@@ -2247,7 +2249,8 @@ export class VillageLife {
     if (r) c.deadRumor = r.id;
     for (const p of this.problems) if (p.status === 'open' && p.about === id) this.closeProblem(p, 'given_up', `${name} is dead`);
     this.standDown(c);
-    for (const e of this.villagers()) if (e.id !== id && this.care(e.id, id) >= 0.6) this.mourning[e.id] = { about: id, until: this.dayN() + 7, kind: 'grief' };
+    // A killing's body is murder.js's to tell (round 14b: the news by meeting, mournAs).
+    if (!this.game?.murder?.dead?.[id]) for (const e of this.villagers()) if (e.id !== id && this.care(e.id, id) >= 0.6) this.mourning[e.id] = { about: id, until: this.dayN() + 7, kind: 'grief' };
     this.toast(`${name} has been found dead.`, 'warn', `dead:${id}`);
     this.emit('body_found', { id, finder, place, case: c });
     return c;

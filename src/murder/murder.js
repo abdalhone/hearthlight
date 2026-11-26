@@ -4,7 +4,8 @@
 // would feel that he's missing." So knowledge is the whole of it: a blow is known to those
 // who could see it (witness.js: sight, light, distance, walls, night) and to the one who
 // took it, who tells the first person who reaches them and the watch once they are up.
-// A finishing blow on a fallen villager kills them for good (never Lyra, never a child).
+// A finishing blow on a fallen person kills them for good: any adult, Lyra and whoever
+// walks with you included (round 14b, DESIGN §35.1); never a child (people.js isMinor).
 // Seen: murder — the alarm, the watch, the village turns, Lyra's horror. Unseen: nobody
 // knows; their errands fail and §28's missing chain plays out. A body can be carried and
 // hidden (the lake gives it back; the deep woods keep it until a search stumbles on it;
@@ -34,19 +35,23 @@
 // questioned, arrested, moot_verdict, funeral, moot_met.
 
 import { TILE } from '../core/constants.js';
-import { VILLAGERS } from '../ai/social/bonds_data.js';
+import { VILLAGERS, PEOPLE } from '../ai/social/bonds_data.js';
 import { placeAt, placePhrase, pronoun } from '../ai/village_life/errands_data.js';
 import { whenPhrase } from '../ai/village_life/problems.js';
 import { witnessesOf, look, lightAt } from './witness.js';
 import { canReach } from '../world/walls.js';
 import { lyraOf, isMinor } from '../core/people.js';
 import { hears, hearsWords, cryLoudness, LOUD, silence, isSilenced } from '../ai/hearing.js';
-import { UNKILLABLE, FINISH_HOLD, FINISH_REACH, FINISH_CANCEL, MURDER_WANTED, HOUR, DAY, HIDE, hidingPlace, INVESTIGATORS, levelOf } from './data.js';
+import { FINISH_HOLD, FINISH_REACH, FINISH_CANCEL, MURDER_WANTED, HOUR, DAY, HIDE, hidingPlace, INVESTIGATORS, levelOf } from './data.js';
 import { gatherEvidence, suspicionOf, buildQuestions, judgeAnswer, WEIGHTS } from './investigation.js';
 import { murderLine, watchLine } from './lines.js';
 import { drawBody, MurderLayer, Grave } from './draw.js';
 import * as Grief from './grief.js';
 import * as Lyra from './lyra.js';
+import * as Hunt from './hunt.js';
+import * as Loot from './loot.js';
+import { playFinisher, trackDamage } from './finishers.js';
+import { openBodyChoice } from '../ui/body_view.js';
 
 const TICK = 0.5;
 const SLOW = 1;
@@ -60,6 +65,9 @@ const WATCH_REACH = 64; // px: a witness this close to one of the watch has told
 const TERROR_HOURS = 18; // a killing seen stays this raw: they run, and will not talk
 const DREAD_AFTER = 2; // killings seen: after this many, never calm with the stranger again
 const PROVOKED = 20; // s: the victim fought or hit the killer this recently (rec.provoked)
+const WINDED_AFTER = 6; // s of running from the stranger before Lyra tires (round 14b)
+const WINDED = 0.55; // her pace, winded
+const WINDED_REST = 10; // s of not running before her pace comes back
 
 function safe(fn, fallback = null) {
   try {
@@ -99,6 +107,7 @@ export class Murder {
     this.view = null; // the UI (src/ui/murder_view.js), when a browser is up
     this._graveEnts = new Map();
     this.foundHandlers = []; // onFound: who owns the discovery of a body (round 14b, §37.3)
+    this.hunt = null; // a known killer hunted from where they were last seen (round 14b, hunt.js)
     const bus = game?.bus;
     if (bus?.on) {
       bus.on('revived', (p) => safe(() => this.onRevived(p)));
@@ -116,6 +125,7 @@ export class Murder {
     }
     this.attach();
     this.installPlugin();
+    safe(() => trackDamage(game)); // what the stranger fights with lately (finishers.js)
   }
 
   // Lyra's side, through the plugin registry: what she knows for Claude's prompt, and her
@@ -221,9 +231,41 @@ export class Murder {
 
   // Dead, and the village knows it (a body was found, or someone saw it happen and the
   // alarm is up: a witness still running for the watch has told nobody yet, §29.2).
+  // Round 14b leftover: a body found is known to its finder at once, to the rest of the
+  // village only as the news reaches them (by meeting), or with the bell and the chapel
+  // within the hour (rec.newsWaits while it has not).
   knownDead(id) {
     const r = this.dead[id];
-    return !!r && (r.foundAt != null || (r.known === 'witnessed' && (!r.alarm || r.alarm.raised)));
+    return !!r && ((r.foundAt != null && !r.newsWaits) || (r.known === 'witnessed' && (!r.alarm || r.alarm.raised)));
+  }
+
+  // Does this one person know the dead is dead (they found or saw it, the news reached
+  // them face to face, or everyone knows by now)?
+  knowsDead(id, who) {
+    const r = this.dead[id];
+    if (!r) return false;
+    if (this.knownDead(id)) return true;
+    if (r.foundBy === who || (r.seen || []).some((s) => s.id === who)) return true;
+    const c = safe(() => this.life?.cases?.get?.(id), null);
+    const dr = c?.deadRumor ? safe(() => this.village?.rumors?.get?.(c.deadRumor), null) : null;
+    return !!dr?.heardBy?.includes?.(who);
+  }
+
+  // The news of a body found, by meeting (round 14b leftover): those who have heard it now
+  // mourn as they learn; once it reaches the watch the case opens (the finder's clues with
+  // it); the funeral and the Moot are planned when the village knows.
+  tickFoundNews() {
+    for (const rec of Object.values(this.dead)) {
+      if (!rec.newsWaits) continue;
+      const c = safe(() => this.life?.cases?.get?.(rec.id), null);
+      const dr = c?.deadRumor ? safe(() => this.village?.rumors?.get?.(c.deadRumor), null) : null;
+      const heard = new Set([rec.foundBy, ...(dr?.heardBy || [])].filter(Boolean));
+      safe(() => Grief.mournAs(this, rec, heard));
+      if (rec.caseWaits && [...heard].some((id) => INVESTIGATORS.includes(id) || ALARM_TAKERS.includes(id))) {
+        rec.caseWaits = false;
+        this.openCase(rec.id);
+      }
+    }
   }
 
   // Does this villager know who did it: they saw it, the news reached them face to face,
@@ -238,6 +280,21 @@ export class Murder {
 
   isVillager(e) {
     return !!e && VILLAGERS.includes(e.id) && !!e.profile;
+  }
+
+  // A person of Hearthvale the finishing blow can fall on (round 14b, DESIGN §35.1): a
+  // villager, Lyra herself, or whoever holds the companion role. Never a beast, never the
+  // player. Whether they may die is canKill's (never a child).
+  isPerson(e) {
+    if (!e || this.isPlayer(e)) return false;
+    if (this.isVillager(e)) return true;
+    if (e === lyraOf(this.game)) return true;
+    const h = safe(() => this.game?.party?.holder, null);
+    return !!h && h === e && PEOPLE.includes(e.id);
+  }
+
+  isLyra(e) {
+    return !!e && (e === lyraOf(this.game) || e === 'lyra');
   }
 
   isPlayer(e) {
@@ -277,6 +334,8 @@ export class Murder {
     sight.onSeen = (a, b) => {
       if (prev) prev(a, b);
       if (b === 'player' && this.now() < this.watchUntil) safe(() => this.notePlayerSeen(a));
+      // The hunt (round 14b): a sighting by one who knows, told to the posse face to face.
+      if (b === 'player' && this.hunt && this.hunt.state !== 'over') safe(() => Hunt.sighting(this, a));
     };
   }
 
@@ -335,7 +394,7 @@ export class Murder {
     if (isSilenced(g, v) || this.dead[v.id]?.silent) return false;
     let best = false;
     for (const e of [...(this.life?.villagers?.() || []), g?.companion]) {
-      if (!e || e === v || e.dead || e.absent || !e.isAlive?.()) continue;
+      if (!e || e === v || e.dead || e.absent || !e.isAlive?.() || this.dead[e.id]) continue;
       const how = safe(() => hears(g, e, v.x, v.y, cryLoudness(severity)), null);
       if (how === 'clear') return 'clear';
       if (how) best = how;
@@ -386,23 +445,25 @@ export class Murder {
 
   // ------------------------------------------------------------------ the finishing blow
 
-  // The downed villager within reach in front of the player, or null.
+  // The downed person within reach in front of the player, or null. A downed lock-on target
+  // (round 14b, game.lock) in reach comes first.
   finishTarget(player) {
     const list = safe(() => this.game.entities.query(player.x, player.y, FINISH_REACH + 6), []) || [];
+    const locked = safe(() => this.game.lock?.target, null);
     let best = null;
     let bs = Infinity;
     const fx = player.facing?.x ?? 0;
     const fy = player.facing?.y ?? 1;
     for (const e of list) {
       if (e === player || !e.downed || e.dead || e.carriedBy || e.removed || e.absent) continue;
-      if (!(this.isVillager(e) || e === this.game.companion)) continue;
+      if (!this.isPerson(e)) continue;
       const dx = e.x - player.x;
       const dy = e.y - player.y;
       const d = Math.hypot(dx, dy);
       if (d > FINISH_REACH) continue;
       // Never through a wall (DESIGN §31.1): the same rule as every other blow.
       if (!safe(() => canReach(this.game, player, e), true)) continue;
-      const score = d - (d > 0 ? ((dx * fx + dy * fy) / d) * 10 : 10);
+      const score = d - (d > 0 ? ((dx * fx + dy * fy) / d) * 10 : 10) - (e === locked ? 1000 : 0);
       if (score < bs) {
         bs = score;
         best = e;
@@ -418,13 +479,17 @@ export class Murder {
     if (!player || player.carrying || player.downed || player.dead) return false;
     const v = this.finishTarget(player);
     if (!v) return false;
-    if (UNKILLABLE.has(v.id) || v === this.game.companion || isMinor(this.game, v)) {
+    // Never a child, by age (src/core/people.js; DESIGN §35.1). Everyone else may die.
+    if (isMinor(this.game, v)) {
       this.refuse(player, v);
       return true;
     }
     player.faceToward?.(v.x, v.y);
     this.hold = { target: v, t: 0, need: FINISH_HOLD, paused: false, startedAt: this.now() };
-    if (!this.game.flags?.finisherWarned) {
+    // The last stand's burning minute asks nothing (the price was read when it was taken).
+    const burning = !!safe(() => this.game.prices?.burning?.(), false);
+    const warned = this.isLyra(v) ? this.game.flags?.finisherWarnedLyra : this.game.flags?.finisherWarned;
+    if (!warned && !burning) {
       this.hold.paused = true;
       this.warn(v);
       return true;
@@ -433,25 +498,28 @@ export class Murder {
     return true;
   }
 
-  // Never Lyra; never a child. The sword will not go there.
+  // Never a child. The sword will not go there.
   refuse(player, v) {
     const now = this.game?.time ?? 0;
     if (now - (this._refusedAt ?? -Infinity) < 6) return;
     this._refusedAt = now;
-    const text = v === this.game.companion ? 'No. Not her. Never her.' : 'No. Not a child.';
-    safe(() => this.game.bubbles?.say?.(player, text, { kind: 'whisper' }));
+    safe(() => this.game.bubbles?.say?.(player, 'No. Not a child.', { kind: 'whisper' }));
   }
 
-  // The first time: what this is, plainly.
+  // The first time: what this is, plainly. Lyra has her own first time (round 14b).
   warn(v) {
     const g = this.game;
     const name = v.name?.split(' ')[0] || 'them';
-    const text = `${name} is lying helpless. Strike now and ${pronoun(v.id, 'he')} will die, for good: no flame, no rescue and no save brings the dead back. Anyone who sees it will know you for a murderer. Anyone who doesn't will only know ${pronoun(v.id, 'he')} is gone.`;
-    const ask = g.ui?.confirm ? g.ui.confirm({ title: 'A killing blow', text, yes: 'I understand', no: 'Lower the sword', danger: true }) : Promise.resolve(true);
+    const lyra = this.isLyra(v);
+    const text = lyra
+      ? `${name} is lying helpless. Strike now and she will die, for good: not knocked down, dead. No flame, no rescue and no save brings her back. Hobb and Wenna will bury their daughter. Anyone who sees it will know you for her murderer.`
+      : `${name} is lying helpless. Strike now and ${pronoun(v.id, 'he')} will die, for good: no flame, no rescue and no save brings the dead back. Anyone who sees it will know you for a murderer. Anyone who doesn't will only know ${pronoun(v.id, 'he')} is gone.`;
+    const ask = g.ui?.confirm ? g.ui.confirm({ title: lyra ? `Kill ${name}?` : 'A killing blow', text, yes: 'I understand', no: 'Lower the sword', danger: true }) : Promise.resolve(true);
     Promise.resolve(ask).then(
       (yes) => {
         g.flags = g.flags || {};
         if (yes) {
+          if (lyra) g.flags.finisherWarnedLyra = true;
           g.flags.finisherWarned = true;
           if (g.ui?.toast) this.toast(`Hold the sword down over ${name} to strike.`, 'info', 'finisher');
         }
@@ -466,9 +534,10 @@ export class Murder {
   holdBegins(v) {
     const g = this.game;
     safe(() => g.audio?.heartbeat?.(0.6));
-    // Lyra, if she sees it start, cries out (she cannot stop a blow already falling).
-    const L = g.companion;
-    if (L && !L.downed && look(g, L, v.x, v.y)) Lyra.sawHold(this, v);
+    // Lyra, if she sees it start, cries out (she cannot stop a blow already falling). Not
+    // when the one lying there is Lyra, and never a dead Lyra.
+    const L = lyraOf(g);
+    if (L && L !== v && !L.downed && !L.dead && !this.dead[L.id] && look(g, L, v.x, v.y)) Lyra.sawHold(this, v);
   }
 
   updateHold(dt) {
@@ -499,20 +568,26 @@ export class Murder {
     }
   }
 
+  // The blow falls: the death is now (witnesses, the record, everything a killing is), and a
+  // short finisher by the stranger's build is laid over the next second (round 14b,
+  // finishers.js; Settings -> Finishers: full, brief or off, the same outcome).
   strike(P, v) {
     const g = this.game;
     safe(() => P.setState?.('attack', 0.4));
     safe(() => g.audio?.play?.('hit', { x: v.x, y: v.y, volume: 0.9, pitch: 0.55 }));
     safe(() => g.camera?.shake?.(2.5, 0.25));
     g.hitStop = Math.max(g.hitStop || 0, 0.3);
-    return this.kill(v, P);
+    const rec = this.kill(v, P);
+    if (rec) safe(() => playFinisher(g, P, v, rec));
+    return rec;
   }
 
   // ------------------------------------------------------------------ a death
 
-  // Never a child: by age, the one rule (src/core/people.js isMinor; DESIGN §34.2).
+  // Any adult person (a villager, Lyra, whoever walks with you); never a child: by age, the
+  // one rule (src/core/people.js isMinor; DESIGN §34.2, §35.1).
   canKill(v) {
-    return !!v && this.isVillager(v) && !UNKILLABLE.has(v.id) && !isMinor(this.game, v) && !v.dead && !this.dead[v.id];
+    return !!v && this.isPerson(v) && !isMinor(this.game, v) && !v.dead && !this.dead[v.id];
   }
 
   // Did the victim fight or hit the killer in the last PROVOKED seconds (round 14b, §35.1)?
@@ -606,6 +681,8 @@ export class Murder {
     const cause = typeof opts.cause === 'string' && opts.cause ? opts.cause : 'killed';
     const rec = this.record(v, { t, place, seen, cause, by, provoked, silent, unmarked });
     this.dead[v.id] = rec;
+    // What they carried is on them still (round 14b: their pockets can be searched).
+    safe(() => Loot.rollLoot(this, v, rec));
     // Out of the village's life (errands, problems, conversations), the body left where it fell.
     safe(() => this.life?.markGone?.(v.id, { cause, seen: seen.map((s) => s.id), at: { place }, keepBody: true }));
     // Unmarked: whatever blood lay where they stood is gone with the wound that never was.
@@ -678,7 +755,38 @@ export class Murder {
     v.draw = function drawDead(ctx, ox, oy, time) {
       drawBody(this, m.dead[this.id] || rec, ctx, ox, oy, time);
     };
+    if (!this.isVillager(v)) this.stillBody(v);
     safe(() => this.game?.bubbles?.clear?.(v));
+  }
+
+  // Lyra (or anyone not a villager) killed: her own update would get her up again (a knock-
+  // out) and her own interact would open a chat. The companion's own code knows a killing
+  // when it has isKilled() (the party workstream); otherwise the body is held still here,
+  // knelt by and lifted like anyone's, and gives no light.
+  stillBody(v) {
+    if (typeof v.isKilled === 'function' || v._stillBody) return;
+    v._stillBody = true;
+    const m = this;
+    v.update = function deadUpdate() {
+      if (!m.dead[this.id]) return;
+      this.dead = true;
+      this.downed = false;
+      this.hp = 0;
+      if (this.moveIntent) {
+        this.moveIntent.x = 0;
+        this.moveIntent.y = 0;
+      }
+    };
+    v.canInteract = function deadCanInteract(actor) {
+      return !this.carriedBy && m.bodyCanInteract(this, actor);
+    };
+    v.interactLabel = function deadLabel() {
+      return m.bodyLabel(this);
+    };
+    v.interact = function deadInteract(actor) {
+      m.bodyInteract(this, actor);
+    };
+    v.getLight = () => null;
   }
 
   // What everyone knew, at the moment of death, of where the dead and the stranger were.
@@ -772,7 +880,13 @@ export class Murder {
     if (!saw) this.event('alarm', `${this.name(by)} heard who killed ${this.name(rec.id)}, and raised the alarm.`, { who: by, about: rec.id });
     const finder = rec.seen.find((s) => s.id !== 'lyra')?.id || by;
     if (rec.foundAt == null) this.found(rec.id, finder, rec.place, { witnessed: true });
-    else if (this.cases[rec.id]) {
+    else if (rec.newsWaits || rec.caseWaits) {
+      // Found quietly before (the news still on its way): the bell tells everyone now.
+      rec.newsWaits = false;
+      rec.caseWaits = false;
+      this.openCase(rec.id);
+      Grief.onFound(this, rec);
+    } else if (this.cases[rec.id]) {
       // The body was found first (a mystery); now the watch has the witness's word.
       const c = this.cases[rec.id];
       c.askAt = Math.min(c.askAt ?? Infinity, Math.round(this.now() + 0.2 * HOUR));
@@ -780,6 +894,8 @@ export class Murder {
     }
     if (!rec.turned) Grief.villageTurns(this, rec);
     if (!rec.lyraTold) rec.lyraHearsAt = this.now() + 20;
+    // The hunt is up: the posse goes to where the killer was last seen (round 14b, hunt.js).
+    safe(() => Hunt.startHunt(this, rec, by));
     const e = this.entity(by);
     if (e && !saw) this.say(e, watchLine?.(by, 'alarm', { about: rec.id, P: this.playerName() }, this.rng()) || `The stranger killed ${this.name(rec.id)}! Ring the bell!`, 'shout');
     this.toast(saw ? `${this.name(rec.id)} is dead, and the watch saw you do it. The watch is coming.` : `${this.name(by)} knows what you did to ${this.name(rec.id)}. The bell is ringing: the watch is coming.`, 'warn', 'murder');
@@ -853,6 +969,20 @@ export class Murder {
         rec.lyraTold = true;
         rec.lyraHearsAt = null;
         safe(() => Lyra.hearsOfMurder(this, rec));
+      }
+    }
+    // Lyra, who saw the body carried (round 14b): she tells the first of the watch she meets.
+    const L = lyraOf(this.game);
+    if (L && !L.dead && !L.downed && !this.dead[L.id]) {
+      for (const rec of Object.values(this.dead)) {
+        if (!rec.lyraSawCarry || rec.alarm?.raised) continue;
+        for (const id of ALARM_TAKERS) {
+          const w = this.entity(id);
+          if (!w || w.dead || w.downed || !w.isAlive?.() || w.state === 'sleep' || dist(L, w) > WATCH_REACH) continue;
+          if (!safe(() => hearsWords(this.game, w, L, WATCH_REACH), true)) continue;
+          this.raiseAlarm(rec, id);
+          break;
+        }
       }
     }
     // A witness who has run to the watch tells them at once: she runs in through the door
@@ -950,6 +1080,13 @@ export class Murder {
     rec.coverAt = t + (witnessed ? 25 : 10);
     rec.chapelAt = t + 1.5 * HOUR;
     rec.newsAt = t + HOUR;
+    // Who knows yet (round 14b leftover): the finder. The watch, the funeral and everyone's
+    // mourning wait for the news to reach them (tickFoundNews), or the bell within the hour.
+    // Witnessed (the alarm is up), or found by the watch itself: the case opens now.
+    // Found by the watch itself: they raise the hue at once, and the village knows.
+    const watchKnows = witnessed || ALARM_TAKERS.includes(finder) || INVESTIGATORS.includes(finder);
+    rec.newsWaits = !watchKnows;
+    rec.caseWaits = !watchKnows;
     // The parts of a discovery a handler may take over (onFound), each runnable on its own.
     const defaults = {
       // The finder's cry over the body (their own voice: heard by the hearing rule).
@@ -963,7 +1100,9 @@ export class Murder {
         });
       },
       note: () => this.event('found', `${finder ? this.name(finder) : 'Someone'} found ${this.name(id)}'s body ${placeAt(rec.foundPlace, this.placeName(rec.foundPlace))}. A blade did it.`, { who: finder, about: id }),
-      openCase: () => this.openCase(id),
+      openCase: () => {
+        if (!rec.caseWaits) this.openCase(id);
+      },
       // Lyra learns of it as anyone does (DESIGN §29.4): from the finder's own cry when she is
       // near enough to make out the words, else face to face (the village's news of the body
       // reaching her, tickNews), or with everyone else within the hour. Not through two walls
@@ -976,7 +1115,7 @@ export class Murder {
       toast: () => {
         if (!witnessed) this.toast(`${this.name(id)} has been found dead ${placeAt(rec.foundPlace, this.placeName(rec.foundPlace))}. Struck down with a blade. The watch is asking questions.`, 'warn', `found:${id}`);
       },
-      grief: () => Grief.onFound(this, rec),
+      grief: () => (rec.newsWaits ? Grief.mournAs(this, rec, new Set([finder].filter(Boolean))) : Grief.onFound(this, rec)),
     };
     // Who owns this discovery (round 14b, DESIGN §37.3): handlers in order; the first that
     // returns true for a cause it owns takes over the finder's lines, the note, the case,
@@ -1031,7 +1170,7 @@ export class Murder {
   // through an open doorway in line with it (src/ai/hearing.js), not through a wall?
   lyraHearsFinding(from) {
     const L = this.game?.companion;
-    if (!L || !from || !Number.isFinite(from.x)) return false;
+    if (!L || L.dead || this.dead[L.id] || !from || !Number.isFinite(from.x)) return false;
     return safe(() => hears(this.game, L, from.x, from.y, LOUD.shout), null) === 'clear';
   }
 
@@ -1049,10 +1188,22 @@ export class Murder {
     if (!rec) return '';
     if (rec.state === 'laid_out' || rec.covered) return `Kneel by ${n}`;
     if (this.game?.player?.carrying) return '';
-    return `Lift ${n}`;
+    // Round 14b: their pockets too (a two-choice prompt, finger-sized: ui/body_view.js).
+    return this.canChoose() ? `Search or lift ${n}` : `Lift ${n}`;
   }
 
-  bodyInteract(v, actor) {
+  // A browser is up to show the two choices (tests without one lift, as before).
+  canChoose() {
+    return typeof this.game?.ui?.openModal === 'function' && this.game?.ui?.inited !== false;
+  }
+
+  // Search their pockets (round 14b, loot.js): the chest panel on what they carried.
+  search(v, actor = this.game?.player) {
+    return Loot.search(this, this.entity(v), actor);
+  }
+
+  // choice: 'search' | 'lift' | null (ask, when a browser is up; else lift).
+  bodyInteract(v, actor, choice = null) {
     const rec = this.dead[v.id];
     if (!rec) return;
     const g = this.game;
@@ -1063,6 +1214,22 @@ export class Murder {
       return;
     }
     if (actor.carrying) return;
+    if (choice === 'search') return this.search(v, actor);
+    if (choice !== 'lift' && this.canChoose()) {
+      const n = v.name?.split(' ')[0] || this.name(v.id);
+      const him = pronoun(v.id, 'him');
+      const shown = safe(() =>
+        openBodyChoice(g, {
+          title: n,
+          text: `${n} lies still. ${cap(pronoun(v.id, 'he'))} will not get up again.`,
+          choices: [
+            { id: 'search', label: this.isLyra(v) ? 'Search her pack' : `Search ${pronoun(v.id, 'his')} pockets`, run: () => this.bodyInteract(v, actor, 'search') },
+            { id: 'lift', label: `Lift ${him}`, cls: 'btn-ember', run: () => this.bodyInteract(v, actor, 'lift') },
+          ],
+        }),
+      );
+      if (shown) return;
+    }
     const sv = g.survival;
     if (!sv?.startCarry) return;
     const c = safe(() => sv.startCarry(actor, v, null));
@@ -1318,6 +1485,12 @@ export class Murder {
       if (quiet) return this.surrender(about, by);
       this.setWanted(about, 'murder');
       this.say(this.entity(by), by === 'rowan' ? 'STOP! Wys! With me!' : 'Stop! STOP!', 'shout');
+      // Run: the chase is on from here (round 14b).
+      safe(() => {
+        const rec = this.dead[about];
+        if (rec && (!this.hunt || this.hunt.state === 'over')) Hunt.startHunt(this, rec, by);
+        Hunt.lost(this, this.entity(by), g.player);
+      });
       this.emit('crime', { actor: g.player, victim: this.entity(about), kind: 'murder', witnesses: [by] });
       return false;
     });
@@ -1364,6 +1537,7 @@ export class Murder {
   tick() {
     const g = this.game;
     safe(() => this.tickNews());
+    safe(() => this.tickFoundNews());
     if (g.player?.carrying && this.dead[g.player.carrying.id]) this.scanCarry();
     else if (this.carrying) this.carrying = null;
     // A fallen victim tells whoever reaches them.
@@ -1375,16 +1549,60 @@ export class Murder {
       }
       // Held silent (round 14b, §37.2): they can tell nobody while it lasts.
       if (isSilenced(g, v)) continue;
-      if (!v.downed) {
-        this.reveal(id, null);
+      // One of the watch knows it the moment it happens to them.
+      if (!v.downed && ALARM_TAKERS.includes(id)) {
+        this.reveal(id, id);
         continue;
       }
+      let told = false;
       for (const e of [...(this.life?.villagers?.() || []), g.companion]) {
-        if (!e || e === v || !e.isAlive?.() || e.state === 'sleep' || dist(e, v) > TELL_REACH) continue;
+        if (!e || e === v || !e.isAlive?.() || this.dead[e.id] || e.state === 'sleep' || dist(e, v) > TELL_REACH) continue;
         // Words, face to face: not through a wall (src/ai/hearing.js).
         if (!safe(() => hearsWords(g, e, v, TELL_REACH), true)) continue;
         this.reveal(id, e.id);
+        told = true;
         break;
+      }
+      // Still standing and nobody to tell (round 14b leftover: never at once): they go to
+      // the watch on their own feet, and tell whoever they meet on the way.
+      if (!told && !v.downed && !this.pending[id]?.walking) {
+        const to = this.watchFor(v);
+        const P = g.player;
+        if (to && P) {
+          this.pending[id].walking = true;
+          safe(() => v.startFlee?.(P, 90, 'crime', { to, quiet: true }));
+        }
+      }
+    }
+    safe(() => this.tireFlight());
+  }
+
+  // Lyra running from the stranger tires (round 14b, V-7: "she just runs away … why can't I
+  // kill her?"). Her flight runs at 1.45 of her 80 (116 px/s) against the stranger's 76: after
+  // WINDED_AFTER seconds she is winded to WINDED of her pace (about 64 px/s) until she has
+  // stopped running a while. Villagers already run slower than the stranger (40 x 1.75).
+  tireFlight() {
+    const g = this.game;
+    const L = lyraOf(g);
+    if (!L || L.dead || this.dead[L.id]) return;
+    const d = L.behavior?.directive;
+    const fleeing = !L.downed && d?.type === 'flee' && (d.from === 'player' || d.from === g.player?.id);
+    if (fleeing) {
+      L._fleeT = (L._fleeT || 0) + TICK;
+      if (L._fleeT >= WINDED_AFTER && L._windedFrom == null) {
+        L._windedFrom = L.speed;
+        L.speed = Math.round(L.speed * WINDED);
+        L._restT = 0;
+        safe(() => g.bus?.emit?.('winded', { entity: L }));
+      }
+      return;
+    }
+    L._fleeT = Math.max(0, (L._fleeT || 0) - TICK);
+    if (L._windedFrom != null) {
+      L._restT = (L._restT || 0) + TICK;
+      if (L._restT >= WINDED_REST) {
+        L.speed = L._windedFrom;
+        L._windedFrom = null;
       }
     }
   }
@@ -1409,10 +1627,17 @@ export class Murder {
       if (rec.streamAt != null && rec.foundAt == null && t - rec.streamAt > 0.4 * DAY) Grief.foundByChance(this, rec, 'stream');
       // The watch lays the body out in the chapel.
       if (rec.state === 'found' && t >= (rec.chapelAt ?? Infinity) && (!this.visible(v, 40) || t - rec.chapelAt > HOUR)) Grief.layOut(this, rec);
-      // Everyone knows within the hour of a finding.
+      // Everyone knows within the hour of a finding (the bell, the chapel).
       if (rec.newsAt != null && t >= rec.newsAt) {
         rec.newsAt = null;
+        const waited = rec.newsWaits;
+        rec.newsWaits = false;
         Grief.everyoneKnows(this, rec);
+        if (rec.caseWaits) {
+          rec.caseWaits = false;
+          if (!rec.natural && !rec.foundOwned) this.openCase(rec.id);
+        }
+        if (waited) Grief.onFound(this, rec);
       }
       // The news of a body found reaches her with everyone's, if no one told her sooner.
       if (rec.lyraNewsAt != null && t >= rec.lyraNewsAt) {
@@ -1432,6 +1657,16 @@ export class Murder {
     this.tickCustody();
     Lyra.tick(this);
     Grief.tickOutside(this);
+    safe(() => Hunt.tickHunt(this));
+  }
+
+  // The hunt's part in a posse member's day, and their lifted leash (npc.js asks).
+  chaseOf(npc, target) {
+    return Hunt.chaseOf(this, npc, target);
+  }
+
+  lostSight(npc, target) {
+    return Hunt.lost(this, npc, target);
   }
 
   nearestAlive(v, r) {
@@ -1554,7 +1789,7 @@ export class Murder {
   // ------------------------------------------------------------------ npc hooks
 
   entryFor(npc, entry, hour) {
-    return Grief.entryFor(this, npc, entry, hour);
+    return Grief.entryFor(this, npc, entry, hour) || Hunt.entryFor(this, npc, entry, hour) || safe(() => this.game.occupation?.entryFor?.(npc, entry, hour), null);
   }
 
   dialogOptions(npc) {
@@ -1574,6 +1809,8 @@ export class Murder {
   }
 
   refusesTrade(npc) {
+    // A burned store sells nothing (round 14b, world/occupation.js).
+    if (npc?.id && safe(() => this.game.occupation?.shopClosed?.(npc.id), false)) return true;
     return Grief.refusesTrade(this, npc);
   }
 
@@ -1624,6 +1861,7 @@ export class Murder {
       watchUntil: Number.isFinite(this.watchUntil) ? this.watchUntil : null,
       trialPending: this.trialPending || null,
       witnessedBy: this.witnessedBy,
+      hunt: Hunt.serializeHunt(this.hunt),
       terror: Object.fromEntries((this.life?.villagers?.() || []).filter((e) => e.terror && this.now() < e.terror.until).map((e) => [e.id, e.terror])),
     };
   }
@@ -1642,6 +1880,7 @@ export class Murder {
     this.lyra = obj(d.lyra);
     this.watchUntil = Number.isFinite(d.watchUntil) ? d.watchUntil : -Infinity;
     this.witnessedBy = obj(d.witnessedBy);
+    this.hunt = Hunt.deserializeHunt(d.hunt);
     for (const [id, tr] of Object.entries(obj(d.terror))) {
       const e = this.entity(id);
       if (e && tr && Number.isFinite(tr.until)) e.terror = tr;

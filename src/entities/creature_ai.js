@@ -1,4 +1,5 @@
 import { now, rand, inVillage, hostileTo, alive, walkLine, sightLine, speak, pickLine } from './creature_util.js';
+import { canReach } from '../world/walls.js';
 
 // Creature minds. Every creature runs one state machine picked by its species'
 // `ai`; states live in creature.ai = { state, t, dur, ... } and creature.target.
@@ -206,18 +207,43 @@ export function scanTarget(c, radius) {
     if (!alive(e)) continue;
     if (!c.villager && inVillage(g, e.x, e.y)) continue;
     if (!hostileTo(g, c, e)) continue;
+    // Eyes, not walls (round 14b, DESIGN §35.6): nothing notices prey through stone.
+    if (!sightLine(g, c.x, c.y - 4, e.x, e.y - 4)) continue;
     best = e;
     bd = d2;
   }
   return best;
 }
 
+const LOST_SIGHT = 4; // s a creature keeps after prey it can no longer see (then gives up)
+
 function targetValid(c, t) {
   if (!t || !alive(t)) return false;
   if (!hostileTo(c.game, c, t)) return false;
   if (!c.villager && inVillage(c.game, t.x, t.y)) return false;
   const keep = Math.max(aggroRange(c) * 2.4, 170);
-  return distTo(c, t) <= keep;
+  if (distTo(c, t) > keep) return false;
+  // Out of sight behind a wall: a moment of memory (it goes round to where it last saw
+  // them), then it gives up.
+  if (!sightLine(c.game, c.x, c.y - 4, t.x, t.y - 4)) {
+    const at = now(c.game);
+    if (c._lostSightOf !== t) {
+      c._lostSightOf = t;
+      c._lostSightAt = at;
+    }
+    return at - c._lostSightAt <= LOST_SIGHT;
+  }
+  c._lostSightOf = null;
+  return true;
+}
+
+// Can this creature's blow reach `t` from where it stands (no wall, no rubble between)?
+function reachable(c, t) {
+  try {
+    return canReach(c.game, c, t, c.x, c.y, { melee: true });
+  } catch {
+    return true;
+  }
 }
 
 function leashBroken(c) {
@@ -428,7 +454,9 @@ function aiMelee(c, dt, think, chief) {
       }
       const d = distTo(c, t);
       if (chief && attackReady(c) && now(c.game) >= (ai.slamReadyAt ?? 2) && d < 54) return startSlam(c, enraged);
-      if (d <= atk.range + (t.radius ?? 4) && attackReady(c)) return startWindup(c, atk.windup * (enraged ? 0.75 : 1));
+      // Wind up only for a blow that can land: never against a wall (round 14b).
+      const canHit = d <= atk.range + (t.radius ?? 4) && reachable(c, t);
+      if (canHit && attackReady(c)) return startWindup(c, atk.windup * (enraged ? 0.75 : 1));
       c.speedMul = (c.spec.chase || 1.2) * speedK * (c.spec.nightAggro && c.game.clock?.isNight ? 1.08 : 1);
       // Pack hunters fan out around the prey instead of queueing behind each other.
       let ox = 0;
@@ -438,7 +466,7 @@ function aiMelee(c, dt, think, chief) {
         ox = (-(t.y - c.y) / d) * k;
         oy = ((t.x - c.x) / d) * k;
       }
-      if (d <= atk.range + (t.radius ?? 4)) {
+      if (canHit) {
         stopMove(c);
         c.faceToward(t.x, t.y);
         return;
