@@ -158,6 +158,9 @@ async function run(S) {
     const u = g.ui;
     for (const id of Object.keys(u?.coach?.done || {})) u.coach.done[id] = true;
     u?.coach?.stop?.();
+    // This check sleeps through weeks: the very old would die of age meanwhile (society's
+    // years, round 14b), and it holds the spell on Corran and Petra at the end.
+    g.settings.oldAge = false;
     window.__clean = () => {
       try {
         g.ui?.closeAll?.();
