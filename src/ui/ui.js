@@ -28,6 +28,7 @@ import { companionshipOf, companionshipLabel, companionshipReason, deedLabel, re
 import { applyUiZoom } from './ui_scale.js';
 import { HomePointer } from './home_pointer.js';
 import { nearestTalkTarget, NEAR, LYRA as LYRA_ID } from './chat_target.js';
+import { buildLetterPanel } from './letter_view.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -741,6 +742,16 @@ export class UI {
     if (this.dialog?.isOpen?.()) this.dialog.close();
     this.chat.open(!this.isTouch);
     this.game.bus?.emit?.('talk_opened', { to: this.chat.target, how: 'person' });
+    return true;
+  }
+
+  // A letter from the bag (round 14b T-5): a paper panel, closable.
+  openLetter(itemId = 'lyra_letter') {
+    if (!this.inited) return false;
+    const panel = buildLetterPanel(this.game, itemId);
+    if (!panel) return false;
+    this.openModal(panel);
+    this.game.bus?.emit?.('letter_read', { itemId });
     return true;
   }
 

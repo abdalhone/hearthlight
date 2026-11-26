@@ -10,6 +10,7 @@ import { buildPlan, blockAt, blockIndexAt, weighGoals, sleepSpot, questStageInde
 import { RE, isApology, parseOffer, parsePromiseText, parseAskText } from './autonomy_words.js';
 import { weighWorth, WorthTracker, WORTH, worthLine, topCost } from './autonomy_worth.js';
 import { Outings } from './autonomy_outing.js';
+import { Parting } from './autonomy_parting.js';
 import { seesActor } from '../sight.js';
 import { isSilenced } from '../hearing.js';
 import { openAgenda, chooseNext, agendaText } from './autonomy_open.js';
@@ -194,6 +195,7 @@ export class Autonomy {
     this._pendingShout = null;
     this._goneWordT = NEG_INF;
     this.outings = new Outings(this); // her proposals, followed through (§16.11)
+    this.parting = new Parting(this); // her leaving, said to the player's face (round 14b T-5)
     this.unfinished = []; // unfinished business: [{ kind, text, at, npc, topic, why, since }] (§16.12)
   }
 
@@ -1709,6 +1711,14 @@ export class Autonomy {
     const line = opts.line ?? (opts.lineKey ? this.line(opts.lineKey, vars) : '');
     if (line && !opts.silent) this.say(line, { force: true, kind: state === 'gone' ? 'farewell' : 'initiative' });
     if (!opts.noReplan) this.planDay('companionship');
+    // "You can leave me, but not like this" (round 14b T-5): leaving is said to their face.
+    if ((state === 'left' || state === 'gone') && !opts.fromGone && !opts.noParting && previous !== 'left' && previous !== 'gone') {
+      try {
+        this.parting.start(state, { reason, cause: opts.cause || null });
+      } catch (err) {
+        console.error('[autonomy] parting failed', err);
+      }
+    }
     return true;
   }
 
@@ -2867,6 +2877,7 @@ export class Autonomy {
     if (!t) return null;
     const heard = { t: this.now(), rt: this.game?.time ?? null, text: t, apology: null, promise: null, offer: null, answered: null };
     this._heard = heard;
+    if (this.parting?.active) this.parting.heard(t);
     const offer = parseOffer(t);
     if (offer) {
       this.pendingOffer = { amount: offer, t: this.now() };
@@ -3253,12 +3264,16 @@ export class Autonomy {
     this._watchDowned(step);
     if (this._pendingBind) this._retryBind();
     if (this.queued.length) this._flushQueued();
-    this._followPlan();
-    this.outings.tick(step);
+    // Her leaving, said to their face: while it lasts, her body is the scene's.
+    if (this.parting?.active) this.parting.update(step);
+    else {
+      this._followPlan();
+      this.outings.tick(step);
+    }
     this._checkPromises();
     this._checkRefusals();
     this._checkDeals();
-    this._keepAway();
+    if (!this.parting?.active) this._keepAway();
     const l = this.lyra();
     if (l && this.inLocation('ember_kettle', l)) this._atInn();
     else if (l && this.inLocation('chandlery', l)) this._atHome();
@@ -3537,6 +3552,7 @@ export class Autonomy {
       warnings: this.warnings,
       violence: this.violence.slice(),
       lastViolentT: fin(this.lastViolentT),
+      parting: this.parting?.serialize?.() || null,
       lastDownedT: fin(this.lastDownedT),
       grudge: fin(this.grudge),
       violentDebt: fin(this.violentDebt),
@@ -3599,6 +3615,7 @@ export class Autonomy {
     this.worthTrack = new WorthTracker();
     this.worthTrack.deserialize(d.worth);
     this.outings.deserialize(d.outings);
+    if (d.parting) this.parting.deserialize(d.parting);
     this.unfinished = Array.isArray(d.unfinished) ? d.unfinished.filter((u) => u && u.text).slice(-8) : [];
     this._worth = null;
     this._blockIdx = -2;

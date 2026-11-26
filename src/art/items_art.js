@@ -694,6 +694,30 @@ const ICONS = {
     p.set(4, 3, '#fff3c2');
   },
 
+  // Lyra's letter (round 14b T-5): a folded sheet, a violet wax drop of her light.
+  lyra_letter(p) {
+    p.rect(3, 5, 11, 8, '#e8dcbc');
+    for (let x = 3; x <= 13; x++) {
+      p.set(x, 5, '#f4ead0');
+      p.set(x, 12, '#b9a780');
+    }
+    for (let y = 5; y <= 12; y++) {
+      p.set(3, y, '#cbbb94');
+      p.set(13, y, '#b9a780');
+    }
+    // The fold, corner to middle.
+    for (let i = 0; i <= 4; i++) {
+      p.set(3 + i, 6 + Math.floor(i / 1.4), '#c9b893');
+      p.set(13 - i, 6 + Math.floor(i / 1.4), '#c9b893');
+    }
+    // A line of her hand, and the seal.
+    for (let x = 5; x <= 10; x += 2) p.set(x, 10, '#6d5a8a');
+    p.set(8, 9, '#7a64e0');
+    p.set(8, 10, '#9b84f0');
+    p.set(7, 9, '#5a48b0');
+    p.set(9, 9, '#5a48b0');
+  },
+
   flame_book(p) {
     p.rect(4, 3, 10, 11, '#d8c9a8');
     for (let y = 4; y <= 13; y += 2) p.set(13, y, '#a89676');

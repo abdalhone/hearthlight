@@ -49,3 +49,25 @@
     font-size: 11px;
   }
 }
+
+/* A letter (Lyra's, when she left): paper, her hand. */
+.panel-letter .letter-paper {
+  margin: 4px 0;
+  padding: 16px 18px;
+  background: linear-gradient(180deg, #efe2c2, #e2d1aa);
+  color: #3a2a1a;
+  box-shadow: inset 0 0 0 2px rgba(90, 60, 30, 0.35), 0 4px 0 rgba(0, 0, 0, 0.35);
+  font-family: var(--font-body, serif);
+  font-size: var(--fs-sm, 15px);
+  line-height: 1.55;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.panel-letter .letter-line {
+  margin: 0 0 10px;
+}
+.panel-letter .letter-sign {
+  margin: 14px 0 0;
+  text-align: right;
+  font-style: italic;
+}

@@ -186,6 +186,8 @@ export class InventoryPanel {
     const actions = h('div', { class: 'detail-actions' });
     if (sel.owner === 'player') {
       if (isUsable(def) || def.buff) actions.append(button(def.type === 'potion' ? 'Drink' : 'Eat', { cls: 'btn-ember', onClick: () => this.use(sel.id) }));
+      // A letter (round 14b T-5): read it.
+      if (def.type === 'letter') actions.append(button('Read', { icon: 'scroll', cls: 'btn-ember', onClick: () => this.ui.openLetter?.(sel.id) }));
       if (gear && g.gear) {
         const cmp = (() => {
           try {
@@ -202,7 +204,7 @@ export class InventoryPanel {
         actions.append(button(`Give to ${lyraName}`, { icon: 'heart_arcane', disabled: !reach.ok, title: reachNote(reach, lyraName) || null, onClick: () => this.give(sel.id, 1) }));
         if (qty > 1) actions.append(button(`Give all ${qty}`, { cls: 'btn-ghost', disabled: !reach.ok, onClick: () => this.give(sel.id, qty) }));
       }
-      if (def.type !== 'quest' && def.type !== 'key') actions.append(button('Drop', { cls: 'btn-ghost', onClick: () => this.drop(sel.id) }));
+      if (def.type !== 'quest' && def.type !== 'key' && def.type !== 'letter') actions.append(button('Drop', { cls: 'btn-ghost', onClick: () => this.drop(sel.id) }));
     } else {
       // Her pack is hers (§16): you ask, and she decides whether to hand it over.
       actions.append(button('Ask for one', { icon: 'hand', onClick: () => this.take(sel.id, 1) }));
