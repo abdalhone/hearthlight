@@ -2717,8 +2717,9 @@ feature-detects `game.murder?.isDead?.('lyra')`.
 - `canKill(v)`: a villager, not dead, **not a minor** (`isMinor`) and not on the old
   `UNKILLABLE` list (which blood replaces with `isMinor` and a killable Lyra, V-7).
 - The record (`murder.dead[id]`) gains `by` (`'player'`, the killer's id, or null), `cause`,
-  `provoked` (true when the victim fought or hit the killer in the last 20 s: their
-  `fightTarget` and mode, the killer's `lastAttacker`, combat's record of who hurt whom that
+  `provoked` (true when the victim fought or hit the killer in the last 20 s: fighting them
+  (`fightTarget`, mode `'fight'`), squaring up to them while answering a cry (help role
+  `'confront'`), the killer's `lastAttacker`, or combat's record of who hurt whom that
   self-defense reads), `silent`, `unmarked` and `natural` (die()). `layBody` and
   `deserialize` set `v.absent.cause = rec.cause`. An old save's record reads as cause
   `'killed'`, `by` and `provoked` unknown (null), not silent, marked.

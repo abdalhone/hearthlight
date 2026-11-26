@@ -116,18 +116,23 @@ export function drawBody(e, rec, ctx, ox, oy, time) {
   drawCharacter(ctx, atlas, e.spriteKey, 'down', e.dir || 'down', 0, sx, sy - lift, { state: 'dead' });
 }
 
-// A small dried pool beside the fallen: a few pixels of dark red, the same for each body.
+// A dried pool seeping out from under the fallen: a few rows of dark red below the body's
+// edge (the body itself covers the rest), irregular and the same for each body.
 const STAIN = ['#3d0910', '#5c0f17'];
 function drawStain(ctx, sx, sy, id = '') {
   let h = 7;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  const j = (h >>> 2) & 3;
   const prev = ctx.globalAlpha;
-  ctx.globalAlpha = prev * 0.8;
+  ctx.globalAlpha = prev * 0.85;
   ctx.fillStyle = STAIN[0];
-  ctx.fillRect(sx - 6 + (h & 3), sy - 1, 7, 2);
-  ctx.fillRect(sx - 4 + (h & 3), sy + 1, 4, 1);
+  ctx.fillRect(sx - 8 + j, sy - 1, 14, 2);
+  ctx.fillRect(sx - 6 + j, sy + 1, 15, 1);
+  ctx.fillRect(sx - 3 + j, sy + 2, 8, 1);
+  ctx.fillRect(sx + 7 + j, sy, 2, 1);
   ctx.fillStyle = STAIN[1];
-  ctx.fillRect(sx - 4 + (h & 3), sy - 1, 3, 1);
+  ctx.fillRect(sx - 4 + j, sy, 6, 1);
+  ctx.fillRect(sx + 3 + j, sy + 1, 3, 1);
   ctx.globalAlpha = prev;
 }
 
