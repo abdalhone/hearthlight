@@ -115,6 +115,7 @@ export class Village {
     this.calls = { say: 0, listen: 0, night: 0, ambient: 0 };
     this.you = emptyYou(); // what each villager keeps of the player (player_talk.js)
     this.pendingAsk = {}; // npcId -> a question they asked the player, waiting for an answer
+    this.cutTies = {}; // npcId -> { day, why }: they broke with the player (round 14b T-4)
   }
 
   // ------------------------------------------------------------------ basics
@@ -977,7 +978,7 @@ export class Village {
     const label = opinion < 15 ? 'Hostile' : opinion < 30 ? 'Wary' : opinion < 50 ? 'Neutral' : opinion < 75 ? 'Friendly' : 'Fond';
     const shop = !!e?.profile?.shop;
     const refusesTrade = shop && (opinion < 15 || (!!grievance && fresh && grievance.weight >= 8) || e?.wrongedDay === day);
-    const cold = opinion < 15 || (!!grievance && fresh && grievance.weight >= 6) || e?.wrongedDay === day;
+    const cold = opinion < 15 || (!!grievance && fresh && grievance.weight >= 6) || e?.wrongedDay === day || !!this.cutTies?.[npcId];
     const barredFrom = Object.keys(this.bars).filter((k) => this.barred(k));
     return { opinion, label, grievance, refusesTrade, cold, barredFrom };
   }
@@ -986,6 +987,12 @@ export class Village {
   amend(npcId, kind = 'apology') {
     const e = this.entity(npcId);
     if (!e || typeof e.adjustOpinion !== 'function') return 0;
+    // Broken ties mend only with something real: an apology, then a deed (a gift, help).
+    const ct = this.cutTies?.[npcId];
+    if (ct) {
+      if (kind === 'apology') ct.apologized = this.day();
+      else if ((kind === 'help' || kind === 'gift') && ct.apologized) this.mendTies(npcId);
+    }
     const day = this.day();
     const a = this.amendsDay[npcId];
     const n = a && a.day === day ? a.n : 0;
@@ -1509,6 +1516,22 @@ export class Village {
     if (!lines.length) row.silent = true;
   }
 
+  // A villager broke with the player (round 14b T-4: a companion who left in anger, through
+  // party.release('gone')). Never a lock: they hear every word and answer coldly, or not at
+  // all, until something real changes (amends: mendTies).
+  noteCutTies(id, why = '') {
+    if (!id || id === 'lyra') return null;
+    this.cutTies[id] = { day: this.day(), why: String(why || '').slice(0, 120) };
+    safe(() => addNote(this, id, 'you and I are done; I broke with you', 6));
+    return this.cutTies[id];
+  }
+
+  mendTies(id) {
+    if (!this.cutTies?.[id]) return false;
+    delete this.cutTies[id];
+    return true;
+  }
+
   // *Acts* between asterisks (round 14b T-3): the game decides what the hands did before any
   // mind words the reaction. -> null (no acts) or { refused, narration, brief, local, words }
   playerActs(e, acts, said) {
@@ -1801,7 +1824,7 @@ export class Village {
       feel.push(`Earlier today you heard a scream${where ? ` from ${where}` : ''}, and never saw what it was; it has left you uneasy. You do not know who.`);
     }
     // They broke with the player (round 14b T-4): set when a companion left in anger.
-    if (this.you?.[id]?.cutTies || this.cutTies?.[id]) feel.push('You broke with them; you answer coldly or not at all.');
+    if (this.cutTies?.[id]) feel.push(`You broke with them${this.cutTies[id].why ? ` (${String(this.cutTies[id].why).slice(0, 80)})` : ''}; you answer coldly or not at all. You still hear every word.`);
     // Other workstreams' lines, feature-detected (DESIGN §33.3).
     const cal = safe(() => g?.calendar?.briefLine?.(id), null);
     if (cal) feel.push(String(cal).slice(0, 200));
@@ -2097,6 +2120,7 @@ export class Village {
       seq: this.seq,
       you: cleanYou(this.you),
       commitments: this.commitments.serialize(),
+      cutTies: this.cutTies || {},
     };
   }
 
@@ -2118,6 +2142,7 @@ export class Village {
     this.sceneDay = objOf(d.scenes);
     this.you = cleanYou(d.you);
     this.commitments.deserialize(d.commitments);
+    this.cutTies = objOf(d.cutTies);
     this.seq = Number.isFinite(d.seq) ? d.seq : this.log.reduce((m, c) => Math.max(m, Number(c.id) || 0), 0);
     for (const c of this.log) this.pairAt.set(pairKey(c.a, c.b), c.t);
   }
