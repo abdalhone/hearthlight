@@ -296,7 +296,7 @@ export class Occupation {
         if (day - b.day >= SMOKE_DAYS + 1) continue;
         const c = safe(() => g.locations.get(id).center, null);
         if (!c || !safe(() => g.camera?.inView?.(c.x, c.y, 120), true)) continue;
-        safe(() => g.particles?.emit?.('smoke', c.x + (Math.random() - 0.5) * 30, c.y - 24, { count: 2, speed: 12, life: 2.2 }));
+        safe(() => g.particles?.emit?.('smoke', c.x + (Math.random() - 0.5) * 30, c.y - 24, { count: 3, speed: 14, life: 2.6, color: '#8a8290' }));
         if (day === b.day) safe(() => g.particles?.emit?.('ember', c.x + (Math.random() - 0.5) * 24, c.y - 18, { count: 1, speed: 18, life: 1 }));
       }
     }
@@ -350,6 +350,26 @@ export class ScorchLayer extends Entity {
 
   canInteract() {
     return false;
+  }
+
+  // The embers of a building burned today glow orange through the night (one light, for
+  // the most recent fire; lighting.js collects it with the rest).
+  getLight(time = 0) {
+    const occ = this.game?.occupation;
+    const day = this.game?.clock?.day ?? 1;
+    let best = null;
+    for (const [id, b] of Object.entries(occ?.burns || {})) if (day - b.day < 1 && (!best || b.t > best.b.t)) best = { id, b };
+    if (!best) return null;
+    const loc = safe(() => this.game.locations.get(best.id), null);
+    const c = loc?.center;
+    if (!c) return null;
+    const L = (this._glow ||= { x: 0, y: 0, r: 80, color: '#ff7a2a', intensity: 0.7 });
+    // Just outside its front wall (a light inside a building is masked by its roof).
+    L.x = c.x;
+    L.y = loc.bounds ? (loc.bounds.y + loc.bounds.h) * TILE + 6 : c.y + 24;
+    L.r = 76 + 8 * Math.sin(time * 3.1);
+    L.intensity = 0.55 + 0.2 * Math.sin(time * 7.3) * Math.sin(time * 2.1);
+    return L;
   }
 
   draw(ctx, ox, oy, time = 0) {
