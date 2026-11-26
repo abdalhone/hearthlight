@@ -2192,7 +2192,9 @@ notices and has opinions (berserk frightens her).
   watch, screaming (`npc.startFlee(…, { to })`: the nearest of Rowan, Wys or Hess awake, else
   the guardhouse; another cry for help on the way does not turn them aside), their opinion
   falls to the floor, and they **answer only in terror**: tapping them or picking them in
-  the chat shows what the player sees ("Elda backs away from you, white to the lips.") and
+  the chat shows what the player sees ("Elda backs away from you, white to the lips.") each
+  time the chat opens to them or turns to them (never twice in a row), the header says
+  "terrified of you" (then "afraid of you", `chat_target.fearWord`), and
   the field stays open; what the player says reaches them and is remembered, and the answer
   is fear in their own words, never calm, never Claude wording it kindly, and no errands
   run for a killer. Pressed on and on (within a minute of each other), fear changes as a

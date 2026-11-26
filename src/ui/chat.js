@@ -12,7 +12,7 @@ import { portraitUrl } from './art.js';
 import { cleanLine, capitalize } from './format.js';
 import { memoryRefs, findMemory, memoryChipLabel, STORE_LABELS, companionshipOf, companionshipLabel } from './lyra_view.js';
 import { TalkSession, villageOf, firstName, lineBeat } from './village_view.js';
-import { LYRA, ChatTargetBar, moodWord, earshotPeople, whyNotHeard, canHear, chipFor, standingOf, faceOf, partingLine, villagerChips, isVillager, EARSHOT_LOSE, notHeardText, NEAR, lyraHears, nearestTalkTarget } from './chat_target.js';
+import { LYRA, ChatTargetBar, moodWord, fearWord, earshotPeople, whyNotHeard, canHear, chipFor, standingOf, faceOf, partingLine, villagerChips, isVillager, EARSHOT_LOSE, notHeardText, NEAR, lyraHears, nearestTalkTarget } from './chat_target.js';
 import { silenceAct } from '../ai/silence.js';
 import { chatOf, recordChat, knownName } from '../ai/social/player_talk.js';
 import { STORY } from '../lore/story.js';
@@ -144,6 +144,10 @@ export class Chat {
       // Whoever walked off while the chat was shut has gone: to whoever is near now, else
       // the companion, else everyone nearby (never back to Lyra by default, round 14b T-1).
       if ((this.target !== LYRA && this.target !== NEAR && this.away) || (this.target === LYRA && !this.lyraListening())) this.selectTarget(this.defaultTarget());
+      // Turning to someone afraid of you is seen each time you open the chat to them, not
+      // only when the chat turns to someone new: the chat may have been on them already
+      // when they watched you kill (fearNote does not repeat itself in a row).
+      if (this.target !== LYRA && this.target !== NEAR) this.fearNote(this.entity(this.target));
       this.refreshPeople(true);
       this.refreshHeader();
       this.ui.armBack?.();
@@ -996,7 +1000,8 @@ export class Chat {
     else if (this.away) bits.push('out of earshot');
     else if (st.asleep) bits.push('asleep');
     else {
-      bits.push(st.cold ? 'cold to you' : st.label);
+      // Afraid of you (they watched you kill) says more than how they stand with you.
+      bits.push(fearWord(g, e) || (st.cold ? 'cold to you' : st.label));
       const mood = moodWord(this.moods.get(id));
       if (mood) bits.push(mood);
     }

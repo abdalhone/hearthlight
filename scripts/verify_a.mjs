@@ -514,6 +514,153 @@ async function play(S) {
     await throttle(false);
   });
 
+
+  // ================================================================ TOP PRIORITY B: the HUD
+  const vis = (sel) =>
+    ev((sel) => {
+      const e = document.querySelector(sel);
+      if (!e) return false;
+      for (let p = e; p; p = p.parentElement) if (p.hidden || getComputedStyle(p).display === 'none' || getComputedStyle(p).visibility === 'hidden') return false;
+      const r = e.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    }, sel);
+  const hudState = () =>
+    ev(() => {
+      const g = window.__game;
+      const v = (sel) => {
+        const e = document.querySelector(sel);
+        if (!e) return false;
+        for (let p = e; p; p = p.parentElement) if (p.hidden || getComputedStyle(p).display === 'none' || getComputedStyle(p).visibility === 'hidden') return false;
+        const r = e.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      };
+      const walk = (n, out) => {
+        if (n.nodeType === 3) out.push(n.textContent);
+        else if (n.nodeType === 1) {
+          const cs = getComputedStyle(n);
+          if (n.hidden || cs.display === 'none' || cs.visibility === 'hidden') return out;
+          for (const c of n.childNodes) walk(c, out);
+        }
+        return out;
+      };
+      const hud = document.querySelector('.hud');
+      g.ui.openMap();
+      const dots = g.ui.worldMap.marks().filter((x) => x.kind === 'companion').map((x) => x.label);
+      g.ui.closeModal(g.ui.worldMap.panel, true);
+      return {
+        holder: g.party?.holderId || null,
+        card: v('.companion-card'),
+        cardText: document.querySelector('.companion-card')?.textContent?.replace(/\s+/g, ' ').trim() || '',
+        cmdbar: v('.cmdbar'),
+        orders: v('.orders-btn'),
+        text: hud ? walk(hud, []).join(' ').replace(/\s+/g, ' ') : '',
+        badge: g.bubbles?._holder?.id || null,
+        dots,
+        talk: v('.hud-talk') || v('.tbtn-interact'),
+      };
+    });
+  await item(30, 'TOP PRIORITY B: the HUD is not built around Lyra', async () => {
+    const prep = () =>
+      ev(() => {
+        const g = window.__game;
+        g.clock.skipTo?.(12);
+        const sq = g.locations.get('town_square').center;
+        g.player.x = sq.x + 60;
+        g.player.y = sq.y + 40;
+        g.camera.snap?.();
+        g.ui.closeAll?.();
+        document.querySelectorAll('.toast').forEach((e) => e.remove());
+      });
+    // (1) With Lyra, the new game's companion.
+    await prep();
+    await ev(() => {
+      const g = window.__game;
+      const L = g.companion;
+      if (L._heldController) L.controller = L._heldController;
+      L.x = g.player.x - 20;
+      L.y = g.player.y;
+    });
+    await wait(700);
+    let h = await hudState();
+    check(h.holder === 'lyra' && h.card && /Lyra/.test(h.cardText), `[${tag}] B with Lyra: her card`, JSON.stringify({ holder: h.holder, card: h.cardText.slice(0, 80) }));
+    await shot('B1-with-lyra');
+    // (2) With Bram: his card, no "Lyra" anywhere on the HUD, and no Lyra dot on the map.
+    await ev(() => {
+      const g = window.__game;
+      const b = g.entities.get('bram');
+      b.x = g.player.x + 24;
+      b.y = g.player.y;
+      b.walker?.stop?.();
+      b.opinionOfPlayer = 85;
+      b.wrongedDay = null;
+      const r = g.party.invite(b);
+      window.__inv = r?.decision || r;
+      window.__away(['bram']);
+    });
+    await wait(900);
+    h = await hudState();
+    check(h.holder === 'bram' && h.card && /Bram/.test(h.cardText), `[${tag}] B with Bram: his card`, JSON.stringify({ holder: h.holder, card: h.cardText.slice(0, 90), inv: await ev(() => window.__inv) }));
+    check(!/Lyra/.test(h.text), `[${tag}] B with Bram: no "Lyra" on the HUD`, h.text.match(/.{0,40}Lyra.{0,40}/)?.[0] || '');
+    check(!h.dots.includes('Lyra') && (h.dots.length === 0 || h.dots.every((d) => /Bram/.test(d))), `[${tag}] B with Bram: the map's companion dot is his`, JSON.stringify(h.dots));
+    await shot('B2-with-bram');
+    // (3) Alone: no card, no Ask bar, no orders, no badge, no dot; Talk still there.
+    await ev(() => {
+      const g = window.__game;
+      g.party.release('dismissed');
+      const a = g.companion.mind.autonomy;
+      a.setCompanionship('apart', 'Off on my own day.', { silent: true });
+      window.__away();
+    });
+    await wait(900);
+    h = await hudState();
+    check(!h.holder && !h.card && !h.cmdbar && !h.orders && !h.badge && h.dots.length === 0, `[${tag}] B alone: an empty slot (no card, Ask bar, orders, badge, dot)`, JSON.stringify({ ...h, text: undefined }));
+    check(!/Lyra/.test(h.text), `[${tag}] B alone: no "Lyra" on the HUD`, h.text.match(/.{0,40}Lyra.{0,40}/)?.[0] || '');
+    check(h.talk, `[${tag}] B alone: a Talk control is there`);
+    await shot('B3-alone');
+    // (4) After Lyra cut ties: the same empty slot, and nothing of hers pinned.
+    await ev(() => {
+      const g = window.__game;
+      const L = g.companion;
+      L.mind.autonomy.setCompanionship('gone', 'You hurt me.', { cause: 'downed', goneReason: 'downed', silent: true });
+      L.x = g.player.x + 12 * 16;
+      L.y = g.player.y;
+    });
+    await wait(1200);
+    h = await hudState();
+    check(!h.holder && !h.card && !h.cmdbar && !h.orders && h.dots.length === 0, `[${tag}] B after Lyra cut ties: the slot is empty`, JSON.stringify({ ...h, text: undefined }));
+    check(!/Lyra/.test(h.text), `[${tag}] B after Lyra cut ties: no "Lyra" on the HUD`, h.text.match(/.{0,40}Lyra.{0,40}/)?.[0] || '');
+    await shot('B4-after-cut-ties');
+    // Bram again while she is gone: his card; Tab (or a card tap) opens People at him.
+    await ev(() => {
+      const g = window.__game;
+      const b = g.entities.get('bram');
+      b.x = g.player.x + 24;
+      b.y = g.player.y;
+      g.party.invite(b);
+    });
+    await wait(700);
+    if (S.phone) {
+      const r = await rectOf('.companion-card');
+      if (r) await page.touchscreen.tap(r.x + r.w / 2, r.y + r.h / 2);
+    } else await page.keyboard.press('Tab');
+    await wait(700);
+    const ppl = await ev(() => {
+      const P = document.querySelector('.panel-people');
+      const sel = P?.querySelector('[aria-selected="true"], .selected, .active, .on');
+      return { open: !!P, sel: (sel?.textContent || '').replace(/\s+/g, ' ').slice(0, 60), text: (P?.querySelector('.panel-body')?.textContent || '').replace(/\s+/g, ' ').slice(0, 200) };
+    });
+    check(ppl.open && /Bram/.test(ppl.sel + ppl.text), `[${tag}] B ${S.phone ? 'a tap on his card' : 'Tab'} opens People at Bram`, JSON.stringify(ppl));
+    await shot('B5-people-bram');
+    const close = await rectOf('.panel-people .panel-close');
+    check(!!close && close.w >= 44 && close.h >= 44, `[${tag}] B People closes with a finger-sized ✕`, close ? `${close.w}x${close.h}` : 'none');
+    if (close) {
+      if (S.phone) await page.touchscreen.tap(close.x + close.w / 2, close.y + close.h / 2);
+      else await page.mouse.click(close.x + close.w / 2, close.y + close.h / 2);
+    }
+    await wait(300);
+    await ev(() => window.__game.party.release('dismissed'));
+  });
+
   check(errors.length === 0, `[${tag}] no page errors`, errors.slice(0, 5).join(' | '));
   await ctx.close();
 }

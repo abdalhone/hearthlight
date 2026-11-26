@@ -40,3 +40,50 @@ test('with a mouse, a notice over the field lets the sword and the cast through'
   assert.deepEqual(bad, [], 'a notice is clickable only on a touch screen');
   assert.match(css, /\.is-touch \.toast\s*\{[^}]*pointer-events:\s*auto/, 'on a phone a tap still puts one away');
 });
+
+// Item 1: "I killed in front of Elda; can I still talk to her?" The chat was already on Elda
+// (she was the last one you spoke to) when she watched you kill. Walking up and pressing T
+// opens the chat: what you see as you turn to her ("Elda backs away from you, white to the
+// lips.") must be there, and the header must say she is terrified of you, not merely "cold".
+import { makeGame as makeMurderGame, put as putAt } from './murder_world.mjs';
+import { Chat } from '../src/ui/chat.js';
+import { fearWord } from '../src/ui/chat_target.js';
+
+function headlessChat(g) {
+  const chat = new Chat({ game: g, isTouch: false, toast() {}, root: { classList: { add() {}, remove() {}, toggle() {} } }, hud: { setUnread() {} }, armBack() {} });
+  chat.mounted = true;
+  chat.el = { hidden: true };
+  chat.field = { blur() {}, focus() {} };
+  for (const k of ['refreshPeople', 'refreshHeader', 'scrollToEnd', 'markMoreChips', 'focusSoon', 'applyTarget', 'renderThread', 'setTyping', 'frameWorld']) chat[k] = () => {};
+  chat.toBar = { reveal() {} };
+  chat.log = { querySelector: () => null, insertBefore() {} };
+  chat.thinkingRow = { parentNode: null };
+  chat.buildVillagerRow = () => ({});
+  return chat;
+}
+
+test('item 1: the chat already on Elda, reopened after she watched you kill: the fear line shows, and the header says terrified', () => {
+  const g = makeMurderGame({ hour: 12 });
+  const elda = g.entities.get('elda');
+  putAt(g.player, elda.x + 18, elda.y);
+  const chat = headlessChat(g);
+  assert.ok(chat.selectTarget('elda'), 'Elda can be spoken to');
+  chat.open(false);
+  assert.equal(chat.threadOf('elda').filter((m) => /backs away/.test(m.text)).length, 0, 'calm: no fear line');
+  assert.equal(fearWord(g, elda), null, 'calm: nothing in the header but how she stands with you');
+  chat.close();
+  // She watches a killing.
+  elda.terror = { until: g.murder.now() + 600, of: 'player' };
+  const fear = g.murder.fearOf(elda);
+  assert.ok(fear, 'she is afraid of the player now');
+  // T again, to the same person: the chat opens on her as it was.
+  assert.ok(chat.selectTarget('elda'));
+  chat.open(false);
+  const notes = chat.threadOf('elda').filter((m) => /backs away from you|keeps (her|his) distance/.test(m.text));
+  assert.equal(notes.length, 1, 'what you see as you turn to her is shown');
+  assert.match(fearWord(g, elda), /terrified of you|afraid of you/);
+  // Opened again straight away: not shown twice in a row.
+  chat.close();
+  chat.open(false);
+  assert.equal(chat.threadOf('elda').filter((m) => /backs away from you|keeps (her|his) distance/.test(m.text)).length, 1, 'once in a row');
+});
