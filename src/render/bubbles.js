@@ -446,7 +446,6 @@ export class Bubbles {
     ctx.imageSmoothingEnabled = false;
     ctx.textBaseline = 'middle';
     const playing = this.game?.state === 'playing' || this.game?.state === 'sleeping';
-    this._holder = holderOf(this.game);
     if (playing) this._drawNameTags(ctx, r);
     this._layoutBubbles(ctx, r, W, H);
     for (let i = 0; i < this._vis.length; i++) this._drawBubble(ctx, this._vis[i], r);
@@ -508,6 +507,7 @@ export class Bubbles {
   }
 
   _layoutBubbles(ctx, r, W, H) {
+    this._holder = holderOf(this.game); // whoever walks with you (their words pin to the edge)
     const vis = this._vis;
     vis.length = 0;
     const u = this.u;
