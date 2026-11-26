@@ -1926,8 +1926,10 @@ is a **gain** and a **cost**, both timed modifiers on the shared stat pipeline (
   stagger, for 2 min; when it ends the heart gives out and the player falls (§27, with a
   short 30 s window).
 - `glass` — +50% weave power for 30 s; take +50% damage for 30 s.
-- `overdraw` — weaves cost no mana for 10 s; then no mana regeneration for 30 s.
-- `emberblood` — while active, lose 2% HP per second and cast 30% faster (toggle).
+- `overdraw` — weaves cost no mana for 10 s; then no mana regeneration for 20 s. Casting
+  it again while the well is dry borrows nothing (the drought is paid in full).
+- `emberblood` — while active, lose 2% HP per second; cast 30% faster and weaves cost 30%
+  less mana (the blood pays part of each) (toggle).
 - `lastlight` — when the player would fall, heal fully once; max HP −50% until the next
   sleep.
 - `oath` — +30% to everything while Lyra is near; if she is hurt, the player is too.
@@ -1950,6 +1952,11 @@ is a **gain** and a **cost**, both timed modifiers on the shared stat pipeline (
   saw. Order with the others: lastlight catches the fall first (the last stand stays
   held); berserk's end cannot fell you while you burn, and the burn ends it. Saved as
   held or as the seconds left, so closing the page does not escape the minute.
+Played and balanced in round 14b (`scripts/price_sim.mjs`: each price in a long fight at
+level 1, beside no price at all; the author's own numbers kept as said). In a fight of
+fifteen seconds every price but lastlight and oath (which pay off elsewhere) gives 20–50%
+more damage; past thirty seconds bloodprice, glass and emberblood leave you lower, and
+overdraw's drought takes back most of its burst. The table is the script's output.
 Prices are earned like other components (missions, bosses, a few found), shown with their
 cost in red in the Spellbook and on the hotbar button, and their timers on the HUD. Lyra
 notices and has opinions (berserk frightens her).
@@ -3299,9 +3306,44 @@ listens and calls `game.unkindle.learn()`.
 
 ## Polish (r14b)
 
-Workstream polish takes the small things the checks left: broken props mend only where
-someone lives (empty Brindlecombe and the wilds stay broken), the countdown and ember-ring
-layers follow Interface size (`death_view.js`), prompts and speech bubbles never overlap at
-844×390, and the hearing rule may learn trees and props (only if cheap). Its CSS goes in
-`src/styles/polish.css`, its plugins in `src/core/plugins/polish.js`. Any new sound or
-witness it touches keeps §33.2.
+Workstream polish takes the small things the checks left. As built:
+
+- **The down countdown** (`src/ui/death_view.js`, `src/styles/polish.css`). The ring and its
+  words sit on one solid panel (readable over pale crowns, snow, lamplight). While you are
+  down the UI root carries `sv-down` (and `sv-lefty` when the stick is on the right). On an
+  upright phone the countdown goes above the body under the top strip, so the floating
+  stick's zone (the lower half) never holds it: just under the top cards however tall the
+  price chips have grown them (`--sv-top`, measured by `place()`); the mission line makes
+  way and the toasts come below it (`--sv-below`). Sideways it takes the half the stick does
+  not. On a computer the weave bar steps aside while you are down, and the countdown is
+  drawn at the Interface size (`ui._uiz`) as far as it fits between the body and the
+  screen's foot (`place()`, four times a second); the ring's canvas follows the pixels it
+  is shown at.
+- **The ember-ring's marks** follow Interface size (CSS: the arrow and its words by `zoom`,
+  the tag by its sizes). Turned toward the ring, the grown arrow reaches about 14 px × the
+  size from its point, so `ember_ring_view.js hudClear()` keeps a gap from the mission line
+  and the corner cards of `14 + 18 × (size − 1)` px (14 at size 1, as before).
+- **The Last Stand's fire** (`src/render/death_fx.js`): each edge is one strip (scorched rim,
+  glow, pixel flames in four frames) painted once per window size; a frame is four copies.
+- **Snow under a warm light** (`src/render/lighting.js snowLight`): where `weather.localSnow`
+  says the ground is snow (eased), a warm ambient is pulled toward a cool pale light of
+  about its own brightness. Noon and night are unchanged.
+- **The Leech preview** (`src/ui/weave_sandbox.js`): each draw of life is drawn in the
+  Spellbook's sandbox as a stream of green motes from the dummy to the caster, a red wisp,
+  and a glow as it lands.
+- **Prices played** (§25, `scripts/price_sim.mjs`): overdraw's drought 20 s and not lifted by
+  casting it again; emberblood's weaves cost 30% less while it burns. On a phone the price
+  chips wrap to a second row.
+- **Mending** (`src/world/broken.js peopleLiveAt`, the mend rule in `mendTick`): a broken prop
+  is mended only where people live, the vale while anyone is still in it (and not once
+  `game.occupation.emptied()`, when blood provides it). Elsewhere the debris stays and the
+  mend is asked again a day later; a bush grows back anywhere.
+- Not done here: the hearing rule's trees, props and second doorways. It was not cheap:
+  the second doorway that matters is a partition's open gap (the Kettle's back rooms, out
+  through the front door), and `worldgen.partition()` records no gap anywhere, so it needs
+  worldgen to keep them and a two-leg search in `hears()`; trees and crates let sound round
+  them in life, and making them muffle would change `hears()` (§33.2) under the four
+  workstreams that build on it. Left for after the merge. Also not here: the 844×390 prompt
+  over a speech bubble (bubbles.js belongs to party and talk).
+- Its CSS is in `src/styles/polish.css`; `src/core/plugins/polish.js` stays empty (nothing
+  here needs a plugin). Tests: `tests/polish.test.mjs`; the check: `scripts/polish_check.mjs`.

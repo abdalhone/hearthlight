@@ -2,6 +2,9 @@
 // objects call from their own draw and update (objects.js), so the objects module needs no
 // combat, pickups or effects; the blows themselves are breakables.js.
 
+import { DAY_SECONDS } from '../core/constants.js';
+import { inVale } from './wilds_layout.js';
+
 const TAU = Math.PI * 2;
 
 // What a prop is made of: the debris it leaves and the chips it sheds when struck.
@@ -48,14 +51,44 @@ export function swayOf(o, time) {
 // A tree falling (Tree.fell): seconds from the blow to the crash.
 export const FALL_SECONDS = 0.75;
 
-// Broken props come back in time (someone sweeps up and mends it; the bush grows back).
-// Call every step from the object's update. Returns true the moment it is whole again.
+// Where people live (round 14b: "nothing mends where nobody lives"). Someone sweeps up
+// and mends a broken prop only in a place people live: the vale (tiles 0..159 x 0..119),
+// while anyone still lives in it. Abandoned Brindlecombe and the wilds have nobody to mend
+// anything, and a village emptied of its people (game.occupation.emptied(), when it is
+// there) mends nothing either. A bush is not mended but grows back, wherever it stands.
+export function peopleLiveAt(game, tx, ty) {
+  if (!inVale(tx, ty)) return false;
+  try {
+    if (game?.occupation?.emptied?.()) return false;
+  } catch {
+    /* the occupation is optional */
+  }
+  const life = game?.villageLife;
+  if (!life?.villagers) return true; // (no village life: a test arena, the vale as it was)
+  try {
+    return life.villagers().some((e) => (typeof life.isHere === 'function' ? life.isHere(e) : !e.dead && !e.absent));
+  } catch {
+    return true;
+  }
+}
+
+// Grows back by itself (a plant), rather than being mended by someone.
+const REGROWS = new Set(['bush']);
+
+// Broken props come back in time (someone sweeps up and mends it; the bush grows back), but
+// only where people live (peopleLiveAt): elsewhere the debris lies where it fell, and the
+// mend is asked again a day later. Call every step from the object's update. Returns true
+// the moment it is whole again.
 export function mendTick(o) {
   const s = o.state;
   if (!s?.broken || !(s.mendAt > 0)) return false;
   const g = o.game;
   const now = g?.clock?.t ?? 0;
   if (now < s.mendAt) return false;
+  if (!REGROWS.has(o.objType) && !peopleLiveAt(g, o.tx, o.ty)) {
+    s.mendAt = now + DAY_SECONDS;
+    return false;
+  }
   // Never mend on top of someone standing in the rubble.
   if (o.solid) {
     const cx = o.x;

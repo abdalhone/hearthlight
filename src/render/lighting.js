@@ -27,6 +27,28 @@ function makeLight() {
   return { x: 0, y: 0, r: 0, color: DEFAULT_COLOR, intensity: 0, flicker: 0, glow: 1 };
 }
 
+// The light on snow (pure; `a` is an ambient {r, g, b, darkness}, changed in place). A warm
+// light (dawn, dusk: red over blue, and over green) is pulled toward a cool, pale light of
+// about its own brightness, a little lifted, by k (0..1, how much of the ground is snow);
+// noon's white and night's blue are left as they are. The darkness follows the brightness.
+export function snowLight(a, k) {
+  const kk = Math.max(0, Math.min(1, Number(k) || 0));
+  const warm = Math.max(0, Math.min(1, ((a.r - a.b) + 0.5 * (a.r - a.g)) / 255 * 1.8));
+  const m = kk * warm * 0.85;
+  if (!(m > 0)) return a;
+  const L = 0.2126 * a.r + 0.7152 * a.g + 0.0722 * a.b;
+  const lift = Math.min(255, L * 1.06 + 6);
+  const tr = lift * 0.9;
+  const tg = lift * 0.97;
+  const tb = Math.min(255, lift * 1.1);
+  a.r = Math.max(0, Math.min(255, Math.round(a.r + (tr - a.r) * m)));
+  a.g = Math.max(0, Math.min(255, Math.round(a.g + (tg - a.g) * m)));
+  a.b = Math.max(0, Math.min(255, Math.round(a.b + (tb - a.b) * m)));
+  const L2 = 0.2126 * a.r + 0.7152 * a.g + 0.0722 * a.b;
+  a.darkness = Math.max(0, Math.min(1, Math.round((1 - L2 / 255) * 1000) / 1000));
+  return a;
+}
+
 export class Lighting {
   constructor(game) {
     this.game = game;
@@ -43,6 +65,7 @@ export class Lighting {
 
     this.ambient = { r: 255, g: 255, b: 255, darkness: 0 };
     this.indoor = 0; // eased 0..1 so walking through a door does not pop
+    this.snow = 0; // eased 0..1: how much of the light is the snow's (snowLight below)
     this._ambientCss = 'rgb(255,255,255)';
     this._ambientKey = -1;
 
@@ -129,6 +152,11 @@ export class Lighting {
     const phase = (((day - 1) % 8) + 8) % 8;
     const moon = 0.55 + 0.45 * (0.5 + 0.5 * Math.cos((phase / 8) * Math.PI * 2));
     ambientAt(clock?.hour ?? 12, { cloud, rain, fog, indoor: this.indoor, moon, sky: w?.flash ?? 0 }, this.ambient);
+    // Snow (the Hollowcrown: travel.js sets weather.localSnow) throws back the cold sky, so
+    // under a warm sun it stays cool and pale, never sand (round 14b). Eased in and out.
+    const snowWant = Math.max(0, Math.min(1, Number(w?.localSnow) || 0)) * (1 - this.indoor);
+    this.snow += (snowWant - this.snow) * (1 - Math.exp(-dt * 1.5));
+    if (this.snow > 0.01) snowLight(this.ambient, this.snow);
     const a = this.ambient;
     const key = (a.r << 16) | (a.g << 8) | a.b;
     if (key !== this._ambientKey) {

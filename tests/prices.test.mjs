@@ -149,7 +149,7 @@ test('glass: +50% weave power and +50% damage taken, both for 30 s', () => {
   assert.equal(g.stats.get(P, 'dmgTaken'), 1);
 });
 
-test('overdraw: weaves cost no mana for 10 s, then no mana comes back for 30 s', () => {
+test('overdraw: weaves cost no mana for 10 s, then no mana comes back for 20 s', () => {
   const g = arena();
   const P = g.player;
   const m = g.magic;
@@ -170,7 +170,7 @@ test('overdraw: weaves cost no mana for 10 s, then no mana comes back for 30 s',
   assert.ok(m.mana.cur > 5, 'and fills again');
 });
 
-test('emberblood: cast 30% faster while it burns 2% health a second; douse it, or it gutters out', () => {
+test('emberblood: cast 30% faster and weaves cost 30% less while it burns 2% health a second; douse it, or it gutters out', () => {
   const g = arena();
   const P = g.player;
   cast(g, weave('emberblood'));

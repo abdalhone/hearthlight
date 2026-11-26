@@ -30,7 +30,7 @@ dark spell from the tempter's pact, DESIGN §37).
 | Locked chests (round 14b) | A Strike or a heavy weave forces a hasp (D10), a lighter blow says "Iron-bound"; a fire weave sets a store alight; a new heavy weapon decides which it is | `src/world/containers.js` `blowAtChest`, `src/world/occupation.js` `fireAt`, `src/magic/magic.js` `hitProps` |
 | The Unkindling (`'unkindle'`, round 14b soul; stub) | Learned only from the pact (`pact_sealed`), saved; touch range; loudness 0 (`hearing.js` `silence`/`voiceOf`); witnesses by the sight rule; never a child, never through a wall; a dark button on the phone, a held key on desktop; its price shows in the Character panel | `src/magic/unkindle.js`, `src/render/unkindle_fx.js`, `src/murder/unkindled.js` (soul) |
 | Combat damage and stun | Damage sources (sword arc, weave bodies, beams, future arrows) all go through the hit pipeline; walls stop each | `src/entities/combat.js`, `src/magic/*` |
-| Stats, gear, prices | Stat points, gear slots and prices favour the build; a new class needs its stat, its gear and its prices | `src/progression/*`, `src/gear/*`, `src/magic/prices.js` |
+| Stats, gear, prices | Stat points, gear slots and prices favour the build; a new class needs its stat, its gear and its prices. A new price is played in `scripts/price_sim.mjs` beside no price (round 14b: each gives more in a short fight and costs in a long one) | `src/progression/*`, `src/gear/*`, `src/magic/prices.js` |
 | Mission objectives | An objective that asks for a weave must have a sword-friendly way, and the reverse (or say why not) | `src/missions/data.js` |
 | Lyra's lessons and reactions | She teaches magic; she reacts to how you fight | `src/missions/lyra.js`, `src/ai/mind/*` |
 | HUD / controls | Each build's buttons fit phone and desktop (sword, weaves, a future bow's aim) | `src/ui/hud.js`, `src/ui/touch.js`, `src/core/input.js` |
@@ -80,6 +80,7 @@ indoors and out; *future*: dungeons (the Weeping Cut), other villages, other flo
 | Saves | Only what differs from the generated world is saved (dirty objects, fog bits) | `src/world/objects.js`, `src/world/travel.js` |
 | Walls, sight, the use button | A new building, ruin or wall tile stops a blow, an eye and "use" by `map.blocksProjectile` and shut doors; lights under its roof stay inside | `src/world/walls.js`, `src/murder/witness.js`, `src/render/lighting.js` |
 | Breakables | A new prop kind gets a `BREAKABLE` toughness or stays whole; a prop a story needs is `story: true` (a boss's trail sign is spared by `trailBoss`); anything holding an inventory never breaks | `src/world/breakables.js` |
+| Mending (round 14b) | A broken prop is mended only where people live (`peopleLiveAt`: the vale while anyone is in it; never Brindlecombe, the wilds or an emptied village); a bush grows back anywhere. A new place where people live (a camp, a resettled village) says so there | `src/world/broken.js` |
 | Promises and errands | Villagers keep their word inside the vale; a message for someone out past it waits for them to come home | `src/ai/social/commitments.js` |
 | Performance | Chunked ground, far objects update in turns, near-only spawns | `src/world/map.js`, `src/world/objects.js` |
 
@@ -162,7 +163,8 @@ slow phones (test at 4× CPU throttle).
 | Controls | Every action reachable by touch, by keys (and the map's N), by pad | `src/core/input.js`, `src/ui/touch.js` |
 | Talk controls (round 14b) | No tap or click on a person opens talk; T / Enter / pad Y and the Talk buttons talk to whoever is in front (`ui.talkToNearest`); the phone's round button names the person ("Talk to Bram") and opens the chat to them; a villager within reach gets "Trade · Give · Work" (44 px) | `src/ui/ui.js`, `src/ui/touch.js`, `src/ui/chat.js`, `src/ui/chat_target.js` |
 | The map | Drag, pinch, wheel, +/−; tools over the chart on a phone held sideways; with a mouse the panel is zoomed (Interface size), so pointer math divides by the canvas's zoom | `src/ui/world_map.js` |
-| Interface size | Desktop panels and HUD are drawn at `--uiz` (1.2 Normal, 1.45 Large); anything that reads pointer positions inside them must divide by its own zoom | `src/ui/ui_scale.js` |
+| Interface size | Desktop panels and HUD are drawn at `--uiz` (1.2 Normal, 1.45 Large); anything that reads pointer positions inside them must divide by its own zoom. The down countdown follows it as far as it fits under the body (`death_view.js place`); the ember-ring's arrow and tag follow it (`polish.css`), and the arrow's gap from the mission line and cards grows with it (`ember_ring_view.js hudClear`) | `src/ui/ui_scale.js`, `src/ui/death_view.js`, `src/ui/ember_ring_view.js`, `src/styles/polish.css` |
+| Down on a phone (round 14b) | The countdown and Call for help never share ground with the floating stick's zone: above the body on an upright phone (just under the top cards, however many price chips they hold), the other half sideways (mirrored left-handed); the UI root carries `sv-down` / `sv-lefty` while you are down | `src/ui/death_view.js`, `src/styles/polish.css` |
 | Performance | Chunk painting, fog/overlays (one flat wash, not full-screen textures), object updates | `src/render/*`, `src/world/*` |
 | Text | Toasts and signs readable at phone size | `src/ui/toast.js` |
 
@@ -176,7 +178,7 @@ on the Hollowcrown).
 |---|---|---|
 | Spawns | Night-only and day-only zones; bosses that only come out at night; the tempter at the ruins gate from 20:30 to 05:00 | `src/entities/spawner.js`, `src/bosses/*`, `src/story/villain.js` |
 | Days and seasons (round 14b) | A night slept through midnight is a `new_day` like any other (once per day crossed: `clock.skipTo`, `skipDays`); the year is four seasons, each early, mid and late (`calendar.season()`, `dateLabel()`), day 1 early autumn; the morning restocks the shops and tops up purses; old age comes in the small hours | `src/core/time.js`, `src/world/calendar.js`, `src/world/trade.js`, `src/world/aging.js` |
-| Light | Lamps, waystones, windows, fires; darkness | `src/render/lighting.js`, `src/world/objects.js` |
+| Light | Lamps, waystones, windows, fires; darkness. Snow keeps cool and pale under a warm dawn or dusk (`snowLight`, where `weather.localSnow` says the ground is snow); a new ground that should not take the sun's colour (ice, salt flats) gets its own path there | `src/render/lighting.js`, `src/world/objects.js` |
 | Missions | `when` windows (evening, night) | `src/missions/*` |
 | Footsteps and ground | Wet ground after rain | `src/world/map.js` |
 | Lines | People speak of the weather and the hour | `src/ai/*` |

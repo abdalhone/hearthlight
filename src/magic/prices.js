@@ -25,6 +25,15 @@ import { holderOf } from '../core/party.js';
 
 export const PRICE_SLOTS = 1; // prices a weave may carry
 
+// Played and balanced in round 14b (scripts/price_sim.mjs: each price in a long fight at
+// level 1, next to no price at all). The author's own numbers stay as said (bloodprice's
+// +20% for 15 s against −40% health for 2 min; berserk's strength ×2 and the heart; the
+// last stand's minute). Changed: overdraw's drought is 20 s, not 30 (at 30 it cost more
+// than twice what it gave in any fight past twenty seconds), and casting it again no
+// longer lifts it; emberblood's weaves also cost 30% less mana (the blood pays part), since
+// a faster cast gives nothing to a caster whose well, not cooldown, is the limit, and the
+// burn alone made it a pure loss.
+
 export const PRICES = {
   bloodprice: {
     name: 'Bloodprice',
@@ -67,9 +76,9 @@ export const PRICES = {
     adj: 'Overdrawn',
     color: '#9a7dff',
     gain: { label: 'Weaves cost no mana', seconds: 10, mul: { manaCost: 0 } },
-    cost: { label: 'No mana regeneration', seconds: 30, mul: { manaRegen: 0 } },
+    cost: { label: 'No mana regeneration', seconds: 20, mul: { manaRegen: 0 } },
     gainText: 'weaves cost no mana for 10 s',
-    costText: 'then no mana comes back for 30 s',
+    costText: 'then no mana comes back for 20 s (casting it again does not lift the drought)',
     sentence: 'Borrowed weave: free for ten breaths, then the well runs dry.',
     lyra: "You're spending light you don't have. It'll want paying back.",
     refresh: false,
@@ -78,11 +87,11 @@ export const PRICES = {
     name: 'Emberblood',
     adj: 'Emberblood',
     color: '#ff8a3a',
-    gain: { label: 'Emberblood: cast 30% faster', seconds: null, pct: { castSpeed: 0.3 } },
+    gain: { label: 'Emberblood: cast 30% faster, weaves cost 30% less', seconds: null, pct: { castSpeed: 0.3 }, mul: { manaCost: 0.7 } },
     cost: { label: 'Lose 2% health a second', seconds: null },
-    gainText: 'cast 30% faster while it burns',
+    gainText: 'cast 30% faster and weaves cost 30% less mana while it burns',
     costText: 'lose 2% health every second until you douse it',
-    sentence: 'Your blood runs hot as a forge: weaves leave your hands faster while it burns you.',
+    sentence: 'Your blood runs hot as a forge: weaves leave your hands faster, your blood paying part of each, while it burns you.',
     lyra: "Your hands are smoking. Put it out. Please put it out.",
     toggle: true,
     refresh: true,
@@ -364,6 +373,13 @@ export class PriceRuntime {
       }
       case 'overdraw': {
         if (S.overdraw?.gain > 0) return false;
+        // The drought is paid in full: casting it again while the well is dry borrows
+        // nothing (round 14b: a recast at the drought's start used to skip it for good).
+        if (S.overdraw?.cost > 0) {
+          if (!S.overdraw.told) this.toast('The well is dry. Overdraw borrows nothing until it fills again.', 'info');
+          S.overdraw.told = true;
+          return false;
+        }
         S.overdraw = { gain: d.gain.seconds, cost: 0 };
         this.addPart(actor, d, 'gain');
         return true;
