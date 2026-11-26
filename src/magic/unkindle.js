@@ -382,7 +382,7 @@ export class Unkindle {
       nextJerk: 0.35 + this.rand() * 0.35,
       holdAt: { x: e.x, y: e.y },
       outcome: null,
-      fx: { x: e.x, y: e.y, hx: P.x, hy: P.y - 13 }, // shared with the fx
+      fx: { x: e.x, y: e.y, hx: P.x, hy: P.y - 16, px: P.x, py: P.y }, // shared with the fx
       seen: null,
       held: kind !== 'dummy',
     };
@@ -519,7 +519,7 @@ export class Unkindle {
     if (ch.nextJerk <= 0) {
       const hard = v.kind === 'easy' ? 0.35 + 0.35 * r : v.kind === 'close' ? 0.75 + 0.25 * r : 1.1;
       ch.jerk = Math.min(1, 0.55 + 0.45 * hard);
-      ch.jerkAmp = 0.05 + 0.1 * hard;
+      ch.jerkAmp = 0.1 + 0.14 * hard;
       // Close in strength, every jerk wins back a little of what you took.
       if (v.kind !== 'easy') ch.k = Math.max(0, ch.k - (v.kind === 'close' ? 0.035 : 0.05) * hard);
       const gap = v.kind === 'easy' ? 0.7 : v.kind === 'close' ? 0.48 : 0.36;
@@ -547,9 +547,11 @@ export class Unkindle {
       f.y = e.y;
     }
     if (P) {
+      f.px = P.x;
+      f.py = P.y;
       const fx = P.facing?.x ?? 0;
       f.hx = P.x + fx * 5;
-      f.hy = P.y - 13;
+      f.hy = P.y - 16; // the raised hand
     }
   }
 

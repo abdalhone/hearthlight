@@ -32,8 +32,9 @@ const HOLLOW = hex('#0a0e1c');
 const SMOKE = hex('#2a3550');
 const ALTAR = { x: 88.5 * 16, y: 42 * 16 + 4 }; // the chapel altar's flames (worldgen: tiles 87..89, row 42)
 const LAMP_REACH = 170; // world px round the target in which lamps gutter
-const DRAIN_R = 72; // world px of the colour drain at its least
+const DRAIN_R = 60; // world px of the colour drain at its least
 const TAIL = 1.4; // s the drain and the lamps take to come back
+const HOLE = 0.3; // share of the wash's radius left in colour round the two of them
 
 const s01 = (t, d) => clamp(t / d);
 
@@ -73,21 +74,23 @@ export function create(o) {
   const W = body.w;
   const H = body.h;
   const R = new Rng(o.seed || 13);
-  // Each pixel's step of the cold ramp: its own brightness, its rim the palest.
-  const tone = list.map((b) => (b.edge ? 6 : 2 + Math.min(3, Math.floor(luma(b.c) * 4.2))));
+  // Each pixel's step of the cold ramp: its own brightness (a step paler than the body), the
+  // rim the palest; and how far down the body it sits (0 the crown, 1 the feet).
+  const tone = list.map((b) => (b.edge ? 6 : 3 + Math.min(2, Math.floor(luma(b.c) * 3.4))));
+  const row = list.map((b) => b.my / Math.max(1, H - 1));
   const cx0 = body.x + W / 2;
   const cy0 = body.y + H * 0.42; // the chest
   // Where the wisps hold on: crown, chest, both sides, the waist.
-  const holds = list.length
+  const holdIdx = list.length
     ? [
-        nearestPixel(list, cx0, body.y + 1),
-        nearestPixel(list, cx0, cy0),
-        nearestPixel(list, body.x, body.y + H * 0.48),
-        nearestPixel(list, body.x + W - 1, body.y + H * 0.48),
-        nearestPixel(list, cx0 + 1, body.y + H * 0.72),
-      ]
+        [cx0, body.y + 1],
+        [cx0, cy0],
+        [body.x, body.y + H * 0.48],
+        [body.x + W - 1, body.y + H * 0.48],
+        [cx0 + 1, body.y + H * 0.72],
+      ].map(([x, y]) => list.indexOf(nearestPixel(list, x, y)))
     : [];
-  const rim = list.filter((b) => b.edge);
+  const rim = list.map((b, i) => (b.edge ? i : -1)).filter((i) => i >= 0);
   const motes = []; // { x, y, vx, vy, life, max, smoke }
   let t = 0;
   let snapFrom = 0;
@@ -100,39 +103,82 @@ export function create(o) {
   const hand = () => {
     const c = ch();
     const f = c?.fx;
-    if (!f) return { x: cx0 + 20, y: cy0 };
+    if (!f) return { x: cx0 + 20, y: cy0 - 6 };
     return { x: f.hx - o.x, y: f.hy - o.y };
   };
 
-  // How far along the way to the hand the soul's chest has come (0 in the body, 1 the hand).
-  const reach = () => {
+  // How far out the soul is (`out`: 0 in the body, 1 risen and leaning toward the hand, held by
+  // its tail) and how far, torn free, it has gone on to the hand (`free`: 0..1).
+  const phaseOf = () => {
     const c = ch();
-    if (!c) return 0;
-    const k = reduce() ? c.k : c.shown;
-    const p = c.phase;
+    if (!c) return { out: 0, free: 0 };
+    const k = clamp(reduce() ? c.k : c.shown);
     const s = (d) => s01(c.phaseT, d);
-    if (p === 'pull') return 0.6 * ease.outCubic(clamp(k));
-    if (p === 'tear') return 0.6 + 0.13 * ease.outBack(s(TEAR));
-    if (p === 'sag') return 0.73 + 0.2 * ease.inOutSine(s(SAG));
-    if (p === 'drawn') return 0.93 + 0.07 * ease.inQuad(s(DRAWN));
-    if (p === 'snap') return snapFrom * (reduce() ? 1 - ease.inOutSine(s(SNAP)) : Math.max(-0.08, 1 - ease.outElastic(s(SNAP) * 0.9 + 0.1)));
-    if (p === 'slip') return snapFrom * (1 - ease.inOutSine(s(SLIP)));
-    return 0;
+    switch (c.phase) {
+      case 'pull':
+        return { out: ease.outCubic(k), free: 0 };
+      case 'tear':
+        return { out: 1 + 0.14 * ease.outBack(s(TEAR)), free: 0 };
+      case 'sag':
+        return { out: 1.14, free: 0.45 * ease.inOutSine(s(SAG)) };
+      case 'drawn':
+        return { out: 1.14, free: 0.45 + 0.55 * ease.inQuad(s(DRAWN)) };
+      case 'snap':
+        return { out: snapFrom * (reduce() ? 1 - ease.inOutSine(s(SNAP)) : Math.max(-0.12, 1 - ease.outElastic(Math.min(1, s(SNAP) * 0.9 + 0.1)))), free: 0 };
+      case 'slip':
+        return { out: snapFrom * (1 - ease.inOutSine(s(SLIP))), free: 0 };
+      default:
+        return { out: 0, free: 0 };
+    }
   };
 
-  // Where one body pixel of the soul is drawn: moved along the pull, the side nearer the hand
-  // leading (stretched toward it), shivering; shrunk toward its middle as it gutters.
-  const soulAt = (b, D, nx, ny, shrink, gx, gy, sway) => {
-    const u = clamp((((b.x - cx0) * nx + (b.y - cy0) * ny) / Math.max(4, H * 0.5)) * 0.5 + 0.5);
-    const lead = 0.55 + 0.45 * u;
-    let x = b.x + D.x * lead;
-    let y = b.y + D.y * lead;
-    if (sway) x += Math.sin(t * 9 + b.my * 0.55) * sway;
+  // The pose of the whole soul this frame: the head's displacement (Dh), the extra move once it
+  // is free (Df), its stretch, how far the legs have melted into the tail, and its middle.
+  const P0 = { Dh: { x: 0, y: 0 }, Df: { x: 0, y: 0 }, stretch: 1, melt: 0, gx: 0, gy: 0, free: 0, out: 0 };
+  const poseNow = () => {
+    const { out, free } = phaseOf();
+    const hd = hand();
+    const o1 = Math.max(-0.2, out);
+    // rising up out of the body and leaning toward the raised hand
+    const Dh = { x: (hd.x - cx0) * 0.9 * o1, y: (hd.y - cy0) * 0.4 * o1 - 12 * o1 };
+    const lead = 1 - 0.72 * Math.pow(0.42, 1.4);
+    const c1 = { x: cx0 + Dh.x * lead, y: cy0 * (1 + 0.22 * Math.min(1, Math.max(0, o1))) + Dh.y * lead };
+    const Df = { x: (hd.x - c1.x) * free, y: (hd.y - c1.y) * free };
+    P0.Dh = Dh;
+    P0.Df = Df;
+    P0.stretch = 1 + 0.22 * clamp(o1);
+    P0.melt = clamp(o1);
+    P0.gx = c1.x + Df.x;
+    P0.gy = c1.y + Df.y;
+    P0.free = free;
+    P0.out = out;
+    return P0;
+  };
+
+  // Where one body pixel of the soul is drawn: the crown leads, the feet stay in the body and
+  // thin to a tail; it shivers; free, it goes whole; guttering, it shrinks like a flame.
+  const soulAt = (i, p, shrink, sway, back = 1) => {
+    const b = list[i];
+    const r = row[i];
+    const tail = 1 - 0.72 * Math.pow(r, 1.4) * (1 - p.free);
+    const dx = p.Dh.x * back;
+    const dy = p.Dh.y * back;
+    const st2 = 1 + (p.stretch - 1) * back;
+    const lineX = cx0 + dx * tail + p.Df.x;
+    // it swells a little as it comes out
+    let x = cx0 + (b.x - cx0) * (1 + 0.12 * p.melt * (1 - r)) + dx * tail + p.Df.x;
+    let y = b.y * st2 + dy * tail + p.Df.y;
+    if (r > 0.52 && p.melt > 0) {
+      const q = (r - 0.52) / 0.48;
+      const narrow = 1 - q * 0.85 * p.melt * (1 - p.free * 0.5);
+      x = lineX + (x - lineX) * narrow;
+    }
+    if (sway) x += Math.sin(t * 9 + b.my * 0.55) * sway * (0.3 + r);
     if (shrink < 1) {
-      x = gx + (x - gx) * shrink;
-      y = gy + (y - gy) * shrink;
-      // its top leans like a candle's flame
-      if (!reduce()) x += Math.sin(t * 21 + y * 0.6) * (1 - shrink) * 1.4 * clamp((gy - y) / 6 + 0.5);
+      x = p.gx + (x - p.gx) * shrink;
+      y = p.gy + (y - p.gy) * shrink;
+      // its top leans and licks like a candle's flame
+      if (!reduce()) x += Math.sin(t * 21 + y * 0.6) * (1 - shrink) * 1.5 * clamp((p.gy - y) / 5 + 0.5);
     }
     return [x, y];
   };
@@ -147,29 +193,22 @@ export function create(o) {
       t += dt;
       const c = ch();
       if (c && c.phase !== lastPhase) {
-        if (c.phase === 'snap' || c.phase === 'slip') snapFrom = 0.6 * ease.outCubic(clamp(reduce() ? c.k : Math.max(c.k, 0.05)));
+        if (c.phase === 'snap' || c.phase === 'slip') snapFrom = ease.outCubic(clamp(reduce() ? c.k : Math.max(c.k, 0.05)));
         lastPhase = c.phase;
       }
       // motes: shed from the soul's rim toward the hand while it is pulled, smoke as it gutters
       if (c && rim.length) {
-        const m = reach();
+        const p = poseNow();
         const hd = hand();
-        const D = { x: (hd.x - cx0) * m, y: (hd.y - cy0) * m };
         const rate = reduce() ? 0.25 : 1;
-        if (c.phase === 'pull' && R.chance(dt * (6 + 22 * c.shown) * rate)) {
-          const b = R.pick(rim);
-          const x = b.x + D.x * 0.8;
-          const y = b.y + D.y * 0.8;
+        if (c.phase === 'pull' && R.chance(dt * (6 + 24 * c.shown) * rate)) {
+          const [x, y] = soulAt(R.pick(rim), p, 1, 0);
           const dx = hd.x - x;
           const dy = hd.y - y;
           const l = Math.hypot(dx, dy) || 1;
-          spawn(x, y, (dx / l) * R.range(14, 30), (dy / l) * R.range(14, 30) - 4, R.range(0.4, 0.8));
+          spawn(x, y, (dx / l) * R.range(12, 26), (dy / l) * R.range(12, 26) - 6, R.range(0.4, 0.8));
         }
-        if ((c.phase === 'sag' || c.phase === 'drawn') && R.chance(dt * 30 * rate)) {
-          const gx = cx0 + D.x;
-          const gy = cy0 + D.y - 4;
-          spawn(gx + R.range(-2, 2), gy, R.range(-4, 4), -R.range(10, 22), R.range(0.5, 1.1), true);
-        }
+        if ((c.phase === 'sag' || c.phase === 'drawn') && R.chance(dt * 30 * rate)) spawn(p.gx + R.range(-2, 2), p.gy - 3, R.range(-4, 4), -R.range(10, 22), R.range(0.5, 1.1), true);
       }
       let w = 0;
       for (let i = 0; i < motes.length; i++) {
@@ -193,44 +232,40 @@ export function create(o) {
       const k = clamp(rm ? c.k : c.shown);
       const jerk = rm ? 0 : clamp(c.jerk || 0);
       const hd = hand();
-      const m = reach();
-      const vx = hd.x - cx0;
-      const vy = hd.y - cy0;
-      const vl = Math.hypot(vx, vy) || 1;
-      const nx = vx / vl;
-      const ny = vy / vl;
-      const D = { x: vx * m, y: vy * m };
+      const P = poseNow();
       const s = ph === 'tear' ? s01(c.phaseT, TEAR) : ph === 'sag' ? s01(c.phaseT, SAG) : ph === 'drawn' ? s01(c.phaseT, DRAWN) : ph === 'snap' ? s01(c.phaseT, SNAP) : ph === 'slip' ? s01(c.phaseT, SLIP) : 0;
       const frame = Math.floor(t * 30);
 
-      // 1. The body it leaves: its light goes out of it (pulled, torn); a stronger one's rim
+      // 1. The body it leaves: the light goes out of it (pulled, torn); a stronger one's rim
       //    flares as it slams back.
       if (ph === 'pull' || ph === 'tear') {
-        const dim = ph === 'tear' ? 0.55 : 0.42 * k;
+        const dim = ph === 'tear' ? 0.65 : 0.6 * k;
         if (dim > 0.02) for (const b of list) p.blend(b.x, b.y, HOLLOW, dim);
-        if (jerk > 0.35) for (const b of rim) if (rand(b.mx, b.my, frame) < jerk * 0.7) p.dot(b.x, b.y, C[5], jerk * 0.8);
+        if (jerk > 0.35) for (const i of rim) if (rand(list[i].mx, list[i].my, frame) < jerk * 0.7) p.dot(list[i].x, list[i].y, C[5], jerk * 0.8);
       } else if (ph === 'snap') {
         const f = 1 - s;
-        for (const b of rim) if (rm || rand(b.mx, b.my, frame) < 0.35 + 0.6 * f) p.dot(b.x, b.y, f > 0.55 && !rm ? C[6] : C[5], f);
+        for (const i of rim) if (rm || rand(list[i].mx, list[i].my, frame) < 0.35 + 0.6 * f) p.dot(list[i].x, list[i].y, f > 0.55 && !rm ? C[6] : C[5], f);
         if (!rm) p.ring(cx0, cy0, 4 + 18 * ease.outCubic(s), 1.2, C[5], 0.9 * f);
         p.glow(cx0, cy0, 22, C[4], 0.5 * f);
       }
 
       // 2. The wisps between body and soul: slack and wavering as it is drawn, taut and bright
       //    when it pulls back; at the tear they snap and recoil.
-      if ((ph === 'pull' || ph === 'tear' || ph === 'snap' || ph === 'slip') && m > 0.02) {
+      if ((ph === 'pull' || ph === 'tear' || ph === 'snap' || ph === 'slip') && P.out > 0.05) {
         const taut = ph === 'snap' ? 1 - s : jerk;
-        const fade = ph === 'tear' ? 1 - s : ph === 'slip' ? 1 - s : 1;
-        holds.forEach((h0, j) => {
-          const [ex, ey] = soulAt(h0, D, nx, ny, 1, 0, 0, 0);
+        const fade = ph === 'tear' || ph === 'slip' ? 1 - s : 1;
+        holdIdx.forEach((hi, j) => {
+          if (hi < 0) return;
+          const h0 = list[hi];
+          const [ex, ey] = soulAt(hi, P, 1, 0);
           const len = Math.hypot(ex - h0.x, ey - h0.y);
           if (len < 1.5) return;
-          const n = Math.max(3, Math.ceil(len / 1.2));
+          const n = Math.max(3, Math.ceil(len / 1.1));
           const px0 = -(ey - h0.y) / len;
           const py0 = (ex - h0.x) / len;
-          const amp = rm ? 0.6 : (1.8 - 1.4 * taut) * (ph === 'tear' ? 1 + 2 * s : 1);
+          const amp = rm ? 0.8 : (2 - 1.6 * taut) * (ph === 'tear' ? 1 + 2 * s : 1);
           const col = taut > 0.5 ? C[6] : C[5];
-          const a = (0.45 + 0.4 * taut) * fade;
+          const a = (0.5 + 0.4 * taut) * fade;
           for (let i = 1; i < n; i++) {
             const u = i / n;
             // torn: only the ends remain, curling back toward where they came from
@@ -242,61 +277,58 @@ export function create(o) {
       }
 
       // 3. The soul: the body's own shape in cold light, see-through, smeared back toward the
-      //    body it is leaving; guttering, it shrinks and flickers like a snuffed candle.
+      //    body it leaves; free, it gutters, shrinking and flickering like a snuffed candle.
       let alpha;
       let shrink = 1;
-      if (ph === 'pull') alpha = 0.3 + 0.55 * k;
-      else if (ph === 'tear') alpha = 0.95;
+      if (ph === 'pull') alpha = 0.5 + 0.45 * k;
+      else if (ph === 'tear') alpha = 0.97;
       else if (ph === 'sag') {
-        shrink = 1 - 0.72 * ease.inQuad(s);
-        alpha = (rm ? 0.8 : 0.45 + 0.55 * rand(frame, 7)) * (1 - 0.35 * s);
+        shrink = 1 - 0.7 * ease.inQuad(s);
+        alpha = (rm ? 0.85 : 0.5 + 0.5 * rand(frame, 7)) * (1 - 0.3 * s);
       } else if (ph === 'drawn') {
-        shrink = 0.28 * (1 - ease.inQuad(s));
-        alpha = rm ? 0.8 * (1 - s) : (0.55 + 0.45 * rand(frame, 9)) * (1 - 0.5 * s);
-      } else if (ph === 'snap') alpha = 0.85 * (1 - s);
-      else if (ph === 'slip') alpha = 0.6 * (1 - s);
+        shrink = 0.3 * (1 - ease.inQuad(s));
+        alpha = rm ? 0.85 * (1 - s) : (0.6 + 0.4 * rand(frame, 9)) * (1 - 0.5 * s);
+      } else if (ph === 'snap') alpha = 0.9 * (1 - s);
+      else if (ph === 'slip') alpha = 0.7 * (1 - s);
       else alpha = 0;
-      const gx = cx0 + D.x;
-      const gy = cy0 + D.y;
-      const sway = rm || ph !== 'pull' ? 0 : 0.5 + 0.9 * k;
+      const sway = rm || ph !== 'pull' ? 0 : 0.5 + 1.1 * k;
       if (alpha > 0.02 && shrink > 0.04) {
-        // the smear: fainter copies trailing back toward the body (not once it is free)
-        if (ph === 'pull' || ph === 'snap') {
+        // the smear: fainter copies trailing back toward the body (while it is held)
+        if ((ph === 'pull' || ph === 'snap') && P.out > 0.08) {
           for (let e = 2; e >= 1; e--) {
-            const back = { x: D.x * (1 - 0.2 * e), y: D.y * (1 - 0.2 * e) };
-            const a2 = alpha * (0.28 / e);
-            for (let i = 0; i < list.length; i += 2) {
-              const [x, y] = soulAt(list[i], back, nx, ny, 1, 0, 0, sway * 0.6);
+            const a2 = alpha * (0.3 / e);
+            for (let i = e - 1; i < list.length; i += 2) {
+              const [x, y] = soulAt(i, P, 1, sway * 0.6, 1 - 0.22 * e);
               p.dot(x, y, C[3], a2);
             }
           }
         }
         for (let i = 0; i < list.length; i++) {
-          const b = list[i];
-          const [x, y] = soulAt(b, D, nx, ny, shrink, gx, gy, sway);
+          const [x, y] = soulAt(i, P, shrink, sway);
           const ti = tone[i];
-          // the first frames it tears loose it burns pale; the rim always palest
-          const col = ph === 'tear' && s < 0.45 ? C[Math.min(6, ti + 1)] : C[ti];
-          p.dot(x, y, col, ti >= 6 ? Math.min(1, alpha * 1.25) : alpha);
+          // the moment it tears loose it burns paler; the rim always palest
+          const col = ph === 'tear' && s < 0.5 ? C[Math.min(6, ti + 1)] : C[ti];
+          p.dot(x, y, col, ti >= 6 ? Math.min(1, alpha * 1.3) : alpha);
         }
-        // a dark core where its heart is: the last of the flame, guttering
+        // the last of the flame at its heart, guttering
         if (ph === 'sag' || ph === 'drawn') {
-          const fl = rm ? 1 : 0.6 + 0.4 * rand(frame, 3);
-          p.dot(gx, gy - 1, C[6], fl * (1 - s));
-          p.dot(gx, gy - 2, C[5], fl * (1 - s));
-          p.dot(gx, gy, C[4], fl);
+          const fl = rm ? 1 : 0.55 + 0.45 * rand(frame, 3);
+          p.dot(P.gx, P.gy - 1, C[6], fl * (1 - s * 0.5));
+          p.dot(P.gx, P.gy - 2, C[5], fl * (1 - s));
+          p.dot(P.gx, P.gy, C[4], fl);
         }
-        p.glow(gx, gy, 12 + 10 * (ph === 'pull' ? k : 1) * shrink, C[4], (0.22 + 0.4 * (ph === 'pull' ? k : 0.8)) * Math.min(1, alpha + 0.2));
+        const lit = ph === 'pull' ? k : 0.85;
+        p.glow(P.gx, P.gy, 12 + 10 * lit * shrink, C[4], (0.25 + 0.45 * lit) * Math.min(1, alpha + 0.2));
       }
 
       // 4. The hand that draws it: cold light gathering, flaring as the flame goes into it.
       let hk = 0;
-      if (ph === 'pull') hk = 0.15 + 0.45 * k;
-      else if (ph === 'tear' || ph === 'sag') hk = 0.7;
-      else if (ph === 'drawn') hk = s < 0.55 ? 0.7 + 0.5 * (s / 0.55) : 1.2 * (1 - (s - 0.55) / 0.45);
+      if (ph === 'pull') hk = 0.2 + 0.5 * k;
+      else if (ph === 'tear' || ph === 'sag') hk = 0.75;
+      else if (ph === 'drawn') hk = s < 0.55 ? 0.75 + 0.55 * (s / 0.55) : 1.3 * (1 - (s - 0.55) / 0.45);
       else if (ph === 'snap' || ph === 'slip') hk = 0.3 * (1 - s);
       if (hk > 0.02) {
-        p.glow(hd.x, hd.y, 6 + 8 * Math.min(1, hk), C[5], 0.35 * hk);
+        p.glow(hd.x, hd.y, 6 + 9 * Math.min(1, hk), C[5], 0.4 * hk);
         p.dot(hd.x, hd.y, C[5], Math.min(1, hk));
         if (hk > 0.6) {
           p.dot(hd.x - 1, hd.y, C[4], hk - 0.4);
@@ -308,7 +340,7 @@ export function create(o) {
       // 5. Motes going to the hand, and the smoke of a snuffed flame.
       for (const q of motes) {
         const a = clamp(q.life / q.max);
-        if (q.smoke) p.blend(q.x, q.y, SMOKE, 0.5 * a);
+        if (q.smoke) p.blend(q.x, q.y, SMOKE, 0.55 * a);
         else p.dot(q.x, q.y, a > 0.5 ? C[5] : C[4], a);
       }
     },
@@ -392,8 +424,10 @@ export class UnkindleFx {
     this.tear = 0; // a dip of every lamp near at the tear (0..1)
     this.altar = 0; // s left of the altar flame's gutter
     this.at = { x: 0, y: 0 };
+    this.mid = { x: 0, y: 0 };
+    this.clear = 24; // world px round the two of them the wash leaves in colour
     this.installed = false;
-    this.canSat = null;
+    this.canColor = null;
     this.stats = { frames: 0, lights: 0 };
   }
 
@@ -406,7 +440,7 @@ export class UnkindleFx {
     if (this.installed) return;
     const g = this.game;
     const host = g?.pixelFx;
-    if (host?.define && !host.has?.('unkindle')) host.define('unkindle', { mod: UNKINDLE_MOD, layer: 'top', actor: true, priority: 9, bounds: [-64, -92, 64, 36], lightK: 1.15 });
+    if (host?.define && !host.has?.('unkindle')) host.define('unkindle', { mod: UNKINDLE_MOD, layer: 'top', actor: true, priority: 9, bounds: [-44, -68, 44, 16], lightK: 1.15 });
     const dfx = g?.renderer?.deathFx;
     if (dfx && typeof dfx.draw === 'function' && !dfx._unkWrapped) {
       const orig = dfx.draw.bind(dfx);
@@ -502,12 +536,25 @@ export class UnkindleFx {
       this.at.x = ch.fx.x;
       this.at.y = ch.fx.y;
     }
+    if (ch && !Number.isFinite(ch.fx?.px)) {
+      this.mid.x = this.at.x;
+      this.mid.y = this.at.y;
+    }
     const k = this.level;
     if (k <= 0.01) return;
     this.stats.frames++;
+    // The wash is centred between the two of them and leaves them in their own colours: the
+    // world round them greys and goes cold, the cold soul between them stands out.
+    if (ch?.fx && Number.isFinite(ch.fx.px)) {
+      this.mid.x = (ch.fx.x + ch.fx.px) / 2;
+      this.mid.y = (ch.fx.y + ch.fx.py) / 2;
+      this.clear = Math.hypot(ch.fx.x - ch.fx.px, ch.fx.y - ch.fx.py) / 2 + 16;
+    }
     const sc = renderer.scale || 3;
-    const c = renderer.worldToDevice(this.at.x, this.at.y - 10);
-    const R = (DRAIN_R + 70 * k) * sc;
+    const c = renderer.worldToDevice(this.mid.x, this.mid.y - 10);
+    // big enough that its clear middle holds the two of them
+    const R = Math.max((DRAIN_R + 48 * k) * sc, ((this.clear + 4) * sc) / HOLE);
+    const pulse = this.reduce ? 0 : 0.05 * Math.sin((this.game?.time || 0) * 5.3);
     const W = renderer.canvas.width;
     const H = renderer.canvas.height;
     const x0 = Math.max(0, Math.floor(c.x - R));
@@ -515,36 +562,53 @@ export class UnkindleFx {
     const x1 = Math.min(W, Math.ceil(c.x + R));
     const y1 = Math.min(H, Math.ceil(c.y + R));
     if (x1 <= x0 || y1 <= y0) return;
-    if (this.canSat == null) {
+    if (this.canColor == null) {
       try {
         const prev = ctx.globalCompositeOperation;
-        ctx.globalCompositeOperation = 'saturation';
-        this.canSat = ctx.globalCompositeOperation === 'saturation';
+        ctx.globalCompositeOperation = 'color';
+        this.canColor = ctx.globalCompositeOperation === 'color';
         ctx.globalCompositeOperation = prev;
       } catch {
-        this.canSat = false;
+        this.canColor = false;
       }
     }
+    // One pass: the 'color' blend keeps each pixel's lightness and gives it a pale cold hue, so
+    // the colour drains and goes cold at once (no blend mode: a cold multiply, the least of it).
+    // The ring is painted once, small, and stretched each frame: a gradient evaluated per pixel
+    // every frame costs a slow phone its frames (as death_fx.js found).
+    const tex = this.washTexture(this.canColor);
+    if (!tex) return;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const pulse = this.reduce ? 0 : 0.06 * Math.sin((this.game?.time || 0) * 5.3);
-    if (this.canSat) {
-      const gr = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, R);
-      gr.addColorStop(0, `rgba(128,128,128,${clamp(0.92 * k + pulse)})`);
-      gr.addColorStop(0.55, `rgba(128,128,128,${clamp(0.7 * k + pulse)})`);
-      gr.addColorStop(1, 'rgba(128,128,128,0)');
-      ctx.globalCompositeOperation = 'saturation';
-      ctx.fillStyle = gr;
-      ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
-    }
-    const cold = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, R);
-    cold.addColorStop(0, `rgba(120,140,190,${clamp(0.42 * k + this.tear * 0.25)})`);
-    cold.addColorStop(0.6, `rgba(120,140,190,${clamp(0.26 * k)})`);
-    cold.addColorStop(1, 'rgba(120,140,190,0)');
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = cold;
-    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.globalCompositeOperation = this.canColor ? 'color' : 'multiply';
+    ctx.globalAlpha = clamp((this.canColor ? 0.95 : 0.45) * (k + pulse + this.tear * 0.08));
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(tex, c.x - R, c.y - R, 2 * R, 2 * R);
     ctx.restore();
+  }
+
+  // The wash, once: a ring of pale cold colour, clear in the middle (where the two of them
+  // stand, HOLE of its radius), strongest just outside it, fading to nothing at the rim.
+  washTexture(color) {
+    const key = color ? 'color' : 'multiply';
+    if (this._tex?.key === key) return this._tex.canvas;
+    if (typeof document === 'undefined') return null;
+    const N = 96;
+    const c = document.createElement('canvas');
+    c.width = N;
+    c.height = N;
+    const x = c.getContext('2d');
+    const gr = x.createRadialGradient(N / 2, N / 2, 0, N / 2, N / 2, N / 2);
+    const col = color ? '112,128,170' : '120,135,185';
+    gr.addColorStop(0, `rgba(${col},0)`);
+    gr.addColorStop(HOLE * 0.7, `rgba(${col},0)`);
+    gr.addColorStop(HOLE + 0.12, `rgba(${col},1)`);
+    gr.addColorStop(0.62, `rgba(${col},0.76)`);
+    gr.addColorStop(1, `rgba(${col},0)`);
+    x.fillStyle = gr;
+    x.fillRect(0, 0, N, N);
+    this._tex = { key, canvas: c };
+    return c;
   }
 
   // Every lamp, window and hearth near them gutters and sputters (and dips at the tear); the
