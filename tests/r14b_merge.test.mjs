@@ -127,7 +127,7 @@ test('blood x party: the map names a fallen village "Hearthvale (yours)" (occupa
 
 // ---------------------------------------------------------------- society x the others
 
-import { makeGame as makeSocietyGame, step as stepS } from './society_world.mjs';
+import { makeGame as makeSocietyGame, step as stepS, holdLyra } from './society_world.mjs';
 import { Occupation } from '../src/world/occupation.js';
 import { chooseOption, mainOptions } from '../src/entities/npc_dialogue.js';
 import { stance } from '../src/world/trade.js';
@@ -179,4 +179,47 @@ test("blood x society: a child knows the stranger for a killer by society's per-
   assert.equal(g.occupation.knowsKiller(pip), true);
   assert.equal(g.occupation.knowsKiller(g.entities.get('tansy')), false, 'Tansy was not told');
   delete g.murder.dead.wys;
+});
+
+// ---------------------------------------------------------------- soul x society x blood
+
+import { installUnkindle } from '../src/core/plugins/soul.js';
+
+test('soul x society: the pact teaches the Unkindling; never a child; an unseen one counts for the tempter only once it is known', () => {
+  const g = societyScene();
+  const unk = installUnkindle(g, { fx: false, view: false });
+  assert.equal(unk.learned, false);
+  g.villain.seal('after');
+  assert.equal(unk.learned, true, "society's pact_sealed reaches soul's learn()");
+  // Everyone far off and still (Lyra too: she would see it); the player in the open meadow.
+  holdLyra(g, px(150), px(112));
+  for (const v of g.entities.all()) if (v.profile && v.id !== 'bram' && v.id !== 'pip') {
+    put(v, px(141) + Math.random() * 20, px(101));
+    v.think = () => {};
+  }
+  const pip = g.entities.get('pip');
+  put(pip, g.player.x + 14, g.player.y);
+  assert.equal(unk.check(pip)?.reason, 'child', 'never a child');
+  put(pip, px(141), px(101));
+  const bram = g.entities.get('bram');
+  bram.think = () => {};
+  put(bram, g.player.x + 14, g.player.y);
+  g.player.facing = { x: 1, y: 0 };
+  assert.equal(unk.check(bram), null);
+  unk.begin(bram);
+  for (let t = 0; unk.channel && t < 12; t += 1 / 20) {
+    unk.update(1 / 20);
+    stepS(g, 1 / 20, 1 / 20);
+  }
+  assert.ok(bram.dead && g.murder.dead.bram, 'his flame is out');
+  const rec = g.murder.dead.bram;
+  assert.equal(rec.cause, 'unkindled');
+  assert.deepEqual(g.villain.state.kills, [], 'unseen: no kill for the tempter yet');
+  assert.equal(g.reputation.counts().killedKnown, 0, 'nor for the village');
+  // Linked (soul's contract): it counts now.
+  rec.linked = true;
+  rec.knownBy = ['hess'];
+  g.bus.emit('killing_known', { id: 'bram', cause: 'unkindled', knownBy: ['hess'] });
+  assert.deepEqual(g.villain.state.kills, ['bram']);
+  assert.equal(g.reputation.counts({ knownTo: 'hess' }).killedKnown, 1);
 });
