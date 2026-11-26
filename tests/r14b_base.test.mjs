@@ -106,3 +106,30 @@ test('F5: the leash is measured from the anchor when there is one', () => {
   fightFrom({ anchor: { x: px(70), y: px(60) }, leash: 40 });
   assert.notEqual(rowan.mode, 'fight', 'anchored with a 40 px leash: 160 px away, the fight ends');
 });
+
+test('held silent: silence() lasts its seconds on the game clock (or for good), and voiceOf is 0 meanwhile', async () => {
+  const { silence, unsilence, isSilenced, voiceOf, hears, LOUD } = await import('../src/ai/hearing.js');
+  const g = { clock: { t: 100 } };
+  const e = { id: 'bram', x: 0, y: 0 };
+  assert.equal(isSilenced(g, e), false);
+  assert.equal(voiceOf(g, e, LOUD.scream), LOUD.scream);
+  silence(g, e, 3);
+  assert.equal(isSilenced(g, e), true);
+  assert.equal(voiceOf(g, e, LOUD.scream), 0);
+  // Loudness 0 is heard by nobody, a tile away, with nothing between.
+  const ear = { id: 'elda', x: 16, y: 0, isAlive: () => true };
+  assert.equal(hears(g, ear, e.x, e.y, voiceOf(g, e, LOUD.scream)), null);
+  g.clock.t = 104;
+  assert.equal(isSilenced(g, e), false, 'the hold ends');
+  silence(g, e, 1);
+  silence(g, e); // for good
+  g.clock.t = 1e9;
+  assert.equal(isSilenced(g, e), true, 'a silent killing is silent for good');
+  // A shorter hold never shortens a longer one.
+  const f = { id: 'f' };
+  silence(g, f, 10);
+  silence(g, f, 1);
+  assert.equal(f.silentUntil, 1e9 + 10);
+  unsilence(f);
+  assert.equal(isSilenced(g, f), false);
+});
