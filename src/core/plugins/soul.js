@@ -10,4 +10,79 @@
 //     'game_start' event); or
 //   - an installer function (game) => void, run at the end of game.buildWorld, after village
 //     life, murder and party exist and before a save is applied.
-export default [];
+//
+// Soul's two (DESIGN §37):
+//   unkindlePlugin  game.unkindle (src/magic/unkindle.js): the gift, the hold, what was done,
+//                   and the taken flame (src/magic/coldfire.js); stepped with the world, saved
+//                   as plugins.unkindle
+//   installSoul     after murder and village life: the village's side (src/murder/unkindled.js:
+//                   murder.onFound for cause 'unkindled', the night's fear), the faithful who
+//                   read the signs (src/society/dark_suspicion.js), the signs in the world
+//                   (src/render/soul_signs.js), coldfire's boost on the stat pipeline; and in a
+//                   browser the look (src/render/unkindle_fx.js), the controls and sound
+//                   (src/ui/unkindle_view.js) and the bar (src/ui/coldfire_view.js)
+
+import { Unkindle } from '../../magic/unkindle.js';
+import { Hollow } from '../../murder/unkindled.js';
+import { UnkindleFx } from '../../render/unkindle_fx.js';
+import { UnkindleView } from '../../ui/unkindle_view.js';
+import { DarkSuspicion } from '../../society/dark_suspicion.js';
+import { SoulSigns } from '../../render/soul_signs.js';
+import { ColdfireView } from '../../ui/coldfire_view.js';
+
+function ensure(game) {
+  if (!game) return null;
+  if (!(game.unkindle instanceof Unkindle)) game.unkindle = new Unkindle(game);
+  return game.unkindle;
+}
+
+// Everything the Unkindling needs, on any game (the real one, or a test's): idempotent.
+export function installUnkindle(game, { fx = true, view = true } = {}) {
+  const unk = ensure(game);
+  if (!unk) return null;
+  if (!unk.village) unk.village = new Hollow(game, unk);
+  unk.village.install();
+  if (!unk.suspicion) unk.suspicion = new DarkSuspicion(game, unk);
+  unk.suspicion.install();
+  if (!unk.signs) unk.signs = new SoulSigns(game, unk);
+  // Coldfire's boost goes through the one stat pipeline (a live provider), when there is one.
+  unk.coldfire?.provide?.();
+  if (fx && !unk.fx && game.renderer && game.pixelFx) {
+    unk.fx = new UnkindleFx(game);
+    unk.fx.install();
+  }
+  if (fx && game.renderer) unk.signs.install();
+  if (view && !unk.view && typeof document !== 'undefined' && game.ui?.root) unk.view = new UnkindleView(game, unk);
+  if (view && !unk.cfView && typeof document !== 'undefined' && game.ui?.root) unk.cfView = new ColdfireView(game, unk);
+  return unk;
+}
+
+export const unkindlePlugin = {
+  id: 'unkindle',
+  name: 'The Unkindling',
+  description: 'A dark gift of the pact: the flame put out from the inside (DESIGN §37).',
+  install(ctx) {
+    ensure(ctx?.game);
+  },
+  update(dt, ctx) {
+    const unk = ctx?.game?.unkindle;
+    if (!unk) return;
+    unk.update(dt);
+    unk.village?.update?.(dt);
+    unk.suspicion?.update?.(dt);
+    unk.signs?.update?.(dt);
+    unk.cfView?.update?.(dt);
+  },
+  serialize(ctx) {
+    return ctx?.game?.unkindle?.serialize?.() ?? null;
+  },
+  deserialize(d, ctx) {
+    ensure(ctx?.game)?.deserialize?.(d);
+  },
+};
+
+export function installSoul(game) {
+  installUnkindle(game);
+}
+
+export default [unkindlePlugin, installSoul];

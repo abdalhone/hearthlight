@@ -1,1 +1,182 @@
 /* Round 14b: workstream soul's styles (DESIGN §33, F8). Only soul edits this file; scripts/build.mjs, index.html and the style tests read every src/styles/*.css after src/styles.css, in sorted order. */
+
+/* ---------- the Unkindling (DESIGN §37.7) ---------- */
+
+/* Its own layer, under the HUD, over the world; it never takes a pointer itself. */
+.layer-unk {
+  z-index: 2;
+}
+
+/* Desktop: "F Hold Bram", small and dark, above the use prompt and the hotbar, only while someone is in reach. */
+.unk-hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--sa-b, 0px) + 196px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  background: rgba(6, 9, 20, 0.82);
+  box-shadow:
+    0 0 0 2px #22324f,
+    0 0 12px rgba(110, 162, 207, 0.25);
+  color: #b2dbf2;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.unk-hint[hidden] {
+  display: none;
+}
+.unk-hint-key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  background: #10182c;
+  box-shadow: inset 0 0 0 1px #6ea2cf;
+  color: #eafaff;
+  font-size: 11px;
+}
+.unk-hint-verb {
+  color: #6ea2cf;
+}
+.unk-hint-name {
+  color: #eafaff;
+  font-weight: normal;
+}
+.is-touch .unk-hint {
+  display: none;
+}
+
+/* Phone: the dark hand in the right-thumb cluster (placed by unkindle_view.js beside the
+   cluster's own pieces). At least 44 px. */
+.tcluster .unk-btn {
+  --bc: #2c4a74;
+  position: absolute;
+  min-width: 44px;
+  min-height: 44px;
+  background-color: rgba(6, 9, 22, 0.86);
+  box-shadow:
+    inset 0 0 0 2px var(--bc),
+    0 0 10px rgba(110, 162, 207, 0.35);
+  color: #b2dbf2;
+}
+.tcluster .unk-btn[hidden] {
+  display: none;
+}
+.tcluster .unk-btn .px-icon {
+  --isc: 3;
+  filter: grayscale(1) brightness(0.9) sepia(1) hue-rotate(175deg) saturate(2.2);
+}
+.tcluster .unk-btn .unk-btn-name {
+  color: #b2dbf2;
+  max-width: 100%;
+}
+.tcluster .unk-btn.down,
+.tcluster .unk-btn.holding {
+  --bc: #6ea2cf;
+  background-color: rgba(12, 22, 44, 0.92);
+  transform: translateY(2px);
+}
+.tcluster .unk-btn.holding {
+  animation: unk-cold 0.9s ease-in-out infinite;
+}
+@keyframes unk-cold {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 2px var(--bc),
+      0 0 8px rgba(110, 162, 207, 0.35);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 2px #b2dbf2,
+      0 0 18px rgba(178, 219, 242, 0.6);
+  }
+}
+.reduce-motion .tcluster .unk-btn.holding {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tcluster .unk-btn.holding {
+    animation: none;
+  }
+}
+
+/* ---------- coldfire: the taken flame (DESIGN §37.9) ---------- */
+
+/* The HUD: a thin cold-blue bar right under health in the player card, only once a soul is taken. Its text is the boost it gives now. */
+.meter-coldfire[hidden] {
+  display: none;
+}
+.meter-coldfire .meter-track {
+  height: 5px;
+  background: #0a1020;
+  box-shadow:
+    0 -1px 0 #22324f,
+    0 1px 0 #22324f,
+    -1px 0 0 #22324f,
+    1px 0 0 #22324f;
+}
+.meter-coldfire .meter-fill {
+  background-image:
+    repeating-linear-gradient(90deg, transparent 0 5px, rgba(4, 10, 26, 0.35) 5px 6px),
+    linear-gradient(180deg, #e6f4ff 0%, #9fd4ff 40%, #4f86c4 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 0 6px rgba(140, 200, 255, 0.45);
+}
+.meter-coldfire .meter-text {
+  color: #9fd4ff;
+  font-size: 10px;
+}
+.meter-coldfire.empty .meter-text {
+  color: #5a7393;
+}
+
+/* The Character panel's box: the bar and its numbers. */
+.chs-coldfire[hidden] {
+  display: none;
+}
+.chs-coldfire h3 {
+  color: #b2dbf2;
+}
+.chs-cf-track {
+  position: relative;
+  height: 8px;
+  margin: 6px 0 10px;
+  background: #0a1020;
+  box-shadow: 0 0 0 1px #22324f;
+  overflow: hidden;
+}
+.chs-cf-track > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #4f86c4, #9fd4ff 70%, #e6f4ff);
+  box-shadow: 0 0 8px rgba(140, 200, 255, 0.5);
+}
+.chs-cf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 6px;
+}
+.chs-cf-note,
+.chs-cf-souls,
+.chs-cf-signs {
+  display: block;
+  margin: 8px 0 0;
+  font-size: var(--fs-2xs, 11px);
+  line-height: 1.45;
+  color: var(--parch-dim, #b9ae9a);
+}
+.chs-cf-signs {
+  color: #9fc7e6;
+}
+.chs-cf-signs[hidden] {
+  display: none;
+}
