@@ -507,6 +507,11 @@ export class Party {
     const g = this.game;
     const h = this.holder;
     const P = g?.player;
+    // A villager companion downed and taken to Mira's cot: the walk is over ('downed').
+    if (h && !this.isLyra(h) && h.mode === 'patient') {
+      this.release('downed', { by: h.id, quiet: true });
+      return;
+    }
     if (!h || !P || !this.isLyra(h) || g.state !== 'playing') {
       this._behindT = 0;
       return;

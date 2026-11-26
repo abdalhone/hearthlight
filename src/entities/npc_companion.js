@@ -184,7 +184,12 @@ export class CompanionDuty {
     const g = this.game;
     const P = g?.player;
     if (!P || P.removed) return undefined;
-    if (npc.mode === 'flee' || npc.mode === 'help' || npc.mode === 'rescue' || npc.mode === 'patient') return undefined;
+    // Downed and taken to Mira's cot: the survival rules hold them; the walk is over.
+    if (npc.mode === 'patient') {
+      safe(() => g.party?.release?.('downed', { by: npc.id, quiet: true }));
+      return undefined;
+    }
+    if (npc.mode === 'flee' || npc.mode === 'help' || npc.mode === 'rescue') return undefined;
     if (npc.mode !== 'duty') npc.mode = 'duty';
     if (npc.r) npc.r.key = null; // their day resumes from scratch when the duty ends
     npc.wake?.();
