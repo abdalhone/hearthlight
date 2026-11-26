@@ -1,1 +1,108 @@
 /* Round 14b: workstream soul's styles (DESIGN §33, F8). Only soul edits this file; scripts/build.mjs, index.html and the style tests read every src/styles/*.css after src/styles.css, in sorted order. */
+
+/* ---------- the Unkindling (DESIGN §37.7) ---------- */
+
+/* Its own layer, under the HUD, over the world; it never takes a pointer itself. */
+.layer-unk {
+  z-index: 2;
+}
+
+/* Desktop: "F Hold Bram", small and dark, above the hotbar, only while someone is in reach. */
+.unk-hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--sa-b, 0px) + 132px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  background: rgba(6, 9, 20, 0.82);
+  box-shadow:
+    0 0 0 2px #22324f,
+    0 0 12px rgba(110, 162, 207, 0.25);
+  color: #b2dbf2;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.unk-hint[hidden] {
+  display: none;
+}
+.unk-hint-key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  background: #10182c;
+  box-shadow: inset 0 0 0 1px #6ea2cf;
+  color: #eafaff;
+  font-size: 11px;
+}
+.unk-hint-verb {
+  color: #6ea2cf;
+}
+.unk-hint-name {
+  color: #eafaff;
+  font-weight: normal;
+}
+.is-touch .unk-hint {
+  display: none;
+}
+
+/* Phone: the dark hand in the right-thumb cluster (placed by unkindle_view.js beside the
+   cluster's own pieces). At least 44 px. */
+.tcluster .unk-btn {
+  --bc: #2c4a74;
+  position: absolute;
+  min-width: 44px;
+  min-height: 44px;
+  background-color: rgba(6, 9, 22, 0.86);
+  box-shadow:
+    inset 0 0 0 2px var(--bc),
+    0 0 10px rgba(110, 162, 207, 0.35);
+  color: #b2dbf2;
+}
+.tcluster .unk-btn[hidden] {
+  display: none;
+}
+.tcluster .unk-btn .px-icon {
+  --isc: 3;
+  filter: grayscale(1) brightness(0.9) sepia(1) hue-rotate(175deg) saturate(2.2);
+}
+.tcluster .unk-btn .unk-btn-name {
+  color: #b2dbf2;
+  max-width: 100%;
+}
+.tcluster .unk-btn.down,
+.tcluster .unk-btn.holding {
+  --bc: #6ea2cf;
+  background-color: rgba(12, 22, 44, 0.92);
+  transform: translateY(2px);
+}
+.tcluster .unk-btn.holding {
+  animation: unk-cold 0.9s ease-in-out infinite;
+}
+@keyframes unk-cold {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 2px var(--bc),
+      0 0 8px rgba(110, 162, 207, 0.35);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 2px #b2dbf2,
+      0 0 18px rgba(178, 219, 242, 0.6);
+  }
+}
+.reduce-motion .tcluster .unk-btn.holding {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tcluster .unk-btn.holding {
+    animation: none;
+  }
+}
