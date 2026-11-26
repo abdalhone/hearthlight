@@ -1974,6 +1974,53 @@ notices and has opinions (berserk frightens her).
   stat points (§24; the Character sheet names both). Either gives back every spent point
   and keeps the level, gear, weaves and the points missions gave; health and mana settle
   into the new maximums.
+- **Every point counts a little less than the last** (round 14b; the author: "when I put a
+  lot of points of speed, I can like literally be so fast that it's unplayable … the
+  difference between 180 and 200 is not as big of a difference as 50 and 70"). Points are
+  kept as counts by attribute id; what they add is worked out on one curve for every effect
+  (`src/progression/attributes.js` `curve`, `pointsEffect`, `nextPoint`):
+  `effect(n) = x / √(1 + (x / cap)²)`, `x = per × n`. The first point gives the old `per`
+  (within 0.02%), each later one a little less and never nothing, and 999 points come
+  within a hair of `cap` without reaching it. The bend sits near `cap / per` points (the
+  knee). Chosen over `cap·x/(x+cap)` because it keeps the early points whole (that one takes
+  a third off the tenth point already); for every effect gain(50→70) is 13–30 times
+  gain(180→200) (`tests/stat_curve.test.mjs` holds more than 3 times, monotone and concave,
+  the first point within 5%, 999 under the cap). The caps:
+
+  | Attribute | Effect (old per point) | Soft cap | Knee | Why |
+  |---|---|---|---|---|
+  | Vitality | health (+6), regen (+0.12/s) | +360, +7.2/s | 60 | about sixty points' worth; foes still grow bolder with your level (THREAT) |
+  | Might | sword (+0.8), strike weaves (+5%) | +48, +300% | 60 | the same reach as health |
+  | Weave | weave power (+5%) | +300% | 60 | the same reach |
+  | Focus | mana (+5), mana regen (+6%), cooldowns (−2%) | +250, +300%, −50% | 50, 50, 25 | mana stays under its 400 clamp until late levels; cooldowns ×0.5 at best on points, so the ×0.4 clamp is never what stops them (it did at 30 points before) |
+  | Grace | speed (+1.5%), dodge (+1.2%), crit (+1%) | +70%, 30%, 30% | 47, 25, 30 | 999 Grace walks at ~129 px/s: Lyra's top run (80 × 1.6), under the roll's 190; dodge and crit under their 40% and 60% clamps with room for gear |
+  | Resolve | resist (+3%), bleed-out (+4 s), carrying (+4%) | 50%, +120 s, +60% | 17, 30, 15 | under the 75% clamp; 75 s becomes at most 195 s (death stays dangerous); carrying (×0.6 of your walk) never outpaces walking unladen |
+
+  Ordinary play barely moves: 5 in each attribute at level 11 changes every derived number
+  by under 5% (resist −4%), 7 in each at level 15 by under 8% (resist −8%), and a build that
+  leans 30 points into one attribute keeps 90–95% of its main number (Resolve's resist,
+  which hit its clamp at 25 points before, keeps 58%). Grace points against px/s, old → new:
+  0 → 76/76, 20 → 99/97, 30 → 110/105, 50 → 133/115, 70 → 156/120, 180 → 260/128,
+  200 → 260/128, 999 → 260/129. An old save loads its counts and simply follows the curve;
+  Reset stat points, Free stat points on and off and the chapel's respec are unchanged.
+  The Character sheet says under each attribute what the next point adds ("Next: +0.5%
+  speed", its main effect; every effect in the tooltip) with a small meter of how much of
+  the first point's worth it still carries, dimmed past a third, and one line: "Each point
+  in the same attribute counts a little less than the last."
+- **The speed ceiling** (round 14b, `src/core/stats.js`): speed has a knee in the pipeline,
+  `value = clamp(knee((base + Σadd) × (1 + Σpct)) × Πmul)` with `knee(v) = 130 + 40·o/(o+40)`,
+  `o = v − 130`, for v past 130: below 130 px/s nothing changes (points alone never reach
+  it), past it each extra bit counts less, creeping toward 170 and never reaching it. Every
+  haste still adds a little; slows (survival's weaknesses, statuses, ground, carrying, a
+  cast) act after it in full. Everything at once (999 Grace, Roadrunner Boots and the Murrel
+  Cloak, a Swiftfoot Draught, a wind surge, Berserk, the Last Stand and Oath; ~226 px/s by
+  plain sums) walks at 158 px/s, about twice the plain walk, played by stick and by keys
+  through the village lanes and in at a door (`scripts/stats_check.mjs`): steps stay under
+  4 px (a tile is 16; `moveActor` splits moves into 4 px anyway, so nothing walks through a
+  wall or a shut door), a roll into a wall stops at it, and Lyra (128 px/s at a run) is at
+  most seven tiles behind and back beside you as you stop; past 30 tiles out of sight the
+  catch-up brings her. The breakdown names what the ceiling held back ("Speed ceiling ×0.7"),
+  so the sheet's numbers still multiply out.
 - **Gear**: slots weapon, armor, cloak, boots, two charms. Items have stats and a rarity
   color; Bram forges and upgrades weapons and armor (with ore, crystals and coin), Sabeth
   sews cloaks, Garrick sells charms, bosses and missions drop special pieces, Mira and Elda
