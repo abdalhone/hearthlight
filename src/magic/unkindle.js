@@ -26,12 +26,23 @@
 // player, never the undead ("Nothing in there to take."). Never available otherwise; Settings
 // → Practice → "Try all magic" (magic.trial) lets it work on training dummies only.
 //
+// Prey that is not murder (§13b S20-11): hostile beasts and bandits have smaller souls; taking
+// them is no crime (a villager who SEES it sees dark magic: src/society/dark_suspicion.js).
+// Harmless things (a hen, the cat, a deer) are refused; bosses are taken only when you are
+// much stronger (ratio <= 1 / MUCH_STRONGER), else they shrug it off at once; the tempter
+// likewise (in practice, never). Every soul taken feeds the taken flame (src/magic/coldfire.js:
+// the bar that boosts your power and ebbs, the mark that shows).
+//
+// The hold plants you (the author: "I can move while I'm doing spells; it should stop me"):
+// from the first pull to the last of it drawn into your hand you stand (lockTime), turned to
+// the one you hold; letting go (or a roll's key) is the way out.
+//
 //   learned, learnedFrom, learn(from)      the gift (saved)
 //   available()                            learned, or a magic trial (dummies only)
 //   tally                                  unkindled deaths, all of them (the truth; saved)
 //   deaths / attempts                      what was done (saved)
-//   mark                                   the cold you carry (S20-6 as replaced in §13b: no
-//                                          health lost; the price is that it shows), fading
+//   coldfire                               the taken flame: bar, mark, boost (coldfire.js)
+//   mark / signTier()                      the hidden mark and its sign tier (from coldfire)
 //   targetInReach() -> { target, refusal } who the spell would take now (the lock first)
 //   check(e) -> null | { reason, line }    why not
 //   strengthOf(e) / powerOf(P) / verdict(e)
@@ -50,6 +61,7 @@
 import { isMinor, lyraOf } from '../core/people.js';
 import { canReach } from '../world/walls.js';
 import { silence, unsilence, isSilenced } from '../ai/hearing.js';
+import { Coldfire } from './coldfire.js';
 
 export const REACH = 26; // px: close enough to touch (about 1.6 tiles)
 export const HOLD_SLIP = 10; // px the held one may be moved (a shove, a pull) before the hold breaks
@@ -63,12 +75,12 @@ export const DRAWN = 0.45; // s: the last of it drawn into the hand
 export const SNAP = 0.4; // s: a soul that snaps back into a stronger body
 export const SLIP = 0.32; // s: a broken hold: it slides back in
 export const COOLDOWN = 2.5; // s between holds
-const BOSS_STRENGTH = 400;
-const TEMPTER_STRENGTH = 600;
-const UNDEAD = new Set(['skeleton', 'ghoul', 'wraith', 'revenant', 'bones']);
+const BOSS_FLOOR = 90; // a boss's soul is at least this strong (old things under the ground)
+const TEMPTER_STRENGTH = 600; // in practice, never
+// Nothing in there to take: the walking dead, and what gravelight wears (LORE §2: bats).
+const UNDEAD = new Set(['skeleton', 'ghoul', 'wraith', 'revenant', 'bones', 'bat']);
+const BANDITS = new Set(['bandit', 'bandit_archer', 'bandit_chief']);
 const WILL_TRAITS = ['brave', 'stern', 'stubborn', 'fierce', 'proud', 'watchful', 'dutiful', 'patient in the wood'];
-const MARK_FADE_AFTER = 3; // days without taking before the cold starts to leave you
-const MARK_FADE = 0.2; // a day, after that
 
 export const LINES = {
   child: 'No. Not a child.',
@@ -76,6 +88,7 @@ export const LINES = {
   wall: 'Not through a wall.',
   undead: 'Nothing in there to take.',
   beast: 'It has no flame you can hold.',
+  harmless: 'Not a harmless thing. Nothing about it would come to you.',
   bandit: 'Not one from beyond the ward. Not yet.',
   dead: 'There is nothing left in them.',
   far: 'Closer. Close enough to touch.',
@@ -96,6 +109,16 @@ function safe(fn, fallback = null) {
 }
 
 const clamp = (v, a = 0, b = 1) => (v < a ? a : v > b ? b : v);
+
+// A held creature's mind while the hold lasts: still.
+const HELD = Object.freeze({
+  update(c) {
+    if (c.moveIntent) {
+      c.moveIntent.x = 0;
+      c.moveIntent.y = 0;
+    }
+  },
+});
 const dist = (a, b) => (a && b ? Math.hypot(a.x - b.x, a.y - b.y) : Infinity);
 
 export class Unkindle {
@@ -107,19 +130,21 @@ export class Unkindle {
     this.tally = 0;
     this.deaths = []; // { id, t, day, hour, seen }
     this.attempts = []; // { id, t, day, outcome, knows, seenBy }
-    this.mark = 0;
+    this.coldfire = new Coldfire(game);
+    this.prey = { beast: 0, bandit: 0, boss: 0 }; // souls taken that were not people
     this.lastTakenDay = null;
     this.channel = null;
     this.cooldownUntil = -Infinity;
     this.fx = null; // src/render/unkindle_fx.js (a browser)
     this.view = null; // src/ui/unkindle_view.js (a browser)
     this.village = null; // src/murder/unkindled.js: what the village comes to know
+    this.suspicion = null; // src/society/dark_suspicion.js: the faithful who read the signs
+    this.signs = null; // src/render/soul_signs.js (a browser)
     this._offs = [];
     const bus = game?.bus;
     if (bus?.on) {
       this._offs.push(bus.on('damage', (p) => safe(() => this.onDamage(p))));
       this._offs.push(bus.on('pact_sealed', (p) => safe(() => this.onPact(p))));
-      this._offs.push(bus.on('new_day', () => safe(() => this.onNewDay())));
     }
   }
 
@@ -183,7 +208,8 @@ export class Unkindle {
   // ------------------------------------------------------------------ targets
 
   // What kind of thing this is to the spell: 'person' (a villager, Lyra, the companion, a
-  // visitor with a profile), 'tempter', 'boss', 'undead', 'beast', 'dummy', or null.
+  // visitor with a profile), 'tempter', 'boss', 'undead', 'bandit', 'beast' (a hostile one),
+  // 'harmless' (a hen, the cat, a deer: refused), 'dummy', 'self', or null.
   kindOf(e) {
     if (!e) return null;
     if (e.objType === 'dummy') return 'dummy';
@@ -195,8 +221,9 @@ export class Unkindle {
     if (e === lyraOf(g)) return 'person';
     if (e.profile && (e.kind === 'human' || !e.kind)) return 'person';
     if (e.kind === 'undead' || UNDEAD.has(e.species)) return 'undead';
-    // A bandit or a beast: a smaller soul, not this round's (§13b S20-11).
-    if (e.species === 'bandit' || e.kind === 'human') return 'bandit';
+    // A bandit or a beast: a smaller soul, prey that is not murder (§13b S20-11).
+    if (BANDITS.has(e.species) || e.faction === 'bandit' || e.kind === 'human') return 'bandit';
+    if (e.pet || e.species === 'cat' || e.faction === 'wildlife' || e.spec?.threat === 0) return 'harmless';
     return 'beast';
   }
 
@@ -213,14 +240,16 @@ export class Unkindle {
     }
     if (!this.learned) return { reason: this.trial ? 'dummy' : 'unknown', line: this.trial ? LINES.dummy : '' };
     if (kind === 'undead') return { reason: 'undead', line: LINES.undead };
-    if (kind === 'bandit') return { reason: 'bandit', line: LINES.bandit };
-    if (kind === 'beast' || !kind) return { reason: 'beast', line: LINES.beast };
+    if (kind === 'harmless') return { reason: 'harmless', line: LINES.harmless };
+    if (!kind) return { reason: 'beast', line: LINES.beast };
     // Never a child, by age (src/core/people.js, DESIGN §34.2).
     if (kind === 'person' && isMinor(g, e)) return { reason: 'child', line: LINES.child };
-    if (e.dead || e.removed || e.absent || e.hidden) return { reason: 'dead', line: LINES.dead };
+    if (e.dead || e.removed || e.absent || e.hidden || (kind !== 'person' && !(e.isAlive?.() ?? e.hp > 0))) return { reason: 'dead', line: LINES.dead };
     if (e.carriedBy) return { reason: 'carried', line: LINES.carried };
     if (!P) return { reason: 'none', line: LINES.none };
-    if (dist(P, e) > REACH) return { reason: 'far', line: LINES.far };
+    // A big body (a boss) is touched at its edge.
+    const reach = REACH + (kind === 'boss' ? Math.max(0, Number(e.radius) || 0) : 0);
+    if (dist(P, e) > reach) return { reason: 'far', line: LINES.far };
     // Never through a wall: the one rule every blow keeps (DESIGN §31.1).
     if (!safe(() => canReach(g, P, e), false)) return { reason: 'wall', line: LINES.wall };
     return null;
@@ -253,6 +282,8 @@ export class Unkindle {
       const kind = this.kindOf(e);
       if (!kind || kind === 'self') continue;
       if (e.type === 'actor' && (e.dead || e.absent) && kind !== 'person') continue;
+      // A hen underfoot is never the one the dark hand reaches for, nor named as refused.
+      if (kind === 'harmless') continue;
       if (kind === 'person' && (e.dead || e.absent || e.hidden)) continue; // bodies are not targets
       const dx = e.x - P.x;
       const dy = e.y - P.y;
@@ -278,7 +309,8 @@ export class Unkindle {
 
   // ------------------------------------------------------------------ strength
 
-  // The player's own: build, level, the weave in them, their will, and how whole they are now.
+  // The player's own: build, level, the weave in them, their will, how whole they are now, and
+  // the taken flame burning in them (coldfire: a fuller bar takes stronger souls).
   powerOf(P = this.game?.player) {
     if (!P) return 1;
     const S = this.game?.stats;
@@ -294,16 +326,17 @@ export class Unkindle {
     let p = (maxHp / 60) * 8 + atk + 25 * Math.max(0, sp - 1) + 15 * Math.max(0, res) + 2 * (lv - 1);
     const frac = clamp((Number(P.hp) || maxHp) / maxHp);
     p *= 0.55 + 0.45 * frac;
+    if (P === this.game?.player) p *= this.coldfire?.powerMul?.() ?? 1;
     return Math.max(1, p);
   }
 
   // The soul's: its body and will, its work (the watch, the huntress), how whole they are,
-  // and whether they are awake to hold on. Bosses and the tempter are beyond any of it.
+  // and whether they are awake to hold on. A boss is an old thing under the ground: at least
+  // BOSS_FLOOR; the tempter is beyond any of it.
   strengthOf(e) {
     if (!e) return 0;
     const kind = this.kindOf(e);
     if (kind === 'dummy') return 1;
-    if (kind === 'boss') return BOSS_STRENGTH;
     if (kind === 'tempter') return TEMPTER_STRENGTH;
     const g = this.game;
     const c = e.profile?.combat || {};
@@ -311,6 +344,7 @@ export class Unkindle {
     const atk = Number(e.atk ?? c.atk ?? 3) || 3;
     const def = Number(e.def ?? c.def ?? 0) || 0;
     let s = (maxHp / 36) * 6 + atk + 2 * def;
+    if (kind === 'boss') return Math.max(BOSS_FLOOR, s * 1.4);
     if (e.isGuard || e.faction === 'guard') s += 3;
     if (e.profile?.hunter) s += 3;
     const traits = e.profile?.traits || [];
@@ -330,20 +364,26 @@ export class Unkindle {
     const kind = this.kindOf(e);
     if (kind === 'dummy') return { ratio: 0.3, kind: 'easy', dur: 2.6, peak: 1, struggle: 0 };
     const ratio = this.strengthOf(e) / this.powerOf(P);
+    // A fuller bar pulls faster (coldfire).
+    const fast = P === this.game?.player ? (this.coldfire?.channelMul?.() ?? 1) : 1;
     let killable = true;
     if (kind === 'person') {
       const m = this.game?.murder;
       killable = !m || typeof m.canKill !== 'function' || !!safe(() => m.canKill(e), false);
     }
-    // Something old under the ground (a boss, the tempter) is never held at all: it shrugs it
-    // off at once (no hold to chain into a stun).
-    if (kind === 'boss' || kind === 'tempter') return { ratio, kind: 'resists', dur: 4, peak: 0.25, struggle: 0.7 };
+    // Something old under the ground (a boss, the tempter) is taken only by a hand much
+    // stronger than it (§13b S20-11); otherwise it is never held at all: it shrugs it off at
+    // once (no hold to chain into a stun).
+    if (kind === 'boss' || kind === 'tempter') {
+      if (ratio <= 1 / MUCH_STRONGER) return { ratio, kind: 'close', dur: 4.5 * fast, peak: 1, struggle: 0 };
+      return { ratio, kind: 'resists', dur: 4, peak: 0.25, struggle: 0.7 };
+    }
     if (ratio >= MUCH_STRONGER || !killable) {
       const over = clamp((ratio - MUCH_STRONGER) / 1.5);
       return { ratio, kind: 'resists', dur: 4, peak: 0.55 - 0.25 * over, struggle: 2.2 - 0.8 * over };
     }
-    if (ratio >= CLOSE) return { ratio, kind: 'close', dur: 3.5 + ((ratio - CLOSE) / (MUCH_STRONGER - CLOSE)) * 1.5, peak: 1, struggle: 0 };
-    return { ratio, kind: 'easy', dur: 2.5 + clamp(ratio) * 1, peak: 1, struggle: 0 };
+    if (ratio >= CLOSE) return { ratio, kind: 'close', dur: (3.5 + ((ratio - CLOSE) / (MUCH_STRONGER - CLOSE)) * 1.5) * fast, peak: 1, struggle: 0 };
+    return { ratio, kind: 'easy', dur: (2.5 + clamp(ratio) * 1) * fast, peak: 1, struggle: 0 };
   }
 
   // ------------------------------------------------------------------ the hold
@@ -390,7 +430,10 @@ export class Unkindle {
       outcome: null,
       fx: { x: e.x, y: e.y, hx: P.x, hy: P.y - 16, px: P.x, py: P.y }, // shared with the fx
       seen: null,
-      held: kind === 'person',
+      // Held still and silent while it lasts: a person, a bandit, a beast, and a boss only when
+      // it does not shrug it off (v.kind 'resists' for a boss: never held, no stun to chain).
+      held: kind === 'person' || kind === 'bandit' || kind === 'beast' || ((kind === 'boss' || kind === 'tempter') && v.kind !== 'resists'),
+      strength: this.strengthOf(e),
     };
     if (this.channel.held) this.hold(e, 0);
     this.pose(P, e);
@@ -400,10 +443,15 @@ export class Unkindle {
     return { ok: true, reason: null, line: '' };
   }
 
-  // Held: still, silent (loudness 0 for every ear: src/ai/hearing.js), unable to strike.
+  // Held: still, silent (loudness 0 for every ear: src/ai/hearing.js), unable to strike. A
+  // creature's own mind (its controller) is set aside while it is held, and given back after.
   hold(e, dt) {
     if (!e || e.dead) return;
     silence(this.game, e, 0.6);
+    if (e.controller && e.controller !== HELD && !e.profile) {
+      e._unkController = e.controller;
+      e.controller = HELD;
+    }
     e.lockTime = Math.max(e.lockTime || 0, 0.2);
     e.rootTime = Math.max(e.rootTime || 0, 0.2);
     if (e.moveIntent) {
@@ -419,11 +467,24 @@ export class Unkindle {
     if (P && dt >= 0) safe(() => e.faceToward?.(P.x, P.y));
   }
 
+  // You stand while you pull (the author: "I can move while I'm doing spells; it should stop
+  // me"): planted (lockTime: no step, no drift), turned to the one you hold, the hand raised.
   pose(P, e) {
     if (!P || !e) return;
     const a = Math.atan2(e.y - P.y, e.x - P.x);
     safe(() => P.castPose?.(a, 0.3));
     P.lockTime = Math.max(P.lockTime || 0, 0.15);
+    if (P.vel) {
+      P.vel.x = 0;
+      P.vel.y = 0;
+    }
+  }
+
+  // A held creature gets its own mind back (its controller), whatever ended the hold.
+  freeCreature(e) {
+    if (!e || !e._unkController) return;
+    if (e.controller === HELD) e.controller = e._unkController;
+    delete e._unkController;
   }
 
   // Let go (the key or the button released), or a break. Before the tear, it slides back.
@@ -452,6 +513,15 @@ export class Unkindle {
     ch.why = why;
     const e = ch.target;
     if (ch.kind === 'dummy') return;
+    this.freeCreature(e);
+    if (e && !e.dead && ch.kind !== 'person') {
+      // A beast or a bandit only shakes it off (and comes on, if it was coming on).
+      unsilence(e);
+      this.attempts.push({ id: e.id || ch.kind, t: Math.round(this.now()), day: this.day(), outcome: 'broken', knows: false, why, kind: ch.kind });
+      if (this.attempts.length > 40) this.attempts.splice(0, this.attempts.length - 40);
+      this.emit('unkindle_attempt', { id: e.id ?? null, knows: false, outcome: 'broken', kind: ch.kind });
+      return;
+    }
     if (e && !e.dead) {
       unsilence(e);
       const knows = ch.k >= KNOW_AT;
@@ -467,6 +537,7 @@ export class Unkindle {
   update(dt) {
     const g = this.game;
     if (!g || !(dt > 0)) return;
+    safe(() => this.coldfire.update(dt));
     this.view?.update?.(dt);
     const ch = this.channel;
     if (!ch) return;
@@ -484,6 +555,14 @@ export class Unkindle {
       if (dist(P, e) > REACH + KEEP) return this.breakHold('far');
       if (ch.kind !== 'dummy' && !safe(() => canReach(g, P, e), true)) return this.breakHold('wall');
       if (safe(() => g.ui?.isModalOpen?.(), false)) return this.breakHold('let_go');
+      // A roll is the way out of a hold (as out of any channel): it breaks, and you roll.
+      if (safe(() => g.input?.pressed?.('dodge'), false)) {
+        this.breakHold('roll');
+        P.lockTime = 0;
+        const mv = safe(() => g.input.moveVector(), null);
+        safe(() => P.tryDodge?.(mv?.x || 0, mv?.y || 0));
+        return;
+      }
       if (ch.held) this.hold(e, dt);
       this.pose(P, e);
       this.pull(ch, dt);
@@ -499,6 +578,14 @@ export class Unkindle {
         this.setPhase(ch, 'drawn');
       }
     } else if (ch.phase === 'drawn') {
+      // Still standing while the last of it goes into your hand.
+      if (P && !P.downed && !P.dead) {
+        P.lockTime = Math.max(P.lockTime || 0, 0.1);
+        if (P.vel) {
+          P.vel.x = 0;
+          P.vel.y = 0;
+        }
+      }
       if (ch.phaseT >= DRAWN) this.finish(ch);
     } else if (ch.phase === 'snap') {
       if (ch.phaseT >= SNAP) this.finish(ch);
@@ -561,12 +648,15 @@ export class Unkindle {
     }
   }
 
-  // The soul tore free and the body has sagged: the death (silent, unmarked), now.
+  // The soul tore free and the body has sagged: the death (silent, unmarked), now. A person
+  // through murder.kill (cause 'unkindled'); a beast or a bandit as any creature dies (no blood,
+  // no cry, no clash of steel: prey, not murder); a boss's defeat plays out as its own.
   take(ch) {
     const g = this.game;
     const e = ch.target;
     ch.outcome = 'taken';
     if (ch.kind === 'dummy') return;
+    if (ch.kind !== 'person') return this.takePrey(ch);
     let rec = null;
     const m = g.murder;
     if (m && typeof m.kill === 'function') rec = safe(() => m.kill(e, g.player, { cause: 'unkindled', silent: true, unmarked: true }), null);
@@ -581,10 +671,61 @@ export class Unkindle {
     this.tally++;
     this.deaths.push({ id: e.id, t: Math.round(rec.t ?? this.now()), day: rec.day ?? this.day(), hour: Math.round((g.clock?.hour ?? 0) * 100) / 100, seen: ch.seen.length > 0 });
     if (this.deaths.length > 60) this.deaths.splice(0, this.deaths.length - 60);
-    this.mark = Math.min(12, this.mark + 1);
     this.lastTakenDay = this.day();
+    ch.fill = safe(() => this.coldfire.take('person', ch.strength), 0);
     safe(() => this.village?.unkindled?.(rec, e, ch));
-    this.emit('unkindled', { id: e.id, seen: ch.seen });
+    safe(() => this.suspicion?.onTaken?.(ch, rec));
+    this.emit('unkindled', { id: e.id, seen: ch.seen, kind: 'person' });
+  }
+
+  // A beast, a bandit, a boss: prey that is not murder (§13b S20-11).
+  takePrey(ch) {
+    const g = this.game;
+    const e = ch.target;
+    const P = g.player;
+    this.freeCreature(e);
+    if (!e || e.dead || e.removed) {
+      ch.outcome = 'broken';
+      return;
+    }
+    if (ch.kind === 'boss' || ch.kind === 'tempter') {
+      if (typeof e.beginDefeat === 'function') safe(() => e.beginDefeat(P));
+      else if (!safe(() => g.combat?.kill?.(e, P), false)) {
+        ch.outcome = 'broken';
+        return;
+      }
+    } else {
+      const c = g.combat;
+      if (!c || typeof c.kill !== 'function') {
+        ch.outcome = 'broken';
+        return;
+      }
+      // Dies as creatures die (the death event, what it carried, what it was worth), but with
+      // nothing of a blow about it: no clash, no spray, no flash.
+      const snd = c._sound;
+      const prt = c._particles;
+      c._sound = () => {};
+      c._particles = () => {};
+      try {
+        safe(() => c.kill(e, P));
+      } finally {
+        c._sound = snd;
+        c._particles = prt;
+      }
+      if (!e.dead) {
+        ch.outcome = 'broken';
+        return;
+      }
+      e.flash = 0;
+      e.unmarked = true;
+    }
+    unsilence(e);
+    const k = ch.kind === 'tempter' ? 'boss' : ch.kind;
+    if (this.prey[k] != null) this.prey[k]++;
+    ch.fill = safe(() => this.coldfire.take(ch.kind, ch.strength), 0);
+    // Whoever SAW it saw dark magic: not a crime (src/society/dark_suspicion.js, by sight.js).
+    safe(() => this.suspicion?.onTaken?.(ch, null));
+    this.emit('unkindled', { id: e.id ?? null, seen: [], kind: ch.kind, species: e.species || null });
   }
 
   // A much stronger soul: it snaps back, and they break free. They KNOW what you tried.
@@ -595,6 +736,7 @@ export class Unkindle {
     ch.shown = 0;
     safe(() => this.view?.onSnap?.(ch));
     if (!e || ch.kind === 'dummy') return;
+    this.freeCreature(e);
     unsilence(e);
     // Thrown back a step by it (a person; something old under the ground does not stagger).
     const P = this.game?.player;
@@ -607,7 +749,7 @@ export class Unkindle {
     }
     this.attempts.push({ id: e.id, t: Math.round(this.now()), day: this.day(), outcome: 'resisted', knows: true });
     if (this.attempts.length > 40) this.attempts.splice(0, this.attempts.length - 40);
-    safe(() => this.village?.attempted?.(e, { outcome: 'resisted', knows: true, k: ch.k, kind: ch.kind }));
+    if (ch.kind === 'person' || ch.kind === 'tempter' || ch.kind === 'boss') safe(() => this.village?.attempted?.(e, { outcome: 'resisted', knows: true, k: ch.k, kind: ch.kind }));
     this.emit('unkindle_resisted', { id: e.id, kind: ch.kind });
     this.emit('unkindle_attempt', { id: e.id, knows: true, outcome: 'resisted' });
   }
@@ -616,6 +758,7 @@ export class Unkindle {
     if (this.channel !== ch) return;
     ch.phase = 'done';
     const e = ch.target;
+    this.freeCreature(e);
     if (e && !e.dead && ch.outcome !== 'resisted' && ch.outcome !== 'broken') unsilence(e);
     this.channel = null;
     this.cooldownUntil = this.now() + COOLDOWN;
@@ -626,25 +769,41 @@ export class Unkindle {
 
   // ------------------------------------------------------------------ what shows
 
-  // S20-6 (as replaced in §13b): no health is lost; what you take shows. The mark is a hidden
-  // measure of what you have taken; it fades slowly once you stop.
-  onNewDay() {
-    if (!(this.mark > 0)) return;
-    const d = this.day();
-    if (this.lastTakenDay != null && d - this.lastTakenDay < MARK_FADE_AFTER) return;
-    this.mark = Math.max(0, Math.round((this.mark - MARK_FADE) * 100) / 100);
+  // S20-6 (as replaced in §13b): no health is lost; what you take shows. The mark is
+  // coldfire's (hidden: how much you have taken over time, fading slowly once you stop).
+  get mark() {
+    return this.coldfire?.mark ?? 0;
+  }
+
+  // Set by hand (tests, a debug hand): the signs show at once.
+  set mark(v) {
+    const n = Math.max(0, Number(v) || 0);
+    if (!this.coldfire) return;
+    this.coldfire.mark = n;
+    this.coldfire.settled = n;
   }
 
   // 0 none, 1 faint (cold hands, breath that fogs), 2 clear, 3 strong.
   signTier() {
-    const m = this.mark;
-    return m >= 6 ? 3 : m >= 3 ? 2 : m >= 1 ? 1 : 0;
+    return this.coldfire?.tier?.() ?? 0;
   }
 
   // One line for this person's Claude prompt: only what they could perceive or have been
   // told (the village side words it: src/murder/unkindled.js). '' when nothing.
   briefLine(id) {
-    return safe(() => this.village?.briefLine?.(id), '') || '';
+    // What the faithful's asking needs said comes first (the verdict, decided before it is
+    // worded); then what they know of the deaths; then the signs they perceive.
+    const parts = [];
+    const ask = safe(() => this.suspicion?.askingBrief?.(id), '') || '';
+    if (ask) return ask.length > 220 ? `${ask.slice(0, 219)}…` : ask;
+    const v = safe(() => this.village?.briefLine?.(id), '') || '';
+    if (v) parts.push(v);
+    const sg = safe(() => this.suspicion?.briefLine?.(id), '') || '';
+    if (sg && (v + sg).length <= 218) parts.push(sg);
+    else if (sg && !v) parts.push(sg);
+    let out = parts.join(' ');
+    if (out.length > 220) out = `${out.slice(0, 219).replace(/\s+\S*$/, '')}…`;
+    return out;
   }
 
   // ------------------------------------------------------------------ saving
@@ -660,7 +819,10 @@ export class Unkindle {
       attempts: this.attempts.slice(-40),
       mark: this.mark,
       lastTakenDay: this.lastTakenDay,
+      prey: { ...this.prey },
+      coldfire: safe(() => this.coldfire?.serialize?.(), null),
       village: safe(() => this.village?.serialize?.(), null),
+      suspicion: safe(() => this.suspicion?.serialize?.(), null),
     };
   }
 
@@ -668,6 +830,7 @@ export class Unkindle {
     // A hold in progress never survives a load: whoever was held is free.
     if (this.channel) {
       const e = this.channel.target;
+      this.freeCreature(e);
       if (e && !e.dead) unsilence(e);
       safe(() => this.fx?.end?.(this.channel));
       this.channel = null;
@@ -679,9 +842,13 @@ export class Unkindle {
     this.tally = Math.max(0, Number(d.tally) || 0);
     this.deaths = Array.isArray(d.deaths) ? d.deaths.filter((x) => x && typeof x.id === 'string') : [];
     this.attempts = Array.isArray(d.attempts) ? d.attempts.filter((x) => x && typeof x.id === 'string') : [];
-    this.mark = Math.max(0, Number(d.mark) || 0);
+    // The taken flame (an older save has only the mark: it carries over, settled).
+    safe(() => this.coldfire?.deserialize?.(d.coldfire, d.mark));
     this.lastTakenDay = Number.isFinite(d.lastTakenDay) ? d.lastTakenDay : null;
+    const pr = d.prey && typeof d.prey === 'object' ? d.prey : {};
+    for (const k of Object.keys(this.prey)) this.prey[k] = Math.max(0, Math.floor(Number(pr[k]) || 0));
     safe(() => this.village?.deserialize?.(d.village));
+    safe(() => this.suspicion?.deserialize?.(d.suspicion));
   }
 
   isHeld(e) {

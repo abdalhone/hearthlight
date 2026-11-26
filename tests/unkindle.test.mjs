@@ -144,10 +144,14 @@ test('never the player, never through a wall, never out of touch', () => {
   assert.equal(unk.check(bram)?.reason, 'far');
 });
 
-test('the undead have nothing to take; beasts are not this spell\'s (yet)', () => {
+test('the undead have nothing to take; a hostile beast or a bandit is prey; a harmless thing is refused', () => {
   const { unk } = setup();
   assert.equal(unk.check({ type: 'actor', kind: 'undead', species: 'skeleton', x: 0, y: 0 })?.line, 'Nothing in there to take.');
-  assert.equal(unk.check({ type: 'actor', kind: 'animal', species: 'wolf', x: 0, y: 0 })?.reason, 'beast');
+  assert.equal(unk.check({ type: 'actor', kind: 'animal', species: 'bat', x: 0, y: 0 })?.reason, 'undead', 'what gravelight wears');
+  assert.equal(unk.kindOf({ type: 'actor', kind: 'animal', species: 'wolf', faction: 'monster' }), 'beast');
+  assert.equal(unk.kindOf({ type: 'actor', kind: 'human', species: 'bandit', faction: 'bandit' }), 'bandit');
+  assert.equal(unk.check({ type: 'actor', kind: 'animal', species: 'chicken', faction: 'wildlife', x: 0, y: 0 })?.reason, 'harmless');
+  assert.equal(unk.check({ type: 'actor', kind: 'animal', species: 'cat', faction: 'wildlife', pet: true, x: 0, y: 0 })?.reason, 'harmless');
 });
 
 test('strength: a much stronger soul breaks free, KNOWS, and fights (the huntress)', () => {
@@ -443,12 +447,6 @@ test('a boss or the tempter is never held: it shrugs the spell off at once (no s
   assert.equal(unk.attempts.at(-1)?.outcome, 'resisted');
   assert.equal(boss.lockTime, 0, 'never frozen');
   assert.equal(isSilenced(g, boss), false);
-});
-
-test('a bandit or a beast is not this spell\'s; the words say so', () => {
-  const { unk } = setup();
-  assert.equal(unk.check({ type: 'actor', kind: 'human', species: 'bandit', x: 0, y: 0 })?.reason, 'bandit');
-  assert.equal(unk.check({ type: 'actor', kind: 'animal', species: 'boar', x: 0, y: 0 })?.line, 'It has no flame you can hold.');
 });
 
 test('the dark hand sits clear of every piece of the touch cluster, both ways up, mirrored too, at least 44 px', async () => {
