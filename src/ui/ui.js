@@ -255,7 +255,7 @@ export class UI {
     root.addEventListener(
       'touchmove',
       (e) => {
-        if (e.touches.length > 1) e.preventDefault();
+        if (e.touches.length > 1 && e.cancelable) e.preventDefault();
       },
       { passive: false },
     );

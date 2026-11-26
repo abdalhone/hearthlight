@@ -771,7 +771,9 @@ Safe areas: HUD offsets use `env(safe-area-inset-*)`. Never use `alert/confirm/p
   HUD's own measured layout divides by the zoom.
 - Pause (`Esc`): resume, settings, save, quit to title. Sets `game.paused`.
 - Notices (`src/ui/toast.js`) keep clear of the HUD, the speakers' bubbles, the player and
-  Lyra, re-placed ten times a second; one at a time on a phone; a tap puts one away. A press
+  Lyra, re-placed ten times a second; one at a time on a phone; a tap puts one away. With a
+  mouse a notice is not a target at all (`.is-touch .toast` alone takes the pointer): a click
+  over it reaches the world, so the sword and the right-button cast land where you click. A press
   on the stack holds it where it is until the press and its click are over (`Toasts.held`),
   so a notice never slides out from under the finger that is putting it away.
 - `ui.toast(text, kind = 'info'|'good'|'warn'|'quest'|'lyra')`, `ui.setInteractPrompt(label)`,

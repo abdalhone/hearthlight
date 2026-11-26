@@ -8232,7 +8232,10 @@ input[type='range']::-moz-range-thumb {
 
 /* ---------- toasts: one at a time on a phone, a tap puts one away ---------- */
 
-.toast {
+/* Only to a finger: with a mouse a notice over the field lets the click through to the
+   world (the left button swings, the right one casts, wherever it lands), and it goes by
+   itself. */
+.is-touch .toast {
   pointer-events: auto;
   cursor: pointer;
 }
