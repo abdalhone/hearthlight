@@ -36,7 +36,7 @@ import { isParty } from '../core/party.js';
 //   every cast plants its caster for the pose (plant(caster, s), plantFor(caster, plan)).
 //   breakCast(caster, why) -> bool: the roll's way out (a charge free, a beam's cooldown
 //   kept, the plant ended; bus 'cast_broken'). castingState(caster) -> 'beam'|'charge'|
-//   'plant'|null.
+//   'plant'|'channel' (the Unkindling)|null.
 //   canCast(slot, caster = player) -> { ok, reason, message, cooldown, cost, plan }
 //       reasons: 'empty' 'locked_slot' 'invalid' 'cooldown' 'mana' 'down' 'disabled' 'busy'
 //   slots[0..5] (weaves or null), slotCount, essenceSlots, twistSlots, setSlot(i, weave),
@@ -2037,11 +2037,14 @@ export class Magic {
     return had || planted;
   }
 
-  // What holds this caster still now: 'beam' | 'charge' (from the press) | 'plant' | null.
+  // What holds this caster still now: 'beam' | 'charge' (from the press) | 'plant' |
+  // 'channel' (the Unkindling's hold, soul's own lock) | null.
   castingState(caster) {
     const h = caster ? this.holds.get(caster) : null;
     if (h) return h.mode === 'hold' ? 'beam' : 'charge';
     if (caster?.castPlantT > 0) return 'plant';
+    const ch = caster && caster === this.game?.player ? this.game?.unkindle?.channel : null;
+    if (ch && ['pull', 'tear', 'sag', 'drawn'].includes(ch.phase)) return 'channel';
     return null;
   }
 

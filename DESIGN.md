@@ -3676,7 +3676,8 @@ The rule is fixed; the numbers are what play tunes (`src/magic/balance.js`).
   which every walker and steering already honours.
 - **The way out is the roll** (`Player.tryDodge` → `magic.breakCast(caster, 'roll')`): a charge
   breaks and costs nothing, a beam already poured keeps its cooldown (`castCancel`), the
-  plant ends; bus `cast_broken {caster, why, held}`. A knock-down or a freeze breaks it as
+  plant ends; bus `cast_broken {caster, why, held}`. `magic.castingState(caster)` says which holds you:
+  'beam', 'charge', 'plant' or 'channel' (the Unkindling). A knock-down or a freeze breaks it as
   before (`interruptHold`, a downed caster's hold is cancelled).
 - **Every weaver.** Lyra, a companion and enemy casters cast their bolts, heals and binds
   through `combat.shoot`/`castHeal`/her bind with a state lock (`setState('cast', lock)`), so

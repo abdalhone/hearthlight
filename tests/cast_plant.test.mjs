@@ -94,6 +94,11 @@ test('a tap cast while running plants you for the pose, then you run on at full 
   assert.ok(P.x - x0 > 20, 'running again');
   assert.ok(speedOf(P) > P.speed * 0.95, `full speed again (${speedOf(P).toFixed(1)})`);
   assert.ok(Math.abs(P.castMoveMul - 1) < 1e-9);
+  // The Unkindling's hold is a channel too (soul plants you by its own lock).
+  g.unkindle = { channel: { phase: 'pull' } };
+  assert.equal(m.castingState(P), 'channel');
+  g.unkindle.channel.phase = 'slip';
+  assert.equal(m.castingState(P), null, 'slipping free: you may move again');
 });
 
 test('a charge holds you still the whole time; the stick only turns you (and the aim that follows your facing)', () => {

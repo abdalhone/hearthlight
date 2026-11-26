@@ -222,11 +222,11 @@ export class Villain {
   breakWord(knownBy = [], note = 'broke the pact') {
     const s = this.state;
     s.oathBroken = true;
-    const fresh = (knownBy || []).filter((id) => id && !s.oathKnownBy.includes(id));
-    if (!fresh.length && s.oathKnownBy.includes('__self')) return;
-    if (!fresh.length) s.oathKnownBy.push('__self'); // known to him alone
-    s.oathKnownBy.push(...fresh);
-    safe(() => this.game.reputation?.oath?.('tempter', { kept: false, knownBy: fresh, note }));
+    const told = (knownBy || []).filter((id) => id && !s.oathKnownBy.includes(id));
+    if (!told.length && s.oathKnownBy.includes('__self')) return;
+    if (!told.length) s.oathKnownBy.push('__self'); // known to him alone
+    s.oathKnownBy.push(...told);
+    safe(() => this.game.reputation?.oath?.('tempter', { kept: false, knownBy: told, note }));
   }
 
   // Going back (plan §13c): the price is higher each time: a named adult first (the toll),
