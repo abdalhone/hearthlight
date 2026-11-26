@@ -143,8 +143,18 @@ export class TouchControls {
       e.preventDefault();
       if (action === 'interact' && b.classList.contains('idle')) {
         this.buzz();
-        this.ui.chat?.open?.(true);
+        if (typeof this.ui.talkToNearest === 'function') this.ui.talkToNearest();
+        else this.ui.chat?.open?.(true);
         return;
+      }
+      // "Talk to Bram" (round 14b, decision D4): the chat to Bram, not the old dialog. Help
+      // and Search stay what they are for the downed and the dead.
+      if (action === 'interact' && b.classList.contains('person') && typeof this.ui.talkTo === 'function') {
+        const who = this.personInReach();
+        if (who && this.ui.talkTo(who === this.game.companion ? 'lyra' : who.id)) {
+          this.buzz();
+          return;
+        }
       }
       captureOn(b, e);
       b._pid = e.pointerId;
@@ -443,12 +453,28 @@ export class TouchControls {
     if (w) w.sword = null;
   }
 
+  // The person the contextual button would talk to: what Interactions puts first, when it
+  // is someone alive and standing (Lyra or a villager), else null.
+  personInReach() {
+    const g = this.game;
+    let best = null;
+    try {
+      best = g.interactions?.best?.(g.player)?.target || null;
+    } catch {
+      best = null;
+    }
+    if (!best || best.dead || best.downed || best.removed) return null;
+    if (best !== g.companion && !best.profile) return null;
+    return best;
+  }
+
   // The contextual button: what there is to talk to or use nearby ("Talk to Bram",
   // "Open door"); with nothing near it is Talk, and opens the chat.
   setInteractLabel(label) {
     const b = this.buttons.interact;
     if (!b) return;
     const t = String(label || '').trim();
+    toggleClass(b, 'person', /^talk to\b/i.test(t) && !!this.personInReach());
     toggleClass(b, 'ready', !!t);
     toggleClass(b, 'idle', !t);
     b.hidden = false;

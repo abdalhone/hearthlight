@@ -140,6 +140,23 @@ export class Coach {
     bus.on('game_start', () => {
       this.playT = 0;
     });
+    // Round 14b (decision D3): a tap or click on a person never opens talk, so the old habit
+    // swings the sword. The first time in a life that a blow lands on a calm person, the
+    // player is told once how talking works now.
+    bus.on('damage', (p) => this.talkHint(p));
+  }
+
+  talkHint(p) {
+    const g = this.game;
+    if (!p || p.source !== g.player || p.magic) return;
+    const t = p.target;
+    if (!t || (!t.profile && t !== g.companion)) return;
+    if (t.mode === 'fight' || t.fightTarget === g.player) return; // a fight, not a habit
+    g.flags = g.flags || {};
+    if (g.flags.talkHintShown) return;
+    g.flags.talkHintShown = true;
+    const how = this.ui.isTouch ? 'The Talk button talks to whoever is beside you' : 'T talks to whoever is in front of you';
+    this.ui.toast?.(`${how}. Striking people is a crime.`, 'info', { key: 'coach-talk', title: 'Talking' });
   }
 
   get weaving() {

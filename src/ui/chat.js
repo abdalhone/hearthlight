@@ -12,7 +12,7 @@ import { portraitUrl } from './art.js';
 import { cleanLine, capitalize } from './format.js';
 import { memoryRefs, findMemory, memoryChipLabel, STORE_LABELS, companionshipOf, companionshipLabel } from './lyra_view.js';
 import { TalkSession, villageOf, firstName, lineBeat } from './village_view.js';
-import { LYRA, ChatTargetBar, moodWord, earshotPeople, whyNotHeard, canHear, chipFor, standingOf, faceOf, partingLine, villagerChips, pickActorAt, inFight, isVillager, EARSHOT_LOSE, notHeardText } from './chat_target.js';
+import { LYRA, ChatTargetBar, moodWord, earshotPeople, whyNotHeard, canHear, chipFor, standingOf, faceOf, partingLine, villagerChips, isVillager, EARSHOT_LOSE, notHeardText, NEAR, lyraHears, nearestTalkTarget } from './chat_target.js';
 import { silenceAct } from '../ai/silence.js';
 import { chatOf, recordChat, knownName } from '../ai/social/player_talk.js';
 import { STORY } from '../lore/story.js';
@@ -21,6 +21,10 @@ const MAX_MESSAGES = 140;
 const SCAN_EVERY = 0.25; // seconds between earshot checks while open
 const DUP_WINDOW_MS = 6000; // the same line from two paths within this window is one message
 const KINDS = new Set(['answer', 'refusal', 'problem', 'initiative', 'state', 'order', 'bark']);
+// Quick lines for saying something aloud to everyone near (round 14b T-2).
+const ALOUD_CHIPS = ['Hello, everyone!', 'Good morning, Hearthvale!', 'Has anyone seen Maren?', 'Can anyone help me?', 'HELP!'];
+const HIM = new Set(['hobb', 'bram', 'pip', 'rowan', 'tobias', 'garrick', 'alder', 'corran', 'wys']);
+const pronounOf = (id) => (HIM.has(id) ? 'him' : 'her');
 
 export class Chat {
   constructor(ui) {
@@ -63,7 +67,11 @@ export class Chat {
     this.title = h('div', { class: 'chat-name' });
     this.status = h('div', { class: 'chat-status' });
     const closeBtn = button('', { icon: 'close', cls: 'btn-icon chat-close', title: 'Close chat (Esc)', onClick: () => this.close() });
-    const head = h('header', { class: 'chat-head' }, h('span', { class: 'portrait-frame small' }, this.portrait), h('div', { class: 'chat-heading' }, this.title, this.status), closeBtn);
+    // Within reach of a villager: their dialog (shop, gifts, missions) is one tap away
+    // (round 14b, decision D4); farther off, the header says to walk up to them.
+    this.tradeBtn = button('Trade · Give · Work', { cls: 'btn-small btn-ghost chat-trade', title: 'Trade, give a gift, or ask about work', onClick: () => this.openTrade() });
+    this.tradeBtn.hidden = true;
+    const head = h('header', { class: 'chat-head' }, h('span', { class: 'portrait-frame small' }, this.portrait), h('div', { class: 'chat-heading' }, this.title, this.status), this.tradeBtn, closeBtn);
     this.toBar = new ChatTargetBar({ onPick: (id) => this.selectTarget(id, { focus: !this.ui.isTouch, from: 'chip' }) });
 
     this.log = h('div', { class: 'chat-log', role: 'log', 'aria-live': 'polite', 'aria-label': 'Conversation with Lyra' });
@@ -133,8 +141,9 @@ export class Chat {
       this.ui.root.classList.add('chat-open');
       this.game.audio?.play('ui_open', { volume: 0.7 });
       this.game.bus?.emit('ui_open', { panel: 'chat' });
-      // Whoever walked off while the chat was shut has gone: back to Lyra.
-      if (this.target !== LYRA && this.away) this.selectTarget(LYRA);
+      // Whoever walked off while the chat was shut has gone: to whoever is near now, else
+      // the companion, else everyone nearby (never back to Lyra by default, round 14b T-1).
+      if ((this.target !== LYRA && this.target !== NEAR && this.away) || (this.target === LYRA && !this.lyraListening())) this.selectTarget(this.defaultTarget());
       this.refreshPeople(true);
       this.refreshHeader();
       this.ui.armBack?.();
@@ -163,7 +172,53 @@ export class Chat {
 
   toggle() {
     if (this._open) this.close();
+    else if (typeof this.ui.talkToNearest === 'function') this.ui.talkToNearest();
     else this.open(!this.ui.isTouch);
+  }
+
+  // Can Lyra hear the chat now (her own earshot by how things stand)?
+  lyraListening() {
+    try {
+      return lyraHears(this.game);
+    } catch {
+      return true;
+    }
+  }
+
+  // Who the chat turns to by default: the nearest person, else whoever walks with you, else
+  // everyone nearby.
+  defaultTarget() {
+    const g = this.game;
+    let e = null;
+    try {
+      e = nearestTalkTarget(g);
+    } catch {
+      e = null;
+    }
+    if (e) return e === g.companion ? LYRA : e.id;
+    const holder = (() => {
+      try {
+        return g.party?.holder || null;
+      } catch {
+        return null;
+      }
+    })();
+    if (holder === g.companion && this.lyraListening()) return LYRA;
+    if (holder && holder.id && canHear(g, holder, EARSHOT_LOSE)) return holder.id;
+    return NEAR;
+  }
+
+  // The selected villager's dialog (shop, gifts, missions), when they are within reach.
+  openTrade() {
+    const e = this.entity(this.target);
+    if (!e || !isVillager(e) || !this.inReach(e)) return;
+    this.close();
+    this.ui.openDialog?.(e);
+  }
+
+  inReach(e) {
+    const p = this.game.player;
+    return !!e && !!p && Math.hypot(e.x - p.x, e.y - p.y) <= 40 && !whyNotHeard(this.game, e, 48);
   }
 
   isOpen() {
@@ -371,6 +426,7 @@ export class Chat {
       return;
     }
     toggleClass(this.el, 'to-npc', false);
+    if (this.tradeBtn) this.tradeBtn.hidden = true;
     const g = this.game;
     const c = g.companion;
     setText(this.title, g.settings?.companionName || c?.name || 'Lyra');
@@ -419,6 +475,10 @@ export class Chat {
   // to: who hears it. Callers outside the chat (her "ask back", the reply buttons under
   // her lines) mean Lyra; the field and the chips pass whoever is selected.
   send(text, to = LYRA) {
+    if (to === NEAR) {
+      this.sayAloud(text);
+      return;
+    }
     if (to && to !== LYRA) {
       this.sendToVillager(to, text);
       return;
@@ -680,13 +740,14 @@ export class Chat {
   // ======================================================================== §23: anyone
 
   targetName(id = this.target) {
+    if (id === NEAR) return 'Everyone nearby';
     if (id === LYRA) return this.game.settings?.companionName || this.game.companion?.name || 'Lyra';
     const e = this.entity(id);
     return firstName(e?.name) || capitalize(String(id || 'them'));
   }
 
   entity(id) {
-    if (!id) return null;
+    if (!id || id === NEAR) return null;
     if (id === LYRA) return this.game.companion || null;
     try {
       return this.game.entities?.get?.(id) || null;
@@ -701,6 +762,7 @@ export class Chat {
 
   // A villager's conversation: the village keeps (and saves) it; without one, this chat does.
   threadOf(id) {
+    if (id === NEAR) return this.local[NEAR] || [];
     const v = this.village();
     if (v) {
       try {
@@ -719,16 +781,22 @@ export class Chat {
     if (!text || !id || id === LYRA) return null;
     const v = this.village();
     let msg = null;
-    if (v) {
+    if (id === NEAR) {
+      const list = (this.local[NEAR] ||= []);
+      msg = { from, text, name: m.name || null, aloud: !!m.aloud, act: !!m.act, day: this.game.clock?.day ?? 1, t: Math.round(this.game.clock?.t ?? 0) };
+      list.push(msg);
+      if (list.length > 60) list.splice(0, list.length - 60);
+    } else if (v) {
       try {
         msg = recordChat(v, id, { from, text });
       } catch {
         msg = null;
       }
     }
+    if (msg && m.act) msg.act = true;
     if (!msg) {
       const list = (this.local[id] ||= []);
-      msg = { from, text, day: this.game.clock?.day ?? 1, t: Math.round(this.game.clock?.t ?? 0) };
+      msg = { from, text, act: !!m.act, day: this.game.clock?.day ?? 1, t: Math.round(this.game.clock?.t ?? 0) };
       list.push(msg);
       if (list.length > 40) list.splice(0, list.length - 40);
     }
@@ -751,9 +819,9 @@ export class Chat {
   }
 
   buildVillagerRow(id, m) {
-    if (m.from === 'player') return h('div', { class: 'msg msg-player' }, h('span', { class: 'msg-text', text: m.text }));
-    if (m.from === 'system') return h('div', { class: 'msg msg-system chat-note' }, h('span', { class: 'msg-text', text: m.text }));
-    return h('div', { class: 'msg msg-npc chat-npc-line' }, h('span', { class: 'msg-name', text: this.targetName(id) }), h('span', { class: 'msg-text', text: m.text }));
+    if (m.from === 'player') return h('div', { class: `msg msg-player${m.aloud ? ' msg-aloud' : ''}` }, h('span', { class: 'msg-text', text: m.text }));
+    if (m.from === 'system') return h('div', { class: `msg msg-system chat-note${m.act ? ' msg-act' : ''}` }, h('span', { class: 'msg-text', text: m.text }));
+    return h('div', { class: 'msg msg-npc chat-npc-line' }, h('span', { class: 'msg-name', text: m.name || this.targetName(id) }), h('span', { class: 'msg-text', text: m.text }));
   }
 
   // Show the selected person's conversation.
@@ -776,10 +844,12 @@ export class Chat {
         lastDay = m.day;
         this.log.append(this.buildVillagerRow(id, m));
       }
-      if (!list.length) {
+      if (!list.length && id === NEAR) {
+        this.log.append(h('div', { class: 'chat-empty' }, h('span', { text: 'Say it aloud: everyone near enough hears you.' }), h('span', { class: 'chat-empty-sub', text: 'A shout (all capitals, or "!") carries farther. Walls muffle it.' })));
+      } else if (!list.length) {
         const e = this.entity(id);
         const n = this.targetName(id);
-        this.log.append(h('div', { class: 'chat-empty' }, h('span', { text: `Say anything to ${n}, the way you talk to ${this.targetName(LYRA)}.` }), h('span', { class: 'chat-empty-sub', text: `${e && standingOf(this.game, e).asleep ? `${n} is asleep. ` : ''}What you say stays with them, and gets around.` })));
+        this.log.append(h('div', { class: 'chat-empty' }, h('span', { text: `Say anything to ${n}.` }), h('span', { class: 'chat-empty-sub', text: `${e && standingOf(this.game, e).asleep ? `${n} is asleep; some of it reaches ${pronounOf(e.id)} all the same. ` : ''}What you say stays with them, and gets around.` })));
       }
     }
     this.log.append(this.thinkingRow);
@@ -790,7 +860,13 @@ export class Chat {
   // Pick who the chat talks to. opts: { focus, from: 'chip'|'world'|… }
   selectTarget(id, { focus = false, from = '' } = {}) {
     if (!id) return false;
-    if (id !== LYRA) {
+    if (id === LYRA && from && !this.lyraListening() && !this.game.party?.isCompanion?.(this.game.companion)) {
+      // Lyra is a person like anyone else: out of her earshot, she cannot hear the chat.
+      const L = this.game.companion;
+      if (L) this.ui.toast?.(notHeardText(this.game, L, whyNotHeard(this.game, L, Infinity) || 'far'), 'info', { key: 'chat-far' });
+      return false;
+    }
+    if (id !== LYRA && id !== NEAR) {
       const e = this.entity(id);
       if (!isVillager(e)) return false;
       if (!canHear(this.game, e, EARSHOT_LOSE)) {
@@ -815,7 +891,7 @@ export class Chat {
       this.renderThread();
       // Someone who watched the stranger kill: what the player sees as they turn to them.
       // The talk stays open; they answer in terror (DESIGN §29.3).
-      if (id !== LYRA) this.fearNote(this.entity(id));
+      if (id !== LYRA && id !== NEAR) this.fearNote(this.entity(id));
       if (from) this.game.audio?.play('ui_click', { volume: 0.6 });
     }
     this.refreshPeople(true);
@@ -836,13 +912,14 @@ export class Chat {
     this.sendBtn.disabled = away;
     this.mic.disabled = away;
     this.chips.hidden = gone || away;
-    this.field.placeholder = away ? `${n} can't hear you now.` : `Say something to ${n}…`;
+    this.field.placeholder = away ? `${n} can't hear you now.` : this.target === NEAR ? 'Say something aloud…' : `Say something to ${n}…`;
     this.field.setAttribute('aria-label', `Message to ${n}`);
     if (this.dictState === 'idle') this.mic.title = `Speak to ${n}`;
     this.log.setAttribute('aria-label', `Conversation with ${n}`);
     this.el.setAttribute('aria-label', `Chat with ${n}`);
     toggleClass(this.el, 'is-gone', gone);
     toggleClass(this.el, 'to-npc', !lyra);
+    toggleClass(this.el, 'to-near', this.target === NEAR);
     toggleClass(this.el, 'is-away', away);
     this.renderChips();
     this.refreshHeader();
@@ -853,7 +930,8 @@ export class Chat {
     clear(this.chips);
     const id = this.target;
     let list = CHIPS;
-    if (id !== LYRA) {
+    if (id === NEAR) list = ALOUD_CHIPS;
+    else if (id !== LYRA) {
       const v = this.village();
       let knows = false;
       try {
@@ -886,8 +964,14 @@ export class Chat {
   villagerHeader() {
     const g = this.game;
     const id = this.target;
+    if (id === NEAR) {
+      this.nearHeader();
+      return;
+    }
     const e = this.entity(id);
     toggleClass(this.el, 'to-npc', true);
+    const reach = !!e && isVillager(e) && this.inReach(e);
+    this.tradeBtn.hidden = !reach;
     setText(this.title, e?.name || this.targetName(id));
     const st = standingOf(g, e);
     const bits = [];
@@ -902,6 +986,7 @@ export class Chat {
       if (mood) bits.push(mood);
     }
     if (this.dictState === 'listening') bits.push('listening to you…');
+    if (e && isVillager(e) && !reach && !this.away && e.profile?.shop) bits.push(`walk up to ${this.targetName(id)} to trade`);
     // Lyra overhears what you say near her (§23): worth knowing.
     const lyra = g.companion;
     if (lyra && !lyra.removed && !lyra.downed && g.player && Math.hypot(lyra.x - g.player.x, lyra.y - g.player.y) <= 110) bits.push(`${this.targetName(LYRA)} can hear`);
@@ -935,12 +1020,25 @@ export class Chat {
     const lyra = g.companion;
     const cs = companionshipOf(g);
     const list = [];
-    if (lyra) {
-      const expr = cs === 'gone' || cs === 'left' ? 'sad' : this.thinking ? 'neutral' : 'happy';
-      list.push({ id: LYRA, name: this.targetName(LYRA), portrait: portraitUrl(g, 'lyra', expr), tone: cs === 'gone' ? 'hostile' : cs === 'left' ? 'wary' : 'lyra', label: cs === 'gone' ? 'cut you off' : companionshipLabel(cs).toLowerCase(), selected: this.target === LYRA, unread: this.unreadBy.get(LYRA) || 0, gone: cs === 'gone' });
+    // Everyone nearby first (saying it aloud), then whoever walks with you, then Lyra while
+    // she can hear you (a person like anyone else when she is not your companion), then the
+    // rest, nearest first (round 14b T-1, T-2).
+    list.push({ id: NEAR, name: `Everyone (${people.length + (lyra && this.lyraListening() && lyra.x != null && g.player && Math.hypot(lyra.x - g.player.x, lyra.y - g.player.y) <= EARSHOT_LOSE ? 1 : 0)})`, portrait: '', tone: 'near', label: 'say it aloud', selected: this.target === NEAR, unread: 0 });
+    let holder = null;
+    try {
+      holder = g.party?.holder || null;
+    } catch {
+      holder = null;
     }
-    for (const e of people) list.push(chipFor(g, e, { selected: this.target === e.id, unread: this.unreadBy.get(e.id) || 0 }));
-    if (this.target !== LYRA && !ids.includes(this.target)) {
+    if (holder && holder !== lyra && isVillager(holder)) {
+      list.push({ ...chipFor(g, holder, { selected: this.target === holder.id, unread: this.unreadBy.get(holder.id) || 0 }), label: 'with you', companion: true });
+    }
+    if (lyra && (this.lyraListening() || this.target === LYRA)) {
+      const expr = cs === 'gone' || cs === 'left' ? 'sad' : this.thinking ? 'neutral' : 'happy';
+      list.push({ id: LYRA, name: this.targetName(LYRA), portrait: portraitUrl(g, 'lyra', expr), tone: cs === 'gone' ? 'hostile' : cs === 'left' ? 'wary' : 'lyra', label: cs === 'gone' ? 'cut you off' : companionshipLabel(cs).toLowerCase(), selected: this.target === LYRA, unread: this.unreadBy.get(LYRA) || 0, gone: cs === 'gone', away: !this.lyraListening() });
+    }
+    for (const e of people) if (e !== holder) list.push(chipFor(g, e, { selected: this.target === e.id, unread: this.unreadBy.get(e.id) || 0 }));
+    if (this.target !== LYRA && this.target !== NEAR && !ids.includes(this.target) && !(holder && holder.id === this.target)) {
       const e = this.entity(this.target);
       if (e) list.push(chipFor(g, e, { selected: true, away: true }));
     }
@@ -953,7 +1051,7 @@ export class Chat {
   // Has the person you are talking to gone out of earshot? Then the talk ends, gracefully.
   checkTarget(ids = null) {
     const id = this.target;
-    if (id === LYRA) return;
+    if (id === LYRA || id === NEAR) return;
     const e = this.entity(id);
     const why = !e ? 'dead' : ids ? (ids.includes(id) ? null : whyNotHeard(this.game, e, EARSHOT_LOSE) || 'far') : whyNotHeard(this.game, e, EARSHOT_LOSE);
     if (!why) {
@@ -985,7 +1083,7 @@ export class Chat {
     if (last && last.from !== 'system') this.pushVillager(id, { from: 'system', text: partingLine(e, why, who) });
     if (this.dictState !== 'idle' && this.ownsDictation()) this.stopDictation();
     if (!this._open) {
-      this.selectTarget(LYRA);
+      this.selectTarget(this.defaultTarget());
       return;
     }
     this.applyTarget();
@@ -1030,6 +1128,115 @@ export class Chat {
       return;
     }
     this.ask(e, t);
+  }
+
+  // ---------- saying it aloud (round 14b T-2, DESIGN §33.3) ----------
+
+  // The "Everyone nearby" thread: said aloud, heard by whoever the hearing rule lets hear
+  // it; their answers come back staggered, as bubbles over their heads and rows here.
+  sayAloud(text) {
+    const t = cleanLine(text, 300);
+    if (!t) return;
+    const g = this.game;
+    const v = this.village();
+    if (this.target !== NEAR) this.selectTarget(NEAR);
+    this.flushUnsaid(NEAR);
+    this.pushVillager(NEAR, { from: 'player', text: t, aloud: true });
+    g.audio?.play('ui_click');
+    try {
+      const shout = /!\s*$/.test(t) || (t.replace(/[^A-Za-z]/g, '').length >= 3 && t.replace(/[^A-Za-z]/g, '') === t.replace(/[^A-Za-z]/g, '').toUpperCase());
+      g.bubbles?.say?.(g.player, t, { kind: shout ? 'shout' : 'say' });
+    } catch {
+      /* cosmetic */
+    }
+    if (typeof v?.sayAloud !== 'function') {
+      this.pushVillager(NEAR, { from: 'system', text: 'Nobody is near enough to hear you.', act: true });
+      return;
+    }
+    this.setWaiting(NEAR, true);
+    let p;
+    try {
+      p = v.sayAloud(t);
+    } catch (err) {
+      console.warn('[chat] saying it aloud failed', err);
+      p = Promise.resolve(null);
+    }
+    Promise.resolve(p).then(
+      (res) => {
+        this.setWaiting(NEAR, false);
+        this.aloudReplied(res, t);
+      },
+      () => this.setWaiting(NEAR, false),
+    );
+  }
+
+  aloudReplied(res, said) {
+    const g = this.game;
+    if (!res) return;
+    const heardClear = (res.hearers || []).filter((h) => h.how === 'clear');
+    if (!res.hearers?.length) {
+      this.pushVillager(NEAR, { from: 'system', text: res.shout ? 'Your shout carries, and nobody answers. Nobody is near enough to hear it.' : 'Nobody is near enough to hear you.', act: true });
+      return;
+    }
+    if (!heardClear.length) {
+      this.pushVillager(NEAR, { from: 'system', text: 'Somewhere behind the walls, someone may have heard a voice.', act: true });
+      return;
+    }
+    // Lyra, named or your companion: she answers once, through her own mind.
+    if (res.lyra === 'answer' && g.brain?.handlePlayerMessage) {
+      Promise.resolve(g.brain.handlePlayerMessage(said)).then((r) => {
+        const say = typeof r?.say === 'string' ? r.say.trim() : '';
+        if (say) this.pushVillager(NEAR, { from: 'npc', name: this.targetName(LYRA), text: say });
+        else if (r?.silent) this.pushVillager(NEAR, { from: 'system', text: silenceAct('lyra', this.targetName(LYRA), { kind: 'gone' }), act: true });
+      }, () => {});
+    }
+    const queue = [];
+    this.unsaid.set(NEAR, queue);
+    let delay = 0;
+    const speed = Math.max(0.25, Number(g.settings?.textSpeed) || 1);
+    for (const r of res.replies || []) {
+      const e = this.entity(r.id);
+      const rows = [...(r.lines || []).map((l) => ({ from: 'npc', name: r.name, text: l, say: l })), ...(r.narration ? [{ from: 'system', text: r.narration, act: true }] : [])];
+      for (const row of rows) {
+        const item = { show: null, timer: null };
+        item.show = () => {
+          const k = queue.indexOf(item);
+          if (k < 0) return;
+          queue.splice(k, 1);
+          clearTimeout(item.timer);
+          this.pushVillager(NEAR, row);
+          if (row.say && e) {
+            try {
+              g.bubbles?.clear?.(e);
+              if (typeof e.say === 'function') e.say(row.say, { target: g.player || null, kind: 'say' });
+              else g.bubbles?.say?.(e, row.say, { kind: 'say' });
+            } catch {
+              /* cosmetic */
+            }
+          }
+        };
+        queue.push(item);
+        item.timer = setTimeout(item.show, delay * 1000);
+        delay += Math.min(2.6, lineBeat(row.text, speed) * 0.5);
+      }
+    }
+    if (queue.length) queue[0].show();
+    else this.pushVillager(NEAR, { from: 'system', text: `${heardClear.length === 1 ? 'Someone hears' : `${heardClear.length} people hear`} you. Nobody answers.`, act: true });
+    this.refreshPeople(true);
+  }
+
+  // The header while saying it aloud: who can hear.
+  nearHeader() {
+    const g = this.game;
+    toggleClass(this.el, 'to-npc', true);
+    if (this.tradeBtn) this.tradeBtn.hidden = true;
+    setText(this.title, 'Everyone nearby');
+    const n = (this.people || []).length + (g.companion && this.lyraListening() && g.player && Math.hypot(g.companion.x - g.player.x, g.companion.y - g.player.y) <= EARSHOT_LOSE ? 1 : 0);
+    const bits = [this.waiting.has(NEAR) ? 'listening…' : n ? `${n} near enough to hear you` : 'nobody near enough to hear you'];
+    bits.push('say it aloud');
+    setText(this.status, bits.join(' · '));
+    toggleClass(this.el, 'is-thinking', this.waiting.has(NEAR));
+    this.portrait.removeAttribute('src');
   }
 
   // A villager in terror of the player: one line of what the player sees (once in a
@@ -1161,61 +1368,6 @@ export class Chat {
     const q = this.unsaid.get(id);
     if (!q?.length) return;
     for (const it of [...q]) it.show();
-  }
-
-  // A tap or click in the world: on Lyra or a villager, the chat turns to them.
-  // Returns true when it was theirs (the caller then keeps it from swinging the sword).
-  pickInWorld(wx, wy, { pointerType = 'mouse' } = {}) {
-    const g = this.game;
-    if (!this.mounted || g.state !== 'playing' || g.paused || this.ui.isModalOpen?.()) return false;
-    const e = pickActorAt(g, wx, wy, pointerType === 'mouse' ? { pad: 2, lag: 0.15 } : { pad: 6, lag: 0.4 });
-    if (!e) return false;
-    // In a fight a click is a sword stroke, unless the chat is already open to talk.
-    if (!this._open && inFight(g)) return false;
-    if (e.id === LYRA) {
-      if (!g.companion) return false;
-      // Never a sword stroke at her by mistake; down, she needs a hand, not words.
-      if (g.companion.downed) {
-        this.ui.toast?.(`${this.targetName(LYRA)} is down. Go to her and help her up.`, 'warn', { key: 'chat-far' });
-        return true;
-      }
-      this.selectTarget(LYRA);
-      if (!this._open) {
-        this.open(pointerType === 'mouse');
-        if (pointerType !== 'mouse') this.swallowGhostClick();
-      }
-      return true;
-    }
-    const why = whyNotHeard(g, e, this.target === e.id ? EARSHOT_LOSE : 10 * 16);
-    if (why) {
-      this.ui.toast?.(notHeardText(g, e, why), 'info', { key: 'chat-far' });
-      return true;
-    }
-    const wasOpen = this._open;
-    if (!wasOpen) {
-      this.open(false);
-      if (pointerType !== 'mouse') this.swallowGhostClick();
-    }
-    this.selectTarget(e.id, { from: 'world' });
-    if (pointerType === 'mouse') this.focusSoon();
-    return true;
-  }
-
-  // A finger's tap that opened the chat must not also press what the chat has just put
-  // under that finger: the browser's click from the same tap lands on the "To" row and
-  // picked a neighbour (played on phones: a tap on Lyra talked to Pip, or to Wys).
-  swallowGhostClick(ms = 450) {
-    if (typeof window === 'undefined' || typeof performance === 'undefined') return;
-    const until = performance.now() + ms;
-    const eat = (ev) => {
-      window.removeEventListener('click', eat, true);
-      if (performance.now() > until) return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      ev.stopImmediatePropagation?.();
-    };
-    window.addEventListener('click', eat, true);
-    setTimeout(() => window.removeEventListener('click', eat, true), ms + 50);
   }
 }
 

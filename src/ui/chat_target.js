@@ -11,6 +11,7 @@ import { firstName, moodExpression } from './village_view.js';
 import { hears } from '../ai/hearing.js';
 
 export const LYRA = 'lyra';
+export const NEAR = '@near'; // the "Everyone nearby" thread: saying it aloud (round 14b T-2)
 const TILE = 16;
 export const EARSHOT = 7.5 * TILE; // px: near enough to talk
 export const EARSHOT_LOSE = 10.5 * TILE; // px: a conversation holds until they are this far
@@ -119,6 +120,70 @@ export function earshotPeople(game, { keep = null, max = 8 } = {}) {
   }
   out.sort((a, b) => a[0] - b[0]);
   return out.slice(0, max).map((x) => x[1]);
+}
+
+// Lyra's own earshot (her brain's, by how things stand: brain.js EARSHOT): with you, she
+// hears the chat wherever she is; apart, left or cut off, within 30 / 18 / 16 tiles.
+const LYRA_EARSHOT = { apart: 30, left: 18, gone: 16 };
+export function lyraHears(game) {
+  const L = game?.companion;
+  const p = game?.player;
+  if (!L || !p || isDeadPerson(game, L) || downed(L)) return false;
+  let st = 'together';
+  try {
+    st = game.flags?.lyra_gone ? 'gone' : L.mind?.companionship || L.mind?.autonomy?.companionship || 'together';
+  } catch {
+    st = 'together';
+  }
+  const far = LYRA_EARSHOT[st];
+  return !far || Math.hypot(L.x - p.x, L.y - p.y) <= far * TILE;
+}
+
+// A person the player can talk to: Lyra, or one of the villagers; alive, not downed.
+function talkable(game, e) {
+  if (!e || e.id === 'player' || isDeadPerson(game, e) || downed(e)) return false;
+  return e.id === LYRA || isVillager(e);
+}
+
+// Who T (or the Talk button) talks to (round 14b T-1, decision D4): the nearest person in
+// front of the player, facing first (like Interactions: distance − facing·10), within
+// `radius`; else the nearest within earshot (the hearing rule, whyNotHeard); else null.
+// The companion (party.holder), Lyra and the villagers all count; asleep counts (they hear
+// it, as far as words reach a sleeper); downed, dead and another roof do not.
+export function nearestTalkTarget(game, { radius = 3 * TILE, earshot = EARSHOT } = {}) {
+  const p = game?.player;
+  if (!p) return null;
+  const ents = safe(() => game.entities.all(), []) || [];
+  const cands = new Set();
+  const holder = safe(() => game.party?.holder, null);
+  if (holder) cands.add(holder);
+  if (game.companion) cands.add(game.companion);
+  for (const e of ents) if (isVillager(e)) cands.add(e);
+  const fx = p.facing?.x ?? 0;
+  const fy = p.facing?.y ?? 1;
+  let best = null;
+  let bestS = Infinity;
+  let near = null;
+  let nearD = Infinity;
+  for (const e of cands) {
+    if (!talkable(game, e) || !Number.isFinite(e.x)) continue;
+    if (whyNotHeard(game, e, earshot)) continue;
+    const dx = e.x - p.x;
+    const dy = e.y - p.y;
+    const d = Math.hypot(dx, dy);
+    if (d < nearD) {
+      nearD = d;
+      near = e;
+    }
+    if (d > radius) continue;
+    const facing = d > 0 ? (dx * fx + dy * fy) / d : 1;
+    const score = d - facing * 10;
+    if (score < bestS) {
+      bestS = score;
+      best = e;
+    }
+  }
+  return best || near || null;
 }
 
 // Is the player in a fight (a hostile creature close by)? Then a click is a sword stroke.

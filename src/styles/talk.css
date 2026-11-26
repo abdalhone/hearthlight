@@ -1,1 +1,51 @@
 /* Round 14b: workstream talk's styles (DESIGN §33, F8). Only talk edits this file; scripts/build.mjs, index.html and the style tests read every src/styles/*.css after src/styles.css, in sorted order. */
+
+/* Everyone nearby (say it aloud): a chip with no face, its own tone. */
+.chat-to-chip.tone-near {
+  --chat-tone: var(--ember-hot, #f0a040);
+  padding-left: 9px;
+  background: linear-gradient(180deg, rgba(240, 160, 64, 0.16), rgba(240, 160, 64, 0.06));
+}
+.chat-to-chip.tone-near .chat-to-face {
+  display: none;
+}
+.chat-to-chip.tone-near.selected {
+  box-shadow: inset 0 0 0 2px var(--ember-hot, #f0a040);
+  color: var(--parch);
+}
+/* Saying it aloud: the header shows no face of its own. */
+.chat.to-near .chat-head .portrait-frame {
+  display: none;
+}
+
+/* Within reach of a villager: their dialog (Trade · Give · Work), a real touch target. */
+.chat-trade {
+  flex: none;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 10px;
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+/* What someone does (silence, a turned back, a flight) and what you do (*bows*): an act row. */
+.msg-system.msg-act {
+  color: var(--parch-2);
+  font-style: italic;
+  padding: 3px 8px;
+  border-left: 2px solid rgba(240, 160, 64, 0.45);
+  background: rgba(0, 0, 0, 0.18);
+}
+/* Said aloud, for everyone near. */
+.msg-player.msg-aloud .msg-text::before {
+  content: 'aloud · ';
+  opacity: 0.7;
+  font-size: 0.85em;
+}
+
+@media (max-width: 480px) {
+  .chat-trade {
+    padding: 0 6px;
+    font-size: 11px;
+  }
+}

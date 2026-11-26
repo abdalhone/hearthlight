@@ -27,6 +27,7 @@ import { gainText, frac, truncate } from './format.js';
 import { companionshipOf, companionshipLabel, companionshipReason, deedLabel, requestAnswer } from './lyra_view.js';
 import { applyUiZoom } from './ui_scale.js';
 import { HomePointer } from './home_pointer.js';
+import { nearestTalkTarget, NEAR, LYRA as LYRA_ID } from './chat_target.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -710,6 +711,39 @@ export class UI {
     });
   }
 
+  // ---------- talking (round 14b T-1, DESIGN §33.3; decision D4) ----------
+
+  // T, Enter, pad Y and the Talk buttons: the chat, to whoever is nearest in front of you
+  // (facing first), or to everyone nearby (saying it aloud) when nobody is. Never to Lyra
+  // by default when she is not the one in front of you.
+  talkToNearest() {
+    if (!this.inited || !this.chat?.mounted) return false;
+    const g = this.game;
+    let e = null;
+    try {
+      e = nearestTalkTarget(g);
+    } catch {
+      e = null;
+    }
+    const id = e ? (e === g.companion ? LYRA_ID : e.id) : NEAR;
+    if (!this.chat.selectTarget(id, { from: 'talk' })) this.chat.selectTarget(NEAR, { from: 'talk' });
+    this.chat.open(!this.isTouch);
+    this.game.bus?.emit?.('talk_opened', { to: this.chat.target, how: 'nearest' });
+    return true;
+  }
+
+  // The chat, to one person by id ('lyra' for Lyra): the dialog, the People view, the phone's
+  // "Talk to Bram" button, E on someone running from you. False when they cannot hear you
+  // (the reason is said as a toast: a body, never a feeling).
+  talkTo(id) {
+    if (!this.inited || !this.chat?.mounted || !id) return false;
+    if (!this.chat.selectTarget(id, { from: 'talk' })) return false;
+    if (this.dialog?.isOpen?.()) this.dialog.close();
+    this.chat.open(!this.isTouch);
+    this.game.bus?.emit?.('talk_opened', { to: this.chat.target, how: 'person' });
+    return true;
+  }
+
   openDialog(npc) {
     if (!this.inited || !npc) return;
     this.chat.close();
@@ -859,7 +893,7 @@ export class UI {
   // Every button on the bar is a request: it passes her consent gate and she answers.
   runCommand(id) {
     if (id === 'talk') {
-      this.chat.open(true);
+      this.talkToNearest();
       return;
     }
     if (id === 'jobs') {
@@ -1102,7 +1136,7 @@ export class UI {
     if (top) return;
     if (inp.uiPressed('talk')) {
       inp.consume('talk');
-      this.chat.open(true);
+      this.talkToNearest();
       return;
     }
     // Number keys ask only while she travels with you; apart, she is not yours to direct.

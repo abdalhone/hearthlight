@@ -11,18 +11,18 @@ import { VILLAGERS, PEOPLE, SHORT_NAMES, FAMILY_TAGS } from './bonds_data.js';
 import { VOICES, SCENES } from './voices.js';
 import { buildExchange, chooseTopic, summarize, mainTag, WEEK_TOPICS, scenesFor } from './talk.js';
 import { voiceOf, say, rnd, shortName, thirdName, fill, varsFor, topicPool, names } from './lines.js';
-import { localReply, emptyYou, cleanYou, knownName, learnName, addNote, notesOf, recentExchanges, applyTurn } from './player_talk.js';
+import { localReply, emptyYou, cleanYou, knownName, learnName, addNote, notesOf, recentExchanges, applyTurn, understand } from './player_talk.js';
 import { TO_YOU } from './voices_player.js';
 import { speakable } from './hidden.js';
 import { WEAVE_RUMORS } from '../../missions/rumors.js';
 import { Commitments } from './commitments.js';
 import { murderLine } from '../../murder/lines.js';
 import { seesPoint } from '../sight.js';
-import { hears, hearsWords } from '../hearing.js';
+import { hears, hearsWords, heardFrom, cryLoudness, placeOfSound } from '../hearing.js';
 import { silenceAct, turnAway, actionText, normalizeAction } from '../silence.js';
 import { detectInvite } from './invite.js';
 import { isMinor } from '../../core/people.js';
-import { VILLAGER_RULES, SAY_SCHEMA, LINES_SCHEMA, NIGHT_SCHEMA, buildSayTask, buildListenTask, buildNightTask, coerceSay, coerceLines, coerceNight, cleanLine } from './village_prompt.js';
+import { VILLAGER_RULES, SAY_SCHEMA, LINES_SCHEMA, NIGHT_SCHEMA, ALOUD_SCHEMA, buildSayTask, buildListenTask, buildNightTask, buildAloudTask, coerceSay, coerceLines, coerceNight, coerceAloud, cleanLine } from './village_prompt.js';
 
 // What the village says about the stranger's weaving joins the rumor table (DESIGN §22.3).
 for (const [k, v] of Object.entries(WEAVE_RUMORS)) if (!RUMOR_KINDS[k]) RUMOR_KINDS[k] = v;
@@ -40,6 +40,12 @@ const SIGHT = 150;
 const MEET = 88; // px: near enough to tell someone something, face to face (DESIGN §29.2)
 const PRESS = 60; // clock seconds: spoken to again within this, the same talk goes on (terror, coldness)
 const TERROR_TURNS = ['afraid', 'beg', 'screamHelp', 'silent']; // what fear does, pressed on and on
+// Saying it aloud (round 14b T-2): how far words carry in the open (the chat's earshot), a
+// shout twice that; at most four answer; one batched Claude call, not more often than this.
+const ALOUD_REACH = 120;
+const ALOUD_RESPONDERS = 4;
+const ALOUD_GAP = 6; // real seconds between batched calls
+const ALOUD_CAP = 60; // batched calls in a session
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 const round1 = (v) => Math.round(v * 10) / 10;
@@ -1338,6 +1344,156 @@ export class Village {
     return { lines: reply.lines, mood: reply.mood || null, intent: local.intent, source: reply.source, name: reply.name || null, action, narration: narration || null, acted: actsOut?.narration || null, join: join ? { decision: join.decision } : null };
   }
 
+  // ------------------------------------------------------------------ saying it aloud
+
+  // The player says something aloud, for everyone near to hear (round 14b T-2, DESIGN
+  // §33.3). Who hears is the hearing rule (heardFrom, never a bare distance): those who hear
+  // it clearly get the words (their talk, what they remember, an opinion move for a threat,
+  // an insult or a kindness); muffled, only a voice over there (what and where, never the
+  // words or who). At most four answer, in one batched Claude call (else their own rules).
+  // A shout carries twice as far; "HELP!" shouted is a cry for help, by the same rule.
+  // -> { shout, help, hearers: [{ id, how }], replies: [{ id, name, lines, action, narration, silent }], lyra }
+  async sayAloud(text, opts = {}) {
+    const g = this.game;
+    const P = g?.player;
+    const said = String(text ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 300);
+    const out = { shout: false, help: false, hearers: [], replies: [], muffled: [], lyra: null };
+    if (!said || !P) return out;
+    const letters = said.replace(/[^A-Za-z]/g, '');
+    const shout = /!\s*$/.test(said) || (letters.length >= 3 && letters === letters.toUpperCase());
+    const help = shout && /\bhelp\b/i.test(said);
+    out.shout = shout;
+    out.help = help;
+    const reach = shout ? ALOUD_REACH * 2 : ALOUD_REACH;
+    // The player's own voice, over their head and in everyone's day.
+    this.emit('speech', { speaker: P, text: said, target: null, kind: shout ? 'shout' : 'say' });
+    // "HELP!": a cry for help, heard (or not) by the one rule for ears (npc.onCallForHelp).
+    if (help) safe(() => g.bus?.emit?.('call_for_help', { victim: 'player', victimEntity: P, attacker: null, x: P.x, y: P.y, severity: 2, reason: 'shout', byPlayer: true }));
+    const L = g.companion;
+    const people = this.villagers().filter((e) => alive(e) && !e.absent);
+    if (L && alive(L)) people.push(L);
+    const heard = heardFrom(g, P.x, P.y, reach, people, { exclude: [P] });
+    out.hearers = heard.map((h) => ({ id: h.id, how: h.how }));
+    const clear = heard.filter((h) => h.how === 'clear').map((h) => h.e);
+    out.muffled = heard.filter((h) => h.how === 'muffled').map((h) => h.id);
+    // Muffled: a voice over there (a place, never a person, never the words).
+    const where = placeOfSound(g, P.x, P.y);
+    for (const id of out.muffled) {
+      const e = this.entity(id);
+      if (!e || e === L) continue;
+      if (shout) e.uneasy = { day: this.day(), place: where, t: Math.round(this.now()), what: 'a shout' };
+    }
+    const u = safe(() => understand(said, { selfId: null, locations: g.locations }), null);
+    const intents = u?.intents || new Set();
+    const threat = intents.has?.('threat');
+    const insult = intents.has?.('insult');
+    const kind = intents.has?.('compliment') || intents.has?.('thanks') || intents.has?.('apology');
+    const villagersHeard = clear.filter((e) => e !== L && e.profile);
+    // Named in what was said: that person answers as if spoken to (their ask goes through
+    // commitments: detect and decide), the rest hear it.
+    const lower = said.toLowerCase();
+    const named = villagersHeard.filter((e) => new RegExp(`\\b${escapeRe(this.name(e.id).replace(/^(Captain|Sister|Reeve)\s+/, '').split(' ')[0].toLowerCase())}\\b`).test(lower));
+    const lyraNamed = !!L && clear.includes(L) && /\blyra\b/i.test(said);
+    // Everyone who heard it clearly keeps it (afterPlayerSays-lite).
+    for (const e of villagersHeard) {
+      if (named.length === 1 && named[0] === e) continue; // playerSays keeps it
+      this.heard(e, said, { asleep: e.state === 'sleep' });
+      safe(() => addNote(this, e.id, `you said aloud, for all to hear: "${said.slice(0, 60)}"`, threat || insult ? 3 : 1));
+      if (threat) e.adjustOpinion?.(-4, 'the player threatened, aloud');
+      else if (insult) e.adjustOpinion?.(-1.5, 'the player was rude, aloud');
+      else if (kind) e.adjustOpinion?.(0.5, 'the player was kind, aloud');
+    }
+    if (threat && villagersHeard.length) this.addRumor('threat', { victim: null, witnesses: villagersHeard.map((e) => e.id) });
+    // Lyra in earshot hears it through her own mind.
+    if (L && clear.includes(L)) {
+      safe(() => L.mind?.noticeText?.(said, { source: 'aloud', amount: 0.3 }));
+      const holder = safe(() => g.party?.holder, null);
+      if (lyraNamed || holder === L) out.lyra = 'answer';
+      else out.lyra = 'heard';
+    }
+    // Who answers: named, then the strongest feeling, then the nearest; at most four.
+    const feeling = (e) => {
+      const st = this.standing(e.id);
+      const fear = safe(() => g.murder?.fearOf?.(e), null);
+      return (fear ? 60 : 0) + Math.abs((st.opinion ?? 30) - 40) + (st.cold ? 20 : 0);
+    };
+    const pool = villagersHeard.filter((e) => e.state !== 'sleep' && !named.includes(e)).sort((a, b) => feeling(b) - feeling(a) || dist(a, P) - dist(b, P));
+    const responders = [...named.slice(0, 1), ...pool].slice(0, ALOUD_RESPONDERS);
+    // The named one: a full answer, as if spoken to.
+    if (named.length === 1) {
+      const r = await this.playerSays(named[0], said, opts);
+      out.replies.push(this.aloudRow(named[0], r));
+    }
+    const rest = responders.filter((e) => !(named.length === 1 && named[0] === e));
+    if (rest.length) {
+      let batch = null;
+      const provider = this.provider();
+      const now = g.time ?? 0;
+      this.aloudCalls = this.aloudCalls || { n: 0, at: -1e9 };
+      if (provider && this.aloudCalls.n < ALOUD_CAP && now - this.aloudCalls.at >= ALOUD_GAP) {
+        this.aloudCalls.n++;
+        this.aloudCalls.at = now;
+        const loc = safe(() => g.locations?.at?.(P.x, P.y));
+        const people2 = rest.map((e) => {
+          const st = this.standing(e.id);
+          const b = this.sayBrief(e, said, { lines: [], intent: 'aloud' });
+          return { id: e.id, profile: e.profile, opinion: st.opinion, opinionLabel: st.label.toLowerCase(), standing: b.standing, knownName: knownName(this, e.id) };
+        });
+        const raw = await this.askClaude(provider, VILLAGER_RULES, buildAloudTask({ text: said, shout, place: loc?.name || '', time: g.clock?.timeString?.() || '', weather: g.clock?.weather?.type || '', people: people2 }), ALOUD_SCHEMA, 'aloud');
+        batch = raw ? coerceAloud(raw, rest.map((e) => e.id)) : null;
+      }
+      for (const e of rest) {
+        const fear = safe(() => g.murder?.fearOf?.(e), null);
+        const c = batch?.find((x) => x.id === e.id) || null;
+        let lines = [];
+        let action = null;
+        let source = 'local';
+        if (c && !(fear && warmLine(c.say))) {
+          lines = c.say ? [this.game?.saidToday?.dropRepeats?.(e.id, c.say) || c.say] : [];
+          action = c.action;
+          source = 'claude';
+          if (c.opinionDelta && !threat && !insult) e.adjustOpinion?.(round1(Math.max(-3, Math.min(2, c.opinionDelta))), 'what the player said aloud');
+          if (c.memory) addNote(this, e.id, c.memory, 2);
+        } else if (batch && !c) {
+          // Claude left them out: they heard it, and said nothing.
+          lines = [];
+        } else {
+          const local = fear ? this.afraidLocal(e, said, fear) : safe(() => localReply(this, e, said), null);
+          lines = (local?.lines || []).slice(0, 1);
+          action = local?.action || null;
+          if (local && !fear) safe(() => applyTurn(this, e.id, local, { source: 'local' }));
+        }
+        this.answerRow(e, said, lines);
+        const name = this.name(e.id).replace(/^(Captain|Sister|Reeve)\s+/, '').split(' ')[0];
+        const a = normalizeAction(action);
+        if (a) safe(() => this.doAction(e, a));
+        if (!lines.length && !a) continue; // heard it, and let it pass: no row for each of them
+        out.replies.push({ id: e.id, name, lines, action: a, narration: a ? actionText(e.id, name, a, { silent: !lines.length }) : null, silent: !lines.length, source });
+      }
+    }
+    return out;
+  }
+
+  // One answer in the shape the chat's "Everyone nearby" thread shows.
+  aloudRow(e, r) {
+    const name = this.name(e.id).replace(/^(Captain|Sister|Reeve)\s+/, '').split(' ')[0];
+    return { id: e.id, name, lines: r?.lines || [], action: r?.action || null, narration: r?.narration || r?.act || null, silent: !!r?.silent, source: r?.source || 'local' };
+  }
+
+  // Their answer to something said aloud joins the row heard() kept.
+  answerRow(e, said, lines) {
+    const list = this.talks[e.id] || [];
+    const row = [...list].reverse().find((x) => x.pending && x.you === said.slice(0, 160));
+    if (!row) return;
+    delete row.pending;
+    row.aloud = true;
+    row.they = lines.map((l) => String(l).slice(0, 200)).slice(0, 2);
+    if (!lines.length) row.silent = true;
+  }
+
   // The words reach them before anything else (DESIGN §23.3, §33.4): their talk with the
   // player (answered later by afterPlayerSays) and, asleep, what reaches a sleeper.
   heard(e, said, { asleep = false } = {}) {
@@ -1936,6 +2092,10 @@ export class Village {
 const WARM = /\b(love|dear|darling|sweetheart|of course|glad|happy to|pleasure|lovely to see|sit down|come in|welcome)\b/i;
 export function warmLine(text) {
   return WARM.test(String(text || ''));
+}
+
+function escapeRe(t) {
+  return String(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function noWordOf(id) {

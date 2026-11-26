@@ -275,3 +275,69 @@ export function coerceNight(raw) {
   }
   return out.length >= 2 ? out : null;
 }
+
+// --- saying it aloud (round 14b T-2, DESIGN §33.3): one call for everyone who heard ---
+
+export const ALOUD_SCHEMA = {
+  type: 'object',
+  properties: {
+    replies: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          who: { type: 'string', description: 'the id of the person answering' },
+          say: { type: 'string', description: 'what they say aloud, 1-2 sentences; "" to say nothing' },
+          action: nullable({ type: 'string', enum: ['turn_away', 'walk_off', 'flee', 'glare', 'cry', 'shove_past'] }),
+          mood: nullable({ type: 'string' }),
+          opinion_delta: { type: 'number', description: '-10..5' },
+          memory: nullable({ type: 'string', description: 'a short clause starting "you", worth remembering, or null' }),
+        },
+        required: ['who', 'say', 'action', 'mood', 'opinion_delta', 'memory'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['replies'],
+  additionalProperties: false,
+};
+
+// b: { text, shout, place, time, weather, playerName, people: [{ id, profile, opinionLabel,
+//      opinion, standing, knownName }] }  — each brief cut down to about 600 characters.
+export function buildAloudTask(b) {
+  const L = [];
+  L.push(`The stranger (the player) has just said aloud, for everyone near to hear${b.shout ? ', SHOUTING' : ''}: "${clip(b.text, 300)}"`);
+  L.push(`Where and when: ${b.place || 'Hearthvale'}, ${b.time || ''}${b.weather ? `, ${b.weather}` : ''}.`);
+  L.push('These people heard every word. Each decides for themselves whether to answer: some answer, some say nothing (say "" with an action, or leave them out). Each answers in their own voice, one or two short spoken sentences, as their opinion and feelings say. They may answer each other too. No narration.');
+  for (const p of (b.people || []).slice(0, 4)) {
+    const bits = [`[${p.id}] ${personLine(p.id, p.profile).slice(0, 260)}`];
+    const s = voiceSamples(p.id, 2);
+    if (s.length) bits.push(`Lines: ${s.map((x) => `"${x}"`).join(' ')}`);
+    bits.push(`Opinion of the stranger: ${p.opinionLabel} (${Math.round(p.opinion)}/100).${p.knownName ? ` They know the name ${clip(p.knownName, 20)}.` : ''}`);
+    if (p.standing) bits.push(`Right now: ${clip(p.standing, 200)}`);
+    L.push(`- ${clip(bits.join(' '), 600)}`);
+  }
+  L.push('Return {"replies":[{"who": id, "say": string, "action": null|"turn_away"|"walk_off"|"flee"|"glare"|"cry"|"shove_past", "mood": one word, "opinion_delta": -10..5, "memory": "you …" or null}]}.');
+  return L.join('\n');
+}
+
+export function coerceAloud(raw, ids) {
+  const list = Array.isArray(raw?.replies) ? raw.replies : Array.isArray(raw) ? raw : [];
+  const out = [];
+  const seen = new Set();
+  for (const r of list) {
+    if (!r || typeof r !== 'object') continue;
+    const who = String(r.who || '').toLowerCase().trim();
+    const id = ids.find((x) => x === who || who.startsWith(x));
+    if (!id || seen.has(id)) continue;
+    const action = ACTIONS_OK.has(r.action) ? r.action : null;
+    const say = cleanLine(r.say, 220) || '';
+    if (!say && !action) continue;
+    seen.add(id);
+    const d = Number(r.opinion_delta);
+    let memory = typeof r.memory === 'string' ? cleanLine(r.memory, 110) : null;
+    if (memory && !/^you\b/i.test(memory)) memory = null;
+    out.push({ id, say, action, mood: typeof r.mood === 'string' ? r.mood.toLowerCase().replace(/[^a-z]/g, '').slice(0, 16) || null : null, opinionDelta: Number.isFinite(d) ? Math.max(-10, Math.min(5, d)) : 0, memory: memory ? memory.replace(/^You\b/, 'you').replace(/[.!?]+$/, '') : null });
+  }
+  return out;
+}
