@@ -372,8 +372,12 @@ export class Hollow {
       safe(() => L.mind?.remember?.(`${this.playerName()} took hold of me and pulled at my life with a bare hand. I felt it leaving me. I broke free.`, { type: 'event', importance: 10, about: ['player'], tags: ['unkindled', 'attack'], emotion: 'fear' }));
       safe(() => L.mind?.feel?.('fear', 1, 'the stranger tried to tear the life out of me'));
     }
-    this.say(e, this.pick(SOUL_LINES.attemptKnows), 'shout');
+    // They fight if they fight, else run and tell (the watch first); then their words, once
+    // the first cry of it is out (their own voice, after the hold: heard by the hearing rule).
     this.react(e, P);
+    const words = this.pick(SOUL_LINES.attemptKnows);
+    if (e !== L && 'pendingSay' in e) e.pendingSay = { at: this.now() + 0.7, text: words, kind: 'shout', target: null };
+    else this.say(e, words, 'shout');
     for (const id of seers) {
       const w = this.entity(id);
       if (!w || w === e) continue;
@@ -643,11 +647,15 @@ export class Hollow {
     const attempt = (this.unk?.attempts || []).find((a) => a.id === id && a.knows);
     if (this.knows(id)) {
       const sawOne = recs.find((r) => r.seenSoul && (r.seen || []).some((s) => s.id === id));
-      const names = mine.filter((r) => r.id !== id).map((r) => this.name(r.id));
+      // the others they put to it: the deaths they know of (found, or seen), not the one they saw
+      const names = mine.filter((r) => r.id !== id && r !== sawOne && this.knowsOfDeath(id, r)).map((r) => this.name(r.id));
       if (attempt) out.push('The stranger took hold of you and pulled at your very life with a bare hand; you broke free. You know what they are.');
       else if (sawOne) out.push(`You SAW the stranger draw ${this.name(sawOne.id)}'s life out with a bare hand: no sound, no mark.`);
       else out.push('You have heard it from one who saw: the stranger tears the life out of people with a bare hand.');
-      if (names.length) out.push(`That is how ${names.slice(0, 4).join(', ')} died. They are a killer.`);
+      const list = names.slice(0, 4);
+      const and = list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}` : list[0];
+      if (list.length) out.push(`That is how ${and} died${sawOne ? ' too' : ''}. They are a killer.`);
+      else out.push('They are a killer.');
     } else {
       const known = recs.filter((r) => this.knowsOfDeath(id, r) && r.id !== id);
       const n = known.length;

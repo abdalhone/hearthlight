@@ -130,7 +130,7 @@ async function run(S) {
       }
     };
     window.__ev = [];
-    for (const t of ['call_for_help', 'villager_killed', 'crime', 'body_found', 'murder_witnessed', 'unkindle_begin', 'unkindle_end', 'unkindled', 'unkindle_attempt', 'unkindle_learned', 'speech']) g.bus.on(t, (p) => window.__ev.push({ t, id: p?.id ?? p?.victim?.id ?? p?.speaker?.id ?? null, outcome: p?.outcome }));
+    for (const t of ['call_for_help', 'villager_killed', 'crime', 'body_found', 'murder_witnessed', 'unkindle_begin', 'unkindle_end', 'unkindled', 'unkindle_attempt', 'unkindle_learned', 'speech', 'killing_known']) g.bus.on(t, (p) => window.__ev.push({ t, id: p?.id ?? p?.victim?.id ?? p?.speaker?.id ?? null, outcome: p?.outcome }));
     window.__toasts = [];
     const toast = g.ui.toast.bind(g.ui);
     g.ui.toast = (text, ...a) => {
@@ -400,6 +400,48 @@ async function run(S) {
     return { dead: !!g.entities.get('garrick').dead, tally: g.unkindle.tally };
   });
   check(still.dead && still.tally === 2, `[${tag}] reduce motion: the same spell, the still version`, JSON.stringify(still));
+
+  // ---------- seen once: Elda sees Tobias unkindled, by day; every death is linked ----------
+  await ev(() => {
+    const g = window.__game;
+    g.clock.skipTo?.(13);
+    const P = g.player;
+    window.__at(P, 89, 60);
+    P.faceDir?.('right');
+    window.__at(g.entities.get('tobias'), 90, 60, 4, 10);
+    const elda = g.entities.get('elda');
+    window.__at(elda, 89, 62, 8, 10);
+    elda.faceDir?.('up');
+    g.camera.snap?.();
+    g.unkindle.cooldownUntil = -Infinity;
+    window.__said = [];
+    g.bus.on('speech', (p) => window.__said.push({ who: p?.speaker?.id, text: p?.text }));
+    window.__clean();
+  });
+  await wait(500);
+  await holdDown();
+  await until(() => !window.__game.unkindle.channel);
+  await holdUp();
+  await wait(400);
+  await shot('11-seen');
+  const seen = await ev(() => {
+    const g = window.__game;
+    const rec = g.murder.dead.tobias;
+    const u = g.unkindle.village;
+    return {
+      seen: (rec?.seen || []).map((s) => s.id),
+      soul: !!rec?.seenSoul,
+      elda: (window.__said || []).filter((s) => s.who === 'elda').map((s) => s.text),
+      knows: u.knows('elda'),
+      bramLinked: !!g.murder.dead.bram?.linked && (g.murder.dead.bram.knownBy || []).includes('elda'),
+      known: window.__ev.filter((e) => e.t === 'killing_known').length,
+      brief: g.unkindle.briefLine('elda'),
+    };
+  });
+  check(seen.seen.includes('elda') && seen.soul, `[${tag}] Elda saw it (the sight rule): the soul pulled out`, JSON.stringify(seen.seen));
+  check(seen.elda.some((t) => /out of|life|light/i.test(t)), `[${tag}] she cries what she saw, in her words`, seen.elda.join(' | '));
+  check(seen.knows && seen.bramLinked, `[${tag}] she links Bram's death: that is how he died`, JSON.stringify({ knows: seen.knows, bram: seen.bramLinked }));
+  check(/bare hand/.test(seen.brief) && /Bram/.test(seen.brief), `[${tag}] her brief carries what she knows now`, seen.brief);
 
   // ---------- a slow phone keeps its frame rate through the hold ----------
   if (S.throttle) {
