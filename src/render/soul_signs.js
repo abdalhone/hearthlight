@@ -31,7 +31,7 @@ const SCAN = 0.5; // s between looks round you
 const FROST = ['#eef6ff', '#cfe4ff', '#a9c8f0'];
 const GLINT = '#f0faff';
 const SHADOW = 'rgba(11,10,20,0.32)';
-const FLOWERS = { x: 93 * TILE + 13, y: 77 * TILE + 3 }; // beside your bed in the Wayhouse
+const FLOWERS = { x: 93 * TILE + 7, y: 78 * TILE + 6 }; // on the floor at the foot of your bed in the Wayhouse
 
 function safe(fn, fallback = null) {
   try {
@@ -211,6 +211,8 @@ export class SoulSigns {
 
   // Under everything: the frost in your steps, the shadow slow to follow, the flowers by your bed.
   drawGround(ctx, ox, oy, time) {
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
     const tier = this.tier();
     const P = this.game?.player;
     const rm = this.reduce;
@@ -261,43 +263,45 @@ export class SoulSigns {
     const x = Math.round(FLOWERS.x - ox);
     const y = Math.round(FLOWERS.y - oy);
     const r = g.renderer;
-    if (r && (x < -8 || y < -12 || x > (r.buffer?.width ?? 9999) + 8 || y > (r.buffer?.height ?? 9999) + 8)) return;
+    if (r && (x < -10 || y < -14 || x > (r.buffer?.width ?? 9999) + 10 || y > (r.buffer?.height ?? 9999) + 10)) return;
     const wilt = tier >= 3 ? 2 : tier >= 2 ? 1 : 0;
-    // the cup
-    ctx.fillStyle = '#6b5440';
-    ctx.fillRect(x - 2, y - 3, 4, 4);
-    ctx.fillStyle = '#8a6f55';
-    ctx.fillRect(x - 2, y - 3, 4, 1);
-    const stem = wilt === 2 ? '#6d6a4c' : wilt === 1 ? '#5f8a4a' : '#4f9a48';
-    const heads = wilt === 2 ? ['#7a6a5a', '#6f625a', '#857565'] : wilt === 1 ? ['#c98aa6', '#d2c06e', '#9fa8d8'] : ['#f2a2c4', '#ffe27a', '#b9c4ff'];
-    ctx.fillStyle = stem;
+    const R = (px, py, w, h, c) => {
+      ctx.fillStyle = c;
+      ctx.fillRect(px, py, w, h);
+    };
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    // a small clay cup with a dark rim and its own shadow
+    R(x - 3, y + 1, 7, 1, 'rgba(11,10,20,0.35)');
+    R(x - 3, y - 4, 6, 5, '#3a2a22');
+    R(x - 2, y - 3, 4, 4, '#9a6a48');
+    R(x - 2, y - 3, 4, 1, '#c08a5e');
+    const stem = wilt === 2 ? '#5d5a40' : wilt === 1 ? '#5f8a4a' : '#3f9a48';
     if (wilt === 2) {
-      // fallen over the rim
-      ctx.fillRect(x - 3, y - 4, 2, 1);
-      ctx.fillRect(x + 1, y - 4, 3, 1);
-      ctx.fillRect(x - 1, y - 5, 1, 2);
-      ctx.fillStyle = heads[0];
-      ctx.fillRect(x - 4, y - 3, 1, 1);
-      ctx.fillStyle = heads[1];
-      ctx.fillRect(x + 4, y - 3, 1, 1);
-      ctx.fillStyle = heads[2];
-      ctx.fillRect(x - 1, y - 6, 1, 1);
-      // dropped petals
-      ctx.fillStyle = '#6f625a';
-      ctx.fillRect(x + 3, y + 1, 1, 1);
-      ctx.fillRect(x - 4, y + 2, 1, 1);
+      // dead: brown stalks fallen over the rim, petals dropped on the floor
+      R(x - 5, y - 5, 3, 1, stem);
+      R(x + 2, y - 5, 4, 1, stem);
+      R(x - 1, y - 7, 1, 3, stem);
+      R(x - 6, y - 5, 1, 1, '#6f5a48');
+      R(x + 6, y - 5, 1, 1, '#7a6650');
+      R(x - 1, y - 8, 1, 1, '#6a5a4a');
+      R(x + 4, y + 2, 1, 1, '#7a6650');
+      R(x - 5, y + 1, 1, 1, '#6f5a48');
       return;
     }
-    const droop = wilt === 1 ? 1 : 0;
-    ctx.fillRect(x - 1, y - 7 + droop, 1, 4 - droop);
-    ctx.fillRect(x + 1, y - 6 + droop, 1, 3 - droop);
-    ctx.fillRect(x, y - 8 + droop, 1, 5 - droop);
-    ctx.fillStyle = heads[0];
-    ctx.fillRect(x - 2 + (droop ? -1 : 0), y - 8 + droop * 2, 2, 1);
-    ctx.fillStyle = heads[1];
-    ctx.fillRect(x + 1 + droop, y - 7 + droop * 2, 2, 1);
-    ctx.fillStyle = heads[2];
-    ctx.fillRect(x, y - 9 + droop * 2, 1, 1);
+    const d = wilt === 1 ? 1 : 0;
+    R(x - 2, y - 8 + d, 1, 4 - d, stem);
+    R(x + 1, y - 7 + d, 1, 3 - d, stem);
+    R(x - 1, y - 10 + d, 1, 6 - d, stem);
+    const heads = wilt === 1 ? ['#c98aa6', '#d9c46e', '#a3aee0'] : ['#ff9ec8', '#ffe27a', '#b9c4ff'];
+    // heads (drooping: a pixel lower and turned down)
+    R(x - 3 - d, y - 9 + d * 2, 2, 2 - d, heads[0]);
+    R(x + 1 + d, y - 8 + d * 2, 2, 2 - d, heads[1]);
+    R(x - 1, y - 11 + d * 2, 2, 2 - d, heads[2]);
+    if (!d) {
+      R(x - 2, y - 9, 1, 1, '#ffffff');
+      R(x + 2, y - 8, 1, 1, '#fff6c8');
+    }
   }
 
   // After the night's light, in device pixels (one world pixel = renderer.scale): the flames
