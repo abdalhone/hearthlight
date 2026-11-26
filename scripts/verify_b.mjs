@@ -550,6 +550,47 @@ async function play(S) {
     await shot('11-not-a-child');
   });
 
+  // ================================================================ 18: the shop, by finger
+  if (!ITEMS || ITEMS.has(18)) await fresh();
+  await item(18, 'the shop: rows you can see and tap', async () => {
+    await square({ bram: [0, 0] });
+    await standBy('bram');
+    await ev(() => window.__game.ui.openDialog(window.__game.entities.get('bram')));
+    await option('.dlg-opt.opt-shop');
+    await page.waitForSelector('.shop', { timeout: 5000 }).catch(() => {});
+    await wait(600);
+    const look = await ev(() => {
+      const pane = document.querySelector('.shop .shop-panes');
+      const box = pane?.getBoundingClientRect();
+      const rows = [...document.querySelectorAll('.shop .shop-pane')].filter((p) => getComputedStyle(p).display !== 'none').flatMap((p) => [...p.querySelectorAll('.shop-row')]);
+      // Seen whole: inside every box that clips it (the panes and the list in them).
+      const whole = rows.filter((r) => {
+        const b = r.getBoundingClientRect();
+        if (!(b.height > 0)) return false;
+        for (let p = r.parentElement; p && p !== document.body; p = p.parentElement) {
+          const cs = getComputedStyle(p);
+          if (!/(auto|scroll|hidden)/.test(cs.overflowY)) continue;
+          const c = p.getBoundingClientRect();
+          if (b.top < c.top - 1 || b.bottom > c.bottom + 1) return false;
+        }
+        return true;
+      }).length;
+      const tiny = [...document.querySelectorAll('.shop .btn, .shop .seg')].filter((b) => b.getBoundingClientRect().height > 0 && b.getBoundingClientRect().height < 44);
+      const done = [...document.querySelectorAll('.shop > .btn')].find((b) => /Done trading/.test(b.textContent));
+      const db = done?.getBoundingClientRect();
+      const body = document.querySelector('.panel-dialog .panel-body')?.getBoundingClientRect();
+      const doneSeen = !!db && db.height > 0 && db.bottom <= Math.min(innerHeight, body?.bottom ?? innerHeight) + 1 && db.top >= 0;
+      return { rows: rows.length, whole, doneSeen, view: box ? Math.round(box.height) : 0, small: tiny.length, which: tiny.map((b) => `${b.className}:${b.textContent.trim()}:${Math.round(b.getBoundingClientRect().height)}`) };
+    });
+    // Phones: one column of wares (three rows at least); a computer: two columns side by side
+    // (the buy rows are taller there: two at least); "Done trading" always in view.
+    const need = Math.min(S.phone ? 3 : 2, look.rows);
+    check(look.whole >= need, `[${tag}] 18 the wares show at least ${need} whole rows (${look.whole} of ${look.rows}, ${look.view} px)`, JSON.stringify(look));
+    check(look.doneSeen, `[${tag}] 18 "Done trading" is in view without scrolling`, JSON.stringify(look));
+    if (S.phone) check(look.small === 0, `[${tag}] 18 every shop button is a 44 px target`, JSON.stringify(look));
+    await shot('18-shop');
+  });
+
   // ================================================================ 15: the trial after a real fight
   if (!ITEMS || ITEMS.has(15)) await fresh();
   await item(15, 'the trial: Bram struck first, Elda saw', async () => {

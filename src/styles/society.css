@@ -241,3 +241,117 @@
     flex: none;
   }
 }
+/* Upright phone, trading (verify-b): the wares had a window of a row and a half under the
+   words, the tabs and the haggle (min(580px, 94%) of an 844-px screen). A shop is a panel
+   you sit in: it takes the height, so four or five rows show and the rest scroll. */
+@media (max-width: 640px) and (min-height: 521px) {
+  .panel-dialog:has(.dlg-extra > .shop) {
+    height: min(800px, 95%);
+  }
+  /* One scroll for the wares (the panes'), not a 240-px window inside it. */
+  .panel-dialog .dlg-extra > .shop .shop-list {
+    max-height: none;
+    overflow: visible;
+  }
+}
+/* Sideways, trading (verify-b): the tabs and the purse share their row with the haggle, so
+   the wares get that row back (two rows showed; now three). */
+@media (max-height: 520px) and (min-width: 600px) {
+  .panel-dialog .dlg-extra > .shop {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    column-gap: 8px;
+  }
+  .panel-dialog .dlg-extra > .shop > .shop-head {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .panel-dialog .dlg-extra > .shop > .shop-bar {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .panel-dialog .dlg-extra > .shop > .shop-panes {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .panel-dialog .dlg-extra > .shop > .btn {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-self: end;
+  }
+  .panel-dialog .dlg-extra > .shop .shop-list {
+    max-height: none;
+    overflow: visible;
+  }
+}
+/* The Buy | Sell tabs are finger targets too (the touch rule gave every segment 42 px). */
+.is-touch .shop .segmented .seg {
+  min-height: 44px;
+}
+/* A computer, trading (verify-b): the shop sat inside a dialog sized for words, so a row
+   and a half of wares showed and "Done trading" was below the fold of the panel's scroll.
+   The shop takes the panel's height; the wares scroll on their own; the button stays. */
+@media (min-width: 641px) and (min-height: 521px) {
+  .panel-dialog:has(.dlg-extra > .shop) {
+    height: min(94%, 680px);
+    max-height: none;
+  }
+  .panel-dialog:has(.dlg-extra > .shop) .panel-body {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .panel-dialog:has(.dlg-extra > .shop) .dlg {
+    flex: 1 1 0;
+    min-height: 0;
+    align-items: stretch;
+  }
+  .panel-dialog:has(.dlg-extra > .shop) .dlg-portrait {
+    align-self: flex-start;
+  }
+  .panel-dialog:has(.dlg-extra > .shop) .dlg-main {
+    min-height: 0;
+  }
+  .panel-dialog .dlg-extra:has(> .shop) {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  /* The purse and the haggle on one row; the wares under them; the button last. */
+  .panel-dialog .dlg-extra > .shop {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    column-gap: 10px;
+  }
+  .panel-dialog .dlg-extra > .shop > .shop-head {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .panel-dialog .dlg-extra > .shop > .shop-bar {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .panel-dialog .dlg-extra > .shop > .shop-panes {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    align-items: start;
+  }
+  .panel-dialog .dlg-extra > .shop .shop-list {
+    max-height: none;
+    overflow: visible;
+  }
+  .panel-dialog .dlg-extra > .shop > .btn {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-self: end;
+  }
+}
