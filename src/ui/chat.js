@@ -1336,7 +1336,7 @@ export class Chat {
     if (reply.acted) this.pushVillager(id, { from: 'system', text: reply.acted, act: true });
     if (!reply.ok || reply.silent || reply.narrationOnly) {
       // No words came: what the player sees them do instead.
-      this.pushVillager(id, { from: 'system', text: reply.narration || reply.lines[0] });
+      this.pushVillager(id, { from: 'system', text: reply.narration || reply.lines[0], act: true });
       if (this.target === id) this.refreshHeader();
       this.refreshPeople(true);
       return;

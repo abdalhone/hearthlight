@@ -147,7 +147,8 @@ function talkable(game, e) {
 
 // Who T (or the Talk button) talks to (round 14b T-1, decision D4): the nearest person in
 // front of the player, facing first (like Interactions: distance − facing·10), within
-// `radius`; else the nearest within earshot (the hearing rule, whyNotHeard); else null.
+// `radius`; else the nearest within earshot (the hearing rule, whyNotHeard) roughly in
+// front of them; else null (the caller says it aloud to everyone nearby).
 // The companion (party.holder), Lyra and the villagers all count; asleep counts (they hear
 // it, as far as words reach a sleeper); downed, dead and another roof do not.
 export function nearestTalkTarget(game, { radius = 3 * TILE, earshot = EARSHOT } = {}) {
@@ -165,18 +166,20 @@ export function nearestTalkTarget(game, { radius = 3 * TILE, earshot = EARSHOT }
   let bestS = Infinity;
   let near = null;
   let nearD = Infinity;
+  // Beyond arm's reach, only someone roughly in front counts (facing them, a step or two
+  // off); nobody there, and the caller says it aloud to everyone.
   for (const e of cands) {
     if (!talkable(game, e) || !Number.isFinite(e.x)) continue;
     if (whyNotHeard(game, e, earshot)) continue;
     const dx = e.x - p.x;
     const dy = e.y - p.y;
     const d = Math.hypot(dx, dy);
-    if (d < nearD) {
+    const facing = d > 0 ? (dx * fx + dy * fy) / d : 1;
+    if (facing >= 0.35 && d < nearD) {
       nearD = d;
       near = e;
     }
     if (d > radius) continue;
-    const facing = d > 0 ? (dx * fx + dy * fy) / d : 1;
     const score = d - facing * 10;
     if (score < bestS) {
       bestS = score;

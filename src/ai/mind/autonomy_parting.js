@@ -76,7 +76,7 @@ export function letterText(a, state, { P = 'you', reason = '', answer = '' } = {
     state === 'gone' ? "I said it to you, and I'm writing it down so neither of us can pretend I didn't." : "I'm writing because some things are easier on paper, and because I want you to know I didn't leave without a word.",
     why ? `${why}` : '',
     state === 'gone' ? "I'm home with Mam and Da now. Hearthvale is my home and it will stay my home. Don't come looking for me." : "I'm not walking with you any more. Maybe one day that changes. Not today.",
-    answer ? `You said: "${String(answer).slice(0, 120)}". I heard you. I'm keeping that too.` : '',
+    answer ? `You said: "${String(answer).slice(0, 120).trim()}"${/[.!?…]$/.test(String(answer).slice(0, 120).trim()) ? '' : '.'} I heard you. I'm keeping that too.` : '',
     '',
     '— Lyra',
   ];
@@ -110,6 +110,10 @@ export class Parting {
     }
     const b = this.a?.behavior?.();
     if (b?.currentTarget && !b.currentTarget.removed && !b.currentTarget.dead) return false;
+    // Fresh from a killing or a beating by them: she does not walk up to them. The letter.
+    const now = this.a.now?.() ?? 0;
+    const hour = this.a.sph?.() ?? 37.5;
+    if ((this.a.ledger || []).some((e) => e && ['murdered_villager', 'lethal_attack', 'downed_lyra', 'downed_villager'].includes(e.deed) && now - e.t < 2 * hour)) return false;
     if (p.downed) return false;
     return Math.hypot(l.x - p.x, l.y - p.y) <= 25 * TILE;
   }

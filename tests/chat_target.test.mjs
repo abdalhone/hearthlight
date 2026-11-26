@@ -747,9 +747,12 @@ test('nearestTalkTarget: facing beats distance; the companion counts; another ro
   game.party = { holder: hess };
   game.player.facing = { x: 1, y: 0 };
   assert.equal(nearestTalkTarget(game)?.id, 'hess');
-  // Nobody within 3 tiles: the nearest within earshot.
+  // Nobody within 3 tiles: the nearest within earshot, in front.
   hess.x = 200 + 90;
   assert.equal(nearestTalkTarget(game)?.id, 'hess');
+  game.player.facing = { x: -1, y: 0 };
+  assert.equal(nearestTalkTarget(game), null, 'behind you, farther than arm\'s reach: say it aloud instead');
+  game.player.facing = { x: 1, y: 0 };
   hess.x = 200 + 400;
   assert.equal(nearestTalkTarget(game), null);
 });

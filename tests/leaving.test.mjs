@@ -138,3 +138,14 @@ test('the letter reads in a paper panel (closable), and the bag offers "Read"', 
   const { readFileSync } = await import('node:fs');
   assert.match(readFileSync(new URL('../src/ui/inventory.js', import.meta.url), 'utf8'), /def\.type === 'letter'\) actions\.append\(button\('Read'/);
 });
+
+test('fresh from a killing she saw: no walk-up to the one who did it; the letter waits on the table', () => {
+  const back = quiet();
+  const { g, a } = scene();
+  g.ui.talkTo = () => true;
+  a.recordDeed('murdered_villager', { victim: 'wys' });
+  a.setCompanionship('gone', 'You killed Wys.', { cause: 'violence', goneReason: 'other' });
+  assert.equal(a.parting.active, false);
+  assert.equal(g.flags.lyra_letter?.onTable, true);
+  back();
+});
