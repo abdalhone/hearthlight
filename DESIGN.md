@@ -2895,9 +2895,37 @@ listens and calls `game.unkindle.learn()`.
 
 ## Polish (r14b)
 
-Workstream polish takes the small things the checks left: broken props mend only where
-someone lives (empty Brindlecombe and the wilds stay broken), the countdown and ember-ring
-layers follow Interface size (`death_view.js`), prompts and speech bubbles never overlap at
-844×390, and the hearing rule may learn trees and props (only if cheap). Its CSS goes in
-`src/styles/polish.css`, its plugins in `src/core/plugins/polish.js`. Any new sound or
-witness it touches keeps §33.2.
+Workstream polish takes the small things the checks left. As built:
+
+- **The down countdown** (`src/ui/death_view.js`, `src/styles/polish.css`). The ring and its
+  words sit on one solid panel (readable over pale crowns, snow, lamplight). While you are
+  down the UI root carries `sv-down` (and `sv-lefty` when the stick is on the right). On an
+  upright phone the countdown goes above the body under the top strip, so the floating
+  stick's zone (the lower half) never holds it; the mission line makes way and the toasts
+  come below it (`--sv-below`, set by `place()`). Sideways it takes the half the stick does
+  not. On a computer the weave bar steps aside while you are down, and the countdown is
+  drawn at the Interface size (`ui._uiz`) as far as it fits between the body and the
+  screen's foot (`place()`, four times a second); the ring's canvas follows the pixels it
+  is shown at.
+- **The ember-ring's marks** follow Interface size (CSS only: the arrow and its words by
+  `zoom`, the tag by its sizes; `ember_ring_view.js` is unchanged).
+- **The Last Stand's fire** (`src/render/death_fx.js`): each edge is one strip (scorched rim,
+  glow, pixel flames in four frames) painted once per window size; a frame is four copies.
+- **Snow under a warm light** (`src/render/lighting.js snowLight`): where `weather.localSnow`
+  says the ground is snow (eased), a warm ambient is pulled toward a cool pale light of
+  about its own brightness. Noon and night are unchanged.
+- **The Leech preview** (`src/ui/weave_sandbox.js`): each draw of life is drawn in the
+  Spellbook's sandbox as a stream of green motes from the dummy to the caster, a red wisp,
+  and a glow as it lands.
+- **Prices played** (§25, `scripts/price_sim.mjs`): overdraw's drought 20 s and not lifted by
+  casting it again; emberblood's weaves cost 30% less while it burns. On a phone the price
+  chips wrap to a second row.
+- **Mending** (`src/world/broken.js peopleLiveAt`, the mend rule in `mendTick`): a broken prop
+  is mended only where people live, the vale while anyone is still in it (and not once
+  `game.occupation.emptied()`, when blood provides it). Elsewhere the debris stays and the
+  mend is asked again a day later; a bush grows back anywhere.
+- Not done here: the hearing rule's trees, props and second doorways (§33.2's `hears()` is
+  the rule four workstreams build on; left for after the merge), and the 844×390 prompt over
+  a speech bubble (bubbles.js belongs to party and talk).
+- Its CSS is in `src/styles/polish.css`; `src/core/plugins/polish.js` stays empty (nothing
+  here needs a plugin). Tests: `tests/polish.test.mjs`; the check: `scripts/polish_check.mjs`.

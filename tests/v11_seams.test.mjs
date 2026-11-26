@@ -131,10 +131,14 @@ test('seam 2: crates, barrels and fences out in the wilds break like the vale\'s
   g2.objects.deserialize(saved);
   for (const o of props) assert.equal(g2.objects.get(o.id).state.broken, true, `${o.id} broken after the load`);
   assert.equal(Number(g2.objects.get('fence@-296,58').variant) & 2, 0, 'the rails fixed after the load too');
-  // Mended on the clock, out there as in the vale.
+  // Round 14b (polish): nothing mends where nobody lives. Brindlecombe is empty, so its
+  // debris lies where it fell, two days on and ten (broken.js peopleLiveAt).
   g2.clock.t += MEND + 5;
   for (let i = 0; i < 20; i++) g2.objects.update(0.5);
-  for (const o of props) assert.equal(!!g2.objects.get(o.id).state.broken, false, `${o.id} mended`);
+  for (const o of props) assert.equal(!!g2.objects.get(o.id).state.broken, true, `${o.id} not mended: nobody lives there`);
+  g2.clock.t += MEND * 4;
+  for (let i = 0; i < 20; i++) g2.objects.update(0.5);
+  for (const o of props) assert.equal(!!g2.objects.get(o.id).state.broken, true, `${o.id} still broken`);
   back();
 });
 
