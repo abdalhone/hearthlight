@@ -210,7 +210,7 @@ export class Aging {
       safe(() => m.say(fe, line, 'say'));
     }
     m.event('found', `${ctx.finder ? m.name(ctx.finder) : 'Someone'} found ${V} dead in ${m.pronoun(rec.id, 'his')} bed. There is no mark on ${m.pronoun(rec.id, 'him')}: ${he} died of old age, in ${m.pronoun(rec.id, 'his')} sleep.`, { who: ctx.finder, about: rec.id });
-    m.toast(`${m.entity(rec.id)?.name || V} died in the night, of old age. There will be a funeral.`, 'info', `found:${rec.id}`);
+    m.toast(`${m.entity(rec.id)?.name || V} died in the night, of old age. No mark on ${m.pronoun(rec.id, 'him')}: ${he} went in ${m.pronoun(rec.id, 'his')} sleep. There will be a funeral.`, 'info', `found:${rec.id}`);
     // Lyra: grief, never suspicion (she hears the finder, or the news reaches her within the hour).
     if (safe(() => m.lyraHearsFinding(fe || ctx.body), false)) safe(() => Lyra.grief(m, rec));
     else rec.lyraGriefAt = (this.game?.clock?.t ?? 0) + HOUR;
