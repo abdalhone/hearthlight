@@ -1,4 +1,5 @@
-import { ATTRS, ATTR_IDS, POINTS_PER_LEVEL, LEVEL_GROWTH, XP_FOR, THREAT, respecCost, scaled } from './attributes.js';
+import { ATTRS, ATTR_IDS, POINTS_PER_LEVEL, LEVEL_GROWTH, XP_FOR, THREAT, respecCost, scaled, pointsEffect, nextPoint } from './attributes.js';
+import { STATS } from '../core/stats.js';
 
 // Levels and stat points (DESIGN §26): game.progression.
 //
@@ -9,6 +10,10 @@ import { ATTRS, ATTR_IDS, POINTS_PER_LEVEL, LEVEL_GROWTH, XP_FOR, THREAT, respec
 //                                                   points; raise anything, then the real
 //                                                   points come back)
 //   points (the spent ones, by attribute)           xpFor(kind) (fights are combat's)
+//   nextGain(attr) -> [{ stat, part, d, first,      what one more point adds: the curve's step
+//     before, after, real, exact, of, limit }]      (d) and what it really does (the pipeline;
+//                                                   `exact`: before rounding; `of`: what a
+//                                                   percentage is a share of)
 //   serialize() / deserialize(d)
 //
 // The pipeline's 'level' and 'points' sources live here, so a level or a point is
@@ -17,8 +22,9 @@ import { ATTRS, ATTR_IDS, POINTS_PER_LEVEL, LEVEL_GROWTH, XP_FOR, THREAT, respec
 
 const own = Object.prototype.hasOwnProperty;
 
-// While Free stat points is on, one attribute can hold at most this many (the stat
-// pipeline caps what they add up to anyway).
+// While Free stat points is on, one attribute can hold at most this many (speeds and
+// chances bend under their ceilings, the rest keep growing; the pipeline's clamps are the
+// only wall).
 export const FREE_MAX = 999;
 
 function emptyPoints() {
@@ -110,6 +116,9 @@ export class Progression {
     return rule ? scaled(rule, lv - 1) : null;
   }
 
+  // The points as they stand, each effect on its own curve (attributes.js: speeds bend
+  // hard, chances toward their clamps, everything else gently and without end). Only the
+  // counts are kept and saved, so an old save's points simply follow the curves when it loads.
   pointsContribution(a) {
     if (!this.isPlayer(a)) return null;
     const out = { add: {}, pct: {} };
@@ -117,7 +126,7 @@ export class Progression {
     for (const id of ATTR_IDS) {
       const n = this.points[id] || 0;
       if (!n) continue;
-      const c = scaled(ATTRS[id].per, n);
+      const c = pointsEffect(id, n);
       for (const part of ['add', 'pct']) for (const [k, v] of Object.entries(c?.[part] || {})) out[part][k] = (out[part][k] || 0) + v;
       any = true;
     }
@@ -160,6 +169,68 @@ export class Progression {
     let n = 0;
     for (const id of ATTR_IDS) n += pts?.[id] || 0;
     return n;
+  }
+
+  // What the next point in this attribute would add: the curve's own step (attributes.js
+  // nextPoint: `d`, `first`), and what it really does to the numbers the sheet shows
+  // (`before`, `after`, `real`), read from the pipeline with one point more, as the gear
+  // compare does, so the clamps, gear and whatever runs now all count.
+  // `limit`: the stat already sits at its clamp, so the point adds nothing to it.
+  // The character sheet's "Next:" line.
+  nextGain(attr) {
+    if (!own.call(ATTRS, attr)) return [];
+    const n = this.points[attr] || 0;
+    const list = nextPoint(attr, n);
+    const P = this.game.player;
+    const S = this.game.stats;
+    if (!P || !S || typeof S.all !== 'function' || typeof S.touch !== 'function') return list;
+    let before = null;
+    let after = null;
+    try {
+      before = S.all(P);
+      this.points[attr] = n + 1;
+      S.touch();
+      after = S.all(P);
+    } catch {
+      after = null;
+    } finally {
+      this.points[attr] = n;
+      S.touch();
+    }
+    if (!before || !after) return list;
+    for (const m of list) {
+      const s = STATS[m.stat];
+      m.before = before[m.stat];
+      m.after = after[m.stat];
+      m.real = m.after - m.before;
+      if (typeof S.breakdown === 'function') {
+        try {
+          const parts = S.breakdown(P, m.stat);
+          const add = parts.reduce((t, b) => t + b.add, 0);
+          const pct = parts.reduce((t, b) => t + b.pct, 0);
+          const mul = parts.reduce((k, b) => k * b.mul, 1);
+          // A percentage is a share of the number before any percentage ((base + Σadd) ×
+          // Πmul): "+40% speed" is 40% of the normal pace whatever else runs, and so is a
+          // point (`of`).
+          if (m.part === 'pct') m.of = add * mul;
+          // The sheet's number moves by exactly this before it is rounded to show (health,
+          // mana and the sword are whole or to a tenth): the point's step through every
+          // percentage and multiplier running (Berserk's ×2 sword, Lastlight's −50% health,
+          // coldfire's +30%), then the clamp.
+          if (s) {
+            const clamp = (x) => Math.min(s.max, Math.max(s.min, x));
+            const was = clamp(add * Math.max(0, 1 + pct) * mul);
+            const will = m.part === 'pct' ? clamp(add * Math.max(0, 1 + pct + m.d) * mul) : clamp((add + m.d) * Math.max(0, 1 + pct) * mul);
+            m.exact = will - was;
+          }
+        } catch {
+          /* words fall back to the number as it stands */
+        }
+      }
+      const edge = s ? (m.d < 0 ? s.min : s.max) : null;
+      m.limit = edge != null && Number.isFinite(m.before) && Math.abs(m.before - edge) < 1e-9;
+    }
+    return list;
   }
 
   canSpend(attr) {

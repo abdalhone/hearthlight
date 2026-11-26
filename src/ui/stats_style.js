@@ -28,7 +28,7 @@ const CSS = `
 .chs-attr { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 4px 0; }
 .chs-ctl { display: flex; gap: 4px; }
 .chs-ctl > [hidden] { display: none; }
-.chs-attrs.free .chs-plus { width: 40px; height: 40px; font-size: 20px; }
+.chs-attrs.free .chs-plus { width: 44px; height: 44px; font-size: 20px; }
 .chs-attrs.free .chs-ten { font-size: 14px; }
 .chs-points.free { background: linear-gradient(180deg, #c9b5ff, #8c6cff); box-shadow: 0 0 10px rgba(156, 124, 255, .5); }
 .chs-attr-bar { align-self: stretch; border-radius: 3px; background: var(--ac, #888); }
@@ -38,6 +38,15 @@ const CSS = `
 .chs-plus { width: 44px; height: 44px; border-radius: 10px; font-size: 24px; line-height: 1; padding: 0; display: grid; place-items: center; }
 .chs-plus:disabled { opacity: .28; }
 .chs-respec { font-size: 13px; color: var(--parch-faint); margin: 8px 0 0; }
+.chs-attr-main { min-width: 0; }
+.chs-attr-next { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 12px; line-height: 1.2; color: #bfe8cf; }
+.chs-attr-next[hidden] { display: none; }
+.chs-next-meter { flex: none; width: 28px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+.chs-next-meter i { display: block; height: 100%; background: var(--ac, #7fe0b0); }
+.chs-next-text { min-width: 0; overflow-wrap: anywhere; }
+.chs-attr-next.small { color: var(--parch-faint); }
+.chs-attr-next.small .chs-next-meter i { opacity: .6; }
+.chs-curve-note { font-size: 12px; color: var(--parch-dim); margin: 8px 0 0; font-style: italic; }
 .chs-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .chs-slot { position: relative; display: grid; grid-template-rows: auto auto auto; justify-items: center; gap: 2px; padding: 8px 4px 7px; min-height: 92px; border-radius: 10px; background: rgba(36, 40, 89, .55); border: 1px solid var(--line-soft); color: var(--parch); cursor: pointer; text-align: center; }
 .chs-slot:hover { border-color: var(--line); }
@@ -113,7 +122,7 @@ const CSS = `
   .buff-dot { width: 13px; height: 13px; line-height: 13px; font-size: 8px; }
   .panel-character .panel-foot, .panel-forge .panel-foot .sb-foot-note { display: none; }
   .chs-attr { padding: 1px 0; gap: 8px; }
-  .chs-attrs.free .chs-plus { width: 36px; height: 36px; }
+  .chs-ctl { gap: 3px; }
   .chs-lv { width: 50px; height: 50px; }
 }
 @media (max-height: 520px) {

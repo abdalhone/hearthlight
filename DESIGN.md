@@ -1935,7 +1935,9 @@ is a **gain** and a **cost**, both timed modifiers on the shared stat pipeline (
   less mana (the blood pays part of each) (toggle).
 - `lastlight` — when the player would fall, heal fully once; max HP −50% until the next
   sleep.
-- `oath` — +30% to everything while Lyra is near; if she is hurt, the player is too.
+- `oath` — +30% sword, weave power, armor and crit chance, +10% speed and cast speed, while
+  the companion is near; if they are hurt, the player is too. (Its words name each share:
+  "+30% to everything" was not true of speed.)
 - `laststand` — the Last Stand (round 14: "if I die, maybe I come back for 1 minute and
   kill anybody, but it will not let me live anymore"). Carried by the Bone Warden (a
   second glyph-shard beside overdraw's, `BOSS_SECOND_PRICES`), never at the start, never
@@ -1977,6 +1979,95 @@ notices and has opinions (berserk frightens her).
   stat points (§24; the Character sheet names both). Either gives back every spent point
   and keeps the level, gear, weaves and the points missions gave; health and mana settle
   into the new maximums.
+- **How points add up** (round 14b, two passes). First the author: "when I put a lot of
+  points of speed, I can like literally be so fast that it's unplayable … the difference
+  between 180 and 200 is not as big of a difference as 50 and 70". A first pass bent every
+  effect toward a ceiling; the author, after reading its numbers: "40% should always give
+  40%, no matter what … you are really destroying the stats … if I put 5 points into
+  something, it's a little benefit, but if I put 10, it's really a benefit … keep it only
+  for the speed. And also like for the speeds of attacks. But for damage and like mana and
+  health … not as harsh as this." So points are kept as counts by attribute id, and each
+  effect follows one of three curves (`src/progression/attributes.js` `EFFECT_KIND`,
+  `effectOf`, `pointsEffect`, `nextPoint`):
+
+  | Kind | Effects | Curve | Shape |
+  |---|---|---|---|
+  | **speed** | walking pace (Grace), cooldowns (Focus), carrying pace (Resolve) | `x / √(1 + (x/cap)²)`, `x = per·n` | first points whole, then a hard bend: 50→70 is 17–31 times 180→200; 999 points within a hair of `cap` |
+  | **gentle** | health, regen, sword, strike weaves, weave power, mana, mana regen, bleed-out | `per·K/a·((1 + n/K)^a − 1)`, `a` 0.65, `K` 50 | no ceiling; a point at n is worth `(1 + n/K)^(a−1)` of the first: 40 points give 90% of forty first points, 50→70 is 1.32 times 180→200, the 999th point still 34% |
+  | **chance** | dodge, crit, status resistance | the speed curve, `cap` = the pipeline's clamp less everyone's base | 40%, 60% (10% base + 50%), 75%: points alone creep up on the clamp itself, never past |
+
+  No attack or cast speed comes from a point except Focus's cooldowns (swing and cast speed
+  are gear and prices only). The first point gives `per` (within 0.5%):
+
+  | Attribute | Per point (07b2e76 → now) | 10 points (old line / first pass / now) | 50 points | 200 points |
+  |---|---|---|---|---|
+  | Vitality | health 6 → **10**, regen 0.12 → **0.2**/s | +60 / +59 / **+97** health | +300 / +230 / **+438** | +1200 / +345 / **+1420** |
+  | Might | sword 0.8 → **1.2**, strike 5% → **7%** | +8 / +7.9 / **+11.6** sword | +40 / +30.7 / **+52.5** | +160 / +46 / **+170** |
+  | Weave | weave power 5% → **8%** | +50% / +49% / **+77%** | +250% / +192% / **+350%** | +1000% / +287% / **+1136%** |
+  | Focus | mana 5 → **8**, mana regen 6% → **8%**, cooldowns −2% (speed) | +50 / +49 / **+77** mana; cooldowns −20% / −19% / −19% | +250 / +177 / **+350**; ×0.4 clamp / −45% / −45% | +1000 / +243 / **+1136**; −50% at most |
+  | Grace | speed 1.5% (speed), dodge 1.2% → **1.5%**, crit 1% → **1.5%** | speed +15% / +14.7% / +14.7%; dodge 12% / 11% / **14%** | speed +75% / +51% / +51%; dodge 40% clamp / 27% / **35%** | speed the 260 clamp / +68% / +68%; dodge 40% clamp / 30% / **39.6%** |
+  | Resolve | resist 3% → **5%**, bleed-out 4 → **5** s, carrying 4% (speed) | resist 30% / 26% / **42%**; bleed-out +40 / +38 / **+48** s | resist 75% clamp / 47% / **72%**; bleed-out +200 / +103 / **+219** s | resist 75% clamp / 50% / **74.8%**; bleed-out to its 300 s clamp |
+
+  Chosen by play (`scripts/stats_sim.mjs` plays the game's own pipeline, combat, Weave and
+  the bosses' brains headless, for the old line, the first pass and now): five points in
+  Might, Weave or Vitality at levels 1, 5 and 12 give a quarter more sword or Spark (or 30%
+  more health) and bring one of a slime, a wolf, a bandit and a skeleton down a hit sooner
+  (Varek needs three more blows to drop you); ten give half as much again (60% health), two
+  hits fewer across the four (a wolf in one cut at level 12) and six more of Varek's blows;
+  five and ten in Focus are at least 6 and 13 more Sparks from a full pool (level 12: 18 →
+  28 → 37). A level-15 stranger with
+  30 points in Might (the rest in Vitality) beats Varek, Greyjaw, the Lake's Hum and the
+  Bone Warden in 12, 6, 26 and 16 s (median of three bot fights; with 30 in Weave and the
+  rest in Focus, 10, 13, 13 and 13 s), against 33, 20, 33, 19 s with none in Might; by
+  hand on a computer Varek yields in 12–40 s across runs. Nine bot fights a cell (the Lake's
+  Hum is mostly its dives, so three are noisy): 12, 7, 18, 16 s with the sword (the old
+  line 13, 7, 24, 16) and 10, 14, 11, 12 s with the Weave (old 12, 19, 13, 18). Fought by hand
+  on the computer at level 15 (verifier, one run each, new against the old line): Varek
+  with 30 Might 26 s against 43; Greyjaw at night with 30 Weave 18 s against 35; the Bone
+  Warden with 30 Weave 21 s against 24 (its phases set most of that fight's length); the
+  Lake's Hum with 30 Might 9 s against 24 (five cuts of ~88 between its dives). Far out, 50 Vitality at level 15 is 584
+  health, more than Varek's 520 (the first pass never passed 506), and 100 Might or Weave
+  bring him down in 4 cuts or 7 Sparks. Death stays dangerous: bosses and foes are
+  unchanged, foes still bite harder as you level (THREAT), and with a third of the points
+  in Vitality a boss's plain blow drops you in 32 or fewer at level 15 (the old line: 26).
+  Mana and weave power have no wall (`STATS.maxMana` 9999 and `MANA_CAP` in
+  `src/magic/balance.js` alike, weave power and strike ×50); the bleed-out window keeps its
+  300 s clamp (about 51 Resolve). Tests: `tests/stat_curve.test.mjs`. An old save loads its
+  counts and simply follows the curves; Reset stat points, Free stat points on and off and
+  the chapel's respec are unchanged.
+  The Character sheet says under each attribute what the next point adds, its main effect
+  (every effect in the tooltip), as the number on the sheet will really move: read from the
+  pipeline with one point more (`progression.nextGain`, the way the gear compare reads a
+  piece), so gear, hastes and the clamps all count. Speed reads as a share of the normal
+  pace, the same pace Berserk's +40% and every other speed percentage is a share of, so a
+  point reads the same with Berserk running as without (0 Grace: "Next: +1.5% speed"; 49
+  Grace: "+0.5% speed"); the Speed number's tooltip says so ("Each % is a share of your
+  normal pace, 76."; every number with a percentage on it says what its % are a share of,
+  and a chance's own +% reads "+30% of it", a share of the chance, never more points of it),
+  and any number a clamp holds says "At its limit" there (a dodge build in dodge gear meets
+  the 40% clamp). Health, mana and the sword, shown whole, read
+  the exact step of the sheet's number before it is rounded (`exact`: the curve's step
+  through every percentage and multiplier running: "+10 health", at 80 Might "+0.9 sword";
+  with Berserk's ×2 "+1.7 sword", with Lastlight's −50% health "+5 health", as weave power
+  already counted the Last Stand's +100%); a number at its clamp says so
+  ("bleed-out at its limit"), and Free stat points at 999 says "As high as it goes". A small
+  meter shows how much of the first point's worth the next still carries (speed at 80 Grace
+  13%, dimmed past a third; Might at 80, 71%), and one line: "Speed and cooldowns slow down
+  as they climb; strength, magic, health and mana keep growing."
+- **Percentages are whole** (round 14b, `src/core/stats.js`): `value = clamp((base + Σadd)
+  × (1 + Σpct) × Πmul)`, so a percentage is that share of the normal pace and adds the same
+  whatever else runs: Berserk's "+40% speed" is +30.4 px/s (40% of 76) at 0, 50 and 999
+  Grace, alone or with everything else (the first pass's soft knee, which let it add only
+  18 px/s at 999 Grace, is gone). Slows (survival's weaknesses, statuses, ground, carrying,
+  a cast) multiply in full. Speed's 260 is a safety clamp no real stack reaches: everything
+  at once (999 Grace, Roadrunner Boots and the Murrel Cloak, a Swiftfoot Draught, a wind
+  surge, Berserk, the Last Stand and Oath) is 225.7 px/s by plain sums, and only while
+  Berserk and the Last Stand run together. Played by stick and keys on all three screens
+  (`scripts/stats_check.mjs`, a phone at 4× CPU): the lanes, in at a door, a stream head on
+  (stopped at the bank) and on a slant (sliding along it), rolls into a wall; never inside
+  a wall, a shut door or water, at most 3.8 px a game step (`moveActor` splits moves into
+  4 px anyway); Lyra at most 12 tiles behind and back beside you when you stop. At that pace
+  a body needs ~23 px to stop, so a door wants lining up; the pace is the author's choice.
 - **Gear**: slots weapon, armor, cloak, boots, two charms. Items have stats and a rarity
   color; Bram forges and upgrades weapons and armor (with ore, crystals and coin), Sabeth
   sews cloaks, Garrick sells charms, bosses and missions drop special pieces, Mira and Elda

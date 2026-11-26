@@ -181,10 +181,16 @@ export function saveProgression(game) {
 
 export function loadProgression(game, d) {
   const data = d && typeof d === 'object' ? d : {};
+  // The wound as saved (player.deserialize has run): the parts below land one at a time,
+  // and a maximum worked out halfway (the gear before the points) must not cut it. A
+  // bigger maximum leaves the wound as it is, a smaller one clamps it, as at any time.
+  const P = game.player;
+  const hp = P && Number.isFinite(P.hp) && P.hp > 0 ? P.hp : null;
   game.gear?.deserialize?.(data.gear || null);
   game.progression?.deserialize?.(data.progression || null);
   game.prices?.deserialize?.(data.prices || null);
   if (game.player && game.stats) game.stats.deserializeMods(game.player, data.mods || []);
   game.stats?.refresh(game.player);
   game.stats?.refresh(game.companion);
+  if (hp != null && !P.downed && !P.dead && game.stats?.isManaged?.(P)) P.hp = Math.min(hp, P.maxHp);
 }

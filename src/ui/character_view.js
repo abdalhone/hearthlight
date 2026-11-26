@@ -103,13 +103,20 @@ export class CharacterView {
       minus.hidden = true;
       ten.hidden = true;
       const ctl = h('span', { class: 'chs-ctl' }, minus, plus, ten);
-      const row = h('div', { class: 'chs-attr' }, h('span', { class: 'chs-attr-bar' }), h('div', null, h('div', { class: 'chs-attr-name', text: a.name }), h('div', { class: 'chs-attr-line', text: a.line })), n, ctl);
+      // What one more point adds (round 14b), with a small meter of how much of the first
+      // point's worth it still carries (a speed's far points little, the rest a good share).
+      const meter = h('i');
+      const nextText = h('span', { class: 'chs-next-text' });
+      const next = h('div', { class: 'chs-attr-next' }, h('span', { class: 'chs-next-meter', 'aria-hidden': 'true' }, meter), nextText);
+      const row = h('div', { class: 'chs-attr' }, h('span', { class: 'chs-attr-bar' }), h('div', { class: 'chs-attr-main' }, h('div', { class: 'chs-attr-name', text: a.name }), h('div', { class: 'chs-attr-line', text: a.line }), next), n, ctl);
       row.style.setProperty('--ac', a.color);
-      this.attrRows[id] = { row, n, plus, minus, ten };
+      this.attrRows[id] = { row, n, plus, minus, ten, next, nextText, meter };
       this.attrsEl.append(row);
     }
+    // How the points add up (round 14b, attributes.js EFFECT_KIND), said plainly.
+    this.curveEl = h('p', { class: 'chs-curve-note', text: 'Speed and cooldowns slow down as they climb; strength, magic, health and mana keep growing.' });
     this.respecEl = h('p', { class: 'chs-respec' });
-    const left = h('section', { class: 'chs-box' }, hero, this.attrsEl, this.respecEl);
+    const left = h('section', { class: 'chs-box' }, hero, this.attrsEl, this.curveEl, this.respecEl);
 
     this.slotsEl = h('div', { class: 'chs-slots' });
     this.slotBtns = {};
@@ -173,13 +180,32 @@ export class CharacterView {
       if (r.ten.hidden === free) r.ten.hidden = !free;
       r.minus.disabled = !free || v <= 0;
       r.ten.disabled = !free || !pr.canSpend(id);
+      this.renderNext(id, r);
     }
-    if (free) setText(this.respecEl, 'Free stat points is on: every stat goes as high as you like. Turning it off in Settings → Game → Practice puts back the points you really spent.');
+    if (free) setText(this.respecEl, 'Free stat points is on: raise anything as far as you like (up to 999 a stat). Turning it off in Settings → Game → Practice puts back the points you really spent.');
     else setText(this.respecEl, pr.spent() ? `Want them back? Settings → Game → Reset stat points gives them all back, free. Or Sister Aveline can give you a quiet hour in the chapel to start over (${pr.respecCost()} coins).` : 'Spend points as you level. Settings (Reset stat points) can give them back for free; Sister Aveline at the chapel, for a price.');
     this.renderSlots();
     this.renderPick();
     this.renderStats();
     this.renderEffects();
+  }
+
+  // "Next: +1.1% speed": what one more point really does to the attribute's main number
+  // (progression.nextGain: the pipeline with one point more); every effect in the
+  // tooltip. Small gains look small (dimmed, a short meter of the curve's share).
+  renderNext(id, r) {
+    const pr = this.game.progression;
+    const list = safe(() => pr.nextGain?.(id), []) || [];
+    const m = list[0];
+    r.next.hidden = !m;
+    if (!m) return;
+    const share = m.first ? Math.max(0, Math.min(1, Math.abs(m.d / m.first))) : 0;
+    // Free stat points at the top (999): no next point to show.
+    const top = pr.free && !safe(() => pr.canSpend(id), true);
+    setText(r.nextText, top ? 'As high as it goes' : `Next: ${gainWords(m)}`);
+    r.meter.style.width = `${Math.max(2, Math.round(share * 100))}%`;
+    toggleClass(r.next, 'small', share < 0.34);
+    r.next.title = `One more point: ${list.map(gainWords).join(', ')} (${Math.round(share * 100)}% of what the first point gave)`;
   }
 
   renderSlots() {
@@ -317,6 +343,46 @@ export class CharacterView {
   }
 }
 
+// Short words for what a point gives ("+2.7 health", "+0.4% speed", "−0.2% cooldowns").
+const GAIN_WORD = { maxHp: 'health', hpRegen: 'regen', atk: 'sword', strike: 'strike weaves', spellPower: 'weave power', maxMana: 'mana', manaRegen: 'mana regen', cooldown: 'cooldowns', speed: 'speed', dodge: 'dodge', crit: 'crit', resist: 'status resist', bleedout: 'bleed-out', carrySpeed: 'carrying pace' };
+
+// A small number as it reads: 2.7, 0.4, 0.04, or <0.01 when it is almost nothing.
+function smallNum(a) {
+  if (a >= 9.95) return String(Math.round(a));
+  if (a >= 0.095) return String(Math.round(a * 10) / 10);
+  if (a >= 0.0095) return String(Math.round(a * 100) / 100);
+  return '<0.01';
+}
+
+// Health, mana and the sword are shown whole (or to a tenth): one point's share of them is
+// the sheet's number's exact step (`exact`: through every percentage and multiplier
+// running, before rounding), not the rounded difference.
+const SHOWN_ROUNDED = new Set(['maxHp', 'maxMana', 'atk', 'def']);
+
+// m: one entry of progression.nextGain. Where the pipeline's own answer is there (`real`),
+// the words say that: what the sheet's number will do (the clamps, gear and hastes
+// counted); speed, a share of a pace, as a share of the normal pace (`of`), the same pace
+// every speed percentage in the game is a share of ("40% should always give 40%").
+export function gainWords(m) {
+  const s = STATS[m.stat] || {};
+  const word = GAIN_WORD[m.stat] || (s.label || m.stat).toLowerCase();
+  if (m.limit) return `${word} at its limit`;
+  const known = Number.isFinite(m.real);
+  if (known && m.part === 'pct' && s.fmt !== 'pct' && s.fmt !== 'mul' && (m.of > 0 || m.before > 0)) {
+    // A share of the normal pace (the number before any percentage), as Berserk's +40% and
+    // the tooltip's lines are: a point reads the same with Berserk running as without.
+    const share = m.real / (m.of > 0 ? m.of : m.before);
+    return `${share < 0 ? '−' : '+'}${smallNum(Math.abs(share) * 100)}% ${word}`;
+  }
+  const d = SHOWN_ROUNDED.has(m.stat) ? (Number.isFinite(m.exact) ? m.exact : m.d) : known ? m.real : m.d;
+  const sign = d < 0 || (d === 0 && m.d < 0) ? '−' : '+';
+  const a = Math.abs(d);
+  if (m.part === 'pct' || s.fmt === 'pct' || s.fmt === 'mul') return `${sign}${smallNum(a * 100)}% ${word}`;
+  if (s.fmt === 'rate') return `${sign}${smallNum(a)}/s ${word}`;
+  if (s.fmt === 'sec') return `${sign}${smallNum(a)} s ${word}`;
+  return `${sign}${smallNum(a)} ${word}`;
+}
+
 // Where each kind of piece comes from (for an empty list).
 const WHERE = {
   weapon: 'Bram sells and forges blades at the smithy.',
@@ -329,20 +395,38 @@ const WHERE = {
 // A faint silhouette for an empty slot.
 const EMPTY_ICON = { weapon: 'iron_sword', armor: 'leather_jerkin', cloak: 'traveler_cloak', boots: 'field_boots', charm1: 'hearth_charm', charm2: 'moonglass_bead' };
 
-// A stat's sources in words, for its tooltip.
-function why(S, P, id) {
+// A stat's sources in words, for its tooltip; what its percentages are shares of (the
+// number before any percentage: "+40% speed" is 40% of the normal pace); and whether a
+// clamp holds it, so nothing is held back without a word.
+export function statTip(S, P, id) {
   const parts = safe(() => S.breakdown(P, id), []) || [];
   const fmt = STATS[id];
-  return parts
-    .map((b) => {
-      const bits = [];
-      if (b.add) bits.push(`${b.add > 0 ? '+' : ''}${fmt.fmt === 'pct' ? `${Math.round(b.add * 100)}%` : Math.round(b.add * 100) / 100}`);
-      if (b.pct) bits.push(`${b.pct > 0 ? '+' : ''}${Math.round(b.pct * 100)}%`);
-      if (b.mul !== 1) bits.push(`×${Math.round(b.mul * 100) / 100}`);
-      return `${b.label}: ${bits.join(' ')}`;
-    })
-    .join('\n');
+  const lines = parts.map((b) => {
+    const bits = [];
+    if (b.add) bits.push(`${b.add > 0 ? '+' : ''}${fmt.fmt === 'pct' ? `${Math.round(b.add * 100)}%` : Math.round(b.add * 100) / 100}`);
+    // A chance's own +% is a share of the chance ("+30% of it"), never more points of it.
+    if (b.pct) bits.push(`${b.pct > 0 ? '+' : ''}${Math.round(b.pct * 100)}%${fmt?.fmt === 'pct' ? ' of it' : ''}`);
+    if (b.mul !== 1) bits.push(`×${Math.round(b.mul * 100) / 100}`);
+    return `${b.label}: ${bits.join(' ')}`;
+  });
+  if (!fmt) return lines.join('\n');
+  const add = parts.reduce((t, b) => t + b.add, 0);
+  const pct = parts.reduce((t, b) => t + b.pct, 0);
+  const mul = parts.reduce((k, b) => k * b.mul, 1);
+  const plain = add * mul;
+  if (parts.some((b) => b.pct)) {
+    const n = fmt.fmt === 'pct' || fmt.fmt === 'mul' ? formatStat(id, plain) : String(Math.round(plain * 10) / 10);
+    const word = fmt.label.toLowerCase();
+    if (id === 'speed') lines.push(`Each % is a share of your normal pace, ${n}.`);
+    else if (fmt.fmt === 'pct') lines.push(`Each "% of it" is a share of ${n}, the ${word} before them.`);
+    else lines.push(`Each % is a share of ${n}, the ${word} before any %.`);
+  }
+  const raw = add * Math.max(0, 1 + pct) * mul;
+  if (raw > fmt.max + 1e-9) lines.push(`At its limit (${formatStat(id, fmt.max)}): more adds nothing.`);
+  else if (raw < fmt.min - 1e-9) lines.push(`At its limit (${formatStat(id, fmt.min)}).`);
+  return lines.join('\n');
 }
+const why = statTip;
 
 // Wires the sheet into the UI: ui.openCharacter, the C key, the player's card, a
 // points badge on it, and a "Character" entry in the pause menu.
