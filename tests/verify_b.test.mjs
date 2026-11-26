@@ -112,3 +112,42 @@ test('struck during her parting words, the scene ends: the letter on the table, 
   assert.ok(g.flags.lyra_letter, 'the letter is left');
   assert.equal(P.inventory.count('lyra_letter'), 0, 'on the table, not handed over');
 });
+
+// Leftover (blood: "only a watch that knows arrests you"). Downed by a guard who never heard
+// of your crime (you struck him; he struck back) is a fight, not an arrest: the watch's record
+// stays. Downed by one who knows: settled where you fell, as before.
+test('per knower: a guard who downs you without knowing you are wanted does not settle the crime', () => {
+  const g = makeMurderGame({ hour: 12 });
+  for (const v of villagers(g)) {
+    put(v, px(141), px(101));
+    v.think = () => {};
+  }
+  const rowan = g.entities.get('rowan');
+  const P = g.player;
+  const record = () => ({ level: 1, kind: 'assault', until: g.clock.t + 600, victimId: 'bram', since: g.clock.t, t: g.clock.t });
+  P.crime = record();
+  assert.equal(g.combat.knowsCrime(rowan, P), false, 'Rowan has not heard of it');
+  P.onDowned(rowan);
+  assert.ok(g.combat.hasCrime(P), 'the record stands: he did not arrest you');
+  P._down = false;
+  P.downed = false;
+  P.crime = record();
+  g.village.addRumor('attacked_villager', { victim: 'bram', witnesses: ['rowan'] });
+  assert.equal(g.combat.knowsCrime(rowan, P), true, 'told: now he knows');
+  P.onDowned(rowan);
+  assert.equal(g.combat.hasCrime(P), false, 'downed by a guard who knows: arrested');
+});
+
+// The same rule for the words Claude is given: Lyra walking up to a villager is told they are
+// "shaken" by your crime only if that villager knows of it.
+test('per knower: a villager who never heard of your crime is not briefed as shaken by it', async () => {
+  const { buildConversationTask } = await import('../src/ai/brain/prompt.js');
+  const g = makeMurderGame({ hour: 12 });
+  const elda = g.entities.get('elda');
+  const P = g.player;
+  P.crime = { level: 1, kind: 'assault', until: g.clock.t + 600, victimId: 'bram', since: g.clock.t, t: g.clock.t };
+  const text = (t) => (typeof t === 'string' ? t : JSON.stringify(t));
+  assert.ok(!/is shaken/.test(text(buildConversationTask(g, elda))), 'Elda has not heard');
+  g.village.addRumor('attacked_villager', { victim: 'bram', witnesses: ['elda'] });
+  assert.match(text(buildConversationTask(g, elda)), /is shaken/, 'told: now she is');
+});

@@ -782,7 +782,8 @@ export function buildConversationTask(game, npc, topic = null) {
   if (npc?.activity) lines.push(`Right now ${name} is: ${npc.activity}.`);
   const knows = prof.knows && typeof prof.knows === 'object' ? Object.entries(prof.knows).slice(0, 8) : [];
   if (knows.length) lines.push(`What ${name} thinks of others: ${knows.map(([k, v]) => `${k}: ${clip(v, 80)}`).join('; ')}.`);
-  if (g.player?.crime) lines.push(`${name} is shaken: the traveler you came with attacked someone in the village.`);
+  // Only if they know it (per knower, DESIGN §35.2): the watch's record is not the village's.
+  if (g.player?.crime && (safeCall(() => g.combat?.knowsCrime?.(npc, g.player)) ?? true)) lines.push(`${name} is shaken: the traveler you came with attacked someone in the village.`);
   const facts = knownFacts(prof, fam);
   if (facts.length) {
     lines.push(`\n# What ${name} might share (only these; pick what fits)`);
