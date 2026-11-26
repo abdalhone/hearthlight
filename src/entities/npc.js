@@ -9,6 +9,7 @@ import { RESPONSE_LINES, HEAR_LINES } from './npc_lines.js';
 import { look } from '../murder/witness.js';
 import { hears, cryLoudness, hearsWords, placeOfSound, LOUD } from '../ai/hearing.js';
 import { placePhrase } from '../ai/village_life/errands_data.js';
+import { isMinor, lyraOf } from '../core/people.js';
 
 // Villagers of Hearthvale. Each one lives by the 24-hour schedule in its profile
 // (npc_data.js): walks there with the pathfinder (opening doors and closing them
@@ -171,6 +172,9 @@ export class NPC extends Actor {
     this.fleeHome = false;
     this.fightTarget = null;
     this.post = null;
+    this.fightAnchor = null; // what a fight's leash is measured from, when not the post (startFight)
+    this.fightLeash = null;
+    this.duty = null; // a companion's duty: { step(npc, dt, tick) } (round 14b, party)
     this.windup = 0;
     this.attackReadyAt = 0;
     this.downedFor = 0;
@@ -270,6 +274,9 @@ export class NPC extends Actor {
       if (this.state !== 'sleep' && this.state !== 'sit') this.faceToward(p.x, p.y);
       return;
     }
+    // A duty (round 14b, DESIGN §34.1: walking with the stranger as their companion) runs
+    // before the day's routine: a step that returns anything but undefined took this beat.
+    if (this.duty?.step?.(this, dt, tick) !== undefined) return;
     this.routine(dt, tick);
     this.socialT -= dt;
     if (tick && this.socialT <= 0) {
@@ -1230,11 +1237,16 @@ export class NPC extends Actor {
 
   // ------------------------------------------------------------ guards
 
-  startFight(target) {
+  // opts.anchor: what the leash is measured from instead of the post (a point or an entity
+  // that moves, like the player a companion guards); opts.leash: px instead of GUARD_LEASH
+  // (round 14b, DESIGN §34.1). Both last until the fight ends.
+  startFight(target, { anchor = null, leash = null } = {}) {
     const g = this.game;
     if (this.mode === 'help') this.endHelp(true);
     this.mode = 'fight';
     this.fightTarget = target;
+    this.fightAnchor = anchor && Number.isFinite(anchor.x) && Number.isFinite(anchor.y) ? anchor : null;
+    this.fightLeash = Number.isFinite(leash) && leash > 0 ? leash : null;
     if (!this.post) this.post = { x: this.x, y: this.y };
     this.wake();
     this.walker.stop();
@@ -1280,7 +1292,8 @@ export class NPC extends Actor {
       const valid = t && alive(t) && (hostileTo(g, this, t) || (this.profile.hunter && t.species && huntable(t)));
       // Running in from afar to answer a call, the usual leash waits until they arrive.
       const rushing = now(g) < (this.rushUntil ?? 0) && t && this.distTo(t) > 90;
-      const tooFar = !t || (!rushing && (this.distTo(t) > 260 || (this.post && Math.hypot(this.x - this.post.x, this.y - this.post.y) > GUARD_LEASH)));
+      const at = this.fightAnchor ?? this.post;
+      const tooFar = !t || (!rushing && (this.distTo(t) > 260 || (at && Math.hypot(this.x - at.x, this.y - at.y) > (this.fightLeash ?? GUARD_LEASH))));
       if (!valid || tooFar) return this.endFight(t);
     }
     if (!t) return this.endFight(null);
@@ -1345,8 +1358,11 @@ export class NPC extends Actor {
   endFight(target) {
     const g = this.game;
     const wasPlayer = target && target === g.player;
-    this.mode = 'routine';
+    // Back to the duty they were on (a companion), else the day's routine.
+    this.mode = this.duty ? 'duty' : 'routine';
     this.fightTarget = null;
+    this.fightAnchor = null;
+    this.fightLeash = null;
     this.post = null;
     this.windup = 0;
     this.speedMul = 1;
@@ -2522,7 +2538,7 @@ function callEntity(g, ent, ref) {
   if (ref && typeof ref === 'object') return ref;
   if (typeof ref !== 'string' || !ref) return null;
   if (ref === 'player') return g?.player || null;
-  if (ref === 'lyra' && g?.companion) return g.companion;
+  if (ref === 'lyra' && lyraOf(g)) return lyraOf(g);
   try {
     return g?.entities?.get?.(ref) || null;
   } catch {
@@ -2550,9 +2566,10 @@ function huntable(e) {
   return factionRelation('villager', e.faction) === 'hostile';
 }
 
+// A child by age, the one rule (src/core/people.js isMinor: under 16 by the calendar; the
+// build only while the age is unknown). Tansy (build 'teen') is an adult at 16.
 function isChild(npc) {
-  const a = npc?.profile?.appearance;
-  return a?.build === 'child' || a?.build === 'teen' || (npc?.profile?.age ?? 30) < 16;
+  return isMinor(npc?.game, npc);
 }
 
 function nearestChild(npc, r) {

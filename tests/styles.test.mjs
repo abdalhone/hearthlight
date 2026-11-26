@@ -4,20 +4,27 @@
 // selector, and the phone UI fell apart. These checks catch that at test time.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const css = readFileSync(join(here, '..', 'src', 'styles.css'), 'utf8');
+// Round 14b (DESIGN §33, F8): the workstream sheets in src/styles/ (read after styles.css,
+// sorted) are checked the same way, each on its own.
+const sheetDir = join(here, '..', 'src', 'styles');
+const SHEETS = existsSync(sheetDir) ? readdirSync(sheetDir).filter((f) => f.endsWith('.css')).sort() : [];
+const ALL = [['styles.css', css], ...SHEETS.map((f) => [`styles/${f}`, readFileSync(join(sheetDir, f), 'utf8')])];
 
-test('styles.css: no merge-conflict markers', () => {
-  const bad = css
-    .split('\n')
-    .map((l, i) => [i + 1, l])
-    .filter(([, l]) => /^(<<<<<<<|=======|>>>>>>>)/.test(l));
-  assert.deepEqual(bad, [], `conflict markers at lines ${bad.map((b) => b[0]).join(', ')}`);
-});
+for (const [name, src] of ALL) {
+  test(`${name}: no merge-conflict markers`, () => {
+    const bad = src
+      .split('\n')
+      .map((l, i) => [i + 1, l])
+      .filter(([, l]) => /^(<<<<<<<|=======|>>>>>>>)/.test(l));
+    assert.deepEqual(bad, [], `conflict markers at lines ${bad.map((b) => b[0]).join(', ')}`);
+  });
+}
 
 /** Strip comments and strings, then walk braces; return the top-level rule preludes. */
 function topLevel(src) {
@@ -54,10 +61,15 @@ test('styles.css: braces balance and key rules stay top-level', () => {
   }
 });
 
-test('styles.css: no declaration sits directly inside a nested-looking rule', () => {
+for (const [name, sheet] of ALL) {
+test(`${name}: braces balance`, () => {
+  topLevel(sheet);
+});
+
+test(`${name}: no declaration sits directly inside a nested-looking rule`, () => {
   // A plain rule (not @media/@supports/@keyframes/@container/@layer) must not
   // contain another `selector {` — that is the shape an unclosed rule leaves.
-  const s = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const s = sheet.replace(/\/\*[\s\S]*?\*\//g, '');
   const stack = [];
   let buf = '';
   let line = 1;
@@ -80,10 +92,10 @@ test('styles.css: no declaration sits directly inside a nested-looking rule', ()
   assert.deepEqual(problems.slice(0, 5), []);
 });
 
-test('styles.css: every declaration is "property: value" (no spliced tails)', () => {
+test(`${name}: every declaration is "property: value" (no spliced tails)`, () => {
   // A merge once left `.set-label {` holding the tail of another rule's
   // box-shadow ("2px 0 0 0 var(--bc), …") — valid braces, broken rule.
-  const s = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const s = sheet.replace(/\/\*[\s\S]*?\*\//g, '');
   const bad = [];
   const re = /([^{}]*)\{([^{}]*)\}/g;
   let m;
@@ -97,4 +109,14 @@ test('styles.css: every declaration is "property: value" (no spliced tails)', ()
     }
   }
   assert.deepEqual(bad.slice(0, 5), []);
+});
+}
+
+test('every workstream sheet is linked by index.html after styles.css, in sorted order, and inlined by the build', () => {
+  const html = readFileSync(join(here, '..', 'index.html'), 'utf8');
+  const links = [...html.matchAll(/<link rel="stylesheet" href="(src\/[^"]+\.css)"/g)].map((m) => m[1]);
+  assert.deepEqual(links, ['src/styles.css', ...SHEETS.map((f) => `src/styles/${f}`)]);
+  for (const k of ['talk', 'party', 'blood', 'society', 'soul', 'polish']) assert.ok(SHEETS.includes(`${k}.css`), `src/styles/${k}.css exists`);
+  const build = readFileSync(join(here, '..', 'scripts', 'build.mjs'), 'utf8');
+  assert.match(build, /src\/styles'\)/, 'scripts/build.mjs reads src/styles/');
 });

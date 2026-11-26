@@ -26,6 +26,7 @@ import { castPortrait, setStampAtlas } from './cast.js';
 import { stepKey, speakerName, readingMs, isSpoken, isSound } from './scripts.js';
 import { Score } from './score.js';
 import { SceneSound } from './sfx.js';
+import { lyraOf } from '../core/people.js';
 
 const HOLD_TO_SKIP = 0.9; // seconds of holding the pointer down
 const FADE_MS = 700;
@@ -479,7 +480,7 @@ export class CutscenePlayer {
     if (!target) return null;
     if (typeof target === 'object' && Number.isFinite(target.x)) return { x: target.x, y: target.y };
     const id = String(target);
-    const e = id === 'player' ? g.player : id === 'lyra' ? g.companion : g.entities?.get?.(id);
+    const e = id === 'player' ? g.player : id === 'lyra' ? lyraOf(g) : g.entities?.get?.(id);
     if (e) return { x: e.x, y: e.y - 8 };
     const o = g.objects?.get?.(id);
     if (o) return { x: o.x, y: o.y - 8 };
@@ -508,7 +509,7 @@ export class CutscenePlayer {
 
   actor(st) {
     const g = this.game;
-    const who = st.actor === 'player' ? g.player : st.actor === 'lyra' ? g.companion : g.entities?.get?.(st.actor);
+    const who = st.actor === 'player' ? g.player : st.actor === 'lyra' ? lyraOf(g) : g.entities?.get?.(st.actor);
     if (!who) return null;
     if (st.place) {
       const p = this.where(st.place);

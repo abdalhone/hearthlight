@@ -11,6 +11,7 @@
 import { TILE } from '../core/constants.js';
 import { VILLAGERS } from '../ai/social/bonds_data.js';
 import { wallTile } from '../world/walls.js';
+import { lyraOf } from '../core/people.js';
 
 export const RANGE = Object.freeze({
   day: 150, // px outdoors by full day (a villager's SIGHT)
@@ -182,7 +183,7 @@ export function witnessesOf(game, x, y, { exclude = [], ids = null } = {}) {
   const L = buildingKey(game, x, y) != null ? 1 : lightAt(game, x, y);
   for (const id of ids || [...VILLAGERS, 'lyra']) {
     if (skip.has(id)) continue;
-    const e = id === 'lyra' ? game?.companion : safe(() => game.entities?.get?.(id));
+    const e = id === 'lyra' ? lyraOf(game) : safe(() => game.entities?.get?.(id));
     const v = e ? look(game, e, x, y, { light: L }) : null;
     if (v) out.push({ id, clarity: v.clarity, d: Math.round(v.d) });
   }

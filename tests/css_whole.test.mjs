@@ -5,12 +5,16 @@
 // cutscene needs are not top-level rules.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CSS_FILES = [process.env.CSS_FILE || 'src/styles.css'];
+const MAIN = 'src/styles.css';
+// Round 14b (DESIGN §33, F8): each workstream's own sheet in src/styles/, read after
+// src/styles.css in sorted order (scripts/build.mjs, index.html). Every one stays whole.
+const SHEETS = existsSync(path.join(root, 'src/styles')) ? readdirSync(path.join(root, 'src/styles')).filter((f) => f.endsWith('.css')).sort().map((f) => `src/styles/${f}`) : [];
+const CSS_FILES = process.env.CSS_FILE ? [process.env.CSS_FILE] : [MAIN, ...SHEETS];
 
 // The stylesheet with comments and strings blanked out (kept the same length, so line
 // numbers still match), for brace counting.
@@ -90,6 +94,8 @@ for (const rel of CSS_FILES) {
     assert.equal(depth, 0, `${depth} unclosed '{' (the outermost opened at line ${open[0]})`);
   });
 
+  // The cutscene's root lives in the main sheet; the workstream sheets only add to it.
+  if (rel !== MAIN && !process.env.CSS_FILE) continue;
   test(`${rel}: a cutscene's root is a real top-level rule that covers the screen and takes taps`, () => {
     const code = codeOnly(css);
     const tops = topLevelSelectors(code);

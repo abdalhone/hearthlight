@@ -8,6 +8,7 @@ import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { SaveManager } from './save.js';
 import { Interactions } from './interact.js';
+import { COMPANION_ID } from './constants.js';
 
 import { Atlas } from '../art/atlas.js';
 import { registerTileArt } from '../art/tiles_art.js';
@@ -56,6 +57,15 @@ import { installDeathView } from '../ui/death_view.js';
 import { Murder } from '../murder/murder.js';
 import { MurderView } from '../ui/murder_view.js';
 import { sleepBlocked, standUp } from '../world/rest.js';
+import { provenancePlugin } from '../world/provenance.js';
+import { installParty } from './party.js';
+// Round 14b plugin slots (DESIGN §33, F10): one file per workstream, registered in one loop.
+import TALK from './plugins/talk.js';
+import PARTY from './plugins/party.js';
+import BLOOD from './plugins/blood.js';
+import SOCIETY from './plugins/society.js';
+import SOUL from './plugins/soul.js';
+import POLISH from './plugins/polish.js';
 
 export const SAVE_VERSION = 1;
 
@@ -111,6 +121,14 @@ export class Game {
     this.plugins.register(missionsPlugin); // missions (DESIGN §22.3); saved with the plugins
     this.plugins.register(travelPlugin); // the wider world: map fog, places reached, bosses heard of (§32)
     this.plugins.register(calendarPlugin); // the year goes round: birthdays, everyone older (§32.10)
+    this.plugins.register(provenancePlugin); // where the stranger's goods came from (§35.4): game.provenance
+    // The round 14b workstreams register here, never by editing this file (DESIGN §33):
+    // plugin objects now; installer functions at the end of buildWorld.
+    this.slotInstallers = [];
+    for (const p of [...TALK, ...PARTY, ...BLOOD, ...SOCIETY, ...SOUL, ...POLISH]) {
+      if (typeof p === 'function') this.slotInstallers.push(p);
+      else if (p) this.plugins.register(p);
+    }
     ensureMissions(this); // game.missions
     this.brain = new Brain(this);
     this.save = new SaveManager(this);
@@ -134,6 +152,12 @@ export class Game {
       (dt) => this.update(dt),
       (alpha, frameDt) => this.render(alpha, frameDt),
     );
+  }
+
+  // Lyra the person (round 14b, DESIGN §34.1): never "whoever is your companion now",
+  // which is game.party.holder. game.companion keeps meaning Lyra this round.
+  get lyra() {
+    return this.entities?.get?.(COMPANION_ID) || this.companion || null;
   }
 
   async boot() {
@@ -214,6 +238,19 @@ export class Game {
     } catch (err) {
       console.error('[world] murder failed to start', err);
       this.murder = null;
+    }
+    // The companion role (DESIGN §34.1): after the people exist. Lyra holds it at a new game.
+    try {
+      installParty(this);
+    } catch (err) {
+      console.error('[world] the party failed to start', err);
+    }
+    for (const install of this.slotInstallers || []) {
+      try {
+        install(this);
+      } catch (err) {
+        console.error('[world] a plugin slot failed to install', err);
+      }
     }
     this.camera.follow(this.player);
     this.camera.snap();
@@ -387,6 +424,7 @@ export class Game {
       progression: saveProgression(this),
       villageLife: this.villageLife?.serialize?.() ?? null,
       murder: this.murder?.serialize?.() ?? null,
+      party: this.party?.serialize?.() ?? null,
     };
   }
 
@@ -413,6 +451,12 @@ export class Game {
       this.murder?.deserialize?.(d.murder);
     } catch (err) {
       console.error('[game] the dead could not be restored', err);
+    }
+    // Last: who holds the companion role (an old save derives it from Lyra's companionship).
+    try {
+      this.party?.deserialize?.(d.party);
+    } catch (err) {
+      console.error('[game] the party could not be restored', err);
     }
   }
 }

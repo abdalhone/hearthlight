@@ -19,6 +19,7 @@ import { MISSIONS, GIVERS, missionById } from './data.js';
 import { componentLabel, componentWords, bossFor, BOSS_NAMES, BOSS_PLACES, isComponent } from './components.js';
 import { whenOk, whenLabel, inPlace, nearPoint, pointPx, weaveOf, weaveMatches, weaveEarned, aimOf, nonRaw, speciesMatches, isBossTarget, progressText, objectiveGoal } from './tracker.js';
 import { TILE } from '../core/constants.js';
+import { lyraOf } from '../core/people.js';
 
 const POLL = 0.25;
 const NUDGE_AFTER = 75; // seconds of play without a weave before a hint
@@ -996,7 +997,7 @@ export class MissionSystem {
     const s = this.state[id];
     if (!m || !s) return null;
     const ent = (ref) => {
-      const e = ref === 'lyra' ? g.companion : this.findEntity(ref);
+      const e = ref === 'lyra' ? lyraOf(g) : this.findEntity(ref);
       return e && !e.removed ? { x: e.x, y: e.y, entity: e } : null;
     };
     const place = (loc) => {

@@ -22,6 +22,8 @@ import { BUILTIN_PLUGINS } from '../src/ai/plugins/index.js';
 import { Brain } from '../src/ai/brain/brain.js';
 import { Survival } from '../src/survival/survival.js';
 import { resetPathBudget } from '../src/entities/npc_walker.js';
+import { installParty } from '../src/core/party.js';
+import { provenancePlugin } from '../src/world/provenance.js';
 
 export const SEED = 20261123;
 
@@ -102,6 +104,7 @@ export function makeGame({ hour = 12, seed = SEED, settings = {} } = {}) {
   game.actions = new ActionRegistry(game);
   game.plugins = new PluginRegistry(game);
   for (const p of BUILTIN_PLUGINS) game.plugins.register(p);
+  game.plugins.register(provenancePlugin); // game.provenance (round 14b, F7)
   game.survival = new Survival(game);
   game.survival.fast = true;
   game.player = game.entities.add(new Player(game, { ...world.spawns.player }));
@@ -110,9 +113,12 @@ export function makeGame({ hour = 12, seed = SEED, settings = {} } = {}) {
     const profile = NPC_PROFILES.find((p) => p.id === n.id);
     if (profile) game.entities.add(new NPC(game, profile, { x: n.x, y: n.y }));
   }
+  // Lyra the person, as the Game's getter has her (round 14b, F2).
+  Object.defineProperty(game, 'lyra', { get: () => game.entities.get('lyra') || game.companion || null, configurable: true });
   game.brain = new Brain(game);
   game.brain.localDelay = false;
   game.plugins.installAll();
+  installParty(game); // game.party: the companion role (round 14b, F4)
   game.brain.init();
   game.bus.emit('game_start', { loaded: false });
   resetPathBudget();

@@ -86,7 +86,9 @@ export class Calendar {
     }
     // The profiles of people not standing in the world (yet) grow older too.
     for (const p of [...NPC_PROFILES, ...MORE_PROFILES]) if (BASE.has(p.id)) p.age = this.ageOf(p.id);
-    const soul = g.companion?.mind?.soul;
+    // Lyra herself (game.lyra), not whoever is your companion now (round 14b).
+    const lyra = g.lyra || g.entities?.get?.('lyra') || g.companion;
+    const soul = lyra?.mind?.soul;
     if (soul && typeof soul === 'object' && 'age' in soul) soul.age = this.ageOf('lyra');
   }
 

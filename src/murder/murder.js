@@ -35,6 +35,7 @@ import { placeAt, placePhrase, pronoun } from '../ai/village_life/errands_data.j
 import { whenPhrase } from '../ai/village_life/problems.js';
 import { witnessesOf, look, lightAt } from './witness.js';
 import { canReach } from '../world/walls.js';
+import { lyraOf, isMinor } from '../core/people.js';
 import { hears, hearsWords, cryLoudness, LOUD } from '../ai/hearing.js';
 import { UNKILLABLE, FINISH_HOLD, FINISH_REACH, FINISH_CANCEL, MURDER_WANTED, HOUR, DAY, HIDE, hidingPlace, INVESTIGATORS, levelOf } from './data.js';
 import { gatherEvidence, suspicionOf, buildQuestions, judgeAnswer, WEIGHTS } from './investigation.js';
@@ -179,7 +180,7 @@ export class Murder {
     if (!id) return null;
     if (typeof id === 'object') return id;
     if (id === 'player') return this.game?.player || null;
-    if (id === 'lyra') return this.game?.companion || null;
+    if (id === 'lyra') return lyraOf(this.game);
     return safe(() => this.game?.entities?.get?.(id), null);
   }
 

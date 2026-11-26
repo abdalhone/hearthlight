@@ -3,7 +3,7 @@
 //   dist/artifact.html  the same game as page content for a claude.ai Artifact (the
 //                       platform wraps it in its own <html>/<head>/<body> skeleton)
 import { build } from 'esbuild';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -39,7 +39,10 @@ const result = await build({
   charset: 'utf8',
 });
 const js = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
-const css = (await readFile(path.join(root, 'src/styles.css'), 'utf8')).replace(/<\/style/gi, '<\\/style');
+// The main sheet, then each round-14b workstream's own sheet (src/styles/*.css, sorted:
+// DESIGN §33, F8), in the order index.html links them.
+const sheets = ['src/styles.css', ...(await readdir(path.join(root, 'src/styles')).catch(() => [])).filter((f) => f.endsWith('.css')).sort().map((f) => `src/styles/${f}`)];
+const css = (await Promise.all(sheets.map((f) => readFile(path.join(root, f), 'utf8')))).join('\n').replace(/<\/style/gi, '<\\/style');
 
 const head = `<title>${TITLE}</title>
 <meta name="claude:viewport-fit-sides" content="cover">

@@ -1,5 +1,6 @@
 import { TILE } from '../core/constants.js';
 import { setLockedChestHandler } from './objects.js';
+import { lyraOf } from '../core/people.js';
 
 // Chests you could not open (DESIGN §32.6, round 14: "There is a chest that I cannot
 // open."). The audit found four: Lyra's trunk ("locked, and it is not yours": no way in),
@@ -61,13 +62,13 @@ const NAMES = { lyra: 'Lyra', rowan: 'Captain Rowan', tobias: 'Tobias' };
 
 function personOf(game, id) {
   if (!id) return null;
-  if (id === 'lyra') return game.companion || null;
+  if (id === 'lyra') return lyraOf(game);
   return game.entities?.get?.(id) || null;
 }
 
 function lyraTrust(game) {
   try {
-    const s = game.companion?.mind?.autonomy?.stats?.();
+    const s = lyraOf(game)?.mind?.autonomy?.stats?.();
     return Number.isFinite(s?.trust) ? s.trust : null;
   } catch {
     return null;

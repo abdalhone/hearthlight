@@ -6,6 +6,7 @@ import { placePhrase } from '../ai/village_life/errands_data.js';
 import { itemName } from './items.js';
 import { pickLine, now, rand } from './creature_util.js';
 import { hasKeptFlame, flamePrice, lightKeptFlame } from '../survival/kept_flame.js';
+import { lyraOf } from '../core/people.js';
 
 // Villager dialogue: what they say when the player walks up, the options they offer,
 // what they answer, how they take gifts. Pure functions over an NPC (npc.js wires
@@ -366,7 +367,7 @@ function talkLines(npc, player, tone) {
   if (ids.length && rand(g) < 0.35) {
     const id = ids[Math.floor(rand(g) * ids.length)];
     const who = g.entities?.get?.(id);
-    const name = id === 'lyra' ? g.companion?.name || 'Lyra' : who ? firstName(who) : id.charAt(0).toUpperCase() + id.slice(1);
+    const name = id === 'lyra' ? lyraOf(g)?.name || 'Lyra' : who ? firstName(who) : id.charAt(0).toUpperCase() + id.slice(1);
     out.push(`${name}? ${knows[id]}`);
   }
   npc._lastLine = out[0];
