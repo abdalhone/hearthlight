@@ -2963,7 +2963,7 @@ flame. Never me.").
 ### 37.7 Controls and sound (`src/ui/unkindle_view.js`, `src/styles/soul.css`)
 
 - **Desktop:** hold **F** (no other binding uses it; letting go before the tear lets it slip back).
-  A small dark hint above the hotbar ("F Hold Bram") while someone it may take is in reach;
+  A small dark hint above the use prompt ("F Hold Bram") while someone it may take is in reach;
   pressing F at a child, a wall or the undead says why in a toast ("No. Not a child.").
 - **Phone:** a dark hand in the right-thumb cluster (appended to `touch.anchor`, placed by the
   cluster's own geometry left of the dodge, mirrored for a left hand, at least 44 px, named for

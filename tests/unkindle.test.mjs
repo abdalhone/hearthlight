@@ -450,3 +450,33 @@ test('a bandit or a beast is not this spell\'s; the words say so', () => {
   assert.equal(unk.check({ type: 'actor', kind: 'human', species: 'bandit', x: 0, y: 0 })?.reason, 'bandit');
   assert.equal(unk.check({ type: 'actor', kind: 'animal', species: 'boar', x: 0, y: 0 })?.line, 'It has no flame you can hold.');
 });
+
+test('the dark hand sits clear of every piece of the touch cluster, both ways up, mirrored too, at least 44 px', async () => {
+  const { clusterLayout } = await import('../src/ui/touch.js');
+  const { handSpot } = await import('../src/ui/unkindle_view.js');
+  const GEO = {
+    landscape: { sword: 78, btn: 56, dodge: 54, use: 52, r1: 96, r2: 162, edge: 14 },
+    portrait: { sword: 70, btn: 52, dodge: 50, use: 48, r1: 86, r2: 146, edge: 12 },
+  };
+  for (const mode of ['landscape', 'portrait']) {
+    for (const [mirror, k] of [[false, 1], [true, 1], [false, 0.8], [false, 1.25], [true, 1.25 * 0.94]]) {
+      const geo = Object.fromEntries(Object.entries(GEO[mode]).map(([key, v]) => [key, key === 'edge' ? v : Math.round(v * k)]));
+      const me = handSpot(geo, mode, mirror);
+      assert.ok(me.size >= 44);
+      for (let n = 0; n <= 6; n++) {
+        const L = clusterLayout(n, geo, mirror);
+        const pieces = [
+          { x: 0, y: 0, size: geo.sword },
+          { ...L.dodge, size: geo.dodge },
+          { ...L.use, size: geo.use },
+          ...L.slots.map((p) => ({ ...p, size: geo.btn })),
+        ];
+        for (const p of pieces) {
+          const gapX = Math.abs(p.x - me.x) - (p.size + me.size) / 2;
+          const gapY = Math.abs(p.y - me.y) - (p.size + me.size) / 2;
+          assert.ok(gapX > 0 || gapY > 0, `${mode}${mirror ? ' mirrored' : ''} x${k}, ${n} weaves: clear of the piece at ${Math.round(p.x)},${Math.round(p.y)}`);
+        }
+      }
+    }
+  }
+});

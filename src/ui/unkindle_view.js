@@ -63,9 +63,13 @@ function safe(fn, fallback = null) {
 // of the dodge along the bottom row, clear of the inner and outer weave rings.
 export function handSpot(geo, mode = 'landscape', mirror = false) {
   const r2 = Number(geo?.r2) || (mode === 'portrait' ? 146 : 162);
+  const btn = Number(geo?.btn) || (mode === 'portrait' ? 52 : 56);
+  const size = Math.max(44, Number(geo?.use) || 50);
   const x = -(r2 + (mode === 'portrait' ? 4 : 8));
-  const y = mode === 'portrait' ? 6 : 8;
-  return { x: mirror ? -x : x, y, size: Math.max(44, Number(geo?.use) || 50) };
+  // Just below the outer weave ring's lowest button (at 196°, with six weaves), whatever the
+  // cluster's size (Settings → touch size); still clear of the screen's bottom edge.
+  const y = Math.ceil(Math.sin((196 * Math.PI) / 180) * r2 + (btn + size) / 2 + 2);
+  return { x: mirror ? -x : x, y, size };
 }
 
 export class UnkindleView {

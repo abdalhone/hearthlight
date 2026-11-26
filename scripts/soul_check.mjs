@@ -246,6 +246,19 @@ async function run(S) {
   } else {
     const hint = await ev(() => document.querySelector('.unk-hint')?.textContent || '');
     check(/F/.test(hint) && /Bram/.test(hint) && !!(await rectOf('.unk-hint')), `[${tag}] the desktop hint: hold F, and who`, hint);
+    const over = await ev(() => {
+      const me = document.querySelector('.unk-hint')?.getBoundingClientRect();
+      const out = [];
+      if (!me) return ['none'];
+      for (const el of document.querySelectorAll('.interact-prompt, .hud button, .hotbar, .hud-bar')) {
+        if (el.hidden || el.offsetParent === null) continue;
+        const r = el.getBoundingClientRect();
+        if (!r.width) continue;
+        if (Math.min(me.right, r.right) - Math.max(me.left, r.left) > 1 && Math.min(me.bottom, r.bottom) - Math.max(me.top, r.top) > 1) out.push(el.className);
+      }
+      return out;
+    });
+    check(over.length === 0, `[${tag}] the hint sits clear of the use prompt and the hotbar`, over.join(' | '));
   }
   await shot('0-in-reach');
   check(await holdDown(), `[${tag}] hold the spell (${S.phone ? 'a finger on the dark hand' : 'F held'})`);

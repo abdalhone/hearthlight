@@ -7,11 +7,11 @@
   z-index: 2;
 }
 
-/* Desktop: "F Hold Bram", small and dark, above the hotbar, only while someone is in reach. */
+/* Desktop: "F Hold Bram", small and dark, above the use prompt and the hotbar, only while someone is in reach. */
 .unk-hint {
   position: absolute;
   left: 50%;
-  bottom: calc(var(--sa-b, 0px) + 132px);
+  bottom: calc(var(--sa-b, 0px) + 196px);
   transform: translateX(-50%);
   display: flex;
   align-items: center;
