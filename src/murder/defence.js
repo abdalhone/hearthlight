@@ -150,13 +150,16 @@ export function checkClaim(m, rec, claim) {
   }
 }
 
-// Every claim checked against the record. -> [{ ...claim, lie, knownBy, proof }]
+// Every claim checked against the record. -> [{ ...claim, lie, knownBy, proof, saw }]
 // opts.room: everyone at the Moot; opts.spokenBy: those whose word the watch said aloud to the
-// room. A fact the watch told the whole room is known to everyone in it ("being told").
+// room. A fact the watch told the whole room is known to everyone in it ("being told"): a lie
+// it gives away, and (verify-b) a true defence an eyewitness bears out, alike. `saw` keeps who
+// knew it with their own eyes, so nobody else is told they saw it.
 export function checkDefence(m, rec, claims, { room = [], spokenBy = [] } = {}) {
   return (claims || []).map((c) => {
     const r = { ...c, ...checkClaim(m, rec, c) };
-    if (r.lie && room.length && (r.knownBy || []).some((id) => spokenBy.includes(id))) {
+    r.saw = [...(r.knownBy || [])];
+    if ((r.lie || r.supports) && room.length && (r.knownBy || []).some((id) => spokenBy.includes(id))) {
       r.knownBy = [...new Set([...(r.knownBy || []), ...room])];
       r.public = true;
     }
