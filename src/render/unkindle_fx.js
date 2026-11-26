@@ -469,8 +469,8 @@ export class UnkindleFx {
   start(ch) {
     const g = this.game;
     this.ch = ch;
-    this.state.ch = ch;
-    this.state.reduce = this.reduce;
+    // Each hold its own state: an effect still fading from the last hold never draws this one.
+    this.state = { ch, reduce: this.reduce };
     const e = ch.target;
     this.at.x = e.x;
     this.at.y = e.y;
@@ -479,7 +479,7 @@ export class UnkindleFx {
       const actor = ch.kind === 'dummy' ? bodyOfObject(g, e) : safe(() => actorOf(g, e), null);
       if (actor) this.handle = host.play('unkindle', { x: e.x, y: e.y, actor, state: this.state, seed: (e.id ? e.id.length * 7 : 3) + 11 });
     }
-    if (ch.kind !== 'dummy') this.wrapBody(e);
+    if (ch.held) this.wrapBody(e);
   }
 
   end(ch) {

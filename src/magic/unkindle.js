@@ -76,6 +76,7 @@ export const LINES = {
   wall: 'Not through a wall.',
   undead: 'Nothing in there to take.',
   beast: 'It has no flame you can hold.',
+  bandit: 'Not one from beyond the ward. Not yet.',
   dead: 'There is nothing left in them.',
   far: 'Closer. Close enough to touch.',
   none: 'Nobody close enough to touch.',
@@ -194,7 +195,8 @@ export class Unkindle {
     if (e === lyraOf(g)) return 'person';
     if (e.profile && (e.kind === 'human' || !e.kind)) return 'person';
     if (e.kind === 'undead' || UNDEAD.has(e.species)) return 'undead';
-    if (e.species === 'bandit' || e.kind === 'human') return 'beast'; // a smaller soul: not this round (§13b S20-11)
+    // A bandit or a beast: a smaller soul, not this round's (§13b S20-11).
+    if (e.species === 'bandit' || e.kind === 'human') return 'bandit';
     return 'beast';
   }
 
@@ -211,6 +213,7 @@ export class Unkindle {
     }
     if (!this.learned) return { reason: this.trial ? 'dummy' : 'unknown', line: this.trial ? LINES.dummy : '' };
     if (kind === 'undead') return { reason: 'undead', line: LINES.undead };
+    if (kind === 'bandit') return { reason: 'bandit', line: LINES.bandit };
     if (kind === 'beast' || !kind) return { reason: 'beast', line: LINES.beast };
     // Never a child, by age (src/core/people.js, DESIGN §34.2).
     if (kind === 'person' && isMinor(g, e)) return { reason: 'child', line: LINES.child };
@@ -332,7 +335,10 @@ export class Unkindle {
       const m = this.game?.murder;
       killable = !m || typeof m.canKill !== 'function' || !!safe(() => m.canKill(e), false);
     }
-    if (ratio >= MUCH_STRONGER || kind === 'boss' || kind === 'tempter' || !killable) {
+    // Something old under the ground (a boss, the tempter) is never held at all: it shrugs it
+    // off at once (no hold to chain into a stun).
+    if (kind === 'boss' || kind === 'tempter') return { ratio, kind: 'resists', dur: 4, peak: 0.25, struggle: 0.7 };
+    if (ratio >= MUCH_STRONGER || !killable) {
       const over = clamp((ratio - MUCH_STRONGER) / 1.5);
       return { ratio, kind: 'resists', dur: 4, peak: 0.55 - 0.25 * over, struggle: 2.2 - 0.8 * over };
     }
@@ -384,9 +390,9 @@ export class Unkindle {
       outcome: null,
       fx: { x: e.x, y: e.y, hx: P.x, hy: P.y - 16, px: P.x, py: P.y }, // shared with the fx
       seen: null,
-      held: kind !== 'dummy',
+      held: kind === 'person',
     };
-    if (kind !== 'dummy') this.hold(e, 0);
+    if (this.channel.held) this.hold(e, 0);
     this.pose(P, e);
     safe(() => this.fx?.start?.(this.channel));
     safe(() => this.view?.onBegin?.(this.channel));
@@ -590,9 +596,9 @@ export class Unkindle {
     safe(() => this.view?.onSnap?.(ch));
     if (!e || ch.kind === 'dummy') return;
     unsilence(e);
-    // Thrown back a step by it.
+    // Thrown back a step by it (a person; something old under the ground does not stagger).
     const P = this.game?.player;
-    if (P && e.knock) {
+    if (P && e.knock && ch.kind === 'person') {
       const dx = e.x - P.x;
       const dy = e.y - P.y;
       const l = Math.hypot(dx, dy) || 1;

@@ -431,3 +431,22 @@ test('the words: hours and households', () => {
   assert.equal(houseOf({ name: 'Garrick "Gale" Hale' }), 'the Hale flame');
   assert.equal(houseOf({ name: 'Pip' }), "Pip's flame");
 });
+
+test('a boss or the tempter is never held: it shrugs the spell off at once (no stun to chain)', () => {
+  const { g, unk } = setup();
+  const boss = { type: 'actor', bossId: 'varek', id: 'boss_varek', x: g.player.x + 16, y: g.player.y, hp: 400, maxHp: 400, lockTime: 0, rootTime: 0, knock: { x: 0, y: 0 }, isAlive: () => true };
+  const r = unk.begin(boss);
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.equal(unk.channel.held, false);
+  hold(g, unk, { max: 3 });
+  assert.equal(unk.channel, null);
+  assert.equal(unk.attempts.at(-1)?.outcome, 'resisted');
+  assert.equal(boss.lockTime, 0, 'never frozen');
+  assert.equal(isSilenced(g, boss), false);
+});
+
+test('a bandit or a beast is not this spell\'s; the words say so', () => {
+  const { unk } = setup();
+  assert.equal(unk.check({ type: 'actor', kind: 'human', species: 'bandit', x: 0, y: 0 })?.reason, 'bandit');
+  assert.equal(unk.check({ type: 'actor', kind: 'animal', species: 'boar', x: 0, y: 0 })?.line, 'It has no flame you can hold.');
+});
