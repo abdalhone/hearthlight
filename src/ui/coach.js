@@ -21,6 +21,8 @@ const LESSONS = ['cast', 'book', 'found'];
 const CAST_AFTER = 25; // seconds in the world before the casting lesson starts anyway
 const FOE_RANGE = 150; // world px: a foe this close is "in sight" for the lesson
 const HURT_QUIET = 8; // s after a person strikes the player before a lesson shows
+// Casting stops you (plan §14): said once, by the hold step and by the first push (standHint).
+export const STAND_LINE = 'You stand still to weave. Roll to break off.';
 
 function readDone(id) {
   try {
@@ -144,6 +146,15 @@ export class Coach {
     // swings the sword. The first time in a life that a blow lands on a calm person, the
     // player is told once how talking works now.
     bus.on('damage', (p) => this.talkHint(p));
+    // Casting stops you (plan §14): the first time the stick pushes against a weave's stance,
+    // once (the player sets flags.standHintShown; the lesson's hold step says it too).
+    bus.on('cast_stand', () => this.standHint());
+  }
+
+  standHint() {
+    if (this.lesson?.id === 'cast') return; // the lesson's own card is up and says it
+    const how = this.ui.isTouch ? 'the stick only turns you' : 'WASD only turns you';
+    this.ui.toast?.(`${STAND_LINE} While a weave gathers or pours, ${how}.`, 'info', { key: 'coach-stand', title: 'Weaving' });
   }
 
   talkHint(p) {
@@ -211,8 +222,8 @@ export class Coach {
         {
           target: weaveBtn,
           text: touch
-            ? 'Hold the button instead of tapping: the weave gathers (the ring fills) and flies up to 2.5× as strong when you let go. It costs more mana, up to twice.'
-            : 'Hold the key instead of tapping: the weave gathers (the ring fills) and flies up to 2.5× as strong when you let go. It costs more mana, up to twice.',
+            ? `Hold the button instead of tapping: the weave gathers (the ring fills) and flies up to 2.5× as strong when you let go. It costs more mana, up to twice. ${STAND_LINE}`
+            : `Hold the key instead of tapping: the weave gathers (the ring fills) and flies up to 2.5× as strong when you let go. It costs more mana, up to twice. ${STAND_LINE}`,
           wait: 'charged',
           button: 'Next',
         },

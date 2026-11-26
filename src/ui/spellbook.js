@@ -34,6 +34,8 @@ const INPUT_NOTE = {
   hold: 'Hold to keep it flowing: it drains mana while it pours (a beam does not charge).',
   charge: 'Hold to charge, let go to cast: the charge twist fills twice as fast and hits up to 3× as hard.',
 };
+// Casting stops you (plan §14): the book says it once, under the weave's numbers.
+export const STAND_NOTE = 'You stand still to weave. Roll to break off.';
 
 function readSeen() {
   try {
@@ -205,13 +207,14 @@ export class Spellbook {
     this.nameRow = h('div', { class: 'sb-name-row' }, this.nameEl, this.renameBtn);
     this.descEl = h('p', { class: 'sb-desc' });
     this.statsEl = h('div', { class: 'sb-stats' });
+    this.standEl = h('p', { class: 'sb-desc sb-stand', hidden: true, text: STAND_NOTE });
     this.noteEl = h('p', { class: 'sb-note', role: 'status', 'aria-live': 'polite' });
     // What to do next, for an empty slot or a half-made weave.
     this.nextEl = h('p', { class: 'sb-next-line', hidden: true });
     this.clearBtn = button('Clear slot', { cls: 'btn-ghost btn-small sb-clear', onClick: () => this.clearSlot() });
     this.copyWrap = h('div', { class: 'sb-copy' });
     const actions = h('div', { class: 'sb-actions' }, this.clearBtn, this.copyWrap);
-    const card = h('div', { class: 'sb-card' }, this.nameRow, this.descEl, this.nextEl, this.statsEl, this.noteEl, actions);
+    const card = h('div', { class: 'sb-card' }, this.nameRow, this.descEl, this.nextEl, this.statsEl, this.standEl, this.noteEl, actions);
     this.previewCol = h('section', { class: 'sb-col sb-preview-col' }, h('div', { class: 'sb-stage' }, this.canvas), card);
 
     this.sections = {};
@@ -319,6 +322,7 @@ export class Spellbook {
 
   renderStats(plan, d) {
     clear(this.statsEl);
+    if (this.standEl) this.standEl.hidden = !d.shape;
     if (!d.shape) return;
     const mode = castModeOf(plan, d);
     const pv = previewOf(plan, d);

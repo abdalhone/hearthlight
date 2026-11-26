@@ -31,6 +31,12 @@ import { isParty } from '../core/party.js';
 //       balance.js) and casts on release at charge k, paying x(1 + k) mana then, never more
 //       than the mana there is; 'hold' (beam) pours from Start until Release, draining
 //       plan.drain mana per second. One hold per caster: a second Start lets the first go.
+//   Casting stops you (plan §14, DESIGN §38.6): from Start the caster stands (castMoveMul
+//   = CHARGE_MOVE = 0; anyone without castMoveMul in their walk is held by lockTime), and
+//   every cast plants its caster for the pose (plant(caster, s), plantFor(caster, plan)).
+//   breakCast(caster, why) -> bool: the roll's way out (a charge free, a beam's cooldown
+//   kept, the plant ended; bus 'cast_broken'). castingState(caster) -> 'beam'|'charge'|
+//   'plant'|null.
 //   canCast(slot, caster = player) -> { ok, reason, message, cooldown, cost, plan }
 //       reasons: 'empty' 'locked_slot' 'invalid' 'cooldown' 'mana' 'down' 'disabled' 'busy'
 //   slots[0..5] (weaves or null), slotCount, essenceSlots, twistSlots, setSlot(i, weave),
@@ -1926,7 +1932,11 @@ export class Magic {
       }
     }
     this._emitMul = 1;
-    this._pose(caster, angle);
+    // The weave leaves the hands: the caster is planted for the pose (plan §14), once per
+    // cast (an echo or a volley a moment later turns the hands again, it does not re-plant).
+    const plant = cast.planted ? 0 : this.plantFor(caster, cast.plan || plan);
+    cast.planted = true;
+    this._pose(caster, angle, plant);
     this.fx('cast', { cast, plan, caster, x: ox, y: oy, angle, bodies: emitted });
   }
 
@@ -1949,16 +1959,90 @@ export class Magic {
     this.pending.push({ t: delay, cast, plan, mul: (cast.curMul || 1) * mul });
   }
 
-  _pose(caster, angle) {
+  // Turn the caster to the weave and raise the hands; `plant` seconds standing (plan §14).
+  // The player plants through castPlant (a roll still breaks it); anyone else through the
+  // state lock every walker and steering already honours (no glide).
+  _pose(caster, angle, plant = 0) {
     try {
-      if (typeof caster.castPose === 'function') caster.castPose(angle, 0.24);
+      if (typeof caster.castPose === 'function') caster.castPose(angle, Math.max(0.24, plant));
       else {
         caster.faceToward?.(caster.x + Math.cos(angle), caster.y + Math.sin(angle));
-        if (!this.isPlayer(caster) && caster.setState && caster.state !== 'downed') caster.setState('cast', 0.18);
+        if (!this.isPlayer(caster) && caster.setState && caster.state !== 'downed') caster.setState('cast', Math.max(0.18, plant));
       }
+      if (plant > 0) this.plant(caster, plant);
     } catch (err) {
       this.warn('cast pose', err);
     }
+  }
+
+  // ---------------------------------------------------------------- casting stops you (§14)
+
+  // How long a cast of `plan` plants this caster: the shape's weight, its prices, its cost,
+  // shortened by the player's cast speed (balance.plantFor).
+  plantFor(caster, plan) {
+    const cs = this.isPlayer(caster) ? this._stat(caster, 'castSpeed', 1) : 1;
+    return BAL.plantFor(plan, cs);
+  }
+
+  // Stand the caster still for `seconds`: no step, no drift (velocity and intent zeroed).
+  plant(caster, seconds) {
+    if (!caster || !(seconds > 0)) return;
+    if (typeof caster.castPlant === 'function') caster.castPlant(seconds);
+    else {
+      caster.lockTime = Math.max(caster.lockTime || 0, seconds);
+      if (caster.moveIntent) {
+        caster.moveIntent.x = 0;
+        caster.moveIntent.y = 0;
+      }
+    }
+    if (caster.vel) {
+      caster.vel.x = 0;
+      caster.vel.y = 0;
+    }
+  }
+
+  // Held from the press while a charge builds or a beam pours: the walk is CHARGE_MOVE (0).
+  _holdStill(caster, dt = 0) {
+    if (!caster) return;
+    caster.castMoveMul = BAL.CHARGE_MOVE;
+    if (caster.vel && !(BAL.CHARGE_MOVE > 0)) {
+      caster.vel.x = 0;
+      caster.vel.y = 0;
+    }
+    // A weaver with no castMoveMul in its walk (villagers, creatures) is held by the lock.
+    if (typeof caster.castPlant !== 'function' && !(BAL.CHARGE_MOVE > 0)) {
+      caster.lockTime = Math.max(caster.lockTime || 0, dt * 2 + 0.02);
+      if (caster.moveIntent) {
+        caster.moveIntent.x = 0;
+        caster.moveIntent.y = 0;
+      }
+    }
+  }
+
+  // The way out (plan §14): a roll breaks whatever is being woven. A charge costs nothing; a
+  // beam already poured keeps its cooldown (castCancel). The cast pose's plant ends too.
+  // -> true when something was broken.
+  breakCast(caster, why = 'roll') {
+    if (!caster) return false;
+    const had = this.holds.has(caster);
+    if (had) this.castCancel(caster);
+    let planted = false;
+    if (caster.castPlantT > 0) {
+      caster.castPlantT = 0;
+      planted = true;
+    }
+    if (caster.castPoseT > 0) caster.castPoseT = 0;
+    caster.castMoveMul = 1;
+    if (had || planted) this.game.bus?.emit?.('cast_broken', { caster, why, held: had });
+    return had || planted;
+  }
+
+  // What holds this caster still now: 'beam' | 'charge' (from the press) | 'plant' | null.
+  castingState(caster) {
+    const h = caster ? this.holds.get(caster) : null;
+    if (h) return h.mode === 'hold' ? 'beam' : 'charge';
+    if (caster?.castPlantT > 0) return 'plant';
+    return null;
   }
 
   cast(caster, slotOrWeave, aim, opts = {}) {
@@ -2006,6 +2090,8 @@ export class Magic {
     hold.friend = this.isPlayer(caster) ? this.aimedFriend(caster, hold.aim, plan) : null;
     hold.friendT = 0;
     this.holds.set(caster, hold);
+    // You stand to weave from the press (plan §14): a tap plants again as it leaves the hands.
+    this._holdStill(caster);
     if (mode === 'hold') {
       hold.live = true;
       const full = this.costOf(caster, plan);
@@ -2016,7 +2102,7 @@ export class Magic {
       this._emit(hold.cast, plan, 1);
       this.game.bus?.emit('spell_cast', { caster, weave: plan.weave, plan, slot: r.slot, held: true, target: hold.cast.target });
       this.fx('beam_start', { cast: hold.cast, caster });
-      caster.castMoveMul = BAL.CHARGE_MOVE;
+      this._holdStill(caster);
     }
     return { ok: true, plan, mode };
   }
@@ -2105,6 +2191,8 @@ export class Magic {
         this.castCancel(caster);
         continue;
       }
+      // Still while it lasts (plan §14), whatever else touched the walk this frame.
+      this._holdStill(caster, dt);
       // Whom the aim names among friends, and since when (FRIEND_STEADY).
       if (h.mode !== 'hold' && this.isPlayer(caster)) {
         const f = this.aimedFriend(caster, h.aim, h.plan);
@@ -2122,7 +2210,6 @@ export class Magic {
         let k = BAL.chargeK(h.t, time, cs);
         if (!h.live && h.t >= BAL.CHARGE_DEAD) {
           h.live = true;
-          caster.castMoveMul = BAL.CHARGE_MOVE;
           this.fx('charge', { caster, plan: h.plan, k: 0, start: true, rise: Math.max(0.1, (time - BAL.CHARGE_DEAD) / Math.max(0.3, cs)) });
         }
         h.capped = false;

@@ -111,13 +111,14 @@ test('a quick tap casts on release at k 0 and costs what it always did; a full h
   assert.ok(big && near(big.r, m.slotPlan(1).radius * (1 + BAL.CHARGE_SIZE), 0.01) && big.charge === 1, `r ${big?.r}`);
 });
 
-test('the walk slows only past the dead zone; a cancelled charge costs nothing; no charge without opts.charge', () => {
+test('you stand from the press (plan §14: casting stops you); a cancelled charge costs nothing; no charge without opts.charge', () => {
   const g = arena();
   const m = g.magic;
   const P = g.player;
   m.castStart(P, 0, AIM, { charge: true });
   magicStep(g);
-  assert.equal(P.castMoveMul ?? 1, 1, 'a tap does not slow the walk');
+  assert.equal(BAL.CHARGE_MOVE, 0, 'the rule: no walk while a weave gathers');
+  assert.equal(P.castMoveMul, 0, 'standing from the press, inside the tap dead zone too');
   assert.equal(m.holdOf(P).live, false);
   run(g, 0.3);
   assert.equal(m.holdOf(P).live, true);

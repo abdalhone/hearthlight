@@ -88,7 +88,57 @@ export const CHARGE_SPEED = 0.25; // x1.25 (bolts fly faster)
 export const CHARGE_MANA = 1; // x2
 export const CHARGE_TWIST_TIME = 0.5; // the twist: twice as fast
 export const CHARGE_TWIST_POWER = 2; // x3 at a full charge
-export const CHARGE_MOVE = 0.62; // the walk while a charge builds or a beam pours
+// Casting stops you (round 14b follow-up, plan §14; the author: "I can move while I'm doing
+// spells; it should stop me"). Whoever weaves through game.magic stands to do it:
+//   - from the press, while a charge builds or a beam pours, the walk is CHARGE_MOVE = 0
+//     (the move stick and WASD only turn you, and so the aim that follows your facing);
+//   - when a weave leaves the hands, the caster is planted for the cast pose, PLANT_SHAPE
+//     seconds by the shape's weight, plus PLANT_PER_PRICE for each price it carries and a
+//     little more for a costly weave, held between PLANT_MIN and PLANT_MAX and shortened by
+//     cast speed (never under PLANT_FLOOR);
+//   - a roll breaks a charge or a channel (a charge costs nothing; a beam keeps its cooldown)
+//     and the plant; a knock-down or a freeze breaks it as before.
+// The rule is fixed; the numbers below are what play tunes (DESIGN §38.6).
+export const CHARGE_MOVE = 0; // the walk while a charge builds or a beam pours: you stand
+export const PLANT_MIN = 0.24;
+export const PLANT_MAX = 0.4;
+export const PLANT_FLOOR = 0.16; // the shortest plant, however fast the hands
+export const PLANT_PER_PRICE = 0.03;
+export const PLANT_COST_FROM = 12; // mana: a weave dearer than this plants a little longer
+export const PLANT_COST_PER = 0.004; // s per mana past PLANT_COST_FROM
+export const PLANT_SHAPE = Object.freeze({
+  bolt: 0.24, // the Spark: a flick of the wrist
+  strike: 0.26,
+  blast: 0.3,
+  throw: 0.3,
+  bind: 0.32, // a ring thrown true
+  ward: 0.28,
+  orb: 0.3,
+  rune: 0.32,
+  summon: 0.36,
+  nova: 0.36,
+  wall: 0.36,
+  rain: 0.4, // the heaviest: you call it down
+  beam: 0.26, // after the pour: the hands come down
+  dash: 0, // the dash moves you itself (its own lock)
+});
+
+// How long a cast plants its caster (s): the shape's weight, its prices and its cost, held
+// in [PLANT_MIN, PLANT_MAX], then shortened by cast speed (to PLANT_FLOOR at most).
+export function plantFor(plan, castSpeed = 1) {
+  if (!plan) return PLANT_MIN;
+  const shape = plan.shape || plan.weave?.shape;
+  const own = PLANT_SHAPE[shape];
+  if (own === 0) return 0;
+  let t = Number.isFinite(own) ? own : PLANT_MIN + 0.04;
+  const prices = Array.isArray(plan.prices) ? plan.prices.length : 0;
+  t += prices * PLANT_PER_PRICE;
+  const cost = Number(plan.cost) || 0;
+  if (cost > PLANT_COST_FROM) t += (cost - PLANT_COST_FROM) * PLANT_COST_PER;
+  t = Math.max(PLANT_MIN, Math.min(PLANT_MAX, t));
+  const cs = Math.max(0.3, Number(castSpeed) || 1);
+  return Math.max(PLANT_FLOOR, t / cs);
+}
 
 // The charge k a hold of `t` seconds has reached (before the mana cap).
 export function chargeK(t, time = CHARGE_TIME, castSpeed = 1) {

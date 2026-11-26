@@ -108,12 +108,16 @@ export class Player extends Actor {
     this.ghostT = 0;
     this.ghostIdx = 0;
     this.hurtBlink = 0;
-    // Weaving (DESIGN §22): a short cast pose toward the aim, and a slower walk while a
-    // beam pours or a charge builds (game.magic sets castMoveMul).
+    // Weaving (DESIGN §22; casting stops you, plan §14 / DESIGN §38.6): a cast pose toward
+    // the aim with the feet planted (castPlantT), and no walk at all while a charge builds
+    // or a beam pours (game.magic sets castMoveMul to 0). The stick or WASD only turns you
+    // meanwhile; a roll breaks it (game.magic.breakCast).
     this.castPoseT = 0;
     this.castAngle = 0;
     this._castAnimT = 0;
     this.castMoveMul = 1;
+    this.castPlantT = 0;
+    this._standPush = 0; // seconds the stick has pushed against a plant (the coach's hint)
 
     this.workBar = null; // { progress, t } shown above the head while harvesting
     this.stepDist = 0;
@@ -211,14 +215,29 @@ export class Player extends Actor {
     return m.cast(this, slot, aim);
   }
 
-  // Called by game.magic on every cast: face the aim and raise the hands for a moment,
-  // without stopping the feet (move with one thumb, weave with the other).
+  // Called by game.magic on every cast: face the aim and raise the hands for a moment.
+  // The feet are planted separately (castPlant), for as long as the weave's weight says.
   castPose(angle, seconds = 0.24) {
     if (!Number.isFinite(angle)) return;
     if (!(this.castPoseT > 0)) this._castAnimT = 0;
     this.castPoseT = Math.max(this.castPoseT || 0, seconds);
     this.castAngle = angle;
     this._faceCast();
+  }
+
+  // Planted for `seconds` by a cast (plan §14): no step and no drift; a roll ends it.
+  castPlant(seconds) {
+    if (!(seconds > 0) || this.rolling) return;
+    this.castPlantT = Math.max(this.castPlantT || 0, seconds);
+    this.vel.x = 0;
+    this.vel.y = 0;
+    this.moveIntent.x = 0;
+    this.moveIntent.y = 0;
+  }
+
+  // Standing to weave right now: a cast's plant, a charge or a beam (castMoveMul 0).
+  get planted() {
+    return !this.rolling && (this.castPlantT > 0 || !((this.castMoveMul ?? 1) > 0));
   }
 
   _faceCast() {
@@ -238,7 +257,8 @@ export class Player extends Actor {
     if (this.castPoseT > 0) {
       this.castPoseT -= dt;
       this._castAnimT += dt;
-    }
+    } else if (!((this.castMoveMul ?? 1) > 0)) this._castAnimT += dt; // the hands up while it gathers
+    if (this.castPlantT > 0) this.castPlantT = Math.max(0, this.castPlantT - dt);
     if (this.comboTimer > 0) {
       this.comboTimer -= dt;
       if (this.comboTimer <= 0) this.combo = 0;
@@ -339,19 +359,23 @@ export class Player extends Actor {
   }
 
   _accelerate(dt, mx, my) {
-    const max = this.speed * (this.speedMul || 1) * (this.castMoveMul || 1) * (this.game.survival?.speedFactor?.(this) ?? 1) * (this.game.map?.speedAt?.(this.x, this.y) ?? 1);
+    const mul = this.castMoveMul ?? 1;
+    const max = this.speed * (this.speedMul || 1) * (Number.isFinite(mul) ? mul : 1) * (this.game.survival?.speedFactor?.(this) ?? 1) * (this.game.map?.speedAt?.(this.x, this.y) ?? 1);
     const v = this.vel;
     let tx = 0;
     let ty = 0;
     let rate = DECEL;
-    if (this.rootTime > 0) {
-      // Rooted: no drift, and no stored momentum to lurch with when the light fades.
+    if (this.rootTime > 0 || this.planted) {
+      // Rooted, or standing to weave (plan §14): no drift, and no stored momentum to lurch
+      // with when it ends. The stick only turns you meanwhile (_afterMove).
       v.x = 0;
       v.y = 0;
       this.moveIntent.x = 0;
       this.moveIntent.y = 0;
+      this._standHint(dt, mx, my);
       return;
     }
+    this._standPush = 0;
     if (this.lockTime > 0) {
       rate = DECEL * 2; // planted while swinging or staggered
     } else if (mx || my) {
@@ -375,6 +399,25 @@ export class Player extends Actor {
     mi.y = max > 0 ? v.y / max : 0;
   }
 
+  // The first time the stick pushes against a weave's stance, the coach says once: "You
+  // stand still to weave. Roll to break off." (bus 'cast_stand'; ui/coach.js).
+  _standHint(dt, mx, my) {
+    if (!(mx || my) || !this.planted) {
+      this._standPush = 0;
+      return;
+    }
+    this._standPush += dt;
+    const g = this.game;
+    if (this._standPush < 0.3 || g.flags?.standHintShown) return;
+    g.flags = g.flags || {};
+    g.flags.standHintShown = true;
+    try {
+      g.bus?.emit?.('cast_stand', { state: g.magic?.castingState?.(this) || 'plant' });
+    } catch {
+      /* the hint is optional */
+    }
+  }
+
   _afterMove(dt) {
     // Face the stick at once, even while the body is still turning around; while a
     // weave leaves the hands, face where it goes.
@@ -384,6 +427,20 @@ export class Player extends Actor {
       this.facing.x = this._inX / l;
       this.facing.y = this._inY / l;
       this.dir = dirFromVec(this._inX, this._inY, this.dir);
+    } else if (this.planted && !this.rolling && this.isAlive()) {
+      // Gathering with the stick at rest: face the weave's own aim (the mouse, a drag, the
+      // lock), so the raised hands point where it will go.
+      const a = this.game.magic?.holdOf?.(this)?.aim;
+      if (a && !a.auto && Number.isFinite(a.x) && Number.isFinite(a.y)) {
+        const fx = a.x - this.x;
+        const fy = a.y - (this.y - 10);
+        const l = Math.hypot(fx, fy);
+        if (l > 4) {
+          this.facing.x = fx / l;
+          this.facing.y = fy / l;
+          this.dir = dirFromVec(fx, fy, this.dir);
+        }
+      }
     }
     const dx = this.x - this._lastX;
     const dy = this.y - this._lastY;
@@ -714,6 +771,17 @@ export class Player extends Actor {
       // Roll out of a swing or a stagger once it has landed; never out of sitting or casting.
       const cancellable = this.state === 'attack' || this.state === 'hurt' || this.state === 'work';
       if (!cancellable || this.stateTime < 0.1) return false;
+    }
+    // The way out of a weave (plan §14): the roll breaks a charge, a beam or the plant.
+    if (this.planted || this.game.magic?.holds?.has?.(this)) {
+      try {
+        this.game.magic?.breakCast?.(this, 'roll');
+      } catch {
+        /* the roll goes on regardless */
+      }
+      this.castPlantT = 0;
+      this.castPoseT = 0;
+      this.castMoveMul = 1;
     }
     let dx = mx;
     let dy = my;
@@ -1102,7 +1170,8 @@ export class Player extends Actor {
     const slashBehind = sw && this.dir === 'up';
     if (slashBehind) this._drawSlash(ctx, sx, sy - hz);
     const blink = this.hurtBlink > 0 && !this.rolling && !this.downed;
-    const casting = this.castPoseT > 0 && !this.rolling && !this.downed && (this.state === 'idle' || this.state === 'walk' || this.state === 'cast');
+    const gathering = !((this.castMoveMul ?? 1) > 0);
+    const casting = (this.castPoseT > 0 || gathering) && !this.rolling && !this.downed && (this.state === 'idle' || this.state === 'walk' || this.state === 'cast');
     // Dragging yourself along the ground while down (game.survival sets crawlPose, §27).
     const crawl = this.downed ? this.crawlPose : null;
     const anim = crawl ? 'crawl' : casting ? 'cast' : animForState(this.state);
