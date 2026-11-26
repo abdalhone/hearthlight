@@ -121,7 +121,7 @@ export class ColdfireView {
         { class: 'chs-box chs-wide chs-coldfire' },
         h('h3', null, h('span', { text: 'Coldfire' }), h('span', { class: 'chs-h-note', text: 'The taken flame' })),
         h('div', { class: 'chs-cf-track', role: 'meter', 'aria-label': 'Coldfire' }, s.fill),
-        h('div', { class: 'chs-cf-grid' }, h('div', { class: 'chs-stat' }, h('span', { text: 'Held now' }), s.bar), h('div', { class: 'chs-stat' }, h('span', { text: 'Sword and Weave' }), s.boost), h('div', { class: 'chs-stat' }, h('span', { text: 'The Unkindling pulls' }), s.pull)),
+        h('div', { class: 'chs-cf-grid' }, h('div', { class: 'chs-stat' }, h('span', { text: 'Held now' }), s.bar), h('div', { class: 'chs-stat' }, h('span', { text: 'Sword and Weave' }), s.boost), h('div', { class: 'chs-stat' }, h('span', { text: 'The pull' }), s.pull)),
         s.ebb,
         s.souls,
         s.signs,
