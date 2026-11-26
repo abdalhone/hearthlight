@@ -122,6 +122,7 @@ export class Party {
       this._offs.push(bus.on('villager_killed', (p) => safe(() => this.onDeath(p))));
       this._offs.push(bus.on('villager_died', (p) => safe(() => this.onDeath(p))));
       this._offs.push(bus.on('crime', (p) => safe(() => this.onCrime(p))));
+      this._offs.push(bus.on('damage', (p) => safe(() => this.onDamage(p))));
       this._offs.push(bus.on('new_day', () => safe(() => this.markAway())));
       // What Lyra cites or tells in talk becomes shared (People shows it, DESIGN §34.5).
       this._offs.push(bus.on('memories_shared', (p) => safe(() => this.onShared(p))));
@@ -476,6 +477,19 @@ export class Party {
     if (cs === 'left' || cs === 'gone' || lyraDead(this.game)) return;
     if (!(mind.shared instanceof Set)) mind.shared = new Set(Array.isArray(mind.shared) ? mind.shared : []);
     for (const id of Array.isArray(p?.ids) ? p.ids : []) if (id != null) mind.shared.add(String(id));
+  }
+
+  // Struck by you on purpose (not a weave's splash), a villager companion is done walking
+  // with you, whoever else saw it (they did: it was them).
+  onDamage(p) {
+    const h = this.holder;
+    if (!h || this.isLyra(h) || p?.target !== h) return;
+    const g = this.game;
+    const src = p.source || p.attacker;
+    if (!src || (src !== g.player && src.id !== PLAYER_ID) || p.accident) return;
+    if (p.magic && !p.deliberate) return; // a weave's splash is an accident, not a blow
+    if (!(Number(p.amount) > 0)) return;
+    this.release('gone', { line: companionLine(h.id, 'leave_fear', { name: firstName(h) }), by: h.id });
   }
 
   // The village knows where a companion is (so §28's missing chain does not start).

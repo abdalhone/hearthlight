@@ -34,7 +34,9 @@ const PORTRAIT_PHONE_QUERY = '(max-width: 640px) and (min-height: 521px)';
 const STRIP_QUERY = '(max-height: 520px)';
 // HUD pieces speech bubbles must not hide behind (see Bubbles.setKeepOut).
 // Also the fallen screen's words and Call for help (a bubble over them read as one).
-const KEEP_OUT_SELECTOR = '.hud .card, .hud-btn, .quest-line, .listen-prompt, .interact-prompt, .cmdbar, .orders-btn, .tbtn, .wbtn, .hotbar, .sv-fallen';
+// (Round 14b leftover: the phone's use-button tag, "Give Tobias a potion", floats beside its
+// button; a speech bubble kept clear of the button alone could still sit on the tag.)
+const KEEP_OUT_SELECTOR = '.hud .card, .hud-btn, .quest-line, .listen-prompt, .interact-prompt, .cmdbar, .orders-btn, .tbtn, .tbtn-tag, .wbtn, .hotbar, .sv-fallen';
 const KEEP_OUT_EVERY = 0.25;
 
 function readFlag(key) {

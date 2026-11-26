@@ -4,6 +4,7 @@
 // and is saved as seen. Lyra may decline the hardest one on a given day.
 
 import { MISSION_SCENES } from './scripts_missions.js';
+import { lyraDead } from '../core/party.js';
 
 export const SCENES = [
   {
@@ -125,6 +126,8 @@ export function sceneContext(game) {
 export function lyraState(game, { minTrust = 0, minBond = 0 } = {}) {
   const l = game.companion;
   const p = game.player;
+  // Dead (round 14b, item 7): no scene of hers plays; the story goes on without her.
+  if (l && lyraDead(game)) return { ok: false, near: false, reason: 'dead' };
   if (!l || l.removed || l.downed || !p) return { ok: false, near: false, reason: 'absent' };
   const near = dist(l, p) <= 96;
   const mind = l.mind;

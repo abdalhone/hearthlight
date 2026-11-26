@@ -76,10 +76,12 @@ test("the holder's death releases the role (a killing or a death nobody did)", (
   g.combat.damage(g.player, bram, 999, { exact: true, crit: false });
   g.murder.kill(bram, g.player);
   assert.ok(g.party.holder === null);
-  assert.equal(changes(g).at(-1).why, 'died');
+  // (Workstream party: struck down by you, he had already walked off, 'gone', before he died.)
+  assert.ok(['gone', 'died'].includes(changes(g).at(-1).why));
   g.party.set('garrick', 'test', 'player');
   g.murder.die('garrick', { cause: 'age' });
   assert.ok(g.party.holder === null);
+  assert.equal(changes(g).at(-1).why, 'died');
 });
 
 test('saved and restored last; an old save with no party block derives the holder from Lyra', () => {

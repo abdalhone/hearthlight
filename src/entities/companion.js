@@ -6,10 +6,14 @@ import { say } from '../ai/behavior/lines.js';
 import { RAMPS } from '../art/palette.js';
 
 // Lyra: arcane ranger, traveling with the player by her own choice. Her Behavior is
-// her controller and her Mind holds who she is. She never dies: at 0 HP she is
-// downed until the player helps her up (interact) or, after a minute, she gets up
-// alone. She never leaves the world: Hearthvale is her home, and even when she cuts
-// the player out of her life she lives on in the village (DESIGN §19.7).
+// her controller and her Mind holds who she is. At 0 HP she is downed until the player
+// helps her up (interact) or, after a minute, she gets up alone. She never leaves the
+// world: Hearthvale is her home, and even when she cuts the player out of her life she
+// lives on in the village (DESIGN §19.7). Round 14b (item 7): she can be killed, by the
+// finishing blow like any adult (game.murder, the blood workstream). Dead, she is dead:
+// no knock-out, no getting up, no mind, plans or behavior; her body lies where she fell
+// (game.murder's body rules), the role is released (game.party) and her People page is
+// a memorial.
 
 const ARCANE_GLOW = RAMPS.arcane[4];
 export const AUTO_REVIVE_SECONDS = 60;
@@ -69,7 +73,7 @@ export class Companion extends Actor {
     });
     // However she gets back up (the player's hand, combat's minute, her own), she says so.
     game.bus?.on?.('revived', (p) => {
-      if (p?.entity !== this || this.leftWorld) return;
+      if (p?.entity !== this || this.leftWorld || this.isKilled()) return;
       const byPlayer = !!p.by && p.by === game.player;
       this.behavior.say(say.revived(byPlayer), { force: true });
       if (byPlayer) this.faceToward(p.by.x, p.by.y);
@@ -80,7 +84,7 @@ export class Companion extends Actor {
     const g = this.game;
     const P = g.player;
     const d = g.magic?.registry?.prices?.get?.(id);
-    if (!d || !P || this.downed || this.leftWorld) return;
+    if (!d || !P || this.downed || this.leftWorld || this.isKilled()) return;
     const near = Math.hypot(P.x - this.x, P.y - this.y) < 220;
     const weight = PRICE_WEIGHT[id] || PRICE_WEIGHT.default;
     const mind = this.mind;
@@ -143,8 +147,21 @@ export class Companion extends Actor {
     this.moveIntent.y = 0;
   }
 
+  // Killed (game.murder holds her record), not knocked out.
+  isKilled() {
+    return !!this.game?.murder?.isDead?.(this.id) || !!this.game?.flags?.lyra_dead;
+  }
+
   update(dt) {
     if (this.leftWorld) return;
+    if (this.isKilled()) {
+      // Dead: nothing of hers runs any more (her mind, plans, behavior); the body lies still.
+      this.downed = false;
+      this.dead = true;
+      this.moveIntent.x = 0;
+      this.moveIntent.y = 0;
+      return;
+    }
     if (this.dead) this.knockOut();
     // Frozen or stunned by a weave (DESIGN §22.1): her behavior holds until it wears off.
     const ctl = this.controller;
@@ -173,6 +190,7 @@ export class Companion extends Actor {
   }
 
   knockOut() {
+    if (this.isKilled()) return;
     this.dead = false;
     this.hp = 0;
     if (!this.downed) {
@@ -182,6 +200,7 @@ export class Companion extends Actor {
   }
 
   updateDowned(dt) {
+    if (this.isKilled()) return;
     if (!this.wasDowned) {
       this.wasDowned = true;
       this.downedFor = 0;
@@ -200,6 +219,7 @@ export class Companion extends Actor {
 
   // Revive through combat (its effects and event); fall back to doing it here.
   reviveBy(by, fraction) {
+    if (this.isKilled()) return;
     const c = this.game.combat;
     if (c && typeof c.revive === 'function') {
       try {
@@ -222,15 +242,23 @@ export class Companion extends Actor {
   }
 
   canInteract(actor) {
+    if (this.carriedBy) return false;
+    // Dead, her body is like anyone's (DESIGN §29): knelt by, lifted.
+    if (this.isKilled()) return !!this.game.murder?.bodyCanInteract?.(this, actor);
     return !!actor && actor === this.game.player && !this.leftWorld && !this.carriedBy;
   }
 
   interactLabel(actor) {
+    if (this.isKilled()) return this.game.murder?.bodyLabel?.(this, actor) || '';
     if (this.downed) return this.game.survival?.downedLabel?.(this, actor) || `Help ${this.name} up`;
     return `Talk to ${this.name}`;
   }
 
   interact(actor) {
+    if (this.isKilled()) {
+      this.game.murder?.bodyInteract?.(this, actor);
+      return;
+    }
     if (this.downed) {
       // A potion, or her weight on your shoulders (§27); the old free hand up without it.
       if (this.game.survival) {
@@ -259,7 +287,7 @@ export class Companion extends Actor {
   // A soft violet glow that grows with the dark; dim while she is down.
   getLight(time) {
     const dark = 1 - (this.game.clock?.daylight ?? 1);
-    if (dark < 0.12 || this.dead || this.leftWorld) return null;
+    if (dark < 0.12 || this.dead || this.leftWorld || this.isKilled()) return null;
     const g = this.glow;
     const pulse = 0.92 + 0.08 * Math.sin(time * 2.3);
     g.x = this.x;
