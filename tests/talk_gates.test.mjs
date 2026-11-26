@@ -272,7 +272,8 @@ test('the afraid dialog is never a lock: Say something, (Give yourself up), Back
   clearScene(g, ['elda', 'rowan']);
   const elda = g.entities.get('elda');
   const opts = afraidOptions(elda, g.player).map((o) => o.id);
-  assert.deepEqual(opts, ['talk', 'bye']);
+  // Elda keeps the Kettle: her Trade stays (society's shop rule says her refusal in her words).
+  assert.deepEqual(opts, ['talk', 'shop', 'bye']);
   assert.notDeepEqual(mainOptions(elda, g.player, 'afraid').map((o) => o.id), ['bye']);
   g.murder.isWanted = () => true;
   assert.ok(afraidOptions(g.entities.get('rowan'), g.player).some((o) => o.id === 'murder:surrender'), 'to the watch, the player may give themselves up');

@@ -124,3 +124,59 @@ test('blood x party: the map names a fallen village "Hearthvale (yours)" (occupa
   g.occupation = { placeName: (id, name) => (id === 'hearthvale' ? `${name} (yours)` : name) };
   assert.equal(map.marks().find((m) => m.id === 'hearthvale').label, 'Hearthvale (yours)');
 });
+
+// ---------------------------------------------------------------- society x the others
+
+import { makeGame as makeSocietyGame, step as stepS } from './society_world.mjs';
+import { Occupation } from '../src/world/occupation.js';
+import { chooseOption, mainOptions } from '../src/entities/npc_dialogue.js';
+import { stance } from '../src/world/trade.js';
+
+function societyScene() {
+  const g = makeSocietyGame({ hour: 12 });
+  if (!g.occupation) g.occupation = new Occupation(g);
+  if (!g.party) g.plugins.register(partyPlugin);
+  put(g.player, px(MEADOW.tx), px(MEADOW.ty));
+  return g;
+}
+
+test('blood x society: a burned store sells nothing, said in their words, through the one shop rule (trade.stance)', () => {
+  const g = societyScene();
+  const garrick = g.entities.get('garrick');
+  garrick.opinionOfPlayer = 60;
+  put(garrick, g.player.x + 16, g.player.y);
+  assert.equal(stance(g, garrick).refuse, false);
+  const open = chooseOption(garrick, 'shop', g.player);
+  assert.equal(open.open, 'shop', 'open for trade before the fire');
+  g.occupation.burns.general_store = { day: 1, t: 0, by: 'player' };
+  assert.equal(g.occupation.shopClosed('garrick'), true);
+  const st = stance(g, garrick);
+  assert.ok(st.refuse && st.why === 'burned', JSON.stringify(st));
+  const r = chooseOption(garrick, 'shop', g.player);
+  assert.notEqual(r.open, 'shop', 'no shop opens');
+  assert.match(r.lines[0], /nothing|went up/i, 'their line, not a vanished button');
+  assert.equal(g.village.standing('garrick').refusesTrade, true, 'standing() reads the same rule');
+});
+
+test("society x talk: a frightened merchant keeps Trade on the list (afraidOptions), and it is refused in their words", () => {
+  const g = societyScene();
+  const elda = g.entities.get('elda');
+  put(elda, g.player.x + 16, g.player.y);
+  const opts = afraidOptions(elda, g.player);
+  assert.ok(opts.some((o) => o.id === 'shop'), JSON.stringify(opts));
+  assert.ok(opts.some((o) => o.id === 'talk') && opts.at(-1).id === 'bye');
+  // Not for someone with no shop.
+  assert.ok(!afraidOptions(g.entities.get('pip'), g.player).some((o) => o.id === 'shop'));
+});
+
+test("blood x society: a child knows the stranger for a killer by society's per-knower rule (occupation.knowsKiller)", () => {
+  const g = societyScene();
+  const pip = g.entities.get('pip');
+  assert.equal(g.occupation.knowsKiller(pip), false);
+  // A killing Pip was told of (rec.knownBy, reputation's knowsDeed), never seen by him.
+  g.murder.dead.wys = { id: 'wys', by: 'player', cause: 'killed', knownBy: ['pip'], seen: [], day: 1 };
+  assert.equal(g.reputation.counts({ knownTo: 'pip' }).killedKnown, 1);
+  assert.equal(g.occupation.knowsKiller(pip), true);
+  assert.equal(g.occupation.knowsKiller(g.entities.get('tansy')), false, 'Tansy was not told');
+  delete g.murder.dead.wys;
+});

@@ -24,6 +24,7 @@ import { detectInvite } from './invite.js';
 import { parseActs } from './acts.js';
 import { decideActs } from './acts_effects.js';
 import { isMinor } from '../../core/people.js';
+import { stance as tradeStance } from '../../world/trade.js';
 import { VILLAGER_RULES, SAY_SCHEMA, LINES_SCHEMA, NIGHT_SCHEMA, ALOUD_SCHEMA, buildSayTask, buildListenTask, buildNightTask, buildAloudTask, coerceSay, coerceLines, coerceNight, coerceAloud, cleanLine } from './village_prompt.js';
 
 // What the village says about the stranger's weaving joins the rumor table (DESIGN §22.3).
@@ -989,7 +990,9 @@ export class Village {
     const day = this.day();
     const label = opinion < 15 ? 'Hostile' : opinion < 30 ? 'Wary' : opinion < 50 ? 'Neutral' : opinion < 75 ? 'Friendly' : 'Fond';
     const shop = !!e?.profile?.shop;
-    const refusesTrade = shop && (opinion < 15 || (!!grievance && fresh && grievance.weight >= 8) || e?.wrongedDay === day);
+    // One graded refusal for every shop (society's trade.stance: kin, fresh blood, the
+    // Butcher, a burned store), plus today's own temper.
+    const refusesTrade = shop && (opinion < 15 || (!!grievance && fresh && grievance.weight >= 8) || e?.wrongedDay === day || !!safe(() => tradeStance(this.game, e).refuse, false));
     const cold = opinion < 15 || (!!grievance && fresh && grievance.weight >= 6) || e?.wrongedDay === day || !!this.cutTies?.[npcId];
     const barredFrom = Object.keys(this.bars).filter((k) => this.barred(k));
     return { opinion, label, grievance, refusesTrade, cold, barredFrom };

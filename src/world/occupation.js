@@ -204,9 +204,10 @@ export class Occupation {
     const m = this.game?.murder;
     if (!m) return false;
     for (const rec of Object.values(m.dead || {})) if (!rec.natural && safe(() => m.knowsKiller(rec, child.id), false)) return true;
-    // A name the village has for them (round 14b society: reputation), when there is one.
-    const rep = safe(() => this.game.reputation?.of?.('player'), null);
-    return !!rep && (rep.killer === true || (Number(rep.fear) || 0) > 0.6);
+    // What this child knows by society's per-knower rule (reputation.counts({knownTo})): a
+    // killing they saw, were told of face to face, or heard proven at the Moot.
+    const c = safe(() => this.game.reputation?.counts?.({ knownTo: child.id }), null);
+    return !!c && (Number(c.killedKnown) || 0) > 0;
   }
 
   // A child who sees a known killer near hides at home (npc.perceive asks, through

@@ -203,6 +203,12 @@ function cares(game, a, b) {
 export function stance(game, npc) {
   const id = idOf(npc);
   const out = { refuse: false, markup: 1, fence: false, line: null, why: null };
+  // A burned store sells nothing (blood's world/occupation.js shopClosed): said as theirs.
+  if (id && safe(() => game?.occupation?.shopClosed?.(id), false)) {
+    out.refuse = true;
+    out.why = 'burned';
+    return out;
+  }
   const m = game?.murder;
   const rep = game?.reputation;
   const known = [];

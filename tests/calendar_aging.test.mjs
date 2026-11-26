@@ -178,6 +178,10 @@ test('a death of age: failing at home, then die() in the night; found by kin; a 
   step(g, 2.5);
   assert.ok(rec.foundAt != null, 'found in the morning');
   assert.ok(!g.murder.cases.corran, 'no case');
+  // The village knows within the hour (blood, round 14b: news by meeting, or the bell and the
+  // chapel), and the funeral is planned then.
+  step(g, DAY_SECONDS / 24 + 1);
+  assert.ok(!g.murder.cases.corran, 'still no case');
   assert.ok(g.murder.funerals.some((f) => f.about === 'corran'), 'a funeral');
   assert.ok(!g.murder.moots.some((x) => x.about === 'corran'), 'no Moot');
   assert.ok(g.villageLife.events.some((e) => /died of old age/.test(e.text)));

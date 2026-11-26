@@ -172,6 +172,9 @@ export function afraidOptions(npc, player) {
     /* optional */
   }
   if ((wanted && WATCH.has(npc.profile?.id)) || hunted) out.push({ id: 'murder:surrender', label: 'Give yourself up' });
+  // A frightened merchant still has a shop: Trade stays on the list, and a refusal is said in
+  // their own words (society's trade.stance, chooseOption 'shop'), never a vanished button.
+  if (isMerchant(npc)) out.push({ id: 'shop', label: npc.profile?.id === 'elda' ? 'Food and drink' : 'Trade' });
   out.push({ id: 'bye', label: 'Back away' });
   return out;
 }
@@ -353,6 +356,7 @@ function refuseLine(npc) {
   if (why === 'butcher') return pickLine(g, ['I know what they call you. No. Not for any coin.', 'Butcher. Get out of my door.']) || 'No.';
   if (why === 'suspect') return 'Not while the watch is asking about you. Not today.';
   if (why === 'fresh') return pickLine(g, ['With blood still on your hands? Not today. Maybe not ever.', 'I know what you did. Get out of my shop.']) || 'No.';
+  if (why === 'burned') return pickLine(g, ['Look at it. There is nothing left to sell.', 'It all went up. Every shelf. I have nothing for you.']) || 'There is nothing left.';
   return line(npc, p.refuse?.length ? p.refuse : p.cold, 'Not today.');
 }
 
