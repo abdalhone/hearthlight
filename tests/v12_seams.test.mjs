@@ -486,3 +486,63 @@ test('seam 8: gear and wares say what each % is a share of, as the sheet does; l
   assert.equal(GEAR.roadrunner_boots.value, 85);
   assert.equal(BUFF_ITEMS.swiftfoot_draught.value, 28);
 });
+
+// ---------------------------------------------------------------- 10. saves
+
+import { readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
+import { loadProgression } from '../src/progression/index.js';
+
+// Real saves made in the Version 11 (2634ca5) and round 14b (aee713c) builds by
+// scratchpad's probe_saves.mjs: level 15, 20 Might, 12 Vitality, 10 Focus, a steel sword,
+// health 141 of 202, Garrick murdered; the round 14b one also walks with Bram, has sealed
+// the pact (after) and carries the Unkindling with a soul bar of 40.
+function fixture(ver) {
+  return JSON.parse(gunzipSync(readFileSync(new URL(`./fixtures/save_${ver}.json.gz`, import.meta.url))).toString('utf8'));
+}
+
+for (const ver of ['2634ca5', 'aee713c']) {
+  test(`seam 10: a ${ver === 'aee713c' ? 'round 14b' : 'Version 11'} save (${ver}) loads onto the new numbers, its wound, party, murder and soul kept`, () => {
+    const d = fixture(ver);
+    const g = statsWorld();
+    const unk = installUnkindle(g);
+    g.player.deserialize(d.player);
+    loadProgression(g, d.progression);
+    const P = g.player;
+    const pts = d.progression.progression.points;
+    assert.deepEqual(g.progression.points, pts, 'the points, by id');
+    assert.equal(P.level, 15);
+    const want = 60 + 5 * 14 + pointsEffect('vitality', pts.vitality).add.maxHp;
+    assert.ok(Math.abs(P.maxHp - want) <= 1, `health on the new curve: ${P.maxHp} (was ${d.player.maxHp})`);
+    assert.ok(P.maxHp > d.player.maxHp);
+    assert.equal(P.hp, d.player.hp, 'the wound as saved');
+    assert.equal(g.gear.equipped.weapon, 'steel_sword');
+    g.murder.deserialize(d.murder);
+    assert.ok(g.murder.isDead('garrick'), 'Garrick is still dead');
+    if (d.party) {
+      g.party.deserialize(d.party);
+      assert.equal(g.party.holderId, 'bram', 'Bram still walks with you');
+    }
+    if (d.plugins?.unkindle) {
+      unk.deserialize(d.plugins.unkindle);
+      assert.equal(unk.learned, true);
+      assert.equal(Math.round(unk.coldfire.bar), 40, 'the soul bar');
+    }
+    // Free on and off, Reset and the chapel's respec stay exact on it.
+    const pr = g.progression;
+    pr.startFree();
+    pr.spend('grace', 300);
+    pr.endFree();
+    assert.deepEqual(pr.points, pts, 'Free off gives back the real points');
+    assert.ok(pr.resetPoints().ok !== false);
+    assert.equal(pr.spent(), 0);
+    assert.equal(pr.unspent(), 42);
+    pr.spend('weave', 42);
+    P.inventory.add('coin', 500);
+    const before = P.inventory.count('coin');
+    const r = pr.respec();
+    assert.ok(r.ok, r.reason);
+    assert.equal(before - P.inventory.count('coin'), r.cost);
+    assert.equal(pr.unspent(), 42);
+  });
+}
