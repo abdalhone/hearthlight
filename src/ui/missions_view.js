@@ -281,6 +281,28 @@ class Journal {
     }
     if (!j.active.length) body.append(h('p', { class: 'empty', text: 'No errands yet. Villagers with a gold ! over their heads have work for you; the notice board in the square has more.' }));
     for (const c of j.active) body.append(this.card(c, { active: true }));
+    this.renderGone(body, j);
+  }
+
+  // What is done stays done (plan §13c): everyone the village knows is dead, and what of theirs
+  // closed or passed on: their missions, their work, the Moot, who mourns, their story.
+  renderGone(body, j) {
+    const gone = j.gone || [];
+    if (!gone.length) return;
+    body.append(h('h3', { class: 'mj-section', text: 'What is done stays done' }));
+    for (const g of gone) {
+      const lines = h('ul', { class: 'mj-gone-lines' });
+      for (const l of g.lines) lines.append(h('li', { class: `mj-gone-${l.kind}`, text: l.text }));
+      if (!g.lines.length) lines.append(h('li', { text: 'Nothing of theirs was left undone.' }));
+      body.append(
+        h(
+          'article',
+          { class: 'mj-gone', 'data-id': g.id },
+          h('div', { class: 'mj-row' }, this.portrait(g.id), h('div', { class: 'mj-head' }, h('div', { class: 'mj-kicker', text: `${g.cause}${g.day ? `, day ${g.day}` : ''}` }), h('h3', { class: 'mj-gone-name', text: g.name }))),
+          lines,
+        ),
+      );
+    }
   }
 
   renderAvailable(body, j) {
@@ -300,8 +322,12 @@ class Journal {
   }
 
   renderDone(body, j) {
+    // Missions that ended with their giver (plan §13c): closed, and why.
+    for (const c of j.closed || []) {
+      body.append(h('div', { class: 'mj-done mj-closed' }, this.portrait(c.giver), h('div', { class: 'mj-done-text' }, h('strong', { text: c.title }), h('span', { class: 'mj-dim', text: ` · ${c.note || 'Closed.'}` }))));
+    }
     if (!j.completed.length) {
-      body.append(h('p', { class: 'empty', text: 'Nothing finished yet.' }));
+      if (!(j.closed || []).length) body.append(h('p', { class: 'empty', text: 'Nothing finished yet.' }));
       return;
     }
     for (const c of j.completed.slice().reverse()) {
@@ -339,6 +365,8 @@ class Journal {
     );
     if (offer && c.board) el.append(h('blockquote', { class: 'mj-notice', text: c.board }));
     else el.append(h('p', { class: 'mj-summary', text: c.summary }));
+    // A giver who is gone says so (plan §13c): passed on, or ended.
+    if (c.note) el.append(h('p', { class: 'mj-gone-note', text: c.note }));
     if (active) {
       const list = h('ol', { class: 'mj-objs' });
       for (const o of c.objectives) {
@@ -597,6 +625,16 @@ const CSS = `
 .mj-done .mj-portrait { width: 32px; height: 32px; }
 .mj-dim { color: var(--parch-faint); font-size: var(--fs-s); }
 .mj-board-box { margin-bottom: 14px; border-bottom: 2px solid var(--line-dim); padding-bottom: 4px; }
+/* What is done stays done (round 14b follow-up, plan §13c). */
+.mj-gone-note { margin: 2px 0 6px; padding-left: 8px; border-left: 3px solid var(--line-soft); color: var(--parch-dim); font-size: var(--fs-s); font-style: italic; line-height: 1.35; }
+.mj-gone { margin: 0 0 8px; padding: 8px 12px; background: var(--ink-2); border: 2px solid var(--line-dim); box-shadow: 0 2px 0 var(--outline); }
+.mj-gone .mj-row { gap: 8px; }
+.mj-gone .mj-portrait { width: 32px; height: 32px; filter: grayscale(1) brightness(.75); }
+.mj-gone-name { margin: 0; font-family: var(--font-display); font-size: var(--fs-m, 17px); color: var(--parch); line-height: 1.15; }
+.mj-gone-lines { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
+.mj-gone-lines li { color: var(--parch-2); font-size: var(--fs-s); line-height: 1.35; padding-left: 12px; position: relative; }
+.mj-gone-lines li::before { content: '·'; position: absolute; left: 2px; color: var(--parch-faint); }
+.mj-closed { opacity: .8; }
 
 .mq-reveal { --hue: #a995ff; position: absolute; left: 50%; top: max(18%, calc(env(safe-area-inset-top, 0px) + 64px)); transform: translateX(-50%);
   display: flex; align-items: center; gap: 14px; width: min(420px, calc(100% - 32px)); padding: 12px 14px; pointer-events: auto; cursor: pointer;

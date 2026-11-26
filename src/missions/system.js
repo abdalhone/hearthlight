@@ -22,6 +22,7 @@ import { TILE } from '../core/constants.js';
 import { lyraOf } from '../core/people.js';
 import { holderOf, lyraDead } from '../core/party.js';
 import { fightAbility } from '../entities/npc_companion.js';
+import { staysDoneAll, missionNote } from '../story/stays_done.js';
 
 const POLL = 0.25;
 const NUDGE_AFTER = 75; // seconds of play without a weave before a hint
@@ -129,6 +130,24 @@ export class MissionSystem {
 
   giverOf(m) {
     return this.standIn(m.giver);
+  }
+
+  // What is done stays done (§13c): a mission taken from someone now dead passes on (or ends),
+  // and the player is told once (flags keep it across a save).
+  passOnNotes() {
+    for (const [id, s] of Object.entries(this.state)) {
+      if (s.status !== 'active' && s.status !== 'ready') continue;
+      const m = this.get(id);
+      if (!m?.giver || m.giver === 'board' || m.giver === 'lyra') continue;
+      const to = this.giverOf(m);
+      if (to === m.giver) continue;
+      const key = `passed_${id}`;
+      if (this.flags[key] === to) continue;
+      this.flags[key] = to;
+      const note = safe(() => missionNote(this.game, m), '');
+      if (note) this.toast(`${m.title}: ${note}`, 'info');
+      this.emit('mission_passed', { id, mission: m, from: m.giver, to });
+    }
   }
 
   // A stand-in passes on a dead giver's work in their own words first.
@@ -623,6 +642,7 @@ export class MissionSystem {
         this.emit('mission_closed', { id, mission: m, why: 'giver_dead' });
       }
     }
+    this.passOnNotes();
     for (const [id, s] of Object.entries(this.state)) {
       if (s.status !== 'active') continue;
       s.stepT += step;
@@ -1188,6 +1208,8 @@ export class MissionSystem {
         hint: m.hint || '',
         canAccept: !s && (m.giver === 'lyra' || this.giverOf(m) === 'board') && !this.missing(m).length,
         turnTo: this.turnInTo(m) ? this.giverName(this.turnInTo(m)) : '',
+        // What is done stays done (§13c): a giver who is gone says so here.
+        note: safe(() => missionNote(this.game, m), '') || '',
       };
     };
     const active = this.active().map(card);
@@ -1204,6 +1226,9 @@ export class MissionSystem {
       board: avail.filter((m) => this.giverOf(m) === 'board').map(card),
       upcoming,
       completed: this.missions.filter((m) => this.state[m.id]?.status === 'done').map(card),
+      closed: this.missions.filter((m) => this.state[m.id]?.status === 'closed').map(card),
+      // Everyone the village knows is dead, and what of theirs closed or passed on.
+      gone: safe(() => staysDoneAll(this.game), []) || [],
       story: this.storyCard(),
       counts: { done: this.doneCount(), total: this.missions.length },
     };

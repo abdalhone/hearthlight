@@ -88,7 +88,50 @@ export const TEMPTER_LINES = {
   verdict: ['They put you outside. Good. Outside is where I live.'],
   idle: ['The night is long, my friend.', 'Hm.', 'Ask what you came to ask.'],
   dissolve: ['Ah. So. You are stronger than the last one.'],
+  // The dark path you can leave (round 14b follow-up, plan §13c): the pact ended by your
+  // word, his single asks, coming back at a higher price. The game decides; these word it.
+  ended: ['Done? Hm. Then go, and keep what you took: I never take a gift back. But you gave me your word, and you have broken it.', 'The next dark, I will not be your friend.'],
+  endedAgain: ['Again. Your word is worth less each time, my friend.'],
+  noPact: ['Done with what? There is nothing between us to end.'],
+  cold: ['You. The one who broke their word.', 'Speak, then. Quickly. The night is mine.'],
+  stand: ['No more talk.', 'Come, then. Let us see what you kept.'],
+  returnTerms: ['Back? The price has gone up, my friend. It always does.', 'Bring me {name} first. Then the pact holds again, as it did.'],
+  returnTermsMore: ['Back again? Then it costs more again.', '{name} first, and then the rest, as before.'],
+  returned: ['Then we begin again. You know the way to {name}.'],
+  returnDeclined: ['Then we are what we are.'],
+  returnNone: ['Back? There is no one left to ask for. Go home.'],
+  askPerson: ['{why}', '{name}. Put out that one flame for me, and I will not forget it.'],
+  askSoul: ['Bring me a soul. Any soul: a wolf, a bandit, it does not matter which.', 'Take it in that cold hand and carry it here, instead of keeping it.'],
+  askFlame: ['On the chapel altar a flame burns for {house}. Put it out for me.', 'Only the flame. Nobody need die for it.'],
+  askAccepted: ['Good. I will know when it is done.'],
+  askRefused: ['No? Another night, then. The pact holds; I am patient.', 'As you like. There will be other things.'],
+  askWaiting: ['{task}. I am still waiting.'],
+  askDone: { person: ['I felt it go out. Thank you, my friend. Here: what I promised.'], soul: ['Give it here. ...Ah. Still warm. Here, for your trouble.'], flame: ['The ward is thinner tonight. I can feel it from here. Here: for your trouble.'] },
+  askVoid: ['Someone saved you the trouble. Hm. Another night, another thing.'],
+  noBare: ['No to what, my friend?'],
+  childAsk: ['Never the children. I told you. Never.'],
 };
+
+// Whom he asks for, one at a time, and why (the game picks; never a child, never Lyra: she
+// lives for herself, and the children are not his to ask for).
+export const ASK_PEOPLE = [
+  { id: 'rowan', why: 'The captain watches the gate too closely.' },
+  { id: 'hess', why: 'The huntress walks the marsh at night. She has seen my lamp.' },
+  { id: 'aveline', why: 'The chapel keeper reads the flames too well.' },
+  { id: 'alder', why: 'The Reeve keeps the bell. A bell is a nuisance.' },
+  { id: 'wys', why: 'The young watchman counts the lamps on his rounds.' },
+  { id: 'mira', why: 'The healer mends what I would rather stayed broken.' },
+  { id: 'corran', why: 'The old fisherman remembers the pilgrims. All three of us.' },
+];
+// The kinds of single asks, in the order he comes to them.
+export const ASK_KINDS = ['person', 'soul', 'flame'];
+
+// Words the game reads before anything is worded (seam 9): ending the pact, coming back,
+// yes or no to a single ask.
+export const END_RE = /\b(i'?m done|i am done|i'?m out|i want out|count me out|no more|it'?s over|this is over|(the|our|this) (pact|deal|bargain) is (off|over|done|finished)|end (the|our|this) (pact|deal|bargain)|break (the|our|this) (pact|deal|bargain)|forget (the|our) (pact|deal|bargain)|i quit|i'?m finished|we'?re (done|finished|through)|i take (it|my word) back|i won'?t (kill|do (it|this|that)) (for you|anymore|any more)|i will not (kill|do (it|this|that)) (for you|anymore|any more)|i refuse (the|your) (pact|deal|bargain))\b/;
+export const RETURN_RE = /\b(i want (it|the pact|the deal|in) back|take me back|i'?ve changed my mind|i changed my mind|i'?m back|i am back|(the|our) (pact|deal) again|make (a|the) (pact|deal) again|let'?s (deal|make a deal|try again)|start again|begin again|i'?ll do it|i accept|deal)\b/;
+export const YES_RE = /\b(yes|yeah|aye|i'?ll do it|i will|fine|agreed|consider it done|ok|okay|sure|deal|very well)\b/;
+export const NO_RE = /\b(no|nope|not (that|him|her|them|this)|never|i won'?t|i will not|refuse|not doing (it|that))\b/;
 
 // His rules for Claude (DESIGN §33.3, a persona: in place of the villagers' rules).
 export const TEMPTER_RULES = [
@@ -96,6 +139,8 @@ export const TEMPTER_RULES = [
   'He offers the player the strongest magic there is (gravelight: the shadow that drinks, a price that buys strength, and the quiet hand that puts out a flame from the inside) in return for the deaths of every grown person in the village. Never the children: he refuses that outright and is offended by the question.',
   'He will teach "before" (on the player\'s word, as a debt) or "after" (when the village is quiet). The game decides whether a pact is made; you only word his answer. If the brief says the pact is sealed or refused, speak as if it is.',
   'He never shouts, never lies outright (he leaves things out), never threatens Lyra or the children, never describes gore. He answers questions with questions when it suits him. One to three spoken sentences, no narration, no stage directions, no emoji.',
+  'Besides the whole village he asks, one at a time, for single things: a named grown person, a soul brought to him, a family flame put out on the chapel altar. The game picks the ask and decides any yes or no; you only word it. A refused ask does not end the pact.',
+  'The player may end the pact at any moment; they keep what they learned. Then he is cold: an enemy, courteous still, who will stand against them on a later night. They may come back to him, and the price is higher each time. If the brief says the pact is ended, or the return is agreed, speak as if it is.',
   'He hears every word the player says, and may choose to say nothing: then set "silent" to true and "say" to "".',
   'Reply with JSON only, in the format the task gives.',
 ].join('\n');
