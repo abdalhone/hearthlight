@@ -1069,3 +1069,19 @@ test('round 14b: onFound — a handler owns the discovery of a cause it knows; w
     assert.ok(g.murder.cases.bram, 'still a case');
   }
 });
+
+test('round 14b: her parents speak of Lyra in their own words while they mourn her', () => {
+  const g = makeGame({ hour: 9 });
+  quiet(g, ['hess', 'hobb']);
+  const L = g.companion;
+  freeLyraFor(g);
+  put(L, px(WOODS.tx + 1), px(WOODS.ty));
+  put(g.player, px(WOODS.tx), px(WOODS.ty));
+  L.hp = 1;
+  g.combat.damage(g.player, L, 99, { exact: true, crit: false });
+  g.murder.kill(L, g.player);
+  g.murder.found('lyra', 'hess', 'whisperwood');
+  const hobb = g.entities.get('hobb');
+  const d = g.murder.decorateDialogue(hobb, { lines: ['Evening.'], options: [] });
+  assert.match(d.lines[0], /lamp|Star|ladder/, d.lines[0]);
+});

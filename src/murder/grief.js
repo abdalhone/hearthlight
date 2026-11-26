@@ -13,6 +13,7 @@ import { HEIRS, UNDONE, STAND_INS, OFFICIANTS, MOOT_CHAIR, MOOT_HEADS, MAREN_KEE
 import { murderLine, mootLines, lyraLine, FUNERAL, MOOT } from './lines.js';
 import { profileById } from '../entities/npc_data.js';
 import * as Lyra from './lyra.js';
+import { lyraGriefLine } from './lines_lyra.js';
 import { funeralScript, trialScripts, playScript } from './scenes.js';
 
 function safe(fn, fallback = null) {
@@ -688,7 +689,9 @@ export function decorateDialogue(m, npc, d) {
   const rec = m.dead[mo.about];
   const when = rec?.state === 'buried' ? (m.day() - (rec.buriedDay ?? m.day()) <= 0 ? 'today' : m.day() - (rec.buriedDay ?? 0) === 1 ? 'yesterday' : 'last week') : 'soon';
   const key = rec?.state === 'buried' ? 'mournGreet' : null;
-  const line = key ? murderLine(npc.id, key, { about: mo.about, when, P: m.playerName() }, m.rng()) : safe(() => m.life.line(npc.id, 'grief', { about: mo.about }));
+  // Lyra (round 14b): her people's own words for her.
+  const forLyra = mo.about === 'lyra' ? lyraGriefLine(npc.id, m.rng()) : null;
+  const line = forLyra || (key ? murderLine(npc.id, key, { about: mo.about, when, P: m.playerName() }, m.rng()) : safe(() => m.life.line(npc.id, 'grief', { about: mo.about })));
   if (!line) return d;
   return { ...d, lines: [line, ...d.lines.slice(1)] };
 }
