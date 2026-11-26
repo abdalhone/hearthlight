@@ -18,7 +18,7 @@ import { WEAVE_RUMORS } from '../../missions/rumors.js';
 import { Commitments } from './commitments.js';
 import { murderLine } from '../../murder/lines.js';
 import { seesPoint } from '../sight.js';
-import { hearsWords } from '../hearing.js';
+import { hears, hearsWords } from '../hearing.js';
 import { silenceAct, turnAway } from '../silence.js';
 import { VILLAGER_RULES, SAY_SCHEMA, LINES_SCHEMA, NIGHT_SCHEMA, buildSayTask, buildListenTask, buildNightTask, coerceSay, coerceLines, coerceNight, cleanLine } from './village_prompt.js';
 
@@ -1382,6 +1382,8 @@ export class Village {
     const lyra = g?.companion;
     const mind = lyra?.mind;
     if (!mind || !alive(lyra) || dist(lyra, g?.player) > 110) return;
+    // Words, through no wall (DESIGN §29.4, src/ai/hearing.js).
+    if (g?.player && safe(() => hears(g, lyra, g.player.x, g.player.y, 110), 'clear') !== 'clear') return;
     safe(() => mind.noticeText?.(said, { source: 'overheard', amount: 0.3 }));
     const loves = this.loves('lyra', e.id, 50);
     const n = this.name(e.id);

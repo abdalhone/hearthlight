@@ -39,6 +39,7 @@ import { hasKeptFlame } from './kept_flame.js';
 import { placeName, placePhrase } from './epitaph.js';
 import { BloodTrail } from './trail.js';
 import { EmberRing } from './ember_ring.js';
+import { hears } from '../ai/hearing.js';
 import { ensureCrawl } from '../art/characters_art.js';
 import { CRAWL_STEP, CRAWL_ANIM } from '../art/characters_humanoid.js';
 
@@ -466,9 +467,12 @@ export class Survival {
     // and the watch instead, and comes herself only if nobody does (behavior relents).
     if (lyra && canRespond(this, lyra) && !safe(() => !!lyra.behavior?.holdsBackFrom?.(F), false)) {
       const cs = companionshipOf(lyra);
-      const ears = cs === 'left' || cs === 'gone' ? LYRA_HEARS_APART : LYRA_HEARS;
+      const apart = cs === 'left' || cs === 'gone';
+      const ears = apart ? LYRA_HEARS_APART : LYRA_HEARS;
       const d = Math.min(dist(lyra, F), Math.hypot(lyra.x - ox, lyra.y - oy));
-      if (forced || d <= Math.max(ears, radius)) this.assignJob(lyra, rec, 'lyra');
+      // Cut off, only her ears tell her: walls muffle a shout (DESIGN §29.4).
+      const heard = !apart || sight || !!safe(() => hears(g, lyra, ox, oy, Math.max(ears, radius)), true);
+      if (forced || (d <= Math.max(ears, radius) && heard)) this.assignJob(lyra, rec, 'lyra');
     }
     const counts = countRoles(this, rec);
     const list = [];
@@ -479,6 +483,8 @@ export class Survival {
       if (rec.wanted && e.isGuard) reach = Math.max(reach, GUARD_HEARS_WANTED);
       if (!forced && d > reach) continue;
       if (sight && !rec.wanted && typeof e.canSee === 'function' && !e.canSee(F)) continue;
+      // A shout is heard by the one rule for ears (DESIGN §29.4): a wall muffles it hard.
+      if (!forced && !sight && !(rec.wanted && e.isGuard) && !safe(() => hears(g, e, ox, oy, radius), true)) continue;
       list.push([d, e]);
     }
     list.sort((a, b) => a[0] - b[0]);

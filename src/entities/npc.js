@@ -1581,6 +1581,8 @@ export class NPC extends Actor {
     // Who did it, as far as this one knows: the teller's word, or their own eyes and ears.
     const told = forced && who && who !== victim && !who.removed ? attackerOf(who) : null;
     const attacker = forced ? told : this.knowsWho(victim, culprit);
+    // Someone hurt, nobody they could name: uneasy for the day (of a place, not a person).
+    if (!attacker && culprit && isPerson(g, culprit)) this.unease(x, y);
     const t = now(g);
     const h = this.help;
     if (this.mode === 'help' && h && h.victim === victim) {

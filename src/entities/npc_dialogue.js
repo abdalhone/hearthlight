@@ -1,7 +1,8 @@
 import { hasRumor, rumorFor } from '../world/boss_trails.js';
 import { ASK_TOPICS } from './npc_data.js';
 import { factTellable } from './npc_data_more.js';
-import { GONE_STAYS } from './npc_lines.js';
+import { GONE_STAYS, UNEASY_LINES } from './npc_lines.js';
+import { placePhrase } from '../ai/village_life/errands_data.js';
 import { itemName } from './items.js';
 import { pickLine, now, rand } from './creature_util.js';
 import { hasKeptFlame, flamePrice, lightKeptFlame } from '../survival/kept_flame.js';
@@ -86,8 +87,19 @@ export function greetingFor(npc, player, tone = dialogueTone(npc, player)) {
     case 'sleepy':
       return line(npc, p.sleepy, 'Mmh...?');
     default:
-      return line(npc, p.greetings, 'Hello.');
+      return uneasyLine(npc) || line(npc, p.greetings, 'Hello.');
   }
+}
+
+// Heard a cry today and never saw what it was (DESIGN §29.4): it is on their mind. Of a
+// place, never of a person.
+function uneasyLine(npc) {
+  const u = npc.uneasy;
+  const g = npc.game;
+  if (!u || u.day !== (g?.clock?.day ?? 1) || rand(g) >= 0.5) return null;
+  const phrase = u.place ? placePhrase(u.place, g?.locations?.get?.(u.place)?.name || '') : '';
+  const l = pickLine(g, phrase ? UNEASY_LINES.place : UNEASY_LINES.nowhere);
+  return l ? l.replace(/\{place\}/g, phrase) : null;
 }
 
 // Lines about Lyra when she is living apart from the player, has left them, or is gone.

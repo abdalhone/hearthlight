@@ -72,6 +72,7 @@ indoors and out; *future*: dungeons (the Weeping Cut), other villages, other flo
 | Death and rescue | How far the sickroom is; whether anyone can carry you back from there | `src/survival/*` |
 | Saves | Only what differs from the generated world is saved (dirty objects, fog bits) | `src/world/objects.js`, `src/world/travel.js` |
 | Performance | Chunked ground, far objects update in turns, near-only spawns | `src/world/map.js`, `src/world/objects.js` |
+| Senses | Walls, rock and shut doors (`walls.js wallTile`) stop sight and blows and muffle a cry (`hearing.js`); an open door lets it out. A new building's walls and doors do this with no more work; a new kind of opening (a window, a gap) must say what it lets through | `src/world/walls.js`, `src/ai/hearing.js` |
 
 ## 4. Characters
 
@@ -85,7 +86,8 @@ survivors, new villagers.
 |---|---|---|
 | Lines and voice | Every character's own words for a new event (barks, dialogue, Claude persona) | `src/ai/social/*`, `src/entities/npc_data*.js` |
 | Knowledge and rumors | What they know of places and bosses (`TRAILS.tellers`, `ROAD_TALK`, facts) | `src/world/boss_trails.js`, `src/entities/npc_data*.js` |
-| Killability and crimes | Adults can be killed, children cannot; theft and assault are crimes others hear of | `src/murder/*`, `src/world/containers.js` |
+| Killability and crimes | Adults can be killed, children cannot; theft and assault are crimes others learn of by eyes or by meeting someone who knows | `src/murder/*`, `src/world/containers.js` |
+| Senses | Every eye and ear goes through one rule each: sight (`src/ai/sight.js`) and hearing (`src/ai/hearing.js`: walls muffle, a cry tells what and where, never who; a beast's snarl is a what, a person a who). A new kind of character (a deaf one, a hound) gets its exception there, as Wenna's blindness does in `witness.js` | `src/ai/sight.js`, `src/ai/hearing.js`, `src/entities/npc.js` |
 | Ownership | Their beds, chests and keys (`owner`, `keeper`, `keyId`) | `src/world/containers.js`, `src/world/objects.js` |
 | Combat and AI | Fight back, flee, stun, finishers per body size | `src/entities/*`, `src/bosses/*` |
 | Footsteps and crawling | Others' steps near you; the downed crawl for anyone | `src/world/footsteps.js`, `src/survival/*` |
@@ -108,6 +110,7 @@ stand (round 14 D4), talking (a panel open), in a cutscene, trading.
 | Travel | Places are reached and the map's fog lifts only while you move about | `src/world/travel.js` |
 | Missions | Objectives that need you standing, awake, at a place, at an hour | `src/missions/*` |
 | Saves | What is saved mid-state (down, carried, asleep) | `src/core/save.js`, `src/survival/*` |
+| Senses | Asleep: a third of a cry's reach (the loudest, 0.6) and no eyes; down, carried or dead: neither | `src/ai/hearing.js`, `src/murder/witness.js` |
 
 ## 6. Devices
 
