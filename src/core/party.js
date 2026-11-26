@@ -299,6 +299,7 @@ export class Party {
     const prev = this.holder;
     if (prev) this.release('replaced', { by, next: e });
     if (!this.isLyra(e)) {
+      e.walkedWithPlayer = true; // People lists whoever has walked with you
       attachDuty(this.game, e, duty || { terms });
       this.markAway(e);
       // Talking with whoever is beside them is over: they walk with you now.

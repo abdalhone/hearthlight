@@ -62,7 +62,7 @@ function isDeadPerson(game, e) {
 export function hasMet(game, npc) {
   if (!npc) return false;
   if (holderOf(game) === npc) return true;
-  if (num(npc.familiarity) > 0) return true;
+  if (num(npc.familiarity) > 0 || npc.walkedWithPlayer) return true;
   if (npc.told?.size > 0) return true;
   if (npc.talkDay > 0 || npc.giftDay > 0 || npc._lastGift) return true;
   const talks = safe(() => game.village?.talks?.[npc.id], null);

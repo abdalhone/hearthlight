@@ -298,6 +298,157 @@ async function run(S) {
   check(await ev(() => !window.__game.ui.people.isOpen()), `${tag}: People closes with its ✕`);
   await ev(() => window.__clean());
 
+  // ---------- 6. Bram on the road: follows you, fights beside you, goes home at night ----------
+  await ev(() => {
+    const g = window.__game;
+    const P = g.player;
+    P.x = 97 * 16 + 8; // the open south meadow
+    P.y = 103 * 16 + 10;
+    g.camera.snap?.();
+    const bram = g.entities.get('bram');
+    if (g.party.holderId !== 'bram') {
+      bram.opinionOfPlayer = 75;
+      window.__put(bram, 20, 0);
+      g.party.invite(bram);
+    }
+    window.__put(bram, 20, 0);
+    bram.duty?.request?.('follow');
+  });
+  if (S.phone) {
+    // (Phones: the player is walked by script; the stick is tested by controls_check.)
+    for (let i = 0; i < 8; i++) {
+      await ev(() => (window.__game.player.y -= 16));
+      await wait(250);
+    }
+  } else {
+    await page.keyboard.down('w');
+    await wait(2000);
+    await page.keyboard.up('w');
+  }
+  await wait(1800);
+  let walk = await ev(() => {
+    const g = window.__game;
+    const b = g.entities.get('bram');
+    return { d: Math.round(Math.hypot(b.x - g.player.x, b.y - g.player.y) / 16), holder: g.party.holderId, mode: b.mode };
+  });
+  check(walk.holder === 'bram' && walk.d <= 4, `${tag}: Bram follows you on foot`, JSON.stringify(walk));
+  await shot('6a-bram-follows');
+  // Something comes at you: a creature of the wilds, angry at you. He fights it beside you.
+  const foe = await ev(() => {
+    const g = window.__game;
+    const P = g.player;
+    const c = g.entities.all().find((e) => e.species && !e.removed && !e.dead && e.type === 'actor' && (e.faction === 'monster' || e.species === 'wolf' || e.species === 'boar'));
+    if (!c) return null;
+    c.x = P.x + 36;
+    c.y = P.y + 6;
+    c.provokedBy = P;
+    c.provokedMode = 'fight';
+    c.provokedAt = g.combat.now();
+    window.__foe = c;
+    return { id: c.id, species: c.species };
+  });
+  await wait(1800);
+  const fight = await ev(() => {
+    const b = window.__game.entities.get('bram');
+    return { mode: b.mode, target: b.fightTarget?.id || null };
+  });
+  check(!!foe && fight.mode === 'fight' && fight.target === foe.id, `${tag}: Bram fights what comes at you`, JSON.stringify({ foe, fight }));
+  await shot('6b-bram-fights');
+  await ev(() => {
+    const f = window.__foe;
+    if (f) {
+      f.hp = 0;
+      f.removed = true;
+    }
+  });
+  await wait(600);
+  // 22:00: he says goodnight and goes home; the slot is empty.
+  await ev(() => window.__game.clock.skipTo(22.2));
+  await wait(3200);
+  st = await hudState();
+  const left = await ev(() => window.__ev.filter((e) => e.t === 'companion_changed').at(-1)?.p || null);
+  check(!st.holder && !st.card, `${tag}: at 22:00 Bram goes home and the slot is empty`, JSON.stringify(left));
+  await shot('6c-bram-goes-home');
+  await ev(() => window.__clean());
+
+  // ---------- 7. Pip: the game says no (a child) ----------
+  await ev(() => {
+    const g = window.__game;
+    g.clock.skipTo(12);
+    const pip = g.entities.get('pip');
+    pip.familiarity = 10;
+    pip.opinionOfPlayer = 100;
+    window.__put(pip, 20, 0);
+  });
+  await ev(() => window.__game.ui.openPeople('pip'));
+  await wait(400);
+  await tapOrClick('.people-invite');
+  const pipR = await ev(() => ({ holder: window.__game.party.holderId, toasts: window.__toasts.slice(-3) }));
+  check(pipR.holder !== 'pip' && pipR.toasts.some((t) => /child/i.test(t)), `${tag}: asking Pip along, the game says he is a child`, JSON.stringify(pipR));
+  await shot('7-pip-refused');
+  await ev(() => window.__clean());
+
+  // ---------- 8. far behind: a companion catches up; waking does not carry them to you ----------
+  await ev(() => {
+    const g = window.__game;
+    const bram = g.entities.get('bram');
+    bram.opinionOfPlayer = 80;
+    window.__put(bram, 20, 0);
+    g.party.invite(bram);
+    window.__put(bram, 45 * 16, 0); // 45 tiles away, out of sight
+  });
+  await wait(1500);
+  const caught = await ev(() => {
+    const g = window.__game;
+    const b = g.entities.get('bram');
+    return Math.round(Math.hypot(b.x - g.player.x, b.y - g.player.y) / 16);
+  });
+  check(caught <= 14, `${tag}: a companion 45 tiles behind and out of sight catches up`, `${caught} tiles`);
+  // Sleep with him far away (sent off to the quarry): he is not beside you in the morning.
+  const slept = await ev(async () => {
+    const g = window.__game;
+    const b = g.entities.get('bram');
+    b.duty?.request?.('stay');
+    b.x = g.player.x + 60 * 16;
+    b.duty.waitAt = { x: b.x, y: b.y };
+    const before = Math.round(Math.hypot(b.x - g.player.x, b.y - g.player.y) / 16);
+    const bed = g.objects.get?.('home_bed') || null;
+    await g.sleep(bed);
+    return { before, after: Math.round(Math.hypot(b.x - g.player.x, b.y - g.player.y) / 16) };
+  });
+  check(slept.after > 20, `${tag}: waking does not put a far companion beside you`, JSON.stringify(slept));
+  await ev(() => {
+    window.__game.party.release('dismissed');
+    window.__clean();
+  });
+
+  // ---------- 9. the map opens on you, the ember-ring in view ----------
+  const mapF = await ev(() => {
+    const g = window.__game;
+    const P = g.player;
+    g.survival.placeRing?.({ x: P.x + 70 * 16, y: P.y - 30 * 16, coins: 12, day: g.clock.day, where: 'on the road', place: null });
+    g.ui.openMap();
+    return true;
+  });
+  await wait(700);
+  const mapV = await ev(() => {
+    const m = window.__game.ui.worldMap;
+    const c = m.canvas;
+    const W = c.clientWidth;
+    const H = c.clientHeight;
+    const s = m.scale(W, H);
+    const g = window.__game;
+    const ring = m.marks().find((k) => k.kind === 'ember');
+    const toS = (wx, wy) => [W / 2 + (wx / 16 - m.cx) * s, H / 2 + (wy / 16 - m.cy) * s];
+    const [px, py] = toS(g.player.x, g.player.y);
+    const [rx, ry] = ring ? toS(ring.x, ring.y) : [-1, -1];
+    const inV = (x, y) => x >= 0 && y >= 0 && x <= W && y <= H;
+    return { you: inV(px, py), ring: !!ring && inV(rx, ry) };
+  });
+  check(mapF && mapV.you && mapV.ring, `${tag}: the map opens with you and the ember-ring in view`, JSON.stringify(mapV));
+  await shot('9-map-ring-in-view');
+  await ev(() => window.__clean());
+
   // ---------- 4. after Lyra cut ties ----------
   await ev(() => {
     const g = window.__game;
@@ -316,6 +467,36 @@ async function run(S) {
   await shot('4-after-cut-ties');
   await ev(() => window.__clean());
 
+  // A phone at 4x CPU throttle with a villager walking beside you: still smooth.
+  if (S.throttle) {
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: S.throttle });
+    await ev(() => {
+      const g = window.__game;
+      g.clock.skipTo(12);
+      const b = g.entities.get('bram');
+      b.opinionOfPlayer = 80;
+      window.__put(b, 20, 0);
+      g.party.invite(b);
+    });
+    await wait(1500);
+    const fps = await ev(
+      () =>
+        new Promise((res) => {
+          let n = 0;
+          const t0 = performance.now();
+          const tick = () => {
+            n++;
+            if (performance.now() - t0 < 3000) requestAnimationFrame(tick);
+            else res(Math.round((n * 1000) / (performance.now() - t0)));
+          };
+          requestAnimationFrame(tick);
+        }),
+    );
+    check(fps >= 24, `${tag}: at ${S.throttle}x CPU throttle with Bram beside you, ${fps} fps`);
+    await shot('10-throttled-with-bram');
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  }
   check(errors.length === 0, `${tag}: no page errors`, errors.slice(0, 3).join(' / '));
   await ctx.close();
 }
