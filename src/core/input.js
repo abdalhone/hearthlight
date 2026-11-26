@@ -313,6 +313,9 @@ export class Input {
     if (e.button === 0) {
       e.preventDefault();
       this.mouse.left = true;
+      // When a click started a swing (decision D3: the old habit of clicking someone to talk
+      // is forgiven once; combat._forgivenHabit).
+      this.clickSwingAt = this.game?.time ?? nowSeconds();
       this.aimSwingAtMouse();
       this.setVirtual('attack', true);
     } else if (e.button === 2) {

@@ -771,7 +771,9 @@ Safe areas: HUD offsets use `env(safe-area-inset-*)`. Never use `alert/confirm/p
   HUD's own measured layout divides by the zoom.
 - Pause (`Esc`): resume, settings, save, quit to title. Sets `game.paused`.
 - Notices (`src/ui/toast.js`) keep clear of the HUD, the speakers' bubbles, the player and
-  Lyra, re-placed ten times a second; one at a time on a phone; a tap puts one away. A press
+  Lyra, re-placed ten times a second; one at a time on a phone; a tap puts one away. With a
+  mouse a notice is not a target at all (`.is-touch .toast` alone takes the pointer): a click
+  over it reaches the world, so the sword and the right-button cast land where you click. A press
   on the stack holds it where it is until the press and its click are over (`Toasts.held`),
   so a notice never slides out from under the finger that is putting it away.
 - `ui.toast(text, kind = 'info'|'good'|'warn'|'quest'|'lyra')`, `ui.setInteractPrompt(label)`,
@@ -2190,7 +2192,9 @@ notices and has opinions (berserk frightens her).
   watch, screaming (`npc.startFlee(…, { to })`: the nearest of Rowan, Wys or Hess awake, else
   the guardhouse; another cry for help on the way does not turn them aside), their opinion
   falls to the floor, and they **answer only in terror**: tapping them or picking them in
-  the chat shows what the player sees ("Elda backs away from you, white to the lips.") and
+  the chat shows what the player sees ("Elda backs away from you, white to the lips.") each
+  time the chat opens to them or turns to them (never twice in a row), the header says
+  "terrified of you" (then "afraid of you", `chat_target.fearWord`), and
   the field stays open; what the player says reaches them and is remembered, and the answer
   is fear in their own words, never calm, never Claude wording it kindly, and no errands
   run for a killer. Pressed on and on (within a minute of each other), fear changes as a
@@ -3652,9 +3656,8 @@ all three screens):
 - **The pact and the Unkindling** (society → soul): checked together, not changed:
   `pact_sealed` teaches it; an unseen Unkindling counts for the tempter and the reputation
   only after `killing_known`.
-- **Not built by anyone, left open**: D3's forgiven first swing at a calm person (talk left it
-  to combat, blood did not build it); a merchant companion's shop while they walk with you
-  (party's open note). Casting that plants you for every weave was built by the follow-up
+- **Not built by anyone, left open**: a merchant companion's shop while they walk with you
+  (party's open note). D3's forgiven first swing was built by verifier A (§38.8). Casting that plants you for every weave was built by the follow-up
   stage (§38.6), and the dark path you can leave too (§38.7).
 
 ### 38.6 Casting stops you (the follow-up stage, plan §14; the author: "I can move while I'm doing spells; it should stop me")
@@ -3745,3 +3748,38 @@ The rule is fixed; the numbers are what play tunes (`src/magic/balance.js`).
 - **Saved** in `plugins.villain`: `ended, endedDay, endedNight, endedHow, oathBroken,
   oathKnownBy, hostile, returns, returnOffer, asks, askNight, soulHeld, flamesOut`; an older
   save reads with none of it.
+
+### 38.8 Verifier A: what playing the author's items on three screens fixed
+
+- **D3, the old habit forgiven once** (`combat._forgivenHabit`): a click on a person is the
+  sword wherever it lands. The first sword blow in a life that a *mouse click* started
+  (`input.clickSwingAt`, carried as `habit` from `Player.attack` through `combat.melee`) and
+  that lands on a calm, lawful person (standing, not fighting, fleeing or afraid of you, not
+  your lock target) is an accident: it lands, they yelp ("Ow! Watch it!"), no crime and no
+  grudge, and the coach says once "T talks to whoever is in front of you. Striking people is
+  a crime." (`flags.habitForgiven`). Every blow after it is a real one. J, Space, the pad and
+  the phone's sword button are meant (a phone's tap on a person does nothing at all); a
+  weave, a slap or a finishing blow is never the habit.
+- **Lyra judges an unscreened blow by her own eyes**: a blow that was no crime (an
+  accident, the forgiven habit) is screened by nobody; `murder.saw` read that as "she saw
+  it", so she cried "Hey — me, not them!" from a field away. Now `sawBlow` null falls back
+  to `seesActor`.
+- **A notice never eats a click** (`.is-touch .toast` alone takes the pointer): with a
+  mouse, the right-button cast and the sword land on the wolf behind a notice.
+- **The companion's edge badge and their edge words** (`bubbles._badgeRect`): the badge is a
+  fixed rect the bubbles stack around, so their pinned words are never drawn under it.
+- **Fear on reopening the chat** (§29.3 above): the note on each opening, and "terrified of
+  you" in the header.
+- **Quiet while you are down, thoughts too**: her barks kept quiet while the player bled out
+  unseen, but her shown thoughts did not ("The hearthwatch. I still wonder about it." pinned
+  to the edge from a field away). `mind._showThought` keeps the barks' rule
+  (`_mayShowWhileDown`: she sees you, or she is the one coming for you).
+- **A cry for help you did not cause, by your own eyes and ears** (`ui.helpCryText`,
+  standing rule 6): seen, it has a name ("Elda is shouting for help!"); heard and not seen,
+  it is a sound and a place ("A muffled cry for help, from the Ember Kettle."); unheard
+  (across the vale, behind too many walls), there is no notice at all. Before, every such
+  cry anywhere named its victim to you.
+- **The phone's Talk button keeps its word** (`touch.namedInReach`): a tap goes to whoever
+  the round button names ("Talk to Elda") while they are still up and within three tiles,
+  not to whoever a crowd has put nearest since the label was drawn.
+

@@ -14,6 +14,7 @@ import { MemoryIndex } from './memory_index.js';
 import { WorkingMemory } from './working_memory.js';
 import { recallContext, dossier, loreLookup, lookup, noticeEntity, learnPlace, learnItem, learnClues, loreFrom, learnLoreEntry } from './recollection.js';
 import { Autonomy } from './autonomy.js';
+import { seesActor } from '../sight.js';
 import { defaultLorebook } from '../../lore/lorebook.js';
 
 // Lyra's mind (DESIGN §9, §16, §17): soul, feelings, needs, relationships, goals,
@@ -347,6 +348,10 @@ export class Mind {
     if (!g?.settings?.showThoughts || g.state !== 'playing') return false;
     const o = this.owner;
     if (!o || o.downed || o.state === 'sleep') return false;
+    // The player down and bleeding: nothing of hers is shown unless she sees them or is the
+    // one coming for them (the same rule as her barks, brain/barks.mayTalkWhileDown).
+    const p = g.player;
+    if (p?.downed && !this._mayShowWhileDown(o, p)) return false;
     const t = this.perception.rt();
     if (t - this.thinker.lastShown < minGap) return false;
     if (t - this.perception.lastSpoke < 5 || this._speech.length) return false;
@@ -360,6 +365,16 @@ export class Mind {
     }
     this.thinker.lastShown = t;
     return true;
+  }
+
+  _mayShowWhileDown(o, p) {
+    const g = this.game;
+    try {
+      if (g.survival?.jobs?.has?.(o) || o.carrying === p) return true;
+      return seesActor(g, o, p);
+    } catch {
+      return false;
+    }
   }
 
   // Say something aloud: bubble + `speech` event (+ the chat log for things the player should keep).

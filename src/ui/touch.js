@@ -90,6 +90,16 @@ function noGhosts(el, start = true) {
   el.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
+// The person the round button names ("Talk to Elda"), if they are still there to talk to:
+// alive, up, and within a few steps. A tap goes to whoever the button promised, not to
+// whoever a crowd has put nearest since the label was drawn (round 14b, verifier A).
+export function namedInReach(game, who, reach = 3 * 16) {
+  const p = game?.player;
+  if (!who || !p || who.removed || who.dead || who.downed || who.state === 'downed') return null;
+  if (!Number.isFinite(who.x) || Math.hypot(who.x - p.x, who.y - p.y) > reach) return null;
+  return who;
+}
+
 export class TouchControls {
   constructor(ui) {
     this.ui = ui;
@@ -154,7 +164,7 @@ export class TouchControls {
       // "Talk to Bram" (round 14b, decision D4): the chat to Bram, not the old dialog. Help
       // and Search stay what they are for the downed and the dead.
       if (action === 'interact' && b.classList.contains('person') && typeof this.ui.talkTo === 'function') {
-        const who = this.personInReach();
+        const who = namedInReach(this.game, this.labelWho) || this.personInReach();
         if (who && this.ui.talkTo(who === this.game.companion ? 'lyra' : who.id)) {
           this.buzz();
           return;
@@ -509,7 +519,9 @@ export class TouchControls {
     const b = this.buttons.interact;
     if (!b) return;
     const t = String(label || '').trim();
-    toggleClass(b, 'person', /^talk to\b/i.test(t) && !!this.personInReach());
+    // Who the label names, so the tap goes to them (namedInReach).
+    this.labelWho = /^talk to\b/i.test(t) ? this.personInReach() : null;
+    toggleClass(b, 'person', !!this.labelWho);
     toggleClass(b, 'ready', !!t);
     toggleClass(b, 'idle', !t);
     b.hidden = false;

@@ -272,6 +272,15 @@ export function standingOf(game, e) {
   return { tone, label: TONES[tone], asleep: !awake(e), cold, opinion };
 }
 
+// What the header says of someone afraid of the player (they watched them kill): terror
+// while it is fresh, dread after; null when they are not afraid. Never a lock: the field
+// stays open and they answer in their fear (round 14b, verifier A, item 1).
+export function fearWord(game, e) {
+  if (!e) return null;
+  const fear = safe(() => game?.murder?.fearOf?.(e), null);
+  return fear === 'terror' ? 'terrified of you' : fear ? 'afraid of you' : null;
+}
+
 // The portrait expression a villager's chip and header show.
 export function faceOf(standing, mood = null) {
   const m = moodExpression(mood);

@@ -599,6 +599,9 @@ export class Bubbles {
     const out = this._fixed || (this._fixed = []);
     out.length = 0;
     for (let i = 0; i < ko.length; i++) out.push(ko[i]);
+    // Whoever walks with you, off screen: their edge badge is fixed too.
+    const badge = this._badgeRect(r, W, H);
+    if (badge) out.push(badge);
     const pool = this._bodyRects || (this._bodyRects = Array.from({ length: 6 }, () => ({ fixed: true })));
     const g = this.game;
     const party = this._party || (this._party = []);
@@ -910,25 +913,51 @@ export class Bubbles {
 
   // When whoever walks with you is off screen, a small badge on the edge points toward them
   // (round 14b, DESIGN §34.3): their portrait and name. Nobody beside you: no badge.
-  _drawCompanionMarker(ctx, r, W, H) {
+  // Where that badge sits on the edge (device px), or null while they are on screen or there
+  // is nobody: { x, y, w, h, fixed }. The bubbles keep clear of it (_partyBodies), so their
+  // own words pinned to the same edge are never drawn under it.
+  _badgeRect(r, W, H) {
     const c = holderOf(this.game);
-    if (!c || c.removed || c.hidden) return;
-    const lyra = c.id === COMPANION_ID;
+    if (!c || c.removed || c.hidden || !Number.isFinite(c.x)) return null;
     const hx = this._dx(r, c.x);
     const hy = this._dy(r, c.y - 12);
     const pad = 6 * r.scale;
-    if (hx > -pad && hx < W + pad && hy > -pad - 12 * r.scale && hy < H + pad) return;
+    if (hx > -pad && hx < W + pad && hy > -pad - 12 * r.scale && hy < H + pad) return null;
     const dpr = r.dpr || 1;
     const u = this.u;
     const S = Math.round((30 * dpr) / u) * u;
     const inset = S / 2 + 8 * u;
     const ep = edgePoint(hx, hy, W, H, inset, this._edge);
+    const o = this._badgeBox || (this._badgeBox = { fixed: true });
+    o.S = S;
+    o.ep = ep;
+    o.bx = Math.round((ep.x - S / 2) / u) * u;
+    o.by = Math.round((ep.y - S / 2) / u) * u;
+    // The badge, its arrow, and its name under it (above it in the screen's lower half).
+    const name = Math.round((this.labelPx || 10 * u) * 1.3);
+    const arrow = 7 * u;
+    o.x = o.bx - arrow;
+    o.w = S + 2 * arrow;
+    o.y = ep.y > H / 2 ? o.by - name : o.by - arrow;
+    o.h = S + name + arrow;
+    return o;
+  }
+
+  _drawCompanionMarker(ctx, r, W, H) {
+    const c = holderOf(this.game);
+    if (!c || c.removed || c.hidden) return;
+    const lyra = c.id === COMPANION_ID;
+    const box = this._badgeRect(r, W, H);
+    if (!box) return;
+    const u = this.u;
+    const S = box.S;
+    const ep = box.ep;
     const downed = !!(c.downed || c.state === 'downed');
     const t = this._time;
     const pulse = 0.5 + 0.5 * Math.sin(t * (downed ? 7 : 3));
     const edge = downed ? UI.danger : lyra ? UI.arcane : UI.ember;
-    const bx = Math.round((ep.x - S / 2) / u) * u;
-    const by = Math.round((ep.y - S / 2) / u) * u;
+    const bx = box.bx;
+    const by = box.by;
     ctx.globalAlpha = 0.88 + 0.12 * pulse;
     this._box(ctx, bx, by, S, S, u, OUTLINE, edge, '#1c1730');
     const pic = this._holderPortrait(c);
