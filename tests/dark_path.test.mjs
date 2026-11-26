@@ -56,6 +56,7 @@ test('say no in your own words: the pact ends without warning anyone; you keep t
   assert.equal(V.state.ended, true);
   assert.equal(V.hasPact(), false, 'the pact is over');
   assert.equal(V.state.hostile, true, 'he is your enemy now');
+  assert.ok(t.opinionOfPlayer < 15, 'cold to you (the chat says so)');
   assert.ok(r.lines.length && /broken|word|friend/i.test(r.lines.join(' ')), `his own words: ${r.lines.join(' ')}`);
   assert.equal(V.state.said.at(-1).text, "I'm done. I won't kill for you anymore.", 'heard and kept first');
   assert.equal(unk.learned, true, 'what you learned stays learned');

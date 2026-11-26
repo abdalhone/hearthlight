@@ -210,6 +210,7 @@ export class Villain {
     // An ask open when it ends is void (a toll unpaid stays unpaid).
     for (const a of s.asks) if (a.state === 'offered' || a.state === 'accepted') a.state = 'void';
     s.soulHeld = null;
+    this.mood();
     this.breakWord(knownBy, how === 'warned' ? 'warned the village of the pact' : 'broke the pact at the ruins gate');
     safe(() => this.game.bus?.emit?.('pact_ended', { how, kept: !!safe(() => this.game.unkindle?.learned, false), again, day: s.endedDay }));
     if (how !== 'warned') safe(() => this.game.ui?.toast?.('The pact is ended. You keep what you learned. He will not forget the broken word.', 'warn', { key: 'pact', title: 'The pact' }));
@@ -259,6 +260,7 @@ export class Villain {
     s.fighting = false;
     s.returns = o.n;
     s.pactNight = this.nightKey();
+    this.mood();
     for (const p of o.toll) this.newAsk('person', p.id, p.why, { toll: true, state: 'accepted' });
     safe(() => this.game.bus?.emit?.('tempter_return', { state: 'accepted', terms: o }));
     this.mark('returned', `The stranger went back to the pilgrim at the ruins gate; the price is ${o.toll.map((p) => this.name(p.id)).join(' and ')} first.`);
@@ -644,6 +646,7 @@ export class Villain {
       safe(() => this.game.bus?.emit?.('pact_broken', { by: 'player', why: 'warned', to: byId }));
     } else if (s.pact) this.breakWord([byId], 'made a pact at the ruins gate, and broke it'); // they learn it now
     s.hostile = true; // he knows you told
+    this.mood();
     safe(() => this.game.village?.addRumor?.('tempter_warning', { witnesses: [byId], source: byId }));
     this.mark('warned', `The stranger warned ${this.name(byId)} about the pilgrim at the ruins gate.`);
     return true;
@@ -708,6 +711,7 @@ export class Villain {
     const t = safe(() => new Tempter(g, this, at.x, at.y), null);
     if (!t) return null;
     this.tempter = g.entities.add(t);
+    this.mood();
     if (!this.state.hinted) {
       this.state.hinted = true;
       safe(() => g.ui?.toast?.('A cold blue lamp burns outside the ruins gate tonight. Someone is waiting there.', 'info', { key: 'tempter_hint', title: 'The ruins gate' }));
@@ -721,6 +725,13 @@ export class Villain {
     if (!t || t.removed) return;
     safe(() => this.game.particles?.emit?.('sparkle', t.x, t.y - 10, { count: 14, color: '#8fd8ff', speed: 20, life: 1 }));
     safe(() => this.game.entities.remove(t));
+  }
+
+  // How he stands with you (the chat's header reads it): cold once the word is broken.
+  mood() {
+    const t = this.tempter;
+    if (!t) return;
+    t.opinionOfPlayer = this.state.hostile ? 6 : TEMPTER_PROFILE.startOpinion;
   }
 
   // His duty each frame: stand, face the stranger when near. Returns true (the routine waits).
@@ -792,7 +803,7 @@ export class Villain {
       if (r?.silent === true) return { lines: [], silent: true, narration: 'Isembard hears you. He only smiles, and says nothing.', mood: 'amused', source: 'claude' };
       if (say) lines = [say];
     }
-    return { lines, mood: 'amused', source: provider ? 'claude' : 'local', decided: decided || null };
+    return { lines, mood: s.hostile ? 'cold' : 'amused', source: provider ? 'claude' : 'local', decided: decided || null };
   }
 
   decide(said) {
