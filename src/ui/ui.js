@@ -9,6 +9,7 @@ import { Chat } from './chat.js';
 import { Toasts } from './toast.js';
 import { Coach } from './coach.js';
 import { MindPanel } from './mind_panel.js';
+import { PeoplePanel } from './people_panel.js';
 import { DialogPanel } from './dialog.js';
 import { InventoryPanel, ChestPanel } from './inventory.js';
 import { SettingsPanel } from './settings_panel.js';
@@ -98,6 +99,7 @@ export class UI {
     this.hud = new Hud(this);
     this.toasts = new Toasts(this);
     this.mind = new MindPanel(this);
+    this.people = new PeoplePanel(this); // People (round 14b, DESIGN §34.5): the Mind's place in play
     this.dialog = new DialogPanel(this);
     this.inventory = new InventoryPanel(this);
     this.chest = new ChestPanel(this);
@@ -516,10 +518,12 @@ export class UI {
       if (v && v.decision && !ACCEPTED.has(v.decision)) this.hud?.flashRefusal();
       this.hud?.refreshCompanion(true);
       this.mind?.markDirty('you');
+      this.people?.markDirty?.();
     });
     bus.on('deed', (p) => {
       this.hud?.refreshCompanion(true);
       this.mind?.markDirty('you');
+      this.people?.markDirty?.();
       const sev = Number(p?.severity) || 0;
       if (Math.abs(sev) < 2) return;
       const label = deedLabel(p?.deed);
@@ -531,6 +535,7 @@ export class UI {
     });
     bus.on('promise', (p) => {
       this.mind?.markDirty('you');
+      this.people?.markDirty?.();
       const text = truncate(String(p?.text || '').trim(), 120);
       if (!text) return;
       if (p.state === 'kept') this.toast(text, 'good', { title: p.by === 'player' ? 'You kept your word' : `${lyraName()} kept her word` });
@@ -561,10 +566,14 @@ export class UI {
       this.mind?.markDirty('people');
       if (p?.personId === 'player') {
         this.mind?.markDirty('you');
+      this.people?.markDirty?.();
         this.hud?.refreshCompanion(true);
       }
     });
-    bus.on('memory_added', () => this.mind?.markDirty('memories'));
+    bus.on('memory_added', () => {
+      this.mind?.markDirty('memories');
+      this.people?.markDirty?.();
+    });
     // The village's social life changes what the People tab shows (§19.3).
     for (const ev of ['village_talk', 'rumor', 'bond_changed']) bus.on(ev, () => this.mind?.markDirty('people'));
     bus.on('settings_changed', ({ key }) => {
@@ -862,26 +871,8 @@ export class UI {
     });
   }
 
-  resetMind() {
-    const g = this.game;
-    const mind = g.companion?.mind;
-    if (!mind) return false;
-    try {
-      if (typeof mind.reset === 'function') mind.reset();
-      else if (this.mindSnapshot) {
-        mind.deserialize(JSON.parse(this.mindSnapshot));
-        // A fresh mind saves no soul (it is the default one): restore that too.
-        if (typeof mind.resetSoul === 'function') mind.resetSoul();
-        else if (this.soulSnapshot) mind.soul = clone(this.soulSnapshot);
-      } else return false;
-    } catch (err) {
-      console.warn('[ui] mind reset failed', err);
-      return false;
-    }
-    g.bus.emit('soul_changed', { owner: g.companion });
-    if (g.save) g.save.pending = 'auto';
-    return true;
-  }
+  // (Round 14b: no reset of anyone's mind from the interface: People shows a mind, it never
+  // edits one. A backup is in Settings → Minds.)
 
   // ---------- small contract pieces ----------
 
@@ -1117,6 +1108,7 @@ export class UI {
     const name = g.settings?.companionName || g.companion?.name || 'Lyra';
     this.hud?.refreshCompanion(true);
     this.mind?.markDirty('you');
+      this.people?.markDirty?.();
     this.chat.setGone(state === 'gone');
     if (state === this.lastCs) return;
     this.lastCs = state;
@@ -1155,6 +1147,7 @@ export class UI {
     this.coach?.update(dt);
     this.dialog.update(dt);
     this.mind.update(dt);
+    this.people.update(dt);
     this.settings.update(dt);
 
     if (this.invDirty) {
@@ -1214,12 +1207,12 @@ export class UI {
     if (top?.padNav && inp.lastDevice === 'gamepad') top.padNav(inp);
     if (inp.uiPressed('mind')) {
       inp.consume('mind');
-      if (!top || top === this.mind.panel || top === this.inventory.panel) this.toggleMind();
+      if (!top || top === this.mind.panel || top === this.people?.panel || top === this.inventory.panel) this.togglePeople();
       return;
     }
     if (inp.uiPressed('inventory')) {
       inp.consume('inventory');
-      if (!top || top === this.inventory.panel || top === this.mind.panel) this.toggleInventory();
+      if (!top || top === this.inventory.panel || top === this.mind.panel || top === this.people?.panel) this.toggleInventory();
       return;
     }
     if (top) return;

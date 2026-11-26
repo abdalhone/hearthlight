@@ -70,6 +70,9 @@ async function run(S) {
       return r.width && r.height ? { x: r.left, y: r.top, w: r.width, h: r.height } : null;
     }, sel);
   const tapOrClick = async (sel) => {
+    // As a thumb would: a strip scrolled the other way is swiped back first.
+    await ev((sel) => document.querySelector(sel)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }), sel);
+    await wait(120);
     const r = await rectOf(sel);
     if (!r) return false;
     if (S.phone) await page.touchscreen.tap(r.x + r.w / 2, r.y + r.h / 2);
@@ -261,6 +264,38 @@ async function run(S) {
     check(dir === 'stay', `${tag}: asking Bram to wait, he waits`, String(dir));
     await ev(() => window.__game.ui.runCommand('follow'));
   }
+  await ev(() => window.__clean());
+
+  // ---------- People: You, Lyra, Bram; no Soul or Data; the ✕ is 44 px ----------
+  if (S.phone) await tapOrClick('.companion-card');
+  else {
+    await page.keyboard.press('Tab');
+    await wait(400);
+  }
+  let pp = await ev(() => {
+    const u = window.__game.ui;
+    const top = u.top?.();
+    const items = [...document.querySelectorAll('.people-item')].map((e) => e.dataset.id);
+    const close = document.querySelector('.panel-people .panel-close')?.getBoundingClientRect();
+    return { id: top?.id, who: u.people?.who, items, tabs: [...document.querySelectorAll('.panel-people [role=tab], .panel-people .tab')].map((e) => e.textContent), close: close ? [Math.round(close.width), Math.round(close.height)] : null, text: document.querySelector('.panel-people')?.textContent || '' };
+  });
+  check(pp.id === 'people' && pp.who === 'bram', `${tag}: ${S.phone ? 'a tap on the card' : 'Tab'} opens People at Bram`, JSON.stringify({ id: pp.id, who: pp.who }));
+  check(pp.items[0] === 'you' && pp.items.includes('lyra') && pp.items.includes('bram'), `${tag}: People lists You, Lyra and Bram`, pp.items.join(','));
+  check(!/\bSoul\b|\bData\b/.test(pp.tabs.join(' ')) && !/Start her over|Import/.test(pp.text), `${tag}: People has no Soul or Data tab and no reset`);
+  check(pp.close && pp.close[0] >= 44 && pp.close[1] >= 44, `${tag}: People's close control is at least 44 px`, JSON.stringify(pp.close));
+  check(/Ask Bram/.test(pp.text) && /How Bram sees you/.test(pp.text), `${tag}: Bram's page: the Ask row and how he sees you`);
+  await shot('5a-people-bram');
+  await tapOrClick('.people-item[data-id="you"]');
+  pp = await ev(() => document.querySelector('.people-page')?.textContent || '');
+  check(/How Hearthvale sees you/.test(pp) && /Each of them/.test(pp), `${tag}: People: You shows how Hearthvale sees you`);
+  await shot('5b-people-you');
+  await tapOrClick('.people-item[data-id="lyra"]');
+  pp = await ev(() => document.querySelector('.people-page')?.textContent || '');
+  check(/You and her/.test(pp) && /keeps to herself/.test(pp) && /Her diary/.test(pp), `${tag}: People: Lyra's page shows you and her, what she keeps (counted) and her diary`);
+  await shot('5c-people-lyra');
+  // Close it with the ✕ (a real tap / click).
+  await tapOrClick('.panel-people .panel-close');
+  check(await ev(() => !window.__game.ui.people.isOpen()), `${tag}: People closes with its ✕`);
   await ev(() => window.__clean());
 
   // ---------- 4. after Lyra cut ties ----------

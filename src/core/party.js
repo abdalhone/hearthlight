@@ -123,6 +123,8 @@ export class Party {
       this._offs.push(bus.on('villager_died', (p) => safe(() => this.onDeath(p))));
       this._offs.push(bus.on('crime', (p) => safe(() => this.onCrime(p))));
       this._offs.push(bus.on('new_day', () => safe(() => this.markAway())));
+      // What Lyra cites or tells in talk becomes shared (People shows it, DESIGN §34.5).
+      this._offs.push(bus.on('memories_shared', (p) => safe(() => this.onShared(p))));
     }
   }
 
@@ -461,6 +463,19 @@ export class Party {
     if (!saw) return;
     const line = companionLine(h.id, 'leave_fear', { name: firstName(h) });
     this.release(onThem || kind === 'murder' ? 'gone' : 'fear', { line, by: h.id });
+  }
+
+  // Memories she shared with you in talk (talk's chat emits memories_shared {who, ids}).
+  // Left or gone, she does not confide: nothing new becomes shared (what was stays).
+  onShared(p) {
+    if (p?.who && p.who !== COMPANION_ID) return;
+    const L = lyraOf(this.game);
+    const mind = L?.mind;
+    if (!mind) return;
+    const cs = lyraCompanionship(this.game);
+    if (cs === 'left' || cs === 'gone' || lyraDead(this.game)) return;
+    if (!(mind.shared instanceof Set)) mind.shared = new Set(Array.isArray(mind.shared) ? mind.shared : []);
+    for (const id of Array.isArray(p?.ids) ? p.ids : []) if (id != null) mind.shared.add(String(id));
   }
 
   // The village knows where a companion is (so §28's missing chain does not start).
