@@ -67,13 +67,11 @@ export const TEMPTER_PROFILE = {
 // What he says, offline (the game's words; Claude says it in his voice when online).
 export const TEMPTER_LINES = {
   first: [
-    'Good evening. Do not be afraid of the light; it is only cold, it cannot burn you.',
-    'I have been watching you weave. You do it the way a child sings: well, and without knowing the words.',
-    'I know the words. All of them. A weave that does not tire. A hand that can put out a flame from the inside, with no sound, with nothing.',
+    'Good evening. Do not be afraid of the light; it is cold, it cannot burn you. I have watched you weave, well and without the words. I know the words. All of them.',
+    'A weave that does not tire. A hand that puts a flame out from the inside, with no sound, with nothing.',
   ],
   offer: [
-    'The price is simple, and you will not like it. The village. Every grown soul under that bell.',
-    'Not the little ones. I have no use for small flames; they will be taken down the road, and live.',
+    'The price: the village. Every grown soul under that bell. Not the little ones; I have no use for small flames, and they will be taken down the road, and live.',
     'I will teach you before, on your word, and you will owe me. Or after, when it is quiet, and you will owe me nothing. Choose.',
   ],
   why: ['Because they would never let you be what you could be. Because they let you in on a vote, and they can vote you out.', 'Because you are the only one here who is not afraid of me. Yet.'],

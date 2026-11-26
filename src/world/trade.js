@@ -150,8 +150,8 @@ export function moodOf(npc) {
   const op = Number(npc?.opinionOfPlayer);
   const fam = Number(npc?.familiarity) || 0;
   if (!Number.isFinite(op)) return 'normal';
-  if (op < 20) return 'low';
-  if (op < 40) return 'cold';
+  if (op < 15) return 'low';
+  if (op < 25) return 'cold';
   if (op >= 75 && fam >= 30) return 'dear';
   if (op >= 60) return 'warm';
   return 'normal';

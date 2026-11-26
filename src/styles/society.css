@@ -76,36 +76,60 @@
 }
 
 /* ---------- the trial (S-11): the defence in your own words, the Moot weighing it ---------- */
-.defence-box {
+.panel-defence .panel-body,
+.panel-weighing .panel-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 8px 0;
+  gap: 10px;
+}
+.defence-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.defence-face {
+  width: 56px;
+  height: 56px;
+  image-rendering: pixelated;
+}
+.defence-words {
+  margin: 0;
+  flex: 1;
 }
 .defence-field {
   width: 100%;
   min-height: 72px;
   resize: vertical;
   font: inherit;
+  box-sizing: border-box;
 }
-.defence-row {
+.defence-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.defence-chips .dlg-opt {
+  flex: 1 1 140px;
+  min-height: 44px;
+}
+.panel-foot.defence-foot {
   display: flex;
   gap: 8px;
-  align-items: center;
   justify-content: flex-end;
+  align-items: center;
 }
-.defence-send {
+.defence-send,
+.opt-hear {
   min-height: 44px;
 }
-.panel-defence .dlg-opt,
-.panel-weighing .dlg-opt {
-  min-height: 44px;
+.weighing-words {
+  margin: 0;
+  color: var(--parch-dim);
 }
 .jury {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 8px;
-  margin-top: 8px;
 }
 .jury-card {
   display: flex;
@@ -148,16 +172,17 @@
 .jury-vote.is-not_proven {
   color: #9fd8a8;
 }
-/* An upright phone: the keyboard covers the bottom half; keep the field high and the list short. */
+/* An upright phone: two jurors a row; the field stays high above the keyboard. */
 @media (max-width: 480px) {
-  .panel-defence .dlg-portrait {
-    display: none;
-  }
   .jury {
     grid-template-columns: 1fr 1fr;
   }
+  .defence-face {
+    width: 40px;
+    height: 40px;
+  }
 }
-/* Sideways: little height; the panel scrolls within it. */
+/* Sideways: little height; the panel scrolls within 520 px, the foot stays. */
 @media (max-height: 430px) {
   .panel-defence,
   .panel-weighing {
@@ -168,6 +193,13 @@
     overflow-y: auto;
   }
   .defence-field {
-    min-height: 52px;
+    min-height: 48px;
+  }
+  .defence-face {
+    width: 36px;
+    height: 36px;
+  }
+  .jury {
+    grid-template-columns: repeat(3, 1fr);
   }
 }

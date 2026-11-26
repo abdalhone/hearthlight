@@ -419,6 +419,7 @@ export class DialogPanel {
       g.audio?.play(r.won ? 'coin' : 'error', { volume: 0.6 });
       this.play([r.line], this.options);
       this.mode = 'shop';
+      this.showWords();
       redraw();
     });
     const redraw = () => {
@@ -581,6 +582,7 @@ export class DialogPanel {
       g.audio?.play('error');
       if (r.line) this.play([r.line], this.options);
       this.mode = 'shop';
+      this.showWords();
       return r;
     }
     g.audio?.play('coin');
@@ -597,14 +599,27 @@ export class DialogPanel {
         this.setExpression(r.reason === 'stolen' ? 'angry' : 'neutral');
         this.play([r.line], this.options);
         this.mode = 'shop';
+        this.showWords();
       }
       return r;
     }
     g.audio?.play('coin');
-    if (r.line) this.play([r.line], this.options);
+    if (r.line) {
+      this.play([r.line], this.options);
+      this.showWords();
+    }
     this.mode = 'shop';
     this.ui.toast(`Sold ${itemName(itemId, r.qty)} for ${r.total} coins.`, 'item', { iconUrl: itemIconUrl(g, 'coin') });
     return r;
+  }
+
+  // Their words in view when they answer (the shop may have scrolled them away).
+  showWords() {
+    try {
+      this.textEl?.scrollIntoView?.({ block: 'nearest' });
+    } catch {
+      /* cosmetic */
+    }
   }
 
   // (Kept for callers of the old shop: one item at a price, through the day's trade.)
