@@ -450,6 +450,22 @@ async function run(S) {
   check(nexts[nexts.length - 1].n === 80, `${tag}: eight presses of +10 on Grace give 80 points`, `(${nexts.map((x) => x.n).join(', ')})`);
   const gains = nexts.map((x) => Number((x.next.match(/([0-9.]+)%/) || [])[1]));
   check(gains.every((gv, i) => i === 0 || gv <= gains[i - 1]) && gains[0] > gains[gains.length - 1], `${tag}: "Next" shrinks as the points grow`, nexts.map((x) => x.next.replace('Next: ', '')).join(' → '));
+  // And it is true: one more point really moves the walk by what the line says (a share of
+  // the pace you have now, read from the pipeline with one point more).
+  const truth = await ev(() => {
+    const g = window.__game;
+    const P = g.player;
+    const pr = g.progression;
+    const before = g.stats.all(P).speed;
+    pr.points.grace += 1;
+    g.stats.touch();
+    const after = g.stats.all(P).speed;
+    pr.points.grace -= 1;
+    g.stats.touch();
+    return ((after - before) / before) * 100;
+  });
+  const said = gains[gains.length - 1];
+  check(Math.abs(said - truth) <= 0.051, `${tag}: at 80 Grace "${nexts[nexts.length - 1].next}" is what one more point does (${truth.toFixed(3)}% of the walk now)`);
   // Controls on the sheet: at least 44 px, nothing spilling sideways, the next line on screen.
   const lay = await ev(() => {
     const small = [];
