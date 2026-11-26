@@ -1039,9 +1039,11 @@ export class Village {
         if (!victimId) return;
         // A cry nobody saw the cause of names nobody (DESIGN §29): the victim tells later.
         if (g?.murder?.isSecret?.(victimId)) return;
-        // Knocked down (or a severity at the top of a 0..1 scale) is the worse news.
-        const sev = Number(p.severity);
-        const down = !!p.victim?.downed || p.severity === 'downed' || p.severity === 'critical' || (Number.isFinite(sev) && sev <= 1 && sev >= 0.95);
+        // Knocked down is the worse news. Every cry comes on the 1..3 scale (npc.callForHelp,
+        // Lyra's autonomy); a severity of 1 is a first blow, not a fall (it used to read as
+        // the top of a 0..1 scale, and a single slap went round as "knocked down").
+        const hurt = p.victim && typeof p.victim === 'object' ? p.victim : p.victimEntity || null;
+        const down = !!hurt?.downed || p.severity === 'downed' || p.severity === 'critical';
         const kind = victimId === 'lyra' ? (down ? 'downed_lyra' : 'hit_lyra') : down ? 'downed_villager' : 'attacked_villager';
         const x = p.x ?? p.victim?.x ?? 0;
         const y = p.y ?? p.victim?.y ?? 0;

@@ -2222,6 +2222,22 @@ Hearing is a sense like sight, with one rule, and it tells **what and where, nev
   Those who saw it are cold and think less of the stranger; those who only heard it are
   uneasy (`npc.uneasy`: a line about the place, never a person); everyone else learns it by
   meeting someone who knows (§29.2's news; `village.onHeard` moves them then).
+- **Told is not seen.** A blow nobody saw is the hurt one's to tell (`murder.reveal`): when
+  they tell whoever reaches them, the crime goes on record and its event carries a screen of
+  its own (`lastScreen` with only the one told; `sawBlow`, `toldNow`). So `npc.onCrime` and
+  the village's crime rumor take only the one told as knowing it, and a told crime makes no
+  sound: the watchman in the square who happens to see the stranger walking by at that moment
+  saw no blow, and neither fights, flees nor turns cold for it. The crime notice says what is
+  true: "…and word of it is out. Once it reaches the watch, they will hunt you…".
+- **A body found reaches Lyra as news.** She learns of a body found by someone else from the
+  finder's own cry when she makes out the words (`murder.lyraHearsFinding`: `hears(…,
+  LOUD.shout)` clear: in the open or in line with an open door), else when someone who knows
+  tells her (the village's `found_dead` rumor reaches her face to face, `tickNews`), else with
+  the whole village within the hour (`rec.lyraNewsAt` = `newsAt`). Never through two walls
+  the moment someone next door finds it; she weighs the watch's case only once she knows.
+- **Her mind's ears too.** What Lyra takes in of words said near her (`perception.onSpeech`,
+  160 px) is only what she hears clearly (`hearsWords`): a name screamed in the next house is
+  a noise.
 
 ## 30. pixelfx effects (the author: "download and use pixelfx if you see fit"; "the spells do not do any damage, and it's not clear")
 

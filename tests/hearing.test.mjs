@@ -249,6 +249,11 @@ test('a guard 300 px away behind the smithy wall does not attack the player (nor
   P.faceToward(bram.x, bram.y);
   downBy(g, bram);
   assert.ok(P.crime, 'Tilly saw it: the stranger is wanted');
+  // The notice says what is true: someone saw, and the watch will know once told (verifier:
+  // it said "The guard will hunt you" while Rowan, behind the wall, knew nothing).
+  const crimeNote = g.toasts.find((t) => t.opts?.key === 'crime')?.text || '';
+  assert.match(crimeNote, /word of it is out/i, crimeNote);
+  assert.match(crimeNote, /once it reaches the watch/i, crimeNote);
   step(g, 3);
   assert.ok(!fighting(rowan, P), `Rowan does not come at the player (${rowan.mode})`);
   assert.ok(!fighting(hess, P), `nor Hess (${hess.mode})`);
@@ -415,4 +420,23 @@ test("Lyra does not take in words shouted on the other side of a wall (her mind'
   holdLyra(g, hobb.x + 40, hobb.y);
   g.bus.emit('speech', { speaker: hobb, text: 'Maren went over the ruins wall, they say.', target: null, kind: 'shout' });
   assert.equal(heard(), n0 + 1, 'in the open: she heard Maren named');
+});
+
+test('a single blow, seen, goes round as an attack, not as a knocking-down (the cry is on the 1..3 scale)', () => {
+  const g = makeGame({ hour: 12 });
+  only(g, ['tobias', 'bram']);
+  const P = g.player;
+  const [tobias, bram] = ['tobias', 'bram'].map((id) => g.entities.get(id));
+  tobias.think = () => {};
+  bram.think = () => {};
+  standAt(g, tobias, 76, 60);
+  standAt(g, P, 75, 60);
+  standAt(g, bram, 79, 61);
+  P.faceToward(tobias.x, tobias.y);
+  tobias.invuln = 0;
+  g.combat.damage(P, tobias, 3, { exact: true, crit: false });
+  assert.ok(!tobias.downed && tobias.hp > 0, 'still standing');
+  const kinds = g.village.rumors.list.filter((r) => r.victim === 'tobias').map((r) => r.kind);
+  assert.ok(kinds.includes('attacked_villager'), JSON.stringify(kinds));
+  assert.ok(!kinds.includes('downed_villager'), `nobody says he was knocked down: ${JSON.stringify(kinds)}`);
 });
