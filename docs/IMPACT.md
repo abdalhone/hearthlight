@@ -25,7 +25,9 @@ dark spell from the tempter's pact, DESIGN §37).
 
 | System | What must react | Where |
 |---|---|---|
-| Finishing blows / kill scenes | Sword build beheads with the blade; magic build ends it with a weave to the head; hybrid uses both; a new weapon brings its own finisher (`registerFinisher`, DESIGN §35.2); never on a child (`isMinor`) | `src/murder/*` (round 14b: adaptive finishers) |
+| Finishing blows / kill scenes | Sword build: a slash across the neck; magic build: a bolt in the slotted weave's palette to the head; hybrid: both (`buildOf`: points, the blade in hand, recent blows by kind, slotted weaves). A new weapon or class brings its own finisher (`registerFinisher({ id, score, draw, mark })`, DESIGN §35.2) and its mark on the body; Settings → Finishers full/brief/off; never on a child (`isMinor`) | `src/murder/finishers.js`, `src/murder/murder.js` `strike`, `src/murder/draw.js` |
+| Lock-on (round 14b) | Weaves and the sword aim at `game.lock` for every source; a new weapon (a bow) aims at it too; its control on each device (middle mouse, G, R3, a hold on the sword button) | `src/core/lock_on.js`, `src/ui/weaving.js` `aimFor`, `src/entities/player.js` `attack`, `src/ui/touch.js` |
+| Locked chests (round 14b) | A Strike or a heavy weave forces a hasp (D10), a lighter blow says "Iron-bound"; a fire weave sets a store alight; a new heavy weapon decides which it is | `src/world/containers.js` `blowAtChest`, `src/world/occupation.js` `fireAt`, `src/magic/magic.js` `hitProps` |
 | The Unkindling (`'unkindle'`, round 14b soul; stub) | Learned only from the pact (`pact_sealed`), saved; touch range; loudness 0 (`hearing.js` `silence`/`voiceOf`); witnesses by the sight rule; never a child, never through a wall; a dark button on the phone, a held key on desktop; its price shows in the Character panel | `src/magic/unkindle.js`, `src/render/unkindle_fx.js`, `src/murder/unkindled.js` (soul) |
 | Combat damage and stun | Damage sources (sword arc, weave bodies, beams, future arrows) all go through the hit pipeline; walls stop each | `src/entities/combat.js`, `src/magic/*` |
 | Stats, gear, prices | Stat points, gear slots and prices favour the build; a new class needs its stat, its gear and its prices | `src/progression/*`, `src/gear/*`, `src/magic/prices.js` |
@@ -50,7 +52,8 @@ mud, marsh, lava, dungeon floors, upper floors of a house.
 | Weather on the ground | Rain soaks it (wet twin), puddles, reflections | `src/world/map.js`, `src/art/tiles_art.js` |
 | Particles | Dust on dry ground, splashes in water, puffs in snow | `src/world/footsteps.js`, `src/entities/player.js` |
 | Death and crawling | Blood smear and the ember-ring on each ground; drowning in deep water | `src/survival/*` |
-| Kill scenes | Where the body falls (water, snow, floor) | `src/murder/*` |
+| Kill scenes | Where the body falls (water, snow, floor): the dried stain and the finisher's mark are drawn on the ground under it, whatever the ground (round 14b) | `src/murder/draw.js`, `src/murder/finishers.js` |
+| Blows across low ground (round 14b) | Rubble stops a blade or claws but not an arrow (`walls.BLOCKS_BLOW`); a new low obstacle (a fence, a cart, a hedge) says which it is | `src/world/walls.js` `blowTile`, `canReach({ melee })` |
 | Spawns | What lives on it (slimes by water, wolves in wood) | `src/world/wilds.js`, `src/world/worldgen.js` |
 
 ## 3. Places and regions
@@ -95,11 +98,14 @@ person); *future*: travellers, Owlsend's survivors, new villagers.
 |---|---|---|
 | Lines and voice | Every character's own words for a new event (barks, dialogue, Claude persona) | `src/ai/social/*`, `src/entities/npc_data*.js` |
 | Knowledge and rumors | What they know of places and bosses (`TRAILS.tellers`, `ROAD_TALK`, facts) | `src/world/boss_trails.js`, `src/entities/npc_data*.js` |
-| Killability and crimes | Adults can be killed, children (`isMinor`) cannot; theft and assault are crimes others learn of by eyes or by meeting someone who knows; every death records `by`, `cause`, `provoked` (DESIGN §35.1); a death nobody did goes through `murder.die` (no case, no alarm) | `src/murder/*`, `src/world/containers.js`, `src/core/people.js` |
+| Killability and crimes | Adults can be killed (Lyra and any companion included: `murder.isPerson`, `canKill`), children (`isMinor`) cannot; theft and assault are crimes others learn of by eyes or by meeting someone who knows (theft only if seen, D10; never an assault); every death records `by`, `cause`, `provoked` (DESIGN §35.1); a death nobody did goes through `murder.die` (no case, no alarm). A new kind of person says what they carry (`carry_data.js`), who inherits their work (`HEIRS`), and who gives their missions (`STAND_INS`) | `src/murder/*`, `src/world/containers.js`, `src/core/people.js` |
+| Fighting back (round 14b) | The watch, Hess and the defenders (`DEFENDER_COMBAT`: Bram, Tobias, Garrick, Sabeth, Tilly; 17–65, not terrified) fight only someone they know did it; the posse hunts from where the killer was last seen; a new character says whether they defend and with what | `src/entities/defenders.js`, `src/entities/npc.js` `helpRole`/`onCrime`, `src/murder/hunt.js` |
+| Children (round 14b) | Hide at home from a stranger they know to be a killer; taken away (kin or a carter) when every grown person of their household is dead; never hurt; their missions pass on | `src/world/occupation.js`, `src/murder/grief.js` `standIn` |
+| A dead Lyra (round 14b) | Her body lies like anyone's (searched for her pack, lifted); she learns nothing more; her parents mourn a month; her missions close; her trunk is her mother's | `src/murder/lyra.js`, `src/murder/murder.js` `stillBody`, `src/missions/system.js`, `src/world/containers.js` |
 | The companion role (round 14b) | Any adult may hold it (`party.canHold`); the HUD slot, the Ask bar, missions that count "with you", follow on foot, stand-ins when they die; a new kind of person says whether they can hold it | `src/core/party.js`, `src/entities/npc.js` (`duty`, `startFight` anchor and leash) |
 | Senses | Every eye and ear goes through one rule each: sight (`src/ai/sight.js`) and hearing (`src/ai/hearing.js`: walls muffle, a cry tells what and where, never who; a beast's snarl is a what, a person a who). A new kind of character (a deaf one, a hound) gets its exception there, as Wenna's blindness does in `witness.js` | `src/ai/sight.js`, `src/ai/hearing.js`, `src/entities/npc.js` |
 | Ownership | Their beds, chests and keys (`owner`, `keeper`, `keyId`) | `src/world/containers.js`, `src/world/objects.js` |
-| Combat and AI | Fight back, flee, stun, finishers per body size | `src/entities/*`, `src/bosses/*` |
+| Combat and AI | Fight back, flee, stun, finishers per body size; creatures notice and wind up only with a sight line and a blow that can land (round 14b); bosses stagger then are proof a while; mission leaders resist part of a stun | `src/entities/*`, `src/bosses/*` |
 | Footsteps and crawling | Others' steps near you; the downed crawl for anyone | `src/world/footsteps.js`, `src/survival/*` |
 | Missions | Givers, turn-ins, foes that scale with your level (`toughen`) | `src/missions/*` |
 | Age | Everyone grows a year older on their birthday (`game.calendar`); who is a child is decided by age (`isMinor`, under 16; the build only when the age is unknown); a new character needs a base age | `src/world/calendar.js`, `src/core/people.js` |
@@ -115,7 +121,11 @@ on** (blood), **saying aloud** (talk), **parting scene** (talk), **on duty** (an
 the companion role: mode `'duty'`), **held silent** (`hearing.js` `silence`: no sound at
 all), **unkindling** (the player channelling the Unkindling; the target held and silent),
 **unkindled** (a body with no mark: dead, silent, unmarked; soul's stub), **dead of age**
-(`murder.die`: natural, no case).
+(`murder.die`: natural, no case). Blood (round 14b): **winded** (Lyra after running from
+you a while), **hiding** (a child at home from a known killer), **taken away** (a child of
+an emptied house: `absent.cause 'taken_away'`), **searched** (a body), **burned** (a store),
+**claimed** (a house), **hunted** (a posse searching from where you were last seen), **news
+waiting** (a body found but not yet known to the village).
 
 | System | What must react | Where |
 |---|---|---|
@@ -182,6 +192,7 @@ final death, Settings resets.
 | Generated world | Same seed, same world: never move vale objects (saves refer to them by position) | `src/world/worldgen.js` |
 | Round 14b blocks | `party` (`{ holderId }`, restored last; old saves derive it from Lyra), `plugins.provenance` (old saves start empty), murder records' `by`, `cause` (old: `'killed'`), `provoked` (old: unknown), `silent`, `unmarked`, `natural`; soul's `unkindle` (`learned`, `tally`) | `src/core/party.js`, `src/world/provenance.js`, `src/murder/murder.js` |
 | Death causes | `'killed'`, `'age'` (`murder.die`), `'unkindled'` (soul): each saved on the record and the body (`absent.cause`); a new cause says who owns its discovery (`onFound`) and whether it is a killing (`villager_killed`) or not (`villager_died`) | `src/murder/murder.js` |
+| Blood's blocks (round 14b) | `murder.hunt` (last seen, posse, reports, state), records' `loot`, `searched`, `finisher`, `newsWaits`/`caseWaits`/`mournedBy`, `lyraSawCarry`; a dead Lyra's record (her body re-laid after the companion's own load); what each body carries in its own inventory; plugin `occupation` (burns, claims, children taken, the fallen village); chests' `missingSince`; villagers' `uneasy`, `missingGoods`, `hideUntil` (the day's only); `flags.finisherWarnedLyra`; Settings `finishers`. The lock is not saved | `src/murder/*`, `src/world/occupation.js`, `src/world/containers.js`, `src/entities/npc.js` |
 
 ## 10. Story branches
 
@@ -194,5 +205,6 @@ not, Owlsend's arrival.
 |---|---|---|
 | Lines and lore | People speak of what you did; the Book records it | `src/ai/*`, `src/lore/*` |
 | Missions | Some close, some open with the branch | `src/missions/*` |
-| The world | Places that change (a relit wardstone, a lit waystone, an empty house) | `src/world/*` |
+| The world | Places that change (a relit wardstone, a lit waystone, an empty house; round 14b: a burned store, a claimed house, the fallen village `occupation.emptied()`) | `src/world/*`, `src/world/occupation.js` |
+| The law (round 14b) | Wanted is per knower (a guard fights or arrests only if he knows); the hunt goes to where you were last seen; a found body is the village's news by meeting, or the bell within the hour | `src/entities/combat.js` `knowsCrime`, `src/survival/rescue.js`, `src/murder/hunt.js`, `src/murder/murder.js` |
 | Map and markers | What you know is marked; what is gone is greyed | `src/ui/world_map.js` |
