@@ -417,6 +417,43 @@ async function play(S) {
     let closest = Infinity;
     let slow = null;
     const t0 = Date.now();
+    // The thumb stays on the stick (or the keys stay down) and turns toward her as she goes.
+    let cdp = null;
+    let origin = null;
+    const held = new Set();
+    const steer = async (ux, uy) => {
+      if (S.phone) {
+        if (!cdp) {
+          cdp = await ctx.newCDPSession(page);
+          origin = { x: 90, y: S.h - 90 };
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: origin.x, y: origin.y, id: 3 }] });
+        }
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: origin.x + ux * 44, y: origin.y + uy * 44, id: 3 }] });
+      } else {
+        const want = new Set();
+        if (ux > 0.38) want.add('d');
+        if (ux < -0.38) want.add('a');
+        if (uy > 0.38) want.add('s');
+        if (uy < -0.38) want.add('w');
+        for (const k of [...held]) if (!want.has(k)) {
+          await page.keyboard.up(k);
+          held.delete(k);
+        }
+        for (const k of want) if (!held.has(k)) {
+          await page.keyboard.down(k);
+          held.add(k);
+        }
+      }
+    };
+    const letGo = async () => {
+      if (cdp) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [{ x: origin.x, y: origin.y, id: 3 }] }).catch(() => {});
+        await cdp.detach().catch(() => {});
+        cdp = null;
+      }
+      for (const k of [...held]) await page.keyboard.up(k);
+      held.clear();
+    };
     while (Date.now() - t0 < 30000) {
       const s = await state();
       if (/keep_away|flee|independent/.test(s.dir)) kept = true;
@@ -426,8 +463,10 @@ async function play(S) {
       if (process.env.VB_DEBUG) console.log('   chase', Math.round((Date.now() - t0) / 100) / 10, Math.round(s.d), s.dir, s.speed, s.winded);
       if (s.downed || (windedAt != null && closest < 26)) break;
       const n = Math.hypot(s.dx, s.dy) || 1;
-      await stick(s.dx / n, s.dy / n, 350);
+      await steer(s.dx / n, s.dy / n);
+      await wait(120);
     }
+    await letGo();
     check(kept && windedAt != null && slow < 60 && closest < 30, `[${tag}] 11 she keeps away, and chased she tires and is caught (winded after ${windedAt == null ? '-' : (windedAt / 1000).toFixed(1)} s at ${slow} px/s; closest ${Math.round(closest)} px)`, JSON.stringify({ kept, windedAt, slow, closest: Math.round(closest) }));
     if (process.env.VB_DEBUG) await ev(() => {
       const g = window.__game;
