@@ -293,6 +293,14 @@ async function walls(size, page, cdp) {
     w.maxHp = w.hp = 80;
     g.entities.add(w);
     window.__wolf = w;
+    // Only the stranger's blows count here: since round 14b Garrick takes on a beast in his
+    // store (a defender), and his blows are his, from inside.
+    window.__wolfByPlayer = 0;
+    g.bus.on('damage', (ev) => {
+      const src = ev?.source;
+      const own = src === p || src?.owner === p || src?.caster === p;
+      if (ev?.target === w && own && ev.amount > 0) window.__wolfByPlayer += ev.amount;
+    });
     g.camera.snap?.();
     window.__clean();
     return { dist: Math.round(Math.hypot(w.x - p.x, w.y - p.y)), wall: g.map.blocksProjectile(b.x, ty) };
@@ -306,8 +314,8 @@ async function walls(size, page, cdp) {
   await weave(page, cdp, size, 0, at); // a strike into the wall
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${OUT}/${size.name}-wall-swing.png` });
-  const r = await page.evaluate(() => ({ hp: window.__wolf.hp, max: window.__wolf.maxHp }));
-  note(size.name, 'no hit through a wall (sword x3 + strike)', r.hp === r.max, { ...r0, ...r });
+  const r = await page.evaluate(() => ({ hp: window.__wolf.hp, max: window.__wolf.maxHp, byPlayer: window.__wolfByPlayer }));
+  note(size.name, 'no hit through a wall (sword x3 + strike)', r.byPlayer === 0, { ...r0, ...r });
   await page.evaluate(() => window.__game.entities.remove(window.__wolf));
 }
 
