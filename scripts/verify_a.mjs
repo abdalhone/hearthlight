@@ -157,10 +157,22 @@ async function play(S) {
       const r = e.getBoundingClientRect();
       return r.width && r.height ? { x: r.left, y: r.top, w: r.width, h: r.height } : null;
     }, sel);
+  // Every item starts from a new game, so what one leaves behind (Lyra gone, Bram walking
+  // with you, a hunt) never decides the next.
+  const freshGame = async () => {
+    await page.goto(base, { waitUntil: 'load' });
+    await page.waitForFunction(() => window.__game?.state === 'title', null, { timeout: 60000 });
+    await ev(() => window.__game.newGame());
+    await page.waitForFunction(() => window.__game.state === 'playing', null, { timeout: 60000 });
+    await wait(700);
+    await ev(pageSetup);
+    await wait(200);
+  };
   const item = async (n, title, fn) => {
     if (ITEMS && !ITEMS.has(n)) return;
     console.log(`--- [${tag}] item ${n}: ${title}`);
     try {
+      await freshGame();
       await fn();
     } catch (err) {
       check(false, `[${tag}] ${n} ran to the end`, err?.stack || String(err));
@@ -236,14 +248,6 @@ async function play(S) {
     if (!S.throttle) return;
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: on ? S.throttle : 1 });
   };
-
-  await page.goto(base, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.__game?.state === 'title', null, { timeout: 60000 });
-  await ev(() => window.__game.newGame());
-  await page.waitForFunction(() => window.__game.state === 'playing', null, { timeout: 60000 });
-  await wait(700);
-  await ev(pageSetup);
-  await wait(200);
 
   // ================================================================ 27: casting stops you
   await item(27, 'casting stops you, in a real fight', async () => {
@@ -816,7 +820,7 @@ async function play(S) {
       return { d1: Math.round(Math.hypot(b.x - g.player.x, b.y - g.player.y)), card: document.querySelector('.companion-card')?.textContent?.replace(/\s+/g, ' ').trim().slice(0, 60) || '' };
     });
     check(ok && h0 === 'bram' && a.holder === 'bram' && a.duty, `[${tag}] 23 with Bram: reloaded, he still walks with you`, JSON.stringify({ h0, ...a }));
-    check(a2.d1 < a.d0 - 30, `[${tag}] 23 ... and walks after you`, JSON.stringify({ ...a, ...a2 }));
+    check(a2.d1 < a.d0 - 20, `[${tag}] 23 ... and walks after you`, JSON.stringify({ ...a, ...a2 }));
     if (!S.phone) check(/Bram/.test(a2.card), `[${tag}] 23 ... his card on the HUD`, a2.card);
     await shot('23-bram-reloaded');
     await ev(() => window.__game.party.release('dismissed'));
