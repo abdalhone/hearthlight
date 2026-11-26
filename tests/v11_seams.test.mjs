@@ -344,6 +344,28 @@ test('seam 5: a walk already begun stops when Lyra leaves the vale; the day pass
   back();
 });
 
+test('seam 5: an outing of hers out to Brindlecombe walks the roads: it makes way and never stands her on blocked ground', () => {
+  const back = quiet();
+  const g = makeGame({ hour: 10 });
+  const L = g.companion;
+  const a = L.mind.autonomy;
+  step(g, 1);
+  const loc = g.locations.get('brindlecombe');
+  const o = a.outings.start({ at: 'brindlecombe', why: 'test', what: 'see the dead village', withPlayer: false, source: 'test' });
+  assert.ok(o && o.phase === 'go', 'she sets out');
+  assert.equal(L.behavior.directive.type, 'goto');
+  const d0 = Math.hypot(loc.center.x - L.x, loc.center.y - L.y);
+  let blocked = 0;
+  for (let i = 0; i < 300; i++) {
+    step(g, 0.1, 0.1);
+    if (g.isBlockedTile(...tileOf(L), L)) blocked++;
+  }
+  const d1 = Math.hypot(loc.center.x - L.x, loc.center.y - L.y);
+  assert.equal(blocked, 0, 'never on a wall, a thicket or water');
+  assert.ok(d1 < d0 - 40 * TILE, `she made her way west (${Math.round((d0 - d1) / TILE)} tiles in 30 s)`);
+  back();
+});
+
 test('seam 5: hate means distance on a wild path too: walked at on the Crown path, she steps away without jitter and never into the thicket', () => {
   for (const mode of ['wary', 'left']) {
     const g = makeGame({ hour: 14 });
