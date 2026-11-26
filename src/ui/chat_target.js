@@ -8,6 +8,7 @@
 import { h, setText, toggleClass } from './dom.js';
 import { portraitUrl } from './art.js';
 import { firstName, moodExpression } from './village_view.js';
+import { hears } from '../ai/hearing.js';
 
 export const LYRA = 'lyra';
 const TILE = 16;
@@ -43,19 +44,60 @@ function awake(e) {
 }
 
 function downed(e) {
-  return !!e.downed || e.state === 'downed' || e.mode === 'downed' || e.dead || (typeof e.isAlive === 'function' && !safe(() => e.isAlive(), true));
+  return !!e.downed || e.state === 'downed' || e.mode === 'downed' || !!e.unconscious || e.state === 'unconscious';
 }
 
-// Why someone cannot hear the player right now: null when they can.
-//   'gone' (no longer in the world), 'downed', 'far', 'walls' (inside while the player is
-//   not, or the other way round)
+// Dead: no longer in the world, killed, or dead of age (round 14b: anyone may die).
+export function isDeadPerson(game, e) {
+  if (!e || e.removed || e.dead) return true;
+  return !!safe(() => game?.murder?.isDead?.(e.id), false);
+}
+
+// Why someone cannot hear the player right now: null when they can. Only the body keeps
+// words from someone (DESIGN §33.2, §33.4; the author: "even if somebody really hates me,
+// make me able to talk to them"). Hate, fear, terror, grief, a murder, being hunted, cut
+// ties and sleep are never a reason: they hear it, and answer as they feel.
+//   'dead'      dead, or no longer in the world
+//   'downed'    downed or unconscious
+//   'cutscene'  a scene is playing
+//   'far'       out of earshot
+//   'walls'     a wall between (another roof, or the hearing rule says only a muffled voice
+//               gets through, src/ai/hearing.js): a kind of out of earshot, never a feeling
 export function whyNotHeard(game, e, radius = EARSHOT) {
   const p = game?.player;
-  if (!e || e.removed || !p) return 'gone';
+  if (!p) return 'far';
+  if (isDeadPerson(game, e)) return 'dead';
   if (downed(e)) return 'downed';
+  if (game?.state === 'cutscene') return 'cutscene';
+  if (e.absent || e.carriedBy) return 'far';
   if (Math.hypot(e.x - p.x, e.y - p.y) > radius) return 'far';
   if (roofOf(game, e) !== roofOf(game, p)) return 'walls';
+  // Words carry by the one rule for ears: a wall or a shut door between them leaves only a
+  // voice. (Asked of where they stand, not of how they sleep: a sleeper still gets the words,
+  // mumbles, and keeps them.)
+  if (game?.map) {
+    const how = safe(() => hears(game, { x: e.x, y: e.y }, p.x, p.y, radius + 16), 'clear');
+    if (how === 'muffled') return 'walls';
+    if (!how) return 'far';
+  }
   return null;
+}
+
+// What the player is told when someone cannot hear them: a body, never a feeling.
+export function notHeardText(game, e, why) {
+  const n = firstName(e?.name) || 'They';
+  switch (why) {
+    case 'dead':
+      return `${n} is dead.`;
+    case 'downed':
+      return `${n} is down and can't hear you now.`;
+    case 'cutscene':
+      return `${n} can't hear you just now.`;
+    case 'walls':
+      return `${n} can't hear you through the walls.`;
+    default:
+      return `${n} is too far away to hear you.`;
+  }
 }
 
 export function canHear(game, e, radius = EARSHOT) {
@@ -183,8 +225,9 @@ export function pronoun(id, kind = 'his') {
 export function partingLine(e, why, who = 'they') {
   const n = firstName(e?.name) || 'They';
   const his = pronoun(e?.id, 'his');
-  if (why === 'downed') return `${n} is hurt and can't talk now.`;
-  if (why === 'gone') return `${n} has gone.`;
+  if (why === 'downed') return `${n} is down and can't hear you now.`;
+  if (why === 'dead' || why === 'gone') return `${n} is gone.`;
+  if (why === 'cutscene') return `${n} turns to what is happening.`;
   if (who === 'you') return `You walk on, and leave ${n} to ${his} day.`;
   return `${n} has gone on ${his} way.`;
 }

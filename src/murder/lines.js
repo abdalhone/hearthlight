@@ -19,7 +19,8 @@ export const ANY = {
   seenCarryClear: ['{P} was carrying {who}! I saw {him}! {WHO}!', "What are you carrying? That's— that's {who}! HELP!"],
   witnessTell: ['I saw it. {P} struck {who} down {at}.', 'I was there. I saw {P} do it.'],
   glimpseTell: ['I saw someone strike {who} {at}. In the dark. I think it was {P}.'],
-  mournGreet: ["Not today. We buried {who} {when}.", "I can't talk. Not today. {who}…"],
+  // Grief is never a lock (round 14b T-A5): the talk stays open, and they say so.
+  mournGreet: ['{who}… we buried {him} {when}. What is it?', 'We buried {who} {when}. Say what you came to say.'],
   afraid: ['Stay away from me. I know what you did.', "Don't come near me. Murderer."],
   // Spoken to again by the one they watched kill (DESIGN §29.3): begging, then screaming.
   beg: ['Please. Please, just let me go.', "Please— I've done nothing to you. Let me be."],

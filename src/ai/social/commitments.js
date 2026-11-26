@@ -238,6 +238,10 @@ export class Commitments {
     const cold = !!(st.cold || (st.grievance?.fresh && st.grievance?.grave));
     const out = { kind: ask.kind, can: true, will: true, why: '', line: '', plan: null };
     if (npc.dead || npc.downed || npc.state === 'sleep') return { ...out, can: false, will: false, why: 'they cannot right now' };
+    // They watched the stranger kill (round 14b T-A1): they do nothing for them, and the
+    // refusal is theirs to word, in fear.
+    const fear = safe(() => this.game?.murder?.fearOf?.(npc), null);
+    if (fear) return { ...out, will: false, fear, why: fear === 'terror' ? 'terror: you watched them kill, and you will do nothing they ask' : 'dread: you have seen them kill, and you will do nothing for them', line: '' };
     if (cold) {
       out.will = false;
       out.why = 'you hurt someone they love; they will do nothing for you';

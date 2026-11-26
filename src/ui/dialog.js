@@ -168,9 +168,13 @@ export class DialogPanel {
     });
   }
 
+  // What they said goes into the chat's thread with them; what they did (silence, a turned
+  // back, a flight) is a narration row there, never a failure (DESIGN §23.3, §33.4).
   noteInChat(npc, reply) {
     if (!npc || !reply?.lines?.length) return;
-    for (const line of reply.lines) this.ui.chat?.addMessage?.({ to: npc.id, from: reply.ok ? 'npc' : 'system', text: line, seen: true });
+    const words = reply.ok && !reply.silent && !reply.narrationOnly;
+    for (const line of reply.lines) this.ui.chat?.addMessage?.({ to: npc.id, from: words ? 'npc' : 'system', text: line, seen: true });
+    if (words && reply.narration) this.ui.chat?.addMessage?.({ to: npc.id, from: 'system', text: reply.narration, seen: true });
   }
 
   echoPlayer(text) {
@@ -204,7 +208,11 @@ export class DialogPanel {
     this.mode = 'talk';
     clear(this.extraEl);
     const opts = reply.options?.length ? reply.options : this.talkOptions();
-    this.play(reply.lines, opts);
+    // The words, then what they did with them ("Elda backs away from you, then runs.").
+    const lines = reply.ok && !reply.silent && !reply.narrationOnly && reply.narration ? [...reply.lines, reply.narration] : reply.lines;
+    this.play(lines, opts);
+    // The field stays open whatever they feel: say something again (DESIGN §33.4).
+    if (this.sayField) this.sayField.disabled = false;
   }
 
   // The villager's own options for this moment, as the dialog would offer them now.
@@ -354,6 +362,11 @@ export class DialogPanel {
       return;
     }
     this.play(r.lines, r.close ? [{ id: '__close', label: 'Leave' }] : r.options || this.options);
+    // "Say something": the field, open and ready, whatever they feel (DESIGN §33.4).
+    if (r.focusSay && this.sayField) {
+      this.sayField.disabled = false;
+      this.sayField.focus({ preventScroll: true });
+    }
   }
 
   // ---------- gifts ----------

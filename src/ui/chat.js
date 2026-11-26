@@ -12,7 +12,8 @@ import { portraitUrl } from './art.js';
 import { cleanLine, capitalize } from './format.js';
 import { memoryRefs, findMemory, memoryChipLabel, STORE_LABELS, companionshipOf, companionshipLabel } from './lyra_view.js';
 import { TalkSession, villageOf, firstName, lineBeat } from './village_view.js';
-import { LYRA, ChatTargetBar, moodWord, earshotPeople, whyNotHeard, canHear, chipFor, standingOf, faceOf, partingLine, villagerChips, pickActorAt, inFight, isVillager, EARSHOT_LOSE } from './chat_target.js';
+import { LYRA, ChatTargetBar, moodWord, earshotPeople, whyNotHeard, canHear, chipFor, standingOf, faceOf, partingLine, villagerChips, pickActorAt, inFight, isVillager, EARSHOT_LOSE, notHeardText } from './chat_target.js';
+import { silenceAct } from '../ai/silence.js';
 import { chatOf, recordChat, knownName } from '../ai/social/player_talk.js';
 import { STORY } from '../lore/story.js';
 
@@ -433,11 +434,18 @@ export class Chat {
     this.lastSentAt = Date.now();
     g.audio?.play('ui_click');
     let p;
+    // The words reached her first (the brain records them before anything else, DESIGN
+    // §23.3); should her answer fail on the way, what the player sees is her hearing it,
+    // never "didn't catch that".
+    const heard = () => {
+      this.setThinking(false);
+      this.addMessage({ from: 'system', text: silenceAct('lyra', this.targetName(LYRA), { kind: 'heard', n: (this._heardN = (this._heardN ?? -1) + 1) }) });
+    };
     try {
       p = g.brain.handlePlayerMessage(t);
     } catch (err) {
       console.warn('[chat] message failed', err);
-      this.addMessage({ from: 'system', text: "Lyra didn't catch that. Try again in a moment." });
+      heard();
       return;
     }
     const sentAt = Date.now();
@@ -445,8 +453,7 @@ export class Chat {
       (r) => this.afterReply(r, sentAt),
       (err) => {
         console.warn('[chat] message failed', err);
-        this.setThinking(false);
-        this.addMessage({ from: 'system', text: "Lyra didn't catch that. Try again in a moment." });
+        heard();
       },
     );
   }
@@ -787,7 +794,7 @@ export class Chat {
       const e = this.entity(id);
       if (!isVillager(e)) return false;
       if (!canHear(this.game, e, EARSHOT_LOSE)) {
-        this.ui.toast?.(`${firstName(e.name) || 'They'} ${whyNotHeard(this.game, e) === 'downed' ? "is hurt and can't talk" : 'is too far away to hear you'}.`, 'info', { key: 'chat-far' });
+        this.ui.toast?.(notHeardText(this.game, e, whyNotHeard(this.game, e, EARSHOT_LOSE)), 'info', { key: 'chat-far' });
         return false;
       }
       this.seenAt.set(id, { nx: e.x, ny: e.y, px: this.game.player?.x ?? 0, py: this.game.player?.y ?? 0 });
@@ -948,7 +955,7 @@ export class Chat {
     const id = this.target;
     if (id === LYRA) return;
     const e = this.entity(id);
-    const why = !e ? 'gone' : ids ? (ids.includes(id) ? null : whyNotHeard(this.game, e, EARSHOT_LOSE) || 'far') : whyNotHeard(this.game, e, EARSHOT_LOSE);
+    const why = !e ? 'dead' : ids ? (ids.includes(id) ? null : whyNotHeard(this.game, e, EARSHOT_LOSE) || 'far') : whyNotHeard(this.game, e, EARSHOT_LOSE);
     if (!why) {
       if (this.away) {
         // Back within earshot: the field opens again.
@@ -1087,7 +1094,8 @@ export class Chat {
     }
   }
 
-  // Their answer: in the log and as bubbles over their head, one line at a time.
+  // Their answer: in the log and as bubbles over their head, one line at a time. What they
+  // did instead of words, or with them, is a narration row (DESIGN §23.3, §33.4).
   villagerReplied(e, reply, late = false) {
     if (!e || !reply?.lines?.length) return;
     const g = this.game;
@@ -1096,10 +1104,11 @@ export class Chat {
     // you now (the author: "Elda has gone on her way… and she STILL replies").
     if ((this.target === id && this.away) || !canHear(g, e, EARSHOT_LOSE)) return;
     if (reply.mood) this.moods.set(id, String(reply.mood).toLowerCase());
-    if (!reply.ok) {
+    if (!reply.ok || reply.silent || reply.narrationOnly) {
       // No words came: what the player sees them do instead.
-      this.pushVillager(id, { from: 'system', text: reply.lines[0] });
+      this.pushVillager(id, { from: 'system', text: reply.narration || reply.lines[0] });
       if (this.target === id) this.refreshHeader();
+      this.refreshPeople(true);
       return;
     }
     this.flushUnsaid(id);
@@ -1129,6 +1138,19 @@ export class Chat {
       if (i > 0 && !late) item.timer = setTimeout(show, delay * 1000);
       delay += Math.min(3.2, lineBeat(line, speed) * 0.6);
     });
+    // What they do with the words, after them.
+    if (reply.narration) {
+      const item = { show: null, timer: null };
+      item.show = () => {
+        const k = queue.indexOf(item);
+        if (k < 0) return;
+        queue.splice(k, 1);
+        clearTimeout(item.timer);
+        this.pushVillager(id, { from: 'system', text: reply.narration });
+      };
+      queue.push(item);
+      if (!late) item.timer = setTimeout(item.show, delay * 1000);
+    }
     // The first line at once (and all of a late answer); the rest in their own time.
     for (const it of late ? [...queue] : queue.slice(0, 1)) it.show();
     if (this.target === id) this.refreshHeader();
@@ -1166,7 +1188,7 @@ export class Chat {
     }
     const why = whyNotHeard(g, e, this.target === e.id ? EARSHOT_LOSE : 10 * 16);
     if (why) {
-      this.ui.toast?.(`${firstName(e.name) || 'They'} ${why === 'downed' ? "is hurt and can't talk" : 'is too far away to hear you'}.`, 'info', { key: 'chat-far' });
+      this.ui.toast?.(notHeardText(g, e, why), 'info', { key: 'chat-far' });
       return true;
     }
     const wasOpen = this._open;

@@ -36,7 +36,7 @@ const REFUSAL_MEMORY = 120; // "why not?" refers to a refusal this recent
 const OFFER_WINDOW = 60; // a bare coin offer sweetens a refusal this recent
 const COUNTER_WINDOW = 90; // "deal" accepts a counter-offer this recent
 const ASK_WINDOW = 120; // "yes" to something she asked of the player this recent becomes their promise
-const EARSHOT = { left: 18, apart: 30, gone: 12 };
+const EARSHOT = { left: 18, apart: 30, gone: 16 }; // tiles; gone: she keeps 12 away, so walking up to her is always heard (D9)
 // "Let's go", "lead the way", "sure, let's go", "ok I'll come": yes to going along with her.
 const GO_ALONG = /^(?:(?:yes|yeah|yep|sure|ok|okay|alright|all right|of course|absolutely|fine|right|aye|great|good|deal)\s*)?(?:let'?s go|lets go|let us go|lead the way|lead on|after you|i'?ll come|i will come|i'?m coming|i'?m in|come on|go on then|show me|take me there|let'?s do it|lets do it|i'?ll go with you|i'?ll walk with you|count me in|with you|sure thing|okay let'?s go)(?:\s+(?:then|now|lyra|together))?(?:\s*(?:yes|sure|ok|okay))?$/; // tiles: beyond this she cannot hear the chat
 const KNOWLEDGE_SOURCE = { fact: 'player', rumor: 'told', lore: 'lore', theory: 'inferred' };
@@ -139,6 +139,18 @@ export class Brain {
     return this.game?.time ?? 0;
   }
 
+  // Lyra killed (round 14b: anyone adult may die): no answers, no diary, no initiative.
+  isDead() {
+    const g = this.game;
+    try {
+      if (g?.murder?.isDead?.('lyra')) return true;
+    } catch {
+      /* no murder yet */
+    }
+    const L = g?.companion;
+    return !!L && !!L.dead;
+  }
+
   llmAvailable() {
     return !!this.providers.current();
   }
@@ -238,9 +250,10 @@ export class Brain {
     return this._localTurn({ text: clean, parsed, executed });
   }
 
-  // When she cannot hear at all: not there, knocked out, or out of earshot. Nothing else:
-  // hate, fear and having cut the player off never lock her chat (the author: "even if
-  // somebody really hates me, make me able to talk to them"); her answer is her own.
+  // When she cannot hear at all: dead, not there, knocked out, a scene playing, or out of
+  // earshot. Nothing else: hate, fear and having cut the player off never lock her chat (the
+  // author: "even if somebody really hates me, make me able to talk to them"); her answer is
+  // her own (DESIGN §33.4).
   _unreachable() {
     const g = this.game;
     const lyra = g.companion;
@@ -250,7 +263,9 @@ export class Brain {
       this._system(text);
       return { say: '', thought: null, actions: [], provider: 'local', unreachable: why };
     };
-    if (!lyra || lyra.removed) return out(`${name} isn't here.`, 'gone');
+    if (this.isDead()) return out(`${name} is dead.`, 'dead');
+    if (!lyra || lyra.removed) return out(`${name} isn't here.`, 'far');
+    if (g.state === 'cutscene') return out(`${name} can't hear you just now.`, 'cutscene');
     if (state === 'gone' && !lyra.downed && lyra.state !== 'downed' && distanceTiles(g) > EARSHOT.gone) {
       // DESIGN §19.7: she still lives in Hearthvale, and keeps out of the player's way.
       const phrase = lyra.mind?.autonomy?.goneHome?.().phrase || 'in Hearthvale';
@@ -885,7 +900,8 @@ export class Brain {
     const g = this.game;
     const mind = g.companion?.mind;
     // Gone, she still keeps her diary: her life goes on without the player (DESIGN §19.7).
-    if (!mind) return null;
+    // Dead, she keeps none.
+    if (!mind || this.isDead()) return null;
     const day = this._sleepT != null ? Math.floor(this._sleepT / DAY_SECONDS) + 1 : g.clock?.day ?? 1;
     const memories = this._dayMemories(day);
     const offline = composeDiary(g, memories, { day });
