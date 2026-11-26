@@ -10,7 +10,17 @@
 //   - Hess, much stronger than a hurt stranger, snaps back and breaks free, and knows;
 //   - the finder's shock ("No mark… cold as stone"), and no blade, no case;
 //   - reduce motion: the still version;
-//   - on the throttled phone the hold keeps the frame rate.
+//   - on the throttled phone the hold keeps the frame rate;
+//   - the hold plants you: pushing the stick (phone, a second finger) or D (desktop) while the
+//     spell is held does not walk you (the author: "I can move while I'm doing spells; it
+//     should stop me");
+//   - §13b: three wolves and a bandit feed the taken flame (the bar under health, the weaves
+//     harder, the Character panel's numbers); days later the signs (a hug: "your hands—
+//     like ice"; a flame leaning in the Kettle at night; breath, eyes, frost, the slow shadow,
+//     the flowers by your bed); Aveline comes by day, in private, and asks: a lie she doubts,
+//     the truth about the beasts (wary, asks you to stop, the rite offered, no crime); a wolf
+//     taken in front of Hobb is dark magic, no crime; weeks of stopping: the bar and the signs
+//     gone, "You're warmer"; the skeletons by Brindlecombe's graveyard: "Nothing in there".
 // Frames are saved at the start, the peak of the pull, the tear, the sag, the end, the
 // snap-back, the finder's shock and the still version.
 //   node scripts/soul_check.mjs [--out DIR] [--only sideways,upright,desktop]   (npm run build first)
@@ -105,6 +115,31 @@ async function run(S) {
     touchAt = null;
   };
 
+  // Push to walk: D on a computer; on a phone a second finger on the move stick, dragged right
+  // (the hand's finger stays down: both points in every touch event).
+  let stickAt = null;
+  const pushMove = async (on) => {
+    if (!S.phone) {
+      if (on) await page.keyboard.down('d');
+      else await page.keyboard.up('d');
+      return;
+    }
+    const hand = touchAt ? [{ x: touchAt.x, y: touchAt.y, id: 7 }] : [];
+    if (on) {
+      const z = await rectOf('.stick-zone');
+      if (!z) return;
+      stickAt = { x: Math.round(z.x + z.w * 0.4), y: Math.round(z.y + z.h * 0.6) };
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [...hand, { x: stickAt.x, y: stickAt.y, id: 8 }] });
+      for (let i = 1; i <= 4; i++) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [...hand, { x: stickAt.x + i * 12, y: stickAt.y, id: 8 }] });
+        await wait(40);
+      }
+    } else if (stickAt) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: hand });
+      stickAt = null;
+    }
+  };
+
   await page.goto(base, { waitUntil: 'load' });
   await page.waitForFunction(() => window.__game?.state === 'title', null, { timeout: 60000 });
   await ev(() => window.__game.newGame());
@@ -169,6 +204,7 @@ async function run(S) {
   await wait(400);
   check(before.has && before.available === false, `[${tag}] game.unkindle is there, and unknown before the pact`, JSON.stringify(before));
   check(!(await rectOf('.unk-btn')) && !(await rectOf('.unk-hint')), `[${tag}] before the pact: no dark hand, no hint`);
+  check(!(await rectOf('.meter-coldfire')), `[${tag}] no coldfire bar on the HUD before a soul is taken`);
 
   // ---------- the pact's gift ----------
   const learned = await ev(() => {
@@ -262,6 +298,9 @@ async function run(S) {
   }
   await shot('0-in-reach');
   check(await holdDown(), `[${tag}] hold the spell (${S.phone ? 'a finger on the dark hand' : 'F held'})`);
+  // Push to walk while holding it (a second finger on the stick; D on a computer): you stand.
+  const at0 = await ev(() => ({ x: window.__game.player.x, y: window.__game.player.y }));
+  await pushMove(true);
   await until(() => (window.__game.unkindle.channel?.k ?? 0) > 0.12);
   await shot('1-start');
   const mid = await ev(() => {
@@ -276,6 +315,9 @@ async function run(S) {
     return !c || c.phase !== 'pull' || c.shown > 0.78;
   });
   await shot('2-peak');
+  const at1 = await ev(() => ({ x: window.__game.player.x, y: window.__game.player.y, phase: window.__game.unkindle.channel?.phase ?? null }));
+  await pushMove(false);
+  check(Math.hypot(at1.x - at0.x, at1.y - at0.y) < 1.5, `[${tag}] the hold plants you: pushing to walk does not move you`, `${Math.hypot(at1.x - at0.x, at1.y - at0.y).toFixed(2)} px (${at1.phase})`);
   const lamps = await ev(() => window.__game.unkindle.fx?.stats?.lights ?? 0);
   check(lamps > 0, `[${tag}] the lamps near him gutter`, `${lamps} lights`);
   await until(() => {
@@ -455,6 +497,375 @@ async function run(S) {
   check(seen.elda.some((t) => /out of|life|light/i.test(t)), `[${tag}] she cries what she saw, in her words`, seen.elda.join(' | '));
   check(seen.knows && seen.bramLinked, `[${tag}] she links Bram's death: that is how he died`, JSON.stringify({ knows: seen.knows, bram: seen.bramLinked }));
   check(/bare hand/.test(seen.brief) && /Bram/.test(seen.brief), `[${tag}] her brief carries what she knows now`, seen.brief);
+
+  // ---------- §13b (9): three wolves and a bandit on the road feed the taken flame ----------
+  const before13b = await ev(() => {
+    const g = window.__game;
+    g.clock.skipTo?.(10.5);
+    const P = g.player;
+    P.hp = P.maxHp;
+    window.__at(P, 100, 61);
+    P.faceDir?.('right');
+    for (const id of ['elda', 'hess', 'tobias']) window.__at(g.entities.get(id), 20, 52);
+    // A cold flame to start from (the people taken above fed it): this part reads the bar
+    // from nothing, as the verifier plays it on a fresh path.
+    const cf = g.unkindle.coldfire;
+    cf.bar = 0;
+    cf.mark = 0;
+    cf.settled = 0;
+    cf.touch();
+    g.camera.snap?.();
+    // A creature of the world's own kind (any one's constructor), standing still for the check.
+    const C = g.entities.all().find((e) => e.species === 'chicken' || e.species === 'rabbit' || e.species === 'slime')?.constructor;
+    window.__spawn = (sp, tx, ty) => {
+      const c = g.entities.add(new C(g, sp, { x: tx * 16 + 8, y: ty * 16 + 10 }));
+      c.controller = null;
+      c.aggroRadius = 0;
+      return c;
+    };
+    window.__clean();
+    return { sp: g.stats.get(P, 'spellPower'), atk: g.stats.get(P, 'atk'), meter: !!document.querySelector('.meter-coldfire:not([hidden])'), tally: g.unkindle.tally, murders: Object.keys(g.murder.dead).length };
+  });
+  for (const sp of ['wolf', 'wolf', 'wolf', 'bandit']) {
+    await ev((sp) => {
+      const g = window.__game;
+      g.unkindle.cooldownUntil = -Infinity;
+      window.__prey = window.__spawn(sp, 101, 61);
+      window.__prey.x = g.player.x + 14;
+      window.__prey.y = g.player.y;
+    }, sp);
+    await wait(450);
+    await holdDown();
+    await until(() => !window.__game.unkindle.channel && window.__prey?.dead, null, 20000).catch(() => {});
+    await holdUp();
+    await wait(150);
+  }
+  await wait(500);
+  const fed = await ev(() => {
+    const g = window.__game;
+    const P = g.player;
+    const m = document.querySelector('.meter-coldfire');
+    const card = document.querySelector('.player-card');
+    const r = m && !m.hidden ? m.getBoundingClientRect() : null;
+    const c = card?.getBoundingClientRect();
+    return {
+      bar: Math.round(g.unkindle.coldfire.bar),
+      prey: { ...g.unkindle.prey },
+      sp: g.stats.get(P, 'spellPower'),
+      atk: g.stats.get(P, 'atk'),
+      meter: r && { x: r.left, y: r.top, w: r.width, h: r.height, right: r.right, bottom: r.bottom },
+      inCard: !!(r && c && r.left >= c.left - 1 && r.right <= c.right + 1 && r.top >= c.top - 1 && r.bottom <= c.bottom + 1),
+      inView: !!(r && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight),
+      text: m?.textContent || '',
+      tally: g.unkindle.tally,
+      murders: Object.keys(g.murder.dead).length,
+    };
+  });
+  check(fed.prey.beast === 3 && fed.prey.bandit === 1 && fed.bar > 30 && fed.bar < 100, `[${tag}] three wolves and a bandit feed the taken flame`, JSON.stringify({ bar: fed.bar, prey: fed.prey }));
+  check(fed.tally === before13b.tally && fed.murders === before13b.murders, `[${tag}] prey, not murder: no death record, the Hollow's tally unmoved`, `${fed.tally} ${fed.murders}`);
+  check(fed.sp > before13b.sp && fed.atk > before13b.atk, `[${tag}] the weaves and the blade hit harder`, `spellPower ${before13b.sp} -> ${fed.sp}, atk ${before13b.atk} -> ${fed.atk}`);
+  check(!!fed.meter && fed.inCard && fed.inView && fed.meter.h >= 4, `[${tag}] the cold bar shows under health, inside the player card, on screen`, `${JSON.stringify(fed.meter)} "${fed.text}"`);
+  await shot('12-coldfire-hud');
+  if (!S.phone) {
+    // Interface size Large: the bar grows with its card and stays in it.
+    const big = await ev(() => {
+      const g = window.__game;
+      g.settings.uiSize = 'large';
+      window.dispatchEvent(new Event('resize'));
+      return true;
+    });
+    await wait(400);
+    const lg = await ev(() => {
+      const m = document.querySelector('.meter-coldfire')?.getBoundingClientRect();
+      const c = document.querySelector('.player-card')?.getBoundingClientRect();
+      const out = !!(m && c && m.left >= c.left - 1 && m.right <= c.right + 1 && m.bottom <= c.bottom + 1 && m.right <= innerWidth);
+      window.__game.settings.uiSize = 'normal';
+      window.dispatchEvent(new Event('resize'));
+      return { out, w: m?.width };
+    });
+    check(big && lg.out, `[${tag}] Interface size Large: the bar still sits in its card`, JSON.stringify(lg));
+  }
+  // The Character panel: its numbers.
+  const sheet = await ev(() => {
+    const g = window.__game;
+    g.ui.character?.open?.();
+    const box = document.querySelector('.chs-coldfire');
+    box?.scrollIntoView?.({ block: 'center' });
+    return { has: !!box && !box.hidden, text: box?.textContent || '' };
+  });
+  await wait(300);
+  await shot('13-character');
+  check(sheet.has && /Coldfire/.test(sheet.text) && /\+\d+%/.test(sheet.text) && /3 beasts/.test(sheet.text), `[${tag}] the Character panel: Coldfire, its numbers, the souls taken`, sheet.text.slice(0, 160));
+  await ev(() => {
+    window.__game.ui.character?.close?.();
+    window.__clean();
+  });
+
+  // ---------- (10) days pass: the signs come on; a hug; a flame leans in the Kettle ----------
+  const tierNow = await ev(async () => {
+    const g = window.__game;
+    for (let i = 0; i < 6; i++) {
+      g.clock.t += 450;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    }
+    g.clock.skipTo?.(11);
+    return g.unkindle.coldfire.tier();
+  });
+  check(tierNow >= 2, `[${tag}] three days on, the signs have come on (clear)`, String(tierNow));
+  // *hugs Sabeth* (a real message through the chat): she feels your hands.
+  await ev(() => {
+    const g = window.__game;
+    const P = g.player;
+    window.__at(P, 100, 61);
+    const sab = g.entities.get('sabeth');
+    window.__at(sab, 101, 61, 2, 10);
+    sab.faceDir?.('left');
+    g.camera.snap?.();
+    window.__clean();
+    g.ui.chat.selectTarget('sabeth');
+    g.ui.chat.open(true);
+  });
+  await wait(400);
+  const field = await page.$('.chat-input textarea, .chat-input input');
+  if (field) {
+    await field.fill('*hugs Sabeth*');
+    await field.press('Enter');
+  }
+  await until(() => /ice|cold/i.test(document.querySelector('.chat')?.textContent || ''), null, 12000).catch(() => {});
+  await shot('14-hug');
+  const hug = await ev(() => ({ text: (document.querySelector('.chat')?.textContent || '').slice(-400), sab: window.__game.unkindle.suspicion.people.sabeth?.signs || {} }));
+  check(!!field && hug.sab.hands >= 1 && /ice|cold/i.test(hug.text), `[${tag}] *hugs Sabeth*: she says your hands are ice`, hug.text.slice(-120));
+  await ev(() => {
+    window.__game.ui.chat.close?.();
+    window.__at(window.__game.entities.get('sabeth'), 20, 52);
+  });
+  // Night in the Ember Kettle: a flame by you leans away and gutters.
+  const kettle = await ev(async () => {
+    const g = window.__game;
+    g.clock.skipTo?.(22.3);
+    const loc = g.locations.get('ember_kettle');
+    const P = g.player;
+    const hearth = g.objects.all().find((o) => (o.objType === 'hearth' || o.objType === 'lamp') && !o.removed && g.locations.at(o.x, o.y)?.id === 'ember_kettle');
+    const at = hearth || loc.center;
+    P.x = at.x - 12;
+    P.y = at.y + 26;
+    P.walker?.stop?.();
+    P.faceDir?.('up');
+    g.camera.snap?.();
+    window.__clean();
+    for (let i = 0; i < 4; i++) await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await new Promise((r) => setTimeout(r, 700));
+    return { leaning: g.unkindle.signs.leaningNear(), leaned: g.unkindle.signs.stats.leaned, what: hearth?.objType || 'none' };
+  });
+  await shot('15-kettle-lean');
+  check(kettle.leaning && kettle.leaned > 0, `[${tag}] at night in the Kettle a flame by you leans away and gutters`, JSON.stringify(kettle));
+
+  // The strong signs at night (for the eye): breath, a cold glint, frost in your steps, the slow shadow.
+  await ev(async () => {
+    const g = window.__game;
+    const cf = g.unkindle.coldfire;
+    window.__keepMark = { mark: cf.mark, settled: cf.settled };
+    cf.mark = 5;
+    cf.settled = 5;
+    const P = g.player;
+    window.__at(P, 86, 61);
+    P.faceDir?.('down');
+    g.camera.snap?.();
+    window.__clean();
+    // A few steps along the lane, by the body's own steps (each makes a print).
+    for (let i = 0; i < 8; i++) {
+      P.x += 5;
+      P.stepIndex = (P.stepIndex || 0) + 1;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    }
+    P.dir = 'down';
+    await new Promise((r) => setTimeout(r, 200));
+  });
+  await shot('16-signs-night');
+  const signsNight = await ev(() => ({ prints: window.__game.unkindle.signs.prints.length, tier: window.__game.unkindle.coldfire.tier() }));
+  check(signsNight.prints >= 4 && signsNight.tier === 3, `[${tag}] at night: frost in your footprints (the strong signs drawn)`, JSON.stringify(signsNight));
+  // The flowers by your bed: fresh, and at the strongest dead.
+  for (const [mk, name] of [
+    [0, '17-flowers-fresh'],
+    [5, '18-flowers-dead'],
+  ]) {
+    await ev((mk) => {
+      const g = window.__game;
+      g.clock.skipTo?.(13);
+      g.unkindle.coldfire.mark = mk;
+      g.unkindle.coldfire.settled = mk;
+      const P = g.player;
+      window.__at(P, 94, 77, 8, 4);
+      P.faceDir?.('left');
+      g.camera.snap?.();
+      window.__clean();
+    }, mk);
+    await wait(500);
+    await shot(name);
+  }
+  await ev(() => {
+    const cf = window.__game.unkindle.coldfire;
+    cf.mark = window.__keepMark.mark;
+    cf.settled = window.__keepMark.settled;
+  });
+
+  // ---------- (11) Aveline comes, by day, in private, and asks ----------
+  const askBy = async (answer, label) => {
+    await ev(() => {
+      const g = window.__game;
+      g.clock.skipTo?.(11);
+      const P = g.player;
+      window.__at(P, 100, 61);
+      P.faceDir?.('left');
+      const av = g.entities.get('aveline');
+      window.__at(av, 95, 61, 8, 10);
+      delete av.think; // her own day again: the duty walks her to you
+      av.mode = 'routine';
+      av.state = 'idle';
+      g.camera.snap?.();
+      window.__clean();
+      const sus = g.unkindle.suspicion;
+      const st = sus.st('aveline');
+      st.signs.flames = (st.signs.flames || 0) + 1;
+      st.signs.hands = (st.signs.hands || 0) + 1;
+      st.s = 75;
+      st.quietUntil = null;
+      st.asked = null;
+      sus.asking = null;
+      sus.tick();
+    });
+    await until(() => window.__game.unkindle.suspicion.asking?.phase === 'open', null, 25000).catch(() => {});
+    await wait(500);
+    const open = await ev(() => {
+      const g = window.__game;
+      const a = g.unkindle.suspicion.asking;
+      const chat = document.querySelector('.chat');
+      return { phase: a?.phase, line: a?.line || '', chatOpen: !!chat && getComputedStyle(chat).display !== 'none' && !chat.hidden, target: g.ui.chat.target, dist: Math.round(Math.hypot(g.entities.get('aveline').x - g.player.x, g.entities.get('aveline').y - g.player.y)) };
+    });
+    await shot(`${label}-asks`);
+    check(open.phase === 'open' && open.target === 'aveline' && /What are you carrying|cold that takes/.test(open.line), `[${tag}] Aveline walks up, by day and in private, and asks in her own words`, JSON.stringify({ ...open, line: open.line.slice(0, 70) }));
+    const fld = open.phase === 'open' ? await page.$('.chat-input textarea, .chat-input input') : null;
+    if (fld) {
+      await fld.fill(answer);
+      await fld.press('Enter');
+    }
+    await until(() => window.__game.unkindle.suspicion.people.aveline?.asked?.verdict, null, 12000).catch(() => {});
+    await wait(700);
+    await shot(`${label}-answer`);
+    return ev(() => {
+      const g = window.__game;
+      const st = g.unkindle.suspicion.people.aveline;
+      return { verdict: st.asked?.verdict, dark: st.dark, askedStop: st.askedStop, rite: st.riteOffered, text: (document.querySelector('.chat')?.textContent || '').slice(-300), op: g.entities.get('aveline').opinionOfPlayer, wanted: g.murder.isWanted() };
+    });
+  };
+  const op0 = await ev(() => ({ op: window.__game.entities.get('aveline').opinionOfPlayer, wanted: window.__game.murder.isWanted() }));
+  const lie = await askBy("No. I've been ill, that's all.", '19');
+  check(lie.verdict === 'doubted' || lie.verdict === 'believed', `[${tag}] a lie: she doubts it or believes it, by what she knows`, `${lie.verdict}: ${lie.text.slice(-110)}`);
+  check(/watching|fever|Mira|isn't that/.test(lie.text), `[${tag}] her answer in the chat, in her words`, lie.text.slice(-110));
+  const truth = await askBy('Yes. I took the life out of three wolves and a bandit. It makes me stronger.', '20');
+  check(truth.verdict === 'knows' && truth.askedStop != null && truth.rite, `[${tag}] the truth about the beasts: she knows, asks you to stop, offers the rite`, JSON.stringify({ v: truth.verdict, stop: truth.askedStop, rite: truth.rite }));
+  check(/[Ss]top/.test(truth.text) && /chapel/.test(truth.text), `[${tag}] "Stop… come to the chapel flame… your choice"`, truth.text.slice(-140));
+  check(op0.op - truth.op <= 10 && truth.wanted === op0.wanted, `[${tag}] dangerous, not evil: her opinion barely moves, nobody is after you for it`, `${op0.op} -> ${truth.op}`);
+  await ev(() => {
+    const g = window.__game;
+    g.ui.chat.close?.();
+    g.unkindle.suspicion.asking = null;
+    window.__at(g.entities.get('aveline'), 20, 52);
+  });
+
+  // ---------- (12) a wolf taken in front of Hobb: dark magic, no crime ----------
+  await ev(() => {
+    const g = window.__game;
+    g.clock.skipTo?.(12);
+    const P = g.player;
+    window.__at(P, 100, 61);
+    P.faceDir?.('right');
+    const hobb = g.entities.get('hobb');
+    window.__at(hobb, 97, 61, 8, 10);
+    hobb.state = 'idle';
+    hobb.faceDir?.('right');
+    g.unkindle.cooldownUntil = -Infinity;
+    window.__prey = window.__spawn('wolf', 101, 61);
+    window.__prey.x = P.x + 14;
+    window.__prey.y = P.y;
+    window.__said = [];
+    g.camera.snap?.();
+    window.__clean();
+    window.__wantedBefore = g.murder.isWanted();
+  });
+  await wait(450);
+  await holdDown();
+  await until(() => !window.__game.unkindle.channel && window.__prey?.dead, null, 20000).catch(() => {});
+  await holdUp();
+  await wait(500);
+  await shot('21-dark-seen');
+  const dark = await ev(() => {
+    const g = window.__game;
+    return { saw: g.unkindle.suspicion.people.hobb?.dark, said: (window.__said || []).filter((s) => s.who === 'hobb').map((s) => s.text), wanted: g.murder.isWanted(), before: window.__wantedBefore, rumor: !!g.village.rumors.list.find((r) => r.kind === 'dark_magic'), dark: g.unkindle.suspicion.briefLine('hobb') };
+  });
+  check(dark.saw === 'saw' && dark.said.length > 0, `[${tag}] Hobb saw it: shaken, dark magic, in his words`, dark.said.join(' | '));
+  check(dark.wanted === dark.before && dark.rumor && /Dangerous, not evil/.test(dark.dark) && !/killer/.test(dark.dark), `[${tag}] no crime: a rumour of dark magic; what he knows of it, "dangerous, not evil"`, dark.dark.slice(0, 120));
+
+  // ---------- (13) stop for weeks: the bar ebbs, the signs fade, "You're warmer" ----------
+  const stopped = await ev(async () => {
+    const g = window.__game;
+    for (let d = 0; d < 26; d++) {
+      g.clock.t += 900;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    }
+    g.clock.skipTo?.(12);
+    const P = g.player;
+    window.__at(P, 100, 61);
+    P.faceDir?.('left');
+    const av = g.entities.get('aveline');
+    window.__at(av, 99, 61, 4, 10);
+    av.state = 'idle';
+    av.faceDir?.('right');
+    window.__said = [];
+    g.unkindle.suspicion.barkAt = -Infinity;
+    g.camera.snap?.();
+    window.__clean();
+    for (let i = 0; i < 8; i++) await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await new Promise((r) => setTimeout(r, 1600));
+    const cf = g.unkindle.coldfire;
+    return { bar: cf.bar, tier: cf.tier(), s: Math.round(g.unkindle.suspicion.people.aveline?.s ?? -1), said: (window.__said || []).filter((s) => s.who === 'aveline').map((s) => s.text), meter: !!document.querySelector('.meter-coldfire:not([hidden])') };
+  });
+  await shot('22-warmer');
+  check(stopped.bar === 0 && stopped.tier === 0, `[${tag}] weeks later: the bar has ebbed, the signs are gone`, JSON.stringify({ bar: stopped.bar, tier: stopped.tier }));
+  check(stopped.said.some((t) => /warmer|colour/i.test(t)), `[${tag}] Aveline: "You're warmer. Thank you."`, stopped.said.join(' | '));
+
+  // ---------- (14) the skeletons by Brindlecombe's graveyard: nothing in there to take ----------
+  const bone = await ev(() => {
+    const g = window.__game;
+    g.clock.skipTo?.(23);
+    const P = g.player;
+    const z = (g.spawner?.zones || []).find((x) => x.id === 'brindle_dead_night');
+    const r = z?.rect || z?.area || z;
+    const tx = Math.round((r?.x ?? -328) + (r?.w ?? 44) / 2);
+    const ty = Math.round((r?.y ?? 26) + (r?.h ?? 40) / 2);
+    window.__at(P, tx, ty);
+    P.faceDir?.('right');
+    window.__bone = window.__spawn('skeleton', tx + 1, ty);
+    window.__bone.x = P.x + 14;
+    window.__bone.y = P.y;
+    g.camera.snap?.();
+    window.__toasts.length = 0;
+    window.__clean();
+    const r2 = g.unkindle.targetInReach();
+    return { refusal: r2.refusal?.reason || null, target: !!r2.target, place: g.locations.at(P.x, P.y)?.id || '' };
+  });
+  await wait(500);
+  if (!S.phone) {
+    await page.keyboard.down('f');
+    await wait(250);
+    await page.keyboard.up('f');
+  }
+  await wait(200);
+  await shot('23-skeleton');
+  const boneR = await ev(() => ({ toasts: window.__toasts.slice(), ch: !!window.__game.unkindle.channel, alive: !window.__bone.dead, btn: !!document.querySelector('.unk-btn:not([hidden])') }));
+  check(bone.refusal === 'undead' && !bone.target && boneR.alive && !boneR.ch, `[${tag}] a skeleton by the graveyard: nothing in there to take`, JSON.stringify({ ...bone, ...boneR }));
+  if (!S.phone) check(boneR.toasts.includes('Nothing in there to take.'), `[${tag}] F on it: "Nothing in there to take."`, boneR.toasts.join(' | '));
+  else check(!boneR.btn, `[${tag}] no dark hand for the dead`);
 
   // ---------- a slow phone keeps its frame rate through the hold ----------
   if (S.throttle) {

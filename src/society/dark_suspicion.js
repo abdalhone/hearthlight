@@ -634,15 +634,31 @@ export class DarkSuspicion {
     const d = dist(npc, P);
     if (a.phase === 'coming') {
       if (d > 26) {
-        if (tick || !npc.r?.walking) safe(() => (npc.walkTo ? npc.walkTo({ x: P.x, y: P.y }, 1.1) : npc.walker?.goTo?.(P.x, P.y)));
+        // Walk up to you (re-planning as you move), to stand at your side.
+        const side = npc.x < P.x ? -1 : 1;
+        const tx = P.x + side * 18;
+        const ty = P.y + 2;
+        if (typeof npc.helpMove === 'function') safe(() => npc.helpMove(dt, tx, ty, 1, 8, tick));
+        else {
+          if (tick || !npc.walker?.active) safe(() => npc.walker?.goTo?.(tx, ty));
+          safe(() => npc.walker?.step?.(dt));
+        }
         return true;
       }
       safe(() => npc.walker?.stop?.());
+      if (npc.moveIntent) {
+        npc.moveIntent.x = 0;
+        npc.moveIntent.y = 0;
+      }
       if (npc.r) npc.r.walking = false;
       safe(() => npc.faceToward?.(P.x, P.y));
       return true;
     }
     safe(() => npc.walker?.stop?.());
+    if (npc.moveIntent) {
+      npc.moveIntent.x = 0;
+      npc.moveIntent.y = 0;
+    }
     if (npc.r) npc.r.walking = false;
     safe(() => npc.faceToward?.(P.x, P.y));
     return true;
@@ -673,6 +689,8 @@ export class DarkSuspicion {
     };
     if (!e || !this.awake(e) || e.mode === 'fight' || e.mode === 'flee' || !P || P.downed || P.dead) return give('gone');
     if (a.phase === 'coming') {
+      // On her way to you: no earlier talk holds her standing where she is.
+      if (e.talkingUntil) e.talkingUntil = 0;
       if (t - a.t0 > 150) return give('far');
       if (dist(e, P) <= 30) {
         a.at ??= t;

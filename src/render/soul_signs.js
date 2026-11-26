@@ -29,8 +29,7 @@ const PRINTS = 36;
 const PRINT_LIFE = 26; // s
 const SCAN = 0.5; // s between looks round you
 const FROST = ['#eef6ff', '#cfe4ff', '#a9c8f0'];
-const FOG = '#dfe9f7';
-const GLINT = '#e8f6ff';
+const GLINT = '#f0faff';
 const SHADOW = 'rgba(11,10,20,0.32)';
 const FLOWERS = { x: 93 * TILE + 13, y: 77 * TILE + 3 }; // beside your bed in the Wayhouse
 
@@ -174,14 +173,19 @@ export class SoulSigns {
       const self = this;
       L.composite = function soulSignsLights(ctx, r, time, vig) {
         const moved = safe(() => self.leanLights(L, time), null);
+        let out;
         try {
-          return orig(ctx, r, time, vig);
+          out = orig(ctx, r, time, vig);
         } finally {
           if (moved) for (const m of moved) {
             m.l.x = m.x;
             m.l.y = m.y;
           }
         }
+        // Over the night's light (so they read in the dark): the flames leaning from you, your
+        // breath, the cold in your eyes.
+        safe(() => self.drawLit(ctx, r, time, moved));
+        return out;
       };
       L._signsWrapped = true;
     }
@@ -189,25 +193,18 @@ export class SoulSigns {
     if (g.player) this.wrapPlayer(g.player);
   }
 
-  // The player's own: a ground pass (drawShadow, which the renderer calls under everything) and
-  // a wrapper on draw for what shows on the body.
+  // The player's own ground pass (drawShadow, which the renderer calls under everything).
   wrapPlayer(P) {
     if (!P || P._soulSigns) {
       this.player = P;
       return;
     }
     const self = this;
-    const orig = P.draw;
-    P._soulSigns = { orig, hadShadow: Object.prototype.hasOwnProperty.call(P, 'drawShadow'), shadow: P.drawShadow };
+    P._soulSigns = { hadShadow: Object.prototype.hasOwnProperty.call(P, 'drawShadow'), shadow: P.drawShadow };
     const prevShadow = P.drawShadow;
     P.drawShadow = function soulSignsGround(ctx, ox, oy, time) {
       if (typeof prevShadow === 'function') prevShadow.call(this, ctx, ox, oy, time);
       safe(() => self.drawGround(ctx, ox, oy, time));
-    };
-    P.draw = function soulSignsBody(ctx, ox, oy, time) {
-      const r = orig.call(this, ctx, ox, oy, time);
-      safe(() => self.drawBody(ctx, ox, oy, time));
-      return r;
     };
     this.player = P;
   }
@@ -303,46 +300,77 @@ export class SoulSigns {
     ctx.fillRect(x, y - 9 + droop * 2, 1, 1);
   }
 
-  // On the body: breath that fogs at night, a pale cold glint in the eyes.
-  drawBody(ctx, ox, oy, time) {
+  // After the night's light, in device pixels (one world pixel = renderer.scale): the flames
+  // near you leaning away (a tongue of flame bent from you, sputtering), your breath that fogs
+  // at night, the pale cold glint in your eyes. Still under reduce motion: no puffing, no
+  // sputter, a steady lean.
+  drawLit(ctx, r, time, moved) {
     const tier = this.tier();
     const P = this.game?.player;
-    if (tier < 1 || !P || P.dead || P.downed || P.carriedBy || !this.isNight()) return;
-    const sx = Math.round(P.x - ox);
-    const sy = Math.round(P.y - oy - (P.z || 0));
-    const dir = P.dir || 'down';
+    if (tier < 1 || !P || P.dead || !r?.worldToDevice) return;
+    const sc = r.scale || 3;
     const rm = this.reduce;
-    // Breath: a small cold puff in front of the face, every couple of seconds (still: a faint
-    // steady haze).
-    const fx = dir === 'left' ? -1 : dir === 'right' ? 1 : 0;
-    const fy = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
-    const mx = sx + fx * 4;
-    const my = sy - 14 + fy * 2;
-    const cyc = rm ? 0.6 : (time * 0.45) % 1;
-    if (rm || cyc < 0.55) {
-      const k = rm ? 0.5 : Math.sin((cyc / 0.55) * Math.PI);
-      const drift = rm ? 1 : cyc * 6;
-      ctx.globalAlpha = 0.18 + 0.34 * k;
-      ctx.fillStyle = FOG;
-      const bx = Math.round(mx + fx * drift);
-      const by = Math.round(my - drift * 0.6);
-      ctx.fillRect(bx - 1, by, 3, 2);
-      ctx.fillRect(bx, by - 1, 2, 1);
-      if (k > 0.5) ctx.fillRect(bx + fx * 2 + (fx ? 0 : 2), by - 2, 2, 1);
-      ctx.globalAlpha = 1;
-    }
-    if (tier >= 3 && dir !== 'up') {
-      // Eyes: two cold pixels facing you, one in profile; a slow pulse (still: steady).
-      const a = rm ? 0.85 : 0.65 + 0.3 * Math.sin(time * 2.1);
+    const px = (wx, wy, w, h, color, a) => {
+      const d = r.worldToDevice(wx, wy);
       ctx.globalAlpha = a;
-      ctx.fillStyle = GLINT;
-      const ey = sy - 15;
-      if (dir === 'down') {
-        ctx.fillRect(sx - 2, ey, 1, 1);
-        ctx.fillRect(sx + 1, ey, 1, 1);
-      } else ctx.fillRect(sx + fx * 2, ey, 1, 1);
-      ctx.globalAlpha = 1;
+      ctx.fillStyle = color;
+      ctx.fillRect(Math.round(d.x), Math.round(d.y), Math.ceil(w * sc), Math.ceil(h * sc));
+    };
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    // The flames, leaning away.
+    if (tier >= 2 && moved?.length) {
+      for (let i = 0; i < moved.length; i++) {
+        const m = moved[i];
+        const dx = m.x - P.x;
+        const dy = m.y - (P.y - 8);
+        const d = Math.hypot(dx, dy) || 1;
+        const ux = dx / d;
+        const near = clamp(1 - d / LEAN_R);
+        const sp = rm ? 0.6 : 0.5 + 0.5 * Math.sin(time * 17 + i * 1.9);
+        const lean = (1.5 + 2.5 * near) * (rm ? 1 : 0.7 + 0.3 * sp);
+        const fx = Math.round(m.x);
+        const fy = Math.round(m.y);
+        // the tongue: three steps bent from you, thinning, a cold blue root where it gutters
+        px(fx - 0.5, fy, 1, 1, '#9fd4ff', 0.55 * near);
+        px(fx + ux * lean * 0.35, fy - 1, 1, 1, '#ffd27a', 0.9);
+        px(fx + ux * lean * 0.7, fy - 2, 1, 1, '#ffe9a8', 0.85);
+        px(fx + ux * lean, fy - 3, 1, 1, '#fff6d8', 0.55 + 0.35 * sp);
+        if (!rm && sp > 0.75) px(fx + ux * (lean + 1), fy - 4.5, 1, 1, '#8a8aa0', 0.4);
+      }
     }
+    const night = this.isNight();
+    if (night && !P.downed && !P.carriedBy) {
+      const dir = P.dir || 'down';
+      const fx = dir === 'left' ? -1 : dir === 'right' ? 1 : 0;
+      const fy = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
+      const z = P.z || 0;
+      // Breath: a small cold puff before the face every couple of seconds (still: a faint haze).
+      const cyc = rm ? 0.3 : (time * 0.45) % 1;
+      if (rm || cyc < 0.6) {
+        const k = rm ? 0.55 : Math.sin((cyc / 0.6) * Math.PI);
+        const drift = rm ? 1 : cyc * 6;
+        const bx = P.x + fx * (4 + drift) - (fx ? 0 : 1);
+        const by = P.y - 13 - z + fy * 2 - drift * 0.7;
+        px(bx - 1, by, 3, 1, '#e4eefa', 0.16 + 0.3 * k);
+        px(bx, by - 1, 2, 1, '#e4eefa', 0.12 + 0.26 * k);
+        if (k > 0.45) px(bx + (fx || 1) * 2, by - 2, 2, 1, '#e4eefa', 0.1 + 0.22 * k);
+      }
+      // Eyes: two cold pixels facing you, one in profile, none from behind.
+      if (tier >= 3 && dir !== 'up') {
+        const a = rm ? 0.95 : 0.82 + 0.18 * Math.sin(time * 2.1);
+        // (on the sprite's own eyes: measured from the drawn frames, 19 px above the feet)
+        const ey = P.y - 19 - z;
+        if (dir === 'down') {
+          px(P.x - 3, ey, 1, 2, GLINT, a);
+          px(P.x + 2, ey, 1, 2, GLINT, a);
+        } else px(P.x + (fx > 0 ? 1 : -2), ey, 1, 2, GLINT, a);
+        // and a faint cold halo round them
+        px(P.x - 4, ey, 8, 1, '#9fd4ff', 0.12 * a);
+      }
+    }
+    ctx.restore();
   }
 
   // Flames near you lean away and gutter: this frame's light only (restored after composite).

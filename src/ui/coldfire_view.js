@@ -126,7 +126,10 @@ export class ColdfireView {
         s.souls,
         s.signs,
       );
-      grid.append(box);
+      // Right after "Running now" (what runs on you), before the sums.
+      const after = cv.effectsBox && cv.effectsBox.parentNode === grid ? cv.effectsBox : null;
+      if (after) after.after(box);
+      else grid.append(box);
     }
     box.hidden = false;
     const s = this.sheet;
