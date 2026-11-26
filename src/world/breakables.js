@@ -287,7 +287,8 @@ function landTree(game, t, items, dir) {
       let x = t.x + dir * len * along;
       const y = t.y - 2 + ((k % 2) * 2 - 1) * 2;
       if (wallBetween(game, t.x, t.y - 3, x, y - 3)) x = t.x + dir * 6;
-      safeDrop(game, it.id, 1, x, y);
+      // No random pop: a log lies where the trunk put it, not rolled back to the stump.
+      safeDrop(game, it.id, 1, x, y, { pop: false, collectDelay: 0.4 });
     }
   }
 }
@@ -301,9 +302,9 @@ function scatter(game, items, x, y) {
   }
 }
 
-function safeDrop(game, id, qty, x, y) {
+function safeDrop(game, id, qty, x, y, opts) {
   try {
-    dropItem(game, id, qty, x, y);
+    dropItem(game, id, qty, x, y, opts);
   } catch (err) {
     console.warn('[breakables] drop failed', err);
   }
