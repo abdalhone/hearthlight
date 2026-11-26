@@ -378,17 +378,19 @@ test('practice: "Try all magic" lends it for straw only; the dummy gives up noth
   assert.equal(Object.keys(g.murder.dead).length, 0);
 });
 
-test('what they perceive: a brief never says what they cannot know; the cold shows to one beside you', () => {
+test('what they perceive: a brief never says what they cannot know; the cold shows only to one who feels it', () => {
   const { g, unk } = setup({ keep: ['bram', 'elda'] });
   assert.equal(unk.briefLine('elda'), '');
   assert.equal(unk.briefLine('player'), '');
-  unk.mark = 2; // a soul or two taken: the faint signs
+  unk.mark = 2; // a soul or two taken: the signs show
   const elda = near(g, 'elda', 1, 0);
   elda.state = 'idle';
+  assert.equal(unk.briefLine('elda'), '', 'standing near is not feeling it');
+  assert.ok(unk.suspicion.touched(elda, 'act'), 'a hug, close enough to touch');
   assert.match(unk.briefLine('elda'), /cold/);
   assert.doesNotMatch(unk.briefLine('elda'), /soul|kill/i);
   put(elda, g.player.x + 6 * TILE, g.player.y);
-  assert.equal(unk.briefLine('elda'), '', 'not from across the clearing');
+  assert.equal(unk.suspicion.touched(elda, 'act'), false, 'not from across the clearing');
 });
 
 test('saves: the gift, the tally, the deaths, the attempts and who knows come back; a hold never does', () => {

@@ -37,12 +37,12 @@ export const BOOST = 0.3; // Sword and Weave power at a full bar
 export const CHANNEL = 0.4; // how much faster a full bar pulls
 export const POWER = 0.5; // how much stronger a full bar makes you in the strength check
 // The mark (hidden): what each soul leaves, how fast the signs come on and leave.
-export const MARK_GAIN = Object.freeze({ person: 1, bandit: 0.5, beast: 0.25, boss: 1.5, tempter: 1.5 });
+export const MARK_GAIN = Object.freeze({ person: 1, bandit: 0.5, beast: 0.3, boss: 1.5, tempter: 1.5 });
 export const MARK_MAX = 8;
 export const SETTLE = 0.5; // mark a day the signs come on by
-export const MARK_REST = 3; // days without taking before the cold starts to leave you
-export const MARK_FADE = 0.12; // a day, after that
-export const TIERS = Object.freeze([0.5, 1.2, 3]); // settled mark for faint, clear, strong
+export const MARK_REST = 5; // days without taking before the cold starts to leave you
+export const MARK_FADE = 0.1; // a day, after that
+export const TIERS = Object.freeze([0.4, 1, 4]); // settled mark for faint, clear, strong
 export const TIER_NAMES = Object.freeze(['none', 'faint', 'clear', 'strong']);
 
 const clamp = (v, a = 0, b = 1) => (v < a ? a : v > b ? b : v);

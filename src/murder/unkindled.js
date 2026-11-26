@@ -663,12 +663,7 @@ export class Hollow {
       else if (n === FEAR_TALK) out.push('Two of your neighbours found dead with no mark, cold as stone, and no wind blowing. People whisper of the Hollow; you bar your door at night.');
       else if (n === 1) out.push(`${this.name(known[0].id)} was found dead with no mark on ${pronoun(known[0].id, 'him')}, cold as stone. Nobody can say what took ${pronoun(known[0].id, 'him')}.`);
     }
-    // What shows on the stranger (S20-6 as replaced: the price is that it shows): felt only
-    // by one beside them who sees them now (close enough to touch).
-    const tier = this.unk?.signTier?.() || 0;
-    const e = this.entity(id);
-    const P = g?.player;
-    if (tier >= 1 && e && P && Math.hypot(e.x - P.x, e.y - P.y) <= 24 && seesActor(g, e, P)) out.push(tier >= 2 ? 'Beside the stranger the air goes cold, like a cellar; their hands are cold as well-stone.' : 'Close to the stranger you feel a cold coming off them, like well-stone.');
+    // What shows on the stranger (the signs) is the faithful's side: src/society/dark_suspicion.js.
     let s = out.join(' ');
     if (s.length > BRIEF_MAX) s = `${s.slice(0, BRIEF_MAX - 1).replace(/\s+\S*$/, '')}…`;
     return s;
