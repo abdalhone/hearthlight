@@ -142,7 +142,7 @@ slow phones (test at 4× CPU throttle).
 | Controls | Every action reachable by touch, by keys (and the map's N), by pad | `src/core/input.js`, `src/ui/touch.js` |
 | The map | Drag, pinch, wheel, +/−; tools over the chart on a phone held sideways; with a mouse the panel is zoomed (Interface size), so pointer math divides by the canvas's zoom | `src/ui/world_map.js` |
 | Interface size | Desktop panels and HUD are drawn at `--uiz` (1.2 Normal, 1.45 Large); anything that reads pointer positions inside them must divide by its own zoom. The down countdown follows it as far as it fits under the body (`death_view.js place`); the ember-ring's arrow and tag follow it (`polish.css`) | `src/ui/ui_scale.js`, `src/ui/death_view.js`, `src/styles/polish.css` |
-| Down on a phone (round 14b) | The countdown and Call for help never share ground with the floating stick's zone: above the body on an upright phone, the other half sideways (mirrored left-handed); the UI root carries `sv-down` / `sv-lefty` while you are down | `src/ui/death_view.js`, `src/styles/polish.css` |
+| Down on a phone (round 14b) | The countdown and Call for help never share ground with the floating stick's zone: above the body on an upright phone (just under the top cards, however many price chips they hold), the other half sideways (mirrored left-handed); the UI root carries `sv-down` / `sv-lefty` while you are down | `src/ui/death_view.js`, `src/styles/polish.css` |
 | Performance | Chunk painting, fog/overlays (one flat wash, not full-screen textures), object updates | `src/render/*`, `src/world/*` |
 | Text | Toasts and signs readable at phone size | `src/ui/toast.js` |
 

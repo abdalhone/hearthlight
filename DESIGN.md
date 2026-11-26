@@ -2901,8 +2901,9 @@ Workstream polish takes the small things the checks left. As built:
   words sit on one solid panel (readable over pale crowns, snow, lamplight). While you are
   down the UI root carries `sv-down` (and `sv-lefty` when the stick is on the right). On an
   upright phone the countdown goes above the body under the top strip, so the floating
-  stick's zone (the lower half) never holds it; the mission line makes way and the toasts
-  come below it (`--sv-below`, set by `place()`). Sideways it takes the half the stick does
+  stick's zone (the lower half) never holds it: just under the top cards however tall the
+  price chips have grown them (`--sv-top`, measured by `place()`); the mission line makes
+  way and the toasts come below it (`--sv-below`). Sideways it takes the half the stick does
   not. On a computer the weave bar steps aside while you are down, and the countdown is
   drawn at the Interface size (`ui._uiz`) as far as it fits between the body and the
   screen's foot (`place()`, four times a second); the ring's canvas follows the pixels it
@@ -2924,8 +2925,12 @@ Workstream polish takes the small things the checks left. As built:
   is mended only where people live, the vale while anyone is still in it (and not once
   `game.occupation.emptied()`, when blood provides it). Elsewhere the debris stays and the
   mend is asked again a day later; a bush grows back anywhere.
-- Not done here: the hearing rule's trees, props and second doorways (§33.2's `hears()` is
-  the rule four workstreams build on; left for after the merge), and the 844×390 prompt over
-  a speech bubble (bubbles.js belongs to party and talk).
+- Not done here: the hearing rule's trees, props and second doorways. It was not cheap:
+  the second doorway that matters is a partition's open gap (the Kettle's back rooms, out
+  through the front door), and `worldgen.partition()` records no gap anywhere, so it needs
+  worldgen to keep them and a two-leg search in `hears()`; trees and crates let sound round
+  them in life, and making them muffle would change `hears()` (§33.2) under the four
+  workstreams that build on it. Left for after the merge. Also not here: the 844×390 prompt
+  over a speech bubble (bubbles.js belongs to party and talk).
 - Its CSS is in `src/styles/polish.css`; `src/core/plugins/polish.js` stays empty (nothing
   here needs a plugin). Tests: `tests/polish.test.mjs`; the check: `scripts/polish_check.mjs`.
