@@ -344,6 +344,46 @@ test('seam 5: a walk already begun stops when Lyra leaves the vale; the day pass
   back();
 });
 
+test('seam 5: hate means distance on a wild path too: walked at on the Crown path, she steps away without jitter and never into the thicket', () => {
+  for (const mode of ['wary', 'left']) {
+    const g = makeGame({ hour: 14 });
+    const L = g.companion;
+    const P = g.player;
+    const a = L.mind.autonomy;
+    step(g, 1);
+    a.adjustPlayer({ trust: -40, fear: mode === 'wary' ? 40 : 70, affinity: -60 }, 'test');
+    a.setCompanionship(mode, 'You frighten me.', { cause: mode === 'left' ? 'fear_left' : 'fear' });
+    const c = g.locations.get('deep_whisperwood').center;
+    assert.ok(c.y < 0, 'the deep wood, north of the vale');
+    placeAt(g, P, c.x, c.y + 8);
+    placeAt(g, L, c.x, c.y - 90);
+    step(g, 0.5);
+    const dt = 0.05;
+    let prev = { x: L.x, y: L.y };
+    let lastV = null;
+    let reversals = 0;
+    let blocked = 0;
+    for (let i = 0; i < 40 / dt; i++) {
+      const dx = L.x - P.x;
+      const dy = L.y - P.y;
+      const d = Math.hypot(dx, dy);
+      g.input.move = d > 40 ? { x: (dx / d) * 0.7, y: (dy / d) * 0.7 } : { x: 0, y: 0 };
+      step(g, dt, dt);
+      const vx = L.x - prev.x;
+      const vy = L.y - prev.y;
+      const sp = Math.hypot(vx, vy);
+      prev = { x: L.x, y: L.y };
+      if (sp > 0.15) {
+        if (lastV && vx * lastV.x + vy * lastV.y < -0.5 * sp * Math.hypot(lastV.x, lastV.y)) reversals++;
+        lastV = { x: vx, y: vy };
+      }
+      if (g.isBlockedTile(...tileOf(L), L)) blocked++;
+    }
+    assert.ok(reversals <= 6, `${mode}: ${reversals} reversals while walked at`);
+    assert.equal(blocked, 0, `${mode}: never on a thicket or wall tile`);
+  }
+});
+
 // ---------------------------------------------------------------- 6. witnesses in the wilds
 
 function aloneUpThere(g) {

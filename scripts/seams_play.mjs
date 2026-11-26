@@ -304,7 +304,7 @@ async function run(S) {
   // ---------- down in the wilds at Interface size Large (computer) ----------
   if (!S.phone) await ev(() => window.__game.setSetting('uiSize', 'large'));
   await wait(300);
-  const uiz = await ev(() => getComputedStyle(document.querySelector('#ui') || document.body).getPropertyValue('--uiz') || '1');
+  const uiz = await ev(() => getComputedStyle(document.querySelector('.ui-zoomed') || document.body).getPropertyValue('--uiz') || '1');
   await ev(() => {
     const g = window.__game;
     const camp = g.locations.get('treeline_camp').center;
