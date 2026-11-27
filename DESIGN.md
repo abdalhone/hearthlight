@@ -1562,7 +1562,10 @@ registry entry, and it works with every other entry automatically.
   still works. Statuses show on actors (flicker, tint, drips, sparks, frost rime, bubbles).
 - **Numbers.** Cost = (shape cost + essence costs) × twist multipliers; cooldown and damage
   scale the same way; every plan stays inside a power budget so a combination is never
-  free or useless. Names are generated ("Splitting Ember Bolt", "Echoing Tide Nova").
+  free or useless. On top of the budget's cost every weave pays a surcharge in mana only
+  (round 15, §40.10: `costSurcharge`: ×1.15, +25% for each essence past the first, +12% for
+  each twist, a strong shape its own ×1.05–1.25), and the old 90-mana ceiling is gone (600).
+  Names are generated ("Splitting Ember Bolt", "Echoing Tide Nova").
 - **Cooldowns you can feel** (r12; the author: "the skills doesn't have cooldown"). Each
   shape's own cooldown is stretched by its scale (`COOLDOWN_SCALE` in
   `src/magic/balance.js`) before the clamp (0.16–12 s): Spark (bolt) 0.75 s, strike 1.5 s,
@@ -1582,8 +1585,9 @@ registry entry, and it works with every other entry automatically.
   grows to 1 at 1.5 s after the press (cast speed shortens it; the charge twist halves
   it). At charge k a weave hits ×(1 + 1.5k) (×2.5 full; the twist ×(1 + 2k), ×3), is up
   to ×1.45 bigger and flies up to ×1.25 faster; binds hold, wards shield and surges last
-  longer by their own scalings; count and range stay. It costs ×(1 + k) mana (×2 full),
-  paid at the release; the charge stops growing at what the mana in hand can pay for (the
+  longer by their own scalings; count and range stay. It costs ×(1 + 1.5k) mana (×2.5 full;
+  the charge twist ×(1 + 2k), ×3: round 15, §40.10, as much more as it hits), paid at the
+  release (`magic.chargedCost`); the charge stops growing at what the mana in hand can pay for (the
   button says so). A weave still cooling cannot start a charge. One charge at a time: a
   second weave pressed meanwhile lets the first one go. Beams pour while held as before.
 - **Mana.** A violet bar under health (start 40, regenerates; grows with level and
@@ -1659,6 +1663,23 @@ a short intro scene, and a component reward): *Varek One-Eye* at the bandit camp
 *the Mother of Slimes* in the quarry's rain-pools, *the Lake's Hum* in Mirror Lake, and
 *the Bone Warden* in the Sunken Ruins (gives `dark`). Rewards are picked up as glowing
 glyph-shards with a short reveal ("You can weave fire").
+
+**How hard** (round 15, §40.8; the author: "I don't think the 3 or 2 minutes fights are
+enough … if I wanted to do it alone, like 4 minutes or like something that is really hard
+… There is no time limit, but like make it have a really good damage and a really good
+defense"; this replaces the one-to-three minutes of round 4). Each boss names the level it
+is meant for (`defs.js` `level`: the Mother 4, Varek 5, Greyjaw 6, the Lake's Hum 7, the
+Bone Warden 9). Alone at that level, a good build (two thirds of the points in Might or
+Weave, the rest in Vitality or Focus, a few potions) needs about four minutes or more of a
+genuinely hard fight; with a companion somewhat less; a much higher level less, never a
+burst. No time limit and no enrage: the length is the boss's strength. **Damage**: its blows
+are heavy (a few unread markers drop you). **Defense** (`boss.js`): armour (`def`, taken off
+every blow down to the armour floor), resistances by damage type (`resist`), one blow takes
+at most 3% of its health (`capBlow`, asked by `combat.damage`), and a hand that strikes it
+for 4% inside about two seconds raises its **guard** for 3 s (a ring of its colour, "guarded"
+over it): 12% of each blow gets through, pressing it holds it longer (to 6 s), and when it
+falls the slate is clean, an opening. Each hand counts on its own (a companion adds hers).
+Every attack is still telegraphed for at least half a second with a ground marker.
 
 ### 22.4 Controls (`src/core/input.js`, `src/ui/touch.js`, `src/ui/spellbook.js`)
 
@@ -3366,18 +3387,26 @@ evil, beasts and bandits as prey).
   `'dead'`, `'carried'`, `'dummy'` (a trial lends it for straw only). Hostile beasts and bandits
   may be taken: §37.12. `targetInReach()` → `{ target, refusal }`: `game.lock.target`
   first (blood, feature-detected), else the nearest in front within touch.
-- **Strength:** `powerOf(P)` (max health, attack, the weave in you (`spellPower`), `resist`, level,
-  times how whole you are now, times coldfire's `powerMul()`: a fuller bar takes stronger souls) against `strengthOf(e)` (max health, attack, defence, the watch or
-  the hunt, a will in their traits, Lyra's weave and level; times how whole they are; asleep
-  ×0.6, downed ×0.45). `verdict(e)` → `{ ratio, kind, dur, peak, struggle }`:
-  `'easy'` (ratio < 1: a 2.5–3.5 s pull), `'close'` (1–1.6: 3.5–5 s, harder jerks that win back
-  ground, more time to be broken), `'resists'` (≥ 1.6, and anyone `murder.canKill` refuses: it
-  comes only so far, then snaps back). A boss (strength at least 90) is taken only when the
-  ratio is ≤ 1/1.6 (a hand much stronger: a long 'close' pull); otherwise it shrugs the spell
-  off at once, never held (no stun to chain). The tempter always shrugs it off, whatever the
-  build (Version 12, §39.13). A pull's length is divided
-  by coldfire's `1 + 0.4·bar` (§37.9). At level 1 Elda and Bram are
-  easy, Wys awake is close (asleep, easy), Hess and Rowan break free; a hurt stranger is weaker.
+- **Strength** (round 15, §40.3: a contest of who they are): `powerOf(P)` (your level most;
+  the weave in you, `resist`, max health and the sword arm on a log, so piled points buy
+  less and less; times how whole you are now, times coldfire's `powerMul()`) against
+  `strengthOf(e)` (the body a little; the watch +14 and its captain +12 more, the hunt +24, a
+  will in their traits +3 each to 9, faith (the chapel's keeper +20, the songkeeper +4),
+  Lyra's weave and level; times how whole they are; asleep ×0.6, downed ×0.45). The odds:
+  `chanceOf(ratio)` = 1 / (1 + (r / 0.85)^4), none at 1.6 or more; `verdict(e)` carries
+  `chance` and `words` (sure, likely, even, unlikely, barely, too strong) and `odds(e)` gives
+  them to the hint before you start ("Hold F · Rowan · even, 50%"; the dark hand "Rowan 50%");
+  `begin` rolls them, and a soul the roll goes against breaks free somewhere past `KNOW_AT`
+  of the pull, and knows (the resisted path). `verdict(e)` → `{ ratio, kind, dur, peak,
+  struggle, chance, words }`:
+  `'easy'` (a chance of 85% or more: a 2.5–3.5 s pull), `'close'` (less: 3.5–5 s, harder
+  jerks that win back ground, more time to be broken, and it may break free), `'resists'`
+  (≥ 1.6, and anyone `murder.canKill` refuses: it comes only so far, then snaps back). A boss
+  and the tempter always shrug it off at once, whatever the build, never held (no stun to
+  chain; round 15: a boss was taken by "a hand much stronger" until then). A pull's length is
+  divided by coldfire's `1 + 0.4·bar` (§37.9). At level 1 Elda and Bram are easy, Wys awake
+  is close (asleep, better odds), Hess and Rowan break free; at level 15 Rowan is even, Hess
+  and Aveline likely, most of the village sure; a hurt stranger is weaker.
 - **The hold:** `begin(target?)` → `{ ok, reason, line }`, `release(why)`, `channel` (read by the
   look and the controls), `update(dt)`. While it lasts the target is **held and silent**:
   `silence(game, e, 0.6)` refreshed each frame (loudness 0), `lockTime`/`rootTime`, no wind-up,
