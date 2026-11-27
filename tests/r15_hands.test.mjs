@@ -1,0 +1,305 @@
+// Round 15, the author's Version 12 playtest (DESIGN §40): the hands workstream.
+//   6. "when I use a spell and I leave it, the highlight of where it would go or where I can aim it
+//      stays on": the aim preview is drawn only while a weave is pressed or held, and goes the
+//      moment the cast ends, is cancelled, refused, or let go by the runtime (a roll, a stun).
+//   9. "I can like break iron without any specialized tools. Why is that?": iron needs a pickaxe.
+//  11. "I cannot focus on a training dummy": the lock takes the dummy (and any hittable target).
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { Input } from '../src/core/input.js';
+import { Weaving } from '../src/ui/weaving.js';
+import { makeMagicStub } from './helpers/magic_stub.mjs';
+
+// ---------------------------------------------------------------- 6: the aim preview
+
+function bus() {
+  const subs = new Map();
+  return {
+    on(t, fn) {
+      if (!subs.has(t)) subs.set(t, []);
+      subs.get(t).push(fn);
+      return () => {};
+    },
+    emit(t, p) {
+      for (const fn of subs.get(t) || []) fn(p);
+    },
+  };
+}
+
+// A small world for the weave controller (as tests/controls.test.mjs), with a mouse over the
+// game (renderer.cssToWorld is the identity) and a foe in front: a fight, the mouse aiming.
+function world(opts = {}) {
+  const foes = [];
+  const g = {
+    state: 'playing',
+    paused: false,
+    hitStop: 0,
+    time: 0,
+    settings: { ...(opts.settings || {}) },
+    bus: bus(),
+    player: {
+      x: 100,
+      y: 100,
+      facing: { x: 1, y: 0 },
+      isAlive: () => true,
+      faceToward(x, y) {
+        const l = Math.hypot(x - this.x, y - this.y) || 1;
+        this.facing = { x: (x - this.x) / l, y: (y - this.y) / l };
+      },
+    },
+    companion: { id: 'lyra', type: 'actor', x: 130, y: 300, isAlive: () => true },
+    entities: { all: () => [g.player, g.companion, ...foes] },
+    combat: { isHostile: (a, b) => !!b.hostile },
+    ui: { isModalOpen: () => false },
+  };
+  g.input = new Input(g);
+  g.magic = makeMagicStub(g, opts);
+  g.renderer = { cssToWorld: (x, y) => ({ x, y }) };
+  g.canvas = { getBoundingClientRect: () => ({ left: 0, top: 0 }) };
+  g.addFoe = (x, y) => {
+    const f = { type: 'actor', x, y, hostile: true, isAlive: () => true };
+    foes.push(f);
+    return f;
+  };
+  return g;
+}
+
+function step(g, w, n = 1, dt = 1 / 60) {
+  for (let i = 0; i < n; i++) {
+    g.time += dt;
+    w.update(dt);
+    g.magic.update(dt);
+    g.input.endFrame();
+  }
+}
+
+// The mouse moves over the game (it keeps "aiming" for a few seconds after).
+function mouseAt(g, x, y) {
+  g.input._onPointerMove({ pointerType: 'mouse', clientX: x, clientY: y, target: g.canvas });
+}
+
+// What the aim layer would draw this frame: the casts' previews and the faint guide.
+const drawn = (g, w) => w.aims.length + (w.hover && g.settings.aimGuideIdle === true ? 1 : 0);
+const keyDown = (g, d) => g.input._onKeyDown({ code: `Digit${d}`, key: String(d), target: null, preventDefault() {} });
+const keyUp = (g, d) => g.input._onKeyUp({ code: `Digit${d}`, key: String(d) });
+
+test('6: a held key shows the aim, and the release clears it at once (keys 1-4 with the mouse)', () => {
+  const g = world();
+  const w = new Weaving(g);
+  g.addFoe(160, 100);
+  mouseAt(g, 170, 96);
+  keyDown(g, 1);
+  step(g, w, 40);
+  assert.equal(w.aims.length, 1, 'held past the tap: the aim shows');
+  keyUp(g, 1);
+  step(g, w);
+  assert.equal(g.magic.released.length, 1, 'cast on the release');
+  for (let i = 0; i < 180; i++) {
+    mouseAt(g, 170 + (i % 9), 96 - (i % 5)); // the mouse keeps moving in the fight
+    step(g, w);
+    assert.equal(w.aims.length, 0, `no cast preview ${i} steps after the release`);
+    assert.equal(w.hover, null, `no faint guide ${i} steps after the release (the author: "the highlight ... stays on")`);
+  }
+});
+
+test('6: a click on a hotbar slot, held and dragged out to aim: nothing is drawn after the release', () => {
+  const g = world();
+  const w = new Weaving(g);
+  g.addFoe(160, 100);
+  w.clickStart(0, 1);
+  step(g, w, 30);
+  mouseAt(g, 40, 30);
+  step(g, w, 30);
+  assert.equal(w.aims.length, 1);
+  w.clickEnd(1);
+  step(g, w);
+  assert.equal(g.magic.released.length, 1);
+  for (let i = 0; i < 150; i++) {
+    mouseAt(g, 40 + (i % 7), 30);
+    step(g, w);
+    assert.equal(drawn(g, w), 0, `cleared ${i} steps after the click's release`);
+    assert.equal(w.hover, null);
+  }
+});
+
+test('6: the right button (the marked weave) and the pad trigger clear on the release too', () => {
+  const g = world();
+  const w = new Weaving(g);
+  g.addFoe(160, 100);
+  mouseAt(g, 170, 96);
+  g.input.setVirtual('cast', true);
+  step(g, w, 40);
+  assert.equal(w.aims.length, 1);
+  g.input.setVirtual('cast', false);
+  step(g, w);
+  assert.equal(g.magic.released.length, 1);
+  for (let i = 0; i < 60; i++) {
+    mouseAt(g, 170, 96 + (i % 3));
+    step(g, w);
+    assert.equal(drawn(g, w), 0);
+    assert.equal(w.hover, null);
+  }
+  // A pad: the right stick held over, the trigger pressed and let go.
+  g.input.padAim = { x: 1, y: 0 };
+  g.input.lastDevice = 'gamepad';
+  g.magic.cooldowns.fill(0);
+  g.input.setVirtual('cast', true);
+  step(g, w, 40);
+  assert.equal(w.aims.length, 1, 'the pad trigger shows its aim while held');
+  g.input.setVirtual('cast', false);
+  step(g, w);
+  step(g, w, 30);
+  assert.equal(w.aims.length, 0);
+  assert.equal(w.hover, null, 'the stick still held over shows nothing once the cast is gone');
+});
+
+test('6: touch: a tap, a drag-aim, a full charge and a drag back to cancel each clear the moment the finger lifts', () => {
+  const g = world();
+  const w = new Weaving(g);
+  g.addFoe(160, 100);
+  // tap
+  w.touchStart(0, 1);
+  step(g, w, 3);
+  assert.equal(w.aims.length, 1, 'a finger on a button shows its aim');
+  w.touchEnd(1);
+  step(g, w);
+  assert.equal(w.aims.length, 0);
+  // drag to aim
+  g.magic.cooldowns.fill(0);
+  w.touchStart(0, 2);
+  step(g, w);
+  w.touchMove(2, -60, -40);
+  step(g, w, 20);
+  w.touchEnd(2);
+  step(g, w);
+  assert.equal(w.aims.length, 0);
+  // hold to charge (full)
+  g.magic.cooldowns.fill(0);
+  g.magic.mana.cur = g.magic.mana.max;
+  w.touchStart(1, 3);
+  step(g, w, 120);
+  assert.equal(w.aims.length, 1);
+  assert.ok(w.aims[0].charge > 0.9);
+  w.touchEnd(3);
+  step(g, w);
+  assert.equal(w.aims.length, 0);
+  // drag back to cancel
+  g.magic.cooldowns.fill(0);
+  w.touchStart(0, 4);
+  step(g, w);
+  w.touchMove(4, 80, 0);
+  step(g, w);
+  w.touchMove(4, 3, 2);
+  step(g, w);
+  assert.ok(w.aims[0].cancel);
+  w.touchEnd(4);
+  step(g, w);
+  assert.equal(w.aims.length, 0);
+  assert.equal(w.casts.size, 0);
+});
+
+test('6: a press refused for mana or cooldown draws nothing, now or after', () => {
+  const g = world({ mana: 1 });
+  const w = new Weaving(g);
+  g.addFoe(160, 100);
+  mouseAt(g, 170, 96);
+  keyDown(g, 1);
+  step(g, w, 60);
+  assert.equal(w.aims.length, 0, 'refused for mana: no preview while held');
+  keyUp(g, 1);
+  for (let i = 0; i < 60; i++) {
+    mouseAt(g, 170, 96 + (i % 3));
+    step(g, w);
+    assert.equal(drawn(g, w), 0);
+    assert.equal(w.hover, null, 'and no faint guide after the refusal');
+  }
+  // On cooldown.
+  g.magic.mana.cur = g.magic.mana.max;
+  g.magic.cooldowns[0] = 5;
+  w.touchStart(0, 9);
+  step(g, w, 30);
+  assert.equal(w.aims.length, 0, 'refused for the cooldown: no preview under the finger');
+  w.touchEnd(9);
+  step(g, w, 5);
+  assert.equal(w.aims.length, 0);
+});
+
+test('6: when the runtime lets a hold go (a roll breaks the charge, a stun), its preview goes with it, the finger or key still down', () => {
+  for (const how of ['key', 'touch', 'click']) {
+    const g = world();
+    const w = new Weaving(g);
+    g.addFoe(160, 100);
+    mouseAt(g, 170, 96);
+    if (how === 'key') keyDown(g, 1);
+    else if (how === 'touch') w.touchStart(0, 5);
+    else w.clickStart(0, 5);
+    step(g, w, 50);
+    assert.equal(w.aims.length, 1, `${how}: charging, the aim shows`);
+    // The roll (magic.breakCast) or a freeze (interruptHold) ends the hold in the runtime.
+    g.magic.castCancel(g.player);
+    step(g, w);
+    assert.equal(w.aims.length, 0, `${how}: the broken charge draws nothing (the author: "stays on")`);
+    step(g, w, 60);
+    assert.equal(w.aims.length, 0, `${how}: still nothing while the ${how} is held`);
+    assert.equal(w.hover, null);
+    const before = g.magic.released.length;
+    if (how === 'key') keyUp(g, 1);
+    else if (how === 'touch') w.touchEnd(5);
+    else w.clickEnd(5);
+    step(g, w, 3);
+    assert.equal(g.magic.released.length, before, `${how}: letting go after the break casts nothing`);
+    assert.equal(w.aims.length, 0);
+  }
+});
+
+test('6: casting while planted (§14): the second press shows its aim only while held, and clears at its release', () => {
+  const g = world();
+  const w = new Weaving(g);
+  g.addFoe(160, 100);
+  keyDown(g, 1);
+  step(g, w, 2);
+  keyUp(g, 1);
+  step(g, w); // the first cast: a tap (the plant would hold the body now)
+  g.magic.cooldowns.fill(0);
+  keyDown(g, 2);
+  step(g, w, 30);
+  assert.equal(w.aims.length, 1);
+  keyUp(g, 2);
+  step(g, w);
+  assert.equal(w.aims.length, 0);
+  assert.equal(w.hover, null);
+});
+
+test('6: the faint guide between casts is an opt-in (Settings: Aim guide between casts), never an afterglow', () => {
+  const g = world({ settings: { aimGuideIdle: true } });
+  const w = new Weaving(g);
+  // Walking about, nothing near: no guide even when opted in.
+  mouseAt(g, 170, 96);
+  step(g, w, 20);
+  assert.equal(w.hover, null, 'no foe near: only the reticle');
+  // A cast just now, nobody near: the old 2.5 s afterglow is gone.
+  keyDown(g, 1);
+  step(g, w, 2);
+  keyUp(g, 1);
+  step(g, w);
+  for (let i = 0; i < 30; i++) {
+    mouseAt(g, 170, 96 + (i % 3));
+    step(g, w);
+    assert.equal(w.hover, null, 'no afterglow after a cast');
+  }
+  // Opted in and a foe near: the faint guide shows while the mouse aims.
+  g.addFoe(160, 100);
+  step(g, w, 20);
+  mouseAt(g, 170, 96);
+  step(g, w);
+  assert.ok(w.hover && w.hover.faint, 'opted in, in a fight: the faint guide');
+  // Off (the default): never.
+  const g2 = world();
+  const w2 = new Weaving(g2);
+  g2.addFoe(160, 100);
+  for (let i = 0; i < 40; i++) {
+    mouseAt(g2, 170, 96 + (i % 3));
+    step(g2, w2);
+    assert.equal(w2.hover, null);
+  }
+});
