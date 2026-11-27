@@ -768,9 +768,9 @@ export class Rock extends Harvestable {
     return super.work(actor, dt);
   }
 
-  // The prompt names what it needs before you try ("Mine iron ore: needs a pickaxe").
+  // The prompt names what it needs before you try ("Mine iron: needs a pickaxe").
   interactLabel(actor) {
-    if (this.objType === 'ore') return actor && missingTool(this.game, actor, 'ore') ? 'Mine iron ore: needs a pickaxe' : 'Mine iron ore (pickaxe)';
+    if (this.objType === 'ore') return actor && missingTool(this.game, actor, 'ore') ? 'Mine iron: needs a pickaxe' : 'Mine iron ore (pickaxe)';
     return this.objType === 'crystal' ? 'Mine crystal' : 'Mine rock';
   }
 

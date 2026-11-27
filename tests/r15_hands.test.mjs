@@ -411,9 +411,9 @@ function quarry({ pick = false } = {}) {
 }
 const said = (g, re) => g.toasts.some((t) => re.test(t.text));
 
-test('9: bare hands: the vein says what it needs ("Mine iron ore: needs a pickaxe"), the use button and the attack button give nothing', () => {
+test('9: bare hands: the vein says what it needs ("Mine iron: needs a pickaxe"), the use button and the attack button give nothing', () => {
   const { g, P, ore } = quarry();
-  assert.equal(ore.interactLabel(P), 'Mine iron ore: needs a pickaxe', 'the prompt names the tool before you try');
+  assert.equal(ore.interactLabel(P), 'Mine iron: needs a pickaxe', 'the prompt names the tool before you try');
   assert.equal(ore.canInteract(P), true, 'the prompt still shows (so it can say so)');
   assert.equal(ore.canWork(P), false);
   ore.interact(P);

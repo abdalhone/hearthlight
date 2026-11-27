@@ -6,7 +6,7 @@
 //      click dragged out to aim, the right button, a roll that breaks a charge, a press
 //      refused for mana, casting while planted; on phones a tap, a drag-aim, a full charge, a
 //      drag back to cancel, a press refused while cooling, a second weave while planted;
-//   9. iron needs a pickaxe: the "Mine iron ore: needs a pickaxe" prompt, the word on the use
+//   9. iron needs a pickaxe: the "Mine iron: needs a pickaxe" prompt, the word on the use
 //      button, the blade ringing off, the iron hasp, the quarry tool chest, then mining;
 //  11. the lock takes the training dummy: middle click and G on the computer, the long press
 //      on the sword button on phones; weaves and the sword land on it.
@@ -174,7 +174,10 @@ const promptText = (page) =>
     }
     const dom = document.querySelector('.interact-prompt:not([hidden]) .prompt-text')?.textContent || '';
     const use = document.querySelector('.tbtn-interact')?.textContent || '';
-    return { label: best?.label || '', dom, use };
+    // The phone's tag over the use button shows the whole label (no ellipsis).
+    const tag = document.querySelector('.tbtn-interact .tbtn-tag');
+    const fits = !tag || !tag.offsetParent || tag.scrollWidth <= tag.clientWidth + 1;
+    return { label: best?.label || '', dom, use, fits };
   });
 const toastsSay = (page, re) => page.evaluate((src) => new RegExp(src, 'i').test(document.querySelector('.toasts')?.textContent || ''), re.source);
 const count = (page, id) => page.evaluate((id) => window.__game.player.inventory.count(id), id);
@@ -543,7 +546,7 @@ async function ironPath(page, label, io) {
   await teleport(page, vein.x - 13, vein.y + 1);
   const pr = await promptText(page);
   await page.screenshot({ path: `${OUT}/${label}-9-prompt.png` });
-  check(`${label} 9: the prompt names the tool ("Mine iron ore: needs a pickaxe")`, /needs a pickaxe/i.test(pr.label) && (/needs a pickaxe/i.test(pr.dom) || /pickaxe|mine/i.test(pr.use) || label !== 'desk'), JSON.stringify(pr));
+  check(`${label} 9: the prompt names the tool ("Mine iron: needs a pickaxe"), whole on the screen`, /needs a pickaxe/i.test(pr.label) && (/needs a pickaxe/i.test(pr.dom) || /pickaxe|mine/i.test(pr.use) || label !== 'desk') && pr.fits, JSON.stringify(pr));
   await io.use();
   await wait(page, 400);
   const said = await toastsSay(page, /need a pickaxe for iron/);
@@ -598,7 +601,7 @@ async function ironPath(page, label, io) {
   // Now the vein: the prompt, the use button, the ore.
   await teleport(page, vein.x - 13, vein.y + 1);
   const pr2 = await promptText(page);
-  check(`${label} 9: with the pick the prompt reads "Mine iron ore (pickaxe)"`, /\(pickaxe\)/.test(pr2.label), JSON.stringify(pr2));
+  check(`${label} 9: with the pick the prompt reads "Mine iron ore (pickaxe)", whole on the screen`, /\(pickaxe\)/.test(pr2.label) && pr2.fits, JSON.stringify(pr2));
   await io.use();
   await wait(page, 5600);
   const ore1 = await count(page, 'iron_ore');

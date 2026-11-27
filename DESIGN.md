@@ -4161,8 +4161,10 @@ weave forced an iron hasp. `src/world/tools.js` is the rule:
 
 - **What needs which tool** (`TOOL_FOR`): an ore vein and an iron hasp want a pickaxe. Plain
   rock, glow crystal and wood are as they were (the hands and the sword work them).
-- **The vein.** Without a pickaxe in the pack the prompt reads "Mine iron ore: needs a
-  pickaxe" (with one: "Mine iron ore (pickaxe)"); the use button says "You need a pickaxe for
+- **The vein.** Without a pickaxe in the pack the prompt reads "Mine iron: needs a
+  pickaxe" (with one: "Mine iron ore (pickaxe)"; both fit the upright phone's use-button tag,
+  where the first cut, "Mine iron ore: needs a pickaxe", was cut to "…needs a pick…"); the
+  use button says "You need a pickaxe for
   iron. Bram sells them at the smithy, and the quarrymen keep a spare in the tool chest by
   the ore cart." The attack button still takes the vein (`Rock.needsTool`, player
   `_findWorkTarget`): a work swing that jolts and clinks off it and says "Your blade only
