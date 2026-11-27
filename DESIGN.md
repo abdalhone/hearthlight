@@ -3938,7 +3938,8 @@ Round 14b (§33–§38.10) joined with the stat points second pass (§26: points
 a percentage a whole share of the number before any percentage). Each seam below was read on
 both sides and proven in play or in a test (`tests/v12_seams.test.mjs`, a guard for each;
 `scripts/v12_ui_check.mjs` and `scripts/v12_saves_check.mjs` in the browser on three screens).
-Only seam 8 needed a change; the rest hold by the rules named.
+Only seam 8 needed a change at the join; the verify pass (13) changed seams 4 and 8 again and
+two round 14b rules the bigger numbers broke; the rest hold by the rules named.
 
 1. **Fight back, the hunt, the arrest.** No blow kills a person: at 0 health a villager, a
    guard, Lyra or a child is downed (`combat.isDownable`), and a blow on someone downed lands
@@ -4020,3 +4021,22 @@ Only seam 8 needed a change; the rest hold by the rules named.
     failed once in the full batch and passed alone, neither near a stat: talk_check's bow on
     the computer (Hobb's opinion fell before the bow was weighed) and verify_a's L4 upright
     (the chat picked Mira, who had walked to 19 px, over Elda at 18).
+13. **The code reader's verify pass** (`tests/v12_verify_read.test.mjs`, each test failing
+    before its fix). Four seams the join missed, fixed: a villager companion keeps up with a
+    Grace build as Lyra does (4, `npc_companion.TOP_RUN`); the old habit forgiven once never
+    knocks anyone down whatever the sword (§38.8 D3: read while they stand, never the last
+    of their health); the prices' and the coldfire bar's words say what each % is a share
+    of (8); the Character sheet names the chapel's respec only while Sister Aveline lives
+    (§26). Proven with no change: a child (Pip, 9; Tansy, 15) at 999 Might and Weave is only
+    ever downed through every path (the sword, a blow on the downed, a burn, a status tick,
+    a fall, `combat.kill` by you or by a boss, `murder.kill`, `murder.strike`, the
+    Unkindling, old age); a save made whole on the old numbers loads its health as saved, a
+    bigger maximum leaving the wound (the pipeline's rule; regen knits it). The bosses again
+    on the joined game (`scripts/stats_sim.mjs --only bosses`, nine seeds, level 15, 30
+    points): the sword 12, 6, 22, 16 s and the weave 10, 17, 12, 13 s against 412fcb8's 12,
+    6, 22, 16 and 10, 13, 12, 12: Greyjaw's weave fight is about 4 s longer because casting
+    stops you while he comes on (§38.6), the rest within a second. Left open, tuning rather
+    than a seam: by level 15 every soul is easy for the Unkindling (ratio at most 0.27, any
+    build, on either line), and at level 1 Bram (a defender, 58 health) is close (1.51), not
+    easy as §37 reads; the screen's red hurt flash still grows by a blow's size (amount/40),
+    not its share of your health as the vignette does.
