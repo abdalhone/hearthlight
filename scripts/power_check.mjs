@@ -506,9 +506,14 @@ async function soul(size) {
     page.evaluate(() => {
       const hint = document.querySelector('.unk-hint');
       const btn = document.querySelector('.unk-btn');
+      // What a thumb can read: the tag over the dark hand, whole (not cut by an ellipsis) and
+      // inside the screen.
+      const tag = btn?.querySelector('.unk-btn-odds');
+      const q = tag && !tag.hidden ? tag.getBoundingClientRect() : null;
+      const whole = !!q && q.width > 0 && tag.scrollWidth <= tag.clientWidth + 1 && q.left >= 0 && q.right <= innerWidth && q.top >= 0;
       return {
         hint: hint && !hint.hidden ? hint.textContent.replace(/\s+/g, ' ').trim() : '',
-        btn: btn && !btn.hidden ? btn.textContent.replace(/\s+/g, ' ').trim() : '',
+        btn: btn && !btn.hidden ? (whole ? tag.textContent : '(odds not readable)') : '',
         label: btn?.getAttribute('aria-label') || '',
       };
     });
@@ -569,8 +574,8 @@ async function soul(size) {
   let shown = await read();
   await page.screenshot({ path: `${OUT}/${tag}-rowan-odds.png` });
   const want = r.odds.chance > 0 ? `${r.odds.words}, ${r.odds.percent}%` : r.odds.words;
-  const seen = size.phone ? `${shown.btn} ${shown.label}` : shown.hint;
-  check(`[${size.name}] before you start, the hint names the odds for Rowan at level 15 (${want})`, seen.includes(size.phone ? `${r.odds.percent}%` : want) && r.odds.chance > 0 && r.odds.chance < 0.85, `"${seen}"`);
+  const seen = size.phone ? shown.btn : shown.hint;
+  check(`[${size.name}] before you start, the hint names the odds for Rowan at level 15 (${want}), readable whole`, seen.includes(want) && r.odds.chance > 0 && r.odds.chance < 0.85, `"${seen}" / "${shown.label}"`);
   // Hold it: the key, or the dark hand.
   const t0 = Date.now();
   if (!size.phone) await page.keyboard.down('KeyF');
@@ -606,8 +611,8 @@ async function soul(size) {
   await wait(900);
   shown = await read();
   await page.screenshot({ path: `${OUT}/${tag}-varek-odds.png` });
-  const vs = size.phone ? `${shown.btn} ${shown.label}` : shown.hint;
-  check(`[${size.name}] at Free 999, Varek reads too strong (0%)`, v.odds.chance === 0 && (size.phone ? vs.includes('0%') : vs.includes('too strong')), `"${vs}" ${JSON.stringify(v.odds)}`);
+  const vs = size.phone ? shown.btn : shown.hint;
+  check(`[${size.name}] at Free 999, Varek reads too strong`, v.odds.chance === 0 && vs.includes('too strong'), `"${vs}" ${JSON.stringify(v.odds)}`);
   check(`[${size.name}] no page errors with the Unkindling`, errors.length === 0, errors.slice(0, 3).join(' | '));
   await context.close();
 }

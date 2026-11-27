@@ -121,7 +121,10 @@ export class UnkindleView {
     this.hint = h('div', { class: 'unk-hint', hidden: true, 'aria-live': 'polite' }, h('span', { class: 'unk-hint-key', text: 'F' }), h('span', { class: 'unk-hint-verb', text: 'Hold' }), this.hintName, this.hintOdds);
     ui.root.append(h('div', { class: 'layer layer-unk' }, this.hint));
     this.btnName = h('span', { class: 'tbtn-label unk-btn-name' });
-    this.btn = h('button', { type: 'button', class: 'tbtn unk-btn', hidden: true, 'aria-label': 'Unkindle (hold)' }, icon('hand'), this.btnName);
+    // The odds over the dark hand (round 15): the button's own label is too narrow to carry
+    // them, so they ride in the cluster's tag above it ("even, 50%").
+    this.btnOdds = h('span', { class: 'tbtn-tag unk-btn-odds' });
+    this.btn = h('button', { type: 'button', class: 'tbtn unk-btn', hidden: true, 'aria-label': 'Unkindle (hold)' }, icon('hand'), this.btnName, this.btnOdds);
     this.btn.addEventListener('pointerdown', (e) => this.onBtnDown(e));
     const up = (e) => this.onBtnUp(e);
     this.btn.addEventListener('pointerup', up);
@@ -246,9 +249,9 @@ export class UnkindleView {
       if (this.btn.hidden === on) this.btn.hidden = !on;
       if (on) {
         this.place();
-        const pct = show ? safe(() => this.unk.odds?.(t), null) : null;
-        const tag = pct && t?.objType !== 'dummy' ? ` ${pct.percent}%` : '';
-        setText(this.btnName, ch ? '' : `${this.nameOf(t).replace(/^the /, '')}${tag}`);
+        setText(this.btnName, ch ? '' : this.nameOf(t).replace(/^the /, ''));
+        setText(this.btnOdds, ch ? '' : odds);
+        if (this.btnOdds) this.btnOdds.hidden = ch || !odds;
         setAttr(this.btn, 'aria-label', ch ? 'Unkindling (let go to stop)' : `Unkindle ${this.nameOf(t)} (hold)${odds ? `: ${odds}` : ''}`);
         toggleClass(this.btn, 'holding', !!ch);
       }
