@@ -297,7 +297,7 @@ for (const id of BOSS_IDS) {
       step(g);
     }
     const def = log.find((e) => e.type === 'boss_defeated');
-    assert.ok(def && def.payload.id === id, `${id} defeated`);
+    assert.ok(def && def.payload.id === id, `${id} defeated (mode ${b.mode}, health ${Math.round(b.hp)}/${b.maxHp}, resets: ${log.filter((e) => e.type === 'boss_reset').map((e) => e.payload.reason).join(',')})`);
     assert.ok(g.flags.bosses[id].defeated, 'saved as defeated');
     // Let the defeat play out (Varek walks off; the rest fall), from a step back.
     const stand = { x: p.x, y: p.y };
@@ -346,8 +346,10 @@ test('losing resets the boss: the player knocked out, full health, home, no haza
   const log = events(g);
   const p = enterArena(g, 'varek');
   const b = g.bosses.get('varek');
-  for (let i = 0; i < 40 * 30; i++) {
-    if (i % 10 === 0 && b.hp > b.maxHp * 0.4) g.combat.damage(p, b, 20, { kind: 'magic' });
+  for (let i = 0; i < 75 * 30; i++) {
+    // (Round 15: a share of its health, once a second, under the pace that raises its guard,
+    // for longer: its health grew.)
+    if (i % 30 === 0 && b.hp > b.maxHp * 0.4) g.combat.damage(p, b, b.def + b.maxHp * 0.015, { kind: 'magic' });
     p.hp = p.maxHp;
     step(g);
   }

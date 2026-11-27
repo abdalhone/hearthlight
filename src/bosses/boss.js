@@ -31,16 +31,18 @@ const TAU = Math.PI * 2;
 //     crit or the twists (combat.damage asks capBlow after armour, crits and wards);
 //   - the guard: when one hand has struck it for GUARD_AT of its health inside about
 //     GUARD_TAU seconds, it raises a guard for GUARD_TIME seconds (a shimmer of its own colour,
-//     "guarded" over it): what lands meanwhile is GUARD_MUL of the blow. When the guard falls
-//     the slate is clean: an opening to strike. A guard raised again inside GUARD_AGAIN seconds
-//     of the last lasts GUARD_LONGER more (pressing it hard only makes it hold longer).
+//     "guarded" over it): what lands meanwhile is GUARD_MUL of the blow. Struck as hard again
+//     while it guards (what gets through counts), it holds the guard GUARD_LONGER more, up to
+//     GUARD_MAX: pressing it only makes it hold. When the guard falls the slate is clean: an
+//     opening to strike. A guard raised again inside GUARD_AGAIN seconds of the last starts
+//     GUARD_LONGER longer.
 // Each hand counts on its own, so a companion's blows add to yours. No time limit, no enrage:
 // the length of a fight comes from its strength (health, armour, guard) and its blows.
-export const BLOW_SHARE = 0.04;
-export const GUARD_AT = 0.08;
+export const BLOW_SHARE = 0.03;
+export const GUARD_AT = 0.04;
 export const GUARD_TAU = 2.2; // s: how fast a hand's recent harm fades
 export const GUARD_TIME = 3;
-export const GUARD_MUL = 0.2;
+export const GUARD_MUL = 0.12;
 export const GUARD_AGAIN = 6;
 export const GUARD_LONGER = 1.2;
 export const GUARD_MAX = 6;
@@ -349,7 +351,14 @@ export class Boss extends Creature {
     rec.harm = rec.harm * Math.exp(-Math.max(0, now - rec.t) / GUARD_TAU) + dealt;
     rec.t = now;
     this.struck.set(hand, rec);
-    if (this.guardT <= 0 && rec.harm >= this.maxHp * GUARD_AT) this.raiseGuard(hand);
+    if (rec.harm < this.maxHp * GUARD_AT) return;
+    if (this.guardUp) {
+      // Pressed while it guards: it holds on longer.
+      this.guardT = Math.min(GUARD_MAX, this.guardT + GUARD_LONGER);
+      rec.harm = 0;
+      return;
+    }
+    this.raiseGuard(hand);
   }
 
   raiseGuard(hand = null) {
@@ -357,6 +366,7 @@ export class Boss extends Creature {
     this.guardLen = again ? Math.min(GUARD_MAX, this.guardLen + GUARD_LONGER) : GUARD_TIME;
     this.guardT = this.guardLen;
     this.guardUp = true;
+    this.struck.clear(); // only what gets through the guard counts toward holding it longer
     sound(this, 'boss_clang', { pitch: 0.6, volume: 0.7 });
     particles(this, 'spark', this.x, this.y - 12, { count: 10, color: this.info.accent || '#cfe0ff', speed: 60, life: 0.4 });
     try {

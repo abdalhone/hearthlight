@@ -116,7 +116,9 @@ export class UnkindleView {
     window.addEventListener('blur', this._blur);
     // The hint (desktop) and the dark hand (phone).
     this.hintName = h('b', { class: 'unk-hint-name' });
-    this.hint = h('div', { class: 'unk-hint', hidden: true, 'aria-live': 'polite' }, h('span', { class: 'unk-hint-key', text: 'F' }), h('span', { class: 'unk-hint-verb', text: 'Hold' }), this.hintName);
+    // The odds, before you start (round 15): the same the hold then plays out.
+    this.hintOdds = h('span', { class: 'unk-hint-odds' });
+    this.hint = h('div', { class: 'unk-hint', hidden: true, 'aria-live': 'polite' }, h('span', { class: 'unk-hint-key', text: 'F' }), h('span', { class: 'unk-hint-verb', text: 'Hold' }), this.hintName, this.hintOdds);
     ui.root.append(h('div', { class: 'layer layer-unk' }, this.hint));
     this.btnName = h('span', { class: 'tbtn-label unk-btn-name' });
     this.btn = h('button', { type: 'button', class: 'tbtn unk-btn', hidden: true, 'aria-label': 'Unkindle (hold)' }, icon('hand'), this.btnName);
@@ -216,23 +218,38 @@ export class UnkindleView {
     return safe(() => this.game?.murder?.name?.(e.id), null) || String(e.name || '').split(' ')[0] || 'them';
   }
 
+  // The odds in words for the hint: "likely, 78%" (round 15); straw in practice has none.
+  oddsText(t) {
+    if (!t || t.objType === 'dummy') return '';
+    const o = safe(() => this.unk.odds?.(t), null);
+    if (!o) return '';
+    return o.chance > 0 ? `${o.words}, ${o.percent}%` : o.words;
+  }
+
   paint(ch) {
     if (!this.mounted) return;
     const t = this.target;
     const show = !!t && !ch;
+    const odds = show ? this.oddsText(t) : '';
     // Desktop: the hint. Phone: the dark hand.
     if (this.hint) {
       const on = show && !this.touch;
       if (this.hint.hidden === on) this.hint.hidden = !on;
-      if (on) setText(this.hintName, this.nameOf(t));
+      if (on) {
+        setText(this.hintName, this.nameOf(t));
+        setText(this.hintOdds, odds ? `· ${odds}` : '');
+        setAttr(this.hint, 'title', odds ? `The odds the hold takes ${this.nameOf(t)}, if nothing breaks it: ${odds}. A soul that breaks free knows what you tried.` : '');
+      }
     }
     if (this.btn) {
       const on = (show || !!ch) && this.touch;
       if (this.btn.hidden === on) this.btn.hidden = !on;
       if (on) {
         this.place();
-        setText(this.btnName, ch ? '' : this.nameOf(t).replace(/^the /, ''));
-        setAttr(this.btn, 'aria-label', ch ? 'Unkindling (let go to stop)' : `Unkindle ${this.nameOf(t)} (hold)`);
+        const pct = show ? safe(() => this.unk.odds?.(t), null) : null;
+        const tag = pct && t?.objType !== 'dummy' ? ` ${pct.percent}%` : '';
+        setText(this.btnName, ch ? '' : `${this.nameOf(t).replace(/^the /, '')}${tag}`);
+        setAttr(this.btn, 'aria-label', ch ? 'Unkindling (let go to stop)' : `Unkindle ${this.nameOf(t)} (hold)${odds ? `: ${odds}` : ''}`);
         toggleClass(this.btn, 'holding', !!ch);
       }
     }
