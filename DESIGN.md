@@ -4268,3 +4268,46 @@ Numbers (Spark → old strongest): the Spark 4 → 4.6 (full 8 → 11.5); a fire
 two-essence two-twist bolt 18.6 → 33.2; the level-7 orb 62.3 → 146 (full 125 → 365); the
 level-9 bomb 82 → 201 (full 164 → 502). From a full pool at full charge, see §40.8a.
 Practice and "Try all magic" work unchanged (the trial lends parts, the pool stays yours).
+
+### 40.8a The numbers, before and after (power builder)
+
+`node scripts/stats_sim.mjs --only weaves,power-bosses,souls` (the game's own pieces,
+headless; three bot fights a cell, 900 s at most; "half" is every point on spells, half
+Weave and half Focus, the author's build).
+
+**The strongest weave and its cost** (two essences; what one full-charge cast deals to a
+boss's still body, armour 1, no guard: the weave's own strength; the pools did not change:
+level 7 58 / 128 / 194 and level 9 64 / 156 / 243 for all-Weave / half / all-Focus):
+
+| | Version 12 | Now |
+|---|---|---|
+| Level 7, 3 twists, the strongest at all | Triple Shadow Iron Bomb, 64.6 (full 129), 1875 | the same, 145 (full 363): only an all-Focus pool casts it, uncharged (145 of 194); none charges it |
+| Level 7, the strongest the half pool fires fully charged | Triple Great Magma Orb, 62.3 (full 125), 1089 | Piercing Ricochet Magma Bomb, 51 (full 128), 238 |
+| Level 9, 4 twists, the strongest at all | Triple Echoing Ore Bomb, 82 (full 164), 2515 | the same, 201 (full 502): uncharged it drains 83% of an all-Focus pool, no level-9 pool charges it |
+| Level 9, the strongest the half pool fires fully charged | Triple Echoing Magma Bomb, 76.9 (full 154), 2077 | Triple Swift Shadow Iron Bolt, 62.3 (full 156), 1092 |
+| Full-charge Sparks from a full pool, level 7 / 9 (all-Weave, half, all-Focus) | 7 / 16 / 24 and 8 / 19 / 30 | 5 / 11 / 16 and 5 / 13 / 21 |
+
+**The bosses** (seconds to win, or wins of three; "good" = two thirds in Might or Weave,
+the rest in Vitality or Focus, three potions; the bot cannot beat the Mother or the Lake's
+Hum at any level, on Version 12 or now, so their numbers say how far it got):
+
+| Boss (meant level) | Version 12 at its level: all Weave / the strongest, charged | Now at its level: good sword / good weave / the strongest | Now at level 15: good sword / good weave / the strongest |
+|---|---|---|---|
+| Varek (5), 520 → 2300 | 26 s / **2 s, one cast** | 1 of 3 (the bot fell 2) / fell, Varek at 276 / fell | 103 s / 97 s / 1 of 3 |
+| Greyjaw (6), 600 → 5000 | 34 s / 19 s | 1 of 3 / 1 of 3 / 1 of 3 (the rest still fighting at 900 s) | 134 s / 1 of 3 / 1 of 3 |
+| the Lake's Hum (7), 440 → 3000 | 19 s / 15 s (by hand: 17 s, one charged cast took half) | to 2284 / to 910 / to 2025 (the bot falls to her waves) | to 1944 / 1 of 3 / to 491 |
+| the Bone Warden (9), 560 → 3200 | 22 s / 15 s | 304 s / 192 s / 158 s | 198 s / 108 s / 98 s |
+| the Mother of Slimes (4), 560 → 2000 | the bot fell 3 of 3 (as now) | to 654 / to 1446 / to 1658 | 2 of 3 (251 s) / 1 of 3 / 1 of 3 |
+
+Version 12 at level 15 with the strongest charged weave: Varek, the Warden 2 s, Greyjaw
+4 s, the Lake's Hum 7 s. Now the shortest win anywhere is 87 s (all Might at level 15 on
+Varek): no burst. Three fully charged casts of Version 12's level-7 orb (a bottomless pool)
+take 19% of the Lake's Hum (`tests/r15_power.test.mjs`); in the browser one charged cast
+of the strongest the author's pool now fires took 84 of her 3000.
+
+Stats pass promises (§26), kept and re-read in `tests/stat_curve.test.mjs`: points are felt
+(five Vitality are two more of Varek's blows, ten four; five Focus are still at least six more
+Sparks from a full pool, ten thirteen); a levelled invested character beats a lower boss, faster
+with points, never in a burst; death stays dangerous (a level-5 stranger with no Vitality
+drops to five of Varek's blows); percentages give their full share (nothing here touches
+the pipeline; the surcharge is on mana, the guard on the boss).
