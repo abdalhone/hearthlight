@@ -115,8 +115,9 @@ test('drained life rises and fades upward; it never drifts into the one who drai
 test("a boss's shard rises out of the body and hovers: it is never pulled into you while the soul rises", () => {
   const g = { player: { x: 0, y: 0, isAlive: () => true }, particles: { emit() {} }, magic: null, entities: { remove() {} }, bus: { emit() {} } };
   const s = new GlyphShard(g, { kind: 'essence', id: 'water', x: 0, y: 0, rise: true, vx: 0, vy: 0 });
-  g.player.x = 22;
-  g.player.y = 4;
+  // You stand right where it comes out.
+  g.player.x = 4;
+  g.player.y = 6;
   let pulled = 0;
   for (let t = 0; t < SOUL_GONE - 0.1; t += 1 / 30) {
     const x0 = s.x;
@@ -127,5 +128,5 @@ test("a boss's shard rises out of the body and hovers: it is never pulled into y
   assert.equal(s.collected, false, 'not taken while the soul rises');
   assert.equal(pulled, 0, 'not drawn toward you meanwhile');
   for (let t = 0; t < 2 && !s.collected; t += 1 / 30) s.update(1 / 30);
-  assert.equal(s.collected || Math.hypot(s.x - 22, s.y - 0) < 22, true, 'after it, walking up to it still takes it');
+  assert.equal(s.collected, true, 'after it, it is yours (standing on it takes it)');
 });

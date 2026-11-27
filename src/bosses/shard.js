@@ -73,11 +73,12 @@ export class GlyphShard extends Entity {
     this.vz = o.rise ? 120 + Math.random() * 30 : 0;
     this.vx = o.vx ?? 0;
     this.vy = o.vy ?? 0;
-    this.collectDelay = o.collectDelay ?? 1.1;
     // Round 15 (DESIGN §40.4): a shard freed from a dying body never leaps from it into you.
     // The body's soul rises and fades upward (pixelfx soul-rise, SOUL_GONE s); until it has,
-    // the shard only rises and hovers where it came out, and it is never pulled to you then.
-    this.pullAfter = o.rise ? Math.max(this.collectDelay, SOUL_GONE) : this.collectDelay;
+    // the shard only rises and hovers where it came out: it is neither pulled to you nor
+    // taken by touch then.
+    this.collectDelay = o.rise ? Math.max(o.collectDelay ?? 1.1, SOUL_GONE) : o.collectDelay ?? 1.1;
+    this.pullAfter = this.collectDelay;
     this.collected = false;
     this.pal = glyphPalette(game, this.kind, this.glyphId);
     this.spin = Math.random() * Math.PI * 2;
