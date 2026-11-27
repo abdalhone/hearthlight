@@ -30,9 +30,9 @@ export const SB_STEPS = {
 };
 const SINGULAR = { shapes: 'shape', essences: 'essence', twists: 'twist', prices: 'price' };
 const INPUT_NOTE = {
-  quick: 'Tap to cast. Hold to charge it, then let go: up to 2.5× as strong and a little bigger, for up to twice the mana.',
+  quick: 'Tap to cast. Hold to charge it, then let go: up to 2.5× as strong and a little bigger, for up to 2.5× the mana.',
   hold: 'Hold to keep it flowing: it drains mana while it pours (a beam does not charge).',
-  charge: 'Hold to charge, let go to cast: the charge twist fills twice as fast and hits up to 3× as hard.',
+  charge: 'Hold to charge, let go to cast: the charge twist fills twice as fast and hits up to 3× as hard, for up to 3× the mana.',
 };
 // Casting stops you (plan §14): the book says it once, under the weave's numbers.
 export const STAND_NOTE = 'You stand still to weave. Roll to break off.';
@@ -326,8 +326,14 @@ export class Spellbook {
     if (!d.shape) return;
     const mode = castModeOf(plan, d);
     const pv = previewOf(plan, d);
+    // The true cost (round 15): what this stranger pays (gear and prices that change a weave's
+    // cost included), and what a full charge pays.
+    const mg = this.weaving?.magic;
+    const P = this.weaving?.game?.player;
+    const cost = plan ? (typeof mg?.costOf === 'function' && P ? mg.costOf(P, plan) : plan.cost) : 0;
+    const full = plan && !plan.drain ? (typeof mg?.chargedCost === 'function' && P ? mg.chargedCost(P, plan, 1) : cost * 2) : 0;
     const stats = [
-      ['Mana', plan ? fmt(plan.cost) + (plan.drain ? '/s' : '') : '—', 'mana'],
+      ['Mana', plan ? fmt(cost) + (plan.drain ? '/s' : '') : '—', 'mana', plan ? (plan.drain ? 'Mana a second while it pours.' : `Mana for a tap; a full charge takes ${fmt(full)}.`) : ''],
       ['Cooldown', plan ? `${fmt(plan.cooldown, 1)}s` : '—', 'cd', 'Seconds before it can be cast again: the sweep and the seconds on its button.'],
       ['Damage', plan ? fmt(plan.dmg) + (Number(plan.count) > 1 ? ` ×${fmt(plan.count)}` : '') : '—', 'dmg'],
       ['Reach', plan ? tiles(pv.type === 'ring' ? pv.radius : pv.range) : '—', 'reach', plan ? (pv.type === 'ring' ? 'Tiles around you' : 'Tiles it reaches') : ''],

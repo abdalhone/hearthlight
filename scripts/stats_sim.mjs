@@ -459,7 +459,7 @@ export function buildPoints(build, level, main = 30) {
   return { weave: main, focus: spare };
 }
 
-export function fight(id, { rule = 'new', build = 'sword', level = 15, main = 30, seed = 1, limit = 240, trace = null, weave = null, companion = false } = {}) {
+export function fight(id, { rule = 'new', build = 'sword', level = 15, main = 30, seed = 1, limit = 240, trace = null, weave = null, potions = 0 } = {}) {
   const points = buildPoints(build, level, main);
   const g = makeGame({ rule, level, points, seed });
   const log = [];
@@ -478,6 +478,8 @@ export function fight(id, { rule = 'new', build = 'sword', level = 15, main = 30
   }
   let casts = 0;
   let bigCasts = 0;
+  let drunk = 0; // healing potions (40 health each), drunk below a third of your health
+  let bossLow = Infinity;
   let swings = 0;
   let charging = 0; // seconds into a charge of the big weave
   g.bus.on('spell_cast', (e) => {
@@ -505,12 +507,12 @@ export function fight(id, { rule = 'new', build = 'sword', level = 15, main = 30
     }
   });
   let dropped = false;
-  const swing = (t) => {
+  const swing = (t, who = b) => {
     if (t < next || p.lockTime > 0) return;
     const c = COMBO[combo];
     const rate = g.stats.get(p, 'swing') || 1;
-    p.faceToward?.(b.x, b.y);
-    g.combat.melee(p, { target: b, arc: c.arc, range: c.range, damageMul: c.mul, knockback: c.knock, launch: c.launch, heavy: c.heavy, lock: c.lock / rate, cooldown: 0.08, silent: true });
+    p.faceToward?.(who.x, who.y);
+    g.combat.melee(p, { target: who, arc: c.arc, range: c.range, damageMul: c.mul, knockback: c.knock, launch: c.launch, heavy: c.heavy, lock: c.lock / rate, cooldown: 0.08, silent: true });
     swings++;
     // A hand mashing the button: the next hit chains at 70% of a swing, the third rests.
     if (combo === COMBO.length - 1) {
@@ -522,13 +524,30 @@ export function fight(id, { rule = 'new', build = 'sword', level = 15, main = 30
     }
   };
   const clear = () => !wallBetween(g, p.x, p.y - 4, b.x, b.y - 6);
-  const spark = (d) => {
+  const spark = (d, who = b) => {
     if (d > 200 || !clear()) return false;
     const r = m.canCast?.(0);
     if (r && !r.ok) return false;
-    return !!m.cast(p, 0, { x: b.x, y: b.y - 6 })?.ok;
+    return !!m.cast(p, 0, { x: who.x, y: who.y - 6, target: who })?.ok;
+  };
+  // Round 15: a hand deals with what the boss calls in (Varek's lads, the Mother's children)
+  // when they close on it, before going back to the boss.
+  const addNear = (r) => {
+    let best = null;
+    let bd = r;
+    for (const a of b.adds) {
+      if (!a || a.removed || a.dead || !(a.isAlive?.() ?? a.hp > 0)) continue;
+      const d = Math.hypot(a.x - p.x, a.y - p.y);
+      if (d < bd) {
+        bd = d;
+        best = a;
+      }
+    }
+    return best;
   };
   const b0 = b.hp;
+  const stuck = { x: p.x, y: p.y, t: g.time };
+  let detour = [];
   while (g.time - start < limit) {
     if (log.length) break;
     if (!p.isAlive() || p.downed || p.hp <= 0) {
@@ -537,6 +556,11 @@ export function fight(id, { rule = 'new', build = 'sword', level = 15, main = 30
     }
     const t = g.time;
     rollCd -= DT;
+    if (b.mode === 'fight' && b.hp < bossLow) bossLow = b.hp;
+    if (drunk < potions && p.hp < p.maxHp * 0.34 && rollT <= 0 && !charging) {
+      drunk++;
+      g.combat.heal?.(p, p, 40) ?? (p.hp = Math.min(p.maxHp, p.hp + 40));
+    }
     const d = Math.hypot(b.x - p.x, b.y - p.y);
     const ux = (b.x - p.x) / (d || 1);
     const uy = (b.y - p.y) / (d || 1);
@@ -595,6 +619,13 @@ export function fight(id, { rule = 'new', build = 'sword', level = 15, main = 30
       }
     } else if (b.veiled || b.mode !== 'fight') {
       intent = { x: 0, y: 0 };
+    } else if ((build === 'sword' || build === 'might') && addNear(30)) {
+      const a = addNear(30);
+      const da = Math.hypot(a.x - p.x, a.y - p.y);
+      if (da > COMBO[combo].range + 4) intent = { x: (a.x - p.x) / da, y: (a.y - p.y) / da };
+      else swing(t, a);
+    } else if (build !== 'sword' && build !== 'might' && addNear(46) && spark(20, addNear(46))) {
+      intent = { x: 0, y: 0 };
     } else if (build === 'sword' || build === 'might') {
       outOfReach = d > reach ? outOfReach + DT : 0;
       if (d > reach) {
@@ -623,6 +654,26 @@ export function fight(id, { rule = 'new', build = 'sword', level = 15, main = 30
       }
       if (!started && !spark(d) && d <= reach && m.mana.cur < m.costOf(p, m.slotPlan(0))) swing(t);
     }
+    // Round 15: knocked out of the arena behind a tree or a rock, a hand walks round it: when
+    // the bot has wanted to move for half a second and not moved, it follows a path to the boss.
+    if (intent.x || intent.y) {
+      if (Math.hypot(p.x - stuck.x, p.y - stuck.y) > 3) {
+        stuck.x = p.x;
+        stuck.y = p.y;
+        stuck.t = t;
+      } else if (t - stuck.t > 0.5 && !detour.length) {
+        const path = g.pathfinder.find(p.x, p.y, b.x, b.y);
+        if (Array.isArray(path) && path.length) detour = path.slice(0, 6).map((q) => ({ x: q.x, y: q.y }));
+        stuck.t = t;
+      }
+    }
+    if (detour.length && !hurt && rollT <= 0) {
+      const q = detour[0];
+      const dq = Math.hypot(q.x - p.x, q.y - p.y);
+      if (dq < 6) detour.shift();
+      else intent = { x: (q.x - p.x) / dq, y: (q.y - p.y) / dq };
+      if (d < 70 && clear()) detour = [];
+    }
     p.moveIntent = intent;
     if (trace && Math.floor(t * 2) !== Math.floor((t - DT) * 2)) trace({ t: Math.round((t - start) * 10) / 10, p: [Math.round(p.x), Math.round(p.y)], b: [Math.round(b.x), Math.round(b.y)], d: Math.round(d), bhp: Math.round(b.hp), mode: b.mode, move: b.move?.name, veiled: b.veiled, shield: b.mem?.shield?.pips, hurt: !!hurt, mana: Math.round(m.mana.cur), php: Math.round(p.hp), cast: m.canCast?.(0)?.reason });
     step(g);
@@ -634,6 +685,8 @@ export function fight(id, { rule = 'new', build = 'sword', level = 15, main = 30
     casts,
     bigCasts,
     swings,
+    drunk,
+    bossLow: Math.round(Math.min(bossLow, b.hp)),
     seconds: Math.round((g.time - start) * 10) / 10,
     hp: hp0,
     lowest: Math.max(0, Math.round(hpLow)),
@@ -665,7 +718,7 @@ export function fights(id, o, seeds = SEEDS) {
     const v = (won.length ? won : list).map((f) => f[k]).sort((x, y) => x - y);
     return v[Math.floor(v.length / 2)];
   };
-  return { won: won.length, of: seeds, median: secs[Math.floor(seeds / 2)], fell: list.filter((f) => f.dropped).length, lowest: Math.min(...list.map((f) => f.lowest)), hp: list[0].hp, casts: med('casts'), bigCasts: med('bigCasts'), swings: med('swings'), left: med('bossLeft'), boss0: list[0].boss0, runs: list.map((f) => ({ won: f.won, s: f.seconds, left: f.bossLeft, casts: f.casts })) };
+  return { won: won.length, of: seeds, median: secs[Math.floor(seeds / 2)], fell: list.filter((f) => f.dropped).length, lowest: Math.min(...list.map((f) => f.lowest)), hp: list[0].hp, casts: med('casts'), bigCasts: med('bigCasts'), swings: med('swings'), left: med('bossLow'), drunk: med('drunk'), boss0: list[0].boss0, runs: list.map((f) => ({ won: f.won, s: f.seconds, low: f.bossLow, casts: f.casts, drunk: f.drunk })) };
 }
 
 function bossTable() {
@@ -865,9 +918,14 @@ function powerBossTable() {
       const strong = strongestWeave({ level, points: half, essences: 2, twists: level >= 9 ? 4 : 3, pool, sim: 18 });
       const row = { id, level, meant, weave: strong?.weave || null, weaveName: strong?.name, dealt: strong?.dealt };
       for (const build of ['might', 'weaveall', 'max']) row[build] = fights(id, { build, level, weave: strong?.weave, limit: LIMIT });
+      // A good build, prepared (two thirds in Might or Weave, the rest in Vitality or Focus, three
+      // healing potions): what the target is written for.
+      const main = Math.round((2 * all) / 3);
+      row.sword = fights(id, { build: 'sword', level, main, limit: LIMIT, potions: 3 });
+      row.weave = fights(id, { build: 'weave', level, main, limit: LIMIT, potions: 3 });
       out.push(row);
-      const f = (x) => `${fmtFight(x)} (${x.casts} casts${x.bigCasts ? `, ${x.bigCasts} big` : ''}, ${x.swings} swings, boss ${x.left}/${x.boss0}, low ${x.lowest}/${x.hp})`;
-      console.log(`  ${id} L${level}${level === meant ? ' (meant)' : ''}: might ${f(row.might)} | weave ${f(row.weaveall)} | max ${f(row.max)} :: ${row.weaveName} deals ${row.dealt}`);
+      const f = (x) => `${fmtFight(x)} (${x.casts} casts${x.bigCasts ? `, ${x.bigCasts} big` : ''}, ${x.swings} swings${x.drunk ? `, ${x.drunk} potions` : ''}, boss down to ${x.left}/${x.boss0}, you ${x.lowest}/${x.hp})`;
+      console.log(`  ${id} L${level}${level === meant ? ' (meant)' : ''}:\n     all Might ${f(row.might)}\n     all Weave ${f(row.weaveall)}\n     strongest ${f(row.max)} :: ${row.weaveName} deals ${row.dealt}\n     sword+vit ${f(row.sword)}\n     weave+focus ${f(row.weave)}`);
     }
   }
   return out;

@@ -98,7 +98,9 @@ test('power budget: every plan sits inside the band around its shape', () => {
     for (const tw of [[], ['multishot'], ['volley', 'echo'], ['big', 'burst', 'split', 'chain']]) {
       const p = compileWeave({ shape: s, essences: ['fire', 'storm'], twists: tw });
       assert.ok(p.ok, `${s} ${tw}`);
-      const ratio = p.value / p.cost;
+      // The band holds the budget's cost; round 15's surcharge (mana only) rides on top of it.
+      assert.ok(p.cost >= p.costBudget * 0.999 && Math.abs(p.cost - Math.min(BAL.COST_MAX, p.costBudget * p.surcharge)) < 0.06, `${s} ${tw}: ${p.cost} = ${p.costBudget} x ${p.surcharge}`);
+      const ratio = p.value / p.costBudget;
       assert.ok(ratio <= p.budget.hi * 1.015 || p.cost >= BAL.COST_MAX, `${s} ${tw} too cheap: ${ratio} > ${p.budget.hi}`);
       assert.ok(ratio >= p.budget.lo * 0.985 || p.cost <= BAL.COST_MIN, `${s} ${tw} too weak: ${ratio} < ${p.budget.lo}`);
       assert.ok(p.cooldown >= BAL.COOLDOWN_MIN && p.cooldown <= BAL.COOLDOWN_MAX);
@@ -664,6 +666,9 @@ test('a new essence, twist and status added at test time work with everything el
     const g = makeGame({ foes: 3 });
     const m = g.magic;
     m.unlockAll();
+    // Round 15: two essences and two twists on a nova cost more than a level-1 pool holds; this
+    // test is about the parts working together, so the pool is a grown one.
+    m.addMaxMana(400);
     assert.ok(m.isUnlocked('essence', 'ash'));
     for (const shape of Shapes.ids()) {
       resetArena(g);

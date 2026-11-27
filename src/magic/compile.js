@@ -16,7 +16,11 @@ import {
   SPEED_MIN,
   SPEED_MAX,
   CHARGE_POWER,
+  CHARGE_MANA,
   applyBudget,
+  costSurcharge,
+  COST_MIN,
+  COST_MAX,
   cooldownScale,
   cooldownBuy,
   clamp,
@@ -207,6 +211,7 @@ function build(w, twists, gen, key, prices = []) {
     orbit: 0,
     charge: 0, // seconds to a full charge (0: the usual CHARGE_TIME)
     chargePower: CHARGE_POWER, // damage x(1 + chargePower k) at charge k
+    chargeMana: CHARGE_MANA, // mana x(1 + chargeMana k) at charge k (round 15)
     aimAssist: false,
   };
   // Shape extras (arc, length, tick, drops, arm, atkCd…) ride along unscaled, except sizes.
@@ -285,6 +290,12 @@ function build(w, twists, gen, key, prices = []) {
   const cdScale = cooldownScale(w.shape);
   plan.value = plan.dmg * shapeDef.hits * value;
   applyBudget(plan, s.dmg * shapeDef.hits * 1.1, s.cost, cooldownBuy(cdScale));
+  // Round 15: what the hands pay on top (balance.js costSurcharge): a little more for any
+  // weave, much more for each essence past the first, each twist and a strong shape. Mana
+  // only: the budget's harm stands. A twist's child (gen > 0) is never paid for.
+  plan.costBudget = plan.cost;
+  plan.surcharge = costSurcharge(w.shape, essenceDefs.length, twists.length);
+  plan.cost = clamp(plan.cost * plan.surcharge, COST_MIN, COST_MAX);
   plan.cooldown = clamp(plan.cooldown * cdScale, COOLDOWN_MIN, COOLDOWN_MAX);
   plan.cost = Math.round(plan.cost * 10) / 10;
   plan.dmg = Math.max(1, Math.round(plan.dmg * 10) / 10);

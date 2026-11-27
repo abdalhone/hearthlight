@@ -50,7 +50,7 @@ export const greyjawBrain = {
       }
       return;
     }
-    if (b.hitStreak > 32 && b.ready('retreat')) {
+    if (b.hitStreak > b.maxHp * 0.053 && b.ready('retreat')) {
       b.cool('retreat', 9);
       b.hitStreak = 0;
       const away = angleTo(t, b);

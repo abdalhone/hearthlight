@@ -247,7 +247,7 @@ export const motherBrain = {
       },
       activeTick(b, m, dt) {
         // Hit her hard enough and she loses her hold on them.
-        if (m.hpAt - b.hp > 36) {
+        if (m.hpAt - b.hp > 60) {
           m.endActive = true;
           b.setAnim('hurt', true);
           return;
@@ -259,10 +259,13 @@ export const motherBrain = {
             k.removed = true;
             b.adds.delete(k);
             m.taken++;
+            // Each child drunk back (round 15: 24, was 16; her health grew more than that, so a
+            // child is a smaller share of her than it was, and a few blows still undo it).
+            const back = 24;
             try {
-              b.game.combat?.heal?.(b, b, 16);
+              b.game.combat?.heal?.(b, b, back);
             } catch {
-              b.hp = Math.min(b.maxHp, b.hp + 16);
+              b.hp = Math.min(b.maxHp, b.hp + back);
             }
             particles(b, 'heal', b.x, b.y - 10, { count: 8, color: '#b6ff6a' });
             sound(b, 'boss_glob', { pitch: 0.7 });

@@ -545,6 +545,8 @@ export class Combat {
     const def = Math.max(0, (target.def || 0) - (opts.penetration || 0));
     const floor = S && Number.isFinite(S.armorFloor) ? raw * S.armorFloor : 0;
     let dealt = Math.max(1, Math.round(Math.max(raw - def, floor)));
+    // A boss takes no more than its share from one blow (round 15, src/bosses/boss.js capBlow).
+    if (typeof target.capBlow === 'function') dealt = target.capBlow(dealt, source, opts);
     // A ward (a weave, DESIGN §22.5) takes what it can of the blow first.
     const warded = g.magic?.absorb ? Math.round(g.magic.absorb(target, dealt, source, opts) || 0) : 0;
     if (warded > 0) dealt = Math.max(0, dealt - warded);

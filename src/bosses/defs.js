@@ -1,12 +1,17 @@
 // The five bosses of the Weave (DESIGN §22.3): who they are, how tough, where they live,
-// what they leave behind and what they say. Numbers are tuned for a player with the
-// sword and early weaves (bolt + strike + one essence) and Lyra beside them: hard but
-// fair, one to three minutes each. Every attack is telegraphed for at least half a
-// second with a ground marker, so a thumb on a phone held sideways can read it.
+// what they leave behind and what they say. Round 15 (the author: "bosses are too easy … I
+// don't think the 3 or 2 minutes fights are enough … if I wanted to do it alone, like 4
+// minutes or like something that is really hard … make it have a really good damage and a
+// really good defense"): tuned for a stranger alone at the level each is meant for (`level`),
+// with a good build, to need about four minutes or more of a hard fight; much stronger, less,
+// never a burst (boss.js: the blow cap and the guard). They hit hard: a few unread markers
+// drop you. Every attack is still telegraphed for at least half a second with a ground
+// marker, so a thumb on a phone held sideways can read it.
 //
 // def fields:
 //   id, entityId (the boss actor's id; story scenes point the camera at it), species,
 //   name, title, faction, kind, hp, atk, def, speed, radius, mass, xp
+//   resist       damage taken by type, x (combat.resistMul): 0.25 shrugs most of it off
 //   level        the level the fight is meant for (round 15: the stranger the missions lead there)
 //   phases       hp fractions where a new phase starts (descending)
 //   rewards      [[kind, id], ...] glyph-shards dropped on defeat (kind 'essence'|'twist')
@@ -29,9 +34,10 @@ export const BOSSES = {
     title: 'Chief of the hill bandits',
     faction: 'bandit',
     kind: 'human',
-    hp: 520,
-    atk: 11,
-    def: 2,
+    hp: 1900, // round 15: was 520
+    atk: 18, // was 11
+    def: 6, // was 2
+    resist: { fire: 0.5, iron: 0.8 }, // his fire never goes out; a hillman's mail
     speed: 44,
     radius: 8,
     mass: 3,
@@ -65,9 +71,10 @@ export const BOSSES = {
     title: 'Alpha of the Whisperwood packs',
     faction: 'monster',
     kind: 'animal',
-    hp: 600,
-    atk: 10,
-    def: 1,
+    hp: 2200, // round 15: was 600
+    atk: 17, // was 10
+    def: 4, // was 1
+    resist: { frost: 0.6, wind: 0.5, fire: 1.25 }, // a winter coat; the wind is his
     speed: 66,
     radius: 9,
     mass: 3,
@@ -92,9 +99,10 @@ export const BOSSES = {
     title: 'What the rain-pools grew',
     faction: 'monster',
     kind: 'monster',
-    hp: 560,
-    atk: 9,
-    def: 0,
+    hp: 2000, // round 15: was 560
+    atk: 15, // was 9
+    def: 3, // was 0
+    resist: { poison: 0.25, water: 0.7, fire: 1.3 }, // what the pools grew: poison is her own
     speed: 26,
     radius: 12,
     mass: 5,
@@ -118,9 +126,10 @@ export const BOSSES = {
     title: 'The voice under Mirror Lake',
     faction: 'monster',
     kind: 'monster',
-    hp: 440,
-    atk: 10,
-    def: 1,
+    hp: 1800, // round 15: was 440
+    atk: 18, // was 10
+    def: 4, // was 1
+    resist: { water: 0.25, frost: 0.6, storm: 1.3 }, // still water; a bolt through it sings
     speed: 54,
     radius: 10,
     mass: 6,
@@ -145,9 +154,10 @@ export const BOSSES = {
     title: 'Gravelight given a shield',
     faction: 'undead',
     kind: 'undead',
-    hp: 560,
-    atk: 12,
-    def: 3,
+    hp: 2400, // round 15: was 560
+    atk: 21, // was 12
+    def: 8, // was 3
+    resist: { dark: 0.25, poison: 0.3, light: 1.3 }, // gravelight; light unmakes it
     speed: 30,
     radius: 9,
     mass: 6,
