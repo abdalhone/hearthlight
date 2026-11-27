@@ -2628,10 +2628,12 @@ pointed to on day one). Marked bosses show on the map with their names. Events:
 
 `src/world/containers.js`. Chests have locks: a key (`keyId`), a keeper (`keeper`), an
 owner. No key: the keeper may open it (Lyra opens her own trunk for someone she trusts),
-or you may force the lock. Forcing or emptying someone's chest is theft (`crime`, kind
+or you may break the hasp with a pickaxe (round 15, §40.9: the hasp is iron, and iron
+yields only to its tool). Forcing or emptying someone's chest is theft (`crime`, kind
 `theft`, `owner`). Rowan gives the watch's footlocker key for Hold the Line. Loot
 (bandits', Brindlecombe's) is free. Forcing is done at the chest (the use button, then
-Force the lock): a Strike or any other blow never opens, breaks or spills a chest (§31.3).
+Break the hasp, with a pickaxe in the pack): a Strike or any other blow never opens, breaks
+or spills a chest (§31.3).
 
 ### 32.7 Footsteps by ground
 
@@ -3135,8 +3137,9 @@ a bare distance. Children (`isMinor`, under 16) are never killable, never hurt.
   Unseen: no crime, no toast; the owner who next sees their chest is uneasy
   (`ownersNotice`, `goods_missing`). Forcing a lock is a sound (`hears`: uneasy, never who).
 - **A blow on a locked chest** (`game.chestBlow`, from magic.hitProps and the player's
-  swing): a Strike's fist or a heavy weave forces the hasp (D10), the panel not opened; a
-  lighter blow says "Iron-bound…". Contents never move.
+  swing): no blow forces the iron hasp (round 15, §40.9, in place of D10's heavy blow); each
+  says "Iron-bound: no blow, blade or weave breaks the hasp. A pickaxe would…". Contents
+  never move.
 - **`game.provenance`** (the base): `add`, `take` (first in, first out), `of`, `qtyOf`,
   `all`, `settle`; the shop calls `take()` before removing an item.
 
@@ -3144,7 +3147,8 @@ a bare distance. Children (`isMinor`, under 16) are never killable, never hurt.
 
 - `{ target, set, clear, cycle(dir), valid, pickAt, nearestInFront, press(at), aimTarget(range),
   update }`. Valid: alive or downed, not hidden, within 240 px of the player, reachable
-  (`canReach`), never whoever walks with you by default. It re-targets the next foe when the
+  (`canReach`), never whoever walks with you by default. Besides actors, the training dummy
+  (`isTargetProp`, round 15, §40.11). It re-targets the next foe when the
   lock dies, and lets go on distance or a wall. Bus `lock_changed`.
 - Controls: the middle button locks what is under the cursor (an empty spot lets go; no
   autoscroll), G the nearest in front (or lets go), R3 on a pad; while locked the wheel
@@ -4115,3 +4119,85 @@ hold by the rules named.
     The red hurt flash (`renderer.js`: 0.55 a hit plus up to 0.4 by the blow's size) says
     that you were hit, not how much of you is left; the low-health vignette says that. Left
     as it is.
+
+## 40. Round 15: the author's Version 12 playtest
+
+The author played Version 12 on a phone (upright and sideways) and a computer and sent a
+list (14 items; the round brief keeps his words). This section is one subsection per item,
+numbered by the item; each workstream writes its own.
+
+### 40.6 The aim highlight goes when the cast does (hands)
+
+The author: *"when I use a spell and I leave it, the highlight of where it would go or where
+I can aim it stays on."* Played in the browser on the Version 12 build
+(`scripts/hands_check.mjs`, run on c484794 for the bug and on the branch for the fix):
+
+- **On the computer** the faint guide of the marked weave (`weaving.hover`) stayed under the
+  mouse for 2.5 s after every cast, and all the time while a foe was within 220 px: after a
+  key, a hotbar click or the right button was let go, the bolt's band or the landing ring
+  was still drawn. It is now an opt-in, off by default (Settings > Controls > Mouse: "Aim guide
+  between casts", `aimGuideIdle`), and even then only in a fight, while the mouse or the right
+  stick aims, never while a press is down and never as an afterglow. The old "Aim guide" key
+  (`aimGuides`) is still honoured when a saved setting has it off.
+- **On every device** a hold the runtime let go before the release (a roll breaks the charge,
+  a stun or a freeze, a beam run dry, another weave taking over: `castHold` returns null, or
+  `dropHolds`) stayed in `weaving.casts`, so its preview stayed drawn while the finger or the
+  key was still down (the phone held upright showed the frost throw's landing ring after the
+  roll). Such a cast now leaves `casts` at once; letting go later casts nothing.
+- The rule: an aim preview is drawn only while a weave is pressed or held (`weaving.aims`),
+  and nothing of it outlives the release, a cancel (dragged back onto the button), a refusal
+  (mana, cooldown: nothing is drawn at all) or the runtime letting it go. Planted casting
+  (§38.6) follows it too. `tests/r15_hands.test.mjs` holds each path (keys 1-4, the hotbar
+  click, the right button and the pad trigger, a tap, a drag, a full charge, a drag back, a
+  refusal, a let-go hold, planted); `scripts/hands_check.mjs` plays them on the three screens
+  and a 4x-throttled sideways phone.
+
+### 40.9 Iron needs a pickaxe (hands)
+
+The author: *"I can like break iron without any specialized tools. Why is that?"* In Version
+12 an iron ore vein (`Rock`, `objType` `'ore'`) was mined by the use button or the attack
+button's work swing with bare hands (2 ore a vein on the phones), and a Strike or a heavy
+weave forced an iron hasp. `src/world/tools.js` is the rule:
+
+- **What needs which tool** (`TOOL_FOR`): an ore vein and an iron hasp want a pickaxe. Plain
+  rock, glow crystal and wood are as they were (the hands and the sword work them).
+- **The vein.** Without a pickaxe in the pack the prompt reads "Mine iron ore: needs a
+  pickaxe" (with one: "Mine iron ore (pickaxe)"); the use button says "You need a pickaxe for
+  iron. Bram sells them at the smithy, and the quarrymen keep a spare in the tool chest by
+  the ore cart." The attack button still takes the vein (`Rock.needsTool`, player
+  `_findWorkTarget`): a work swing that jolts and clinks off it and says "Your blade only
+  rings off it", never a sword blow at whoever stands beside you (found in the browser: the
+  first cut of this made it a sword swing, which struck Lyra). The sword's arc and every
+  weave (Strike, heavy, beams) ring off it too (`BREAKABLE.ore = { iron: true }`): a missile
+  stops at it, nothing breaks, nothing is given.
+- **The hasp.** A locked chest without its key opens to a pickaxe at the chest (the use
+  button, then "Break the hasp", still theft if it is someone's and seen); bare hands get
+  the word only (no offer), and no blow forces it.
+- **Where a pickaxe comes from.** Bram sells it (24 coin, 3 a day, `trade.js` WARES and
+  DAILY; he buys it back) and the quarrymen keep a spare in the quarry tool chest
+  (`quarry_tools`, tile 21,24 by the ore cart, a loot chest: taking it is no theft). Bram's
+  ore errands (Ore for the Hinge, 3 ore; Hot Blood, 4 ore and a crystal) are doable the day
+  they are given: the chest is beside the veins, and Bram's progress lines say "Take a pick
+  to them. Hands won't." The quarry's 5 veins give 1-2 ore each and come back in 2 days.
+- **Who else digs.** Only the player carries tools as items; Bram, Tilly, Lyra on Bram's
+  errand and a companion sent to dig work with their own pick (`hasTool` is true for them).
+- **Saves.** Old saves load as they were: ore in the pack, a mined-out vein (its `depleted`
+  and `regrowAt`; a half-swung vein's progress was never saved), and the quarry tool chest
+  appears in them (a generated object; the vale's other 3662 objects and every entity are
+  unchanged, diffed against c484794). `tests/r15_hands.test.mjs` loads the round 14b save
+  fixture with ore and a mined vein written into it.
+
+### 40.11 Lock-on takes the training dummy (hands)
+
+The author: *"I cannot focus on a training dummy."* `game.lock` took only actors; the dummy
+is a world object. `isTargetProp` (the dummy: the one thing made to be struck that is no one)
+is now valid beside every actor: a middle click on it, G or the phone's long press on the
+sword button (the nearest in front: foes still come first), the wheel's cycle. Weaves aim at
+it from every source (`weaving.aimFor`), the attack button turns to it and swings (the arc
+lands on it, `player.attack`), and the reticle names it ("Dummy") without a health bar (it
+never breaks). Props that only break in passing (trees, barrels, rocks) are not targets: G in
+a wood would lock a tree instead of the wolf behind it. Every hittable actor kind is held to
+lock in `tests/r15_hands.test.mjs`: each creature species, a villager, the tempter, the five
+bosses in their fights (the Lake's Hum under the water and Greyjaw by day are not there to
+hit, nor to lock), the downed.
+
