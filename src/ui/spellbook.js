@@ -15,6 +15,7 @@ import { makePreview } from './weave_sandbox.js';
 import { shapeIconUrl, essenceIconUrl, twistIconUrl, silhouetteUrl, glyphSize, spellbookIconUrl } from './weave_icons.js';
 import { BOSS_HINTS, GENERIC_HINT, cleanWeave, weavePalette, singular, fallbackName, previewOf, castModeOf } from './weave_meta.js';
 import { ensureStatsStyle, PRICE_GLYPH, PRICE_HINTS } from './stats_style.js';
+import { glyphUrl } from '../art/faces_art.js';
 
 const SEEN_KEY = 'hearthlight.spellbook.seen';
 
@@ -429,7 +430,7 @@ export class Spellbook {
         if (!open) continue;
       }
       const on = chosen.includes(id);
-      const glyphEl = h('span', { class: 'sb-price-glyph', 'aria-hidden': 'true', text: PRICE_GLYPH[id] || '◆' });
+      const glyphEl = h('span', { class: 'sb-price-glyph', 'aria-hidden': 'true' }, h('img', { class: 'price-glyph-img', src: glyphUrl(PRICE_GLYPH[id] || 'diamond'), alt: '', draggable: 'false' }));
       glyphEl.style.setProperty('--pc', def?.color || '#ff5a5a');
       const t = h(
         'button',

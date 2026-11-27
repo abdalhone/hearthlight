@@ -60,7 +60,7 @@ function fakeMind() {
     recall: (q, o = {}) => memories.slice(0, o.limit || 6),
     addGoal: (t, p, s) => calls.goals.push([t, p, s]),
     addThought: (t, s) => calls.thoughts.push([t, s]),
-    mood: () => ({ label: 'content', valence: 0.2, arousal: 0.3, emoji: '🙂' }),
+    mood: () => ({ label: 'content', valence: 0.2, arousal: 0.3, face: 'content' }),
     describeState: () => 'Content, a little tired. Following the player through the village.',
     relationships: {
       get: (id) => rels.get(String(id).toLowerCase()) || null,

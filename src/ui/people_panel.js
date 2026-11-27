@@ -16,8 +16,9 @@ import { h, icon, button, clear, toggleClass } from './dom.js';
 import { makePanel } from './modal.js';
 import { portraitUrl } from './art.js';
 import { COMMANDS, JOBS, DELIVER_OPTIONS } from './content.js';
-import { peopleList, youPage, lyraPage, lyraContext, villagerPage } from './people_view.js';
+import { peopleList, youPage, lyraPage, lyraContext, villagerPage, companionPicker } from './people_view.js';
 import { holderOf } from '../core/party.js';
+import { isMinor } from '../core/people.js';
 
 function safe(fn, fallback = null) {
   try {
@@ -183,14 +184,7 @@ export class PeoplePanel {
   }
 
   inviteButton(e, label) {
-    return button(label, { icon: 'heart', cls: 'btn-small btn-ember people-invite', onClick: () => {
-      const r = safe(() => this.game.party?.invite?.(e, { by: 'player' }), null);
-      const g = this.game;
-      if (r?.narration && r.line) this.ui.toast(r.line, 'info');
-      else if (r?.line) safe(() => this.ui.personSays?.(e, r.line));
-      if (!r?.ok && r?.decision === 'refuse' && !r?.line) g.audio?.play?.('error');
-      this.render();
-    } });
+    return button(label, { icon: 'heart', cls: 'btn-small btn-ember people-invite', onClick: () => this.invite(e) });
   }
 
   homeButton(e) {
@@ -252,6 +246,7 @@ export class PeoplePanel {
     const el = this.pageEl;
     el.append(this.head({ id: 'you', name: v.name, sub: v.feeling?.label ? `Hearthvale: ${v.feeling.label}` : '', tone: 'calm', portraitKey: null }));
     if (v.wanted) el.append(para('The watch is looking for you.', 'people-warn'));
+    el.append(this.walksWithYou());
     el.append(box('How Hearthvale sees you', para(v.feeling?.sentence || 'Hearthvale is still making up its mind about you.'), v.titles.length ? para(`What they call you: ${v.titles.join(', ')}.`) : null));
     el.append(box('What people are saying', v.rumors.length ? list(v.rumors.map((r) => h('li', { class: `tone-${r.tone}`, text: r.text }))) : para('Nothing much, yet.', 'empty')));
     el.append(
@@ -259,13 +254,54 @@ export class PeoplePanel {
         'Each of them',
         list(
           v.views.map((x) => {
-            const li = h('li', { class: `people-view tone-${x.key}` }, h('span', { class: 'people-view-name', text: x.name }), h('span', { class: 'people-view-label', text: x.label }));
-            return li;
+            // Each row opens their page (and from there, Talk or Invite to travel).
+            const row = h('button', { type: 'button', class: `people-view-open tone-${x.key}`, 'data-id': x.id, title: `${x.name}: open their page` }, h('span', { class: 'people-view-name', text: x.name }), h('span', { class: 'people-view-label', text: x.label }));
+            row.addEventListener('click', () => this.select(x.id));
+            return h('li', { class: `people-view tone-${x.key}` }, row);
           }),
           'people-views',
         ),
       ),
     );
+  }
+
+  // Who walks with you (round 15, item 12): whoever holds the role, or nobody; and every grown
+  // person who could, nearest first, each a tap from being asked. It never depends on Lyra: with
+  // her, without her, after she left, cut ties or died, asking anyone along is here.
+  walksWithYou() {
+    const g = this.game;
+    const v = safe(() => companionPicker(g), null) || { holder: null, adults: [], total: 0, lyra: null };
+    const kids = [];
+    if (v.holder) kids.push(para(`${v.holder.name} walks with you. Ask someone else and ${v.holder.name} goes home.`, 'muted small'));
+    else kids.push(para('You walk alone. Any grown person may come with you, if they will: ask them here, on their page, or in talk ("Will you travel with me?").', 'muted small'));
+    const row = h('div', { class: 'people-ask-list' });
+    for (const a of v.adults) {
+      const e = safe(() => g.entities.get(a.id), null);
+      if (!e) continue;
+      const b = button(`Ask ${a.name}`, { icon: 'heart', cls: 'btn-small people-ask-one', title: a.tiles != null ? `${a.name}, ${a.tiles} tiles away` : a.name, onClick: () => this.invite(e) });
+      b.dataset.id = a.id;
+      if (!a.can) b.disabled = true;
+      row.append(b);
+    }
+    if (v.lyra && v.lyra.cs !== 'gone') {
+      const L = g.lyra || g.companion;
+      const b = button(`Ask ${v.lyra.name} again`, { icon: 'heart', cls: 'btn-small people-ask-one', onClick: () => this.invite(L) });
+      b.dataset.id = 'lyra';
+      row.append(b);
+    }
+    if (row.childElementCount) kids.push(row);
+    if (v.total > v.adults.length) kids.push(para('Everyone else is in the list: open anyone to ask them.', 'muted small'));
+    return h('section', { class: 'box people-box people-walks' }, h('h3', { text: 'Who walks with you' }), ...kids);
+  }
+
+  invite(e) {
+    const r = safe(() => this.game.party?.invite?.(e, { by: 'player' }), null);
+    const g = this.game;
+    if (r?.narration && r.line) this.ui.toast(r.line, 'info');
+    else if (r?.line) safe(() => this.ui.personSays?.(e, r.line));
+    if (!r?.ok && r?.decision === 'refuse' && !r?.line) g.audio?.play?.('error');
+    this.render();
+    return r;
   }
 
   // ---------- Lyra ----------
@@ -349,10 +385,11 @@ export class PeoplePanel {
     if (!v.dead) {
       actions.push(this.talkButton(v.id, v.name));
       if (v.holder) actions.push(this.homeButton(npc));
-      else actions.push(this.inviteButton(npc, 'Invite to travel'));
+      else if (!safe(() => isMinor(g, npc), false)) actions.push(this.inviteButton(npc, 'Invite to travel'));
     }
     el.append(this.head({ id: v.id, name: v.age != null ? `${v.fullName}, ${v.age}` : v.fullName, sub: v.standing.label, tone: { fond: 'good', friendly: 'good', neutral: 'calm', wary: 'warn', hostile: 'bad' }[v.standing.key], portraitKey: npc.spriteKey || npc.id, dead: v.dead }, actions));
     if (v.dead) el.append(box('In memory', para(`${v.name} is dead.`)));
+    else if (!v.holder && safe(() => isMinor(g, npc), false)) el.append(para(`${v.name} is a child. Children do not go on the road with you.`, 'muted small'));
     if (v.holder) el.append(this.askRow(false, v.name));
     const b = v.between;
     el.append(

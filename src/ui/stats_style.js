@@ -142,8 +142,11 @@ export function ensureStatsStyle() {
   document.head.appendChild(st);
 }
 
-// One glyph per price, drawn as text (they read at 12 px on a hotbar button).
-export const PRICE_GLYPH = { bloodprice: '♥', berserk: '✸', glass: '◇', overdraw: '∞', emberblood: '♨', lastlight: '✦', oath: '⚭', laststand: '☠' };
+// One mark per price (round 15, item 2: drawn by the game, src/art/faces_art.js GLYPHS, never
+// a character a phone turns into its own colour emoji: the old heart, hot-spring and skull characters did).
+export const PRICE_GLYPH = { bloodprice: 'heart', berserk: 'burst', glass: 'diamond', overdraw: 'infinity', emberblood: 'steam', lastlight: 'star', oath: 'rings', laststand: 'skull' };
+// Its words, for a screen reader and a tooltip.
+export const PRICE_GLYPH_WORDS = { heart: 'a heart', burst: 'a burst', diamond: 'a diamond', infinity: 'an endless loop', steam: 'a steaming flame', star: 'a star', rings: 'two rings', skull: 'a skull' };
 
 // Where each price is found, for the Spellbook's locked tiles (never a hidden truth).
 export const PRICE_HINTS = {

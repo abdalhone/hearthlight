@@ -30,7 +30,7 @@ import {
   lyraStatusLine,
   weatherIconKey,
   weatherLabel,
-  moodEmoji,
+  moodFace,
   moodToExpression,
   bondLabel,
   affinityWords,
@@ -321,11 +321,11 @@ test('weather icons follow the time of day', () => {
   for (const k of ['sun', 'moon', 'rain', 'cloud', 'cloud_night', 'fog']) assert.ok(ICONS[k], k);
 });
 
-test('mood helpers pick emoji and portrait expressions', () => {
-  assert.equal(moodEmoji({ label: 'content', emoji: '🌙' }), '🌙');
-  assert.equal(moodEmoji({ label: 'anxious' }), '😟');
-  assert.equal(moodEmoji('furious'), '😠');
-  assert.equal(moodEmoji(null), '🙂');
+test('mood helpers pick the game-drawn face and portrait expressions (never an emoji)', () => {
+  assert.equal(moodFace({ label: 'content', face: 'calm' }), 'calm');
+  assert.equal(moodFace({ label: 'anxious' }), 'afraid');
+  assert.equal(moodFace('furious'), 'furious');
+  assert.equal(moodFace(null), 'neutral', 'nothing known is a plain face, never a delighted default');
   assert.equal(moodToExpression({ valence: 0 }, { anger: 0.8, joy: 0.5 }), 'angry');
   assert.equal(moodToExpression({ valence: 0 }, { joy: 0.6 }), 'happy');
   assert.equal(moodToExpression({ valence: 0 }, { affection: 0.7, joy: 0.5 }), 'love');

@@ -1,0 +1,155 @@
+/* Round 15, the people builder (DESIGN §40): the game's own mood faces (item 2), the empty
+   companion slot and People's "Who walks with you" (item 12). */
+
+/* ---------- Faces drawn by the game (src/art/faces_art.js), never the phone's emoji ---------- */
+.px-face {
+  width: calc(var(--iw, 15) * var(--isc, 1) * 1px);
+  height: calc(var(--ih, 14) * var(--isc, 1) * 1px);
+  image-rendering: pixelated;
+  flex: none;
+  vertical-align: middle;
+}
+.mood-face {
+  --isc: 1;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.7));
+}
+.hero-mood .mood-face,
+.people-head .mood-face {
+  --isc: 2;
+}
+img.mini-mood.px-face {
+  width: 15px;
+  height: 14px;
+}
+.companion-wrap.mini img.mini-mood {
+  right: -8px;
+  top: -7px;
+}
+.chat-portrait {
+  position: relative;
+}
+.chat-face {
+  position: absolute;
+  right: -7px;
+  bottom: -6px;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.8));
+}
+.chat-face[hidden] {
+  display: none;
+}
+.people-face-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--parch-dim);
+}
+.price-glyph-img {
+  width: calc(var(--iw, 7) * 2px);
+  height: calc(var(--ih, 7) * 2px);
+  image-rendering: pixelated;
+  vertical-align: middle;
+}
+
+/* ---------- The empty companion slot (walking alone): a door to People ---------- */
+.companion-empty {
+  --bc: var(--line-dim);
+  opacity: 0.92;
+}
+.companion-empty .empty-frame {
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 9, 25, 0.35);
+  outline: 2px dashed rgba(169, 149, 255, 0.45);
+  outline-offset: -4px;
+}
+.companion-empty .empty-glyph {
+  opacity: 0.55;
+}
+.companion-empty .companion-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.companion-empty .card-name {
+  color: var(--parch-dim, #b9ad99);
+}
+.companion-empty-sub {
+  font-size: var(--fs-xs, 12px);
+  color: var(--arcane-pale, #c9bdff);
+}
+.companion-empty-wrap[hidden] {
+  display: none;
+}
+@media (max-width: 640px), (max-height: 520px) {
+  .companion-empty-wrap.mini .companion-empty {
+    width: auto;
+    gap: 0;
+    padding: 4px;
+  }
+  .companion-empty-wrap.mini .companion-info {
+    display: none;
+  }
+  .companion-empty-wrap.mini .empty-frame {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* ---------- People: who walks with you, rows that open a page ---------- */
+.people-walks .people-ask-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+.people-walks .people-ask-one {
+  min-height: 44px;
+}
+.people-view-open {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.people-view-open:hover,
+.people-view-open:focus-visible {
+  background: rgba(74, 81, 150, 0.25);
+}
+.people-view-open.tone-fond .people-view-label,
+.people-view-open.tone-friendly .people-view-label {
+  color: #8fe0a9;
+}
+.people-view-open.tone-wary .people-view-label {
+  color: #ffcf7a;
+}
+.people-view-open.tone-hostile .people-view-label {
+  color: #ff8b7e;
+}
+@media (pointer: coarse) {
+  .people-view-open {
+    min-height: 40px;
+  }
+}
+.buff-dot {
+  display: inline-grid;
+  place-items: center;
+}
+.buff-dot .price-glyph-img {
+  width: 7px;
+  height: 7px;
+}
+.gift-result .price-glyph-img {
+  margin-right: 2px;
+}

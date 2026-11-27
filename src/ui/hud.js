@@ -15,7 +15,10 @@ import { spellbookIconUrl, SPELLBOOK_ICON_SIZE } from './weave_icons.js';
 import { Spellbook } from './spellbook.js';
 import { h, icon, setIcon, setText, setStyle, toggleClass, meter, button, setAttr } from './dom.js';
 import { COMMANDS, JOBS, DELIVER_OPTIONS } from './content.js';
-import { hpText, frac, fmtInt, weatherIconKey, weatherLabel, moodEmoji, stanceLabel } from './format.js';
+import { hpText, frac, fmtInt, weatherIconKey, weatherLabel, stanceLabel } from './format.js';
+import { faceImg, setFace } from './faces.js';
+import { glyphUrl } from '../art/faces_art.js';
+import { personFace, portraitExpr } from './person_face.js';
 import { portraitUrl } from './art.js';
 import { trustWords, fearWords } from './lyra_view.js';
 import { companionView, companionBarMode } from './companion_view.js';
@@ -164,7 +167,8 @@ export class Hud {
     // stand with you; not a unit frame. Hidden when you walk alone.
     this.lPortrait = h('img', { class: 'portrait portrait-hud', alt: '', draggable: 'false' });
     this.lName = h('span', { class: 'card-name' });
-    this.lMood = h('span', { class: 'mood-emoji', role: 'img' });
+    // The mood is a face the game draws (round 15, item 2), never the phone's emoji.
+    this.lMood = faceImg('neutral', '', 'mood-face');
     this.lStanceIcon = icon('shield');
     this.lStance = h('span', { class: 'stance-badge' }, this.lStanceIcon, h('span', { class: 'stance-text' }));
     this.lHp = meter('meter-companion', 'Health');
@@ -178,7 +182,8 @@ export class Hud {
     this.compLive = h('span', { class: 'companion-live' }, this.lHp.el, this.lStatus);
     // Folded (phones): the portrait with the mood on its corner and a hairline of health.
     this.lMiniHp = h('i', { class: 'mini-hp-fill' });
-    this.lMiniMood = h('span', { class: 'mini-mood', 'aria-hidden': 'true' });
+    this.lMiniMood = faceImg('neutral', '', 'mini-mood');
+    this.lMiniMood.setAttribute('aria-hidden', 'true');
     this.compCard = h(
       'button',
       { type: 'button', class: 'card companion-card', title: 'Open People (Tab)' },
@@ -190,6 +195,18 @@ export class Hud {
     // they are to you, and the "Ask" row for orders.
     this.compCard.addEventListener('click', () => this.openPeopleAtCompanion());
     this.compWrap = h('div', { class: 'companion-wrap', hidden: true }, this.compCard);
+    // Walking alone (round 15, item 12): the slot stays, empty, and a tap opens People at
+    // "Who walks with you", where anyone grown can be asked along. Nobody's face is in it.
+    this.emptyName = h('span', { class: 'card-name', text: 'Walking alone' });
+    this.emptySub = h('span', { class: 'companion-empty-sub', text: 'Tap to ask someone along' });
+    this.emptyCard = h(
+      'button',
+      { type: 'button', class: 'card companion-card companion-empty', title: 'Walking alone: open People to ask someone along (Tab)', 'aria-label': 'Walking alone: open People to ask someone along' },
+      h('span', { class: 'portrait-frame empty-frame', 'aria-hidden': 'true' }, icon('heart', 'empty-glyph')),
+      h('span', { class: 'companion-info' }, this.emptyName, this.emptySub),
+    );
+    this.emptyCard.addEventListener('click', () => this.openPeopleAtCompanion());
+    this.emptyWrap = h('div', { class: 'companion-wrap companion-empty-wrap', hidden: true }, this.emptyCard);
 
     // Place, clock and weather
     this.place = h('div', { class: 'place-name' });
@@ -276,7 +293,7 @@ export class Hud {
 
     this.hotbar = this.buildHotbar();
 
-    this.cardsEl = h('div', { class: 'hud-cards' }, playerCard, this.compWrap);
+    this.cardsEl = h('div', { class: 'hud-cards' }, playerCard, this.compWrap, this.emptyWrap);
     this.rightEl = h('div', { class: 'hud-right' }, placeCard, corner);
     const top = h('div', { class: 'hud-top' }, this.cardsEl, this.rightEl);
     const center = h('div', { class: 'hud-center' }, this.questLine);
@@ -516,6 +533,7 @@ export class Hud {
   applyMini() {
     const folded = this.isFolded();
     toggleClass(this.compWrap, 'mini', folded);
+    toggleClass(this.emptyWrap, 'mini', folded);
     const name = this.view?.name || '';
     setAttr(this.compCard, 'aria-label', folded && name ? `${name}: open People` : null);
     toggleClass(this.ui.root, 'hud-small', folded);
@@ -751,6 +769,7 @@ export class Hud {
     this.cmdbar.hidden = !full;
     this.ordersWrap.hidden = !full;
     this.compWrap.hidden = !full;
+    this.emptyWrap.hidden = full;
     this.cmdbar.dataset.mode = mode;
     if (!full || !jobs) this.closeJobs();
     this.closeRadial();
@@ -991,7 +1010,7 @@ export class Hud {
     for (const m of list.slice(0, 8)) {
       const dot = h('span', { class: 'buff-dot', 'aria-hidden': 'true' });
       const glyph = m.price ? PRICE_GLYPH[m.price] || '' : '';
-      if (glyph) dot.textContent = glyph;
+      if (glyph) dot.append(h('img', { class: 'price-glyph-img', src: glyphUrl(glyph), alt: '', draggable: 'false' }));
       const left = Number.isFinite(m.left) ? fmtSeconds(m.left) : m.tap ? '✕' : '∞';
       const chip = h('button', { type: 'button', class: `buff ${m.kind || 'buff'}`, title: `${m.label}${m.tap ? ' (tap to douse)' : ''}` }, dot, h('span', { class: 'num', text: left }));
       chip.style.setProperty('--pc', m.color || (m.kind === 'cost' || m.kind === 'weak' ? '#ff6b5e' : '#58cf8f'));
@@ -1004,27 +1023,14 @@ export class Hud {
     }
   }
 
+  // The companion's face: whoever it is, what they really feel (person_face.js): fear, shock,
+  // grief or anger after violence they saw or heard; never a delighted default (round 15).
   refreshMood(c, v = this.view) {
     if (!v) return;
-    const mind = v.isLyra ? c.mind : null;
-    let mood = null;
-    try {
-      mood = mind?.mood?.() || null;
-    } catch {
-      mood = null;
-    }
-    setText(this.lMood, moodEmoji(mood));
-    setText(this.lMiniMood, moodEmoji(mood));
-    setAttr(this.lMood, 'title', mood?.label ? `Mood: ${mood.label}` : null);
-    setAttr(this.lMood, 'aria-label', mood?.label ? `Mood: ${mood.label}` : 'Mood');
-    if (!v.isLyra) {
-      // A villager's face says how they feel about you (their opinion), no more.
-      const face = { fond: '😊', friendly: '🙂', neutral: '😐', wary: '😟', hostile: '😠' }[v.standing.key] || '';
-      setText(this.lMood, face);
-      setText(this.lMiniMood, face);
-      setAttr(this.lMood, 'title', `${v.standing.label}`);
-    }
-    const expr = c.downed ? 'sad' : v.expr || 'neutral';
+    const f = personFace(this.game, c) || { kind: 'blank', label: 'quiet' };
+    setFace(this.lMood, f.kind, f.label);
+    setFace(this.lMiniMood, f.kind, f.label);
+    const expr = c.downed ? 'sad' : portraitExpr(f.kind);
     const pkey = `${v.portraitKey}|${expr}`;
     if (pkey !== this.lastExpr) {
       const url = portraitUrl(this.game, v.portraitKey, expr);

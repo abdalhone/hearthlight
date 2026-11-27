@@ -321,6 +321,11 @@ export function villagerChips(game, id, knows = false) {
   const out = ['Hello! How are you?', "What's the news?", 'What do you think of me?', 'Tell me about yourself.'];
   const name = String(game?.settings?.playerName || '').trim();
   if (!knows && name && !/^travell?er$/i.test(name)) out.splice(1, 0, `I'm ${name}.`);
+  // Asking them along, in words (round 15, item 12): any grown person, whoever walks with you
+  // now or nobody; the game weighs it (party.weighJoin) before they word the answer.
+  const holder = safe(() => game?.party?.holder, null);
+  if (e && holder === e) out.push('You can go home now. Thank you.');
+  else if (e && safe(() => game?.party?.canHold?.(e), false)) out.push('Will you travel with me?');
   out.push('Goodbye!');
   return out;
 }

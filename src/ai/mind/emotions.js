@@ -133,6 +133,12 @@ function tintValence(tint) {
   return v;
 }
 
+// The face (src/art/faces_art.js) a tint's label reads as, when the caller names none.
+const TINT_FACE = { heartsick: 'heartsick', hurt: 'hurt', shaken: 'afraid', 'heavy-hearted': 'sad', uneasy: 'uneasy', guarded: 'guarded', relieved: 'relieved', shocked: 'shocked', horrified: 'terrified', grieving: 'grieving', troubled: 'uneasy' };
+export function faceOfLabel(label) {
+  return TINT_FACE[String(label || '').toLowerCase()] || 'blank';
+}
+
 export class Emotions {
   constructor(personality = {}) {
     // `values` is the plain object exposed as mind.emotions.
@@ -142,7 +148,7 @@ export class Emotions {
     this.moodBase = 0.15; // slow valence (-1..1) that tracks recent experience
     this.tint = {}; // emotion -> offset to its baseline, fading with tintHalfLife
     this.tintHalfLife = 900;
-    this.tintMood = null; // { label, emoji } her mood reads as while the tint holds
+    this.tintMood = null; // { label, face } her mood reads as while the tint holds (face: src/art/faces_art.js)
     this.setPersonality(personality);
     for (const e of EMOTIONS) this.values[e] = this.baseline[e];
   }
@@ -174,7 +180,7 @@ export class Emotions {
 
   // How her situation sits with her (DESIGN §19, polish): offsets to the baselines that
   // fade with `halfLife` seconds of play. `blend` keeps that share of the old tint.
-  setTint(offsets = {}, { halfLife = 900, label = null, emoji = null, blend = 0 } = {}) {
+  setTint(offsets = {}, { halfLife = 900, label = null, face = null, blend = 0 } = {}) {
     const next = {};
     for (const e of EMOTIONS) {
       const v = (this.tint[e] || 0) * clamp01(blend) + (Number(offsets[e]) || 0);
@@ -182,7 +188,7 @@ export class Emotions {
     }
     this.tint = next;
     this.tintHalfLife = Math.max(30, Number(halfLife) || 900);
-    this.tintMood = label ? { label: String(label), emoji: emoji ? String(emoji) : '😶' } : blend > 0 ? this.tintMood : null;
+    this.tintMood = label ? { label: String(label), face: face ? String(face) : faceOfLabel(label) } : blend > 0 ? this.tintMood : null;
     this.computeBaseline();
     // The feelings themselves move toward where she now stands.
     for (const e in next) if (next[e] > 0) this.values[e] = Math.max(this.values[e], this.baseline[e]);
@@ -309,7 +315,7 @@ export class Emotions {
     const arousal = this.arousal(needs);
     const d = this.dominant();
     let label = null;
-    let emoji = null;
+    let face = null;
     // While a hard thing still weighs on her (a hurt, heavy tint), a passing bright feeling
     // (a new place catching her eye) does not name her mood; a dark one can.
     const heavy = this.tintMood && this.tintStrength() >= 0.12 && tintValence(this.tint) < 0;
@@ -318,54 +324,54 @@ export class Emotions {
       const hi = d.value > 0.62;
       switch (d.name) {
         case 'joy':
-          [label, emoji] = arousal > 0.55 || hi ? ['delighted', '😄'] : ['happy', '😊'];
+          [label, face] = arousal > 0.55 || hi ? ['delighted', 'delighted'] : ['happy', 'happy'];
           break;
         case 'sadness':
-          [label, emoji] = hi ? ['heartsick', '😢'] : ['sad', '😔'];
+          [label, face] = hi ? ['heartsick', 'heartsick'] : ['sad', 'sad'];
           break;
         case 'fear':
-          [label, emoji] = hi ? ['terrified', '😱'] : ['afraid', '😨'];
+          [label, face] = hi ? ['terrified', 'terrified'] : ['afraid', 'afraid'];
           break;
         case 'anger':
-          [label, emoji] = hi ? ['furious', '😡'] : ['angry', '😠'];
+          [label, face] = hi ? ['furious', 'furious'] : ['angry', 'angry'];
           break;
         case 'trust':
-          [label, emoji] = ['at ease', '😌'];
+          [label, face] = ['at ease', 'calm'];
           break;
         case 'surprise':
-          [label, emoji] = ['startled', '😮'];
+          [label, face] = ['startled', 'startled'];
           break;
         case 'affection':
-          [label, emoji] = ['affectionate', '🥰'];
+          [label, face] = ['affectionate', 'affectionate'];
           break;
         case 'curiosity':
-          [label, emoji] = hi ? ['fascinated', '🤩'] : ['curious', '🤔'];
+          [label, face] = hi ? ['fascinated', 'fascinated'] : ['curious', 'curious'];
           break;
         case 'pride':
-          [label, emoji] = ['proud', '😤'];
+          [label, face] = ['proud', 'proud'];
           break;
         case 'embarrassment':
-          [label, emoji] = ['flustered', '😳'];
+          [label, face] = ['flustered', 'flustered'];
           break;
         default:
           break;
       }
     }
     // How her situation sits with her colors the day more than a passing feeling does.
-    if (!label && this.tintMood && this.tintStrength() >= 0.07) [label, emoji] = [this.tintMood.label, this.tintMood.emoji];
+    if (!label && this.tintMood && this.tintStrength() >= 0.07) [label, face] = [this.tintMood.label, this.tintMood.face];
     if (!label && needs) {
-      if (needs.energy < 0.18) [label, emoji] = ['exhausted', '😴'];
-      else if (needs.hunger < 0.18) [label, emoji] = ['starving', '😩'];
-      else if (needs.safety < 0.25) [label, emoji] = ['on edge', '😬'];
+      if (needs.energy < 0.18) [label, face] = ['exhausted', 'exhausted'];
+      else if (needs.hunger < 0.18) [label, face] = ['starving', 'starving'];
+      else if (needs.safety < 0.25) [label, face] = ['on edge', 'on_edge'];
     }
     if (!label) {
-      if (valence > 0.45) [label, emoji] = arousal > 0.5 ? ['cheerful', '😄'] : ['happy', '😊'];
-      else if (valence > 0.15) [label, emoji] = arousal > 0.5 ? ['lively', '😀'] : ['content', '🙂'];
-      else if (valence > -0.15) [label, emoji] = arousal > 0.5 ? ['restless', '😕'] : ['calm', '😌'];
-      else if (valence > -0.45) [label, emoji] = arousal > 0.5 ? ['uneasy', '😟'] : ['gloomy', '😔'];
-      else [label, emoji] = arousal > 0.5 ? ['distressed', '😣'] : ['miserable', '😞'];
+      if (valence > 0.45) [label, face] = arousal > 0.5 ? ['cheerful', 'delighted'] : ['happy', 'happy'];
+      else if (valence > 0.15) [label, face] = arousal > 0.5 ? ['lively', 'lively'] : ['content', 'content'];
+      else if (valence > -0.15) [label, face] = arousal > 0.5 ? ['restless', 'restless'] : ['calm', 'calm'];
+      else if (valence > -0.45) [label, face] = arousal > 0.5 ? ['uneasy', 'uneasy'] : ['gloomy', 'sad'];
+      else [label, face] = arousal > 0.5 ? ['distressed', 'distressed'] : ['miserable', 'miserable'];
     }
-    return { label, valence: Math.round(valence * 100) / 100, arousal: Math.round(arousal * 100) / 100, emoji, dominant: d.name };
+    return { label, valence: Math.round(valence * 100) / 100, arousal: Math.round(arousal * 100) / 100, face, dominant: d.name };
   }
 
   serialize() {
@@ -388,7 +394,8 @@ export class Emotions {
     if (d.t && typeof d.t === 'object') {
       for (const e of EMOTIONS) if (Number.isFinite(d.t.o?.[e])) this.tint[e] = clamp(d.t.o[e], -0.5, 0.5);
       if (Number.isFinite(d.t.h)) this.tintHalfLife = Math.max(30, d.t.h);
-      if (d.t.l?.label) this.tintMood = { label: String(d.t.l.label), emoji: String(d.t.l.emoji || '😶') };
+      // (A save from before round 15 kept an emoji here; the face is read from the label.)
+      if (d.t.l?.label) this.tintMood = { label: String(d.t.l.label), face: typeof d.t.l.face === 'string' && d.t.l.face ? d.t.l.face : faceOfLabel(d.t.l.label) };
     }
     this.computeBaseline();
     for (const e of EMOTIONS) if (Number.isFinite(d.v?.[e])) this.values[e] = clamp01(d.v[e]);

@@ -4,9 +4,14 @@
 // Soul, I shouldn't be able to edit souls."). Pure view-models, no DOM, unit-tested.
 //
 //   peopleList(game)            [{ id, name, kind: 'you'|'lyra'|'villager', portraitKey, age,
-//                                 stage, holder, dead, sub }] You first, then Lyra (first
+//                                 stage, holder, dead, met, sub }] You first, then Lyra (first
 //                                 while she matters most, or as a memorial), the one who walks
-//                                 with you, then everyone you have met
+//                                 with you, then everyone you have met, then everyone else in
+//                                 Hearthvale ("Not met yet": round 15, item 12 — whether Lyra
+//                                 walks with you, left, cut ties or died, every grown person
+//                                 has a page with "Invite to travel")
+//   companionPicker(game)       { holder, adults: [{ id, name, tiles, can, why }] } who could
+//                                 walk with you, nearest first (You's "Who walks with you")
 //   privacyOf(entry, ctx)       'visible' | 'private' (private by default):
 //                                 memory    visible when it is about you AND she shared or cited it
 //                                 secret    visible once told AND the bond reached revealAtBond
@@ -24,7 +29,8 @@
 // Left or gone, Lyra does not confide (item 4): nothing new becomes shared, no page pops up;
 // what she shared before stays visible.
 
-import { lyraOf, ageOf, lifeStage } from '../core/people.js';
+import { lyraOf, ageOf, lifeStage, isMinor } from '../core/people.js';
+import { TILE } from '../core/constants.js';
 import { holderOf, lyraDead, lyraCompanionship } from '../core/party.js';
 import { companionshipLabel, companionshipBlurb, companionshipTone, playerRelation, trustWords, fearWords, ledgerEntries, ledgerViews, ledgerTally, promiseEntries, promiseViews, lifeTimeline, farewellText, knowledgeEntries, knowledgeKind, sourceLabel } from './lyra_view.js';
 import { opinionLevel, rumorsAboutPlayer, villageFeeling, villagerRoster, firstName } from './village_view.js';
@@ -74,6 +80,11 @@ function villagers(game) {
   return list.filter((e) => e && e.profile && e.id !== 'lyra' && e.id !== 'player');
 }
 
+// One of Hearthvale's own (not a passing visitor such as the tempter, who shows only once met).
+function isOwnVillager(e) {
+  return !!e && !e.profile?.visitor;
+}
+
 export function peopleList(game) {
   const out = [{ id: 'you', name: 'You', kind: 'you', portraitKey: 'player', age: null, stage: null, holder: false, dead: false, sub: 'How Hearthvale sees you' }];
   const L = lyraOf(game);
@@ -83,14 +94,43 @@ export function peopleList(game) {
     const cs = lyraCompanionship(game);
     out.push({ id: 'lyra', name: lyraName(game), kind: 'lyra', portraitKey: 'lyra', age: ageOf(game, L), stage: lifeStage(game, L), holder: h === L, dead, sub: dead ? 'In memory' : h === L ? 'Walks with you' : companionshipLabel(cs) });
   }
-  const met = villagers(game).filter((v) => v === h || hasMet(game, v));
+  // Everyone met first (the one who walks with you at the top), then the rest of the village:
+  // People never depends on who walks with you, so asking anyone along is always a tap away.
+  const all = villagers(game);
+  const met = all.filter((v) => v === h || hasMet(game, v));
+  const rest = all.filter((v) => !met.includes(v) && isOwnVillager(v));
   met.sort((a, b) => (b === h) - (a === h) || num(b.familiarity) - num(a.familiarity) || String(a.name).localeCompare(String(b.name)));
-  for (const v of met) {
+  rest.sort((a, b) => isDeadPerson(game, a) - isDeadPerson(game, b) || String(a.name).localeCompare(String(b.name)));
+  for (const v of [...met, ...rest]) {
     const dead = isDeadPerson(game, v);
+    const known = met.includes(v);
     const lvl = opinionLevel(num(v.opinionOfPlayer, 30));
-    out.push({ id: v.id, name: firstName(v.name), kind: 'villager', portraitKey: v.spriteKey || v.id, age: ageOf(game, v), stage: lifeStage(game, v), holder: v === h, dead, sub: dead ? 'In memory' : v === h ? 'Walks with you' : lvl?.label || '' });
+    out.push({ id: v.id, name: firstName(v.name), kind: 'villager', portraitKey: v.spriteKey || v.id, age: ageOf(game, v), stage: lifeStage(game, v), holder: v === h, dead, met: known, sub: dead ? 'In memory' : v === h ? 'Walks with you' : known ? lvl?.label || '' : `Not met yet${lvl?.label ? ` · ${lvl.label}` : ''}` });
   }
   return out;
+}
+
+// Who could walk with you (round 15, item 12; the author: "I can't ask anyone else to be my
+// companion because the whole menu was removed"): every grown person of the village, alive
+// and in the world, nearest first, with the game's own word on whether they can (a child
+// never: `isMinor`; the dead and the absent are not listed). Whether they WILL is theirs to
+// say when asked (party.invite). Pure.
+export function companionPicker(game, { max = 6 } = {}) {
+  const h = holderOf(game);
+  const P = game?.player;
+  const party = game?.party;
+  const adults = [];
+  for (const v of villagers(game)) {
+    if (!isOwnVillager(v) || v === h || isDeadPerson(game, v) || v.removed || v.absent) continue;
+    if (safe(() => isMinor(game, v), false)) continue;
+    const can = party?.canHold ? !!safe(() => party.canHold(v), false) : true;
+    const tiles = P && Number.isFinite(v.x) ? Math.round(Math.hypot(v.x - P.x, v.y - P.y) / TILE) : null;
+    adults.push({ id: v.id, name: firstName(v.name), tiles, can, why: can ? '' : 'cannot come now' });
+  }
+  adults.sort((a, b) => (a.tiles ?? 9999) - (b.tiles ?? 9999) || a.name.localeCompare(b.name));
+  const L = lyraOf(game);
+  const lyra = L && !lyraDead(game) && h !== L ? { id: 'lyra', name: lyraName(game), cs: lyraCompanionship(game) } : null;
+  return { holder: h ? { id: h.id, name: h.id === 'lyra' ? lyraName(game) : firstName(h.name) } : null, adults: adults.slice(0, max), total: adults.length, lyra };
 }
 
 // ---------- privacy ----------

@@ -4,9 +4,10 @@
 
 import { h, icon, button, clear, setText, setStyle, toggleClass, meter, copyText, appendAll } from './dom.js';
 import { makePanel } from './modal.js';
+import { faceImg } from './faces.js';
 import { portraitUrl, personArtKey } from './art.js';
 import {
-  moodEmoji,
+  moodFace,
   moodToExpression,
   bondLabel,
   affinityWords,
@@ -426,7 +427,7 @@ export class MindPanel {
         'div',
         { class: 'hero-text' },
         h('div', { class: 'hero-name' }, h('span', { text: name }), soul.fullName && soul.fullName !== name ? h('span', { class: 'hero-full', text: soul.fullName }) : null),
-        h('div', { class: 'hero-mood' }, h('span', { class: 'mood-emoji', text: moodEmoji(mood) }), h('span', { text: cs === 'gone' ? 'Keeping away from you' : mood?.label ? `Feeling ${mood.label}` : 'Feeling like herself' })),
+        h('div', { class: 'hero-mood' }, faceImg(moodFace(mood), mood?.label || '', 'mood-face'), h('span', { text: cs === 'gone' ? 'Keeping away from you' : mood?.label ? `Feeling ${mood.label}` : 'Feeling like herself' })),
         h(
           'div',
           { class: 'hero-bond' },

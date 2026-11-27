@@ -270,7 +270,7 @@ export const feelingsPlugin = {
     const inv = ctx.companion?.inventory;
     const food = inv ? FOOD_PREFERENCE.filter((id) => inv.has(id)).map((id) => itemName(id, inv.count(id))) : [];
     const lines = [
-      `Mood: ${m.label} ${m.emoji} (valence ${m.valence}, arousal ${m.arousal}). Strongest feelings: ${emo}.`,
+      `Mood: ${m.label} (valence ${m.valence}, arousal ${m.arousal}). Strongest feelings: ${emo}.`,
       `Needs (1 = satisfied): ${needs}.`,
       food.length ? `Food in her satchel: ${food.join(', ')}.` : 'No food in her satchel.',
       goals ? `Goals:\n${goals}` : '',

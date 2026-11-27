@@ -5,6 +5,7 @@
 
 import { h, button, clear, setText, toggleClass } from './dom.js';
 import { makePanel } from './modal.js';
+import { glyphUrl } from '../art/faces_art.js';
 import { portraitUrl, itemIconUrl } from './art.js';
 import { itemDef, itemName } from '../entities/items.js';
 import { fmtInt, isGiftable, sortItems, voicePitch, capitalize } from './format.js';
@@ -400,7 +401,8 @@ export class DialogPanel {
     this.setExpression(liked > 0 ? 'happy' : liked < 0 ? 'sad' : 'neutral');
     g.audio?.play(liked > 0 ? 'heal' : liked < 0 ? 'error' : 'pickup', { volume: 0.7 });
     clear(this.extraEl);
-    this.extraEl.append(h('div', { class: `gift-result liked-${liked}`, text: liked > 0 ? '♥ They loved it' : liked < 0 ? '✗ Not to their taste' : '· A polite thank-you' }));
+    // (The heart is the game's own mark, never a phone's emoji: round 15, item 2.)
+    this.extraEl.append(h('div', { class: `gift-result liked-${liked}` }, liked > 0 ? h('img', { class: 'price-glyph-img', src: glyphUrl('heart'), alt: '', draggable: 'false' }) : null, h('span', { text: liked > 0 ? ' They loved it' : liked < 0 ? '✗ Not to their taste' : '· A polite thank-you' })));
     this.mode = 'talk';
     const back = safe(() => npc.chooseOption('__back', p), null);
     this.play(r.lines?.length ? r.lines : ['Thank you.'], back?.options?.length ? back.options : this.options);
