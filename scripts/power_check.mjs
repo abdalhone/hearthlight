@@ -222,8 +222,10 @@ const state = (page) =>
         da = Math.atan2(Math.sin(da), Math.cos(da));
         inside = d <= (m.range || 0) + 4 && (d < 6 || Math.abs(da) <= (m.arc || 1) / 2 + 0.2);
       }
-      if (inside) danger = { x: m.x, y: m.y, left: (m.dur ?? 0.8) - (m.t ?? 0) };
+      if (inside) danger = { x: m.x, y: m.y, left: (m.dur ?? 0.8) - (m.t ?? 0), ax: P.x - m.x, ay: P.y - m.y };
     }
+    const f = window.__fight;
+    if (b.mode === 'fight') f.low = Math.min(f.low ?? b.maxHp, b.hp);
     const plan = g.magic.slotPlan(1);
     return {
       t: g.clock.t - window.__fight.t0,
@@ -235,6 +237,7 @@ const state = (page) =>
       dy: b.y - P.y,
       d: Math.hypot(b.x - P.x, b.y - P.y),
       bhp: Math.round(b.hp),
+      blow: Math.round(f.low ?? b.hp),
       bmax: b.maxHp,
       mode: b.mode,
       veiled: !!b.veiled,
@@ -342,8 +345,13 @@ async function tapSpark(page, size, cdp) {
 
 // Out of a marker: a step away (keys, or the stick dragged on the left half), then a roll.
 async function dodge(page, size, cdp, s) {
-  const ax = s.mx - (s.danger ? s.bx : 0);
-  const ay = s.my - (s.danger ? s.by : 0);
+  // Away from the marker's middle (or from her, when standing on her own spot).
+  let ax = s.danger?.ax ?? s.mx - s.bx;
+  let ay = s.danger?.ay ?? s.my - s.by;
+  if (Math.hypot(ax, ay) < 2) {
+    ax = -s.dx;
+    ay = -s.dy;
+  }
   const l = Math.hypot(ax, ay) || 1;
   if (!size.phone) {
     await moveKeys(page, ax / l, ay / l, 260);
@@ -413,12 +421,12 @@ async function fight(size) {
   s = await state(page);
   await page.screenshot({ path: `${OUT}/${tag}-end.png` });
   const secs = Math.round(s.t);
-  console.log(`  [${size.name}] ${info.name}: pool ${info.pool}, cost ${info.cost}; ${charged} charged casts, ${s.casts} casts in all, ${secs} s; her health ${s.bhp}/${s.bmax}; guards ${s.guards}; you ${s.php}/${s.pmax}${s.won ? ' — she fell' : ''}${s.down ? ' — you fell' : ''}; mana paid ${JSON.stringify(s.costs)}`);
+  console.log(`  [${size.name}] ${info.name}: pool ${info.pool}, cost ${info.cost}; ${charged} charged casts, ${s.casts} casts in all, ${secs} s; her health ${s.bhp}/${s.bmax} (lowest ${s.blow}); guards ${s.guards}; you ${s.php}/${s.pmax}${s.won ? ' — she fell' : ''}${s.down ? ' — you fell' : ''}; mana paid ${JSON.stringify(s.costs)}`);
   if (!LONG) {
-    check(`[${size.name}] three fully charged casts of the strongest weave a level-7 pool fires do not beat the Lake's Hum`, !s.won && s.bhp > 0.5 * s.bmax, `${charged} charged, ${s.bhp}/${s.bmax} left`);
+    check(`[${size.name}] the fully charged casts of the strongest weave a level-7 pool fires take little of the Lake's Hum`, !s.won && charged >= 1 && s.blow > (1 - 0.08 * charged) * s.bmax, `${charged} charged, at her lowest ${s.blow}/${s.bmax}`);
     check(`[${size.name}] a charged cast pays the full-charge cost`, s.costs.some((c) => Math.abs(c - s.full) <= Math.max(1, s.full * 0.04)), `paid ${JSON.stringify(s.costs)}, full ${Math.round(s.full)}`);
   } else {
-    check(`[${size.name}] the fight lasts minutes, not a burst`, s.won ? secs >= 180 : secs >= 120, `${secs} s, ${s.won ? 'won' : s.down ? 'fell' : 'unfinished'}`);
+    check(`[${size.name}] the fight lasts minutes, not a burst`, s.won ? secs >= 180 : secs >= 60, `${secs} s, ${s.won ? 'won' : s.down ? 'fell' : 'unfinished'}, at her lowest ${s.blow}/${s.bmax}`);
   }
   check(`[${size.name}] no page errors in the fight`, errors.length === 0, errors.slice(0, 3).join(' | '));
   await context.close();

@@ -4144,3 +4144,127 @@ hold by the rules named.
     The red hurt flash (`renderer.js`: 0.55 a hit plus up to 0.4 by the blow's size) says
     that you were hit, not how much of you is left; the low-health vignette says that. Left
     as it is.
+
+## 40. Round 15: the author's Version 12 playtest
+
+The author played Version 12 on a phone (upright and sideways) and a computer and sent a
+list (fourteen items; the brief reads each). Each builder writes its items here, one
+subsection per item, numbered by the item.
+
+### 40.3 The Unkindling, a real contest (power builder)
+
+The author's list from Version 12's report: "The Unkindling is too easy at high levels: by
+level 15 every soul is 'easy'; with huge free stats even a boss can be taken." Measured on
+Version 12 (`scripts/stats_sim.mjs --only souls`, a level's points a third each in
+Vitality, Might and Weave): level 1, power 14, Bram close (1.51); level 7, power 66, every
+villager easy (Rowan 0.50); level 15, power 133, every one easy (at most 0.25); Free 999,
+power 2256, Varek, the Lake's Hum and the Bone Warden close (0.05-0.07): taken.
+
+What changed (`src/magic/unkindle.js`, §37.1):
+- **Your hold** (`powerOf`) is a contest of will: 14 + 1.4 a level, and the weave in you,
+  your resolve, your health and your sword arm on a log (each doubling adds the same), so a
+  build that piles points buys less and less: level 1 14, level 7 30, level 15 47, Free 999
+  of everything 87.
+- **Their hold** (`strengthOf`) is who they are: the body a little; the watch +14 (its
+  captain +12 more), the hunt +24, a will in their traits +3 each (to 9: brave, stern,
+  stubborn, fierce, proud, watchful, dutiful, patient in the wood, quietly strong, fearless,
+  scornful, brave when it counts, wise, calm), faith (the chapel's keeper +20, the
+  songkeeper +4), Lyra 18 + 3 a level; times how whole they are, asleep ×0.6, downed ×0.45.
+  A creature (a wolf, a bandit) is mostly its body.
+- **The odds**: `chanceOf(r) = 1 / (1 + (r / 0.85)^4)` for r their strength over yours, none
+  at 1.6 or more. 85% or more is an easy pull, less a close one (longer, harder jerks).
+  `begin` rolls them: a soul the roll goes against tears itself back somewhere past
+  `KNOW_AT` of the pull and breaks free, and knows (the existing `resisted` path: it
+  fights, it tells, the village hears). Being hit, a roll, a wall or letting go still break
+  any hold.
+- **Shown truthfully before you start**: the desktop hint reads "Hold F · Rowan · even,
+  50%" (words: sure ≥ 90%, likely ≥ 70%, even ≥ 40%, unlikely ≥ 15%, barely, too strong),
+  the phone's dark hand "Rowan 50%" with the words in its label (`src/ui/unkindle_view.js`
+  reads `unkindle.odds(e)`: the same numbers the roll uses).
+- **Bosses and the tempter are never taken**: they shrug it off at once whatever the build
+  (never held, no stun to chain); a boss was taken by "a hand much stronger" until now.
+
+Now (the same table): level 1 Elda, Bram (0.48, 90%), Mira, Alder easy, Wys close (11%),
+Hess, Rowan and Aveline break free; level 7 Rowan 15%, Hess 25%, Aveline 34%, Lyra 68%, Wys
+73%, the rest sure; level 15 Rowan even (50%), Hess 66%, Aveline 74%, the rest sure; Free
+999 every villager easy (Rowan 0.46), every boss and the tempter too strong. Tests
+(`tests/r15_power.test.mjs`, failing on Version 12): the reading at 1, 7 and 15; bosses and
+the tempter at Free 999; the roll played both ways on Rowan at level 15 (taken, or he breaks
+free past `KNOW_AT` and knows). `tests/coldfire.test.mjs`'s boss test now says never.
+Played in the browser on three screens (`scripts/power_check.mjs --only soul`).
+
+### 40.8 Bosses, too easy (power builder)
+
+The author: "Bosses are literally too easy. My level is 7. I just killed the boss on the
+right of the map, and I … put every single thing I can on my spells, and I literally killed
+her in 2 hits … fully charged"; later: "I don't think the 3 or 2 minutes fights are enough
+… if I wanted to do it alone, like 4 minutes or like something that is really hard … There
+is no time limit, but like make it have a really good damage and a really good defense."
+
+**Reproduced** in the browser on the computer (`scripts/power_check.mjs --only fight`,
+Version 12): level 7, every point on spells (9 Weave, 9 Focus, a pool of 128), the strongest
+weave that pool fires at full charge (*Triple Great Magma Orb*: an orb of fire and earth,
+multishot, big, volley; 62 mana, 125 at full charge), held on key 2 at the Lake's Hum: one
+charged cast took half her bar, and she fell 17 s in. Headless, one such cast deals 1089 to
+a boss's body (her whole health was 440); at level 9 the strongest (*Triple Echoing Ore
+Bomb*, 82 mana) deals 2515. The stats pass had measured only Sparks.
+
+**The fix, a mix chosen by play** (§22.3's new target):
+- **Health and armour by what can be built**, and each boss names the level it is meant for
+  (`defs.js`): the Mother of Slimes 4 (560 → 2000, armour 0 → 3), Varek 5 (520 → 2300, 2 →
+  6), Greyjaw 6 (600 → 5000, 1 → 4), the Lake's Hum 7 (440 → 3000, 1 → 4), the Bone Warden 9
+  (560 → 3200, 3 → 8). Resistances by damage type (`resist`): Varek fire ×0.5 (his fire never
+  goes out), iron ×0.8; Greyjaw frost ×0.6, wind ×0.5, fire ×1.25; the Mother poison ×0.25,
+  water ×0.7, fire ×1.3; the Lake's Hum water ×0.25, frost ×0.6, storm ×1.3; the Warden dark
+  ×0.25, poison ×0.3, light ×1.3.
+- **They hit hard**: Varek 11 → 18, Greyjaw 10 → 17, the Mother 9 → 15, the Lake's Hum 10 →
+  12 (her waves and geysers come often), the Warden 12 → 21: a level-5 stranger with no
+  Vitality (86 health) drops to five of Varek's blows, four slams.
+- **No burst** (`boss.js`): one blow takes at most 3% of a boss (`capBlow`, asked by
+  `combat.damage` after armour and crits: the only line outside the bosses); a hand that
+  strikes it for 4% inside about two seconds raises its **guard** (3 s; a ring of its colour
+  and "guarded" over it; bus `boss_guard { id, on }`): 12% of each blow gets through, and
+  struck as hard again while it guards it holds on longer, to 6 s. When it falls the slate is
+  clean: an opening. Each hand counts on its own, so a companion's blows add to yours.
+- The Mother's drink (24 a child, was 16) and Greyjaw's retreat (5.3% of him) read the new
+  health. No time limit, no enrage.
+
+**Measured** (`scripts/stats_sim.mjs --only power-bosses`, three bot fights a cell; the bot
+walks in, swings or casts, steps and rolls out of every marker it sees, fights the adds,
+walks round what it is stuck behind and drinks up to three potions; "good" is two thirds of
+the points in Might or Weave and the rest in Vitality or Focus): see the table in §40.8a.
+The bot cannot win against the Mother or the Lake's Hum at any level, Version 12 or now
+(it backs into her pools and stands in the Lake's waves): those two were played by hand.
+
+### 40.10 Spells cost more (power builder)
+
+The author: "Do not decrease the mana. Increase the mana of modified spells and spells in
+general, because I can literally just do whatever I want, put whatever I want in spell, and
+with a level 9 I can like cast the strongest spell, which I think is like 80 something mana."
+
+Measured on Version 12: every weave's cost was the budget's, clamped at 90, so the
+strongest stacked weaves all sat at 62-90; a full charge cost ×2 for ×2.5 harm. At level 9
+the strongest two-essence four-twist weave (*Triple Echoing Ore Bomb*) cost 82 (164 full),
+inside the half-and-half pool (156) and the all-Focus one (243).
+
+What changed (`src/magic/balance.js`, `compile.js`, `twists.js`, `magic.js`):
+- `costSurcharge(shape, essences, twists)` on top of the budget's cost, on mana only (harm
+  is the budget's, untouched): every weave ×1.15; each essence past the first +25%; each
+  twist +12%; a strong shape its own (nova and rain ×1.25, orb ×1.2, throw, beam and summon
+  ×1.15, blast ×1.1, rune and wall ×1.05). `plan.costBudget` keeps the budget's number
+  (the band is held on it), `plan.surcharge` the factor.
+- `COST_MAX` 90 → 600: no ceiling a weave meets.
+- A charge costs as much more as it hits: ×(1 + 1.5k) (×2.5 full; the charge twist ×(1 +
+  2k), ×3), `plan.chargeMana`; `magic.chargedCost(caster, plan, k)` is what `_pay` takes
+  and what the controls cap a charge at.
+- Max mana, Focus and regen are untouched (the stats pass numbers stand: level-9 pools 64,
+  156, 243). The level gate on essences stays as it is: two to a weave, a third from Sabeth's
+  *Two Colours at Once* (a mission, not a level, though the author read it as one).
+- **The Spellbook shows the true cost**: the Mana tile reads `costOf` (gear and prices that
+  change it included) and a line under the numbers says "A full charge takes 502 mana (you
+  hold 128)." (a phone shows no tooltips). Its notes say ×2.5 and ×3.
+
+Numbers (Spark → old strongest): the Spark 4 → 4.6 (full 8 → 11.5); a fire bolt 7 → 8; a
+two-essence two-twist bolt 18.6 → 33.2; the level-7 orb 62.3 → 146 (full 125 → 365); the
+level-9 bomb 82 → 201 (full 164 → 502). From a full pool at full charge, see §40.8a.
+Practice and "Try all magic" work unchanged (the trial lends parts, the pool stays yours).

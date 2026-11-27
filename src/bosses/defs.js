@@ -71,7 +71,7 @@ export const BOSSES = {
     title: 'Alpha of the Whisperwood packs',
     faction: 'monster',
     kind: 'animal',
-    hp: 4200, // round 15: was 600
+    hp: 5000, // round 15: was 600
     atk: 17, // was 10
     def: 4, // was 1
     resist: { frost: 0.6, wind: 0.5, fire: 1.25 }, // a winter coat; the wind is his
@@ -154,7 +154,7 @@ export const BOSSES = {
     title: 'Gravelight given a shield',
     faction: 'undead',
     kind: 'undead',
-    hp: 3600, // round 15: was 560
+    hp: 3200, // round 15: was 560
     atk: 21, // was 12
     def: 8, // was 3
     resist: { dark: 0.25, poison: 0.3, light: 1.3 }, // gravelight; light unmakes it
