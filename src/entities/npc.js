@@ -8,6 +8,7 @@ import { NPC_PROFILES } from './npc_data.js';
 import { RESPONSE_LINES, HEAR_LINES } from './npc_lines.js';
 import { look } from '../murder/witness.js';
 import { hears, cryLoudness, hearsWords, placeOfSound, LOUD, isSilenced, voiceOf } from '../ai/hearing.js';
+import { keepGap } from '../ai/social/keep_gap.js';
 import { placePhrase } from '../ai/village_life/errands_data.js';
 import { isMinor, lyraOf } from '../core/people.js';
 import { DEFENDER_COMBAT, isDefender, defenderLine, defendsAgainst } from './defenders.js';
@@ -269,6 +270,9 @@ export class NPC extends Actor {
     if (this.mode === 'flee') return this.fleeStep(dt, tick);
     if (this.mode === 'fight') return this.fightStep(dt, tick);
     if (this.mode === 'help') return this.helpStep(dt, tick);
+    // A stranger they fear or distrust: they keep their distance, and still hear and answer
+    // from there (round 15, item 4: src/ai/social/keep_gap.js).
+    if (!this.duty && keepGap(this, dt, tick)) return;
     // Someone is talking to us: stand still and look at them.
     const p = this.game.player;
     if (now(this.game) < this.talkingUntil && p && this.distTo(p) < 56) {
