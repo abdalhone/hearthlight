@@ -124,3 +124,39 @@ test('a price that adds a share of a number you build says what it is a share of
   }
   assert.ok(read >= 7, `the words of Berserk, Glass and Oath were read (${read})`);
 });
+
+// Played on the computer at level 15 with Free 999 Might and Vitality (power 1286; 999 Weave
+// alone is 1031 now that weave power reaches ×50): the Unkindling held on the tempter at the
+// ruins gate read "close", and the take ran combat.kill on him, which only knocks a person
+// down. He lay downed and undefeated at the gate (no ending, no coming apart), and Lyra's mind
+// read it as "Knocked out a villager: Beat Isembard senseless." His soul is beyond any build
+// (TEMPTER_STRENGTH, "in practice, never"; the header: "Bosses and the tempter always"): he
+// shrugs it off at once, never held, whatever the points.
+test('the tempter is never taken by the Unkindling, whatever the points: he shrugs it off and is never left downed', async () => {
+  const { step } = await import('./murder_world.mjs');
+  const { villainPlugin, installVillainHooks } = await import('../src/story/villain.js');
+  const { installUnkindle } = await import('../src/core/plugins/soul.js');
+  for (const pts of [{ weave: 999 }, { might: 999, vitality: 999 }, { might: 999, vitality: 999, weave: 999, focus: 999, grace: 999, resolve: 999 }]) {
+    const g = statsWorld({ hour: 23 });
+    if (!g.villain) {
+      g.plugins.register(villainPlugin);
+      installVillainHooks(g);
+    }
+    if (!g.unkindle) installUnkindle(g);
+    const P = points(g, pts, { level: 15 });
+    g.flags.bosses = { varek: { defeated: true } };
+    g.unkindle.learn('pact');
+    const T = g.villain.spawn();
+    assert.ok(T, 'he waits at the gate');
+    P.x = T.x - 14;
+    P.y = T.y;
+    P.faceToward?.(T.x, T.y);
+    const v = g.unkindle.verdict(T);
+    assert.equal(v.kind, 'resists', `${JSON.stringify(pts)}: power ${g.unkindle.powerOf(P).toFixed(0)} against his ${g.unkindle.strengthOf(T)}: ${JSON.stringify(v)}`);
+    const downs = [];
+    g.bus.on('downed', (p) => downs.push(p.entity?.id));
+    g.unkindle.begin(T);
+    for (let i = 0; i < 120; i++) step(g, 0.05);
+    assert.ok(!T.downed && !downs.includes(T.id), `${JSON.stringify(pts)}: never left lying at the gate (downed: ${downs})`);
+  }
+});

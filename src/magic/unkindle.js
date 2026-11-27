@@ -30,7 +30,8 @@
 // them is no crime (a villager who SEES it sees dark magic: src/society/dark_suspicion.js).
 // Harmless things (a hen, the cat, a deer) are refused; bosses are taken only when you are
 // much stronger (ratio <= 1 / MUCH_STRONGER), else they shrug it off at once; the tempter
-// likewise (in practice, never). Every soul taken feeds the taken flame (src/magic/coldfire.js:
+// always shrugs it off, whatever the build (Version 12: a Free 999 build once reached him).
+// Every soul taken feeds the taken flame (src/magic/coldfire.js:
 // the bar that boosts your power and ebbs, the mark that shows).
 //
 // The hold plants you (the author: "I can move while I'm doing spells; it should stop me"):
@@ -377,7 +378,10 @@ export class Unkindle {
     // Something old under the ground (a boss, the tempter) is taken only by a hand much
     // stronger than it (§13b S20-11); otherwise it is never held at all: it shrugs it off at
     // once (no hold to chain into a stun).
-    if (kind === 'boss' || kind === 'tempter') {
+    // The tempter's soul is beyond any build (Version 12: a Free 999 build reached 1/1.6 of
+    // his 600, and the take only knocked him down at the gate, undefeated): never held.
+    if (kind === 'tempter') return { ratio, kind: 'resists', dur: 4, peak: 0.25, struggle: 0.7 };
+    if (kind === 'boss') {
       if (ratio <= 1 / MUCH_STRONGER) return { ratio, kind: 'close', dur: 4.5 * fast, peak: 1, struggle: 0 };
       return { ratio, kind: 'resists', dur: 4, peak: 0.25, struggle: 0.7 };
     }
