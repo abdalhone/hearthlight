@@ -55,7 +55,7 @@ export const ACTION_ROWS = {
 };
 
 // Settings the touch and aim controls keep outside DEFAULT_SETTINGS (unset = default).
-export const EXTRA_SETTING_KEYS = ['touchScale', 'leftHanded', 'touchBuzz', 'aimGuides', 'aimGuideIdle', 'showQuestLine', 'uiSize'];
+export const EXTRA_SETTING_KEYS = ['touchScale', 'leftHanded', 'touchBuzz', 'aimGuideIdle', 'showQuestLine', 'uiSize']; // (aimGuides: the old row, read only when a saved setting has it off)
 
 // Every key the panel shows, in order, with its tab: [{ key, tab, group }].
 export function settingKeysInLayout() {
