@@ -17,11 +17,22 @@
 //
 // Phone: a long press on the sword button locks the nearest in front, a swipe on it cycles
 // (touch.js). Never a tap on the world.
+//
+// Round 15 (item 11; the author: "I cannot focus on a training dummy"): what can be locked is
+// whatever a player fights: every actor (people, creatures, bandits, bosses, the tempter, the
+// downed for the finishing blow) and the training dummy, the one thing made to be struck that
+// is no one (`isTargetProp`). Props that merely break in passing (trees, barrels, rocks) are
+// not targets: G in a wood would lock a tree instead of the wolf behind it.
 
 import { canReach } from '../world/walls.js';
 
 export const RANGE = 240; // px from the player
 export const PICK = 12; // px of slack around an actor under the cursor
+
+// A world object that is a target to lock and aim at (round 15): the training dummy.
+export function isTargetProp(o) {
+  return !!o && o.type !== 'actor' && o.objType === 'dummy' && !o.removed && !o.hidden;
+}
 
 function safe(fn, fallback = null) {
   try {
@@ -52,7 +63,9 @@ export class LockOn {
   // Can this be locked (or stay locked)?
   valid(e, { range = RANGE } = {}) {
     const P = this.player;
-    if (!e || !P || e === P || e.type !== 'actor' || e.removed || e.hidden || e.absent || e.carriedBy) return false;
+    if (!e || !P || e === P || e.removed || e.hidden || e.absent || e.carriedBy) return false;
+    // The training dummy (round 15): in range and in reach, like anyone.
+    if (e.type !== 'actor') return isTargetProp(e) && Math.hypot(e.x - P.x, e.y - P.y) <= range && !!safe(() => canReach(this.game, P, e), true);
     if (e.dead && !e.downed) return false;
     const alive = typeof e.isAlive === 'function' ? e.isAlive() : !e.dead;
     if (!alive && !e.downed) return false;
@@ -83,7 +96,8 @@ export class LockOn {
     const P = this.player;
     if (!P) return [];
     const list = safe(() => this.game.entities.query(P.x, P.y, RANGE + 8), null) || safe(() => this.game.entities.all(), []) || [];
-    return list.filter((e) => this.valid(e));
+    const props = safe(() => this.game.objects?.inRadius?.(P.x, P.y, RANGE + 8, isTargetProp), null) || [];
+    return [...list, ...props].filter((e) => this.valid(e));
   }
 
   // The nearest valid actor in front of the player (foes first: what is fighting you).
@@ -115,8 +129,10 @@ export class LockOn {
     let best = null;
     let bd = Infinity;
     for (const e of this.candidates()) {
-      // The body stands above its feet: test against the middle of the sprite too.
-      const d = Math.min(Math.hypot(e.x - x, e.y - y), Math.hypot(e.x - x, e.y - 8 - y));
+      // The body stands above its feet: test against the middle of the sprite too (a dummy
+      // on its post is taller than a person: its straw chest too).
+      let d = Math.min(Math.hypot(e.x - x, e.y - y), Math.hypot(e.x - x, e.y - 8 - y));
+      if (e.type !== 'actor') d = Math.min(d, Math.hypot(e.x - x, e.y - 16 - y));
       if (d <= (e.radius ?? 5) + PICK && d < bd) {
         bd = d;
         best = e;

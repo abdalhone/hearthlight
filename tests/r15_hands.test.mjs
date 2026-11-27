@@ -303,3 +303,86 @@ test('6: the faint guide between casts is an opt-in (Settings: Aim guide between
     assert.equal(w2.hover, null);
   }
 });
+
+// ---------------------------------------------------------------- 11: lock-on
+
+import { makeGame, placeAt, px } from './survival_world.mjs';
+import { LockOn } from '../src/core/lock_on.js';
+import { SPECIES, spawnCreature } from '../src/entities/monsters.js';
+import { BossManager } from '../src/bosses/manager.js';
+import { Tempter } from '../src/story/villain.js';
+
+// The yard by the training dummy, with nobody else within the lock's reach.
+function yard() {
+  const g = makeGame({ hour: 12 });
+  g.lock = new LockOn(g);
+  const dummy = g.objects.all().find((o) => o.objType === 'dummy');
+  const P = g.player;
+  placeAt(g, P, dummy.x - 30, dummy.y);
+  P.facing = { x: 1, y: 0 };
+  for (const e of g.entities.all()) if (e !== P && e.type === 'actor' && Math.hypot(e.x - P.x, e.y - P.y) < 400) placeAt(g, e, e.x + 3000, e.y);
+  return { g, P, dummy };
+}
+
+test('11: the training dummy locks: middle click on it, G with nobody else near, the phone\'s long press (the same nearest-in-front)', () => {
+  const { g, P, dummy } = yard();
+  const id = (e) => e?.id ?? null; // (compare ids: a failed match on the game graph would print all of it)
+  assert.equal(g.lock.valid(dummy), true, 'the dummy is a target (the author: "I cannot focus on a training dummy")');
+  assert.equal(id(g.lock.press({ x: dummy.x + 2, y: dummy.y - 16 })), dummy.id, 'a middle click on its straw chest');
+  assert.equal(id(g.lock.target), dummy.id);
+  g.lock.update(0.1);
+  assert.equal(id(g.lock.target), dummy.id, 'it stays locked');
+  g.lock.clear();
+  assert.equal(id(g.lock.press()), dummy.id, 'G (and the long press on the sword button): the nearest in front');
+  // A foe near comes first; the dummy is still in the cycle.
+  const w = spawnCreature(g, 'bandit', P.x + 36, P.y + 24);
+  g.lock.clear();
+  assert.equal(id(g.lock.press()), id(w), 'a bandit beside the dummy: the fight first');
+  const seen = new Set([id(g.lock.cycle(1)), id(g.lock.cycle(1))]);
+  assert.ok(seen.has(dummy.id), 'the wheel reaches the dummy');
+});
+
+test('11: locked on the dummy, the weaves aim at it and the sword swings at it, not at a tree beside it', () => {
+  const { g, P, dummy } = yard();
+  g.lock.set(dummy);
+  assert.equal(g.lock.aimTarget(200)?.id ?? null, dummy.id, 'every weave source aims at the lock (weaving.aimFor)');
+  // Turn away from it: the attack turns back to the lock and the blow lands on the dummy.
+  placeAt(g, P, dummy.x - 14, dummy.y + 2);
+  P.facing = { x: -1, y: 0 };
+  const hits = [];
+  g.bus.on('dummy_hit', (p) => hits.push(p));
+  P.attack();
+  for (let i = 0; i < 20; i++) g.entities.update?.(1 / 60);
+  assert.ok(P.facing.x > 0.5, 'the blade turned to the locked dummy behind');
+  assert.ok(hits.length >= 1, 'and the blow landed on it');
+});
+
+test('11: every hittable target locks: each creature, the villagers, the tempter, each boss, the downed, the dummy', () => {
+  const { g, P } = yard();
+  const bad = [];
+  for (const sp of Object.keys(SPECIES)) {
+    const c = spawnCreature(g, sp, P.x + 40, P.y);
+    if (!g.lock.valid(c)) bad.push(sp);
+    g.entities.remove?.(c);
+    c.removed = true;
+  }
+  const bram = g.entities.get('bram');
+  placeAt(g, bram, P.x + 30, P.y);
+  if (!g.lock.valid(bram)) bad.push('bram');
+  const t = g.entities.add(new Tempter(g, { stand() {} }, P.x + 36, P.y - 10));
+  if (!g.lock.valid(t)) bad.push('the tempter');
+  g.bosses = new BossManager(g);
+  g.bosses.onWorldBuilt();
+  for (const b of g.entities.all().filter((e) => e.boss || e.def?.id)) {
+    // The night's boss is not there by day, the Lake's Hum is under the water until its fight:
+    // in its fight, each is there to hit, and to lock.
+    b.mode = 'fight';
+    b.hidden = false;
+    placeAt(g, P, b.x - (b.radius || 8) - 24, b.y);
+    for (const e of g.entities.all()) if (e !== P && e !== b && e.type === 'actor' && Math.hypot(e.x - P.x, e.y - P.y) < 60) placeAt(g, e, e.x + 3000, e.y);
+    if (!g.lock.valid(b)) bad.push(`boss ${b.id}`);
+    else if (g.lock.press({ x: b.x, y: b.y - 10 }) !== b) bad.push(`boss ${b.id} (click)`);
+    g.lock.clear();
+  }
+  assert.deepEqual(bad, [], 'none refused');
+});

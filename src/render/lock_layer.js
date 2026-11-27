@@ -41,7 +41,7 @@ export class LockLayer extends Entity {
     if (!t || t.removed || t.hidden) return;
     const sx = Math.round(t.x - ox);
     const sy = Math.round(t.y - oy);
-    const big = t.boss ? 1.8 : 1;
+    const big = t.boss ? 1.8 : t.objType === 'dummy' ? 1.25 : 1; // the dummy on its post stands tall (round 15)
     const w = Math.round(9 * big + Math.sin(time * 5) * 1.2);
     const top = sy - Math.round(22 * big);
     const bot = sy + 3;
@@ -66,17 +66,20 @@ export class LockLayer extends Entity {
     line(sx + w, top, -1, 1);
     line(sx - w, bot, 1, -1);
     line(sx + w, bot, -1, -1);
-    // Name and health, small, over their head.
-    const name = (t.name || t.species || '').split(' ')[0];
-    const hp = Math.max(0, Math.min(1, (t.hp || 0) / (t.maxHp || 1)));
-    const bw = Math.max(16, Math.round(w * 2));
+    // Name and health, small, over their head. A training dummy (round 15) has no health to
+    // show (it never breaks): its name alone.
+    const name = t.type !== 'actor' ? (t.objType === 'dummy' ? 'Dummy' : (t.name || '').split(' ')[0]) : (t.name || t.species || '').split(' ')[0];
     const by = top - 5;
-    ctx.fillStyle = DARK;
-    ctx.fillRect(sx - bw / 2 - 1, by - 1, bw + 2, 4);
-    ctx.fillStyle = '#5c0f17';
-    ctx.fillRect(sx - bw / 2, by, bw, 2);
-    ctx.fillStyle = t.downed ? '#ff6b6b' : '#e8473b';
-    ctx.fillRect(sx - bw / 2, by, Math.round(bw * hp), 2);
+    if (t.type === 'actor') {
+      const hp = Math.max(0, Math.min(1, (t.hp || 0) / (t.maxHp || 1)));
+      const bw = Math.max(16, Math.round(w * 2));
+      ctx.fillStyle = DARK;
+      ctx.fillRect(sx - bw / 2 - 1, by - 1, bw + 2, 4);
+      ctx.fillStyle = '#5c0f17';
+      ctx.fillRect(sx - bw / 2, by, bw, 2);
+      ctx.fillStyle = t.downed ? '#ff6b6b' : '#e8473b';
+      ctx.fillRect(sx - bw / 2, by, Math.round(bw * hp), 2);
+    }
     if (name) {
       ctx.font = '6px monospace';
       ctx.textAlign = 'center';

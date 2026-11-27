@@ -499,6 +499,9 @@ export class Player extends Actor {
     const lk = this.game.lock?.aimTarget?.(reach + 6) || null;
     if (lk && !lk.downed) {
       this.faceToward(lk.x, lk.y);
+      // A locked training dummy (round 15, item 11): the blade swings at it, not at a tree
+      // or rock beside it; the arc lands on it as on any prop (combat.melee).
+      if (lk.type !== 'actor') return this._swordSwing(null);
       if (this.game.combat?.canHarm?.(this, lk, true)) return this._swordSwing(lk);
     }
     const foe = this._findFoe(reach, true);
