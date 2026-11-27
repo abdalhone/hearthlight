@@ -258,6 +258,7 @@ const state = (page) =>
       big: window.__fight.big,
       guards: window.__fight.guards,
       hits: window.__fight.hits.length,
+      hitList: window.__fight.hits.slice(),
       costs: window.__fight.costs.slice(),
       holding: g.magic.holdOf?.(P)?.k ?? null,
     };
@@ -292,16 +293,18 @@ async function chargedCast(page, size, cdp, slot = 1) {
     const key = `Digit${slot + 1}`;
     await page.keyboard.down(key);
     const t0 = Date.now();
+    let most = 0;
     while (Date.now() - t0 < 2600) {
       await wait(90);
       const st = await state(page);
       await page.mouse.move(Math.round(st.bx), Math.round(st.by));
-      if (st.danger && st.danger.left < 0.5) break;
       const k = await page.evaluate(() => window.__game.magic.holdOf?.(window.__game.player));
+      most = Math.max(most, k?.k || 0);
+      if (st.danger && st.danger.left < 0.5) break;
       if (k && (k.k >= 1 || k.capped) && Date.now() - t0 > 400) break;
     }
     await page.keyboard.up(key);
-    return true;
+    return most;
   }
   // A phone: press the weave button, drag toward the boss (the aim follows the drag), hold, lift.
   const b = await weaveButton(page, slot);
@@ -310,6 +313,7 @@ async function chargedCast(page, size, cdp, slot = 1) {
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(b.x), y: Math.round(b.y), id }] });
   const t0 = Date.now();
   let last = { x: b.x, y: b.y };
+  let most = 0;
   while (Date.now() - t0 < (size.throttle ? 3600 : 2600)) {
     await wait(size.throttle ? 160 : 90);
     const st = await state(page);
@@ -321,12 +325,13 @@ async function chargedCast(page, size, cdp, slot = 1) {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y, id }] });
       last = { x, y };
     }
-    if (st.danger && st.danger.left < 0.5) break;
     const k = await page.evaluate(() => window.__game.magic.holdOf?.(window.__game.player));
+    most = Math.max(most, k?.k || 0);
+    if (st.danger && st.danger.left < 0.5) break;
     if (k && (k.k >= 1 || k.capped) && Date.now() - t0 > 500) break;
   }
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  return true;
+  return most;
 }
 
 async function tapSpark(page, size, cdp) {
@@ -387,8 +392,15 @@ async function fight(size, id = 'lakes_hum') {
   const t0 = Date.now();
   const budgetMs = LONG ? (size.throttle ? 900000 : 600000) : 45000;
   let charged = 0;
+  let fullCharges = 0;
   let s = await state(page);
   while (Date.now() - t0 < budgetMs) {
+    // The short check is about what the casts do, not about a scripted thumb's dodging (a poor
+    // fighter): the stranger is kept on their feet, as stats_check's phone fight does.
+    if (!LONG) await page.evaluate(() => {
+      const P = window.__game.player;
+      if (!P.downed && !P.dead) P.hp = Math.max(P.hp, P.maxHp * 0.6);
+    });
     s = await state(page);
     if (s.won || s.down || s.mode !== 'fight') break;
     if (s.danger) {
@@ -402,8 +414,9 @@ async function fight(size, id = 'lakes_hum') {
       continue;
     }
     if (!s.veiled && s.ready && s.mana >= s.full - 0.5) {
-      await chargedCast(page, size, cdp, 1);
+      const k = await chargedCast(page, size, cdp, 1);
       charged++;
+      if (k >= 0.999) fullCharges++;
       await wait(250);
       const after = await state(page);
       if (charged <= 3 && !shots.has(charged)) {
@@ -425,8 +438,11 @@ async function fight(size, id = 'lakes_hum') {
   const secs = Math.round(s.t);
   console.log(`  [${size.name}] ${info.name}: pool ${info.pool}, cost ${info.cost}; ${charged} charged casts, ${s.casts} casts in all, ${secs} s; her health ${s.bhp}/${s.bmax} (lowest ${s.blow}); guards ${s.guards}; you ${s.php}/${s.pmax}${s.won ? ' — she fell' : ''}${s.down ? ' — you fell' : ''}; mana paid ${JSON.stringify(s.costs)}`);
   if (!LONG) {
-    check(`[${size.name}] the fully charged casts of the strongest weave a level-7 pool fires take little of ${id === 'lakes_hum' ? "the Lake's Hum" : 'the Mother of Slimes'}`, !s.won && charged >= 1 && s.blow > (1 - 0.08 * charged) * s.bmax, `${charged} charged, at her lowest ${s.blow}/${s.bmax}`);
-    check(`[${size.name}] ${id}: a charged cast pays the full-charge cost`, s.costs.some((c) => Math.abs(c - s.full) <= Math.max(1, s.full * 0.04)), `paid ${JSON.stringify(s.costs)}, full ${Math.round(s.full)}`);
+    const most = Math.max(0, ...(s.hitList || []));
+    const cap = Math.ceil(s.bmax * 0.03);
+    check(`[${size.name}] the fully charged casts of the strongest weave a level-7 pool fires do not burst ${id === 'lakes_hum' ? "the Lake's Hum" : 'the Mother of Slimes'}: she stands, no blow over 3% of her`, !s.won && charged >= 1 && most <= cap, `${charged} charged (${fullCharges} full), ${s.casts} casts, at her lowest ${s.blow}/${s.bmax}, the biggest blow ${most} (cap ${cap})`);
+    const big = s.costs.filter((c) => c > s.full / 2.5 + 1);
+    check(`[${size.name}] ${id}: a charge pays what it reached, a full one the full-charge cost`, big.length >= 1 && big.every((c) => c <= s.full + 1) && (!fullCharges || big.some((c) => Math.abs(c - s.full) <= Math.max(1, s.full * 0.04))), `paid ${JSON.stringify(big)}, full ${Math.round(s.full)}, ${fullCharges} full charges`);
   } else {
     check(`[${size.name}] the fight lasts minutes, not a burst`, s.won ? secs >= 180 : secs >= 60, `${secs} s, ${s.won ? 'won' : s.down ? 'fell' : 'unfinished'}, at her lowest ${s.blow}/${s.bmax}`);
   }

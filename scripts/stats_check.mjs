@@ -788,7 +788,13 @@ async function run(S) {
   if (!S.phone) {
     const strong = await fightVarek(30);
     out.varek = { might30: strong };
-    check(strong.won && strong.seconds <= 60, `${tag}: Varek yields to level 15 with 30 Might in ${strong.seconds} s (sword ${strong.atk}, health ${strong.health} → lowest ${strong.lowest})`, JSON.stringify(strong));
+    // Round 15 (DESIGN §22.3, §40.8; the author: "I don't think the 3 or 2 minutes fights are
+    // enough"): Varek (2300 health, a guard when pressed) no longer yields to level 15 in under
+    // a minute. What this still means: the stat points' sword lands on him by keys and mouse, a
+    // third of him or more in the 90 s played, never a burst (won, it took a minute or more),
+    // and the stranger stands through it.
+    const took = 2300 - strong.left;
+    check((strong.won ? strong.seconds >= 60 : took >= 2300 / 3) && !strong.fell, `${tag}: level 15 with 30 Might fights Varek by keys and mouse: ${strong.won ? `he yields in ${strong.seconds} s` : `${Math.round(took)} of his 2300 in 90 s`} (sword ${strong.atk}, health ${strong.health} → lowest ${strong.lowest})`, JSON.stringify(strong));
   } else {
     // On a phone: beside him, the sword button tapped for three game seconds; each cut
     // takes what the sheet's sword says (a scripted thumb on a stick is a poor fighter, so
@@ -838,7 +844,13 @@ async function run(S) {
     const vk = await ev(() => ({ ...window.__vk, cuts: window.__cuts.slice(), hp: window.__game.bosses.get('varek').hp }));
     const avg = vk.cuts.length ? vk.cuts.reduce((a, b) => a + b, 0) / vk.cuts.length : 0;
     out.varek = { cuts: vk.cuts.length, avg: Math.round(avg), sword: vk.atk, took: Math.round(vk.hp0 - vk.hp) };
-    check(vk.cuts.length >= 3 && avg >= vk.atk * 0.9 && vk.hp0 - vk.hp >= 3 * vk.atk, `${tag}: tapped at Varek's side, ${vk.cuts.length} cuts of ~${Math.round(avg)} (sword ${vk.atk}) took ${Math.round(vk.hp0 - vk.hp)} of his ${Math.round(vk.hp0)}`, JSON.stringify(vk.cuts));
+    // Round 15: struck for 4% of him inside two seconds, Varek raises his guard (12% gets
+    // through), so the cuts before it are the sword's and the rest small: the first two cuts
+    // read the sheet's sword, as this check always meant, and the guard then holds.
+    const first = vk.cuts.slice(0, 2);
+    const firstAvg = first.length ? first.reduce((a, b) => a + b, 0) / first.length : 0;
+    // (Less his armour, 6 now: a cut lands the sword less 6, with the blow's ±10%.)
+    check(vk.cuts.length >= 3 && firstAvg >= (vk.atk - 6) * 0.9 && vk.hp0 - vk.hp >= 2 * (vk.atk - 6), `${tag}: tapped at Varek's side, ${vk.cuts.length} cuts, the first two ~${Math.round(firstAvg)} (sword ${vk.atk}), then his guard; took ${Math.round(vk.hp0 - vk.hp)} of his ${Math.round(vk.hp0)}`, JSON.stringify(vk.cuts));
   }
   await ev(() => {
     const L2 = window.__game.companion;
