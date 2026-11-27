@@ -427,6 +427,22 @@ test('9: bare hands: the vein says what it needs ("Mine iron ore: needs a pickax
   assert.ok(said(g, /rings off it/i), 'the blade rings off it, and says so');
 });
 
+test('9: the attack button at a vein, no pickaxe: a work swing that rings off, never a sword blow at the companion beside you', () => {
+  const { g, P, ore } = quarry();
+  const L = g.entities.get('lyra') || g.companion;
+  placeAt(g, L, P.x + 9, P.y - 6); // right in the arc, between you and the vein
+  const hp = L.hp;
+  for (let i = 0; i < 6; i++) {
+    P.attack();
+    stepWorld(g, 0.4);
+  }
+  assert.equal(L.hp, hp, 'Lyra is not struck');
+  assert.ok(!g.events.some((e) => e.type === 'crime' || (e.type === 'damage' && e.p?.target === L)), 'no blow, no crime');
+  assert.ok(said(g, /rings off it/i), 'the word');
+  assert.equal(P.inventory.count('iron_ore'), 0);
+  assert.equal(ore.state.depleted, false);
+});
+
 test('9: no weave breaks iron: a Strike, a heavy weave or a beam ring off the vein', () => {
   const { g, P, ore } = quarry();
   for (const blow of [{ punch: true, amount: 60 }, { heavy: true, amount: 60, charge: 1 }, { amount: 8, tick: true }]) {

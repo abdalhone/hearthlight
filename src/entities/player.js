@@ -697,7 +697,9 @@ export class Player extends Actor {
       if (front < 0.3) continue;
       let ok = false;
       try {
-        ok = !!o.canWork(this);
+        // A vein that wants a tool you lack (round 15, tools.js) is still swung at: the work
+        // swing rings off it and says so, instead of a sword blow at whoever stands near.
+        ok = !!o.canWork(this) || !!o.needsTool?.(this);
       } catch {
         ok = false;
       }

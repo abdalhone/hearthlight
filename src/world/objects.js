@@ -4,7 +4,7 @@ import { playCollect } from '../render/pixel_fx_play.js';
 import { drawDebris, drawFallingTree, mendTick, shakeX, swayOf, refreshAllFences, FALL_SECONDS } from './broken.js';
 import { seatFor, sitDown, SEAT_TYPES } from './rest.js';
 import { holderOf } from '../core/party.js';
-import { missingTool, NEED } from './tools.js';
+import { missingTool, NEED, sayNeed } from './tools.js';
 
 // Interactive world objects: doors, trees, ore, herbs, crops, chests, beds, fires,
 // lamps, signs, windows, the journal, and the furniture that makes a house a home.
@@ -745,6 +745,27 @@ export class Rock extends Harvestable {
     if (this.state.depleted) return 'Mined out. The stone will surface again in a day or two.';
     if (this.objType === 'ore' && actor && missingTool(this.game, actor, 'ore')) return NEED.ore;
     return '';
+  }
+
+  // The tool this vein wants of this actor and they lack ('pickaxe'), or null. The player's
+  // attack button still swings at a vein that wants one (a work swing: it rings off and says
+  // so, and never turns into a sword blow at whoever stands beside you).
+  needsTool(actor) {
+    if (this.objType !== 'ore' || this.state.depleted || !actor) return null;
+    return missingTool(this.game, actor, 'ore');
+  }
+
+  work(actor, dt) {
+    if (this.needsTool(actor)) {
+      this._hitAt = this.game?.time ?? 0; // the vein jolts under the blow (its draw)
+      if (isPlayer(this.game, actor)) {
+        this._sound('mine', { pitch: 1.6, volume: 0.7 });
+        this._fx('hit', this.x, this.y - 8, { count: 5, color: '#ffd9a0', speed: 60, life: 0.3 });
+        sayNeed(this.game, 'ring', NEED.ring);
+      }
+      return { done: true, progress: 0, items: [], failed: true, reason: NEED.ore };
+    }
+    return super.work(actor, dt);
   }
 
   // The prompt names what it needs before you try ("Mine iron ore: needs a pickaxe").
