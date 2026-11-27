@@ -182,8 +182,7 @@ export class CharacterView {
       r.ten.disabled = !free || !pr.canSpend(id);
       this.renderNext(id, r);
     }
-    if (free) setText(this.respecEl, 'Free stat points is on: raise anything as far as you like (up to 999 a stat). Turning it off in Settings → Game → Practice puts back the points you really spent.');
-    else setText(this.respecEl, pr.spent() ? `Want them back? Settings → Game → Reset stat points gives them all back, free. Or Sister Aveline can give you a quiet hour in the chapel to start over (${pr.respecCost()} coins).` : 'Spend points as you level. Settings (Reset stat points) can give them back for free; Sister Aveline at the chapel, for a price.');
+    setText(this.respecEl, respecWords(this.game));
     this.renderSlots();
     this.renderPick();
     this.renderStats();
@@ -341,6 +340,18 @@ export class CharacterView {
     this.t = 0;
     this.renderEffects();
   }
+}
+
+// The way back to unspent points, in words: Settings always; Sister Aveline's quiet hour in the
+// chapel only while she lives (round 14b: any grown villager can die, and only she offers it,
+// npc_dialogue 'respec'; Version 12, DESIGN §39).
+export function respecWords(game) {
+  const pr = game?.progression;
+  if (!pr) return '';
+  if (pr.free) return 'Free stat points is on: raise anything as far as you like (up to 999 a stat). Turning it off in Settings → Game → Practice puts back the points you really spent.';
+  const chapel = !safe(() => game.murder?.isDead?.('aveline'), false);
+  if (pr.spent()) return `Want them back? Settings → Game → Reset stat points gives them all back, free.${chapel ? ` Or Sister Aveline can give you a quiet hour in the chapel to start over (${pr.respecCost()} coins).` : ''}`;
+  return `Spend points as you level. Settings (Reset stat points) can give them back for free${chapel ? '; Sister Aveline at the chapel, for a price' : ''}.`;
 }
 
 // Short words for what a point gives ("+2.7 health", "+0.4% speed", "−0.2% cooldowns").

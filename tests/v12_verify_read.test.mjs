@@ -159,3 +159,30 @@ test('v12 verify: the coldfire bar says its +% is a share of your Sword and Weav
   const some = boostWords({ boost: () => 0.19, bar: 63 });
   assert.match(some.title, /\+19% of your Sword and Weave power/);
 });
+
+// ---------------------------------------------------------------- the way back to unspent points
+
+// The sheet sends you to Sister Aveline for the chapel's respec; round 14b made every grown
+// villager killable, and a dead Aveline gives no quiet hour (npc_dialogue offers it only from
+// her). The sheet says so: Settings always, the chapel only while she lives.
+import { respecWords } from '../src/ui/character_view.js';
+
+test('v12 verify: the Character sheet names the chapel\'s respec only while Sister Aveline lives', () => {
+  const g = statsWorld();
+  const P = g.player;
+  P.level = 2;
+  g.stats.refresh(P);
+  assert.match(respecWords(g), /Aveline/, 'unspent: she is named');
+  assert.ok(g.progression.spend('vitality', 1).ok);
+  assert.match(respecWords(g), /Reset stat points/);
+  assert.match(respecWords(g), /Sister Aveline can give you a quiet hour/);
+  const av = g.entities.get('aveline');
+  put(av, P.x + 18, P.y);
+  assert.ok(g.murder.kill(av, P), 'Aveline killed');
+  const w = respecWords(g);
+  assert.doesNotMatch(w, /Aveline/, `a dead woman is not offered: "${w}"`);
+  assert.match(w, /Reset stat points/, 'Settings still gives them back');
+  g.progression.resetPoints?.();
+  g.progression.startFree();
+  assert.match(respecWords(g), /Free stat points is on/);
+});
