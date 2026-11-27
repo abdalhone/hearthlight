@@ -13,10 +13,13 @@
 // 'unkindled', silent: true, unmarked: true }). Whoever SAW it is a witness by the sight rule
 // (kill() asks witnessesOf); nobody HEARS anything.
 //
-// The strength of the soul against your own (strengthOf / powerOf / verdict):
-//   ratio < 1      easy: 2.5-3.5 s, it strains and fails;
-//   1 <= r < 1.6   close: a longer, harder pull (3.5-5 s), harder jerks that cost you ground,
-//                  more time for something to break it;
+// The strength of the soul against your own (strengthOf / powerOf / verdict; round 15: who
+// they are against a slow curve of your own, and the odds chanceOf(ratio) shown before you
+// start and rolled when you begin):
+//   chance >= 85%  easy: 2.5-3.5 s, it strains and fails;
+//   less           close: a longer, harder pull (3.5-5 s), harder jerks that cost you ground,
+//                  more time for something to break it, and if the roll goes against you it
+//                  tears itself back past KNOW_AT and breaks free, and knows;
 //   r >= 1.6       much stronger: it snaps back and they break free, and they KNOW (village
 //                  side: src/murder/unkindled.js attempted()). Bosses and the tempter always.
 // Being hit, the target pulled away (or out of reach, or behind a wall), or letting go breaks
@@ -28,9 +31,8 @@
 //
 // Prey that is not murder (§13b S20-11): hostile beasts and bandits have smaller souls; taking
 // them is no crime (a villager who SEES it sees dark magic: src/society/dark_suspicion.js).
-// Harmless things (a hen, the cat, a deer) are refused; bosses are taken only when you are
-// much stronger (ratio <= 1 / MUCH_STRONGER), else they shrug it off at once; the tempter
-// always shrugs it off, whatever the build (Version 12: a Free 999 build once reached him).
+// Harmless things (a hen, the cat, a deer) are refused; bosses and the tempter always shrug it
+// off at once, whatever the build (Version 12 for him, round 15 for them).
 // Every soul taken feeds the taken flame (src/magic/coldfire.js:
 // the bar that boosts your power and ebbs, the mark that shows).
 //
@@ -432,13 +434,11 @@ export class Unkindle {
       const m = this.game?.murder;
       killable = !m || typeof m.canKill !== 'function' || !!safe(() => m.canKill(e), false);
     }
-    // Something old under the ground (a boss, the tempter) is taken only by a hand much
-    // stronger than it (§13b S20-11); otherwise it is never held at all: it shrugs it off at
-    // once (no hold to chain into a stun).
-    // The tempter's soul is beyond any build (Version 12: a Free 999 build reached 1/1.6 of
-    // his 600, and the take only knocked him down at the gate, undefeated): never held.
-    // Round 15: a boss is never taken either, whatever the build (the author: the Unkindling "a
-    // real contest"; at Free 999 Varek once read 'close'): it shrugs it off at once.
+    // Something old under the ground (a boss) and the tempter are never taken and never held:
+    // they shrug it off at once (no hold to chain into a stun). The tempter since Version 12 (a
+    // Free 999 build reached 1/1.6 of his 600, and the take only knocked him down at the gate);
+    // a boss since round 15 (it was "taken by a hand much stronger"; at Free 999 Varek read
+    // 'close': the author asked for a real contest).
     if (kind === 'tempter' || kind === 'boss') return { ratio, kind: 'resists', dur: 4, peak: 0.25, struggle: 0.7 };
     if (ratio >= MUCH_STRONGER || !killable) {
       const over = clamp((ratio - MUCH_STRONGER) / 1.5);
