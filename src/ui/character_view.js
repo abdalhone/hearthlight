@@ -401,11 +401,14 @@ const EMPTY_ICON = { weapon: 'iron_sword', armor: 'leather_jerkin', cloak: 'trav
 export function statTip(S, P, id) {
   const parts = safe(() => S.breakdown(P, id), []) || [];
   const fmt = STATS[id];
+  // Shown as a % on the sheet (a chance, or a multiplier such as weave power: "369%"): the
+  // parts read in the same % and add up to it (Version 12: "Points: +220%", not "+2.2"), and
+  // a percentage on top is a share of it ("+30% of it"), never more points of it.
+  const asPct = fmt?.fmt === 'pct' || fmt?.fmt === 'mul';
   const lines = parts.map((b) => {
     const bits = [];
-    if (b.add) bits.push(`${b.add > 0 ? '+' : ''}${fmt.fmt === 'pct' ? `${Math.round(b.add * 100)}%` : Math.round(b.add * 100) / 100}`);
-    // A chance's own +% is a share of the chance ("+30% of it"), never more points of it.
-    if (b.pct) bits.push(`${b.pct > 0 ? '+' : ''}${Math.round(b.pct * 100)}%${fmt?.fmt === 'pct' ? ' of it' : ''}`);
+    if (b.add) bits.push(`${b.add > 0 ? '+' : ''}${asPct ? `${Math.round(b.add * 100)}%` : Math.round(b.add * 100) / 100}`);
+    if (b.pct) bits.push(`${b.pct > 0 ? '+' : ''}${Math.round(b.pct * 100)}%${asPct ? ' of it' : ''}`);
     if (b.mul !== 1) bits.push(`×${Math.round(b.mul * 100) / 100}`);
     return `${b.label}: ${bits.join(' ')}`;
   });
@@ -418,7 +421,7 @@ export function statTip(S, P, id) {
     const n = fmt.fmt === 'pct' || fmt.fmt === 'mul' ? formatStat(id, plain) : String(Math.round(plain * 10) / 10);
     const word = fmt.label.toLowerCase();
     if (id === 'speed') lines.push(`Each % is a share of your normal pace, ${n}.`);
-    else if (fmt.fmt === 'pct') lines.push(`Each "% of it" is a share of ${n}, the ${word} before them.`);
+    else if (asPct) lines.push(`Each "% of it" is a share of ${n}, the ${word} before them.`);
     else lines.push(`Each % is a share of ${n}, the ${word} before any %.`);
   }
   const raw = add * Math.max(0, 1 + pct) * mul;
