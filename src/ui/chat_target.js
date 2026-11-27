@@ -77,7 +77,8 @@ export function whyNotHeard(game, e, radius = EARSHOT) {
   // voice. (Asked of where they stand, not of how they sleep: a sleeper still gets the words,
   // mumbles, and keeps them.)
   if (game?.map) {
-    const how = safe(() => hears(game, { x: e.x, y: e.y }, p.x, p.y, radius + 16), 'clear');
+    // (Words said to someone pass a tree or two: talk is never cut by a wood, only by walls.)
+    const how = safe(() => hears(game, { x: e.x, y: e.y }, p.x, p.y, radius + 16, { leaves: false }), 'clear');
     if (how === 'muffled') return 'walls';
     if (!how) return 'far';
   }
