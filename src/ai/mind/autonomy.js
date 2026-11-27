@@ -249,6 +249,17 @@ export class Autonomy {
     return !!e && (e === this.lyra() || e.id === COMPANION_ID);
   }
 
+  // Killed, not knocked out (game.murder holds her record; companion.isKilled's rule).
+  isKilled() {
+    const g = this.game;
+    try {
+      if (g?.murder?.isDead?.(COMPANION_ID) || g?.flags?.lyra_dead) return true;
+    } catch {
+      /* no murder yet */
+    }
+    return false;
+  }
+
   isVillager(e) {
     return !!e && e.type === 'actor' && !this.isPlayer(e) && !this.isLyra(e) && (e.faction === 'villager' || e.faction === 'guard' || !!e.profile);
   }
@@ -3238,6 +3249,13 @@ export class Autonomy {
       this._lastStep = stamp;
     }
     if (!Number.isFinite(g?.clock?.t)) this._t += dt;
+    // Killed (round 14b; companion.isKilled's rule): nothing of hers decides anything any more.
+    // (Version 12: knocked out and finished at once, her tick read the dead as "got up on her
+    // own" and cut ties, with a farewell and a letter.)
+    if (this.isKilled()) {
+      this.downed = null;
+      return;
+    }
     this._acc += dt;
     if (this._acc < 0.5) return;
     const step = this._acc;
