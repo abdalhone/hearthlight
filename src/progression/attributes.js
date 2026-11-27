@@ -134,7 +134,8 @@ export const kindOf = (stat) => EFFECT_KIND[stat] || 'gentle';
 
 // The speeds' soft ceilings (ATTRS[id].cap; 999 points come within a hair, never past):
 //   speed +70%     76 px/s walks at most ~129 on points alone: Lyra's own top run (80 ×
-//                  1.6 = 128), so a companion keeps up, and well under the roll's 190.
+//                  1.6 = 128), so a companion keeps up (any adult runs to TOP_RUN behind
+//                  you, src/entities/npc_companion.js), and well under the roll's 190.
 //                  Hastes (gear, a draught, a surge, Berserk, the Last Stand, Oath) add
 //                  their full share on top (the pipeline sums them; STATS.speed.max is
 //                  only a safety clamp no real stack reaches).

@@ -29,6 +29,10 @@ import { seesActor } from '../ai/sight.js';
 export const FOLLOW_NEAR = 30; // px: close enough, stand
 export const FOLLOW_FAR = 48; // px: start walking again
 export const CATCH_UP_TILES = 30; // more than this behind and out of sight: they catch up
+// A companion's top run (px/s): Lyra's own (80 × 1.6, her steering's run), which is where the
+// stat points' speed ceiling sits (999 Grace walks at ~129 px/s, progression/attributes.js).
+// Behind you, anyone you walk with runs as fast as you go, up to this (Version 12, DESIGN §39.4).
+export const TOP_RUN = 128;
 export const FOE_RANGE = 150; // px around them or you
 export const FIGHT_LEASH = 200; // px from the player
 export const ACCEPT_AT = 65;
@@ -251,8 +255,13 @@ export class CompanionDuty {
       if (d < 120) npc.faceToward?.(P.x, P.y);
       return true;
     }
-    // Keep up with someone who walks twice as fast as a smith: run when far behind.
-    npc.speedMul = d > 12 * TILE ? 2.3 : d > 4 * TILE ? 2 : 1.6;
+    // Keep up with someone who walks twice as fast as a smith: run when far behind. Behind a
+    // faster stranger (Grace points, boots, a haste), run as fast as they go, a little more to
+    // close the gap, up to Lyra's own top run (TOP_RUN), as she does (Version 12, §39.4).
+    const own = Math.max(1, Number(npc.speed) || 40);
+    const pace = Math.max(0, Number(P.speed) || 0);
+    const catchUp = d > 4 * TILE ? Math.min(TOP_RUN, pace * (d > 12 * TILE ? 1.15 : 1.05)) / own : 0;
+    npc.speedMul = Math.max(d > 12 * TILE ? 2.3 : d > 4 * TILE ? 2 : 1.6, catchUp);
     const spot = this.slot(P);
     const goal = npc.walker.goal;
     if (tick || !goal || Math.hypot(goal.x - spot.x, goal.y - spot.y) > 24) npc.walker.goTo(spot.x, spot.y);

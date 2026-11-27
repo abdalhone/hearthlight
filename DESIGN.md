@@ -2971,7 +2971,8 @@ restored last in `game.deserialize`.
   the trained, −15 during their working hours: 65+ accept, 50+ accept on terms ("home by
   dark"), else refuse (busy, or not with you).
 - `CompanionDuty` (`npc.duty`, through the F5 hook): follows a little behind you (running
-  to keep up: speed ×1.6–2.3), waits where asked, steps out of the sword arc
+  to keep up: speed ×1.6–2.3, and behind a faster stranger as fast as you go, up to Lyra's
+  own top run, `TOP_RUN` 128 px/s, §39.4), waits where asked, steps out of the sword arc
   (`swordArcPush`), catches up from 30+ tiles behind out of sight, and fights what threatens
   you both (`foe()`: hostile to you or them, within 150 px, seen through the sight rule;
   `defend` only what comes at you): provoked by the foe and `startFight(foe, { anchor:
@@ -3954,9 +3955,16 @@ Only seam 8 needed a change; the rest hold by the rules named.
    (`check`: 'child') refuse whatever the damage.
 4. **Companions.** Nothing in `party.js` or `npc_companion.js` reads your points or
    `effectOf`; Lyra's level growth is her own (`LEVEL_GROWTH.lyra`, the points source is the
-   player's only). A companion runs up to 2.3x their pace and catches up out of sight
-   (`CATCH_UP_TILES` 30): Bram behind a 226 px/s run is never more than 30 tiles back and
-   beside you about four seconds after you stop.
+   player's only). But the speed ceiling the points come to (999 Grace, ~129 px/s) was set
+   at Lyra's own top run "so a companion keeps up", and a villager ran at most 2.3x their
+   own walk (a smith 92 px/s): behind 15 Grace points Bram was up to 12 tiles back and in
+   reach a third of the time, behind 999 Grace 30 tiles back and popping up out of sight
+   (found by the verify pass). So a companion behind you runs as fast as you go (×1.05, ×1.15
+   past 12 tiles) up to Lyra's top run (`npc_companion.TOP_RUN` 128 px/s), never slower than
+   before: Bram and Rowan stay within about five tiles behind 15, 30 or 999 Grace, as Lyra
+   does (`tests/v12_verify_read.test.mjs`). Past that (hastes stacked to 226 px/s) everyone,
+   Lyra too, falls behind and catches up out of sight (`CATCH_UP_TILES` 30), beside you
+   about four seconds after you stop.
 5. **The Unkindling.** It costs no health and no mana (§37: "the price is that it shows"),
    a fraction or an absolute alike: nothing to scale. At 4853 health or at 1 a take leaves
    both untouched and cannot kill you. The soul bar fills by the soul's strength, not yours;
