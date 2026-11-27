@@ -511,11 +511,17 @@ async function play(S) {
     const after = await ev(() => {
       const g = window.__game;
       const vis = [...document.querySelectorAll('.toast')].filter((t) => !t.classList.contains('queued') && !t.classList.contains('leaving') && getComputedStyle(t).display !== 'none').map((t) => t.textContent);
-      return { dead: g.murder.isDead('lyra'), holder: g.party.holderId, card: window.__vis('.companion-card'), toasts: vis, hud: window.__hudText() };
+      // The world's prompt over her body ("Search or lift Lyra", round 14b loot) is the one
+      // place her name may stand on the HUD: it names a body to search, not a companion.
+      const pr = document.querySelector('.hud .interact-prompt');
+      const prompt = pr && !pr.hidden && getComputedStyle(pr).display !== 'none' ? pr.querySelector('.prompt-text, span:last-child')?.textContent || pr.textContent : '';
+      return { dead: g.murder.isDead('lyra'), holder: g.party.holderId, card: window.__vis('.companion-card'), toasts: vis, hud: window.__hudText(), prompt };
     });
     check(after.dead, `[${tag}] 11 the held blow: she is dead`, JSON.stringify(after));
     check(!after.toasts.some((x) => /is down!.*help .* up/i.test(x)), `[${tag}] 11 no "help her up" call left over her body`, JSON.stringify(after.toasts));
-    check(!after.holder && !after.card && !/\bLyra\b/.test(after.hud), `[${tag}] 11 the companion slot is empty, no Lyra on the HUD`, JSON.stringify({ holder: after.holder, card: after.card, hud: after.hud.slice(0, 200) }));
+    const bodyPrompt = /^(?:Search or lift|Lift) Lyra$/.test((after.prompt || '').replace(/^E\s*/, '').trim());
+    const hudBare = bodyPrompt ? after.hud.replace(/\b(?:Search or lift|Lift) Lyra\b/, '') : after.hud;
+    check(!after.holder && !after.card && !/\bLyra\b/.test(hudBare), `[${tag}] 11 the companion slot is empty, no Lyra on the HUD (but the prompt over her body)`, JSON.stringify({ holder: after.holder, card: after.card, prompt: after.prompt, hud: after.hud.slice(0, 200) }));
     await shot('11-dead');
     // People, opened as a player would (Tab on a computer; the menu on a phone).
     if (S.phone) await ev(() => window.__game.ui.openPeople('lyra'));
