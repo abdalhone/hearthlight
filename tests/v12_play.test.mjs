@@ -94,3 +94,33 @@ test('Lyra knocked out and killed at once: her mind does not then cut ties from 
   assert.deepEqual(after, [], `nothing of hers changes once she is dead: ${JSON.stringify(changes)}`);
   assert.ok(!g.flags.lyra_gone && !g.flags.lyra_farewell, `no farewell from the dead: ${JSON.stringify(g.flags.lyra_farewell || g.flags.lyra_gone || null)}`);
 });
+
+// The Spellbook's price words, read beside the sheet at level 12: Oath said "+30% strength,
+// weave power, armor and crit chance" while crit went 33% → 43% (not 63%), and Glass "+50%
+// weave power" while 149% became 224% (not 199%). A price's share of a number you build reads
+// as the gear's words do (§39.8, stats.pctWords): "of your …", and speed "of your normal pace".
+test('a price that adds a share of a number you build says what it is a share of', async () => {
+  const { PRICES } = await import('../src/magic/prices.js');
+  const { pctWords } = await import('../src/core/stats.js');
+  // Oath's shares come from its live provider (while whoever walks with you is near).
+  const g = statsWorld();
+  const P = g.player;
+  g.prices.state.oath = { t: 45 };
+  g.companion.x = P.x + 10;
+  g.companion.y = P.y;
+  const oath = (g.prices.provide(P) || []).find((m) => m.id === 'price:oath:gain');
+  assert.ok(oath?.pct, 'the oath gives while she is near');
+  let read = 0;
+  for (const [id, d] of Object.entries(PRICES)) {
+    const pct = id === 'oath' ? oath.pct : d.gain?.pct || {};
+    for (const [k, v] of Object.entries(pct)) {
+      const w = pctWords(k, v);
+      if (!/ of your /.test(w) && !/\(of your normal pace\)/.test(w)) continue; // a plain ×1 multiplier
+      const n = `${Math.round(v * 100)}%`;
+      if (!d.gainText.includes(n)) continue; // said in words ("faster", "twice as strong")
+      read++;
+      assert.match(d.gainText, k === 'speed' ? /\+\d+% speed \(of your normal pace\)/ : /% of your /, `${id}: "${d.gainText}" says what its ${n} (${k}) is a share of, as "${w}"`);
+    }
+  }
+  assert.ok(read >= 7, `the words of Berserk, Glass and Oath were read (${read})`);
+});
