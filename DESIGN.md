@@ -3849,7 +3849,9 @@ The rule is fixed; the numbers are what play tunes (`src/magic/balance.js`).
   (`input.clickSwingAt`, carried as `habit` from `Player.attack` through `combat.melee`) and
   that lands on a calm, lawful person (standing, not fighting, fleeing or afraid of you, not
   your lock target) is an accident: it lands, they yelp ("Ow! Watch it!"), no crime and no
-  grudge, and the coach says once "T talks to whoever is in front of you. Striking people is
+  grudge (read while they still stand, and never the last of their health, as a text act:
+  a built sword or a crit is more than a villager's whole health, and it used to knock them
+  out and so read as a knockout, Version 12 verify), and the coach says once "T talks to whoever is in front of you. Striking people is
   a crime." (`flags.habitForgiven`). Every blow after it is a real one. J, Space, the pad and
   the phone's sword button are meant (a phone's tap on a person does nothing at all); a
   weave, a slap or a finishing blow is never the habit.

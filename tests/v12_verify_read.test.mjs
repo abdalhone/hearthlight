@@ -186,3 +186,45 @@ test('v12 verify: the Character sheet names the chapel\'s respec only while Sist
   g.progression.startFree();
   assert.match(respecWords(g), /Free stat points is on/);
 });
+
+// ---------------------------------------------------------------- the old habit, forgiven, on a built sword
+
+// Decision D3 (round 14b, §38.8): the first mouse-click blow on a calm person "lands, they
+// yelp ('Ow! Watch it!'), no crime and no grudge". Built at level 1 (a sword of 6 against 36
+// to 58 health). On the new numbers a level-15 stranger with 42 points in Might and a steel
+// sword cuts for 64, and a crit at level 10 for over 60: the forgiven click knocked Bram out
+// cold, and because combat read the habit after the health was gone ("not standing"), the
+// accident became a knockout on the record. The forgiven blow now never takes the last of
+// them (as a text act never does): they yelp and stand, and it stays the one accident.
+import { events } from './murder_world.mjs';
+
+test('v12 verify: the forgiven first click never knocks anyone down, however built the sword (a yelp, no crime)', () => {
+  const g = statsWorld();
+  quiet(g, ['bram', 'rowan']);
+  const P = g.player;
+  P.level = 15;
+  g.stats.refresh(P);
+  assert.ok(g.progression.spend('might', 42).ok);
+  P.inventory.add('steel_sword', 1);
+  g.gear.equip('steel_sword');
+  g.stats.refresh(P);
+  put(P, px(97), px(103));
+  const bram = g.entities.get('bram');
+  const rowan = g.entities.get('rowan');
+  put(bram, P.x + 16, P.y);
+  put(rowan, P.x + 2 * TILE, P.y + TILE);
+  rowan.faceToward?.(P.x, P.y); // the watch sees it
+  P.faceToward(bram.x, bram.y);
+  assert.ok(P.atk * 1.5 > bram.maxHp, `a sword of ${P.atk} (a crit ${Math.round(P.atk * 1.5)}) against ${bram.maxHp} health`);
+  g.combat.damage(P, bram, P.atk, { kind: 'melee', habit: true, crit: true });
+  const ev = events(g, 'damage').at(-1);
+  assert.equal(ev?.accident, true, 'the old habit, forgiven');
+  assert.ok(!bram.downed && bram.hp >= 1, `he yelps and stands (${bram.hp}/${bram.maxHp})`);
+  assert.equal(g.combat.hasCrime(P), false, 'no crime on the record');
+  assert.equal(events(g, 'crime').length, 0);
+  // Every blow after it is a real one.
+  bram.invuln = 0;
+  g.combat.damage(P, bram, P.atk, { kind: 'melee', habit: true, crit: false, exact: true });
+  assert.ok(bram.downed, 'the second, meant, knocks him down');
+  assert.ok(g.combat.hasCrime(P), 'and Rowan saw a knockout');
+});
