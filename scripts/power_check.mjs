@@ -403,6 +403,10 @@ async function fight(size, id = 'lakes_hum') {
     });
     s = await state(page);
     if (s.won || s.down || s.mode !== 'fight') break;
+    if (s.guard && !shots.has('guard')) {
+      shots.add('guard');
+      await page.screenshot({ path: `${OUT}/${tag}-guard.png` });
+    }
     if (s.danger) {
       await dodge(page, size, cdp, s);
       continue;
