@@ -4311,3 +4311,16 @@ Sparks from a full pool, ten thirteen); a levelled invested character beats a lo
 with points, never in a burst; death stays dangerous (a level-5 stranger with no Vitality
 drops to five of Varek's blows); percentages give their full share (nothing here touches
 the pipeline; the surcharge is on mana, the guard on the boss).
+
+**Checks (power builder).** `npm test` 1329/1329 (`tests/r15_power.test.mjs` new; the boss,
+charge, budget, Unkindling, coldfire and stats-pass tests re-read where a number moved, each
+named in its commit); every browser check of the brief one at a time: smoke both ways,
+playtest 22/22, phone_check 1324/1324, controls 87/87, menu 195/195, cutscene, fight and
+murder shots, world, home_ui 38/38, death 86/86, seams 83/83, talk 102/102, party 137/137,
+blood 74/74, society 75/75, soul 164/164 (it found the taken flame's fill: fixed,
+`fillStrength`), polish 101/101, followup 128/128, r14b_story 386/386, verify_a 155/155,
+verify_b 80/80, stats_check 102/102 (its Varek fight re-read for the new target: the sword
+lands, a quarter of him or more in 90 s, never a burst; on the phones the first two cuts read
+the sheet's sword less his armour, then his guard), v12_ui 75/75, v12_saves 36/36, minds_play
+(alone), ui3_check 56/70 (its 14 failures are among Version 11's 16), and
+`scripts/power_check.mjs` 51/51 on the computer, a sideways phone at 4x CPU and an upright one.
