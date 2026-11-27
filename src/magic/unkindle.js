@@ -406,6 +406,33 @@ export class Unkindle {
     return Math.max(1, s);
   }
 
+  // How much a soul feeds the taken flame (coldfire.fillFor reads it against its TYPICAL): the
+  // body-and-work measure Version 12 used for the contest too. Round 15 moved the contest to
+  // who they are (strengthOf) but left the bar's feeding as soul tuned it.
+  fillStrength(e) {
+    if (!e) return 0;
+    const kind = this.kindOf(e);
+    if (kind === 'dummy') return 1;
+    if (kind === 'tempter') return TEMPTER_STRENGTH;
+    const g = this.game;
+    const c = e.profile?.combat || {};
+    const maxHp = Math.max(1, Number(e.maxHp) || c.maxHp || 36);
+    const atk = Number(e.atk ?? c.atk ?? 3) || 3;
+    const def = Number(e.def ?? c.def ?? 0) || 0;
+    let s = (maxHp / 36) * 6 + atk + 2 * def;
+    if (kind === 'boss') return Math.max(BOSS_FLOOR, s * 1.4);
+    if (e.isGuard || e.faction === 'guard') s += 3;
+    if (e.profile?.hunter) s += 3;
+    const traits = e.profile?.traits || [];
+    s += Math.min(3, 1.5 * traits.filter((t) => WILL_TRAITS.slice(0, 8).includes(t)).length);
+    if (e === lyraOf(g)) s += 6 + 2 * Math.max(0, (Number(e.level) || 1) - 1);
+    const frac = clamp((Number(e.hp) || maxHp) / maxHp);
+    s *= 0.5 + 0.5 * frac;
+    if (e.state === 'sleep') s *= 0.6;
+    if (e.downed) s *= 0.45;
+    return Math.max(1, s);
+  }
+
   // -> { ratio, kind: 'easy' | 'close' | 'resists', dur (s, of a pull that succeeds),
   //      peak (how far a stronger soul comes before it snaps back), struggle (s) }
   verdict(e, P = this.game?.player) {
@@ -498,6 +525,7 @@ export class Unkindle {
       // it does not shrug it off (v.kind 'resists' for a boss: never held, no stun to chain).
       held: kind === 'person' || kind === 'bandit' || kind === 'beast' || ((kind === 'boss' || kind === 'tempter') && v.kind !== 'resists'),
       strength: this.strengthOf(e),
+      fillStrength: this.fillStrength(e),
       // The roll (round 15): with the odds the hint showed, the soul holds on; if it will, it
       // breaks free somewhere past KNOW_AT of the pull (so it knows what you tried).
       fails: v.kind !== 'resists' && kind !== 'dummy' && this.rand() >= v.chance,
@@ -745,7 +773,7 @@ export class Unkindle {
     this.deaths.push({ id: e.id, t: Math.round(rec.t ?? this.now()), day: rec.day ?? this.day(), hour: Math.round((g.clock?.hour ?? 0) * 100) / 100, seen: ch.seen.length > 0 });
     if (this.deaths.length > 60) this.deaths.splice(0, this.deaths.length - 60);
     this.lastTakenDay = this.day();
-    ch.fill = safe(() => this.coldfire.take('person', ch.strength), 0);
+    ch.fill = safe(() => this.coldfire.take('person', ch.fillStrength ?? ch.strength), 0);
     safe(() => this.village?.unkindled?.(rec, e, ch));
     safe(() => this.suspicion?.onTaken?.(ch, rec));
     this.emit('unkindled', { id: e.id, seen: ch.seen, kind: 'person' });
@@ -795,7 +823,7 @@ export class Unkindle {
     unsilence(e);
     const k = ch.kind === 'tempter' ? 'boss' : ch.kind;
     if (this.prey[k] != null) this.prey[k]++;
-    ch.fill = safe(() => this.coldfire.take(ch.kind, ch.strength), 0);
+    ch.fill = safe(() => this.coldfire.take(ch.kind, ch.fillStrength ?? ch.strength), 0);
     // Whoever SAW it saw dark magic: not a crime (src/society/dark_suspicion.js, by sight.js).
     safe(() => this.suspicion?.onTaken?.(ch, null));
     this.emit('unkindled', { id: e.id ?? null, seen: [], kind: ch.kind, species: e.species || null });

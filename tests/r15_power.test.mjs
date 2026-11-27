@@ -261,3 +261,29 @@ test('the odds shown are the odds played: a soul the roll goes against breaks fr
     } else assert.ok(rowan.dead || g.murder.dead?.rowan, 'taken');
   }
 });
+
+// Found by soul_check after the contest changed: the taken flame's fill reads a soul's strength
+// against coldfire's TYPICAL (soul's tuning), so the new, smaller creature strengths fed it
+// little (three wolves and a bandit: a bar of 26, soul's own check wants more than 30). The
+// fill keeps Version 12's measure (fillStrength); the contest uses the new one.
+test('three wolves and a bandit still feed the taken flame as they did (the fill keeps its own measure)', async () => {
+  const { spawnCreature } = await import('../src/entities/monsters.js');
+  const { g, unk, P } = soulWorld(5);
+  holdLyra(g, px(150), px(112));
+  put(P, px(62), px(14));
+  P.facing = { x: 1, y: 0 };
+  unk.rand = () => 0; // every roll taken
+  for (const species of ['wolf', 'wolf', 'wolf', 'bandit']) {
+    const c = spawnCreature(g, species, P.x + 16, P.y);
+    c.controller = null;
+    assert.ok(unk.begin(c).ok, species);
+    let t = 0;
+    while (unk.channel && t < 12) {
+      unk.update(0.05);
+      t += 0.05;
+    }
+    unk.cooldownUntil = -Infinity;
+  }
+  assert.deepEqual({ beast: unk.prey.beast, bandit: unk.prey.bandit }, { beast: 3, bandit: 1 });
+  assert.ok(unk.coldfire.bar > 30 && unk.coldfire.bar < 100, `the bar: ${unk.coldfire.bar}`);
+});
