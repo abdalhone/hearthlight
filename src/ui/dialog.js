@@ -66,6 +66,9 @@ export class DialogPanel {
     const textBox = h('div', { class: 'dlg-box' }, this.textEl, this.dotsEl, this.moreEl);
     textBox.addEventListener('click', () => this.advance());
     panel.body.append(h('div', { class: 'dlg' }, h('span', { class: 'portrait-frame dlg-portrait' }, this.portrait), h('div', { class: 'dlg-main' }, this.youEl, textBox, this.extraEl, this.optionsEl)));
+    // Trading lays the panel out for the wares (src/styles/shop.css): the panel wears
+    // `is-shop` exactly while a shop sits in it, whichever path put it there or took it away.
+    this.watchShop(panel);
     this.buildSay(npc);
     panel.onClose = () => this.onClosed();
     this.ui.openModal(panel);
@@ -78,7 +81,22 @@ export class DialogPanel {
     if (this.isOpen()) this.ui.closeModal(this.panel, silent);
   }
 
+  // Round 15 (DESIGN §40.1): one class for "a shop is open in this dialog", kept true by
+  // watching what the panel holds (the shop opens from a choice, closes on Done trading, a
+  // reply, a gift, a refusal...). The layout hangs on it, not on :has() chains.
+  watchShop(panel) {
+    const sync = () => toggleClass(panel.el, 'is-shop', !!this.extraEl?.querySelector(':scope > .shop'));
+    sync();
+    if (typeof MutationObserver === 'function') {
+      this.shopWatch?.disconnect?.();
+      this.shopWatch = new MutationObserver(sync);
+      this.shopWatch.observe(this.extraEl, { childList: true });
+    }
+  }
+
   onClosed() {
+    this.shopWatch?.disconnect?.();
+    this.shopWatch = null;
     this.dict?.detach();
     this.dict = null;
     if (this.talk) this.talk.onLate = null;
@@ -510,9 +528,9 @@ export class DialogPanel {
         sellList.append(row);
       }
     };
-    const tabs = h('div', { class: 'segmented shop-tabs' });
-    const buyPane = h('div', { class: 'shop-pane' }, h('h3', { text: 'Buy' }), buyList);
-    const sellPane = h('div', { class: 'shop-pane' }, h('h3', { text: 'Sell' }), sellList);
+    const tabs = h('div', { class: 'segmented shop-tabs', role: 'radiogroup', 'aria-label': 'Buy or sell' });
+    const buyPane = h('div', { class: 'shop-pane shop-pane-buy' }, h('h3', { text: 'Buy' }), buyList);
+    const sellPane = h('div', { class: 'shop-pane shop-pane-sell' }, h('h3', { text: 'Sell' }), sellList);
     for (const [id, label] of [
       ['buy', 'Buy'],
       ['sell', 'Sell'],
@@ -524,13 +542,16 @@ export class DialogPanel {
       });
       tabs.append(b);
     }
+    // The parts, in reading order; src/styles/shop.css places them for each screen (the
+    // purse and the tabs, the haggle, Done trading, the price note, then the wares).
     const shopEl = h(
       'div',
       { class: 'shop' },
       h('div', { class: 'shop-head' }, tabs, h('span', { class: 'purse' }, h('img', { class: 'item-img', alt: '', src: itemIconUrl(g, 'coin') }), coins)),
-      h('div', { class: 'shop-bar' }, badge, haggleBtn),
+      h('div', { class: 'shop-bar' }, haggleBtn),
+      badge,
       h('div', { class: 'shop-panes' }, buyPane, sellPane),
-      button('Done trading', { cls: 'btn-ghost btn-small', onClick: () => this.choose('__back') }),
+      button('Done trading', { cls: 'btn-ghost btn-small shop-done', onClick: () => this.choose('__back') }),
     );
     this.extraEl.append(shopEl);
     redraw();
@@ -556,7 +577,7 @@ export class DialogPanel {
         note ? h('span', { class: `shop-stock ${dim ? 'is-out' : ''}`.trim(), text: note }) : null,
         stolen ? h('span', { class: 'shop-stolen', text: 'stolen' }) : null,
       ),
-      h('span', { class: 'price num' }, h('img', { class: 'item-img tiny', alt: '', src: itemIconUrl(this.game, 'coin') }), price, worthTxt),
+      h('span', { class: 'price num' }, h('img', { class: 'item-img tiny', alt: '', src: itemIconUrl(this.game, 'coin') }), h('span', { class: 'price-n', text: String(price) }), worthTxt),
       h('span', { class: 'shop-btns' }, btn),
       detail,
     );

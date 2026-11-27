@@ -1,0 +1,448 @@
+/* Round 15 (DESIGN §40.1): the shop, whole on every screen. One sheet for all of it (it was
+   spread over src/styles.css and society.css, five media blocks deep, and on a computer two
+   of four wares showed, upright the rows were cramped and pushed in under the portrait).
+
+   While a shop is open the dialog wears `is-shop` (src/ui/dialog.js watchShop): their face
+   and their last words sit in a strip at the top, and the shop takes the rest of the panel,
+   full width (never in a column beside or under the portrait):
+     - a computer: Buy and Sell side by side, each list scrolling on its own; one line a ware;
+     - upright: one list at a time (Buy | Sell tabs), two lines a ware (the name and the
+       price, then the buttons), "Done trading" full width at the bottom by the thumb;
+     - sideways: their words a narrow column, the shop the rest; one line a ware.
+   The purse, the haggle and "Done trading" share one row on a computer and sideways, so the
+   wares get the height. The panel's close stays in its header; nothing here moves it. */
+
+/* ---------- the parts, everywhere ---------- */
+.shop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'head bar done'
+    'mood mood mood'
+    'panes panes panes';
+  align-items: center;
+  gap: 8px 10px;
+  min-height: 0;
+}
+.shop > .shop-head {
+  grid-area: head;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.shop > .shop-bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.shop > .shop-done {
+  grid-area: done;
+}
+.shop > .shop-mood {
+  grid-area: mood;
+  color: var(--parch-dim);
+  font-size: var(--fs-xs);
+  min-width: 0;
+}
+.shop > .shop-mood[hidden] {
+  display: none;
+}
+.shop > .shop-panes {
+  grid-area: panes;
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 14px;
+  min-height: 0;
+}
+.shop-tabs {
+  display: none;
+}
+.shop-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.shop-pane h3 {
+  flex: none;
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: var(--fs-s);
+  color: var(--ember);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.shop-list {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+}
+.shop-list > .empty {
+  margin: 4px 0;
+}
+
+/* A ware: icon | name (and how many, and the stock under it) | price (worth under it) |
+   buttons; what it is, under all of it, on a tap. */
+.shop-row {
+  flex: none;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    'icon name price btns'
+    'detail detail detail detail';
+  align-items: center;
+  column-gap: 8px;
+  padding: 4px 6px;
+  background: rgba(10, 9, 25, 0.35);
+  cursor: pointer;
+}
+.shop-row.dim {
+  opacity: 0.55;
+}
+.shop-row.is-stolen {
+  box-shadow: inset 3px 0 0 #b85a5a;
+}
+.shop-row > .item-img {
+  grid-area: icon;
+  justify-self: center;
+}
+.shop-name {
+  grid-area: name;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+  line-height: 1.25;
+}
+.shop-name > :first-child {
+  overflow-wrap: anywhere;
+}
+.shop-qty {
+  color: var(--parch-dim);
+  font-size: var(--fs-xs);
+}
+.shop-stock {
+  flex-basis: 100%;
+  color: var(--parch-dim);
+  font-size: var(--fs-xs);
+}
+.shop-stock.is-out {
+  color: var(--ember);
+}
+.shop-stolen {
+  font-size: var(--fs-xs);
+  padding: 0 4px;
+  border: 1px solid #b85a5a;
+  color: #ffb3a8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.shop-row > .price {
+  grid-area: price;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-content: end;
+  column-gap: 3px;
+  font-family: var(--font-display);
+  font-size: var(--fs-s);
+  color: var(--ember-hot);
+  white-space: nowrap;
+}
+.shop-worth {
+  grid-column: 1 / -1;
+  justify-self: end;
+  color: var(--parch-dim);
+  font-family: var(--font-body, inherit);
+  font-size: var(--fs-xs);
+}
+.shop-btns {
+  grid-area: btns;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.shop-step-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.shop-step {
+  min-width: 30px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+.shop-step-n {
+  min-width: 1.4em;
+  text-align: center;
+}
+.shop-detail {
+  grid-area: detail;
+  margin: 2px 0 0;
+  color: var(--parch-dim);
+  font-size: var(--fs-xs);
+}
+.shop-detail[hidden] {
+  display: none;
+}
+.shop-ask {
+  color: var(--ember-hot);
+  font-size: var(--fs-xs);
+}
+
+/* ---------- the dialog around it: a strip for them, the rest for the wares ---------- */
+.panel-dialog.is-shop .panel-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.panel-dialog.is-shop .dlg {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-areas:
+    'face you'
+    'face words'
+    'shop shop';
+  gap: 6px 14px;
+  align-items: start;
+}
+.panel-dialog.is-shop .dlg-main {
+  display: contents;
+}
+.panel-dialog.is-shop .dlg-portrait {
+  grid-area: face;
+  align-self: start;
+}
+.panel-dialog.is-shop .dlg-portrait .portrait-xl {
+  width: 64px;
+  height: 64px;
+}
+.panel-dialog.is-shop .dlg-you {
+  grid-area: you;
+  margin: 0;
+}
+.panel-dialog.is-shop .dlg-box {
+  grid-area: words;
+  align-self: stretch;
+  min-height: 0;
+  max-height: 4.6em;
+  overflow-y: auto;
+  padding: 6px 12px;
+}
+.panel-dialog.is-shop .dlg-text {
+  font-size: var(--fs-m);
+}
+.panel-dialog.is-shop .dlg-extra {
+  grid-area: shop;
+  align-self: stretch;
+  min-height: 0;
+  margin-top: 4px;
+  padding: 2px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.panel-dialog.is-shop .dlg-extra > .shop {
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+.panel-dialog.is-shop .dlg-options {
+  display: none;
+}
+
+/* ---------- a computer: both lists side by side, the panel as tall as the wares need ---------- */
+@media (min-width: 641px) and (min-height: 521px) {
+  .panel-dialog.is-shop {
+    width: min(960px, 100%);
+    height: auto;
+    max-height: min(94%, 700px);
+  }
+  .panel-dialog.is-shop .panel-body {
+    flex: 0 1 auto;
+  }
+  .panel-dialog.is-shop .dlg {
+    flex: 0 1 auto;
+  }
+  /* The purse, the haggle and Done trading on the row beside their face, under their
+     words (the shop's own parts join the dialog's grid), so the lists get the height. */
+  .panel-dialog.is-shop .dlg {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
+    grid-template-areas:
+      'face you you you'
+      'face words words words'
+      'face head bar done'
+      'mood mood mood mood'
+      'panes panes panes panes';
+    align-items: center;
+  }
+  .panel-dialog.is-shop .dlg-extra,
+  .panel-dialog.is-shop .dlg-extra > .shop {
+    display: contents;
+    overflow: visible;
+  }
+  .panel-dialog.is-shop .dlg-box {
+    align-self: stretch;
+  }
+  .panel-dialog.is-shop .shop > .shop-panes {
+    margin-top: 4px;
+  }
+}
+
+/* ---------- a phone, either way: one list at a time, finger-sized ---------- */
+@media (max-width: 640px), (max-height: 520px) and (min-width: 600px) {
+  .shop-tabs {
+    display: inline-flex;
+  }
+  .shop > .shop-panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .shop .shop-pane-sell,
+  .shop.show-sell .shop-pane-buy {
+    display: none;
+  }
+  .shop.show-sell .shop-pane-sell {
+    display: flex;
+  }
+  /* The tab says which list it is. */
+  .shop-pane h3 {
+    display: none;
+  }
+}
+@media (pointer: coarse) {
+  .shop .btn,
+  .shop .seg,
+  .shop-step {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+.is-touch .shop .segmented .seg {
+  min-height: 44px;
+  min-width: 56px;
+}
+
+/* ---------- upright: two lines a ware, the panel tall, Done trading by the thumb ---------- */
+@media (max-width: 640px) and (min-height: 521px) {
+  .panel-dialog.is-shop {
+    height: min(800px, 95%);
+    max-height: none;
+  }
+  .panel-dialog.is-shop .dlg {
+    flex: 1 1 0;
+    gap: 6px 10px;
+  }
+  .panel-dialog.is-shop .dlg-portrait .portrait-xl {
+    width: 48px;
+    height: 48px;
+  }
+  .panel-dialog.is-shop .dlg-box {
+    max-height: 4.2em;
+  }
+  .panel-dialog.is-shop .dlg-extra,
+  .panel-dialog.is-shop .dlg-extra > .shop {
+    flex: 1 1 0;
+  }
+  .shop {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'head bar'
+      'mood mood'
+      'panes panes'
+      'done done';
+  }
+  .panel-dialog.is-shop .dlg-extra > .shop {
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+  }
+  .shop > .shop-done {
+    width: 100%;
+  }
+  /* Line one: the name, how many, the stock. Line two: the price (and what it is worth)
+     and the buttons. The icon beside both. */
+  .shop-row {
+    grid-template-columns: 32px auto minmax(0, 1fr);
+    grid-template-areas:
+      'icon name name'
+      'icon price btns'
+      'detail detail detail';
+    row-gap: 2px;
+    padding: 5px 8px;
+  }
+  .shop-row > .item-img {
+    grid-row: 1 / span 2;
+  }
+  .shop-stock {
+    flex-basis: auto;
+  }
+  .shop-row > .price {
+    grid-template-columns: auto auto auto;
+    justify-content: start;
+  }
+  .shop-worth {
+    grid-column: auto;
+    margin-left: 4px;
+  }
+  .shop-row > .shop-btns {
+    justify-content: flex-end;
+  }
+}
+
+/* ---------- sideways: their words a narrow column, the shop the rest ---------- */
+@media (max-height: 520px) and (min-width: 600px) {
+  .panel-dialog.is-shop {
+    height: 100%;
+  }
+  .panel-dialog.is-shop .dlg {
+    grid-template-columns: 52px minmax(0, 0.62fr) minmax(0, 1.8fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      'face you shop'
+      'face words shop';
+    gap: 6px 10px;
+  }
+  .panel-dialog.is-shop .dlg-portrait .portrait-xl {
+    width: 48px;
+    height: 48px;
+  }
+  .panel-dialog.is-shop .dlg-box {
+    max-height: none;
+  }
+  .panel-dialog.is-shop .dlg-extra {
+    margin-top: 0;
+  }
+  .panel-dialog.is-shop .dlg-extra > .shop {
+    gap: 6px 8px;
+  }
+  /* Trading sideways, the "Say something" field steps aside until Done trading (the
+     wares need the height; Done trading brings it back). */
+  .panel-dialog.is-shop .panel-foot.dlg-say {
+    display: none;
+  }
+  .shop-worth {
+    display: none;
+  }
+  .shop > .shop-head {
+    gap: 8px;
+  }
+  /* "Done trading" keeps its whole outline (the column clips at its edge). */
+  .shop > .shop-done {
+    margin-right: 2px;
+  }
+}
