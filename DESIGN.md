@@ -4043,3 +4043,7 @@ Only seam 8 needed a change; the rest hold by the rules named.
     2.3x their pace and catches up out of sight, so at 134–169 px/s Bram is off screen
     behind you until the 30-tile catch-up; at Free 999 a boss (Varek: ratio 0.15) can be
     unkindled, the design's "a hand much stronger".
+    Every check passes after the four fixes (npm test 1313/1313; r14b_story 386/386,
+    verify_a 155/155, verify_b 80/80, soul_check 164/164, followup_check 128/128, stats_check
+    102/102, v12_ui_check 75/75, v12_saves_check 36/36 and the rest; ui3_check's 14 failures
+    are Version 11's own, line for line).
