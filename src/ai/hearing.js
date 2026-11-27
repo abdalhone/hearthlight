@@ -20,9 +20,10 @@
 //   muffles again. A scream inside a shut house is heard just outside it, not down the street.
 // - An open door lets it out: in line with the doorway it is open air ('clear'); round the
 //   corner, along the way through the doorway, it carries DOOR of the reach ('muffled').
-//   The way round is the shortest walk over open ground (roundPath: through any number of
-//   open doors and gaps, a partition's opening and then the front door; round the end of a
-//   fence), never through a wall or a shut door (round 15, item 5: the one-doorway gap).
+//   Indoors the way round goes room to room through any number of openings (roundPath: a
+//   back room's gap, an inner door left open, then out of an open front door), never
+//   through a wall or a shut door (round 15, item 5: the one-doorway gap). Out of doors, a
+//   wall in the open still stops it: it does not wrap round a house's corner.
 // - Trees muffle (round 15, item 5; the author: "sound passes through trees"): each standing
 //   tree on the straight line takes LEAF of what is left of the reach (a berry bush half as
 //   much, each tile of forest floor's undergrowth an eighth), down to LEAF_MIN; two trees or more between
@@ -191,51 +192,95 @@ export function leafShare(w) {
   return w > 0 ? Math.max(LEAF_MIN, Math.pow(LEAF, w)) : 1;
 }
 
-// The shortest walk over open ground (no wall tile, no shut door) from (x, y) to the listener's
-// tile, in px, or Infinity past `reach` (round 15, item 5: through any number of open doors and
-// gaps, replacing the single open-door detour). A distance field from the sound's tile,
-// 8-way with no cutting of a wall's corner, kept for the rest of this moment of game time so
-// everyone who might hear one cry shares one search.
-const ROUND = { key: '', field: null };
+// The way a sound takes out of (or into) a building through its openings (round 15, item 5:
+// the one-doorway gap), in px, or Infinity past `reach`. Indoors, a sound walks room to room
+// over open floor (a partition's gap, an inner door left open: any number of them; never a
+// wall or a shut door); out of the building it leaves by an open door and goes on in a straight
+// line clear of walls, as before. Between two points both out of doors, the old rule stands:
+// one open doorway between them, both legs clear (a house's wall in the open still stops a
+// sound; it does not wrap round the corner). A distance field from the indoor end, 8-way with
+// no slipping between two walls at a corner, kept for the rest of this moment of game time
+// (and while every door in reach stays as it is) so all the ears of one cry share one search.
+const ROUND = { key: '', field: null, game: null };
 function nowKey(game) {
   return `${game?.clock?.t ?? ''}:${game?.time ?? ''}`;
+}
+function indoorsTile(game, tx, ty) {
+  return !!safe(() => game.map?.buildingAt?.(tx, ty), null);
 }
 export function roundPath(game, lx, ly, x, y, reach) {
   const R = Math.ceil(reach / TILE);
   if (!(R > 0)) return Infinity;
-  const sx = Math.floor(x / TILE);
-  const sy = Math.floor(y / TILE);
-  const ex = Math.floor(lx / TILE);
-  const ey = Math.floor(ly / TILE);
-  if (Math.abs(ex - sx) > R || Math.abs(ey - sy) > R) return Infinity;
-  // (Kept while nothing that could change it has: the moment, and every door in reach.)
-  const doors = safe(() => game.objects?.inRadius?.(x, y, reach + TILE, (o) => o.objType === 'door' && !o.removed), []) || [];
+  const stx = Math.floor(x / TILE);
+  const sty = Math.floor(y / TILE);
+  const ltx = Math.floor(lx / TILE);
+  const lty = Math.floor(ly / TILE);
+  const srcIn = indoorsTile(game, stx, sty);
+  const lisIn = indoorsTile(game, ltx, lty);
+  if (!srcIn && !lisIn) return viaOpenDoor(game, lx, ly, x, y, reach);
+  // Search from the indoor end (a path is the same both ways).
+  const [ox, oy, ex, ey, px0, py0, px1, py1] = srcIn ? [stx, sty, ltx, lty, x, y, lx, ly] : [ltx, lty, stx, sty, lx, ly, x, y];
+  const doors = safe(() => game.objects?.inRadius?.(px0, py0, reach + TILE, (o) => o.objType === 'door' && !o.removed), []) || [];
   let sig = '';
   for (const o of doors) sig += o.isOpen || o.state?.open ? '1' : '0';
-  const key = `${nowKey(game)}|${sx},${sy},${R}|${sig}`;
+  const key = `${nowKey(game)}|${ox},${oy},${R}|${sig}`;
   let field = ROUND.key === key && ROUND.game === game ? ROUND.field : null;
   if (!field) {
-    field = distanceField(game, sx, sy, R);
+    field = distanceField(game, ox, oy, R, (tx, ty) => indoorsTile(game, tx, ty) || !!safe(() => game.objects?.doorAt?.(tx, ty), null));
     ROUND.key = key;
     ROUND.game = game;
     ROUND.field = field;
   }
   const W = 2 * R + 1;
-  const d = field[(ey - sy + R) * W + (ex - sx + R)];
-  if (!Number.isFinite(d)) return Infinity;
-  // Tile steps to px, plus the bits from the points to their tile centres.
-  const px = d * TILE + Math.hypot(x - (sx * TILE + TILE / 2), y - (sy * TILE + TILE / 2)) * 0.5 + Math.hypot(lx - (ex * TILE + TILE / 2), ly - (ey * TILE + TILE / 2)) * 0.5;
-  return px <= reach ? px : Infinity;
+  const at = (tx, ty) => (Math.abs(tx - ox) > R || Math.abs(ty - oy) > R ? Infinity : field[(ty - oy + R) * W + (tx - ox + R)]);
+  const from0 = Math.hypot(px0 - (ox * TILE + TILE / 2), py0 - (oy * TILE + TILE / 2)) * 0.5;
+  let best = Infinity;
+  // The other end indoors (the same building or one joined by open doors): its own tile.
+  const direct = at(ex, ey);
+  if (Number.isFinite(direct)) best = direct * TILE + from0;
+  // Out by an open door, then a straight line clear of walls.
+  for (const o of doors) {
+    if (!(o.isOpen || o.state?.open)) continue;
+    const dtx = Number.isFinite(o.tx) ? o.tx : Math.floor(o.x / TILE);
+    const dty = Number.isFinite(o.ty) ? o.ty : Math.floor(o.y / TILE);
+    const dd = at(dtx, dty);
+    if (!Number.isFinite(dd)) continue;
+    const cx = dtx * TILE + TILE / 2;
+    const cy = dty * TILE + TILE / 2;
+    const leg = Math.hypot(px1 - cx, py1 - cy);
+    const total = dd * TILE + from0 + leg;
+    if (total >= best || total > reach) continue;
+    if (safe(() => wallBetween(game, cx, cy, px1, py1), true)) continue;
+    best = total;
+  }
+  return best <= reach ? best : Infinity;
 }
 
-export function distanceField(game, sx, sy, R) {
+// The old rule between two points out of doors: one open doorway, both legs clear of walls.
+function viaOpenDoor(game, lx, ly, x, y, reach) {
+  const doors = safe(() => game.objects?.inRadius?.(x, y, reach, (o) => o.objType === 'door' && !o.removed && (o.isOpen || o.state?.open)), []) || [];
+  let best = Infinity;
+  for (const o of doors) {
+    const dx = Number.isFinite(o.tx) ? o.tx * TILE + TILE / 2 : o.x;
+    const dy = Number.isFinite(o.ty) ? o.ty * TILE + TILE / 2 : o.y;
+    const a = Math.hypot(dx - x, dy - y);
+    const b = Math.hypot(lx - dx, ly - dy);
+    if (a + b >= best || a + b > reach) continue;
+    if (safe(() => wallBetween(game, x, y, dx, dy), true)) continue;
+    if (safe(() => wallBetween(game, dx, dy, lx, ly), true)) continue;
+    best = a + b;
+  }
+  return best;
+}
+
+export function distanceField(game, sx, sy, R, within = null) {
   const W = 2 * R + 1;
   const dist = new Float64Array(W * W).fill(Infinity);
   const open = new Int8Array(W * W).fill(-1); // -1 unknown, 0 wall, 1 open
   const isOpen = (i, tx, ty) => {
     let v = open[i];
     if (v < 0) {
-      v = safe(() => wallTile(game, tx, ty), true) ? 0 : 1;
+      v = safe(() => wallTile(game, tx, ty), true) || (within && !within(tx, ty)) ? 0 : 1;
       open[i] = v;
     }
     return v === 1;
