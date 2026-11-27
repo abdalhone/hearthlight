@@ -101,3 +101,61 @@ test('v12 verify: with no points the companion\'s walk is as it was (a smith sti
   for (let t = 0; t < 1; t += dt) stepWorld(g, dt, dt);
   assert.ok((c.speedMul || 1) <= 1.6 + 1e-9, `close by, ${c.speedMul}× their walk`);
 });
+
+// ---------------------------------------------------------------- what a % is a share of
+
+// DESIGN §26: "every number with a percentage on it says what its % are a share of, and a
+// chance's own +% reads '+30% of it', a share of the chance, never more points of it"; §39.8
+// put gear, the bag, the forge and the shop through stats.pctWords. The prices' own words did
+// not follow: Glass said "+50% weave power" and Oath "+30% … crit chance", both numbers the
+// sheet shows as a % (100% weave power, 10% crit), so they read as fifty and thirty more
+// points; and the coldfire bar's "+30% to Sword and Weave power" the same.
+import { PRICES } from '../src/magic/prices.js';
+import { STATS, pctWords } from '../src/core/stats.js';
+import { boostWords } from '../src/ui/coldfire_view.js';
+
+test('v12 verify: a price\'s words say what each % is a share of (a share of yours, never more points; speed of the normal pace)', () => {
+  // Every price's own shares, and Oath's, which its live provider gives while your companion
+  // is near (prices.provide).
+  const g = statsWorld();
+  const P = g.player;
+  g.prices.state.oath = { t: 45 };
+  put(P, px(97), px(103));
+  put(g.companion, P.x + 10, P.y);
+  const oath = (g.prices.provide(P) || []).find((m) => m.id === 'price:oath:gain');
+  assert.ok(oath?.pct, 'the oath gives while she is near');
+  const shares = [];
+  for (const [id, d] of Object.entries(PRICES)) for (const part of ['gain', 'cost']) shares.push({ id, pct: d[part]?.pct || {}, label: d[part]?.label || '', text: part === 'gain' ? d.gainText : d.costText });
+  shares.push({ id: 'oath (near)', pct: oath.pct, label: PRICES.oath.gain.label, text: PRICES.oath.gainText });
+  let named = 0;
+  for (const { id, pct, label, text } of shares) {
+    {
+      const words = { label, text };
+      for (const [k, v] of Object.entries(pct)) {
+        const fmt = STATS[k]?.fmt;
+        if (k === 'speed') {
+          assert.match(words.text, /of your normal pace/, `${id}: "${words.text}" says its +${Math.round(v * 100)}% speed is a share of your normal pace`);
+          named++;
+        } else if ((fmt === 'pct' || fmt === 'mul') && / of your /.test(pctWords(k, v))) {
+          // A number shown as a % (weave power 100%, crit 10%): a share of yours, in the chip
+          // and in the Spellbook's words alike.
+          for (const [where, w] of Object.entries(words)) assert.match(w, /of your/, `${id} ${where}: "${w}" says its +${Math.round(v * 100)}% ${STATS[k].label.toLowerCase()} is a share of yours`);
+          named++;
+        }
+      }
+    }
+  }
+  assert.ok(named >= 5, `${named} shares named`);
+  // Emberblood's burn is a share of your max health (EMBER_DRAIN × maxHp), not of what is left.
+  assert.match(PRICES.emberblood.costText, /of your max health/);
+  assert.match(PRICES.emberblood.cost.label, /of max health/);
+});
+
+test('v12 verify: the coldfire bar says its +% is a share of your Sword and Weave power', () => {
+  const full = boostWords({ boost: () => 0.3, bar: 100 });
+  assert.match(full.title, /of your Sword and Weave power/);
+  assert.match(full.note, /\+30% of your Sword and Weave power/);
+  assert.match(full.value, /^\+30%/, 'the number itself stays short');
+  const some = boostWords({ boost: () => 0.19, bar: 63 });
+  assert.match(some.title, /\+19% of your Sword and Weave power/);
+});

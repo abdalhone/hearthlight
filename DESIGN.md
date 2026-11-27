@@ -3987,7 +3987,15 @@ Only seam 8 needed a change; the rest hold by the rules named.
    "+30% of your critical chance"; a number points and gear add to "+5% of your weave
    power"; a x1 multiplier nothing adds to stays "+8% Cast speed". The shop's ware detail (a
    tap) and its hover title carry `gear.wareWords` (rarity, slot and stats, or a draught's
-   buff and minutes). Loot rolls and prices are untouched.
+   buff and minutes). Loot rolls and prices are untouched. The prices' own words and the
+   coldfire bar's followed in the verify pass (`tests/v12_verify_read.test.mjs` holds every
+   price, Oath's live shares included): Glass "+50% of your weave power" and Oath "+30% of
+   your strength, weave power, armor and crit chance", numbers the sheet shows as a % that
+   read as fifty and thirty more points; Berserk's and Oath's speed "(of your normal pace)"
+   in the Spellbook's words (the chips keep "+40% speed", a number the sheet shows in px/s);
+   Emberblood's burn "2% of your max health" a second; the coldfire bar "+30% of your Sword
+   and Weave power" (`coldfire_view.boostWords`: the meter's title, the sheet's note; the
+   number itself stays "+19%").
 9. **Death, heavier.** The bleed-out window follows Resolve on the gentle curve to its 300 s
    clamp at 52 points; the countdown shows "300" inside its ring on every screen. The Last
    Stand's +35% speed is 26.6 px/s at 0, 50 or 999 Grace; Lastlight halves even 4853 health.

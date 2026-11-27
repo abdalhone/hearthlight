@@ -325,7 +325,7 @@ test('seam 7: Oath\'s words name every share it gives, and the shares are what i
     assert.ok(words[stat]?.test(text), `the words name ${stat}`);
     assert.ok(text.includes(pc), `and its ${pc}`);
   }
-  assert.match(PRICES.oath.gain.label, /\+30% sword, weaves, armor, crit, \+10% speed/);
+  assert.match(PRICES.oath.gain.label, /\+30% of your sword, weaves, armor, crit, \+10% speed/);
   // +10% speed is 10% of the normal pace, at 0 Grace or 999.
   for (const n of [0, FREE_MAX]) {
     const h = statsWorld();
