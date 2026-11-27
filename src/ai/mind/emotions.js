@@ -109,7 +109,23 @@ const APPRAISALS = {
   betrayal: (p) => ({ surprise: 0.3, fear: 0.22 * p.N, anger: 0.24, sadness: 0.14 * p.A, trust: -0.25, joy: -0.2, affection: -0.1 }),
   // Someone proved themselves: a rescue, a kept promise, a good deed she saw.
   goodness: (p) => ({ trust: 0.2, affection: 0.14 * p.A, joy: 0.18, fear: -0.08 }),
+  // Round 15 (item 2, the right face): violence heard, not seen. A cry or a blow nearby:
+  // alarm; a scream (someone knocked down, a killing): shock. Wonder goes out of her.
+  alarm: (p) => ({ fear: 0.16 * p.N, surprise: 0.3, curiosity: -0.2, joy: -0.12 }),
+  shock: (p) => ({ fear: 0.26 * p.N, surprise: 0.42, sadness: 0.12 * p.A, joy: -0.3, curiosity: -0.32, trust: -0.04 }),
+  // A killing about to happen in front of her (a finisher held over someone downed).
+  horror: (p) => ({ fear: 0.32 * p.N, sadness: 0.2 * p.A, anger: 0.16, surprise: 0.3, joy: -0.4, curiosity: -0.4, affection: -0.06 }),
 };
+
+// Feelings that are hard to carry. While one of them is plainly felt, a bright one (a new
+// place catching her eye, the joy of a minute ago) does not name her mood: no delighted or
+// fascinated face after violence she saw or heard (round 15, item 2).
+const DARK = ['fear', 'sadness', 'anger'];
+const DARK_FELT = 0.1;
+// What happened that was hard (violence seen or heard, a hurt, a loss): for HARD_FOR seconds
+// of play after it, any hard feeling she plainly has names her mood over a bright one.
+const HARD = new Set(['threat', 'hurt', 'ally_hurt', 'cruelty', 'loss', 'grief', 'betrayal', 'alarm', 'shock', 'horror']);
+const HARD_FOR = 90;
 
 export function personalityFactors(personality = {}) {
   const v = (k) => clamp01(Number.isFinite(personality[k]) ? personality[k] : 0.5);
@@ -149,6 +165,8 @@ export class Emotions {
     this.tint = {}; // emotion -> offset to its baseline, fading with tintHalfLife
     this.tintHalfLife = 900;
     this.tintMood = null; // { label, face } her mood reads as while the tint holds (face: src/art/faces_art.js)
+    this.t = 0; // seconds of play this heart has lived (decay's clock)
+    this.hardAt = -Infinity; // when something hard last happened (HARD)
     this.setPersonality(personality);
     for (const e of EMOTIONS) this.values[e] = this.baseline[e];
   }
@@ -218,6 +236,7 @@ export class Emotions {
 
   // Exponential return toward baseline; dt in seconds of play.
   decay(dt) {
+    if (dt > 0) this.t += dt;
     for (const e in this.tint) {
       this.fadeTint(dt);
       break;
@@ -251,6 +270,7 @@ export class Emotions {
       return this.feel('joy', a * 0.2);
     }
     const before = this.values[n];
+    if (DARK.includes(n) && amount >= 0.25) this.hardAt = this.t;
     let next;
     if (amount > 0) next = before + amount * (1 - before * 0.6);
     else next = before + amount;
@@ -262,6 +282,7 @@ export class Emotions {
   appraise(kind, intensity = 1) {
     const fn = APPRAISALS[kind];
     if (!fn) return [];
+    if (HARD.has(kind) && intensity > 0) this.hardAt = this.t;
     const deltas = fn(this.factors);
     const out = [];
     for (const [name, d] of Object.entries(deltas)) {
@@ -320,7 +341,27 @@ export class Emotions {
     // (a new place catching her eye) does not name her mood; a dark one can.
     const heavy = this.tintMood && this.tintStrength() >= 0.12 && tintValence(this.tint) < 0;
     const bright = d.name === 'joy' || d.name === 'curiosity' || d.name === 'trust' || d.name === 'affection' || d.name === 'pride' || d.name === 'surprise';
-    if (d.excess >= 0.22 && d.value >= 0.4 && !(heavy && bright)) {
+    // The hardest feeling she has now, and how far above her baseline it stands.
+    let dark = null;
+    for (const e of DARK) {
+      const x = this.values[e] - this.baseline[e];
+      if (!dark || x > dark.excess) dark = { name: e, value: this.values[e], excess: x };
+    }
+    const darkFelt = dark.excess >= DARK_FELT;
+    const recentHard = this.t - this.hardAt < HARD_FOR;
+    const darkWins = darkFelt && (recentHard || dark.excess >= d.excess * 0.6);
+    // Startled by something frightening is shock, not surprise.
+    if (d.name === 'surprise' && darkFelt && dark.name === 'fear' && d.excess >= 0.22 && d.value >= 0.4) {
+      label = 'shocked';
+      face = 'shocked';
+    } else if (bright && darkWins) {
+      // A bright feeling never wins over a hard one she is plainly feeling.
+      const hi = dark.value > 0.55;
+      if (dark.name === 'fear') [label, face] = hi ? ['terrified', 'terrified'] : ['afraid', 'afraid'];
+      else if (dark.name === 'anger') [label, face] = hi ? ['furious', 'furious'] : ['angry', 'angry'];
+      else [label, face] = hi ? ['heartsick', 'heartsick'] : ['sad', 'sad'];
+    }
+    if (!label && d.excess >= 0.22 && d.value >= 0.4 && !(heavy && bright)) {
       const hi = d.value > 0.62;
       switch (d.name) {
         case 'joy':
@@ -364,6 +405,7 @@ export class Emotions {
       else if (needs.hunger < 0.18) [label, face] = ['starving', 'starving'];
       else if (needs.safety < 0.25) [label, face] = ['on edge', 'on_edge'];
     }
+    if (!label && darkFelt) [label, face] = dark.name === 'fear' ? ['uneasy', 'uneasy'] : dark.name === 'anger' ? ['cross', 'angry'] : ['low', 'sad'];
     if (!label) {
       if (valence > 0.45) [label, face] = arousal > 0.5 ? ['cheerful', 'delighted'] : ['happy', 'happy'];
       else if (valence > 0.15) [label, face] = arousal > 0.5 ? ['lively', 'lively'] : ['content', 'content'];

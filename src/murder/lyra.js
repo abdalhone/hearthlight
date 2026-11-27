@@ -108,6 +108,8 @@ function goneFor(m, rec, text, severity = -10) {
 
 export function sawHold(m, v) {
   if (gone(m) || isHers(m, v)) return;
+  // Horror before the words (round 15, item 2: her face must show it, never a delighted one).
+  safe(() => lyraOf(m.game)?.mind?.appraise?.('horror', 1, `a blade held over ${m.name(v.id)}`));
   say(m, v.id === 'hobb' || v.id === 'wenna' ? `NO! Get away from ${v.id === 'hobb' ? 'Da' : 'Mam'}! GET AWAY!` : "Don't you dare. Don't you DARE! Put it down!", 'shout');
 }
 
