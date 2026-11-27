@@ -402,6 +402,26 @@ async function phone(label, w, h, { throttle = false } = {}) {
   await wait(page, 300);
   const c2 = await aimState(page);
   check(`${label} 6: a full charge shows the aim, the lift clears it`, c1.aims === 1 && cleared(c2), `${JSON.stringify(c1)} -> ${JSON.stringify(c2)}`);
+  // A charge held with one thumb, a roll with the other (the dodge button): the roll breaks
+  // the charge, and its aim goes with it while the first thumb is still down.
+  await wait(page, 500);
+  await page.evaluate(() => window.__game.magic.resetCooldowns?.());
+  const dg = await center('.tbtn-dodge');
+  i = id++;
+  await touch('touchStart', [{ x: s1.x, y: s1.y, id: i }]);
+  await wait(page, 600);
+  const rr1 = await aimState(page);
+  await touch('touchStart', [{ x: s1.x, y: s1.y, id: i }, { x: dg.x, y: dg.y, id: i + 1 }]);
+  await wait(page, 80);
+  // (CDP: a move that lists only the weave thumb lifts the dodge thumb.)
+  await touch('touchMove', [{ x: s1.x, y: s1.y, id: i }]);
+  await wait(page, throttle ? 450 : 300);
+  const rr2 = await aimState(page);
+  const rolled = await page.evaluate(() => window.__game.player.rolling || window.__game.player.state === 'dodge' || (window.__game.player.rollT ?? 0) > 0);
+  await page.screenshot({ path: `${OUT}/${label}-6-roll.png` });
+  await touch('touchEnd', []);
+  await wait(page, 300);
+  check(`${label} 6: a roll breaks a held charge and its aim goes, the thumb still on the weave`, rr1.aims === 1 && cleared(rr2), `${JSON.stringify(rr1)} -> ${JSON.stringify(rr2)} rolled ${rolled}`);
   // Drag back onto the button to cancel.
   await wait(page, 500);
   await page.evaluate(() => window.__game.magic.resetCooldowns?.());
@@ -471,7 +491,12 @@ async function phone(label, w, h, { throttle = false } = {}) {
 
   // ---- 9
   await ironPath(page, label, {
-    use: async () => tap(await center('.tbtn-interact'), 60),
+    // A thumb taps the use button once it names what is there (not the instant after a
+    // teleport, while it still reads Talk).
+    use: async (re = /mine|open|locked|footlocker|chest/i) => {
+      await page.waitForFunction((src) => new RegExp(src, 'i').test(document.querySelector('.tbtn-interact .tbtn-tag')?.textContent || ''), re.source, { timeout: 4000 }).catch(() => {});
+      await tap(await center('.tbtn-interact'), 60);
+    },
     swing: async () => tap(await center('.tbtn-attack'), 60),
     tapText: async (re) => {
       const p = await page.evaluate((src) => {
@@ -487,7 +512,7 @@ async function phone(label, w, h, { throttle = false } = {}) {
     },
     close: async () => {
       const p = await page.evaluate(() => {
-        const b = [...document.querySelectorAll('.panel .close, .panel [aria-label="Close"], [aria-label="Close"]')].find((x) => x.offsetParent);
+        const b = [...document.querySelectorAll('.panel-close')].find((x) => x.offsetParent);
         if (!b) return null;
         const r = b.getBoundingClientRect();
         return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height };
@@ -513,6 +538,7 @@ async function ironPath(page, label, io) {
   });
   check(`${label} 9: the quarry has its tool chest`, !!box, JSON.stringify(box));
   if (!vein) return check(`${label} 9: an ore vein to try`, false);
+  // (Run on the build before round 15, the bare-hands half still plays and shows the bug.)
   await page.evaluate(() => window.__game.ui.toasts?.clear?.());
   await teleport(page, vein.x - 13, vein.y + 1);
   const pr = await promptText(page);
@@ -522,6 +548,11 @@ async function ironPath(page, label, io) {
   await wait(page, 400);
   const said = await toastsSay(page, /need a pickaxe for iron/);
   check(`${label} 9: the use button says what it needs, and where to get one`, said);
+  // The author's way: the use button, held to its end by bare hands (a vein takes 4 s).
+  await wait(page, 4800);
+  const byHand = await count(page, 'iron_ore');
+  await page.screenshot({ path: `${OUT}/${label}-9-by-hand.png` });
+  check(`${label} 9: bare hands mine no iron (the author: "I can like break iron without any specialized tools")`, byHand === 0, `iron ore ${byHand}`);
   for (let k = 0; k < 5; k++) {
     await io.swing();
     await wait(page, 380);
@@ -534,6 +565,13 @@ async function ironPath(page, label, io) {
 
   // The iron hasp, by hand: the word, no offer to force it.
   const locker = await tileOf(page, (o) => o.id === 'guard_footlocker');
+  if (!box) {
+    await teleport(page, locker.x, locker.y + 14, { x: 0, y: -1 });
+    await io.use();
+    await wait(page, 500);
+    await page.screenshot({ path: `${OUT}/${label}-9-hasp-bare.png` });
+    return check(`${label} 9: (no tool chest: the rest needs the pickaxe)`, false);
+  }
   await teleport(page, locker.x, locker.y + 14, { x: 0, y: -1 });
   await page.evaluate(() => window.__game.ui.toasts?.clear?.());
   await io.use();
@@ -565,7 +603,12 @@ async function ironPath(page, label, io) {
   await wait(page, 5600);
   const ore1 = await count(page, 'iron_ore');
   await page.screenshot({ path: `${OUT}/${label}-9-mined.png` });
-  check(`${label} 9: with the pickaxe the vein gives its ore`, ore1 >= 1, `iron ore ${ore1}`);
+  const why = ore1 >= 1 ? '' : await page.evaluate((id) => {
+    const g = window.__game;
+    const o = g.objects.get(id);
+    return JSON.stringify({ worker: !!o._worker, depleted: o.state.depleted, modal: !!g.ui.isModalOpen?.(), enabled: g.input.enabled, pstate: g.player.state, d: Math.round(Math.hypot(o.x - g.player.x, o.y - g.player.y)), best: g.interactions?.best?.(g.player)?.label, pick: g.player.inventory.count('pickaxe') });
+  }, vein.id);
+  check(`${label} 9: with the pickaxe the vein gives its ore`, ore1 >= 1, `iron ore ${ore1} ${why}`);
 
   // The hasp with the pick: the offer appears (left alone: no theft here).
   await teleport(page, locker.x, locker.y + 14, { x: 0, y: -1 });
