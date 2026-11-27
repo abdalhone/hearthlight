@@ -853,7 +853,9 @@ async function run(S) {
     const first = vk.cuts.slice(0, 2);
     const firstAvg = first.length ? first.reduce((a, b) => a + b, 0) / first.length : 0;
     // (Less his armour, 6 now: a cut lands the sword less 6, with the blow's ±10%.)
-    check(vk.cuts.length >= 3 && firstAvg >= (vk.atk - 6) * 0.9 && vk.hp0 - vk.hp >= 2 * (vk.atk - 6), `${tag}: tapped at Varek's side, ${vk.cuts.length} cuts, the first two ~${Math.round(firstAvg)} (sword ${vk.atk}), then his guard; took ${Math.round(vk.hp0 - vk.hp)} of his ${Math.round(vk.hp0)}`, JSON.stringify(vk.cuts));
+    // (Two cuts at least: under 4x CPU the three seconds sometimes hold only two, and with his
+    // guard the later ones carry nothing to read.)
+    check(vk.cuts.length >= 2 && firstAvg >= (vk.atk - 6) * 0.9 && vk.hp0 - vk.hp >= 2 * (vk.atk - 6), `${tag}: tapped at Varek's side, ${vk.cuts.length} cuts, the first two ~${Math.round(firstAvg)} (sword ${vk.atk}), then his guard; took ${Math.round(vk.hp0 - vk.hp)} of his ${Math.round(vk.hp0)}`, JSON.stringify(vk.cuts));
   }
   await ev(() => {
     const L2 = window.__game.companion;
