@@ -66,3 +66,31 @@ test('a stat the sheet shows as a % gives its parts in % too, adding up to the n
     assert.match(tip, /share of \d+%/, tip);
   }
 });
+
+// Played at 999 Might: one blow downs Lyra, the held finisher kills her three seconds later,
+// and then her autonomy, still ticking for the dead, read "she got up on her own" (she was no
+// longer downed: she was dead) and cut ties: the toast "Lyra has cut you off. She is home with
+// her own people now", her farewell in the flags, a letter from a dead woman. A dead Lyra's
+// mind decides nothing (as her body, brain and behavior already did nothing).
+test('Lyra knocked out and killed at once: her mind does not then cut ties from beyond the grave', async () => {
+  const { step } = await import('./murder_world.mjs');
+  const g = statsWorld({ hour: 8 });
+  const P = points(g, { might: 999 }, { level: 15 });
+  const L = g.companion;
+  P.x = 97 * 16;
+  P.y = 103 * 16;
+  L.x = P.x + 16;
+  L.y = P.y;
+  const changes = [];
+  g.bus.on('companionship_changed', (p) => changes.push({ state: p.state, dead: !!g.murder.isDead('lyra') }));
+  g.combat.damage(P, L, P.atk, { kind: 'melee', exact: true, crit: false });
+  assert.ok(L.downed && !L.dead, 'one blow downs her');
+  step(g, 1);
+  g.flags.finisherWarned = g.flags.finisherWarnedLyra = true;
+  assert.ok(g.murder.strike(P, L), 'the held blow falls');
+  assert.ok(g.murder.isDead('lyra'));
+  for (let i = 0; i < 60; i++) step(g, 0.5);
+  const after = changes.filter((c) => c.dead);
+  assert.deepEqual(after, [], `nothing of hers changes once she is dead: ${JSON.stringify(changes)}`);
+  assert.ok(!g.flags.lyra_gone && !g.flags.lyra_farewell, `no farewell from the dead: ${JSON.stringify(g.flags.lyra_farewell || g.flags.lyra_gone || null)}`);
+});
