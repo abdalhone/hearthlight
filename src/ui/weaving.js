@@ -578,7 +578,7 @@ export class Weaving {
       this.describeAim(v, c, aim);
       this.aims.push(v);
     }
-    // The aim is drawn only while a weave is pressed or held (round 15, DESIGN §40.1): the
+    // The aim is drawn only while a weave is pressed or held (round 15, DESIGN §40.6): the
     // moment a cast ends, is cancelled or refused, nothing of it stays. The faint guide of the
     // marked weave between casts is an opt-in (Settings: "Aim guide between casts"), and only
     // in a fight (a foe near) while the mouse or the right stick aims, never as an afterglow

@@ -1,4 +1,4 @@
-// Tools (round 15, item 9; DESIGN §40.2; the author: "I can like break iron without any
+// Tools (round 15, item 9; DESIGN §40.9; the author: "I can like break iron without any
 // specialized tools. Why is that?"). Iron yields only to the tool made for it:
 //   - an iron ore vein (objects.js Rock, objType 'ore') is mined only with a pickaxe in the
 //     pack; bare hands and the sword ring off it, and so does every weave (breakables.js);

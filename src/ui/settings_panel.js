@@ -124,7 +124,7 @@ export const SETTING_ROWS = {
   leftHanded: { kind: 'toggle', label: 'Left-handed', note: 'Move with your right thumb, fight with your left.' },
   touchBuzz: { kind: 'toggle', on: true, label: 'Buzz', note: 'A small vibration when you press a button, where the phone allows it.' },
   aimGuides: { kind: 'toggle', on: true, label: 'Aim guide', note: 'Shows where a weave will go, under the mouse.' },
-  // Round 15 (DESIGN §40.1; the author: "the highlight of where it would go ... stays on"): the
+  // Round 15 (DESIGN §40.6; the author: "the highlight of where it would go ... stays on"): the
   // aim shows only while a weave is pressed or held. This opt-in brings back a faint guide of
   // the marked weave under the mouse in a fight between casts (the old row, aimGuides, only
   // turned that guide off, and is still honoured when a save of the settings has it off).

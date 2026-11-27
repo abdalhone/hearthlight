@@ -1,4 +1,4 @@
-// Round 15, the hands workstream (DESIGN §40.1–40.3), played in headless Chromium the way
+// Round 15, the hands workstream (DESIGN §40.6, §40.9, §40.11), played in headless Chromium the way
 // the author plays: a phone held sideways (844×390) and upright (390×844) with real taps and
 // drags (CDP touch points), and a computer (1280×720) with keys and the mouse; the sideways
 // phone again under a 4× CPU throttle where timing matters.
