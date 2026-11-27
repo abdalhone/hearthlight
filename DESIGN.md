@@ -3370,9 +3370,10 @@ evil, beasts and bandits as prey).
   ×0.6, downed ×0.45). `verdict(e)` → `{ ratio, kind, dur, peak, struggle }`:
   `'easy'` (ratio < 1: a 2.5–3.5 s pull), `'close'` (1–1.6: 3.5–5 s, harder jerks that win back
   ground, more time to be broken), `'resists'` (≥ 1.6, and anyone `murder.canKill` refuses: it
-  comes only so far, then snaps back). A boss (strength at least 90) or the tempter (600) is
-  taken only when the ratio is ≤ 1/1.6 (a hand much stronger: a long 'close' pull); otherwise
-  it shrugs the spell off at once, never held (no stun to chain). A pull's length is divided
+  comes only so far, then snaps back). A boss (strength at least 90) is taken only when the
+  ratio is ≤ 1/1.6 (a hand much stronger: a long 'close' pull); otherwise it shrugs the spell
+  off at once, never held (no stun to chain). The tempter always shrugs it off, whatever the
+  build (Version 12, §39.13). A pull's length is divided
   by coldfire's `1 + 0.4·bar` (§37.9). At level 1 Elda and Bram are
   easy, Wys awake is close (asleep, easy), Hess and Rowan break free; a hurt stranger is weaker.
 - **The hold:** `begin(target?)` → `{ ok, reason, line }`, `release(why)`, `channel` (read by the
@@ -4001,3 +4002,44 @@ Only seam 8 needed a change; the rest hold by the rules named.
     failed once in the full batch and passed alone, neither near a stat: talk_check's bow on
     the computer (Hobb's opinion fell before the bow was weighed) and verify_a's L4 upright
     (the chat picked Mira, who had walked to 19 px, over Elda at 18).
+13. **Played by hand (verify-play).** An independent verifier played the join on all three
+    screens (a sideways phone at 4x CPU and an upright phone by taps and the stick, a computer
+    by keys and the mouse), building strangers at level 1, 5, 12 and 15 by taps on the
+    Character sheet (spread and piled; Free stat points through Settings, +10 tapped to 999;
+    0/5/10/30/999 in each attribute read off the sheet, never falling), then: Bram struck in
+    front of Rowan, both fighting back, the stranger falling and Rowan carrying him to the
+    cell; a 590 sword downing Tobias in one blow, the first warning, half a hold let go, the
+    full hold's sword finisher, the bell and the hunt, his pockets searched, a middle-click
+    lock on Rowan; a known killer hunted and dropped by the posse, arrested and tried; Lyra at
+    full health downed by one blow, her own warning, the hold; Pip only knocked down, "No.
+    Not a child." for the hold and the Unkindling; Bram asked along in the chat and run with
+    Berserk and a Swiftfoot Draught drunk from the bag (at most ~30 tiles behind, beside you
+    2–5 s after you stop); a Spark cast at a run (feet planted, the whole pace after); the
+    Unkindling at 4923 health and at 1 (both untouched); the pact left at the ruins gate;
+    every bag, shop, forge and Spellbook line read; 300 s in the ring, the Last Stand at
+    4923 and Lastlight halving it; Version 11 and round 14b saves continued from the title;
+    People, the HUD with Lyra, Bram and nobody, and the trial with 999 Focus and Vitality.
+    Four things were wrong, each fixed at its root with a test in `tests/v12_play.test.mjs`:
+    - **A dead Lyra's mind cut ties.** Knocked out and finished at once (one 590 blow, then
+      the hold), her autonomy still ticked, read her no longer downed as "she got up on her
+      own" and cut ties from beyond the grave: "Lyra has cut you off. She is home with her own
+      people now", her farewell and a letter. `Autonomy.update` now does nothing once she is
+      killed (`isKilled`: the murder record or `flags.lyra_dead`, companion.isKilled's rule).
+    - **The tempter could be unkindled.** A Free 999 build (Might and Vitality, or now Weave
+      alone: power 1031 against his 600) read "close"; the take ran `combat.kill`, which only
+      downs a person: he lay at the gate undefeated, and Lyra counted "a villager knocked
+      out". His soul is beyond any build: `verdict` always reads `'resists'` for him (§37.1).
+    - **The sheet's % stats gave bare multipliers.** Weave power 369% read "Base: +1, Level:
+      +0.49, Points: +2.2" in its tooltip (at 999 Weave "+38.83" against 3983%). Every stat the
+      sheet shows as a % now gives its parts in that % (`statTip`: "Points: +220%"), and a
+      share on top reads "% of it", as a chance's did.
+    - **The prices' words did not say what their % are of.** Oath "+30% ... crit chance"
+      while crit went 33% → 43%; Glass "+50% weave power" while 149% became 224%. As gear's
+      words (seam 8): Berserk "+40% speed (of your normal pace)", Glass "+50% of your weave
+      power", Oath "+30% of your strength, weave power, armor and crit chance, +10% speed (of
+      your normal pace) and casting". Numbers unchanged.
+    Held as designed (not changed): an assault's crime is settled where the guard who knows
+    drops you, so Lyra's warmth may lift you before the cell; a villager companion runs at
+    2.3x their pace and catches up out of sight, so at 134–169 px/s Bram is off screen
+    behind you until the 30-tile catch-up; at Free 999 a boss (Varek: ratio 0.15) can be
+    unkindled, the design's "a hand much stronger".
