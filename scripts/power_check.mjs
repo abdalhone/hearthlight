@@ -612,8 +612,23 @@ async function soul(size) {
   check(`[${size.name}] the hold plays out as the odds said: taken, or he breaks free and knows`, out.dead ? out.tally === 1 : out.attempt?.outcome === 'resisted' && out.attempt.knows === true, JSON.stringify(out));
   // A boss: too strong, whatever the build (Free 999).
   const v = await setup('varek', 15, true);
-  await wait(900);
-  shown = await read();
+  await wait(600);
+  // He comes at you (the fight starts as you walk in, and a blow throws you back out of
+  // touch): step back to his side and read the hint as soon as it is painted.
+  for (let i = 0; i < 6; i++) {
+    await page.evaluate(() => {
+      const g = window.__game;
+      const b = g.bosses.get('varek');
+      const P = g.player;
+      P.x = b.x - 18;
+      P.y = b.y;
+      P.hp = P.maxHp;
+      P.faceToward?.(b.x, b.y);
+    });
+    await wait(260);
+    shown = await read();
+    if (shown.hint || shown.btn) break;
+  }
   await page.screenshot({ path: `${OUT}/${tag}-varek-odds.png` });
   const vs = size.phone ? shown.btn : shown.hint;
   check(`[${size.name}] at Free 999, Varek reads too strong`, v.odds.chance === 0 && vs.includes('too strong'), `"${vs}" ${JSON.stringify(v.odds)}`);
