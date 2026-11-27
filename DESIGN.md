@@ -1976,7 +1976,8 @@ notices and has opinions (berserk frightens her).
   (spell power), Focus (max mana, mana regen, cooldowns), Grace (speed, dodge, crit),
   Resolve (status resistance, longer bleed-out window, carry speed). A character sheet in
   the menu; respec at the chapel for a price, or for free from Settings → Game → Reset
-  stat points (§24; the Character sheet names both). Either gives back every spent point
+  stat points (§24; the Character sheet names both, the chapel only while Sister Aveline
+  lives: round 14b made her killable, `character_view.respecWords`). Either gives back every spent point
   and keeps the level, gear, weaves and the points missions gave; health and mana settle
   into the new maximums.
 - **How points add up** (round 14b, two passes). First the author: "when I put a lot of
