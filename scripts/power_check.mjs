@@ -424,8 +424,172 @@ async function fight(size) {
   await context.close();
 }
 
+// ------------------------------------------------------------------ the Spellbook's cost
+
+async function book(size) {
+  const tag = `${size.name}-book`;
+  const { context, page, errors } = await open(size);
+  const info = await setupStranger(page, STRONG.weave);
+  // The strongest level-9 weave of Version 12 too, in slot 3 (the parts learned for real).
+  const big = { shape: 'throw', essences: ['earth', 'iron'], twists: ['multishot', 'echo', 'big', 'volley'] };
+  await page.evaluate((w) => {
+    const g = window.__game;
+    const m = g.magic;
+    m.unlock('shape', w.shape, 'test');
+    for (const e of w.essences) m.unlock('essence', e, 'test');
+    for (const t of w.twists) m.unlock('twist', t, 'test');
+    while (m.twistSlots < 4 && m.unlockTwistSlot()) {}
+    m.setSlot(2, w);
+  }, big);
+  for (const slot of [1, 2]) {
+    await page.evaluate((slot) => window.__game.ui.openSpellbook(slot), slot);
+    await wait(700);
+    const r = await page.evaluate((slot) => {
+      const g = window.__game;
+      const tile = document.querySelector('.sb-stat-mana');
+      const plan = g.magic.slotPlan(slot);
+      const q = tile?.getBoundingClientRect();
+      const stand = document.querySelector('.sb-stand');
+      return { stand: stand && !stand.hidden ? stand.textContent : '', text: tile?.querySelector('.sb-stat-value')?.textContent || '', title: tile?.getAttribute('title') || '', cost: g.magic.costOf(g.player, plan), full: g.magic.chargedCost(g.player, plan, 1), name: plan.name, visible: !!q && q.width > 0 && q.bottom <= innerHeight && q.right <= innerWidth, pool: g.magic.mana.max };
+    }, slot);
+    await page.screenshot({ path: `${OUT}/${tag}-slot${slot + 1}.png` });
+    check(`[${size.name}] the Spellbook's Mana tile reads the true cost of ${r.name}`, r.text.trim() === String(Math.round(r.cost)) && r.visible, `tile "${r.text}" vs costOf ${r.cost}`);
+    check(`[${size.name}] … and names what a full charge takes, in a line a phone shows`, r.title.includes(String(Math.round(r.full))) && r.stand.includes(`${Math.round(r.full)} mana`), `"${r.stand}" / "${r.title}" (full ${r.full}, pool ${r.pool})`);
+    // Closable with a 44 px control.
+    const closed = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('.panel .close, .panel [aria-label="Close"], .sb-close, .panel-close')].find((b) => b.offsetParent);
+      const q = btn?.getBoundingClientRect();
+      const big = q ? Math.min(q.width, q.height) >= 44 : false;
+      btn?.click();
+      return { big, had: !!btn };
+    });
+    await wait(300);
+    check(`[${size.name}] the Spellbook closes with a 44 px control`, closed.had && closed.big, JSON.stringify(closed));
+  }
+  check(`[${size.name}] no page errors in the Spellbook`, errors.length === 0, errors.slice(0, 3).join(' | '));
+  void info;
+  await context.close();
+}
+
+// ------------------------------------------------------------------ the Unkindling's odds
+
+async function soul(size) {
+  const tag = `${size.name}-soul`;
+  const { context, page, errors, cdp } = await open(size);
+  const read = () =>
+    page.evaluate(() => {
+      const hint = document.querySelector('.unk-hint');
+      const btn = document.querySelector('.unk-btn');
+      return {
+        hint: hint && !hint.hidden ? hint.textContent.replace(/\s+/g, ' ').trim() : '',
+        btn: btn && !btn.hidden ? btn.textContent.replace(/\s+/g, ' ').trim() : '',
+        label: btn?.getAttribute('aria-label') || '',
+      };
+    });
+  // Level 15, a third each in Vitality, Might and Weave; the pact's gift; Rowan close enough to touch.
+  const setup = (who, level, free) =>
+    page.evaluate(
+      ({ who, level, free }) => {
+        const g = window.__game;
+        const P = g.player;
+        g.clock?.skipTo?.(11);
+        P.level = level;
+        for (const id of Object.keys(g.progression.points)) g.progression.points[id] = 0;
+        if (free) {
+          g.progression.startFree?.();
+          for (const id of ['might', 'weave', 'vitality', 'resolve', 'focus']) g.progression.points[id] = 999;
+        } else Object.assign(g.progression.points, { vitality: 14, might: 14, weave: 14 });
+        g.progression.changed();
+        g.stats.refresh(P);
+        P.hp = P.maxHp;
+        g.unkindle.learn('test');
+        const c = g.ui?.coach;
+        if (c) {
+          c.done = new Proxy({}, { get: () => true });
+          c.stop?.();
+        }
+        document.querySelectorAll('.toast').forEach((e) => e.remove());
+        const L = g.companion;
+        if (L) {
+          L.update = () => {};
+          L.x = 150 * 16;
+          L.y = 112 * 16;
+        }
+        let e;
+        if (who === 'varek') {
+          e = g.bosses.get('varek');
+          P.x = e.x - 20;
+          P.y = e.y;
+        } else {
+          e = g.entities.get(who);
+          for (const v of g.entities.all()) if (v.profile && v !== e && Math.hypot(v.x - 62 * 16, v.y - 14 * 16) < 200) v.x += 300;
+          e.think = () => {};
+          if (e.walker) e.walker.stop?.();
+          P.x = 62 * 16 + 8;
+          P.y = 14 * 16 + 8;
+          e.x = P.x + 16;
+          e.y = P.y;
+        }
+        P.faceToward?.(e.x, e.y);
+        g.camera.follow?.(P);
+        g.camera.snap?.();
+        const o = g.unkindle.odds(e);
+        return { odds: o, name: e.name };
+      },
+      { who, level, free },
+    );
+  const r = await setup('rowan', 15, false);
+  await wait(900);
+  let shown = await read();
+  await page.screenshot({ path: `${OUT}/${tag}-rowan-odds.png` });
+  const want = r.odds.chance > 0 ? `${r.odds.words}, ${r.odds.percent}%` : r.odds.words;
+  const seen = size.phone ? `${shown.btn} ${shown.label}` : shown.hint;
+  check(`[${size.name}] before you start, the hint names the odds for Rowan at level 15 (${want})`, seen.includes(size.phone ? `${r.odds.percent}%` : want) && r.odds.chance > 0 && r.odds.chance < 0.85, `"${seen}"`);
+  // Hold it: the key, or the dark hand.
+  const t0 = Date.now();
+  if (!size.phone) await page.keyboard.down('KeyF');
+  else {
+    const b = await page.evaluate(() => {
+      const q = document.querySelector('.unk-btn:not([hidden])')?.getBoundingClientRect();
+      return q ? { x: q.left + q.width / 2, y: q.top + q.height / 2 } : null;
+    });
+    if (b) await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(b.x), y: Math.round(b.y), id: 4 }] });
+  }
+  let mid = false;
+  while (Date.now() - t0 < (size.throttle ? 14000 : 9000)) {
+    await wait(250);
+    const ch = await page.evaluate(() => window.__game.unkindle.channel?.phase || null);
+    if (ch === 'pull' && !mid && Date.now() - t0 > 1200) {
+      mid = true;
+      await page.screenshot({ path: `${OUT}/${tag}-rowan-pull.png` });
+    }
+    if (!ch && Date.now() - t0 > 600) break;
+  }
+  if (!size.phone) await page.keyboard.up('KeyF');
+  else await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await wait(500);
+  const out = await page.evaluate(() => {
+    const g = window.__game;
+    const a = g.unkindle.attempts.at(-1);
+    return { dead: !!g.murder?.dead?.rowan || !!g.entities.get('rowan')?.dead, attempt: a ? { outcome: a.outcome, knows: a.knows } : null, tally: g.unkindle.tally };
+  });
+  await page.screenshot({ path: `${OUT}/${tag}-rowan-end.png` });
+  check(`[${size.name}] the hold plays out as the odds said: taken, or he breaks free and knows`, out.dead ? out.tally === 1 : out.attempt?.outcome === 'resisted' && out.attempt.knows === true, JSON.stringify(out));
+  // A boss: too strong, whatever the build (Free 999).
+  const v = await setup('varek', 15, true);
+  await wait(900);
+  shown = await read();
+  await page.screenshot({ path: `${OUT}/${tag}-varek-odds.png` });
+  const vs = size.phone ? `${shown.btn} ${shown.label}` : shown.hint;
+  check(`[${size.name}] at Free 999, Varek reads too strong (0%)`, v.odds.chance === 0 && (size.phone ? vs.includes('0%') : vs.includes('too strong')), `"${vs}" ${JSON.stringify(v.odds)}`);
+  check(`[${size.name}] no page errors with the Unkindling`, errors.length === 0, errors.slice(0, 3).join(' | '));
+  await context.close();
+}
+
 for (const size of SIZES) {
   if (ONLY.includes('fight')) await fight(size);
+  if (ONLY.includes('book')) await book(size);
+  if (ONLY.includes('soul')) await soul(size);
 }
 
 await browser.close();

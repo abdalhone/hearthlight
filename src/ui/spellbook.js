@@ -322,7 +322,10 @@ export class Spellbook {
 
   renderStats(plan, d) {
     clear(this.statsEl);
-    if (this.standEl) this.standEl.hidden = !d.shape;
+    if (this.standEl) {
+      this.standEl.hidden = !d.shape;
+      setText(this.standEl, STAND_NOTE);
+    }
     if (!d.shape) return;
     const mode = castModeOf(plan, d);
     const pv = previewOf(plan, d);
@@ -340,6 +343,12 @@ export class Spellbook {
     ];
     const pd = plan?.priceDefs?.[0];
     if (pd) stats.push(['Price', pd.name, 'price', `${pd.gainText}; ${pd.costText}`]);
+    // The full charge's cost, in words a phone shows (round 15: "the Spellbook shows the true
+    // cost"), beside the standing rule.
+    if (plan && full > 0 && this.standEl) {
+      const pool = Math.round(mg?.mana?.max || 0);
+      setText(this.standEl, `A full charge takes ${fmt(full)} mana${pool ? ` (you hold ${pool})` : ''}. ${STAND_NOTE}`);
+    }
     for (const [label, value, cls, title] of stats) this.statsEl.append(h('div', { class: `sb-stat sb-stat-${cls}`, title: title || null }, h('span', { class: 'sb-stat-label', text: label }), h('span', { class: 'sb-stat-value num', text: value })));
     this.statsEl.append(h('div', { class: `sb-stat sb-input sb-input-${mode}`, title: INPUT_NOTE[mode] }, h('span', { class: 'sb-stat-label', text: 'Cast' }), h('span', { class: 'sb-stat-value', text: INPUT_LABEL[mode] })));
   }

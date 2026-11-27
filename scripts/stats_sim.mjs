@@ -642,7 +642,7 @@ export function fight(id, { rule = 'new', build = 'sword', level = 15, main = 30
       let started = false;
       if (big && d <= Math.min(170, (m.slotPlan(1)?.aim?.range || 150) + 20) && clear()) {
         const plan = m.slotPlan(1);
-        const full = m.costOf(p, plan) * (1 + BAL_CHARGE_MANA());
+        const full = m.chargedCost ? m.chargedCost(p, plan, 1) : m.costOf(p, plan) * (1 + BAL_CHARGE_MANA());
         if (plan && m.mana.cur >= full && m.canCast(1).ok) {
           const r = m.castStart(p, 1, { x: b.x, y: b.y - 6, target: b }, { charge: true });
           if (r?.ok) {
@@ -820,7 +820,8 @@ export function castOnce(weave, { level = 7, points = {}, k = 1, def = 1, rule =
     t.x = p.x + 70;
     t.y = p.y;
   }
-  return { ok: !!r.ok, dealt: Math.round(dealt), hits, cost, full: Math.round(cost * (1 + BAL.CHARGE_MANA * k) * 10) / 10, pool, name: plan.name, cooldown: g.magic.cooldownOf(p, plan) };
+  const full = g.magic.chargedCost ? g.magic.chargedCost(p, plan, k) : Math.round(cost * (1 + BAL.CHARGE_MANA * k) * 10) / 10;
+  return { ok: !!r.ok, dealt: Math.round(dealt), hits, cost, full, pool, name: plan.name, cooldown: g.magic.cooldownOf(p, plan) };
 }
 
 // The strongest weave: every striking shape, the essences given (by default all but raw), and
@@ -843,7 +844,7 @@ export function strongestWeave({ level = 7, points = {}, essences = 2, twists = 
         const plan = g.magic.compile(w);
         if (!plan.ok) continue;
         const cost = g.magic.costOf(P, plan);
-        const full = cost * (1 + BAL.CHARGE_MANA * k);
+        const full = g.magic.chargedCost ? g.magic.chargedCost(P, plan, k) : cost * (1 + BAL.CHARGE_MANA * k);
         if (full > pool) continue;
         cands.push({ w, h: plan.value * (1 + (plan.chargePower ?? BAL.CHARGE_POWER) * k) * plan.count, cost });
       }
@@ -887,7 +888,7 @@ function weavesTable() {
       for (const [b, pts] of Object.entries(builds)) {
         const g = makeGame({ level, points: pts, bosses: false });
         g.magic.startTrial();
-        const cost = (w) => g.magic.costOf(g.player, g.magic.compile(w)) * (1 + BAL.CHARGE_MANA);
+        const cost = (w) => (g.magic.chargedCost ? g.magic.chargedCost(g.player, g.magic.compile(w), 1) : g.magic.costOf(g.player, g.magic.compile(w)) * (1 + BAL.CHARGE_MANA));
         row.casts[b] = { any: Math.floor(g.magic.mana.max / cost(any.weave) + 1e-9), fits: fits ? Math.floor(g.magic.mana.max / cost(fits.weave) + 1e-9) : 0, spark: Math.floor(g.magic.mana.max / (g.magic.costOf(g.player, g.magic.compile(SPARK)) * (1 + BAL.CHARGE_MANA)) + 1e-9) };
       }
       out.push(row);

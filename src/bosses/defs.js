@@ -34,7 +34,7 @@ export const BOSSES = {
     title: 'Chief of the hill bandits',
     faction: 'bandit',
     kind: 'human',
-    hp: 1900, // round 15: was 520
+    hp: 2300, // round 15: was 520
     atk: 18, // was 11
     def: 6, // was 2
     resist: { fire: 0.5, iron: 0.8 }, // his fire never goes out; a hillman's mail
@@ -71,7 +71,7 @@ export const BOSSES = {
     title: 'Alpha of the Whisperwood packs',
     faction: 'monster',
     kind: 'animal',
-    hp: 2200, // round 15: was 600
+    hp: 3200, // round 15: was 600
     atk: 17, // was 10
     def: 4, // was 1
     resist: { frost: 0.6, wind: 0.5, fire: 1.25 }, // a winter coat; the wind is his
@@ -126,8 +126,8 @@ export const BOSSES = {
     title: 'The voice under Mirror Lake',
     faction: 'monster',
     kind: 'monster',
-    hp: 1800, // round 15: was 440
-    atk: 18, // was 10
+    hp: 2400, // round 15: was 440
+    atk: 16, // was 10
     def: 4, // was 1
     resist: { water: 0.25, frost: 0.6, storm: 1.3 }, // still water; a bolt through it sings
     speed: 54,
@@ -154,7 +154,7 @@ export const BOSSES = {
     title: 'Gravelight given a shield',
     faction: 'undead',
     kind: 'undead',
-    hp: 2400, // round 15: was 560
+    hp: 3000, // round 15: was 560
     atk: 21, // was 12
     def: 8, // was 3
     resist: { dark: 0.25, poison: 0.3, light: 1.3 }, // gravelight; light unmakes it
