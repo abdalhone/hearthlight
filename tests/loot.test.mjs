@@ -149,7 +149,10 @@ test('a chest robbed in front of its owner is a theft, and the theft is no fight
   assert.ok(g.village.rumors.list.some((r) => r.kind === 'stole'), "'stole' news");
 });
 
-test('a Strike on a locked chest forces the hasp (D10); a sword gets a word; nothing inside is lost or doubled', () => {
+// Round 15 (item 9, the author: "I can like break iron without any specialized tools"): the
+// hasp is iron, and no blow forces it any more (D10's heavy blow was round 14b's way in); a
+// pickaxe at the chest is (tests/r15_hands.test.mjs plays it).
+test('no blow forces an iron hasp, not a sword, not a Strike: each gets the word of the pickaxe; nothing inside is lost or doubled', () => {
   const g = makeGame({ hour: 12 });
   quiet(g);
   const chest = g.objects.all().find((o) => o.id === 'guard_footlocker');
@@ -159,10 +162,11 @@ test('a Strike on a locked chest forces the hasp (D10); a sword gets a word; not
   g.ui.toast = (t) => toasts.push(t);
   put(g.player, chest.x, chest.y + 20);
   assert.equal(blowAtChest(g, chest, { source: g.player }), 'iron');
-  assert.ok(toasts.some((t) => /Iron-bound/.test(t)), 'a clear word');
+  assert.ok(toasts.some((t) => /Iron-bound/.test(t) && /pickaxe/.test(t)), 'a clear word: what would');
   assert.ok(chest.state.locked);
-  assert.equal(blowAtChest(g, chest, { source: g.player, heavy: true }), 'forced');
-  assert.equal(chest.state.locked, false, 'the hasp gives');
+  g.time = (g.time || 0) + 5;
+  assert.equal(blowAtChest(g, chest, { source: g.player, heavy: true }), 'iron', 'a heavy weave rings off it');
+  assert.equal(blowAtChest(g, chest, { source: g.player, punch: true }), 'iron', "and a Strike's fist");
+  assert.equal(chest.state.locked, true, 'the hasp holds');
   assert.equal(JSON.stringify(chest.inventory.serialize()), before, 'the contents are exactly as they were');
-  assert.equal(blowAtChest(g, chest, { source: g.player, heavy: true }), null, 'open now: nothing more');
 });

@@ -4,6 +4,7 @@ import { playCollect } from '../render/pixel_fx_play.js';
 import { drawDebris, drawFallingTree, mendTick, shakeX, swayOf, refreshAllFences, FALL_SECONDS } from './broken.js';
 import { seatFor, sitDown, SEAT_TYPES } from './rest.js';
 import { holderOf } from '../core/party.js';
+import { missingTool, NEED } from './tools.js';
 
 // Interactive world objects: doors, trees, ore, herbs, crops, chests, beds, fires,
 // lamps, signs, windows, the journal, and the furniture that makes a house a home.
@@ -738,12 +739,18 @@ export class Rock extends Harvestable {
     return super.blocksTile(tx, ty, actor);
   }
 
-  blockedReason() {
-    return this.state.depleted ? 'Mined out. The stone will surface again in a day or two.' : '';
+  // Iron wants a pickaxe (round 15, item 9; tools.js): without one in the pack the player's
+  // hands, the sword and the attack button's work swing leave the vein whole and say so.
+  blockedReason(actor) {
+    if (this.state.depleted) return 'Mined out. The stone will surface again in a day or two.';
+    if (this.objType === 'ore' && actor && missingTool(this.game, actor, 'ore')) return NEED.ore;
+    return '';
   }
 
-  interactLabel() {
-    return this.objType === 'ore' ? 'Mine iron ore' : this.objType === 'crystal' ? 'Mine crystal' : 'Mine rock';
+  // The prompt names what it needs before you try ("Mine iron ore: needs a pickaxe").
+  interactLabel(actor) {
+    if (this.objType === 'ore') return actor && missingTool(this.game, actor, 'ore') ? 'Mine iron ore: needs a pickaxe' : 'Mine iron ore (pickaxe)';
+    return this.objType === 'crystal' ? 'Mine crystal' : 'Mine rock';
   }
 
   _harvest(actor) {

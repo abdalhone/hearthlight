@@ -643,6 +643,16 @@ const ICONS = {
     p.after.push([14, 1, '#ffffff']);
   },
 
+  // Round 15 (item 9): the pickaxe, an iron head on an ash haft, drawn like the sword.
+  pickaxe(p) {
+    p.shape(capsule(3.4, 13.2, 10.2, 5.0, 0.85), ['#2a1a16', '#4a2c20', '#6b412a', '#8c5a35'], { k: 1.6 });
+    const head = union(capsule(4.6, 4.6, 9.8, 3.4, 1.0), capsule(9.8, 3.4, 13.4, 7.8, 0.95));
+    p.shape(head, [IRON[1], IRON[2], IRON[3], IRON[4]], { k: 1.8 });
+    p.shape(ellipseMask(9.9, 4.4, 1.5, 1.5), ['#2a1a16', IRON[1], IRON[2], IRON[3]], { k: 1.6 });
+    p.after.push([4, 4, '#e8ecf2']);
+    p.after.push([13, 8, '#c8ccd6']);
+  },
+
   ruins_key(p) {
     const dark = ['#2b2e37', '#474b57', '#6b707e', '#9aa0ad'];
     const ring = (x, y) => {

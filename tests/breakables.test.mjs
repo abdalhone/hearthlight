@@ -230,9 +230,10 @@ test('the training dummy takes the sword and every weave, shows each hit, teache
   assert.equal(dummy.state.xpGiven, 1, 'a new day, a new lesson');
 });
 
-test('every breakable kind has a toughness; the dummy alone is a training target', () => {
+test('every breakable kind has a toughness; the dummy alone is a training target; iron (the ore vein) takes blows but never breaks to one', () => {
   for (const [k, s] of Object.entries(BREAKABLE)) {
     if (k === 'dummy') assert.ok(s.training);
+    else if (k === 'ore') assert.ok(s.iron && !(s.hp > 0), 'round 15: only a pickaxe mines it');
     else assert.ok(s.hp > 0, k);
   }
 });

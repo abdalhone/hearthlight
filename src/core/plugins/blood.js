@@ -16,8 +16,8 @@ import { installLock } from '../lock_on.js';
 import { Occupation, ScorchLayer } from '../../world/occupation.js';
 import { LockLayer } from '../../render/lock_layer.js';
 
-// Blows on locked chests (a Strike or a heavy weave forces the hasp; lighter blows get a
-// word), and owners who find their chest short (theft unseen, D10).
+// Blows on locked chests (the hasp is iron: no blow forces it, each gets the word that a
+// pickaxe would, round 15), and owners who find their chest short (theft unseen, D10).
 function installChests(game) {
   game.chestBlow = (x, y, r, blow) => {
     const out = blowAtChests(game, x, y, r, blow);

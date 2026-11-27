@@ -279,12 +279,17 @@ test('every chest has a way in: a key someone has, its keeper, or a forced lock'
   locker.interact(g.player);
   assert.equal(locker.state.locked, false);
   assert.deepEqual(opened, ['guard_footlocker']);
-  // Without a key: the lock can be forced. Theft only if seen (round 14b, decision D10;
+  // Without a key: the lock can be broken with a pickaxe (round 15: iron needs its tool; bare
+  // hands only get the word of it). Theft only if seen (round 14b, decision D10;
   // tests/loot.test.mjs plays the seen cases): forced with nobody looking, no crime.
   const crimes = [];
   const lyra = { id: 'lyra', x: 0, y: 0, hidden: true };
   const g2 = { ...game, companion: lyra, bus: { emit: (t, p) => t === 'crime' && crimes.push(p) }, ui: { toast() {}, confirm: async () => true, openChest() {} }, player: { id: 'player', inventory: new Inventory() } };
   trunk.game = g2;
+  trunk.interact(g2.player);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(trunk.state.locked, true, 'bare hands: the iron hasp holds');
+  g2.player.inventory.add('pickaxe', 1);
   trunk.interact(g2.player);
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(trunk.state.locked, false);

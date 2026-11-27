@@ -168,7 +168,7 @@ export const MISSIONS = [
     offer: ['Hmph. You again. Good.', 'Well-cap hinge wants iron. Quarry\'s got ore. Slimes in the quarry too. That\'s the ward thinning, and you all know it.', 'Three lumps. Mind the pools.'],
     accept: ['Hmph.'],
     decline: ['Hmph. Fine.'],
-    progress: ['Three lumps. The veins are on the quarry\'s face. Hit them, don\'t stroke them.'],
+    progress: ['Three lumps. The veins are on the quarry\'s face. Take a pick to them. Hands won\'t. Quarrymen keep a spare by the cart, or buy one off me.'],
     objectives: [{ type: 'bring', item: 'iron_ore', count: 3, label: 'Bring Bram three lumps of iron ore', where: 'stonecut_quarry' }],
     turnin: [
       'Hmph. Good ore.',
@@ -957,7 +957,7 @@ export const MISSIONS = [
     ],
     accept: ['Hmph. Good.'],
     decline: ['Hmph. Smart.'],
-    progress: ['Four ore. One crystal. Quarry.'],
+    progress: ['Four ore. One crystal. Quarry. Pick, not hands.'],
     objectives: [
       { type: 'bring', item: 'iron_ore', count: 4, label: 'Bring Bram four lumps of iron ore', where: 'stonecut_quarry' },
       { type: 'bring', item: 'crystal', count: 1, label: 'Bring Bram a glow crystal', where: 'stonecut_quarry' },

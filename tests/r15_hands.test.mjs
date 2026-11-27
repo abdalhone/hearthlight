@@ -306,7 +306,7 @@ test('6: the faint guide between casts is an opt-in (Settings: Aim guide between
 
 // ---------------------------------------------------------------- 11: lock-on
 
-import { makeGame, placeAt, px } from './survival_world.mjs';
+import { makeGame, placeAt, step as stepWorld } from './survival_world.mjs';
 import { LockOn } from '../src/core/lock_on.js';
 import { SPECIES, spawnCreature } from '../src/entities/monsters.js';
 import { BossManager } from '../src/bosses/manager.js';
@@ -385,4 +385,167 @@ test('11: every hittable target locks: each creature, the villagers, the tempter
     g.lock.clear();
   }
   assert.deepEqual(bad, [], 'none refused');
+});
+
+// ---------------------------------------------------------------- 9: iron needs a pickaxe
+
+import { readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
+import { strikeProp } from '../src/world/breakables.js';
+import { blowAtChest, lockedChest } from '../src/world/containers.js';
+import { shopOf, DAILY } from '../src/world/trade.js';
+import { ITEMS } from '../src/entities/items.js';
+import { MISSIONS } from '../src/missions/data.js';
+import { Game } from '../src/core/game.js';
+
+// At an iron ore vein in the quarry, nobody else near.
+function quarry({ pick = false } = {}) {
+  const g = makeGame({ hour: 10 });
+  const ore = g.objects.all().find((o) => o.objType === 'ore' && !o.state.depleted);
+  const P = g.player;
+  placeAt(g, P, ore.x - 14, ore.y + 2);
+  P.facing = { x: 1, y: 0 };
+  for (const e of g.entities.all()) if (e !== P && e.type === 'actor' && Math.hypot(e.x - P.x, e.y - P.y) < 300) placeAt(g, e, e.x + 3000, e.y);
+  if (pick) P.inventory.add('pickaxe', 1);
+  return { g, P, ore };
+}
+const said = (g, re) => g.toasts.some((t) => re.test(t.text));
+
+test('9: bare hands: the vein says what it needs ("Mine iron ore: needs a pickaxe"), the use button and the attack button give nothing', () => {
+  const { g, P, ore } = quarry();
+  assert.equal(ore.interactLabel(P), 'Mine iron ore: needs a pickaxe', 'the prompt names the tool before you try');
+  assert.equal(ore.canInteract(P), true, 'the prompt still shows (so it can say so)');
+  assert.equal(ore.canWork(P), false);
+  ore.interact(P);
+  assert.ok(said(g, /need a pickaxe for iron/i), 'the use button: the word, with where to get one');
+  for (let i = 0; i < 8; i++) {
+    P.attack();
+    stepWorld(g, 0.5);
+  }
+  assert.equal(P.inventory.count('iron_ore'), 0, 'no ore by hand or by the sword (the author: "I can like break iron without any specialized tools")');
+  assert.equal(ore.state.depleted, false, 'the vein is whole');
+  assert.ok(said(g, /rings off it/i), 'the blade rings off it, and says so');
+});
+
+test('9: no weave breaks iron: a Strike, a heavy weave or a beam ring off the vein', () => {
+  const { g, P, ore } = quarry();
+  for (const blow of [{ punch: true, amount: 60 }, { heavy: true, amount: 60, charge: 1 }, { amount: 8, tick: true }]) {
+    assert.equal(strikeProp(g, ore, { source: P, ...blow }), true, 'it takes the blow (a missile stops at it)');
+    g.time += 5;
+  }
+  assert.equal(ore.state.depleted, false);
+  assert.equal(P.inventory.count('iron_ore'), 0);
+  assert.ok(said(g, /does not break for a weave/i));
+});
+
+test('9: with a pickaxe the vein is mined, by the use button and by the attack button', () => {
+  const { g, P, ore } = quarry({ pick: true });
+  assert.equal(ore.interactLabel(P), 'Mine iron ore (pickaxe)');
+  ore.interact(P);
+  stepWorld(g, 6);
+  assert.ok(P.inventory.count('iron_ore') >= 1, 'mined with the use button');
+  const ore2 = g.objects.all().find((o) => o.objType === 'ore' && !o.state.depleted && o !== ore);
+  placeAt(g, P, ore2.x - 12, ore2.y + 2);
+  P.facing = { x: 1, y: 0 };
+  const before = g.entities.all().filter((e) => e.type === 'pickup' && e.itemId === 'iron_ore').length;
+  for (let i = 0; i < 40 && !ore2.state.depleted; i++) {
+    P.attack();
+    stepWorld(g, 0.4);
+  }
+  assert.ok(ore2.state.depleted, 'the attack button swings the pick');
+  const drops = g.entities.all().filter((e) => e.type === 'pickup' && e.itemId === 'iron_ore').length;
+  assert.ok(drops > before || P.inventory.count('iron_ore') >= 2, 'and the ore comes away');
+});
+
+test('9: plain rock and crystal stay as they were; villagers who dig (Bram, Lyra on his errand) carry their own pick', () => {
+  const { g, P } = quarry();
+  const rock = g.objects.all().find((o) => o.objType === 'rock' && !o.state.depleted);
+  assert.equal(rock.canWork(P), true, 'rock by hand');
+  const crystal = g.objects.all().find((o) => o.objType === 'crystal');
+  if (crystal) assert.equal(crystal.canWork(P), true, 'crystal by hand');
+  const ore = g.objects.all().find((o) => o.objType === 'ore');
+  for (const id of ['bram', 'tilly', 'lyra']) {
+    const who = g.entities.get(id);
+    if (who) assert.equal(ore.canWork(who), true, `${id} digs with their own pick`);
+  }
+});
+
+test('9: an iron hasp breaks only to a pickaxe at the chest: no blow, no bare hands', async () => {
+  const g = makeGame({ hour: 12 });
+  const chest = g.objects.get('guard_footlocker');
+  const P = g.player;
+  placeAt(g, P, chest.x, chest.y + 14);
+  for (const e of g.entities.all()) if (e !== P && e.type === 'actor' && Math.hypot(e.x - P.x, e.y - P.y) < 400) placeAt(g, e, e.x + 3000, e.y);
+  let asked = 0;
+  g.ui.confirm = async () => {
+    asked++;
+    return true;
+  };
+  g.ui.openChest = () => {};
+  for (const blow of [{}, { heavy: true }, { punch: true }]) {
+    assert.equal(blowAtChest(g, chest, { source: P, ...blow }), 'iron');
+    g.time += 5;
+  }
+  lockedChest(g, chest, P);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(asked, 0, 'bare hands: no offer to force it, only the word');
+  assert.ok(said(g, /pickaxe/));
+  assert.equal(chest.state.locked, true);
+  P.inventory.add('pickaxe', 1);
+  lockedChest(g, chest, P);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(asked, 1, 'with a pickaxe: break the hasp?');
+  assert.equal(chest.state.locked, false, 'the hasp gives to the pick');
+});
+
+test('9: a pickaxe is there in time: Bram sells it, and a spare lies in the quarry tool chest by the ore veins', () => {
+  assert.equal(ITEMS.pickaxe?.type, 'tool');
+  const g = makeGame({ hour: 10 });
+  const bram = g.entities.get('bram');
+  const ware = shopOf(g, bram).sells.find((s) => s.id === 'pickaxe');
+  assert.ok(ware && ware.price > 0 && ware.price <= 30, 'Bram sells one, for less than the first errand pays in ore');
+  assert.ok(DAILY.bram.pickaxe >= 1, 'and keeps them in stock');
+  const box = g.objects.get('quarry_tools');
+  assert.ok(box && box.loot && box.inventory.count('pickaxe') === 1, 'the quarrymen\'s spare: free to take');
+  const veins = g.objects.all().filter((o) => o.objType === 'ore');
+  assert.ok(veins.every((o) => Math.hypot(o.x - box.x, o.y - box.y) < 26 * 16), 'in the quarry, within reach of every vein');
+  const path = g.pathfinder?.find?.(g.player.x, g.player.y, box.x, box.y + 12, g.player);
+  assert.ok(!g.pathfinder?.find || (path && path.length), 'a path to it');
+  // Every mission that asks for ore comes after the pickaxe can be had (the chest is there
+  // from the start; Bram's shop from the start): none is offered before the quarry is open.
+  const ore = Object.values(MISSIONS || {}).flatMap((m) => (m.objectives || []).filter((o) => o.item === 'iron_ore').map((o) => [m.id, o.count]));
+  assert.ok(ore.length >= 2);
+  const most = Math.max(...ore.map(([, c]) => c));
+  assert.ok(veins.length >= most, `one round of the quarry's veins (${veins.length}, 1-2 ore each, back in 2 days) fills the biggest ore errand (${most})`);
+});
+
+test('9: old saves load: a round 14b save with ore in the pack and a mined-out vein; the tool chest is there in it', () => {
+  const old = JSON.parse(gunzipSync(readFileSync(new URL('./fixtures/save_aee713c.json.gz', import.meta.url))).toString('utf8'));
+  // What a player of that save might hold: ore, and a vein mined that morning.
+  const g0 = makeGame({ hour: 10 });
+  const vein = g0.objects.all().find((o) => o.objType === 'ore');
+  old.objects = (old.objects || []).filter((d) => d.id !== vein.id && d.id !== 'quarry_tools');
+  old.objects.push({ id: vein.id, state: { depleted: true, regrowAt: (old.clock?.t ?? 0) + 900 } });
+  const inv = old.player.inventory;
+  if (Array.isArray(inv)) inv.push({ id: 'iron_ore', qty: 3 });
+  else if (inv && typeof inv === 'object') (inv.items || inv)['iron_ore'] = 3;
+  const g = makeGame({ hour: 10 });
+  const errors = [];
+  const err = console.error;
+  console.error = (...a) => errors.push(a.map(String).join(' '));
+  try {
+    Game.prototype.deserialize.call(g, old);
+  } finally {
+    console.error = err;
+  }
+  assert.deepEqual(errors, [], 'nothing failed to restore');
+  assert.equal(g.player.inventory.count('iron_ore'), 3, 'the ore in the pack');
+  assert.equal(g.objects.get(vein.id).state.depleted, true, 'the mined-out vein stays mined out');
+  assert.equal(g.objects.get('quarry_tools')?.inventory.count('pickaxe'), 1, 'the quarry tool chest, in a save from before it');
+  // And it saves and loads again with the pick taken.
+  g.objects.get('quarry_tools').takeAll(g.player);
+  const again = g.objects.serialize();
+  const g2 = makeGame({ hour: 10 });
+  g2.objects.deserialize(again);
+  assert.equal(g2.objects.get('quarry_tools').inventory.count('pickaxe'), 0, 'taken stays taken');
 });

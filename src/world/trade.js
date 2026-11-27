@@ -35,7 +35,7 @@ const HAGGLE_SELL = 1.1;
 // Their tastes: what they buy (by item type, gear slot or id) and at what share of its worth.
 export const TASTES = {
   garrick: { all: true, rate: 0.45, haggle: 0.75 },
-  bram: { slots: ['weapon', 'armor', 'boots'], types: ['weapon'], ids: ['iron_ore', 'crystal', 'boar_tusk', 'antler', 'bone'], rate: 0.55, haggle: 0.35 },
+  bram: { slots: ['weapon', 'armor', 'boots'], types: ['weapon'], ids: ['iron_ore', 'crystal', 'boar_tusk', 'antler', 'bone', 'pickaxe'], rate: 0.55, haggle: 0.35 },
   mira: { types: ['potion'], ids: ['herb', 'moonpetal', 'slime_gel', 'bat_wing', 'berries'], rate: 0.6, haggle: 0.5 },
   elda: { types: ['food'], rate: 0.5, haggle: 0.45 },
   wenna: { ids: ['honey', 'candle'], rate: 0.5, haggle: 0 },
@@ -44,7 +44,7 @@ export const TASTES = {
 // Wares beyond a profile's own list (the profile's price wins when both name an item).
 export const WARES = {
   garrick: [{ id: 'field_boots', price: 34 }, { id: 'traveler_cloak', price: 40 }, { id: 'hearth_charm', price: 30 }, { id: 'candle', price: 5 }],
-  bram: [{ id: 'steel_sword', price: 125 }, { id: 'leather_jerkin', price: 50 }, { id: 'iron_mail', price: 145 }],
+  bram: [{ id: 'pickaxe', price: 24 }, { id: 'steel_sword', price: 125 }, { id: 'leather_jerkin', price: 50 }, { id: 'iron_mail', price: 145 }],
   mira: [{ id: 'potion', price: 22 }, { id: 'herb', price: 4 }, { id: 'ironbark_tonic', price: 34 }, { id: 'swiftfoot_draught', price: 32 }, { id: 'clearmind_tincture', price: 36 }, { id: 'heartwort_salve', price: 30 }],
   elda: [{ id: 'emberroot_soup', price: 20 }, { id: 'travelers_pie', price: 18 }, { id: 'spiced_cider', price: 14 }],
 };
@@ -53,7 +53,7 @@ export const WARES = {
 // .stock, is the same stock where it names the item: one stock).
 export const DAILY = {
   garrick: { potion: 4, bread: 8, lantern: 2, berries: 6, herb: 6, raw_fish: 4, field_boots: 1, traveler_cloak: 1, hearth_charm: 1, candle: 6 },
-  bram: { iron_sword: 2, steel_sword: 1, leather_jerkin: 1, iron_mail: 1 },
+  bram: { pickaxe: 3, iron_sword: 2, steel_sword: 1, leather_jerkin: 1, iron_mail: 1 }, // the pickaxe: round 15 (iron needs its tool)
   mira: { potion: 5, herb: 8, ironbark_tonic: 2, swiftfoot_draught: 2, clearmind_tincture: 2, heartwort_salve: 2 },
   elda: { bread: 10, honey_cake: 8, stew: 8, cooked_fish: 6, emberroot_soup: 3, travelers_pie: 3, spiced_cider: 4 },
 };
