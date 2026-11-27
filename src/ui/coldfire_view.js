@@ -32,6 +32,19 @@ function safe(fn, fallback = null) {
 
 const pct = (x) => `${Math.round(x * 100)}%`;
 
+// The bar's boost in words (DESIGN §26, §39: every % says what it is a share of): +30% of your
+// Sword and Weave power at a full bar, a share of yours (the sword and weave power before any
+// %), never thirty more points of weave power. `value` is the short number the meters show.
+export function boostWords(cf) {
+  const b = Math.max(0, Number(cf?.boost?.()) || 0);
+  const value = `+${pct(b)}`;
+  return {
+    value,
+    title: `Coldfire: the taken flame. ${value} of your Sword and Weave power now (a full flame +${pct(BOOST)}); it ebbs over days.`,
+    note: `a full flame gives +${pct(BOOST)} of your Sword and Weave power`,
+  };
+}
+
 export class ColdfireView {
   constructor(game, unk) {
     this.game = game;
@@ -54,7 +67,7 @@ export class ColdfireView {
     if (!hp?.parentNode) return;
     this.m = meter('meter-coldfire', 'Coldfire: the taken flame');
     this.m.el.hidden = true;
-    this.m.el.title = 'Coldfire: the taken flame. It makes your Sword and Weave hit harder; it ebbs over days.';
+    this.m.el.title = boostWords(this.cf).title;
     hp.after(this.m.el);
   }
 
@@ -87,7 +100,9 @@ export class ColdfireView {
     const key = `${Math.round(cf.bar)}|${Math.round(cf.boost() * 100)}`;
     if (key === this.shownKey) return;
     this.shownKey = key;
-    this.m.set(cf.frac, cf.bar > 0.5 ? `+${Math.round(cf.boost() * 100)}%` : '0');
+    const words = boostWords(cf);
+    this.m.set(cf.frac, cf.bar > 0.5 ? words.value : '0');
+    this.m.el.title = words.title;
     toggleClass(this.m.el, 'empty', cf.bar <= 0.5);
     // A live Character panel follows.
     const cv = this.game?.ui?.character;
@@ -136,9 +151,9 @@ export class ColdfireView {
     if (!s) return;
     s.fill.style.width = `${Math.round(cf.frac * 1000) / 10}%`;
     setText(s.bar, `${Math.round(cf.bar)} / ${MAX}`);
-    setText(s.boost, `+${pct(cf.boost())}`);
+    setText(s.boost, boostWords(cf).value);
     setText(s.pull, cf.bar > 0.5 ? `${pct(1 - cf.channelMul())} faster` : 'as it is');
-    setText(s.ebb, cf.bar > 0.5 ? `It ebbs about ${EBB} a day, like a hunger; a full flame gives +${pct(BOOST)} and pulls ${pct(1 - 1 / (1 + CHANNEL))} faster.` : `Every soul the Unkindling takes feeds it; a full flame gives +${pct(BOOST)} to Sword and Weave power.`);
+    setText(s.ebb, cf.bar > 0.5 ? `It ebbs about ${EBB} a day, like a hunger; ${boostWords(cf).note} and pulls ${pct(1 - 1 / (1 + CHANNEL))} faster.` : `Every soul the Unkindling takes feeds it; ${boostWords(cf).note}.`);
     const tk = cf.taken || {};
     const parts = [];
     const n = (k, one, many) => (tk[k] ? `${tk[k]} ${tk[k] === 1 ? one : many}` : null);

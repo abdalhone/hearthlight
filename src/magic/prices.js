@@ -34,6 +34,10 @@ export const PRICE_SLOTS = 1; // prices a weave may carry
 // a faster cast gives nothing to a caster whose well, not cooldown, is the limit, and the
 // burn alone made it a pure loss.
 
+// Each percentage in a price's words says what it is a share of (DESIGN §26, §39: Version 12):
+// a number the sheet shows as a % (weave power, crit) is "+50% of your weave power", a share
+// of yours, never fifty more points of it; a speed is a share of your normal pace
+// (tests/v12_verify_read.test.mjs holds every price to it).
 export const PRICES = {
   bloodprice: {
     name: 'Bloodprice',
@@ -63,7 +67,7 @@ export const PRICES = {
     name: 'Glass',
     adj: 'Glass',
     color: '#bfe6ff',
-    gain: { label: '+50% weave power', seconds: 30, pct: { spellPower: 0.5 } },
+    gain: { label: '+50% of your weave power', seconds: 30, pct: { spellPower: 0.5 } },
     cost: { label: 'Take +50% damage', seconds: 30, mul: { dmgTaken: 1.5 } },
     gainText: '+50% of your weave power for 30 s',
     costText: 'you take +50% damage for 30 s',
@@ -88,9 +92,9 @@ export const PRICES = {
     adj: 'Emberblood',
     color: '#ff8a3a',
     gain: { label: 'Emberblood: cast 30% faster, weaves cost 30% less', seconds: null, pct: { castSpeed: 0.3 }, mul: { manaCost: 0.7 } },
-    cost: { label: 'Lose 2% health a second', seconds: null },
+    cost: { label: 'Lose 2% of max health a second', seconds: null },
     gainText: 'cast 30% faster and weaves cost 30% less mana while it burns',
-    costText: 'lose 2% health every second until you douse it',
+    costText: 'lose 2% of your max health every second until you douse it',
     sentence: 'Your blood runs hot as a forge: weaves leave your hands faster, your blood paying part of each, while it burns you.',
     lyra: "Your hands are smoking. Put it out. Please put it out.",
     toggle: true,
@@ -129,7 +133,7 @@ export const PRICES = {
     name: 'Oath',
     adj: 'Oathbound',
     color: '#c9a6ff',
-    gain: { label: 'Oath: +30% sword, weaves, armor, crit, +10% speed near your companion', seconds: 45 },
+    gain: { label: 'Oath: +30% of your sword, weaves, armor, crit, +10% speed near your companion', seconds: 45 },
     cost: { label: 'When your companion is hurt, so are you', seconds: 45 },
     gainText: '+30% of your strength, weave power, armor and crit chance, +10% speed (of your normal pace) and casting, while your companion is near (45 s)',
     costText: 'whatever hurts your companion hurts you too',

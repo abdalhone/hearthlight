@@ -1976,7 +1976,8 @@ notices and has opinions (berserk frightens her).
   (spell power), Focus (max mana, mana regen, cooldowns), Grace (speed, dodge, crit),
   Resolve (status resistance, longer bleed-out window, carry speed). A character sheet in
   the menu; respec at the chapel for a price, or for free from Settings → Game → Reset
-  stat points (§24; the Character sheet names both). Either gives back every spent point
+  stat points (§24; the Character sheet names both, the chapel only while Sister Aveline
+  lives: round 14b made her killable, `character_view.respecWords`). Either gives back every spent point
   and keeps the level, gear, weaves and the points missions gave; health and mana settle
   into the new maximums.
 - **How points add up** (round 14b, two passes). First the author: "when I put a lot of
@@ -2971,7 +2972,8 @@ restored last in `game.deserialize`.
   the trained, −15 during their working hours: 65+ accept, 50+ accept on terms ("home by
   dark"), else refuse (busy, or not with you).
 - `CompanionDuty` (`npc.duty`, through the F5 hook): follows a little behind you (running
-  to keep up: speed ×1.6–2.3), waits where asked, steps out of the sword arc
+  to keep up: speed ×1.6–2.3, and behind a faster stranger as fast as you go, up to Lyra's
+  own top run, `TOP_RUN` 128 px/s, §39.4), waits where asked, steps out of the sword arc
   (`swordArcPush`), catches up from 30+ tiles behind out of sight, and fights what threatens
   you both (`foe()`: hostile to you or them, within 150 px, seen through the sight rule;
   `defend` only what comes at you): provoked by the foe and `startFight(foe, { anchor:
@@ -3848,7 +3850,9 @@ The rule is fixed; the numbers are what play tunes (`src/magic/balance.js`).
   (`input.clickSwingAt`, carried as `habit` from `Player.attack` through `combat.melee`) and
   that lands on a calm, lawful person (standing, not fighting, fleeing or afraid of you, not
   your lock target) is an accident: it lands, they yelp ("Ow! Watch it!"), no crime and no
-  grudge, and the coach says once "T talks to whoever is in front of you. Striking people is
+  grudge (read while they still stand, and never the last of their health, as a text act:
+  a built sword or a crit is more than a villager's whole health, and it used to knock them
+  out and so read as a knockout, Version 12 verify), and the coach says once "T talks to whoever is in front of you. Striking people is
   a crime." (`flags.habitForgiven`). Every blow after it is a real one. J, Space, the pad and
   the phone's sword button are meant (a phone's tap on a person does nothing at all); a
   weave, a slap or a finishing blow is never the habit.
@@ -3935,7 +3939,8 @@ Round 14b (§33–§38.10) joined with the stat points second pass (§26: points
 a percentage a whole share of the number before any percentage). Each seam below was read on
 both sides and proven in play or in a test (`tests/v12_seams.test.mjs`, a guard for each;
 `scripts/v12_ui_check.mjs` and `scripts/v12_saves_check.mjs` in the browser on three screens).
-Only seam 8 needed a change; the rest hold by the rules named.
+Only seam 8 needed a change at the join; the verify pass (13) changed seams 4 and 8 again and
+two round 14b rules the bigger numbers broke; the rest hold by the rules named.
 
 1. **Fight back, the hunt, the arrest.** No blow kills a person: at 0 health a villager, a
    guard, Lyra or a child is downed (`combat.isDownable`), and a blow on someone downed lands
@@ -3955,9 +3960,16 @@ Only seam 8 needed a change; the rest hold by the rules named.
    (`check`: 'child') refuse whatever the damage.
 4. **Companions.** Nothing in `party.js` or `npc_companion.js` reads your points or
    `effectOf`; Lyra's level growth is her own (`LEVEL_GROWTH.lyra`, the points source is the
-   player's only). A companion runs up to 2.3x their pace and catches up out of sight
-   (`CATCH_UP_TILES` 30): Bram behind a 226 px/s run is never more than 30 tiles back and
-   beside you about four seconds after you stop.
+   player's only). But the speed ceiling the points come to (999 Grace, ~129 px/s) was set
+   at Lyra's own top run "so a companion keeps up", and a villager ran at most 2.3x their
+   own walk (a smith 92 px/s): behind 15 Grace points Bram was up to 12 tiles back and in
+   reach a third of the time, behind 999 Grace 30 tiles back and popping up out of sight
+   (found by the verify pass). So a companion behind you runs as fast as you go (×1.05, ×1.15
+   past 12 tiles) up to Lyra's top run (`npc_companion.TOP_RUN` 128 px/s), never slower than
+   before: Bram and Rowan stay within about five tiles behind 15, 30 or 999 Grace, as Lyra
+   does (`tests/v12_verify_read.test.mjs`). Past that (hastes stacked to 226 px/s) everyone,
+   Lyra too, falls behind and catches up out of sight (`CATCH_UP_TILES` 30), beside you
+   about four seconds after you stop.
 5. **The Unkindling.** It costs no health and no mana (§37: "the price is that it shows"),
    a fraction or an absolute alike: nothing to scale. At 4853 health or at 1 a take leaves
    both untouched and cannot kill you. The soul bar fills by the soul's strength, not yours;
@@ -3980,7 +3992,15 @@ Only seam 8 needed a change; the rest hold by the rules named.
    "+30% of your critical chance"; a number points and gear add to "+5% of your weave
    power"; a x1 multiplier nothing adds to stays "+8% Cast speed". The shop's ware detail (a
    tap) and its hover title carry `gear.wareWords` (rarity, slot and stats, or a draught's
-   buff and minutes). Loot rolls and prices are untouched.
+   buff and minutes). Loot rolls and prices are untouched. The prices' own words and the
+   coldfire bar's followed in the verify pass (`tests/v12_verify_read.test.mjs` holds every
+   price, Oath's live shares included): Glass "+50% of your weave power" and Oath "+30% of
+   your strength, weave power, armor and crit chance", numbers the sheet shows as a % that
+   read as fifty and thirty more points; Berserk's and Oath's speed "(of your normal pace)"
+   in the Spellbook's words (the chips keep "+40% speed", a number the sheet shows in px/s);
+   Emberblood's burn "2% of your max health" a second; the coldfire bar "+30% of your Sword
+   and Weave power" (`coldfire_view.boostWords`: the meter's title, the sheet's note; the
+   number itself stays "+19%").
 9. **Death, heavier.** The bleed-out window follows Resolve on the gentle curve to its 300 s
    clamp at 52 points; the countdown shows "300" inside its ring on every screen. The Last
    Stand's +35% speed is 26.6 px/s at 0, 50 or 999 Grace; Lastlight halves even 4853 health.
@@ -4039,11 +4059,30 @@ Only seam 8 needed a change; the rest hold by the rules named.
       power", Oath "+30% of your strength, weave power, armor and crit chance, +10% speed (of
       your normal pace) and casting". Numbers unchanged.
     Held as designed (not changed): an assault's crime is settled where the guard who knows
-    drops you, so Lyra's warmth may lift you before the cell; a villager companion runs at
-    2.3x their pace and catches up out of sight, so at 134–169 px/s Bram is off screen
-    behind you until the 30-tile catch-up; at Free 999 a boss (Varek: ratio 0.15) can be
-    unkindled, the design's "a hand much stronger".
+    drops you, so Lyra's warmth may lift you before the cell; at Free 999 a boss (Varek:
+    ratio 0.15) can be unkindled, the design's "a hand much stronger". (This pass also saw a
+    villager companion run at 2.3x their pace and fall ~30 tiles behind a hasted run; the
+    code reader's pass, 14 below, has since made every adult companion keep up, item 4.)
     Every check passes after the four fixes (npm test 1313/1313; r14b_story 386/386,
     verify_a 155/155, verify_b 80/80, soul_check 164/164, followup_check 128/128, stats_check
     102/102, v12_ui_check 75/75, v12_saves_check 36/36 and the rest; ui3_check's 14 failures
     are Version 11's own, line for line).
+14. **The code reader's verify pass** (`tests/v12_verify_read.test.mjs`, each test failing
+    before its fix). Four seams the join missed, fixed: a villager companion keeps up with a
+    Grace build as Lyra does (4, `npc_companion.TOP_RUN`); the old habit forgiven once never
+    knocks anyone down whatever the sword (§38.8 D3: read while they stand, never the last
+    of their health); the prices' and the coldfire bar's words say what each % is a share
+    of (8); the Character sheet names the chapel's respec only while Sister Aveline lives
+    (§26). Proven with no change: a child (Pip, 9; Tansy, 15) at 999 Might and Weave is only
+    ever downed through every path (the sword, a blow on the downed, a burn, a status tick,
+    a fall, `combat.kill` by you or by a boss, `murder.kill`, `murder.strike`, the
+    Unkindling, old age); a save made whole on the old numbers loads its health as saved, a
+    bigger maximum leaving the wound (the pipeline's rule; regen knits it). The bosses again
+    on the joined game (`scripts/stats_sim.mjs --only bosses`, nine seeds, level 15, 30
+    points): the sword 12, 6, 22, 16 s and the weave 10, 17, 12, 13 s against 412fcb8's 12,
+    6, 22, 16 and 10, 13, 12, 12: Greyjaw's weave fight is about 4 s longer because casting
+    stops you while he comes on (§38.6), the rest within a second. Left open, tuning rather
+    than a seam: by level 15 every soul is easy for the Unkindling (ratio at most 0.27, any
+    build, on either line), and at level 1 Bram (a defender, 58 health) is close (1.51), not
+    easy as §37 reads; the screen's red hurt flash still grows by a blow's size (amount/40),
+    not its share of your health as the vignette does.

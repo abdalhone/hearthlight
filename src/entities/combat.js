@@ -485,7 +485,7 @@ export class Combat {
   _forgivenHabit(attacker, target, kind, opts) {
     const g = this.game;
     if (!opts.habit || !attacker || !this.isPlayer(attacker) || kind !== 'melee' || opts.dot || opts.deliberate) return false;
-    if (!this.isLawful(target) || target.downed || !(target.hp > 0)) return false;
+    if (!this.isLawful(target) || target.downed || !(target.hp > 1)) return false;
     const flags = g.flags || (g.flags = {});
     if (flags.habitForgiven) return false;
     if (g.lock?.target === target) return false;
@@ -548,12 +548,17 @@ export class Combat {
     // A ward (a weave, DESIGN §22.5) takes what it can of the blow first.
     const warded = g.magic?.absorb ? Math.round(g.magic.absorb(target, dealt, source, opts) || 0) : 0;
     if (warded > 0) dealt = Math.max(0, dealt - warded);
+    const attacker = source && source.type === 'actor' ? source : null;
+    // The old habit forgiven (D3) is read while they still stand, and it never takes the last
+    // of them, as a text act never does: they yelp and stand, whatever the sword (Version 12:
+    // a built sword or a crit is more than a villager's whole health).
+    const habit = !opts.accident && this._forgivenHabit(attacker, target, kind, opts);
+    if (habit) dealt = Math.max(0, Math.min(dealt, Math.ceil(target.hp) - 1));
     target.hp = Math.max(0, target.hp - dealt);
 
     const isPlayer = this.isPlayer(target);
     const isFriend = isPlayer || this.isParty(target) || this.isLyra(target);
-    const attacker = source && source.type === 'actor' ? source : null;
-    const accident = !!opts.accident || this._forgivenHabit(attacker, target, kind, opts);
+    const accident = !!opts.accident || habit;
     if (attacker && !accident) this._noteAggression(target, attacker);
     // Hurting a villager or guard is a crime; set it before anyone hears about the hit.
     // (A blow a ward caught was still a blow; an accident is not a crime.)
