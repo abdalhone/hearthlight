@@ -1866,7 +1866,17 @@ export class Magic {
       curPlan: plan,
       curMul: 1,
     };
-    if (friendly) cast.deliberate = true;
+    // A weave made for an errand's showing (round 15, DESIGN §40.2: the missions say, by
+    // the place and the parts) spares the people around it, even one in the line of it.
+    if (this.isPlayer(caster) && g.missions?.showing?.(caster, plan, { x: ax, y: ay })) {
+      cast.sparesFriends = true;
+      if (cast.friendly) {
+        cast.friendly = false;
+        cast.target = null;
+        cast.trackTarget = false;
+      }
+    }
+    if (cast.friendly) cast.deliberate = true;
     return cast;
   }
 

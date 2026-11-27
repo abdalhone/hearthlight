@@ -536,19 +536,54 @@ export class MissionSystem {
     }
     const w = weaveOf(p);
     const aim = aimOf(p, pl);
-    // A weave of parts only lent by "Try all magic" does not count for an objective.
-    if (!weaveEarned(g, w)) return;
+    // A weave of parts only lent by "Try all magic" does not count for an objective. It
+    // says so, once a mission, instead of nothing happening (round 15, DESIGN §40.2).
+    if (!weaveEarned(g, w)) {
+      this.forCurrent('weave', (id, o, s) => {
+        if (s.toldBorrowed || !this.weaveFits(o, w, pl, aim)) return;
+        s.toldBorrowed = true;
+        this.toast(`${this.get(id).title}: borrowed magic does not count. Weave it with parts you have earned (Settings → Practice turns "Try all magic" off).`, 'info');
+      });
+      return;
+    }
     this.forCurrent('weave', (id, o, s) => {
-      if (!weaveMatches(o, w)) return;
-      if (!whenOk(o.when, g.clock)) return;
-      if (o.at && !inPlace(g, o.at, pl?.x, pl?.y) && !(aim && inPlace(g, o.at, aim.x, aim.y))) return;
-      if (o.point && !nearPoint(o.point, pl?.x, pl?.y) && !(aim && nearPoint(o.point, aim.x, aim.y))) return;
+      if (!this.weaveFits(o, w, pl, aim)) return;
       if (o.kindle) {
         const lamp = this.kindleLamp(o, s, pl, aim);
         if (!lamp) return;
       }
       this.bump(id, 1);
     });
+  }
+
+  // Does a weave fit a weave objective here and now (its parts, its hour, its place)?
+  weaveFits(o, w, pl, aim) {
+    const g = this.game;
+    if (!weaveMatches(o, w)) return false;
+    if (!whenOk(o.when, g.clock)) return false;
+    if (o.at && !inPlace(g, o.at, pl?.x, pl?.y) && !(aim && inPlace(g, o.at, aim.x, aim.y))) return false;
+    if (o.point && !nearPoint(o.point, pl?.x, pl?.y) && !(aim && nearPoint(o.point, aim.x, aim.y))) return false;
+    return true;
+  }
+
+  // Round 15 (DESIGN §40.2): a weave the player makes for an errand's showing ("Weave a
+  // spark before the altar", with Sister Aveline at the altar; "Strike three times at the
+  // smithy", with Bram at his anvil; Pip's lesson in a busy square) is made with care: the
+  // Weave asks this as the cast leaves the hands (magic._newCast) and, when it is, the cast
+  // spares the people around it. It used to strike whoever stood before the altar, and a
+  // giver the player has just hurt takes no turn-in: The Leaning Flames could not be ended.
+  showing(caster, plan, aim = null) {
+    const g = this.game;
+    if (!plan || !isPlayer(g, caster)) return false;
+    const w = weaveOf({ weave: plan.weave, plan });
+    if (!weaveEarned(g, w)) return false;
+    // Where it goes, or (as onWeave reads a cast) a step ahead of the weaver.
+    const aims = [aim && Number.isFinite(aim.x) ? aim : null, aimOf(null, caster)];
+    let yes = false;
+    this.forCurrent('weave', (id, o) => {
+      if (!yes && (o.at || o.point) && aims.some((a) => this.weaveFits(o, w, caster, a))) yes = true;
+    });
+    return yes;
   }
 
   // The far lamps on a lane go out for the round; a weave of light near one relights it.
