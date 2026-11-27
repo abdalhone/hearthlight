@@ -3992,4 +3992,12 @@ Only seam 8 needed a change; the rest hold by the rules named.
     Bram and with nobody; People, the Character sheet (its Next lines and the curve note),
     the shop and the trial fit and close with 44 px controls, upright, sideways and on a
     computer.
-12. **Every round 14b script** runs on the new numbers (the checks of the V12 report).
+12. **Every round 14b script** passes on the new numbers with no script changed: r14b_story
+    386/386, verify_a 155/155, verify_b 80/80, talk_check 102/102, party_check 137/137,
+    blood_check 74/74, society_check 75/75, soul_check 164/164, polish_check 101/101,
+    followup_check 128/128, stats_check 102/102 (and the older checks; ui3_check's 14
+    failures are Version 11's own). None of them hard-codes a hit count or a health the
+    curves move: they play at level 1 with no points, where the numbers did not change. Two
+    failed once in the full batch and passed alone, neither near a stat: talk_check's bow on
+    the computer (Hobb's opinion fell before the bow was weighed) and verify_a's L4 upright
+    (the chat picked Mira, who had walked to 19 px, over Elda at 18).
