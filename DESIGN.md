@@ -3939,8 +3939,10 @@ Round 14b (§33–§38.10) joined with the stat points second pass (§26: points
 a percentage a whole share of the number before any percentage). Each seam below was read on
 both sides and proven in play or in a test (`tests/v12_seams.test.mjs`, a guard for each;
 `scripts/v12_ui_check.mjs` and `scripts/v12_saves_check.mjs` in the browser on three screens).
-Only seam 8 needed a change at the join; the verify pass (13) changed seams 4 and 8 again and
-two round 14b rules the bigger numbers broke; the rest hold by the rules named.
+Only seam 8 needed a change at the join; the two verify passes (13, played on three screens;
+14, read in the code) changed seams 4 and 8 again and fixed the round 14b rules the bigger
+numbers broke; the final merge (15) played what the code reader left for a browser; the rest
+hold by the rules named.
 
 1. **Fight back, the hunt, the arrest.** No blow kills a person: at 0 health a villager, a
    guard, Lyra or a child is downed (`combat.isDownable`), and a blow on someone downed lands
@@ -4086,3 +4088,30 @@ two round 14b rules the bigger numbers broke; the rest hold by the rules named.
     build, on either line), and at level 1 Bram (a defender, 58 health) is close (1.51), not
     easy as §37 reads; the screen's red hurt flash still grows by a blow's size (amount/40),
     not its share of your health as the vignette does.
+15. **The final merge** joins both passes (each test kept: `tests/v12_play.test.mjs`,
+    `tests/v12_verify_read.test.mjs`; both wrote item 13, so the reader's is 14) and plays
+    what the code reader left for a browser, on a sideways phone at 4x CPU, an upright phone
+    by one continuous stick drag and taps, and a computer by keys and the mouse:
+    - **Companions keep up through the village.** Bram and then Rowan walked with a level-15
+      stranger at 15 Grace (92 px/s) and at 999 (129 px/s) through the lanes from the general
+      store, in at the Wayhouse door and out again, then east over the stream's bridge: at
+      most 4.1–6.8 tiles behind, inside 8 tiles every frame, a top run of 97–103 px/s behind
+      15 Grace and 128 (`TOP_RUN`) behind 999, no catch-up jump, in at the door every time,
+      never once inside a wall, the water or a blocking prop (731–1333 frames a run), and
+      beside you 0.02–0.41 s after you stop (12 runs, 114 checks).
+    - **The longer words fit.** In the Spellbook's Price step a tap on Glass, Oath, Emberblood
+      and Berserk shows each one's line, every % saying what it is of; with Glass, Oath and
+      Emberblood running and a full coldfire bar the HUD card, a tap on each chip's toast
+      (Oath's wraps to two lines upright), the sheet's Running now, the coldfire meter's hover
+      title and the sheet's coldfire note all fit (75 checks).
+    - **The respec line.** While Sister Aveline lives it names her quiet hour in the chapel;
+      once she is dead it names Settings only, and with nothing spent it reads "Spend points
+      as you level. Settings (Reset stat points) can give them back for free."
+    - **The forgiven click at a real build.** Level 15, 42 Might, a steel sword (64 against
+      Tobias's 46): the first mouse click on him with Rowan watching, a crit, lands only 45:
+      he yelps ("Hey! Not at me!") and stands at 1, no crime; walked up to again, the second
+      click (63) downs him and Rowan saw a knockout. On the phones a tap on him swings nothing,
+      and the sword button is a meant blow, never forgiven (58 to 98: he is down, a crime).
+    The red hurt flash (`renderer.js`: 0.55 a hit plus up to 0.4 by the blow's size) says
+    that you were hit, not how much of you is left; the low-health vignette says that. Left
+    as it is.
