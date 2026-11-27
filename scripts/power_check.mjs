@@ -142,13 +142,15 @@ async function setupStranger(page, weave) {
   );
 }
 
-// To the Lake's Hum, on her shore, the fight begun as walking in begins it.
-async function toLake(page) {
-  return page.evaluate(() => {
+// To the boss (the Lake's Hum on her shore, the Mother in her pools), the fight begun as
+// walking in begins it.
+async function toLake(page, id = 'lakes_hum') {
+  return page.evaluate((id) => {
     const g = window.__game;
     const P = g.player;
-    const b = g.bosses.get('lakes_hum');
-    const a = g.bosses.arenas.lakes_hum;
+    window.__bossId = id;
+    const b = g.bosses.get(id);
+    const a = g.bosses.arenas[id];
     let spot = null;
     for (let k = 0; k < 32 && !spot; k++) {
       const ang = (k / 32) * Math.PI * 2;
@@ -165,7 +167,7 @@ async function toLake(page) {
     P.y = spot.y;
     g.camera.follow?.(P);
     g.camera.snap?.();
-    g.bosses.startFight('lakes_hum');
+    g.bosses.startFight(id);
     window.__fight = { t0: g.clock.t, won: false, casts: 0, big: 0, hits: [], guards: 0, costs: [] };
     if (!window.__powerHook) {
       window.__powerHook = true;
@@ -179,7 +181,7 @@ async function toLake(page) {
         if (e.slot === 1) window.__fight.big++;
       });
       g.bus.on('damage', (e) => {
-        if (e.target === g.bosses.get('lakes_hum') && e.source === g.player && e.amount > 0) window.__fight.hits.push(e.amount);
+        if (e.target === g.bosses.get(window.__bossId) && e.source === g.player && e.amount > 0) window.__fight.hits.push(e.amount);
       });
       g.bus.on('boss_guard', () => window.__fight.guards++);
       g.bus.on('mana_changed', (e) => {
@@ -190,14 +192,14 @@ async function toLake(page) {
     }
     window.__fight.lastMana = g.magic.mana.cur;
     return { x: spot.x, y: spot.y };
-  });
+  }, id);
 }
 
 const state = (page) =>
   page.evaluate(() => {
     const g = window.__game;
     const P = g.player;
-    const b = g.bosses.get('lakes_hum');
+    const b = g.bosses.get(window.__bossId || 'lakes_hum');
     const p = g.renderer.worldToCss(b.x, b.y - 8);
     const r = g.canvas.getBoundingClientRect();
     const me = g.renderer.worldToCss(P.x, P.y - 8);
@@ -374,11 +376,11 @@ async function dodge(page, size, cdp, s) {
 
 // ------------------------------------------------------------------ fight
 
-async function fight(size) {
-  const tag = `${size.name}-lake`;
+async function fight(size, id = 'lakes_hum') {
+  const tag = `${size.name}-${id === 'lakes_hum' ? 'lake' : 'mother'}`;
   const { context, page, errors, cdp } = await open(size);
   const info = await setupStranger(page, STRONG.weave);
-  await toLake(page);
+  await toLake(page, id);
   await wait(900);
   await page.screenshot({ path: `${OUT}/${tag}-0-arena.png` });
   const shots = new Set();
@@ -423,8 +425,8 @@ async function fight(size) {
   const secs = Math.round(s.t);
   console.log(`  [${size.name}] ${info.name}: pool ${info.pool}, cost ${info.cost}; ${charged} charged casts, ${s.casts} casts in all, ${secs} s; her health ${s.bhp}/${s.bmax} (lowest ${s.blow}); guards ${s.guards}; you ${s.php}/${s.pmax}${s.won ? ' — she fell' : ''}${s.down ? ' — you fell' : ''}; mana paid ${JSON.stringify(s.costs)}`);
   if (!LONG) {
-    check(`[${size.name}] the fully charged casts of the strongest weave a level-7 pool fires take little of the Lake's Hum`, !s.won && charged >= 1 && s.blow > (1 - 0.08 * charged) * s.bmax, `${charged} charged, at her lowest ${s.blow}/${s.bmax}`);
-    check(`[${size.name}] a charged cast pays the full-charge cost`, s.costs.some((c) => Math.abs(c - s.full) <= Math.max(1, s.full * 0.04)), `paid ${JSON.stringify(s.costs)}, full ${Math.round(s.full)}`);
+    check(`[${size.name}] the fully charged casts of the strongest weave a level-7 pool fires take little of ${id === 'lakes_hum' ? "the Lake's Hum" : 'the Mother of Slimes'}`, !s.won && charged >= 1 && s.blow > (1 - 0.08 * charged) * s.bmax, `${charged} charged, at her lowest ${s.blow}/${s.bmax}`);
+    check(`[${size.name}] ${id}: a charged cast pays the full-charge cost`, s.costs.some((c) => Math.abs(c - s.full) <= Math.max(1, s.full * 0.04)), `paid ${JSON.stringify(s.costs)}, full ${Math.round(s.full)}`);
   } else {
     check(`[${size.name}] the fight lasts minutes, not a burst`, s.won ? secs >= 180 : secs >= 60, `${secs} s, ${s.won ? 'won' : s.down ? 'fell' : 'unfinished'}, at her lowest ${s.blow}/${s.bmax}`);
   }
@@ -595,7 +597,10 @@ async function soul(size) {
 }
 
 for (const size of SIZES) {
-  if (ONLY.includes('fight')) await fight(size);
+  if (ONLY.includes('fight')) {
+    await fight(size, 'lakes_hum');
+    await fight(size, 'mother_of_slimes');
+  }
   if (ONLY.includes('book')) await book(size);
   if (ONLY.includes('soul')) await soul(size);
 }
