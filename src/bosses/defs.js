@@ -7,6 +7,7 @@
 // def fields:
 //   id, entityId (the boss actor's id; story scenes point the camera at it), species,
 //   name, title, faction, kind, hp, atk, def, speed, radius, mass, xp
+//   level        the level the fight is meant for (round 15: the stranger the missions lead there)
 //   phases       hp fractions where a new phase starts (descending)
 //   rewards      [[kind, id], ...] glyph-shards dropped on defeat (kind 'essence'|'twist')
 //   intro        story script id (src/story/scripts_bosses.js)
@@ -21,6 +22,7 @@ export const BOSS_IDS = ['varek', 'greyjaw', 'mother_of_slimes', 'lakes_hum', 'b
 export const BOSSES = {
   varek: {
     id: 'varek',
+    level: 5,
     entityId: 'varek',
     species: 'bandit_chief',
     name: 'Varek One-Eye',
@@ -56,6 +58,7 @@ export const BOSSES = {
   },
   greyjaw: {
     id: 'greyjaw',
+    level: 6,
     entityId: 'greyjaw',
     species: 'greyjaw',
     name: 'Greyjaw',
@@ -82,6 +85,7 @@ export const BOSSES = {
   },
   mother_of_slimes: {
     id: 'mother_of_slimes',
+    level: 4,
     entityId: 'mother_of_slimes',
     species: 'mother_of_slimes',
     name: 'The Mother of Slimes',
@@ -107,6 +111,7 @@ export const BOSSES = {
   },
   lakes_hum: {
     id: 'lakes_hum',
+    level: 7,
     entityId: 'lakes_hum',
     species: 'lakes_hum',
     name: "The Lake's Hum",
@@ -133,6 +138,7 @@ export const BOSSES = {
   },
   bone_warden: {
     id: 'bone_warden',
+    level: 9,
     entityId: 'bone_warden',
     species: 'bone_warden',
     name: 'The Bone Warden',
