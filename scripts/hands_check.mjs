@@ -255,13 +255,18 @@ async function desktop() {
   await page.keyboard.down('Digit2');
   await wait(page, 500);
   const h4 = await aimState(page);
-  await page.keyboard.press('ShiftLeft');
-  await wait(page, 250);
+  // The roll key held a moment, as a hand does (a press and release inside one frame can
+  // fall between two steps of a loaded machine).
+  await page.keyboard.down('ShiftLeft');
+  await wait(page, 90);
+  const rolled4 = await page.evaluate(() => !!window.__game.player.rolling);
+  await page.keyboard.up('ShiftLeft');
+  await wait(page, 160);
   const a4 = await aimState(page);
   await page.screenshot({ path: `${OUT}/desk-6-roll.png` });
   await page.keyboard.up('Digit2');
   await wait(page, 300);
-  check('desk 6: a roll breaks the charge and its aim goes, the key still held', h4.aims === 1 && cleared(a4), `${JSON.stringify(h4)} -> ${JSON.stringify(a4)}`);
+  check('desk 6: a roll breaks the charge and its aim goes, the key still held', h4.aims === 1 && rolled4 && cleared(a4), `${JSON.stringify(h4)} -> ${JSON.stringify(a4)} rolled ${rolled4}`);
 
   // Refused for mana: nothing drawn, now or after.
   await wait(page, 600);

@@ -193,7 +193,8 @@ async function run(S) {
     check(st.broken, `[${tag}] a Strike breaks the ${id.split('@')[0]} in Brindlecombe (${id})`);
   }
 
-  // ---------- Lyra's locked trunk: a Strike does nothing; the use button offers to force it ----------
+  // ---------- Lyra's locked trunk: a Strike does nothing; the use button says what would (a
+  // pickaxe, round 15: the hasp is iron), and with one in the pack offers to break it ----------
   await place(75, 46, 'up');
   await clean();
   await wait(300);
@@ -213,6 +214,14 @@ async function run(S) {
   await clean();
   await wait(400);
   const label = await ev(() => window.__game.ui.lastPrompt || '');
+  await ev(() => window.__game.ui.toasts?.clear?.());
+  await use();
+  await wait(600);
+  const bare = await ev(() => ({ modal: !!window.__game.ui.isModalOpen?.(), words: document.querySelector('.toasts')?.textContent || '' }));
+  await shot('2-trunk-bare');
+  check(/locked/i.test(label) && !bare.modal && /pickaxe/i.test(bare.words), `[${tag}] the use button names it locked and, bare-handed, says a pickaxe would break the hasp (round 15)`, `prompt "${label}"`);
+  await ev(() => window.__game.player.inventory.add('pickaxe', 1));
+  await wait(200);
   await use();
   await wait(600);
   const dlg = await ev(() => {
@@ -220,7 +229,7 @@ async function run(S) {
     return p ? p.textContent : '';
   });
   await shot('2-trunk-force');
-  check(/locked/i.test(label) && /Force the lock/.test(dlg), `[${tag}] the use button names it locked and offers Force the lock`, `prompt "${label}"`);
+  check(/Break the hasp/.test(dlg), `[${tag}] with a pickaxe it offers to break the hasp`);
   const leave = await page.getByRole('button', { name: 'Leave it' }).boundingBox();
   if (leave) await tapAt(leave.x + leave.width / 2, leave.y + leave.height / 2);
   await wait(400);

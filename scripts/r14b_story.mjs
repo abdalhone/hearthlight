@@ -1480,7 +1480,8 @@ async function play(S) {
       out.worldBig = g.map.x0 < 0 || g.map.w > 160;
       // The first boss's trail is pointed to early.
       out.trail = !!(g.travel?.heard && Object.keys(g.travel.heard).length >= 0) && typeof g.missions !== 'undefined';
-      // The locked chest: a heavy blow forces it; nothing inside is lost.
+      // The locked chest has a way in, and nothing inside is lost. Round 15 (item 9: iron needs
+      // its tool): no blow forces the iron hasp any more; a pickaxe at the chest does.
       const c = g.objects.all().find((o) => o.id === 'guard_footlocker');
       if (c) {
         const before = JSON.stringify(c.inventory.serialize());
@@ -1488,13 +1489,24 @@ async function play(S) {
         g.player.y = c.y + 20;
         const light = g.chestBlow?.(c.x, c.y, 16, { source: g.player });
         const heavy = g.chestBlow?.(c.x, c.y, 16, { source: g.player, heavy: true });
-        out.chest = { light: light?.[0], heavy: heavy?.[0], same: before === JSON.stringify(c.inventory.serialize()) };
+        const lockedAfterBlows = !!c.state.locked;
+        g.player.inventory.add('pickaxe', 1);
+        const asked = [];
+        const confirm = g.ui.confirm;
+        g.ui.confirm = (o) => (asked.push(o.yes), Promise.resolve(false));
+        try {
+          c.interact(g.player);
+        } finally {
+          g.ui.confirm = confirm;
+          g.player.inventory.remove('pickaxe', 1);
+        }
+        out.chest = { light: light?.[0], heavy: heavy?.[0], lockedAfterBlows, pickOffers: asked[0] || null, same: before === JSON.stringify(c.inventory.serialize()) };
       }
       // Footsteps change with the ground.
       return out;
     });
     check(r.brindle && r.crown && r.worldBig, `[${tag}] 25 the wider world, on foot`, JSON.stringify(r));
-    check(r.chest && r.chest.heavy === 'forced' && r.chest.same, `[${tag}] 25 the locked chest: a heavy blow forces it, nothing lost`, JSON.stringify(r.chest));
+    check(r.chest && r.chest.heavy === 'iron' && r.chest.lockedAfterBlows && r.chest.pickOffers === 'Break the hasp' && r.chest.same, `[${tag}] 25 the locked chest: no blow forces the iron hasp, a pickaxe at it does (round 15), nothing lost`, JSON.stringify(r.chest));
     // Downed: the countdown ring, Bram carries you; the ember-ring keeps your coins.
     const down = await ev(async () => {
       const g = window.__game;

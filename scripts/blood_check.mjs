@@ -555,9 +555,11 @@ async function run(S) {
     g.camera.snap?.();
     return { light, heavy, locked: c.state.locked, same: before === JSON.stringify(c.inventory.serialize()), toasts: window.__toasts.slice() };
   });
-  check(chest.light?.[0] === 'iron' && chest.heavy?.[0] === 'forced' && !chest.locked && chest.same, `[${tag}] a light blow on a locked chest gets a word; a Strike forces it; nothing inside moves`, JSON.stringify(chest));
+  // Round 15 (item 9: iron needs its tool): no blow forces the iron hasp any more, a Strike
+  // included; each gets the word that a pickaxe would (tests/r15_hands.test.mjs plays the pick).
+  check(chest.light?.[0] === 'iron' && chest.heavy?.[0] === 'iron' && chest.locked && chest.same && chest.toasts.some((t) => /pickaxe/i.test(t)), `[${tag}] a light blow on a locked chest gets a word; a Strike rings off the iron hasp too (a pickaxe would); nothing inside moves`, JSON.stringify(chest));
   await wait(300);
-  await shot('13-chest-forced');
+  await shot('13-chest-iron');
   await ev(() => window.__clean());
 
   // ---------- 8. a store burns at night; Pip hides, then is taken away ----------
