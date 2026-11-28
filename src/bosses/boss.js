@@ -23,6 +23,30 @@ import { clearHazards } from './hazards.js';
 
 const TAU = Math.PI * 2;
 
+// A boss defends (round 15, DESIGN §22.3; the author: "bosses are too easy … I killed her in 2
+// hits … make it have a really good damage and a really good defense"). On top of its armour
+// (`def`: combat takes it off every blow, never below the armour floor's share) and its
+// resistances (`resist` by damage type, read by combat.resistMul):
+//   - the blow cap: one blow takes at most BLOW_SHARE of its health, whatever the charge, the
+//     crit or the twists (combat.damage asks capBlow after armour, crits and wards);
+//   - the guard: when one hand has struck it for GUARD_AT of its health inside about
+//     GUARD_TAU seconds, it raises a guard for GUARD_TIME seconds (a shimmer of its own colour,
+//     "guarded" over it): what lands meanwhile is GUARD_MUL of the blow. Struck as hard again
+//     while it guards (what gets through counts), it holds the guard GUARD_LONGER more, up to
+//     GUARD_MAX: pressing it only makes it hold. When the guard falls the slate is clean: an
+//     opening to strike. A guard raised again inside GUARD_AGAIN seconds of the last starts
+//     GUARD_LONGER longer.
+// Each hand counts on its own, so a companion's blows add to yours. No time limit, no enrage:
+// the length of a fight comes from its strength (health, armour, guard) and its blows.
+export const BLOW_SHARE = 0.03;
+export const GUARD_AT = 0.04;
+export const GUARD_TAU = 2.2; // s: how fast a hand's recent harm fades
+export const GUARD_TIME = 3;
+export const GUARD_MUL = 0.12;
+export const GUARD_AGAIN = 6;
+export const GUARD_LONGER = 1.2;
+export const GUARD_MAX = 6;
+
 export class Boss extends Creature {
   constructor(game, info, brain, o = {}) {
     super(game, info.base || 'bandit_chief', { id: info.entityId, name: info.name, x: o.x, y: o.y, home: o.home || { x: o.x, y: o.y } });
@@ -37,6 +61,12 @@ export class Boss extends Creature {
     this.hp = info.hp;
     this.atk = info.atk;
     this.def = info.def;
+    this.resist = info.resist ? { ...info.resist } : null;
+    this.guardT = 0; // the guard (round 15): seconds it still holds
+    this.guardUp = false;
+    this.guardEnd = -99; // the fight clock when the last guard fell
+    this.guardLen = GUARD_TIME;
+    this.struck = new Map(); // hand -> { harm, t }: recent harm from each hand, fading
     this.speed = info.speed;
     this.baseSpeed = info.speed;
     this.radius = info.radius;
@@ -116,6 +146,10 @@ export class Boss extends Creature {
       }
     }
     this.animT += dt * this.animSpeed;
+    if (this.guardUp) {
+      this.guardT -= dt;
+      if (this.guardT <= 0 || this.mode !== 'fight') this.dropGuard();
+    }
     updateMarkers(this, dt);
     if (this.hitStreakT > 0) {
       this.hitStreakT -= dt;
@@ -292,13 +326,70 @@ export class Boss extends Creature {
     this.lastHit = opts || null; // brains read it in onHurt (was it a burn ticking, a heavy blow?)
     if (this.mode !== 'fight') return this.mode === 'idle' ? amount : 0;
     const b = this.brain;
-    if (b?.hitMul) return b.hitMul(this, source, amount, opts || {});
-    return amount;
+    let a = b?.hitMul ? b.hitMul(this, source, amount, opts || {}) : amount;
+    // Guarded (round 15): a share of the blow gets through.
+    if (a > 0 && this.guardT > 0) a *= GUARD_MUL;
+    return a;
+  }
+
+  // The most one blow may take (round 15), asked by combat.damage after armour and crits.
+  capBlow(dealt) {
+    if (!(dealt > 0)) return dealt;
+    return Math.min(dealt, Math.max(1, Math.ceil(this.maxHp * BLOW_SHARE)));
+  }
+
+  guarded() {
+    return this.guardT > 0;
+  }
+
+  // One hand's harm, fading; past GUARD_AT of its health the guard goes up.
+  noteHarm(source, dealt) {
+    if (!(dealt > 0) || this.mode !== 'fight') return;
+    const hand = source && source.type === 'projectile' ? source.owner || source : source || this;
+    const now = this.t;
+    const rec = this.struck.get(hand) || { harm: 0, t: now };
+    rec.harm = rec.harm * Math.exp(-Math.max(0, now - rec.t) / GUARD_TAU) + dealt;
+    rec.t = now;
+    this.struck.set(hand, rec);
+    if (rec.harm < this.maxHp * GUARD_AT) return;
+    if (this.guardUp) {
+      // Pressed while it guards: it holds on longer.
+      this.guardT = Math.min(GUARD_MAX, this.guardT + GUARD_LONGER);
+      rec.harm = 0;
+      return;
+    }
+    this.raiseGuard(hand);
+  }
+
+  raiseGuard(hand = null) {
+    const again = this.t - this.guardEnd < GUARD_AGAIN;
+    this.guardLen = again ? Math.min(GUARD_MAX, this.guardLen + GUARD_LONGER) : GUARD_TIME;
+    this.guardT = this.guardLen;
+    this.guardUp = true;
+    this.struck.clear(); // only what gets through the guard counts toward holding it longer
+    sound(this, 'boss_clang', { pitch: 0.6, volume: 0.7 });
+    particles(this, 'spark', this.x, this.y - 12, { count: 10, color: this.info.accent || '#cfe0ff', speed: 60, life: 0.4 });
+    try {
+      this.game.bubbles?.number?.(this.x, this.y - 30, 'guarded', this.info.accent || '#9fc8ff', { kind: 'damage' });
+    } catch {
+      /* cosmetic */
+    }
+    this.game.bus?.emit?.('boss_guard', { id: this.bossId, boss: this, on: true, seconds: this.guardT, by: hand && hand !== this ? hand : null });
+  }
+
+  dropGuard() {
+    const was = this.guardUp;
+    this.guardUp = false;
+    this.guardT = 0;
+    this.guardEnd = this.t;
+    this.struck.clear(); // a clean slate: the opening
+    if (was) this.game.bus?.emit?.('boss_guard', { id: this.bossId, boss: this, on: false });
   }
 
   onHurt(source, dealt, kind) {
     super.onHurt(source);
     if (this.mode === 'defeat' || this.mode === 'gone') return;
+    this.noteHarm(source, dealt);
     // Struck before the fight began: the manager starts it.
     if (this.mode === 'idle' && source) {
       try {
@@ -427,6 +518,11 @@ export class Boss extends Creature {
     this.glow = 0;
     this.alpha = 1;
     this.z = 0;
+    this.guardT = 0;
+    this.guardUp = false;
+    this.guardEnd = -99;
+    this.guardLen = GUARD_TIME;
+    this.struck.clear();
     this.mem = Object.create(null);
     this.knock.x = 0;
     this.knock.y = 0;
@@ -487,6 +583,7 @@ export class Boss extends Creature {
     } catch {
       /* decoration only */
     }
+    if (this.guardT > 0 && this.mode === 'fight') drawGuard(ctx, this, sx, sy, time);
   }
 
   getLight(time) {
@@ -527,6 +624,31 @@ export class Boss extends Creature {
   serialize() {
     return { id: this.id, bossId: this.bossId, x: this.x, y: this.y };
   }
+}
+
+// The guard (round 15): a ring of the boss's own colour round its body, pulsing, thinning in
+// its last second; readable on a phone's small screen as a bright outline.
+function drawGuard(ctx, b, sx, sy, time) {
+  const r = (b.radius || 10) + 6;
+  const fade = Math.min(1, b.guardT / 0.8);
+  const pulse = 0.55 + 0.25 * Math.sin((time || 0) * 9);
+  ctx.save();
+  ctx.globalAlpha = 0.85 * fade * pulse;
+  ctx.strokeStyle = b.info?.accent || '#9fc8ff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(sx, sy - r * 0.75, r, r * 1.05, 0, 0, TAU);
+  ctx.stroke();
+  ctx.globalAlpha = 0.18 * fade;
+  ctx.fillStyle = b.info?.accent || '#9fc8ff';
+  ctx.fill();
+  ctx.globalAlpha = 0.9 * fade;
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < 4; i++) {
+    const a = (time || 0) * 2.2 + (i * TAU) / 4;
+    ctx.fillRect(Math.round(sx + Math.cos(a) * r) - 1, Math.round(sy - r * 0.75 + Math.sin(a) * r * 1.05) - 1, 2, 2);
+  }
+  ctx.restore();
 }
 
 const BOSS_CONTROLLER = {

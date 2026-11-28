@@ -3,6 +3,7 @@ import { dropItem } from '../entities/pickups.js';
 import { playHit, playDust } from '../render/pixel_fx_play.js';
 import { wallBetween } from './walls.js';
 import { materialOf, refreshFences } from './broken.js';
+import { NEED, sayNeed } from './tools.js';
 
 // Things that break (DESIGN §31.3). The player's blows land on the world's props as well as
 // on its people: the sword, and every weave body (missiles and beams stop at a prop they
@@ -47,6 +48,9 @@ export const BREAKABLE = {
   sack: { hp: 8, drops: [['wheat', 0.3, 1]] },
   hay: { hp: 10 },
   dummy: { training: true },
+  // Iron (round 15, item 9; tools.js): an ore vein takes a blow (a missile stops at it, the
+  // blade rings off it) and never breaks to one: only a pickaxe mines it (objects.js Rock).
+  ore: { iron: true },
 };
 export const MEND = 2 * DAY; // a village prop is mended two days after it was broken
 
@@ -92,7 +96,7 @@ export function breakSpec(o) {
 // Standing, whole and worth a blow: not broken, not a stump or rubble, not mid-fall.
 export function intact(o) {
   if (!o || o.removed || o.hidden || o.state?.broken) return false;
-  if (o.objType === 'tree' || o.objType === 'rock') return !o.state?.depleted && !o._fall;
+  if (o.objType === 'tree' || o.objType === 'rock' || o.objType === 'ore') return !o.state?.depleted && !o._fall;
   if (o.objType === 'berry_bush') return !o.state?.depleted;
   return true;
 }
@@ -207,6 +211,7 @@ export function strikeProp(game, o, blow = {}) {
   const src = blow.source || null;
   if (src && src !== game.player && src.id !== 'player') return false;
   if (spec.training) return trainOn(game, o, spec, blow);
+  if (spec.iron) return ringOff(game, o, blow);
   if (blow.sword && spec.sword === false) return false;
   const amount = Math.max(0, Number(blow.amount) || 0);
   if (!(amount > 0)) return false;
@@ -218,6 +223,19 @@ export function strikeProp(game, o, blow = {}) {
   const mat = materialOf(o);
   if (o._dmg >= spec.hp) breakProp(game, o, spec, blow);
   else chip(game, o, mat, blow);
+  return true;
+}
+
+// Iron (round 15): the blow rings off. Sparks, a high clink, a jolt, and the word that a
+// pickaxe is what it wants; nothing breaks and nothing is given.
+function ringOff(game, o, blow) {
+  o._hitAt = game.time ?? 0;
+  o._hitDir = (blow.dirX ?? 1) < 0 ? -1 : 1;
+  if (blow.tick && (game.time ?? 0) - (o._chipAt ?? -1) < 0.18) return true;
+  o._chipAt = game.time ?? 0;
+  emit(game, 'hit', o.x, o.y - 8, { count: blow.tick ? 2 : 6, color: '#ffd9a0', speed: 70, life: 0.3, dir: { x: -(blow.dirX || 0), y: -(blow.dirY || 0) } });
+  if (!blow.tick) sound(game, 'mine', o.x, o.y, { pitch: 1.6, volume: 0.7 });
+  sayNeed(game, blow.sword ? 'ring' : 'weave', blow.sword ? NEED.ring : NEED.weave);
   return true;
 }
 

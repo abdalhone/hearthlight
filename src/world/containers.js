@@ -4,6 +4,7 @@ import { lyraOf } from '../core/people.js';
 import { witnessesOf } from '../murder/witness.js';
 import { hears, LOUD } from '../ai/hearing.js';
 import { wallBetween } from './walls.js';
+import { missingTool, NEED, sayNeed } from './tools.js';
 
 // Chests you could not open (DESIGN §32.6, round 14: "There is a chest that I cannot
 // open."). The audit found four: Lyra's trunk ("locked, and it is not yours": no way in),
@@ -12,8 +13,9 @@ import { wallBetween } from './walls.js';
 // container now has a way in:
 //   - a key someone has: Rowan gives his to whoever holds the line with him (the spear
 //     drill), Lyra keeps hers and opens her trunk herself for someone she trusts;
-//   - a heavy blow: without the key you may force any lock (at the chest with the use
-//     button, or a Strike or heavy weave on it, round 14b). If the chest is someone's,
+//   - a pickaxe: without the key you may break the iron hasp, at the chest with the use
+//     button and a pickaxe in your pack (round 15, item 9: iron needs its tool; round 14b's
+//     Strike or heavy weave no longer forces it, nor bare hands). If the chest is someone's,
 //     that is theft;
 //   - an open lid: the linen chest is not locked, but it is the Reeds'; take from it and
 //     that is theft too.
@@ -167,13 +169,18 @@ export function lockedChest(game, chest, actor) {
   }
   const owner = chest.owner && chest.owner !== 'player' && !chest.loot ? ownerOf(game, chest) : null;
   const whose = owner ? NAMES[owner] || game.entities?.get?.(owner)?.name?.split(' ')[0] || owner : null;
-  const text = `${chest.lockedText || `${chest.name} is locked.`} You could force the lock with a heavy blow${whose ? `, but it is ${whose}'s: if anyone sees you, that is theft.` : '.'}`;
+  // Iron (round 15): the hasp breaks only to a pickaxe. Without one, the word of what it needs.
+  if (missingTool(game, actor || game.player, 'hasp')) {
+    toast(game, `${chest.lockedText || `${chest.name} is locked.`} The hasp is iron: you would need a pickaxe to break it${whose ? `, and it is ${whose}'s: if anyone saw, that would be theft.` : '.'}`);
+    return;
+  }
+  const text = `${chest.lockedText || `${chest.name} is locked.`} You could break the iron hasp with your pickaxe${whose ? `, but it is ${whose}'s: if anyone sees you, that is theft.` : '.'}`;
   const ui = game.ui;
   if (typeof ui?.confirm !== 'function') {
     toast(game, text);
     return;
   }
-  ui.confirm({ title: chest.name, text, yes: 'Force the lock', no: 'Leave it', danger: !!owner }).then((ok) => {
+  ui.confirm({ title: chest.name, text, yes: 'Break the hasp', no: 'Leave it', danger: !!owner }).then((ok) => {
     if (ok) forceChest(game, chest, actor);
   });
 }
@@ -187,6 +194,7 @@ export function forceChest(game, chest, actor, { open = true } = {}) {
   chest.state.forced = true;
   chest.markDirty();
   try {
+    game.audio?.play?.('mine', { x: chest.x, y: chest.y, pitch: 1.3 }); // the pick on the hasp
     game.audio?.play?.('hit', { x: chest.x, y: chest.y, pitch: 0.7 });
     game.particles?.emit?.('wood_chip', chest.x, chest.y - 6, { count: 8 });
     game.camera?.shake?.(1.5, 0.15);
@@ -250,23 +258,20 @@ export function ownersNotice(game) {
   }
 }
 
-// A blow on a locked chest (round 14b leftover): a Strike's fist or a heavy weave forces it
-// (D10: a heavy blow is a way in), the same as forcing it by hand, its contents left
-// exactly where they were. Anything lighter (a sword, a bolt) gets a word, not nothing.
-// blow: { source, heavy, punch }. -> 'forced' | 'iron' | null
+// A blow on a locked chest (round 14b leftover; round 15, item 9): the hasp is iron, and iron
+// yields only to its tool, so no blow forces it: not the sword, not a bolt, not a Strike's
+// fist or a heavy weave. Each gets the word of what would (a pickaxe at the chest, or the
+// key), and the contents stay exactly where they were.
+// blow: { source, heavy, punch }. -> 'iron' | null
 export function blowAtChest(game, chest, blow = {}) {
   if (!chest || chest.removed || !chest.inventory) return null;
   const src = blow.source || null;
   if (src && src !== game.player && src.id !== 'player') return null;
   if (!chest.state?.locked) return null;
-  if (blow.heavy || blow.punch) {
-    forceChest(game, chest, src || game.player, { open: false });
-    return 'forced';
-  }
   const t = game.time ?? 0;
   if (t - (chest._ironAt ?? -Infinity) > 4) {
     chest._ironAt = t;
-    toast(game, 'Iron-bound. A heavier blow would break the hasp, or force the lock by hand.', 'info');
+    sayNeed(game, 'hasp', NEED.hasp);
   }
   return 'iron';
 }

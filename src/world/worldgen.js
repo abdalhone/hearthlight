@@ -1077,6 +1077,10 @@ export class WorldBuilder {
       [6, 16],
     ])
       this.put({ objType: 'ore', tx: x, ty: y, v: 0 });
+    // The quarrymen's tool chest (round 15, item 9: iron needs a pickaxe): a spare pick for
+    // whoever works the face, so Bram's ore errands can be done the day he gives them. Common
+    // to all (loot): taking it is no theft. Placed last, on a free tile by the ore cart.
+    this.near({ objType: 'chest', id: 'quarry_tools', name: 'Quarry tool chest', loot: true, items: { pickaxe: 1 }, words: ['tool chest', 'tools', 'pick', 'pickaxe'] }, 20, 25, 3);
   }
 
   camp() {

@@ -13,10 +13,13 @@
 // 'unkindled', silent: true, unmarked: true }). Whoever SAW it is a witness by the sight rule
 // (kill() asks witnessesOf); nobody HEARS anything.
 //
-// The strength of the soul against your own (strengthOf / powerOf / verdict):
-//   ratio < 1      easy: 2.5-3.5 s, it strains and fails;
-//   1 <= r < 1.6   close: a longer, harder pull (3.5-5 s), harder jerks that cost you ground,
-//                  more time for something to break it;
+// The strength of the soul against your own (strengthOf / powerOf / verdict; round 15: who
+// they are against a slow curve of your own, and the odds chanceOf(ratio) shown before you
+// start and rolled when you begin):
+//   chance >= 85%  easy: 2.5-3.5 s, it strains and fails;
+//   less           close: a longer, harder pull (3.5-5 s), harder jerks that cost you ground,
+//                  more time for something to break it, and if the roll goes against you it
+//                  tears itself back past KNOW_AT and breaks free, and knows;
 //   r >= 1.6       much stronger: it snaps back and they break free, and they KNOW (village
 //                  side: src/murder/unkindled.js attempted()). Bosses and the tempter always.
 // Being hit, the target pulled away (or out of reach, or behind a wall), or letting go breaks
@@ -28,9 +31,8 @@
 //
 // Prey that is not murder (§13b S20-11): hostile beasts and bandits have smaller souls; taking
 // them is no crime (a villager who SEES it sees dark magic: src/society/dark_suspicion.js).
-// Harmless things (a hen, the cat, a deer) are refused; bosses are taken only when you are
-// much stronger (ratio <= 1 / MUCH_STRONGER), else they shrug it off at once; the tempter
-// always shrugs it off, whatever the build (Version 12: a Free 999 build once reached him).
+// Harmless things (a hen, the cat, a deer) are refused; bosses and the tempter always shrug it
+// off at once, whatever the build (Version 12 for him, round 15 for them).
 // Every soul taken feeds the taken flame (src/magic/coldfire.js:
 // the bar that boosts your power and ebbs, the mark that shows).
 //
@@ -78,10 +80,39 @@ export const SLIP = 0.32; // s: a broken hold: it slides back in
 export const COOLDOWN = 2.5; // s between holds
 const BOSS_FLOOR = 90; // a boss's soul is at least this strong (old things under the ground)
 const TEMPTER_STRENGTH = 600; // in practice, never
+// The odds (round 15; the author: the Unkindling "a real contest of strength, not a formality").
+// The chance a hold that nothing breaks ends with the soul taken, by the ratio r of their
+// strength to yours: 1 / (1 + (r / EVEN)^STEEP): even odds at EVEN, sure far below it, little
+// chance near MUCH_STRONGER (and none past it). The roll is made when the hold begins; a soul
+// that will break free does so somewhere past KNOW_AT of the pull, so it always knows.
+export const EVEN = 0.85;
+export const STEEP = 4;
+export const SURE = 0.85; // a chance at least this is an 'easy' pull
+export function chanceOf(ratio) {
+  const r = Number(ratio);
+  if (!Number.isFinite(r) || r < 0) return 0;
+  if (r >= MUCH_STRONGER) return 0;
+  return 1 / (1 + Math.pow(r / EVEN, STEEP));
+}
+// The odds in a word (and the chance): what the hint shows before you start.
+export function oddsWords(chance) {
+  const c = Number(chance) || 0;
+  if (c <= 0) return 'too strong';
+  if (c >= 0.9) return 'sure';
+  if (c >= 0.7) return 'likely';
+  if (c >= 0.4) return 'even';
+  if (c >= 0.15) return 'unlikely';
+  return 'barely';
+}
 // Nothing in there to take: the walking dead, and what gravelight wears (LORE §2: bats).
 const UNDEAD = new Set(['skeleton', 'ghoul', 'wraith', 'revenant', 'bones', 'bat']);
 const BANDITS = new Set(['bandit', 'bandit_archer', 'bandit_chief']);
-const WILL_TRAITS = ['brave', 'stern', 'stubborn', 'fierce', 'proud', 'watchful', 'dutiful', 'patient in the wood'];
+const WILL_TRAITS = ['brave', 'stern', 'stubborn', 'fierce', 'proud', 'watchful', 'dutiful', 'patient in the wood', 'quietly strong', 'fearless', 'scornful', 'brave when it counts', 'wise', 'calm'];
+// Faith holds a flame in: the chapel's keeper most of all, the old songs' keeper a little.
+const FAITH = [
+  [/chapel/i, 20],
+  [/songkeeper/i, 4],
+];
 
 export const LINES = {
   child: 'No. Not a child.',
@@ -315,6 +346,11 @@ export class Unkindle {
 
   // The player's own: build, level, the weave in them, their will, how whole they are now, and
   // the taken flame burning in them (coldfire: a fuller bar takes stronger souls).
+  // Round 15: a contest of will, not of the sword arm. The years you have lived (your level)
+  // count most; the weave in you, your resolve and your body add on a slow curve (the log of
+  // each), so piling points on a stat buys less and less (999 of everything is about four
+  // times a level-1 stranger's hold, not a thousand); the taken flame burning in you (coldfire)
+  // and how whole you are scale it.
   powerOf(P = this.game?.player) {
     if (!P) return 1;
     const S = this.game?.stats;
@@ -327,7 +363,7 @@ export class Unkindle {
     const sp = stat('spellPower', 1);
     const res = stat('resist', 0);
     const lv = Math.max(1, Number(P.level) || 1);
-    let p = (maxHp / 60) * 8 + atk + 25 * Math.max(0, sp - 1) + 15 * Math.max(0, res) + 2 * (lv - 1);
+    let p = 14 + 1.4 * (lv - 1) + 6 * Math.log(Math.max(1, sp)) + 12 * clamp(res, 0, 1) + 3 * Math.log(Math.max(1, maxHp / 60)) + 2 * Math.log(Math.max(1, atk / 6));
     const frac = clamp((Number(P.hp) || maxHp) / maxHp);
     p *= 0.55 + 0.45 * frac;
     if (P === this.game?.player) p *= this.coldfire?.powerMul?.() ?? 1;
@@ -347,13 +383,48 @@ export class Unkindle {
     const maxHp = Math.max(1, Number(e.maxHp) || c.maxHp || 36);
     const atk = Number(e.atk ?? c.atk ?? 3) || 3;
     const def = Number(e.def ?? c.def ?? 0) || 0;
+    // Round 15: who they are. The body a little (a smith's arms, a guard's mail); their will
+    // much more: the watch and the hunt, a will in their traits, faith, the levels a weaver has
+    // grown. A creature (a wolf, a bandit) is mostly its body.
+    let s = 0.8 * (maxHp / 36) + 0.25 * atk + 0.5 * def;
+    if (kind === 'boss') return Math.max(BOSS_FLOOR, (6 * (maxHp / 36) + atk + 2 * def) * 1.4);
+    if (kind !== 'person') return Math.max(1, (1.5 * s + 2) * (0.5 + 0.5 * clamp((Number(e.hp) || maxHp) / maxHp)));
+    const role = e.profile?.role || '';
+    if (e.isGuard || e.faction === 'guard' || /guard|watch/i.test(role)) s += 14;
+    if (/captain/i.test(role)) s += 12; // who holds the watch together
+    if (e.profile?.hunter || /hunt/i.test(role)) s += 24;
+    const traits = e.profile?.traits || [];
+    s += Math.min(9, 3 * traits.filter((t) => WILL_TRAITS.includes(t)).length);
+    for (const [re, add] of FAITH) if (re.test(e.profile?.role || '')) s += add;
+    if (Number.isFinite(e.level) && e !== lyraOf(g)) s += 1.5 * Math.max(0, e.level - 1);
+    // Lyra: a weaver, and as strong as she has grown (DESIGN §16).
+    if (e === lyraOf(g)) s += 18 + 3 * Math.max(0, (Number(e.level) || 1) - 1);
+    const frac = clamp((Number(e.hp) || maxHp) / maxHp);
+    s *= 0.5 + 0.5 * frac;
+    if (e.state === 'sleep') s *= 0.6;
+    if (e.downed) s *= 0.45;
+    return Math.max(1, s);
+  }
+
+  // How much a soul feeds the taken flame (coldfire.fillFor reads it against its TYPICAL): the
+  // body-and-work measure Version 12 used for the contest too. Round 15 moved the contest to
+  // who they are (strengthOf) but left the bar's feeding as soul tuned it.
+  fillStrength(e) {
+    if (!e) return 0;
+    const kind = this.kindOf(e);
+    if (kind === 'dummy') return 1;
+    if (kind === 'tempter') return TEMPTER_STRENGTH;
+    const g = this.game;
+    const c = e.profile?.combat || {};
+    const maxHp = Math.max(1, Number(e.maxHp) || c.maxHp || 36);
+    const atk = Number(e.atk ?? c.atk ?? 3) || 3;
+    const def = Number(e.def ?? c.def ?? 0) || 0;
     let s = (maxHp / 36) * 6 + atk + 2 * def;
     if (kind === 'boss') return Math.max(BOSS_FLOOR, s * 1.4);
     if (e.isGuard || e.faction === 'guard') s += 3;
     if (e.profile?.hunter) s += 3;
     const traits = e.profile?.traits || [];
-    s += Math.min(3, 1.5 * traits.filter((t) => WILL_TRAITS.includes(t)).length);
-    // Lyra: a weaver, and as strong as she has grown (DESIGN §16).
+    s += Math.min(3, 1.5 * traits.filter((t) => WILL_TRAITS.slice(0, 8).includes(t)).length);
     if (e === lyraOf(g)) s += 6 + 2 * Math.max(0, (Number(e.level) || 1) - 1);
     const frac = clamp((Number(e.hp) || maxHp) / maxHp);
     s *= 0.5 + 0.5 * frac;
@@ -365,6 +436,21 @@ export class Unkindle {
   // -> { ratio, kind: 'easy' | 'close' | 'resists', dur (s, of a pull that succeeds),
   //      peak (how far a stronger soul comes before it snaps back), struggle (s) }
   verdict(e, P = this.game?.player) {
+    const v = this._verdict(e, P);
+    // The odds, the same the hold then plays out (round 15): never held, none.
+    v.chance = v.kind === 'resists' ? 0 : v.kind === 'easy' && this.kindOf(e) === 'dummy' ? 1 : chanceOf(v.ratio);
+    v.words = oddsWords(v.chance);
+    return v;
+  }
+
+  // What the hint shows before you start (round 15): { chance (0..1), percent, words, kind }.
+  odds(e, P = this.game?.player) {
+    if (!e) return null;
+    const v = this.verdict(e, P);
+    return { chance: v.chance, percent: Math.round(v.chance * 100), words: v.words, kind: v.kind, ratio: v.ratio };
+  }
+
+  _verdict(e, P) {
     const kind = this.kindOf(e);
     if (kind === 'dummy') return { ratio: 0.3, kind: 'easy', dur: 2.6, peak: 1, struggle: 0 };
     const ratio = this.strengthOf(e) / this.powerOf(P);
@@ -375,22 +461,20 @@ export class Unkindle {
       const m = this.game?.murder;
       killable = !m || typeof m.canKill !== 'function' || !!safe(() => m.canKill(e), false);
     }
-    // Something old under the ground (a boss, the tempter) is taken only by a hand much
-    // stronger than it (§13b S20-11); otherwise it is never held at all: it shrugs it off at
-    // once (no hold to chain into a stun).
-    // The tempter's soul is beyond any build (Version 12: a Free 999 build reached 1/1.6 of
-    // his 600, and the take only knocked him down at the gate, undefeated): never held.
-    if (kind === 'tempter') return { ratio, kind: 'resists', dur: 4, peak: 0.25, struggle: 0.7 };
-    if (kind === 'boss') {
-      if (ratio <= 1 / MUCH_STRONGER) return { ratio, kind: 'close', dur: 4.5 * fast, peak: 1, struggle: 0 };
-      return { ratio, kind: 'resists', dur: 4, peak: 0.25, struggle: 0.7 };
-    }
+    // Something old under the ground (a boss) and the tempter are never taken and never held:
+    // they shrug it off at once (no hold to chain into a stun). The tempter since Version 12 (a
+    // Free 999 build reached 1/1.6 of his 600, and the take only knocked him down at the gate);
+    // a boss since round 15 (it was "taken by a hand much stronger"; at Free 999 Varek read
+    // 'close': the author asked for a real contest).
+    if (kind === 'tempter' || kind === 'boss') return { ratio, kind: 'resists', dur: 4, peak: 0.25, struggle: 0.7 };
     if (ratio >= MUCH_STRONGER || !killable) {
       const over = clamp((ratio - MUCH_STRONGER) / 1.5);
       return { ratio, kind: 'resists', dur: 4, peak: 0.55 - 0.25 * over, struggle: 2.2 - 0.8 * over };
     }
-    if (ratio >= CLOSE) return { ratio, kind: 'close', dur: (3.5 + ((ratio - CLOSE) / (MUCH_STRONGER - CLOSE)) * 1.5) * fast, peak: 1, struggle: 0 };
-    return { ratio, kind: 'easy', dur: (2.5 + clamp(ratio) * 1) * fast, peak: 1, struggle: 0 };
+    // Sure enough is an easy pull; anything less is close: longer and harder the nearer the
+    // soul's strength is to yours (and it may yet break free: the roll in begin()).
+    if (chanceOf(ratio) >= SURE) return { ratio, kind: 'easy', dur: (2.5 + clamp(ratio / EVEN) * 1) * fast, peak: 1, struggle: 0 };
+    return { ratio, kind: 'close', dur: (3.5 + clamp((ratio - 0.55) / (MUCH_STRONGER - 0.55)) * 1.5) * fast, peak: 1, struggle: 0 };
   }
 
   // ------------------------------------------------------------------ the hold
@@ -441,6 +525,11 @@ export class Unkindle {
       // it does not shrug it off (v.kind 'resists' for a boss: never held, no stun to chain).
       held: kind === 'person' || kind === 'bandit' || kind === 'beast' || ((kind === 'boss' || kind === 'tempter') && v.kind !== 'resists'),
       strength: this.strengthOf(e),
+      fillStrength: this.fillStrength(e),
+      // The roll (round 15): with the odds the hint showed, the soul holds on; if it will, it
+      // breaks free somewhere past KNOW_AT of the pull (so it knows what you tried).
+      fails: v.kind !== 'resists' && kind !== 'dummy' && this.rand() >= v.chance,
+      breakAt: KNOW_AT + 0.1 + this.rand() * 0.7,
     };
     if (this.channel.held) this.hold(e, 0);
     this.pose(P, e);
@@ -631,6 +720,11 @@ export class Unkindle {
       if (ch.k >= v.peak || ch.t >= v.struggle) this.resisted(ch);
       return;
     }
+    // The roll went against you: it tears itself back and breaks free, and knows.
+    if (ch.fails && ch.k >= ch.breakAt) {
+      this.resisted(ch);
+      return;
+    }
     if (ch.k >= 1) {
       ch.shown = 1;
       this.setPhase(ch, 'tear');
@@ -679,7 +773,7 @@ export class Unkindle {
     this.deaths.push({ id: e.id, t: Math.round(rec.t ?? this.now()), day: rec.day ?? this.day(), hour: Math.round((g.clock?.hour ?? 0) * 100) / 100, seen: ch.seen.length > 0 });
     if (this.deaths.length > 60) this.deaths.splice(0, this.deaths.length - 60);
     this.lastTakenDay = this.day();
-    ch.fill = safe(() => this.coldfire.take('person', ch.strength), 0);
+    ch.fill = safe(() => this.coldfire.take('person', ch.fillStrength ?? ch.strength), 0);
     safe(() => this.village?.unkindled?.(rec, e, ch));
     safe(() => this.suspicion?.onTaken?.(ch, rec));
     this.emit('unkindled', { id: e.id, seen: ch.seen, kind: 'person' });
@@ -729,7 +823,7 @@ export class Unkindle {
     unsilence(e);
     const k = ch.kind === 'tempter' ? 'boss' : ch.kind;
     if (this.prey[k] != null) this.prey[k]++;
-    ch.fill = safe(() => this.coldfire.take(ch.kind, ch.strength), 0);
+    ch.fill = safe(() => this.coldfire.take(ch.kind, ch.fillStrength ?? ch.strength), 0);
     // Whoever SAW it saw dark magic: not a crime (src/society/dark_suspicion.js, by sight.js).
     safe(() => this.suspicion?.onTaken?.(ch, null));
     this.emit('unkindled', { id: e.id ?? null, seen: [], kind: ch.kind, species: e.species || null });

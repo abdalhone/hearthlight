@@ -15,6 +15,7 @@ import { makePreview } from './weave_sandbox.js';
 import { shapeIconUrl, essenceIconUrl, twistIconUrl, silhouetteUrl, glyphSize, spellbookIconUrl } from './weave_icons.js';
 import { BOSS_HINTS, GENERIC_HINT, cleanWeave, weavePalette, singular, fallbackName, previewOf, castModeOf } from './weave_meta.js';
 import { ensureStatsStyle, PRICE_GLYPH, PRICE_HINTS } from './stats_style.js';
+import { glyphUrl } from '../art/faces_art.js';
 
 const SEEN_KEY = 'hearthlight.spellbook.seen';
 
@@ -30,9 +31,9 @@ export const SB_STEPS = {
 };
 const SINGULAR = { shapes: 'shape', essences: 'essence', twists: 'twist', prices: 'price' };
 const INPUT_NOTE = {
-  quick: 'Tap to cast. Hold to charge it, then let go: up to 2.5× as strong and a little bigger, for up to twice the mana.',
+  quick: 'Tap to cast. Hold to charge it, then let go: up to 2.5× as strong and a little bigger, for up to 2.5× the mana.',
   hold: 'Hold to keep it flowing: it drains mana while it pours (a beam does not charge).',
-  charge: 'Hold to charge, let go to cast: the charge twist fills twice as fast and hits up to 3× as hard.',
+  charge: 'Hold to charge, let go to cast: the charge twist fills twice as fast and hits up to 3× as hard, for up to 3× the mana.',
 };
 // Casting stops you (plan §14): the book says it once, under the weave's numbers.
 export const STAND_NOTE = 'You stand still to weave. Roll to break off.';
@@ -322,18 +323,33 @@ export class Spellbook {
 
   renderStats(plan, d) {
     clear(this.statsEl);
-    if (this.standEl) this.standEl.hidden = !d.shape;
+    if (this.standEl) {
+      this.standEl.hidden = !d.shape;
+      setText(this.standEl, STAND_NOTE);
+    }
     if (!d.shape) return;
     const mode = castModeOf(plan, d);
     const pv = previewOf(plan, d);
+    // The true cost (round 15): what this stranger pays (gear and prices that change a weave's
+    // cost included), and what a full charge pays.
+    const mg = this.weaving?.magic;
+    const P = this.weaving?.game?.player;
+    const cost = plan ? (typeof mg?.costOf === 'function' && P ? mg.costOf(P, plan) : plan.cost) : 0;
+    const full = plan && !plan.drain ? (typeof mg?.chargedCost === 'function' && P ? mg.chargedCost(P, plan, 1) : cost * 2) : 0;
     const stats = [
-      ['Mana', plan ? fmt(plan.cost) + (plan.drain ? '/s' : '') : '—', 'mana'],
+      ['Mana', plan ? fmt(cost) + (plan.drain ? '/s' : '') : '—', 'mana', plan ? (plan.drain ? 'Mana a second while it pours.' : `Mana for a tap; a full charge takes ${fmt(full)}.`) : ''],
       ['Cooldown', plan ? `${fmt(plan.cooldown, 1)}s` : '—', 'cd', 'Seconds before it can be cast again: the sweep and the seconds on its button.'],
       ['Damage', plan ? fmt(plan.dmg) + (Number(plan.count) > 1 ? ` ×${fmt(plan.count)}` : '') : '—', 'dmg'],
       ['Reach', plan ? tiles(pv.type === 'ring' ? pv.radius : pv.range) : '—', 'reach', plan ? (pv.type === 'ring' ? 'Tiles around you' : 'Tiles it reaches') : ''],
     ];
     const pd = plan?.priceDefs?.[0];
     if (pd) stats.push(['Price', pd.name, 'price', `${pd.gainText}; ${pd.costText}`]);
+    // The full charge's cost, in words a phone shows (round 15: "the Spellbook shows the true
+    // cost"), beside the standing rule.
+    if (plan && full > 0 && this.standEl) {
+      const pool = Math.round(mg?.mana?.max || 0);
+      setText(this.standEl, `A full charge takes ${fmt(full)} mana${pool ? ` (you hold ${pool})` : ''}. ${STAND_NOTE}`);
+    }
     for (const [label, value, cls, title] of stats) this.statsEl.append(h('div', { class: `sb-stat sb-stat-${cls}`, title: title || null }, h('span', { class: 'sb-stat-label', text: label }), h('span', { class: 'sb-stat-value num', text: value })));
     this.statsEl.append(h('div', { class: `sb-stat sb-input sb-input-${mode}`, title: INPUT_NOTE[mode] }, h('span', { class: 'sb-stat-label', text: 'Cast' }), h('span', { class: 'sb-stat-value', text: INPUT_LABEL[mode] })));
   }
@@ -429,7 +445,7 @@ export class Spellbook {
         if (!open) continue;
       }
       const on = chosen.includes(id);
-      const glyphEl = h('span', { class: 'sb-price-glyph', 'aria-hidden': 'true', text: PRICE_GLYPH[id] || '◆' });
+      const glyphEl = h('span', { class: 'sb-price-glyph', 'aria-hidden': 'true' }, h('img', { class: 'price-glyph-img', src: glyphUrl(PRICE_GLYPH[id] || 'diamond'), alt: '', draggable: 'false' }));
       glyphEl.style.setProperty('--pc', def?.color || '#ff5a5a');
       const t = h(
         'button',

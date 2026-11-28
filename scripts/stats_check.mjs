@@ -740,6 +740,7 @@ async function run(S) {
     let detour = { until: 0, side: 1 };
     let lastProgress = { t: 0, d: Infinity };
     let st = await ev(() => window.__fightState());
+    let bossLow = st.hp; // round 15: he is whole again if you fall, so read his lowest
     const t0 = st.t;
     while (!st.won && !st.down && st.t - t0 < 90) {
       const dx = st.bx - st.px;
@@ -779,16 +780,24 @@ async function run(S) {
       }
       await wait(30);
       st = await ev(() => window.__fightState());
+      if (st.mode === 'fight' || st.hp < bossLow) bossLow = Math.min(bossLow, st.hp);
     }
     if (attacking) await pressAttack(false);
     await release();
     const f = await ev(() => ({ ...window.__fight }));
-    return { might, won: f.won, seconds: f.won ? Math.round((f.t1 - f.t0) * 10) / 10 : null, left: st.hp, health: Math.round(f.hp0), lowest: Math.round(f.low), fell: st.down, atk: f.atk };
+    return { might, won: f.won, seconds: f.won ? Math.round((f.t1 - f.t0) * 10) / 10 : null, left: st.hp, bossLow: Math.round(bossLow), health: Math.round(f.hp0), lowest: Math.round(f.low), fell: st.down, atk: f.atk };
   };
   if (!S.phone) {
     const strong = await fightVarek(30);
     out.varek = { might30: strong };
-    check(strong.won && strong.seconds <= 60, `${tag}: Varek yields to level 15 with 30 Might in ${strong.seconds} s (sword ${strong.atk}, health ${strong.health} → lowest ${strong.lowest})`, JSON.stringify(strong));
+    // Round 15 (DESIGN §22.3, §40.8; the author: "I don't think the 3 or 2 minutes fights are
+    // enough"): Varek (2300 health, a guard when pressed) no longer yields to level 15 in under
+    // a minute. What this still means: the stat points' sword lands on him by keys and mouse, a
+    // quarter of him or more in the 90 s played (runs: 922, 753 of 2300; in one the scripted
+    // hand fell to his slams first: bosses hit hard now, §40.8), never a burst (won, it took a
+    // minute or more). His lowest is read: a fall makes him whole again.
+    const took = 2300 - strong.bossLow;
+    check(strong.won ? strong.seconds >= 60 : took >= 2300 / 4, `${tag}: level 15 with 30 Might fights Varek by keys and mouse: ${strong.won ? `he yields in ${strong.seconds} s` : `${Math.round(took)} of his 2300${strong.fell ? ' before you fell' : ' in 90 s'}`} (sword ${strong.atk}, health ${strong.health} → lowest ${strong.lowest})`, JSON.stringify(strong));
   } else {
     // On a phone: beside him, the sword button tapped for three game seconds; each cut
     // takes what the sheet's sword says (a scripted thumb on a stick is a poor fighter, so
@@ -838,7 +847,15 @@ async function run(S) {
     const vk = await ev(() => ({ ...window.__vk, cuts: window.__cuts.slice(), hp: window.__game.bosses.get('varek').hp }));
     const avg = vk.cuts.length ? vk.cuts.reduce((a, b) => a + b, 0) / vk.cuts.length : 0;
     out.varek = { cuts: vk.cuts.length, avg: Math.round(avg), sword: vk.atk, took: Math.round(vk.hp0 - vk.hp) };
-    check(vk.cuts.length >= 3 && avg >= vk.atk * 0.9 && vk.hp0 - vk.hp >= 3 * vk.atk, `${tag}: tapped at Varek's side, ${vk.cuts.length} cuts of ~${Math.round(avg)} (sword ${vk.atk}) took ${Math.round(vk.hp0 - vk.hp)} of his ${Math.round(vk.hp0)}`, JSON.stringify(vk.cuts));
+    // Round 15: struck for 4% of him inside two seconds, Varek raises his guard (12% gets
+    // through), so the cuts before it are the sword's and the rest small: the first two cuts
+    // read the sheet's sword, as this check always meant, and the guard then holds.
+    const first = vk.cuts.slice(0, 2);
+    const firstAvg = first.length ? first.reduce((a, b) => a + b, 0) / first.length : 0;
+    // (Less his armour, 6 now: a cut lands the sword less 6, with the blow's ±10%.)
+    // (Two cuts at least: under 4x CPU the three seconds sometimes hold only two, and with his
+    // guard the later ones carry nothing to read.)
+    check(vk.cuts.length >= 2 && firstAvg >= (vk.atk - 6) * 0.9 && vk.hp0 - vk.hp >= 2 * (vk.atk - 6), `${tag}: tapped at Varek's side, ${vk.cuts.length} cuts, the first two ~${Math.round(firstAvg)} (sword ${vk.atk}), then his guard; took ${Math.round(vk.hp0 - vk.hp)} of his ${Math.round(vk.hp0)}`, JSON.stringify(vk.cuts));
   }
   await ev(() => {
     const L2 = window.__game.companion;

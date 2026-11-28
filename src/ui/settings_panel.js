@@ -28,7 +28,7 @@ export const SETTINGS_LAYOUT = {
   ],
   controls: [
     { id: 'touch', title: 'Touch', keys: ['touchScale', 'leftHanded', 'touchBuzz'] },
-    { id: 'mouse', title: 'Mouse', keys: ['aimGuides'], howTo: true },
+    { id: 'mouse', title: 'Mouse', keys: ['aimGuideIdle'], howTo: true },
   ],
   sound: [
     { id: 'volume', title: 'Volume', keys: ['musicVol', 'sfxVol'] },
@@ -55,7 +55,7 @@ export const ACTION_ROWS = {
 };
 
 // Settings the touch and aim controls keep outside DEFAULT_SETTINGS (unset = default).
-export const EXTRA_SETTING_KEYS = ['touchScale', 'leftHanded', 'touchBuzz', 'aimGuides', 'showQuestLine', 'uiSize'];
+export const EXTRA_SETTING_KEYS = ['touchScale', 'leftHanded', 'touchBuzz', 'aimGuideIdle', 'showQuestLine', 'uiSize']; // (aimGuides: the old row, read only when a saved setting has it off)
 
 // Every key the panel shows, in order, with its tab: [{ key, tab, group }].
 export function settingKeysInLayout() {
@@ -124,6 +124,11 @@ export const SETTING_ROWS = {
   leftHanded: { kind: 'toggle', label: 'Left-handed', note: 'Move with your right thumb, fight with your left.' },
   touchBuzz: { kind: 'toggle', on: true, label: 'Buzz', note: 'A small vibration when you press a button, where the phone allows it.' },
   aimGuides: { kind: 'toggle', on: true, label: 'Aim guide', note: 'Shows where a weave will go, under the mouse.' },
+  // Round 15 (DESIGN §40.6; the author: "the highlight of where it would go ... stays on"): the
+  // aim shows only while a weave is pressed or held. This opt-in brings back a faint guide of
+  // the marked weave under the mouse in a fight between casts (the old row, aimGuides, only
+  // turned that guide off, and is still honoured when a save of the settings has it off).
+  aimGuideIdle: { kind: 'toggle', label: 'Aim guide between casts', note: 'Off: the aim shows only while you press or hold a weave. On: a faint guide of the marked weave under the mouse in a fight.' },
   musicVol: { kind: 'range', label: 'Music' },
   sfxVol: { kind: 'range', label: 'Effects' },
   voices: { kind: 'toggle', label: 'Spoken scenes', note: 'The narrator, Lyra and the others speak their lines.' },

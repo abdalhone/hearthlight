@@ -1,5 +1,6 @@
 import { OUTLINE, UI } from '../art/palette.js';
 import { portrait } from '../art/characters_art.js';
+import { stripEmoji } from '../art/faces_art.js';
 import { COMPANION_ID, PLAYER_ID } from '../core/constants.js';
 import { holderOf } from '../core/party.js';
 import {
@@ -38,7 +39,7 @@ const MAX_NUMBERS = 48;
 export const ICONS = ['!', '?', 'heart', 'zzz', 'anger', 'note', 'sweat', '...'];
 const ICON_ALIASES = {
   love: 'heart',
-  '♥': 'heart',
+  '\u2665': 'heart',
   music: 'note',
   song: 'note',
   sing: 'note',
@@ -179,7 +180,7 @@ export class Bubbles {
   // ---------------------------------------------------------------- API
 
   say(entity, text, opts = {}) {
-    const str = String(text ?? '').trim();
+    const str = stripEmoji(String(text ?? '')).trim();
     if (!entity || !str) return null;
     const kind = ['say', 'bark', 'shout', 'whisper'].includes(opts.kind) ? opts.kind : 'say';
     this._removeFor(entity, true);
@@ -196,7 +197,7 @@ export class Bubbles {
   // A thought shows only while the entity is not speaking, and only when the player
   // asked to see thoughts.
   thought(entity, text, opts = {}) {
-    const str = String(text ?? '').trim();
+    const str = stripEmoji(String(text ?? '')).trim();
     if (!entity || !str) return null;
     if (this.game?.settings?.showThoughts === false) return null;
     if (this.isSpeaking(entity)) return null;
@@ -822,7 +823,9 @@ export class Bubbles {
         ctx.lineWidth = 2 * this.u;
         ctx.strokeStyle = OUTLINE;
         ctx.fillStyle = UI.text;
-        const label = ic.name === 'heart' ? '♥' : ic.name === 'note' ? '♪' : ic.name;
+        // (Only if the drawn balloon is missing: plain letters, never a character a phone
+        // would turn into its own colour emoji.)
+        const label = ic.name === 'heart' ? '<3' : ic.name === 'note' ? '~' : ic.name;
         ctx.strokeText(label, ax, ay - 8 * r.scale);
         ctx.fillText(label, ax, ay - 8 * r.scale);
       }

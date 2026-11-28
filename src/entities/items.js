@@ -33,6 +33,8 @@ export const ITEMS = {
   lyra_letter: { name: "Lyra's Letter", type: 'letter', value: 0, unsellable: true, desc: 'Folded twice, in her small slanted hand. Read it from your bag.' },
   maren_journal: { name: "Maren's Journal", type: 'quest', value: 0, desc: "Lyra's mentor's journal, water-stained." },
   lantern: { name: 'Lantern', type: 'tool', value: 15, desc: 'Lights the dark.' },
+  // Round 15 (item 9, src/world/tools.js): iron yields only to its tool.
+  pickaxe: { name: 'Pickaxe', type: 'tool', value: 18, desc: "An iron head on an ash haft, from Bram's forge. Iron ore and an iron hasp yield to it; nothing else you carry will move them." },
   // Creature drops (added by the combat module). Ids and names avoid common short words as
   // substrings ("me", "it", "the") so resolveItemId() stays predictable for chat parsing.
   venison: { name: 'Venison', type: 'food', value: 5, heal: 3, desc: 'Lean red meat from the Whisperwood. Better over a fire.' },

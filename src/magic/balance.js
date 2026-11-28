@@ -38,9 +38,40 @@ export const TWIST_SLOTS_MAX = 4;
 export const ESSENCE_COUNT_DMG = [1, 1, 1.12, 1.22, 1.3];
 export const STATUS_POTENCY = [1, 1, 0.72, 0.58, 0.5];
 
-// Clamps.
+// Clamps. (Round 15: the old 90 held every big weave at 90 mana, however much was stacked on
+// it, "the strongest spell … like 80 something mana"; the ceiling is now one no weave meets.)
 export const COST_MIN = 2;
-export const COST_MAX = 90;
+export const COST_MAX = 600;
+
+// What a weave asks of the hands (round 15; the author: "Do not decrease the mana. Increase the
+// mana of modified spells and spells in general, because I can literally just do whatever I
+// want, put whatever I want in spell"). On top of the budget (which already prices each twist's
+// harm), every weave costs COST_BASE more; each essence past the first COST_PER_ESSENCE more;
+// each twist COST_PER_TWIST more (four twists: +48%); a strong shape its SHAPE_COST. A
+// surcharge on mana only, never on harm: the budget's damage stays as it was. Max mana and
+// Focus are untouched (the stats pass numbers stand).
+export const COST_BASE = 1.15;
+export const COST_PER_ESSENCE = 0.25;
+export const COST_PER_TWIST = 0.12;
+export const SHAPE_COST = Object.freeze({
+  nova: 1.25, // all around you
+  rain: 1.25, // called down
+  orb: 1.2,
+  throw: 1.15,
+  beam: 1.15, // its drain per second
+  summon: 1.15,
+  blast: 1.1,
+  rune: 1.05,
+  wall: 1.05,
+});
+// The surcharge for a weave of `shape` with `essences` essences (raw counts as one) and
+// `twists` twists (prices are not twists: they carry their own cost).
+export function costSurcharge(shape, essences = 1, twists = 0) {
+  const e = Math.max(1, Number(essences) || 1);
+  const t = Math.max(0, Number(twists) || 0);
+  const sh = Number.isFinite(SHAPE_COST[shape]) ? SHAPE_COST[shape] : 1;
+  return COST_BASE * (1 + COST_PER_ESSENCE * (e - 1)) * (1 + COST_PER_TWIST * t) * sh;
+}
 export const COOLDOWN_MIN = 0.16;
 export const COOLDOWN_MAX = 12;
 export const SIZE_MAX = 3;
@@ -81,15 +112,18 @@ export const cooldownBuy = (scale) => 1 + COOLDOWN_DMG * Math.log(Math.max(1, Nu
 // a full charge CHARGE_TIME seconds after the press (shortened by cast speed). At charge
 // k (0..1) it hits x(1 + CHARGE_POWER k), is up to x(1 + CHARGE_SIZE k) bigger and costs
 // x(1 + CHARGE_MANA k) mana, paid when it is let go. The charge twist charges in
-// CHARGE_TWIST_TIME of that and reaches CHARGE_TWIST_POWER instead.
+// CHARGE_TWIST_TIME of that and reaches CHARGE_TWIST_POWER instead, for CHARGE_TWIST_MANA.
+// Round 15: a charge costs as much more as it hits (x2.5 at full, the twist x3), never less: it
+// buys the blow in one breath, not cheaper harm.
 export const CHARGE_DEAD = 0.18;
 export const CHARGE_TIME = 1.5;
 export const CHARGE_POWER = 1.5; // x2.5 at a full charge
 export const CHARGE_SIZE = 0.45; // x1.45
 export const CHARGE_SPEED = 0.25; // x1.25 (bolts fly faster)
-export const CHARGE_MANA = 1; // x2
+export const CHARGE_MANA = 1.5; // x2.5 (round 15; was x2)
 export const CHARGE_TWIST_TIME = 0.5; // the twist: twice as fast
 export const CHARGE_TWIST_POWER = 2; // x3 at a full charge
+export const CHARGE_TWIST_MANA = 2; // x3 at a full charge (round 15)
 // Casting stops you (round 14b follow-up, plan §14; the author: "I can move while I'm doing
 // spells; it should stop me"). Whoever weaves through game.magic stands to do it:
 //   - from the press, while a charge builds or a beam pours, the walk is CHARGE_MOVE = 0
@@ -150,10 +184,18 @@ export function chargeK(t, time = CHARGE_TIME, castSpeed = 1) {
   return Math.min(1, (live * Math.max(0.3, Number(castSpeed) || 1)) / span);
 }
 
-// The most charge `mana` can pay for, for a weave that costs `cost` uncharged.
-export function affordableK(mana, cost) {
+// The most charge `mana` can pay for, for a weave that costs `cost` uncharged (`per`: the
+// plan's chargeMana, CHARGE_MANA unless the charge twist rides it).
+export function affordableK(mana, cost, per = CHARGE_MANA) {
   if (!(cost > 0)) return 1;
-  return Math.max(0, Math.min(1, ((Number(mana) || 0) / cost - 1) / CHARGE_MANA));
+  const m = Number.isFinite(per) && per > 0 ? per : CHARGE_MANA;
+  return Math.max(0, Math.min(1, ((Number(mana) || 0) / cost - 1) / m));
+}
+
+// What a cast of a weave costing `cost` uncharged pays at charge k.
+export function chargedCost(cost, k = 1, per = CHARGE_MANA) {
+  const m = Number.isFinite(per) && per > 0 ? per : CHARGE_MANA;
+  return (Number(cost) || 0) * (1 + m * Math.max(0, Math.min(1, Number(k) || 0)));
 }
 
 // Hold a plan inside the budget: too efficient -> it costs more; too weak -> it hits harder.

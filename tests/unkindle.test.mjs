@@ -189,9 +189,13 @@ test('close in strength: a longer, harder pull than an easy one', () => {
   assert.equal(vw.kind, 'close', JSON.stringify(vw));
   assert.equal(ve.kind, 'easy', JSON.stringify(ve));
   assert.ok(vw.dur > ve.dur);
-  // Asleep, the watchman holds on less.
+  // Asleep, the watchman holds on less (round 15: his own waking hold is the measure; Elda's
+  // soul is far weaker than a watchman's now, asleep or not).
+  const awake = unk.strengthOf(wys);
+  const odds = unk.verdict(wys).chance;
   wys.state = 'sleep';
-  assert.ok(unk.strengthOf(wys) < unk.strengthOf(elda) * 2);
+  assert.ok(unk.strengthOf(wys) <= awake * 0.6 + 1e-9, `${unk.strengthOf(wys)} vs ${awake}`);
+  assert.ok(unk.verdict(wys).chance > odds, 'better odds while he sleeps');
   // Bosses and the tempter: never.
   assert.equal(unk.verdict({ type: 'actor', bossId: 'varek', x: 0, y: 0 }).kind, 'resists');
 });

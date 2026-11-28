@@ -884,7 +884,7 @@ export class Mind {
     return {
       name: this.name,
       mood: m,
-      emoji: m.emoji,
+      face: m.face,
       emotions: this.affect.top(3).map((e) => ({ name: e.name, value: Math.round(e.value * 100) / 100 })),
       needs,
       pressing,

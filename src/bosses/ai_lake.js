@@ -8,6 +8,7 @@
 import { addMarker, angleTo, dist, faceTarget, stop, particles, sound, shake, hitShape } from './kit.js';
 import { spawnHazard } from './hazards.js';
 import { alive, hostileTo } from '../entities/creature_util.js';
+import { TILE } from '../core/constants.js';
 
 // Places just off the island's shore where it can rise (the arena gives them).
 function spots(b) {
@@ -323,7 +324,19 @@ export const lakeBrain = {
   // The shards wash up on the island, not in the water.
   shardSpot(b) {
     const a = b.arena;
-    return { x: b.x + (a.x - b.x) * 0.6, y: b.y + (a.y - b.y) * 0.6 };
+    const g = b.game;
+    const clear = (x, y) => {
+      if (!g?.isBlockedTile) return true;
+      const tx = Math.floor(x / TILE);
+      const ty = Math.floor(y / TILE);
+      return !g.isBlockedTile(tx, ty) && !g.isBlockedTile(tx + 1, ty) && !g.isBlockedTile(tx - 1, ty) && !g.isBlockedTile(tx, ty + 1) && !g.isBlockedTile(tx, ty - 1);
+    };
+    for (let k = 0.6; k <= 1.0; k += 0.1) {
+      const x = b.x + (a.x - b.x) * k;
+      const y = b.y + (a.y - b.y) * k;
+      if (clear(x, y)) return { x, y };
+    }
+    return { x: a.x, y: a.y };
   },
 
   light(b, time) {

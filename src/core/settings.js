@@ -10,7 +10,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   //  'local'  - the built-in offline mind, no AI service at all
   brain: 'auto',
   modelTier: 'quick', // claude.ai tier: 'quick' (fast) or 'default' (deeper, slower)
-  apiModel: 'claude-opus-5-5', // model used with an API key
+  apiModel: 'claude-opus-4-5', // model used with an API key
   // Voices are heard only in the cutscenes (DESIGN.md §21, src/audio/voice.js); everyone
   // else's words, Lyra's replies included, are text.
   voices: true,

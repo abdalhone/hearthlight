@@ -12,6 +12,7 @@ import { GLYPH_PALETTE } from './defs.js';
 
 const COLLECT_RADIUS = 10;
 const MAGNET_RADIUS = 30;
+export const SOUL_GONE = 3.2; // s: the soul-rise's whole length (vendor soul-rise meta.duration)
 
 let seq = 1;
 
@@ -72,7 +73,12 @@ export class GlyphShard extends Entity {
     this.vz = o.rise ? 120 + Math.random() * 30 : 0;
     this.vx = o.vx ?? 0;
     this.vy = o.vy ?? 0;
-    this.collectDelay = o.collectDelay ?? 1.1;
+    // Round 15 (DESIGN §40.4): a shard freed from a dying body never leaps from it into you.
+    // The body's soul rises and fades upward (pixelfx soul-rise, SOUL_GONE s); until it has,
+    // the shard only rises and hovers where it came out: it is neither pulled to you nor
+    // taken by touch then.
+    this.collectDelay = o.rise ? Math.max(o.collectDelay ?? 1.1, SOUL_GONE) : o.collectDelay ?? 1.1;
+    this.pullAfter = this.collectDelay;
     this.collected = false;
     this.pal = glyphPalette(game, this.kind, this.glyphId);
     this.spin = Math.random() * Math.PI * 2;
@@ -124,7 +130,7 @@ export class GlyphShard extends Entity {
       this.collect(p);
       return;
     }
-    if (d <= MAGNET_RADIUS) {
+    if (d <= MAGNET_RADIUS && this.age >= this.pullAfter) {
       const step = Math.min(d, (50 + (MAGNET_RADIUS - d) * 4) * dt);
       this.x += (dx / d) * step;
       this.y += (dy / d) * step;

@@ -162,15 +162,17 @@ export class StatusFx {
     else z = z0 + 2 + Math.random() * (h - 4);
     let vx = (Math.random() - 0.5) * 10;
     let vy = (Math.random() - 0.5) * 4;
-    // Drained life drifts toward whoever drains it.
-    if (s.id === 'drained' && s.src && !s.src.removed) {
-      const dx = s.src.x - a.x;
-      const dy = s.src.y - a.y;
-      const l = Math.hypot(dx, dy) || 1;
-      vx = (dx / l) * 40;
-      vy = (dy / l) * 30;
+    let vz = (Math.random() - 0.3) * 8;
+    // Drained life rises off them and fades upward, toward the Hearth; it never drifts into
+    // whoever drains it (round 15, DESIGN §40.4: the author saw "a soul that leaves their body
+    // and goes to me" off the dark path; only the Unkindling, or coldfire on the tempter's
+    // pact, draws a soul or a flame into you). The heal it gives the weaver is unchanged.
+    if (s.id === 'drained') {
+      vx *= 0.4;
+      vy = -1 - Math.random() * 2;
+      vz = 10 + Math.random() * 10;
     }
-    parts.add(st, ramp, x, y, z, vx, vy, (Math.random() - 0.3) * 8);
+    parts.add(st, ramp, x, y, z, vx, vy, vz);
   }
 
   // Tints and overlays (the layer's body pass, after every actor is drawn).

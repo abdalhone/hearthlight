@@ -122,6 +122,17 @@ export class Murder {
       bus.on('npc_topic', (p) => safe(() => Grief.onTopic(this, p)));
       bus.on('delivered', (p) => safe(() => this.onDelivered(p)));
       bus.on('crime_cleared', (p) => safe(() => this.onCrimeCleared(p)));
+      bus.on('set_down', (p) =>
+        safe(() => {
+          const v = p?.entity;
+          const rec = v && this.dead[v.id];
+          if (!rec || rec.state !== 'carried') return;
+          rec.state = 'lying';
+          rec.x = Math.round(v.x);
+          rec.y = Math.round(v.y);
+          this.carrying = null;
+        }),
+      );
     }
     this.attach();
     this.installPlugin();
@@ -688,6 +699,8 @@ export class Murder {
     // Unmarked: whatever blood lay where they stood is gone with the wound that never was.
     if (unmarked) safe(() => g.survival?.trail?.clearNear?.(v.x, v.y, 18));
     this.layBody(v, rec);
+    rec.x = Math.round(v.x);
+    rec.y = Math.round(v.y);
     this.emit('villager_killed', { id: v.id, entity: v, killer, by, cause, provoked, silent, unmarked, witnesses: seen.map((s) => s.id), place, x: v.x, y: v.y });
     safe(() => g.particles?.emit?.('dust', v.x, v.y, { count: 6, speed: 14, life: 0.6 }));
     if (seen.length) this.seenMurder(rec);
@@ -717,6 +730,8 @@ export class Murder {
     safe(() => this.life?.markGone?.(v.id, { cause: rec.cause, seen: [], at: { place }, keepBody: true }));
     if (unmarked) safe(() => g.survival?.trail?.clearNear?.(v.x, v.y, 18));
     this.layBody(v, rec);
+    rec.x = Math.round(v.x);
+    rec.y = Math.round(v.y);
     this.emit('villager_died', { id: v.id, entity: v, cause: rec.cause, place, x: v.x, y: v.y });
     safe(() => {
       if (g.save) g.save.pending = g.save.pending || 'auto';

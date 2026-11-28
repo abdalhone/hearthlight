@@ -116,7 +116,7 @@ export class Weaving {
     this.plans = []; // per slot: { key, plan, weave, palette, mode, preview, name }
     this.castAt = []; // per slot: game time of the last cast (cooldown fallback)
     this.aims = []; // what the aim layer draws this frame
-    this.hover = null; // the faint desktop preview of the selected slot
+    this.hover = null; // the faint guide of the marked weave between casts (opt-in: Settings, aimGuideIdle)
     this.sword = null; // a touch drag on the sword button { dx, dy }
     this.version = 0; // bumps when slots or unlocks change (the UI re-renders on it)
     this.fails = []; // { slot, reason, t } for the buttons to shake
@@ -556,13 +556,19 @@ export class Weaving {
       c.aim = aim;
       if (c.started) {
         const h = this.call('castHold', c.slot, aim, dt);
-        if (h === null) c.started = false;
-        else {
-          c.held += dt;
-          if (Number.isFinite(h?.k)) c.k = h.k;
-          c.live = h?.live !== undefined ? !!h.live : c.held >= 0.18;
-          c.capped = !!h?.capped;
+        if (h === null) {
+          // The runtime let it go before the release (a roll broke the charge, a stun or a
+          // freeze, a beam ran dry, another weave took over): the cast is over, so its aim goes
+          // now, the finger or key still down (round 15; the author: "the highlight of where it
+          // would go ... stays on"). Letting go later casts nothing.
+          c.started = false;
+          this.casts.delete(src);
+          continue;
         }
+        c.held += dt;
+        if (Number.isFinite(h?.k)) c.k = h.k;
+        c.live = h?.live !== undefined ? !!h.live : c.held >= 0.18;
+        c.capped = !!h?.capped;
       }
       // A key or a click still inside the tap's dead zone draws no preview yet (a quick
       // tap would only flicker one); a finger on a button always shows its aim.
@@ -572,18 +578,23 @@ export class Weaving {
       this.describeAim(v, c, aim);
       this.aims.push(v);
     }
-    // The selected weave, faintly, under a mouse that is aiming — in a fight (a foe near)
-    // or right after a cast or a slot change; walking about shows only the reticle.
-    this.foeT -= dt;
-    if (!(this.foeT > 0)) {
-      this.foeT = 0.25;
-      const p = g.player;
-      this.foeNear = !!this.nearestFoe(p.x, p.y - BODY_UP, p.facing?.x || 0, p.facing?.y || 0, 220);
-    }
+    // The aim is drawn only while a weave is pressed or held (round 15, DESIGN §40.6): the
+    // moment a cast ends, is cancelled or refused, nothing of it stays. The faint guide of the
+    // marked weave between casts is an opt-in (Settings: "Aim guide between casts"), and only
+    // in a fight (a foe near) while the mouse or the right stick aims, never as an afterglow
+    // of a cast or a slot change.
     const t = g.time || 0;
-    const recent = t - (this.lastActT ?? -9) < 2.5;
+    const idleGuide = g.settings?.aimGuideIdle === true;
+    if (idleGuide) {
+      this.foeT -= dt;
+      if (!(this.foeT > 0)) {
+        this.foeT = 0.25;
+        const p = g.player;
+        this.foeNear = !!this.nearestFoe(p.x, p.y - BODY_UP, p.facing?.x || 0, p.facing?.y || 0, 220);
+      }
+    } else this.foeNear = false;
     const padAiming = !!(input?.padAim && (input.padAim.x || input.padAim.y));
-    if (!this.aims.length && (padAiming || ((this.foeNear || recent) && input?.mouseAiming?.(2.5)))) {
+    if (idleGuide && !this.aims.length && !this.casts.size && this.foeNear && (padAiming || input?.mouseAiming?.(2.5))) {
       const rec = this.slotInfo(this.selected);
       if (rec.plan) {
         const c = this._hoverCast || (this._hoverCast = { slot: 0, source: 'mouse', mode: 'quick', touch: null, held: 0 });
@@ -634,7 +645,11 @@ export class Weaving {
   // Held casts the runtime has let go of (another cast took over, mana ran out, a
   // status froze the hands) stop holding here too, so a late release frees nothing.
   dropHolds(except = null) {
-    for (const o of this.casts.values()) if (o !== except && o.started) o.started = false;
+    for (const [src, o] of this.casts) {
+      if (o === except || !o.started) continue;
+      o.started = false;
+      this.casts.delete(src); // its aim goes with it (round 15)
+    }
   }
 
   // The press ends: cast what was held (charged as far as it got), or let it go.

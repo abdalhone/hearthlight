@@ -9,7 +9,10 @@
 import { h, button, setText, toggleClass, clear } from './dom.js';
 import { CHIPS } from './content.js';
 import { portraitUrl } from './art.js';
-import { cleanLine, capitalize } from './format.js';
+import { cleanLine, capitalize, moodFace } from './format.js';
+import { faceImg, setFace } from './faces.js';
+import { stripEmoji } from '../art/faces_art.js';
+import { personFace, portraitExpr } from './person_face.js';
 import { memoryRefs, findMemory, memoryChipLabel, STORE_LABELS, companionshipOf, companionshipLabel } from './lyra_view.js';
 import { TalkSession, villageOf, firstName, lineBeat } from './village_view.js';
 import { LYRA, ChatTargetBar, moodWord, fearWord, earshotPeople, whyNotHeard, canHear, chipFor, standingOf, faceOf, partingLine, villagerChips, isVillager, EARSHOT_LOSE, notHeardText, NEAR, lyraHears, nearestTalkTarget } from './chat_target.js';
@@ -71,7 +74,9 @@ export class Chat {
     // (round 14b, decision D4); farther off, the header says to walk up to them.
     this.tradeBtn = button('Trade · Give · Work', { cls: 'btn-small btn-ghost chat-trade', title: 'Trade, give a gift, or ask about work', onClick: () => this.openTrade() });
     this.tradeBtn.hidden = true;
-    const head = h('header', { class: 'chat-head' }, h('span', { class: 'portrait-frame small' }, this.portrait), h('div', { class: 'chat-heading' }, this.title, this.status), this.tradeBtn, closeBtn);
+    // Their mood as a face the game draws (round 15, item 2), on the portrait's corner.
+    this.face = faceImg('neutral', '', 'chat-face');
+    const head = h('header', { class: 'chat-head' }, h('span', { class: 'portrait-frame small chat-portrait' }, this.portrait, this.face), h('div', { class: 'chat-heading' }, this.title, this.status), this.tradeBtn, closeBtn);
     this.toBar = new ChatTargetBar({ onPick: (id) => this.selectTarget(id, { focus: !this.ui.isTouch, from: 'chip' }) });
 
     this.log = h('div', { class: 'chat-log', role: 'log', 'aria-live': 'polite', 'aria-label': 'Conversation with Lyra' });
@@ -239,7 +244,8 @@ export class Chat {
     if (!m || !m.text) return null;
     if (m.to && m.to !== LYRA) return this.pushVillager(m.to, m);
     const from = ['player', 'lyra', 'system', 'npc'].includes(m.from) ? m.from : 'system';
-    const text = cleanLine(m.text, 1200);
+    // (A mind's words never bring a phone's emoji: round 15, item 2.)
+    const text = cleanLine(from === 'player' ? m.text : stripEmoji(m.text), 1200);
     if (!text) return null;
     const now = Date.now();
     // The UI echoes the player's line at once; the brain may echo it again.
@@ -471,8 +477,11 @@ export class Chat {
     }
     setText(this.status, status);
     toggleClass(this.el, 'is-thinking', this.thinking);
-    const cs = companionshipOf(g);
-    const expr = this.thinking || cs === 'wary' || cs === 'apart' ? 'neutral' : cs === 'left' || cs === 'gone' ? 'sad' : 'happy';
+    // Her face is what she feels (person_face.js), never a happy default.
+    const f = personFace(g, c);
+    this.face.hidden = !f;
+    if (f) setFace(this.face, f.kind, f.label);
+    const expr = f ? portraitExpr(f.kind) : 'sad';
     const url = portraitUrl(g, 'lyra', expr);
     if (url && this.portrait.src !== url) this.portrait.src = url;
   }
@@ -796,7 +805,7 @@ export class Chat {
   // One line in a villager's conversation; shown at once when they are selected.
   pushVillager(id, m) {
     const from = ['player', 'npc', 'system'].includes(m.from) ? m.from : 'system';
-    const text = cleanLine(m.text, 400);
+    const text = cleanLine(from === 'player' ? m.text : stripEmoji(m.text), 400);
     if (!text || !id || id === LYRA) return null;
     const v = this.village();
     let msg = null;
@@ -1019,6 +1028,14 @@ export class Chat {
     toggleClass(this.el, 'is-thinking', this.waiting.has(id));
     const url = e ? portraitUrl(g, e.spriteKey || e.id, faceOf(st, this.moods.get(id))) : '';
     if (url && this.portrait.src !== url) this.portrait.src = url;
+    // Their face: fear, grief or a fight first (what they are living through), then the mood
+    // of their last answer, else where they stand with you.
+    const f = e ? personFace(g, e) : null;
+    const said = this.moods.get(id);
+    const urgent = f && /^(terrified|afraid|hurt|grieving|angry)$/.test(f.kind);
+    const kind = f && !urgent && said ? moodFace(said) : f?.kind;
+    this.face.hidden = !kind;
+    if (kind) setFace(this.face, kind, f && !urgent && said ? String(said) : f?.label || '');
   }
 
   // The To: row: Lyra, then everyone within earshot (and the selected one while they go).
@@ -1282,6 +1299,7 @@ export class Chat {
     setText(this.status, bits.join(' · '));
     toggleClass(this.el, 'is-thinking', this.waiting.has(NEAR));
     this.portrait.removeAttribute('src');
+    if (this.face) this.face.hidden = true;
   }
 
   // A villager in terror of the player: one line of what the player sees (once in a

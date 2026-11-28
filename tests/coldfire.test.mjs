@@ -449,23 +449,28 @@ test('saves: the bar, the mark, the prey, every person\'s suspicion come back; a
   assert.equal(u3.signTier(), 2, 'three taken: the clear signs');
 });
 
-test('a boss shrugs it off unless you are much stronger; then its own defeat plays out', () => {
+// Round 15 (the author: the Unkindling "a real contest of strength"; at Free 999 Varek once read
+// 'close' and could be taken): a boss shrugs it off at once whatever the hand, never held, never
+// taken; it was "taken only by a hand much stronger" until Version 12.
+test('a boss shrugs it off whatever the hand: never held, never taken', () => {
   const { g, unk, cf } = setup();
   let defeated = null;
   const boss = { type: 'actor', bossId: 'greyjaw', id: 'boss_greyjaw', x: g.player.x + 16, y: g.player.y, hp: 520, maxHp: 520, atk: 14, def: 2, lockTime: 0, rootTime: 0, knock: { x: 0, y: 0 }, isAlive: () => !defeated, beginDefeat(by) { defeated = by; } };
   assert.equal(unk.verdict(boss).kind, 'resists');
-  // Much stronger (a hand far beyond it): taken.
+  // A hand far beyond it (a full bar, level 60): still never.
   cf.bar = MAX;
   g.player.level = 60;
   g.player.maxHp = 900;
   g.player.hp = 900;
   const v = unk.verdict(boss);
-  assert.notEqual(v.kind, 'resists', JSON.stringify(v));
-  assert.ok(unk.begin(boss).ok);
-  assert.equal(unk.channel.held, true);
+  assert.equal(v.kind, 'resists', JSON.stringify(v));
+  assert.equal(v.chance, 0);
+  assert.equal(unk.odds(boss).words, 'too strong');
+  assert.ok(unk.begin(boss).ok, 'the spell may be tried');
+  assert.equal(unk.channel.held, false, 'it is never held (no stun to chain)');
   hold(g, unk, { max: 15 });
-  assert.equal(defeated, g.player, 'its own defeat');
-  assert.equal(unk.prey.boss, 1);
+  assert.equal(defeated, null, 'never its defeat');
+  assert.equal(unk.prey.boss, 0);
 });
 
 test('with a village that hears first (talk emits player_heard), the verdict is decided after the words reach her and before the wording', async () => {

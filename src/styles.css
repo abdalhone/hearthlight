@@ -2409,80 +2409,13 @@ input[type='range']::-moz-range-thumb {
   color: var(--danger);
 }
 
-/* shop */
-.shop {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.shop-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.shop-tabs {
-  display: none;
-}
+/* A purse (the forge, the bag, the shop). The shop itself is drawn by src/styles/shop.css. */
 .purse {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-family: var(--font-display);
   color: var(--ember-hot);
-}
-.shop-panes {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
-.shop-pane h3 {
-  margin: 0 0 8px;
-  font-family: var(--font-display);
-  font-size: var(--fs-s);
-  color: var(--ember);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-.shop-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 240px;
-  overflow-y: auto;
-  touch-action: pan-y;
-}
-.shop-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
-  background: rgba(10, 9, 25, 0.35);
-}
-.shop-row.dim {
-  opacity: 0.55;
-}
-.shop-name {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  gap: 6px;
-  align-items: baseline;
-}
-.shop-qty {
-  color: var(--parch-dim);
-  font-size: var(--fs-xs);
-}
-.price {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-family: var(--font-display);
-  font-size: var(--fs-s);
-  color: var(--ember-hot);
-}
-.shop-btns {
-  display: flex;
-  gap: 6px;
 }
 
 /* ---------- inventory & chest ---------- */
@@ -4203,7 +4136,6 @@ input[type='range']::-moz-range-thumb {
   .soul-form,
   .soul-lists,
   .store,
-  .shop-panes,
   .inv {
     grid-template-columns: 1fr;
   }
@@ -4247,19 +4179,6 @@ input[type='range']::-moz-range-thumb {
   }
   .panel-dialog {
     max-height: 88%;
-  }
-  .shop-tabs {
-    display: inline-flex;
-  }
-  .shop .sell-pane,
-  .shop .shop-pane:last-child {
-    display: none;
-  }
-  .shop.show-sell .shop-pane:first-child {
-    display: none;
-  }
-  .shop.show-sell .shop-pane:last-child {
-    display: block;
   }
   .person {
     gap: 10px;
@@ -9084,43 +9003,6 @@ input[type='range']::-moz-range-thumb {
   .panel-dialog .dlg-extra:empty + .dlg-options {
     margin-top: auto;
   }
-  /* Trading: the wares scroll on their own; "Done trading" stays in view under them
-     (with a long list it was below the fold). */
-  .panel-dialog:has(.dlg-extra > .shop) {
-    height: min(580px, 94%);
-  }
-  .panel-dialog:has(.dlg-extra > .shop) .panel-body {
-    overflow: hidden;
-  }
-  .panel-dialog:has(.dlg-extra > .shop) .dlg {
-    flex: 1 1 0;
-    min-height: 0;
-  }
-  .panel-dialog .dlg-main {
-    min-height: 0;
-  }
-  .panel-dialog .dlg-extra:has(> .shop) {
-    flex: 1 1 0;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  .panel-dialog .dlg-extra > .shop {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .panel-dialog .dlg-extra > .shop > .shop-panes {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-  .panel-dialog .dlg-extra > .shop > .btn {
-    flex: none;
-  }
 }
 @media (max-height: 520px) and (min-width: 600px) {
   .panel-dialog {
@@ -9230,28 +9112,6 @@ input[type='range']::-moz-range-thumb {
   }
   .panel-dialog .panel-head {
     padding: 2px 6px 2px 12px;
-  }
-}
-@media (max-height: 520px) and (min-width: 600px) {
-  .panel-dialog .dlg-extra:has(> .shop) {
-    overflow: hidden;
-  }
-  .panel-dialog .dlg-extra > .shop {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    height: 100%;
-    min-height: 0;
-  }
-  .panel-dialog .dlg-extra > .shop > .shop-panes {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-  .panel-dialog .dlg-extra > .shop > .btn {
-    flex: none;
-    align-self: flex-end;
   }
 }
 
@@ -9373,21 +9233,6 @@ body {
   font-family: var(--font-display);
   font-size: var(--fs-xs);
   color: var(--parch-dim);
-}
-
-/* Trading sideways: the wares get the room (their words narrow to a column, and the
-   "Say something" field steps aside until "Done trading"). */
-@media (max-height: 520px) and (min-width: 600px) {
-  .panel-dialog .dlg:has(.dlg-extra > .shop) {
-    grid-template-columns: 56px minmax(0, 0.7fr) minmax(0, 1.7fr);
-  }
-  .panel-dialog:has(.dlg-extra > .shop) .panel-foot.dlg-say {
-    display: none;
-  }
-  /* "Done trading" keeps its whole outline (the column clips at its edge). */
-  .panel-dialog .dlg-extra > .shop > .btn {
-    margin: 0 3px 3px 0;
-  }
 }
 
 /* One close control: the chat's ✕ is the panels' ✕ (same box, same mark). */

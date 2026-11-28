@@ -499,6 +499,9 @@ export class Player extends Actor {
     const lk = this.game.lock?.aimTarget?.(reach + 6) || null;
     if (lk && !lk.downed) {
       this.faceToward(lk.x, lk.y);
+      // A locked training dummy (round 15, item 11): the blade swings at it, not at a tree
+      // or rock beside it; the arc lands on it as on any prop (combat.melee).
+      if (lk.type !== 'actor') return this._swordSwing(null);
       if (this.game.combat?.canHarm?.(this, lk, true)) return this._swordSwing(lk);
     }
     const foe = this._findFoe(reach, true);
@@ -694,7 +697,9 @@ export class Player extends Actor {
       if (front < 0.3) continue;
       let ok = false;
       try {
-        ok = !!o.canWork(this);
+        // A vein that wants a tool you lack (round 15, tools.js) is still swung at: the work
+        // swing rings off it and says so, instead of a sword blow at whoever stands near.
+        ok = !!o.canWork(this) || !!o.needsTool?.(this);
       } catch {
         ok = false;
       }
@@ -1194,13 +1199,16 @@ export class Player extends Actor {
     const casting = (this.castPoseT > 0 || gathering) && !this.rolling && !this.downed && (this.state === 'idle' || this.state === 'walk' || this.state === 'cast');
     // Dragging yourself along the ground while down (game.survival sets crawlPose, §27).
     const crawl = this.downed ? this.crawlPose : null;
-    const anim = crawl ? 'crawl' : casting ? 'cast' : animForState(this.state);
+    // A finisher's killing scene poses you (round 15, src/murder/finishers.js): the blade
+    // raised (attack frame 0), driven home (1..3), or the weaving hands (cast).
+    const fin = !crawl && this._finisherPose?.anim ? this._finisherPose : null;
+    const anim = crawl ? 'crawl' : fin ? fin.anim : casting ? 'cast' : animForState(this.state);
     const animT = casting ? this._castAnimT : this.rolling ? this.animTime * 2.2 : this.animTime;
     drawCharacter(ctx, atlas, this.spriteKey, anim, this.dir, animT, sx, sy - hz, {
       flash: this.flash,
       alpha: blink ? (Math.floor(this.hurtBlink * 20) % 2 ? 0.5 : 1) : 1,
       state: this.state,
-      frame: crawl ? crawl.frame : undefined,
+      frame: crawl ? crawl.frame : fin ? fin.frame : undefined,
     });
     if (sw && !slashBehind) this._drawSlash(ctx, sx, sy - hz);
     if (bound) this._drawBinding(ctx, sx, sy, time, true);

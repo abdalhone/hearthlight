@@ -120,28 +120,91 @@ export function weatherLabel(type, isNight) {
   return WEATHER_WORDS[type] || 'Clear';
 }
 
-const MOOD_EMOJI = [
-  [/joy|happy|cheer|elat|delight|playful|giddy/, '😊'],
-  [/love|affection|tender|fond|warm/, '🥰'],
-  [/content|calm|peace|serene|relax/, '🙂'],
-  [/proud|confident|triumph/, '😌'],
-  [/curious|intrigued|wonder/, '🤔'],
-  [/surprise|startl|amazed/, '😮'],
-  [/sad|melanch|gloom|griev|lonely|wistful/, '😔'],
-  [/fear|afraid|scared|anxious|nervous|uneasy|worried/, '😟'],
-  [/anger|angry|furious|irritat|annoy|frustrat/, '😠'],
-  [/tired|sleepy|exhaust|weary|drained/, '😴'],
-  [/embarrass|flustered|shy/, '😳'],
-  [/hungry|starv/, '🍞'],
-  [/bored/, '😐'],
+// Which game-drawn face (src/art/faces_art.js) shows a mood (round 15, item 2: never the
+// phone's own emoji). The mind names its mood (emotions.js `mood().face`); a label from
+// anywhere else (a villager's chat mood, an old save) is read by its words. Nothing known:
+// 'neutral', never a delighted default.
+export const MOOD_FACE = Object.freeze({
+  delighted: 'delighted',
+  cheerful: 'delighted',
+  happy: 'happy',
+  lively: 'lively',
+  content: 'content',
+  calm: 'calm',
+  'at ease': 'calm',
+  relieved: 'relieved',
+  affectionate: 'affectionate',
+  fascinated: 'fascinated',
+  curious: 'curious',
+  proud: 'proud',
+  flustered: 'flustered',
+  startled: 'startled',
+  shocked: 'shocked',
+  horrified: 'terrified',
+  terrified: 'terrified',
+  afraid: 'afraid',
+  shaken: 'afraid',
+  uneasy: 'uneasy',
+  'on edge': 'on_edge',
+  restless: 'restless',
+  troubled: 'uneasy',
+  wary: 'uneasy',
+  guarded: 'guarded',
+  sad: 'sad',
+  gloomy: 'sad',
+  'heavy-hearted': 'sad',
+  heartsick: 'heartsick',
+  grieving: 'grieving',
+  hurt: 'hurt',
+  miserable: 'miserable',
+  distressed: 'distressed',
+  angry: 'angry',
+  furious: 'furious',
+  cold: 'cold',
+  exhausted: 'exhausted',
+  starving: 'starving',
+  neutral: 'neutral',
+  quiet: 'blank',
+});
+const MOOD_WORDS = [
+  [/terrif|horrif|panic/, 'terrified'],
+  [/shock|aghast/, 'shocked'],
+  [/fear|afraid|scared|anxious|nervous|worried|frighten/, 'afraid'],
+  [/uneasy|tense|wary|troubl/, 'uneasy'],
+  [/griev|mourn|bereav/, 'grieving'],
+  [/heartbr|heartsick|weep|tear/, 'heartsick'],
+  [/sad|melanch|gloom|lonely|wistful|low/, 'sad'],
+  [/furious|rage|livid/, 'furious'],
+  [/anger|angry|irritat|annoy|frustrat|cross/, 'angry'],
+  [/cold|hostile|bitter/, 'cold'],
+  [/hurt|wounded|pain/, 'hurt'],
+  [/love|affection|tender|fond|warm/, 'affectionate'],
+  [/joy|happy|cheer|elat|delight|playful|giddy|glad/, 'happy'],
+  [/content|peace|serene|relax|calm/, 'calm'],
+  [/proud|confident|triumph/, 'proud'],
+  [/curious|intrigued|wonder/, 'curious'],
+  [/surprise|startl|amazed/, 'startled'],
+  [/tired|sleepy|exhaust|weary|drained/, 'exhausted'],
+  [/embarrass|flustered|shy/, 'flustered'],
+  [/hungry|starv/, 'starving'],
+  [/bored|flat|guarded/, 'guarded'],
 ];
 
-// The mind supplies mood().emoji; this covers labels without one.
-export function moodEmoji(mood) {
-  if (mood && typeof mood === 'object' && mood.emoji) return mood.emoji;
-  const label = String((mood && typeof mood === 'object' ? mood.label : mood) || '').toLowerCase();
-  for (const [re, e] of MOOD_EMOJI) if (re.test(label)) return e;
-  return '🙂';
+export function moodFace(mood) {
+  if (mood && typeof mood === 'object' && typeof mood.face === 'string' && mood.face) return mood.face;
+  const label = String((mood && typeof mood === 'object' ? mood.label : mood) || '')
+    .toLowerCase()
+    .trim();
+  if (!label) return 'neutral';
+  if (MOOD_FACE[label]) return MOOD_FACE[label];
+  for (const [re, f] of MOOD_WORDS) if (re.test(label)) return f;
+  return 'neutral';
+}
+
+// A villager's face toward you by where they stand with you (opinion level key).
+export const STANDING_FACE = Object.freeze({ fond: 'happy', friendly: 'content', neutral: 'neutral', wary: 'uneasy', hostile: 'angry' });
+export function standingFace(key) {
+  return STANDING_FACE[key] || 'neutral';
 }
 
 // Pick the portrait expression that best shows how she feels right now.

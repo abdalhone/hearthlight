@@ -46,14 +46,24 @@ test('charge curve: 0 inside the tap dead zone, growing after it, full at CHARGE
   const twist = BAL.CHARGE_TIME * BAL.CHARGE_TWIST_TIME;
   assert.equal(BAL.chargeK(twist, twist), 1, 'the twist is full twice as soon');
   assert.ok(BAL.chargeK(0.6, BAL.CHARGE_TIME, 1.5) > a, 'cast speed charges faster');
-  // Mana: x(1 + k); what the mana in hand can pay for is the cap.
+  // Mana: x(1 + 1.5k) (round 15: as much more as it hits, x2.5 at full); what the mana in hand
+  // can pay for is the cap.
+  assert.equal(BAL.CHARGE_MANA, 1.5);
   assert.equal(BAL.affordableK(40, 10), 1);
-  assert.ok(near(BAL.affordableK(15, 10), 0.5));
+  assert.ok(near(BAL.affordableK(15, 10), 0.5 / 1.5));
   assert.equal(BAL.affordableK(8, 10), 0);
   assert.equal(BAL.affordableK(0, 0), 1, 'a free weave charges all the way');
+  assert.equal(BAL.chargedCost(10, 1), 25);
+  assert.equal(BAL.chargedCost(10, 0), 10);
   const plan = compileWeave({ shape: 'bolt', essences: ['raw'], twists: ['charge'] });
   assert.equal(plan.chargePower, BAL.CHARGE_TWIST_POWER);
+  assert.equal(plan.chargeMana, BAL.CHARGE_TWIST_MANA, 'the twist: x3 harm for x3 mana');
+  assert.equal(BAL.chargedCost(10, 1, plan.chargeMana), 30);
+  assert.ok(near(BAL.affordableK(20, 10, plan.chargeMana), 0.5));
   assert.equal(compileWeave({ shape: 'bolt', essences: ['raw'] }).chargePower, BAL.CHARGE_POWER);
+  assert.equal(compileWeave({ shape: 'bolt', essences: ['raw'] }).chargeMana, BAL.CHARGE_MANA);
+  // A charge is never cheaper harm than a tap: the mana grows at least as the blow does.
+  assert.ok(1 + BAL.CHARGE_MANA >= 1 + BAL.CHARGE_POWER && 1 + BAL.CHARGE_TWIST_MANA >= 1 + BAL.CHARGE_TWIST_POWER);
   assert.ok(1 + BAL.CHARGE_POWER >= 2.4 && 1 + BAL.CHARGE_POWER <= 2.6, 'about 2.5x at full');
   assert.ok(1 + BAL.CHARGE_TWIST_POWER > 1 + BAL.CHARGE_POWER, 'the twist reaches higher');
 });
@@ -86,7 +96,7 @@ function holdCast(g, slot, secs) {
   return { res, k, paid, dealt: hp - foe.hp };
 }
 
-test('a quick tap casts on release at k 0 and costs what it always did; a full hold hits ~2.5x for 2x mana', () => {
+test('a quick tap casts on release at k 0 and costs what it always did; a full hold hits ~2.5x for 2.5x mana', () => {
   const g = arena();
   const m = g.magic;
   m.setSlot(1, { shape: 'bolt', essences: ['raw'] });
@@ -97,10 +107,11 @@ test('a quick tap casts on release at k 0 and costs what it always did; a full h
   assert.ok(near(tap.paid, cost, 0.05), `tap paid ${tap.paid} of ${cost}`);
   const mid = holdCast(g, 1, 0.8);
   assert.ok(mid.k > 0.3 && mid.k < 0.8, `k ${mid.k}`);
-  assert.ok(near(mid.paid, cost * (1 + mid.k), 0.1), `paid ${mid.paid} = ${cost} x (1 + ${mid.k})`);
+  assert.ok(near(mid.paid, cost * (1 + BAL.CHARGE_MANA * mid.k), 0.1), `paid ${mid.paid} = ${cost} x (1 + 1.5 x ${mid.k})`);
   const full = holdCast(g, 1, 1.6);
   assert.equal(full.k, 1);
-  assert.ok(near(full.paid, cost * 2, 0.1), `full paid ${full.paid}`);
+  assert.ok(near(full.paid, cost * 2.5, 0.1), `full paid ${full.paid}`);
+  assert.ok(near(full.paid, m.chargedCost(g.player, m.slotPlan(1), 1), 0.1), 'what chargedCost (the Spellbook\'s number) says');
   assert.ok(full.dealt >= tap.dealt * 2.2 && full.dealt <= tap.dealt * 2.8, `full ${full.dealt} vs tap ${tap.dealt}`);
   assert.ok(mid.dealt > tap.dealt && mid.dealt < full.dealt, 'it grows');
   // The charged bolt flew bigger.
@@ -147,7 +158,7 @@ test('charging stops growing at what the mana in hand can pay for (and the hold 
   m.castStart(g.player, 1, AIM, { charge: true });
   run(g, 1.6);
   const h = m.holdOf(g.player);
-  assert.ok(near(h.k, 0.4, 0.02), `capped at ${h.k}`);
+  assert.ok(near(h.k, 0.4 / BAL.CHARGE_MANA, 0.02), `capped at ${h.k}`);
   assert.equal(h.capped, true);
   const before = m.mana.cur;
   const r = m.castRelease(g.player, AIM);

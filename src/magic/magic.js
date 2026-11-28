@@ -20,7 +20,7 @@ import { isParty } from '../core/party.js';
 //
 //   cast(caster, slotOrWeave, aim {x, y, target?}, opts?) -> { ok, reason?, message?, plan }
 //       a full quick cast. aim may be omitted (auto-aims at the nearest foe, else ahead).
-//       opts: { free (no mana / cooldown), chargeK (0..1: pays x(1 + k) mana) }
+//       opts: { free (no mana / cooldown), chargeK (0..1: pays x(1 + 1.5k) mana, the charge twist x(1 + 2k): chargedCost) }
 //   castStart(caster, slot, aim, opts?) -> { ok, reason?, plan, mode: 'tap'|'hold'|'charge' }
 //       opts.charge: a tap weave charges while held (the controls ask this for every press)
 //   castHold(caster, aim) -> { mode, t, k (charge 0..1), live, capped, plan } | null
@@ -28,7 +28,7 @@ import { isParty } from '../core/party.js';
 //   castCancel(caster)                                                    (drag back to cancel)
 //       Held flow for every shape: Start on press, Hold while dragging, Release to cast.
 //       'tap' casts on release; 'charge' grows while held (past a CHARGE_DEAD tap, see
-//       balance.js) and casts on release at charge k, paying x(1 + k) mana then, never more
+//       balance.js) and casts on release at charge k, paying chargedCost (x2.5 at full) then, never more
 //       than the mana there is; 'hold' (beam) pours from Start until Release, draining
 //       plan.drain mana per second. One hold per caster: a second Start lets the first go.
 //   Casting stops you (plan §14, DESIGN §38.6): from Start the caster stands (castMoveMul
@@ -1708,12 +1708,23 @@ export class Magic {
     return Math.max(BAL.COOLDOWN_MIN * 0.75, base * k);
   }
 
-  // A cast pays when it leaves the hands: its mana, x(1 + k) for a charge of k, and its
-  // cooldown starts.
+  // What a cast of `plan` at charge k costs this caster (round 15: x2.5 at a full charge, the
+  // charge twist x3): the number the Spellbook and the buttons show, and what _pay takes.
+  chargedCost(caster, plan, k = 1) {
+    return Math.round(BAL.chargedCost(this.costOf(caster, plan), k, plan?.chargeMana) * 10) / 10;
+  }
+
+  // The most charge the mana in hand pays for, for this caster and plan.
+  _affordK(caster, plan) {
+    return BAL.affordableK(this.mana.cur, this.costOf(caster, plan), plan?.chargeMana);
+  }
+
+  // A cast pays when it leaves the hands: its mana, x(1 + chargeMana k) for a charge of k, and
+  // its cooldown starts.
   _pay(caster, r, cost, opts) {
     if (opts.free || !this.isPlayer(caster)) return;
     const k = Math.max(0, Math.min(1, Number(opts.chargeK) || 0));
-    this.spendMana(this.costOf(caster, r.plan) * (1 + BAL.CHARGE_MANA * k));
+    this.spendMana(BAL.chargedCost(this.costOf(caster, r.plan), k, r.plan?.chargeMana));
     this._startCooldown(caster, r.plan);
   }
 
@@ -1866,7 +1877,17 @@ export class Magic {
       curPlan: plan,
       curMul: 1,
     };
-    if (friendly) cast.deliberate = true;
+    // A weave made for an errand's showing (round 15, DESIGN §40.2: the missions say, by
+    // the place and the parts) spares the people around it, even one in the line of it.
+    if (this.isPlayer(caster) && g.missions?.showing?.(caster, plan, { x: ax, y: ay })) {
+      cast.sparesFriends = true;
+      if (cast.friendly) {
+        cast.friendly = false;
+        cast.target = null;
+        cast.trackTarget = false;
+      }
+    }
+    if (cast.friendly) cast.deliberate = true;
     return cast;
   }
 
@@ -2058,7 +2079,7 @@ export class Magic {
     }
     this.castCancel(caster);
     let k = Math.max(0, Math.min(1, Number(opts.chargeK) || 0));
-    if (k > 0 && !opts.free && this.isPlayer(caster)) k = Math.min(k, BAL.affordableK(this.mana.cur, this.costOf(caster, r.plan)));
+    if (k > 0 && !opts.free && this.isPlayer(caster)) k = Math.min(k, this._affordK(caster, r.plan));
     return this._fire(caster, r, aim, { ...opts, chargeK: k });
   }
 
@@ -2146,7 +2167,7 @@ export class Magic {
       return { ok: false, reason: c.reason, message: c.message, plan: h.plan };
     }
     let k = h.mode === 'charge' ? h.k : 0;
-    if (k > 0 && !h.opts.free && this.isPlayer(caster)) k = Math.min(k, BAL.affordableK(this.mana.cur, this.costOf(caster, h.plan)));
+    if (k > 0 && !h.opts.free && this.isPlayer(caster)) k = Math.min(k, this._affordK(caster, h.plan));
     const a = h.aim;
     return this._fire(caster, h.r, { x: a.x, y: a.y, target: a.target, auto: a.auto }, { ...h.opts, chargeK: k, steady: { friend: h.friend || null, t: h.friendT || 0, held: h.t } });
   }
@@ -2217,7 +2238,7 @@ export class Magic {
         }
         h.capped = false;
         if (player && !h.opts.free) {
-          const most = BAL.affordableK(this.mana.cur, this.costOf(caster, h.plan));
+          const most = this._affordK(caster, h.plan);
           if (k > most + 1e-4) {
             k = most;
             h.capped = true;

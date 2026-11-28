@@ -296,6 +296,10 @@ export class Barker {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     const how = hears(g, lyra, x, y, voiceOf(g, src, loud));
     if (!how) return;
+    // What she heard moves her before anything she says (round 15, item 2: her face read
+    // "fascinated" while she said "That didn't sound good." after a killing nearby). A cry or
+    // a blow: alarm; a scream (someone knocked down, a killing): shock. Muffled, less.
+    this.feelSound(lyra, how, loud);
     // Seen, it is not a sound to wonder at: her sight already tells her (barks, perception).
     if (how === 'clear' && seesPoint(g, lyra, x, y)) return;
     const now = this.now();
@@ -307,6 +311,18 @@ export class Barker {
       /* cosmetic */
     }
     this.queue(how === 'clear' ? 'heard_sound' : 'heard_muffled', {}, { priority: 2.2, cooldown: 30, ttl: 4 });
+  }
+
+  feelSound(lyra, how, loud) {
+    const now = this.now();
+    if (now - (this._feltSoundT ?? -Infinity) < 2.5) return;
+    this._feltSoundT = now;
+    const kind = loud >= LOUD.scream ? 'shock' : 'alarm';
+    try {
+      lyra.mind?.appraise?.(kind, how === 'clear' ? 1 : 0.6, kind === 'shock' ? 'a scream nearby' : 'a cry nearby');
+    } catch {
+      /* a mind is optional */
+    }
   }
 
   // ------------------------------------------------------------- places

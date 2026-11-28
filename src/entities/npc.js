@@ -8,6 +8,7 @@ import { NPC_PROFILES } from './npc_data.js';
 import { RESPONSE_LINES, HEAR_LINES } from './npc_lines.js';
 import { look } from '../murder/witness.js';
 import { hears, cryLoudness, hearsWords, placeOfSound, LOUD, isSilenced, voiceOf } from '../ai/hearing.js';
+import { keepGap } from '../ai/social/keep_gap.js';
 import { placePhrase } from '../ai/village_life/errands_data.js';
 import { isMinor, lyraOf } from '../core/people.js';
 import { DEFENDER_COMBAT, isDefender, defenderLine, defendsAgainst } from './defenders.js';
@@ -269,6 +270,9 @@ export class NPC extends Actor {
     if (this.mode === 'flee') return this.fleeStep(dt, tick);
     if (this.mode === 'fight') return this.fightStep(dt, tick);
     if (this.mode === 'help') return this.helpStep(dt, tick);
+    // A stranger they fear or distrust: they keep their distance, and still hear and answer
+    // from there (round 15, item 4: src/ai/social/keep_gap.js).
+    if (!this.duty && keepGap(this, dt, tick)) return;
     // Someone is talking to us: stand still and look at them.
     const p = this.game.player;
     if (now(this.game) < this.talkingUntil && p && this.distTo(p) < 56) {
@@ -2604,12 +2608,21 @@ export class NPC extends Actor {
       uneasy: this.uneasy && this.uneasy.day === (this.game.clock?.day ?? 1) ? { ...this.uneasy } : undefined,
       missingGoods: this.missingGoods && this.missingGoods.day === (this.game.clock?.day ?? 1) ? { ...this.missingGoods } : undefined,
       hideUntil: Number.isFinite(this.hideUntil) && this.hideUntil > (this.game.clock?.t ?? 0) ? this.hideUntil : undefined,
+      absent: this.absent ? { ...this.absent } : undefined,
+      dead: this.dead || undefined,
     };
   }
 
   deserialize(d) {
     if (!d) return;
     super.deserialize(d);
+    if (d.absent && typeof d.absent === 'object') this.absent = { ...d.absent };
+    if (d.dead) {
+      this.dead = true;
+      this.hp = 0;
+      this.mode = 'dead';
+      this.setState('dead');
+    }
     if (Number.isFinite(d.opinion)) this.opinionOfPlayer = clamp(d.opinion, 0, 100);
     if (Number.isFinite(d.familiarity)) this.familiarity = clamp(d.familiarity, 0, 100);
     if (Array.isArray(d.told)) this.told = new Set(d.told.filter((x) => typeof x === 'string'));
@@ -2625,7 +2638,7 @@ export class NPC extends Actor {
       this.setState('downed');
     }
     // Saved while lying in a bed (or sitting on a bench): start beside it, on free floor.
-    if (!this.tileFree(Math.floor(this.x / TILE), Math.floor(this.y / TILE))) {
+    if (!this.dead && !this.absent && !this.tileFree(Math.floor(this.x / TILE), Math.floor(this.y / TILE))) {
       const f = this.freeNear(this.x, this.y + TILE);
       if (f) {
         this.x = f.x;

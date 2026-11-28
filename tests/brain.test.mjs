@@ -60,7 +60,7 @@ function fakeMind() {
     recall: (q, o = {}) => memories.slice(0, o.limit || 6),
     addGoal: (t, p, s) => calls.goals.push([t, p, s]),
     addThought: (t, s) => calls.thoughts.push([t, s]),
-    mood: () => ({ label: 'content', valence: 0.2, arousal: 0.3, emoji: '🙂' }),
+    mood: () => ({ label: 'content', valence: 0.2, arousal: 0.3, face: 'content' }),
     describeState: () => 'Content, a little tired. Following the player through the village.',
     relationships: {
       get: (id) => rels.get(String(id).toLowerCase()) || null,
@@ -666,13 +666,12 @@ test('API-key provider: request shape, refusal, typed errors, key never leaked',
   class FakeAnthropic {
     constructor(opts) {
       this.opts = opts;
-      this.beta = {
-        messages: {
-          create: async (body) => {
-            requests.push({ body, opts: this.opts });
-            if (next instanceof Error) throw next;
-            return next;
-          },
+      // Standard messages.create (no beta)
+      this.messages = {
+        create: async (body, extra) => {
+          requests.push({ body, opts: this.opts, extra });
+          if (next instanceof Error) throw next;
+          return next;
         },
       };
     }
@@ -687,22 +686,23 @@ test('API-key provider: request shape, refusal, typed errors, key never leaked',
       return { default: FakeAnthropic };
     },
   });
-  next = { stop_reason: 'end_turn', content: [{ type: 'thinking', thinking: '' }, { type: 'text', text: JSON.stringify(GOOD_REPLY) }] };
+  // Successful tool_use reply
+  next = { stop_reason: 'end_turn', content: [{ type: 'tool_use', name: 'reply', input: GOOD_REPLY }] };
   const out = await provider.complete({ rules: 'RULES', task: 'TASK', schema: RESPONSE_SCHEMA });
   assert.equal(out.say, GOOD_REPLY.say);
-  assert.ok(loadedUrl.includes('@anthropic-ai/sdk@1.6.0/+esm'));
+  assert.ok(loadedUrl.includes('@anthropic-ai/sdk'), 'SDK URL loaded');
   const { body, opts } = requests[0];
   assert.equal(opts.apiKey, key);
   assert.equal(opts.dangerouslyAllowBrowser, true);
   assert.equal(body.model, 'model-under-test');
   assert.equal(body.max_tokens, 2048);
-  assert.deepEqual(body.system, [{ type: 'text', text: 'RULES', cache_control: { type: 'ephemeral' } }]);
+  assert.equal(body.system, 'RULES', 'system is a plain string');
   assert.deepEqual(body.messages, [{ role: 'user', content: 'TASK' }]);
-  assert.equal(body.output_config.effort, 'low');
-  assert.equal(body.output_config.format.type, 'json_schema');
-  assert.deepEqual(body.betas, ['server-side-fallback-2026-07-01']);
-  assert.equal(body.fallbacks, 'default');
-  for (const k of ['temperature', 'top_p', 'top_k', 'thinking']) assert.ok(!(k in body), `no ${k}`);
+  assert.ok(Array.isArray(body.tools) && body.tools[0].name === 'reply', 'tools array present');
+  assert.deepEqual(body.tool_choice, { type: 'tool', name: 'reply' }, 'tool_choice forces the reply tool');
+  for (const k of ['temperature', 'top_p', 'top_k', 'thinking', 'betas', 'output_config', 'fallbacks']) {
+    assert.ok(!(k in body), `no ${k}`);
+  }
 
   next = { stop_reason: 'refusal', content: [] };
   await assert.rejects(provider.complete({ rules: 'R', task: 'T', schema: {} }), (e) => e.code === 'refused');

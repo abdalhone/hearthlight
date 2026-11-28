@@ -396,7 +396,8 @@ test('a dead Lyra: "Lyra is dead.", no diary', async () => {
 test('nothing the player reads says someone will not talk, is beyond a word, or did not catch it (static guard)', async () => {
   const { readFileSync, readdirSync, statSync } = await import('node:fs');
   const { join } = await import('node:path');
-  const root = new URL('../src/', import.meta.url).pathname;
+  const { fileURLToPath } = await import('node:url');
+  const root = fileURLToPath(new URL('../src/', import.meta.url));
   const files = [];
   const walk = (d) => {
     for (const f of readdirSync(d)) {
@@ -415,7 +416,7 @@ test('nothing the player reads says someone will not talk, is beyond a word, or 
   ];
   const hits = [];
   for (const f of files) {
-    const rel = f.slice(root.length);
+    const rel = f.slice(root.length).replace(/\\/g, '/');
     for (const raw of readFileSync(f, 'utf8').split('\n')) {
       const line = raw.replace(/^\s*\/\/.*$/, '').replace(/\s\/\/ .*$/, '');
       for (const m of line.matchAll(/(won['’]t (?:talk|speak) to you|will not talk|beyond a word|refusesTalk|'refuses'|can['’]t talk|catch that|didn['’]t catch)/gi)) {

@@ -15,9 +15,10 @@ import { blowAtChests, ownersNotice } from '../../world/containers.js';
 import { installLock } from '../lock_on.js';
 import { Occupation, ScorchLayer } from '../../world/occupation.js';
 import { LockLayer } from '../../render/lock_layer.js';
+import { installFinisherView } from '../../ui/finisher_view.js';
 
-// Blows on locked chests (a Strike or a heavy weave forces the hasp; lighter blows get a
-// word), and owners who find their chest short (theft unseen, D10).
+// Blows on locked chests (the hasp is iron: no blow forces it, each gets the word that a
+// pickaxe would, round 15), and owners who find their chest short (theft unseen, D10).
 function installChests(game) {
   game.chestBlow = (x, y, r, blow) => {
     const out = blowAtChests(game, x, y, r, blow);
@@ -91,4 +92,13 @@ const lockPlugin = {
   },
 };
 
-export default [installChests, chestsPlugin, installLockOn, lockPlugin, occupationPlugin];
+// Round 15 (DESIGN §40.3): the finisher's killing scene on the page (bars, close-in, skip).
+function installFinisherScene(game) {
+  try {
+    installFinisherView(game);
+  } catch (err) {
+    console.warn('[blood] the finisher scene view failed', err);
+  }
+}
+
+export default [installChests, chestsPlugin, installLockOn, lockPlugin, occupationPlugin, installFinisherScene];

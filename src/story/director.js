@@ -107,7 +107,8 @@ export class StoryDirector {
     const m = /^npc_near:(.+)$/.exec(cond);
     if (m) {
       const e = g.entities?.get?.(m[1]);
-      return !!e && !!g.player && Math.hypot(e.x - g.player.x, e.y - g.player.y) <= 120;
+      if (!e || !g.player || e.dead || e.absent || e.hidden || g.murder?.isDead?.(m[1])) return false;
+      return Math.hypot(e.x - g.player.x, e.y - g.player.y) <= 120;
     }
     return true;
   }

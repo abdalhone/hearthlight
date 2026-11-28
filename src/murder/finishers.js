@@ -262,8 +262,107 @@ export function drawFinisherMark(ctx, sx, sy, id) {
 
 // ---------------------------------------------------------------- the scene
 
-// A short scene laid over the strike: an fx entity the renderer draws over everyone, a beat
-// of slowed time, then gone. Returns the scene (or null when off).
+// Round 15 (DESIGN §40.3; the author: "if I finish someone, there is still no cutscene of me
+// killing them"). The kill still happens at the strike (murder.strike -> kill: witnesses, the
+// record, the hunt exactly as before); over it now plays a short killing scene, in real seconds
+// whatever the world's slowed beat:
+//   raise  (0 .. RAISE)   the camera closes in, letterbox bars slide in, time slows; your own
+//                         character lifts the blade overhead (its 'attack' frame 0) or raises
+//                         the weaving hands (its 'cast' frames), the victim's hand comes up;
+//   drive  (.. DRIVE)     the blow goes home: the swing's frames, a hit-stop, the low hit, the
+//                         slash or the bolt (the build's finisher, as round 14b chose it);
+//   fall   (.. FALL)      the victim's hand drops, the body jolts once and is still; a faint
+//                         warmth rises off them and fades UPWARD (toward the Hearth, never into
+//                         you: DESIGN §40.4); the world's pace comes back;
+//   out    (.. dur)       the bars and the camera go back; you stand exactly where you were.
+// A tap, a click or any key skips it (finisher_view.js; input's interact/cancel/pause here
+// too); a wall clock guards it, so a slow phone never holds you in it. Reduce motion (or
+// Settings → Finishers: brief) plays a short still version: no zoom, no slowed time, no shake.
+export const SCENE = Object.freeze({ RAISE: 0.8, DRIVE: 1.05, FALL: 1.9, FULL: 2.6, BRIEF: 0.9 });
+
+// Who lies there: 'lyra', 'person' (any villager or whoever walks with you), 'bandit', 'beast'.
+// Only persons can be finished today (murder.finishTarget); the scene reads the others too.
+export function victimKind(game, v) {
+  if (!v) return 'person';
+  if (v === game?.companion || v.id === 'lyra') return 'lyra';
+  if (v.profile || v.type === 'npc') return 'person';
+  const sp = String(v.species || '');
+  if (/bandit|varek/.test(sp) || v.faction === 'bandit') return 'bandit';
+  if (sp) return 'beast';
+  return 'person';
+}
+
+const SKIN = ['#f1c9a5', '#d9a57e', '#a8714f'];
+const WARM = ['#fff2c0', '#ffd27a', '#ffb047'];
+
+// The victim's last moment: a hand lifted from the ground, trembling, that drops when the
+// blow lands; then one jolt. Beasts and bandits: no hand, only the jolt.
+function lastMoment(ctx, sx, sy, t, scene) {
+  const kind = scene.kind;
+  const D = scene.T;
+  if (kind === 'person' || kind === 'lyra') {
+    const up = t < D.DRIVE ? clamp01(t / (D.RAISE * 0.8)) : clamp01(1 - (t - D.DRIVE) / 0.18);
+    if (up > 0.02) {
+      const tremble = scene.brief ? 0 : Math.round(Math.sin(t * 38) * (t < D.DRIVE ? 1 : 0));
+      const hx = sx + 5 * -scene.dir + tremble;
+      const hy = sy - 3;
+      const h = Math.round(1 + 6 * up);
+      ctx.fillStyle = SKIN[2];
+      ctx.fillRect(hx, hy - h, 2, h);
+      ctx.fillStyle = SKIN[0];
+      ctx.fillRect(hx, hy - h - 2, 2, 2);
+      ctx.fillStyle = SKIN[1];
+      ctx.fillRect(hx + (scene.dir > 0 ? -1 : 2), hy - h - 1, 1, 2);
+    }
+  }
+  // One jolt as the blow lands: a puff of dust under the body.
+  const j = t - D.DRIVE;
+  if (j > 0 && j < 0.35) {
+    const a = 1 - j / 0.35;
+    ctx.save();
+    ctx.globalAlpha *= a * 0.8;
+    ctx.fillStyle = '#c9bda8';
+    for (let i = 0; i < 5; i++) ctx.fillRect(Math.round(sx - 8 + i * 4 + Math.sin(i * 2.1) * 2), Math.round(sy + 1 - j * 10 * (i % 2 ? 1 : 0.6)), 1, 1);
+    ctx.restore();
+  }
+  // A faint warmth rises off a person and fades upward (never toward you).
+  if ((kind === 'person' || kind === 'lyra') && t > D.DRIVE + 0.15 && t < D.FULL) {
+    const r = (t - D.DRIVE - 0.15) / (D.FULL - D.DRIVE - 0.15);
+    ctx.save();
+    ctx.globalAlpha *= 0.85 * (1 - r);
+    const col = kind === 'lyra' ? ['#ffffff', '#c9b6ff', '#7a5cff'] : WARM;
+    for (let i = 0; i < 4; i++) {
+      const rise = r * (26 + i * 5);
+      const x = Math.round(sx - 2 + Math.sin(r * 6 + i * 1.7) * 2 + (i - 1.5) * 2);
+      const y = Math.round(sy - 8 - rise);
+      ctx.fillStyle = col[i % 3];
+      ctx.fillRect(x, y, 1, i === 0 ? 2 : 1);
+    }
+    ctx.restore();
+  }
+}
+
+// The weaver's pose for this moment: { anim, frame } of the player's own sprite.
+export function poseAt(f, t, T) {
+  const magic = f?.id === 'magic';
+  const both = f?.id === 'hybrid';
+  if (t < T.RAISE) {
+    if (magic) return { anim: 'cast', frame: t < T.RAISE * 0.35 ? 0 : t < T.RAISE * 0.7 ? 1 : 2 };
+    return { anim: 'attack', frame: 0 };
+  }
+  if (t < T.DRIVE) {
+    if (magic) return { anim: 'cast', frame: 2 };
+    const k = (t - T.RAISE) / (T.DRIVE - T.RAISE);
+    return { anim: 'attack', frame: k < 0.34 ? 1 : k < 0.67 ? 2 : 3 };
+  }
+  if (t < T.FALL) {
+    if (both && t > T.DRIVE + 0.3) return { anim: 'cast', frame: 2 };
+    return magic ? { anim: 'cast', frame: 2 } : { anim: 'attack', frame: 3 };
+  }
+  return null;
+}
+
+// A short killing scene laid over the strike (see above). Returns the scene (or null when off).
 export function playFinisher(game, P, v, rec) {
   trackDamage(game);
   const f = chooseFinisher(game);
@@ -276,19 +375,31 @@ export function playFinisher(game, P, v, rec) {
     const w = game.magic?.slots?.find?.(Boolean);
     return w?.plan?.palette || null;
   }, null);
+  // The phases, in real seconds (brief: the same beats, squeezed).
+  const k = brief ? SCENE.BRIEF / SCENE.FULL : 1;
+  const T = { RAISE: SCENE.RAISE * k, DRIVE: SCENE.DRIVE * k, FALL: SCENE.FALL * k, FULL: SCENE.FULL * k };
+  const wall = () => (typeof performance !== 'undefined' && performance.now ? performance.now() / 1000 : Date.now() / 1000);
   const scene = {
     type: 'fx',
     id: `finisher_${v?.id || 'x'}`,
     finisher: f,
+    kind: victimKind(game, v),
     t: 0,
-    dur: brief ? Math.min(0.55, f.duration) : f.duration,
+    dur: T.FULL,
+    T,
     x: v?.x ?? 0,
     y: v?.y ?? 0,
+    px: P?.x ?? 0,
+    py: P?.y ?? 0,
     hx: (P?.x ?? 0) + 4 * dir,
     hy: (P?.y ?? 0) - 12,
     dir,
     pal,
     brief,
+    mode,
+    victim: v || null,
+    struck: false,
+    wall0: wall(),
     removed: false,
     solid: false,
     radius: 0,
@@ -301,37 +412,103 @@ export function playFinisher(game, P, v, rec) {
     update(dt) {
       // Real seconds, whatever the world's slowed beat (game.timeScale).
       this.t += dt / Math.max(0.2, game.timeScale || 1);
-      // A tap or a key skips it.
+      // The wall clock guards it: a stalled or throttled frame never holds you here.
+      const over = wall() - this.wall0 > this.dur + 1.5;
+      // A tap or a key skips it (the page's own keys and taps: finisher_view.js).
       const skip = safe(() => game.input?.pressed?.('interact') || game.input?.pressed?.('cancel') || game.input?.pressed?.('pause'), false);
-      if (this.t >= this.dur || skip) this.end();
+      if (this.t >= this.dur || skip || over) {
+        this.end(skip ? 'skipped' : over ? 'guard' : 'done');
+        return;
+      }
+      // You stand where you are while it plays (no step, no drift).
+      if (P && !P.removed) {
+        if (P.moveIntent) {
+          P.moveIntent.x = 0;
+          P.moveIntent.y = 0;
+        }
+        if (P.vel) {
+          P.vel.x = 0;
+          P.vel.y = 0;
+        }
+        P.x = this.px;
+        P.y = this.py;
+        P.faceToward?.(this.x, this.y);
+        const pose = poseAt(f, this.t, T);
+        P._finisherPose = pose ? { id: f.id, ...pose, until: (game.time ?? 0) + 0.2 } : null;
+      }
+      // The blow goes home.
+      if (!this.struck && this.t >= T.RAISE) {
+        this.struck = true;
+        if (!brief) {
+          game.hitStop = Math.max(game.hitStop || 0, 0.12);
+          safe(() => game.camera?.shake?.(f.id === 'magic' ? 2 : 3, 0.3));
+        }
+        safe(() => game.audio?.play?.(f.id === 'magic' ? 'spell' : 'hit', { x: this.x, y: this.y, volume: 0.95, pitch: f.id === 'magic' ? 0.7 : 0.5 }));
+        if (f.id !== 'sword') safe(() => game.lighting?.flash?.({ x: this.x, y: this.y - 6, r: 60, color: '#b9a6ff', intensity: 0.8, duration: 0.4 }));
+        safe(() => game.particles?.emit?.(f.id === 'sword' ? 'hit' : 'magic', this.x - 6 * dir, this.y - 6, { count: brief ? 6 : 12, speed: 40, life: 0.5 }));
+      }
+      // Time slows for the blow and the fall, then comes back (never under reduce motion).
+      if (!brief) {
+        const want = this.t < T.FALL ? 0.35 : 1;
+        game.timeScale = this.t < T.FALL ? want : Math.min(1, (game.timeScale || 1) + dt * 4);
+      }
+      if (!this.fell && this.t >= T.DRIVE + 0.2) {
+        this.fell = true;
+        safe(() => game.audio?.play?.('death', { x: this.x, y: this.y, volume: 0.6, pitch: 0.8 }));
+      }
+      safe(() => game.finisherView?.frame?.(this));
     },
-    end() {
+    end(why = 'done') {
       if (this.removed) return;
       this.removed = true;
+      this.ended = why;
       if (game._finisherScene === this) game._finisherScene = null;
-      if (!brief && game.timeScale && game.timeScale < 1) game.timeScale = 1;
-      if (P) P._finisherPose = null;
+      if (game.timeScale && game.timeScale < 1) game.timeScale = 1;
+      if (P) {
+        P._finisherPose = null;
+        if (Number.isFinite(this.px)) {
+          P.x = this.px;
+          P.y = this.py;
+        }
+      }
+      safe(() => game.finisherView?.close?.(this));
+      game.bus?.emit?.('finisher_scene_end', { id: f.id, victim: v?.id, why });
+    },
+    skip() {
+      this.end('skipped');
     },
     draw(ctx, ox, oy) {
-      const k = clamp01(this.t / this.dur);
+      const t = this.t;
       const sx = Math.round(this.x - ox);
       const sy = Math.round(this.y - oy);
-      const s = { ...this, hx: this.hx - ox, hy: this.hy - oy };
-      safe(() => f.draw(ctx, sx, sy, k, s));
+      safe(() => lastMoment(ctx, sx, sy, t, this));
+      // A glint on the raised blade, at the top of the lift.
+      if (f.id !== 'magic' && t > T.RAISE * 0.55 && t < T.RAISE) {
+        // (the raised blade's tip: back over the shoulder, above the head)
+        const gx = Math.round(this.px - ox - 9 * this.dir);
+        const gy = Math.round(this.py - oy - 25);
+        const a = Math.sin(((t - T.RAISE * 0.55) / (T.RAISE * 0.45)) * Math.PI);
+        ctx.save();
+        ctx.globalAlpha *= a;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(gx - 2, gy, 5, 1);
+        ctx.fillRect(gx, gy - 2, 1, 5);
+        ctx.restore();
+      }
+      // The build's blow (the round 14b finisher: slash, bolt, or both), from the drive.
+      if (t >= T.RAISE) {
+        const kk = clamp01((t - T.RAISE) / Math.max(0.3, T.FALL - T.RAISE));
+        const s = { ...this, hx: this.hx - ox, hy: this.hy - oy };
+        safe(() => f.draw(ctx, sx, sy, kk, s));
+      }
     },
   };
-  if (game._finisherScene) game._finisherScene.end();
+  if (game._finisherScene) game._finisherScene.end('replaced');
   game._finisherScene = scene;
-  if (P) P._finisherPose = { id: f.id, until: (game.time ?? 0) + scene.dur };
-  if (!brief) {
-    game.hitStop = Math.max(game.hitStop || 0, 0.18);
-    game.timeScale = 0.45;
-    safe(() => game.camera?.shake?.(f.id === 'magic' ? 2 : 3, 0.3));
-  }
-  safe(() => game.audio?.play?.(f.id === 'magic' ? 'spell' : 'hit', { x: v.x, y: v.y, volume: 0.9, pitch: f.id === 'magic' ? 0.7 : 0.55 }));
-  if (f.id !== 'sword') safe(() => game.lighting?.flash?.({ x: v.x, y: v.y - 6, r: 60, color: '#b9a6ff', intensity: 0.8, duration: 0.4 }));
-  safe(() => game.particles?.emit?.(f.id === 'sword' ? 'hit' : 'magic', v.x - 6 * dir, v.y - 6, { count: brief ? 6 : 12, speed: 40, life: 0.5 }));
+  if (P) P._finisherPose = { id: f.id, ...poseAt(f, 0, T), until: (game.time ?? 0) + 0.2 };
+  if (!brief) game.timeScale = 0.35;
   game.entities.add(scene);
-  game.bus?.emit?.('finisher', { id: f.id, victim: v?.id, mode });
+  game.bus?.emit?.('finisher', { id: f.id, victim: v?.id, mode, kind: scene.kind, dur: scene.dur });
+  safe(() => game.finisherView?.open?.(scene));
   return scene;
 }

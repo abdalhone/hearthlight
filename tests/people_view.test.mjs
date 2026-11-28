@@ -36,7 +36,7 @@ test('no Soul and no Data: the sections have none, and the Mind panel lost both 
   assert.ok(!ids.includes('soul') && !ids.includes('data'), ids.join(','));
 });
 
-test('the list: You first, then Lyra, then whoever walks with you, then those you have met', () => {
+test('the list: You first, then Lyra, then whoever walks with you, then those you have met, then everyone else (round 15)', () => {
   const g = makeGame({ hour: 12 });
   put(g.player, px(97), px(103));
   let list = peopleList(g);
@@ -49,7 +49,12 @@ test('the list: You first, then Lyra, then whoever walks with you, then those yo
   list = peopleList(g);
   assert.deepEqual(list.slice(0, 4).map((p) => p.id), ['you', 'lyra', 'bram', 'mira']);
   assert.equal(list.find((p) => p.id === 'bram').holder, true);
-  assert.ok(!list.some((p) => p.id === 'garrick'), 'not met, not listed');
+  // Round 15, item 12: not met yet is still listed, after everyone met, so anyone can be asked.
+  const gar = list.find((p) => p.id === 'garrick');
+  assert.ok(gar, 'not met, still listed');
+  assert.equal(gar.met, false);
+  assert.match(gar.sub, /Not met yet/);
+  assert.ok(list.indexOf(gar) > list.findIndex((p) => p.id === 'mira'), 'after those met');
   const you = youPage(g);
   assert.ok(you.views.length > 10, 'each villager has a view of you');
   const bp = villagerPage(g, bram);

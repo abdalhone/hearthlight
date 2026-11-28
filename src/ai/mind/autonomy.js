@@ -1753,15 +1753,15 @@ export class Autonomy {
     const scale = (o, k) => Object.fromEntries(Object.entries(o).map(([e, v]) => [e, v * k]));
     const harm = cause === 'hit' || cause === 'hit_again' || cause === 'hit_weave' || cause === 'hit_again_weave' || cause === 'villager' || cause === 'villager_again' || cause === 'villager_down' || cause === 'villager_gone' || cause === 'downed' || cause === 'violence' || cause === 'abandoned';
     try {
-      if (state === 'gone') aff.setTint({ sadness: 0.35, anger: 0.12, joy: -0.2, trust: -0.2, affection: -0.1 }, { halfLife: 2 * day, label: 'heartsick', emoji: '😢' });
+      if (state === 'gone') aff.setTint({ sadness: 0.35, anger: 0.12, joy: -0.2, trust: -0.2, affection: -0.1 }, { halfLife: 2 * day, label: 'heartsick', face: 'heartsick' });
       else if (state === 'left') {
-        if (harm) aff.setTint(HURT, { halfLife: 1.2 * day, label: 'hurt', emoji: '💔' });
-        else if (cause === 'fear_left') aff.setTint({ fear: 0.16, sadness: 0.1, joy: -0.12, trust: -0.1 }, { halfLife: 0.6 * day, label: 'shaken', emoji: '😨' });
-        else aff.setTint({ sadness: 0.2, joy: -0.1, trust: -0.08, anger: 0.04 }, { halfLife: day, label: 'heavy-hearted', emoji: '😔' });
+        if (harm) aff.setTint(HURT, { halfLife: 1.2 * day, label: 'hurt', face: 'hurt' });
+        else if (cause === 'fear_left') aff.setTint({ fear: 0.16, sadness: 0.1, joy: -0.12, trust: -0.1 }, { halfLife: 0.6 * day, label: 'shaken', face: 'afraid' });
+        else aff.setTint({ sadness: 0.2, joy: -0.1, trust: -0.08, anger: 0.04 }, { halfLife: day, label: 'heavy-hearted', face: 'sad' });
       } else if (state === 'wary') {
-        if (harm) aff.setTint(scale(HURT, 0.6), { halfLife: 0.8 * day, label: 'hurt', emoji: '💔', blend: 0.5 });
-        else if (cause === 'fear') aff.setTint({ fear: 0.1, sadness: 0.05, joy: -0.08 }, { halfLife: 0.5 * day, label: 'uneasy', emoji: '😟', blend: 0.5 });
-        else aff.setTint({ fear: 0.04, sadness: 0.06, joy: -0.06, trust: -0.06 }, { halfLife: 0.6 * day, label: 'guarded', emoji: '😐', blend: 0.5 });
+        if (harm) aff.setTint(scale(HURT, 0.6), { halfLife: 0.8 * day, label: 'hurt', face: 'hurt', blend: 0.5 });
+        else if (cause === 'fear') aff.setTint({ fear: 0.1, sadness: 0.05, joy: -0.08 }, { halfLife: 0.5 * day, label: 'uneasy', face: 'uneasy', blend: 0.5 });
+        else aff.setTint({ fear: 0.04, sadness: 0.06, joy: -0.06, trust: -0.06 }, { halfLife: 0.6 * day, label: 'guarded', face: 'guarded', blend: 0.5 });
       } else if (state === 'together' && (previous === 'wary' || previous === 'left' || previous === 'apart')) {
         aff.setTint({ joy: 0.04, trust: 0.04 }, { halfLife: 0.3 * day, blend: 0.3 });
       } else if (state === 'apart' && cause === 'amends') aff.setTint({ sadness: 0.05 }, { halfLife: 0.5 * day, blend: 0.5 });
@@ -3453,7 +3453,7 @@ export class Autonomy {
     try {
       m?.appraise?.('relief', 0.8, 'safe, away from them');
       const aff = m?.affect;
-      if (aff?.tintMood?.label === 'shaken') aff.setTint({ sadness: 0.12, joy: -0.04, fear: 0.03 }, { halfLife: 0.6 * this.daySeconds(), label: 'relieved', emoji: '😮‍💨' });
+      if (aff?.tintMood?.label === 'shaken') aff.setTint({ sadness: 0.12, joy: -0.04, fear: 0.03 }, { halfLife: 0.6 * this.daySeconds(), label: 'relieved', face: 'relieved' });
     } catch {
       /* optional */
     }

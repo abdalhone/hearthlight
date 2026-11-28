@@ -9,8 +9,7 @@
 import { DEFAULT_SETTINGS } from '../../core/settings.js';
 import { extractJson } from './claude_brain.js';
 
-export const SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@1.6.0/+esm';
-export const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
+export const SDK_URL = 'https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.39.0/+esm';
 
 export const PROVIDER_LABELS = {
   'claude.ai': 'Claude (claude.ai)',
@@ -241,28 +240,53 @@ export class ApiKeyProvider {
   async complete({ rules, task, schema, signal, maxTokens = 2048 } = {}) {
     const key = this.key();
     const { client, SDK } = await this.client();
+    // Use the standard messages API with a tool so the response is always valid JSON
+    // regardless of model tier or beta access – no beta headers needed.
+    const tool = schema
+      ? { name: 'reply', description: 'Structured reply', input_schema: schema }
+      : { name: 'reply', description: 'Structured reply', input_schema: { type: 'object' } };
     let resp;
     try {
-      resp = await client.beta.messages.create(
+      resp = await client.messages.create(
         {
           model: this.model(),
           max_tokens: maxTokens,
-          system: [{ type: 'text', text: rules, cache_control: { type: 'ephemeral' } }],
+          system: rules,
           messages: [{ role: 'user', content: task }],
-          output_config: { effort: 'low', format: { type: 'json_schema', schema } },
-          betas: [FALLBACK_BETA],
-          fallbacks: 'default',
+          tools: [tool],
+          tool_choice: { type: 'tool', name: 'reply' },
         },
         signal ? { signal } : undefined,
       );
     } catch (e) {
-      const err = classifyApiError(e, SDK, key);
-      if (err.code === 'auth') this.rejectedKey = key;
-      throw err;
+      // "model output must contain either output text or tool calls … cannot both be empty"
+      // is a transient API-side constraint; fall through to plain-text mode instead of failing.
+      const isEmptyOutput = e && typeof e.message === 'string' && /output.*empty|cannot both be empty/i.test(e.message);
+      if (!isEmptyOutput) {
+        const err = classifyApiError(e, SDK, key);
+        if (err.code === 'auth') this.rejectedKey = key;
+        throw err;
+      }
+      // Retry without forced tool_choice so the model can produce a text response.
+      try {
+        resp = await client.messages.create(
+          { model: this.model(), max_tokens: maxTokens, system: rules, messages: [{ role: 'user', content: task }] },
+          signal ? { signal } : undefined,
+        );
+      } catch (e2) {
+        const err2 = classifyApiError(e2, SDK, key);
+        if (err2.code === 'auth') this.rejectedKey = key;
+        throw err2;
+      }
     }
     if (resp?.stop_reason === 'refusal') throw new BrainError('refused', 'declined');
-    const block = Array.isArray(resp?.content) ? resp.content.find((b) => b && b.type === 'text') : null;
-    const text = block?.text ?? '';
+    // Prefer tool_use block (parsed JSON already); fall back to text + extractJson.
+    const toolBlock = Array.isArray(resp?.content)
+      ? resp.content.find((b) => b && b.type === 'tool_use' && b.name === 'reply')
+      : null;
+    if (toolBlock?.input != null) return toolBlock.input;
+    const textBlock = Array.isArray(resp?.content) ? resp.content.find((b) => b && b.type === 'text') : null;
+    const text = textBlock?.text ?? '';
     if (!text.trim()) throw new BrainError('empty_completion', 'no text in reply');
     try {
       return JSON.parse(text);

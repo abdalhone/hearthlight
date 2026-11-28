@@ -847,7 +847,8 @@ test('A6: a witness who has run to the watch tells them at the door, even with W
 test('never a locked chat: nothing the player reads says someone "won\'t talk to you" (the author: "even if somebody really hates me, make me able to talk to them")', async () => {
   const { readFileSync, readdirSync, statSync } = await import('node:fs');
   const { join } = await import('node:path');
-  const root = new URL('../src/', import.meta.url).pathname;
+  const { fileURLToPath } = await import('node:url');
+  const root = fileURLToPath(new URL('../src/', import.meta.url));
   const files = [];
   const walk = (d) => {
     for (const f of readdirSync(d)) {

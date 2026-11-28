@@ -103,6 +103,7 @@ const ITEM_WORDS = {
   crystal: ['glow crystal', 'crystal', 'crystals'],
   potion: ['healing potion', 'potion', 'potions'],
   iron_ore: ['iron ore', 'ore'],
+  pickaxe: ['pickaxe', 'pickaxes', 'pick-axe'], // round 15: iron needs one
   wolf_pelt: ['wolf pelt', 'pelt', 'pelts'],
   cooked_fish: ['grilled fish', 'cooked fish'],
   raw_fish: ['raw fish', 'fish'],

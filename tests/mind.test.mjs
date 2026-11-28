@@ -198,7 +198,7 @@ test('the Mind has the full §9 interface and starts as herself', () => {
   assert.ok(desc.length < 900);
   const sum = mind.summary();
   assert.equal(sum.name, 'Lyra');
-  assert.ok(sum.mood.label && sum.emoji);
+  assert.ok(sum.mood.label && sum.face);
   assert.equal(game.state, 'playing');
 });
 

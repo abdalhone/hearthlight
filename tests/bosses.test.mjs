@@ -256,8 +256,9 @@ for (const id of BOSS_IDS) {
         const d = Math.hypot(tx - p.x, ty - p.y) || 1;
         p.moveIntent = { x: (tx - p.x) / d, y: (ty - p.y) / d };
         p.hp = p.maxHp;
-        // Chip at the boss now and then so its phases come.
-        if (i % 45 === 0 && b.mode === 'fight' && b.hp > b.maxHp * 0.3) g.combat.damage(p, b, 14, { kind: 'magic' });
+        // Chip at the boss now and then so its phases come (round 15: a share of its health, as
+        // its health and armour grew; small enough never to raise its guard).
+        if (i % 45 === 0 && b.mode === 'fight' && b.hp > b.maxHp * 0.3) g.combat.damage(p, b, b.def + b.maxHp * 0.012, { kind: 'magic' });
         step(g);
         if (b.move) seen.add(b.move.name);
         assert.ok(Number.isFinite(b.x) && Number.isFinite(b.y) && Number.isFinite(b.hp), 'no NaN');
@@ -284,14 +285,19 @@ for (const id of BOSS_IDS) {
     const log = events(g);
     const p = enterArena(g, id);
     const b = g.bosses.get(id);
-    // Keep striking with weaves (they also crack the Warden's shield) until it falls.
+    // Keep striking with weaves (they also crack the Warden's shield) until it falls. (Round 15:
+    // the fight is longer, so the player is held where they entered: a lunge's knockback that
+    // threw them out of the arena ended the fight, which is not what this test is about.)
+    const at = { x: p.x, y: p.y };
     for (let i = 0; i < 300 * 30 && !log.some((e) => e.type === 'boss_defeated'); i++) {
       p.hp = p.maxHp;
-      if (i % 6 === 0 && b.mode === 'fight') g.combat.damage(p, b, 40, { kind: 'magic', heavy: true });
+      p.x = at.x;
+      p.y = at.y;
+      if (i % 6 === 0 && b.mode === 'fight') g.combat.damage(p, b, Math.max(40, b.def + b.maxHp * 0.03), { kind: 'magic', heavy: true });
       step(g);
     }
     const def = log.find((e) => e.type === 'boss_defeated');
-    assert.ok(def && def.payload.id === id, `${id} defeated`);
+    assert.ok(def && def.payload.id === id, `${id} defeated (mode ${b.mode}, health ${Math.round(b.hp)}/${b.maxHp}, resets: ${log.filter((e) => e.type === 'boss_reset').map((e) => e.payload.reason).join(',')})`);
     assert.ok(g.flags.bosses[id].defeated, 'saved as defeated');
     // Let the defeat play out (Varek walks off; the rest fall), from a step back.
     const stand = { x: p.x, y: p.y };
@@ -340,8 +346,10 @@ test('losing resets the boss: the player knocked out, full health, home, no haza
   const log = events(g);
   const p = enterArena(g, 'varek');
   const b = g.bosses.get('varek');
-  for (let i = 0; i < 40 * 30; i++) {
-    if (i % 10 === 0 && b.hp > b.maxHp * 0.4) g.combat.damage(p, b, 20, { kind: 'magic' });
+  for (let i = 0; i < 75 * 30; i++) {
+    // (Round 15: a share of its health, once a second, under the pace that raises its guard,
+    // for longer: its health grew.)
+    if (i % 30 === 0 && b.hp > b.maxHp * 0.4) g.combat.damage(p, b, b.def + b.maxHp * 0.015, { kind: 'magic' });
     p.hp = p.maxHp;
     step(g);
   }
